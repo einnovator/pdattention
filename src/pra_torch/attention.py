@@ -38,6 +38,7 @@ class PRAttention(nn.Module):
         self.trigger_threshold = trigger_threshold
         self.memory_alpha = memory_alpha
         self.pra_cache = pra_cache
+        self.last_selected_references: list[tuple[str, float]] = []
 
         self.q_proj = nn.Linear(d_model, d_model)
         self.k_proj = nn.Linear(d_model, d_model)
@@ -68,6 +69,7 @@ class PRAttention(nn.Module):
 
     def forward(self, x, use_pra_memory: bool = True):
         """Apply causal self-attention and optionally add retrieved memory output."""
+        self.last_selected_references = []
         b, t, _ = x.shape
         q = self.split_heads(self.q_proj(x))
         k = self.split_heads(self.k_proj(x))
@@ -93,6 +95,7 @@ class PRAttention(nn.Module):
                 continue
             if self.layer_id not in entry.layer_kv:
                 continue
+            self.last_selected_references.append((entry.uri, sim))
             kv = entry.layer_kv[self.layer_id]
             selected_k.append(kv.k.to(x.device))
             selected_v.append(kv.v.to(x.device))

@@ -100,7 +100,13 @@ models:
       lr: 0.0002
 
   td_sa_tiny:
-    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: td_sa}
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, d_ff: 1024, max_seq_len: 256, dropout: 0.1, model_variant: td_sa}
+    pra: {pra_layer_ids: []}
+  td_sa_tiny_match_full_pra:
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, d_ff: 1152, max_seq_len: 256, dropout: 0.1, model_variant: td_sa}
+    pra: {pra_layer_ids: []}
+  td_sa_tiny_match_hybrid_pra:
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, d_ff: 1088, max_seq_len: 256, dropout: 0.1, model_variant: td_sa}
     pra: {pra_layer_ids: []}
   td_pra_tiny:
     model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: td_pra}
@@ -197,6 +203,50 @@ experiments:
     seeds: [1, 7]
     dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 20, max_steps: 512, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
+
+  phase1_plain_sa_1m:
+    model_name: td_sa_tiny
+    seeds: [1, 7, 21]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+  phase1_plain_pra_1m:
+    model_name: td_pra_tiny
+    seeds: [1, 7, 21]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+  phase1_plain_hybrid_1m:
+    model_name: tdx_pra_tiny
+    seeds: [1, 7, 21]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+  phase1_plain_sa_match_full_1m:
+    model_name: td_sa_tiny_match_full_pra
+    seeds: [1, 7, 21]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+  phase1_plain_sa_match_hybrid_1m:
+    model_name: td_sa_tiny_match_hybrid_pra
+    seeds: [1, 7, 21]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+
+  phase1_order_sa_refs_v2:
+    model_name: td_sa_tiny
+    seeds: [1, 7, 21]
+    dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 20, max_steps: 512, eval_every_steps: 128, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
+  phase1_order_pra_refs_v2:
+    model_name: td_pra_tiny
+    seeds: [1, 7, 21]
+    pra_overrides: {top_k_refs: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 20, max_steps: 512, eval_every_steps: 128, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
+  phase1_order_hybrid_refs_v2:
+    model_name: tdx_pra_tiny
+    seeds: [1, 7, 21]
+    pra_overrides: {top_k_refs: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 20, max_steps: 512, eval_every_steps: 128, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
 
 train:
   steps: 300

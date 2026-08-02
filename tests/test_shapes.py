@@ -90,3 +90,43 @@ def test_explicit_model_variants_select_expected_blocks():
         PRATransformerBlock,
         PRATransformerBlock,
     ]
+
+
+def test_configurable_ffn_width_changes_capacity_without_changing_shape():
+    cfg = PRAConfig(
+        vocab_size=32,
+        d_model=16,
+        d_ff=48,
+        n_heads=4,
+        n_layers=2,
+        model_variant="td_sa",
+    )
+    model = TinyPRALanguageModel(cfg)
+    logits = model(torch.randint(0, cfg.vocab_size, (2, 8)))
+
+    assert cfg.d_ff == 48
+    assert model.blocks[0].layer.linear1.out_features == 48
+    assert logits.shape == (2, 8, cfg.vocab_size)
+
+
+def test_model_records_actual_reference_selections():
+    tok = CharTokenizer(["question <REF_1> answer", "secret code red"])
+    cfg = PRAConfig(
+        vocab_size=tok.vocab_size,
+        max_seq_len=24,
+        d_model=32,
+        n_heads=4,
+        n_layers=2,
+        top_k_refs=1,
+        trigger_threshold=-1.0,
+    )
+    model = TinyPRALanguageModel(cfg)
+    cache = PRASimpleMemoryCache()
+    cache.put(model.encode_reference_to_cache("mem://selected", "secret code red", "secret code", tok, "cpu"))
+    model.set_pra_cache(cache)
+
+    model(torch.tensor([tok.encode("question <REF_1> answer")[:24]]))
+
+    selections = model.selected_references_by_layer()
+    assert selections
+    assert all(ranked[0][0] == "mem://selected" for ranked in selections.values())

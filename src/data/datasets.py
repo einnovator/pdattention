@@ -208,6 +208,14 @@ class WikiTextReferenceDataset(PRADataset):
         generate_wikitext_reference_dataset(*args, **kwargs)
 
 
+class WikiTextReferenceV2Dataset(PRADataset):
+    dataset_name = "wikitext_reference_memory_v2"
+    stage = "wikitext2_references_v2"
+
+    def generate(self, *args, **kwargs) -> None:
+        generate_wikitext_reference_dataset_v2(*args, **kwargs)
+
+
 DATASET_REGISTRY = {
     SyntheticMemoryQADataset.stage: SyntheticMemoryQADataset,
     HierarchicalReferenceDataset.stage: HierarchicalReferenceDataset,
@@ -217,6 +225,7 @@ DATASET_REGISTRY = {
     BooksDataset.stage: BooksDataset,
     GitHubRepositoryDataset.stage: GitHubRepositoryDataset,
     WikiTextReferenceDataset.stage: WikiTextReferenceDataset,
+    WikiTextReferenceV2Dataset.stage: WikiTextReferenceV2Dataset,
 }
 
 
@@ -313,6 +322,116 @@ def generate_wikitext_reference_dataset(
                 "number_of_parts": part_count,
                 "local_context_sufficient": False,
                 "reference_relation": "indirect_natural_continuation",
+            }
+        )
+
+    for filename, rows in (
+        ("documents.jsonl", documents),
+        ("references.jsonl", references),
+        ("questions.jsonl", questions),
+    ):
+        with (stage_dir / filename).open("w", encoding="utf-8") as stream:
+            for row in rows:
+                stream.write(json.dumps(row) + "\n")
+    return stage_dir
+
+
+def generate_wikitext_reference_dataset_v2(
+    data_dir: str | Path,
+    *,
+    dataset_name: str = "wikitext-2-raw-v1",
+    max_examples: int = 512,
+    max_reference_parts: int = 5,
+    seed: int = 1729,
+    min_words: int = 80,
+) -> Path:
+    """Create a fixed, selection-labelled reference-conditioned continuation set."""
+    data_dir = Path(data_dir)
+    stage_dir = data_dir / WikiTextReferenceV2Dataset.stage
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    splits = load_wikitext_splits(dataset_name, cache_dir=data_dir / ".hf_cache")
+    candidates = [
+        (source_index, text)
+        for source_index, text in enumerate(wikitext_documents(splits["train"]))
+        if len(text.split()) >= min_words
+    ]
+    rng = random.Random(seed)
+    rng.shuffle(candidates)
+    documents: list[dict[str, Any]] = []
+    references: list[dict[str, Any]] = []
+    questions: list[dict[str, Any]] = []
+
+    for example_index, (source_index, text) in enumerate(candidates[:max_examples]):
+        words = text.split()
+        reference_count = 1 + example_index % max_reference_parts
+        part_count = reference_count + 1
+        part_size = max(1, len(words) // part_count)
+        parts = [
+            " ".join(words[index * part_size : (index + 1) * part_size])
+            for index in range(reference_count)
+        ]
+        tail_words = words[reference_count * part_size :]
+        answer_size = min(12, max(4, len(tail_words) // 3))
+        local_context_size = min(16, max(1, len(tail_words) - answer_size))
+        local_context = " ".join(tail_words[:local_context_size])
+        answer = " ".join(tail_words[local_context_size : local_context_size + answer_size])
+
+        assigned_ids = list(range(1, reference_count + 1))
+        rng.shuffle(assigned_ids)
+        candidates_with_ids = list(enumerate(zip(parts, assigned_ids), start=1))
+        relevant_id = candidates_with_ids[-1][1][1]
+        rng.shuffle(candidates_with_ids)
+        ref_uris = []
+        candidate_ids = []
+        for chronological_part, (part, reference_id) in candidates_with_ids:
+            uri = f"wikitext://{dataset_name}/{source_index}/part-{chronological_part}"
+            ref_uris.append(uri)
+            candidate_ids.append(reference_id)
+            documents.append(
+                {
+                    "id": f"wiki-{source_index}-{chronological_part}",
+                    "uri": uri,
+                    "title": f"WikiText source {source_index} part {chronological_part}",
+                    "text": part,
+                }
+            )
+            references.append(
+                {
+                    "id": reference_id,
+                    "token": f"<REF_{reference_id}>",
+                    "uri": uri,
+                    "summary": " ".join(part.split()[:16]),
+                    "metadata": {
+                        "dataset": dataset_name,
+                        "source_entry_id": source_index,
+                        "chronological_part": chronological_part,
+                        "generation_version": "wikitext_refs_v2",
+                    },
+                }
+            )
+
+        ref_tokens = " ".join(f"<REF_{reference_id}>" for reference_id in candidate_ids)
+        questions.append(
+            {
+                "id": f"wikitext-ref-v2-{source_index}",
+                "prompt": (
+                    f"{ref_tokens} Continue the referenced WikiText passage after this lead-in: "
+                    f"{local_context}"
+                ),
+                "answer": answer,
+                "reference_uris": ref_uris,
+                "expected_ref_ids": [relevant_id],
+                "expected_anchors": [],
+                "source_entry_id": source_index,
+                "part_ids": candidate_ids,
+                "relevant_part_ids": [relevant_id],
+                "target_part_id": f"tail-{source_index}",
+                "num_parts": part_count,
+                "reference_distance_tokens": local_context_size,
+                "local_context_sufficient": False,
+                "dependency_type": "indirect_continuation",
+                "generation_version": "wikitext_refs_v2",
+                "candidate_order_randomized": True,
             }
         )
 

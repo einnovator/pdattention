@@ -10,6 +10,8 @@ from data.datasets import (
     PRADataset,
     SyntheticMemoryQADataset,
     WikipediaDataset,
+    WikiTextReferenceV2Dataset,
+    generate_wikitext_reference_dataset_v2,
 )
 from data.schemas import QuestionSample
 from data.tokenizer import PRATokenizer
@@ -59,6 +61,48 @@ def test_datamodule_returns_dataloader_batches():
     batch = next(iter(dm.train_loader()))
     assert isinstance(batch["input_ids"], torch.Tensor)
     assert batch["metadata"][0]["references"]
+
+
+def test_datamodule_split_is_independent_of_global_training_seed():
+    torch.manual_seed(1)
+    first = PRADataModule(
+        "stage0_synthetic_memory", "data", split_seed=1729
+    ).load()
+    torch.manual_seed(21)
+    second = PRADataModule(
+        "stage0_synthetic_memory", "data", split_seed=1729
+    ).load()
+
+    assert first.train_dataset.indices == second.train_dataset.indices
+    assert first.val_dataset.indices == second.val_dataset.indices
+    assert first.test_dataset.indices == second.test_dataset.indices
+
+
+def test_wikitext_reference_v2_has_one_randomized_relevant_candidate(tmp_path, monkeypatch):
+    documents = [
+        {"text": " ".join(f"source{source}_token{index}" for index in range(120))}
+        for source in range(5)
+    ]
+    monkeypatch.setattr(
+        "data.datasets.load_wikitext_splits",
+        lambda *args, **kwargs: {"train": documents},
+    )
+
+    generate_wikitext_reference_dataset_v2(
+        tmp_path, max_examples=5, max_reference_parts=5, seed=1729
+    )
+    dataset = WikiTextReferenceV2Dataset(tmp_path)
+
+    assert len(dataset) == 5
+    assert all(len(sample.target_reference_ids) == 1 for sample in dataset)
+    assert all(
+        sample.target_reference_ids[0] in {reference.id for reference in sample.references}
+        for sample in dataset
+    )
+    assert all(
+        sample.metadata["row"]["generation_version"] == "wikitext_refs_v2"
+        for sample in dataset
+    )
 
 
 def test_training_loop_uses_dataloader(tmp_path):

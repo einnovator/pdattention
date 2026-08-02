@@ -26,16 +26,21 @@ from data.datamodules import PRADataModule
 from data.datasets import (
     dataset_class_for_stage,
     generate_wikitext_reference_dataset,
+    generate_wikitext_reference_dataset_v2,
 )
 from data.language_modeling import WikiTextDataModule
 from data.tokenizer import BPETokenizer
 from pra_torch.cache_services import build_cache_from_metadata
-from pra_torch.cli import build_pra_config, load_config
+from pra_torch.cli import build_pra_config, deep_update, load_config
 from pra_torch.config import PRAConfig, TrainConfig
 from pra_torch.eval import run_evaluation
 from pra_torch.lm_train import evaluate_language_model, train_language_model
 from pra_torch.model import TinyPRAModel
-from pra_torch.pra_train import evaluate_reference_ablation, train_pra_model
+from pra_torch.pra_train import (
+    evaluate_pra_model,
+    evaluate_reference_ablation,
+    train_pra_model,
+)
 
 
 @dataclass(frozen=True)
@@ -494,7 +499,24 @@ def summarize_workload(result: dict[str, Any]) -> dict[str, Any]:
         "test_reference_accuracy": result["test_metrics"].get(
             "reference_retrieval_accuracy"
         ),
+        "test_reference_top1_accuracy": result["test_metrics"].get(
+            "reference_selection_top1_accuracy"
+        ),
+        "test_reference_topk_accuracy": result["test_metrics"].get(
+            "reference_selection_topk_accuracy"
+        ),
+        "test_reference_mrr": result["test_metrics"].get("reference_selection_mrr"),
     }
+    if result.get("initial_reference_metrics"):
+        initial = result["initial_reference_metrics"]
+        summary["initial_validation_loss"] = initial.get("loss")
+        summary["initial_reference_top1_accuracy"] = initial.get(
+            "reference_selection_top1_accuracy"
+        )
+        summary["initial_reference_topk_accuracy"] = initial.get(
+            "reference_selection_topk_accuracy"
+        )
+        summary["initial_reference_mrr"] = initial.get("reference_selection_mrr")
     summary.update(result.get("timing_metrics", {}))
     if result.get("plain_test_after_reference"):
         summary["plain_test_after_reference_loss"] = result["plain_test_after_reference"].get("loss")
@@ -691,6 +713,10 @@ def load_experiment_settings(runtime: NotebookRuntime, experiment_name: str) -> 
         raise KeyError(f"Unknown experiment: {experiment_name}")
     model_name = str(experiment["model_name"])
     resolved = load_config(str(config_path), model_name=model_name)
+    for section in ("model", "pra", "resolver", "cache"):
+        overrides = experiment.get(f"{section}_overrides")
+        if overrides:
+            deep_update(resolved.setdefault(section, {}), dict(overrides))
     return {"name": experiment_name, "model_name": model_name, "experiment": experiment, "resolved": resolved}
 
 
@@ -727,6 +753,8 @@ def _named_pra_config(settings: dict[str, Any], tokenizer, runtime: NotebookRunt
 def train_wikitext_language_experiment(
     runtime: NotebookRuntime,
     experiment_name: str,
+    *,
+    resume_from: str | Path | None = None,
 ) -> dict[str, Any]:
     """Train a configured model variant on plain WikiText BPE token blocks."""
     settings = load_experiment_settings(runtime, experiment_name)
@@ -748,6 +776,7 @@ def train_wikitext_language_experiment(
     artifact = experiment_artifact_name(
         settings["model_name"],
         "wikitext2",
+        settings["name"],
         f"seed{runtime.seed}",
         f"steps{train_cfg.get('max_steps')}",
         f"seq{policy.max_seq_len}",
@@ -761,12 +790,15 @@ def train_wikitext_language_experiment(
         max_steps=int(train_cfg.get("max_steps") or 0) or None,
         batch_size=policy.batch_size,
         learning_rate=policy.learning_rate,
-        eval_every_steps=max(int(train_cfg.get("max_steps") or 1), 1),
+        eval_every_steps=max(
+            int(train_cfg.get("eval_every_steps") or train_cfg.get("max_steps") or 1), 1
+        ),
         save_every_steps=max(int(train_cfg.get("max_steps") or 1), 1),
         log_every_steps=1,
         use_tensorboard=False,
         save_metric_plots=False,
         mixed_precision=False,
+        resume_from=str(resume_from) if resume_from else None,
         dataset_stage="wikitext2",
         data_dir=str(runtime.repo / "data"),
         max_seq_len=policy.max_seq_len,
@@ -808,14 +840,20 @@ def prepare_wikitext_reference_experiment(
     settings = load_experiment_settings(runtime, experiment_name)
     dataset_cfg = settings["experiment"]["dataset"]
     policy = policy_from_experiment(settings)
-    generate_wikitext_reference_dataset(
+    dataset_stage = str(dataset_cfg.get("stage", "wikitext2_references"))
+    generator = (
+        generate_wikitext_reference_dataset_v2
+        if dataset_stage == "wikitext2_references_v2"
+        else generate_wikitext_reference_dataset
+    )
+    generator(
         runtime.repo / "data",
         dataset_name=dataset_cfg["name"],
         max_examples=int(dataset_cfg["max_examples"]),
         max_reference_parts=int(dataset_cfg.get("max_reference_parts", 5)),
-        seed=runtime.seed,
+        seed=int(dataset_cfg.get("seed", runtime.seed)),
     )
-    dataset_cls = dataset_class_for_stage("wikitext2_references")
+    dataset_cls = dataset_class_for_stage(dataset_stage)
     dataset = dataset_cls(runtime.repo / "data", max_examples=int(dataset_cfg["max_examples"]))
     corpus = PRADataModule._corpus(dataset)
     reference_tokens = [f"<REF_{index}>" for index in range(1, int(dataset_cfg.get("max_reference_parts", 5)) + 1)]
@@ -826,7 +864,7 @@ def prepare_wikitext_reference_experiment(
     )
     torch.manual_seed(runtime.seed)
     datamodule = PRADataModule(
-        dataset_stage="wikitext2_references",
+        dataset_stage=dataset_stage,
         data_dir=runtime.repo / "data",
         max_examples=int(dataset_cfg["max_examples"]),
         batch_size=policy.batch_size,
@@ -834,6 +872,7 @@ def prepare_wikitext_reference_experiment(
         shuffle=True,
         pin_memory=runtime.cuda_available,
         tokenizer=tokenizer,
+        split_seed=int(dataset_cfg.get("split_seed", dataset_cfg.get("seed", 0))),
     ).load()
     return settings, policy, datamodule
 
@@ -843,12 +882,17 @@ def train_wikitext_reference_experiment(
     experiment_name: str,
     *,
     initial_checkpoint: str | Path | None = None,
+    tokenizer_checkpoint: str | Path | None = None,
+    training_mode: str | None = None,
 ) -> dict[str, Any]:
     """Train a configured SA or PRA model on reference-split WikiText."""
     checkpoint = torch.load(initial_checkpoint, map_location="cpu") if initial_checkpoint else None
+    tokenizer_source = checkpoint
+    if tokenizer_source is None and tokenizer_checkpoint:
+        tokenizer_source = torch.load(tokenizer_checkpoint, map_location="cpu")
     pretrained_tokenizer = (
-        BPETokenizer.from_json(checkpoint["tokenizer_json"])
-        if checkpoint and checkpoint.get("tokenizer_json")
+        BPETokenizer.from_json(tokenizer_source["tokenizer_json"])
+        if tokenizer_source and tokenizer_source.get("tokenizer_json")
         else None
     )
     settings, policy, datamodule = prepare_wikitext_reference_experiment(
@@ -858,15 +902,33 @@ def train_wikitext_reference_experiment(
     model = TinyPRAModel(cfg)
     if checkpoint:
         model.load_state_dict(checkpoint["model"])
-    trainable_parameter_names = []
-    if checkpoint and cfg.model_variant in {"td_pra", "tdx_pra"}:
-        for parameter in model.parameters():
-            parameter.requires_grad = False
+    training_mode = training_mode or settings["experiment"].get("training_mode")
+    if training_mode is None:
+        training_mode = (
+            "frozen_refpath"
+            if checkpoint and cfg.model_variant in {"td_pra", "tdx_pra"}
+            else "joint"
+            if checkpoint
+            else "scratch"
+        )
+    if training_mode not in {"scratch", "frozen_refpath", "joint"}:
+        raise ValueError(f"Unsupported reference training mode: {training_mode}")
+    if training_mode in {"frozen_refpath", "joint"} and checkpoint is None:
+        raise ValueError(f"{training_mode} requires an initial checkpoint")
+    if cfg.model_variant in {"td_pra", "tdx_pra"}:
         for name, module in model.named_modules():
             if name.endswith("mem_o_proj"):
                 torch.nn.init.zeros_(module.weight)
                 if module.bias is not None:
                     torch.nn.init.zeros_(module.bias)
+    trainable_parameter_names = []
+    if training_mode == "frozen_refpath":
+        if cfg.model_variant not in {"td_pra", "tdx_pra"}:
+            raise ValueError("frozen_refpath requires a PRA architecture")
+        for parameter in model.parameters():
+            parameter.requires_grad = False
+        for name, module in model.named_modules():
+            if name.endswith("mem_o_proj"):
                 for parameter in module.parameters():
                     parameter.requires_grad = True
         trainable_parameter_names = [
@@ -879,7 +941,9 @@ def train_wikitext_reference_experiment(
     train_cfg = settings["experiment"]["train"]
     artifact = experiment_artifact_name(
         settings["model_name"],
-        "wikitext2_refs",
+        settings["experiment"]["dataset"].get("stage", "wikitext2_references"),
+        settings["name"],
+        training_mode,
         f"seed{runtime.seed}",
         f"steps{train_cfg.get('max_steps')}",
         f"seq{policy.max_seq_len}",
@@ -893,23 +957,38 @@ def train_wikitext_reference_experiment(
         max_steps=int(train_cfg.get("max_steps") or 0) or None,
         batch_size=policy.batch_size,
         learning_rate=policy.learning_rate,
-        eval_every_steps=max(int(train_cfg.get("max_steps") or 1), 1),
+        eval_every_steps=max(
+            int(train_cfg.get("eval_every_steps") or train_cfg.get("max_steps") or 1), 1
+        ),
         save_every_steps=max(int(train_cfg.get("max_steps") or 1), 1),
         log_every_steps=1,
         use_tensorboard=False,
         save_metric_plots=False,
         mixed_precision=False,
-        dataset_stage="wikitext2_references",
+        dataset_stage=str(
+            settings["experiment"]["dataset"].get("stage", "wikitext2_references")
+        ),
         data_dir=str(runtime.repo / "data"),
         max_examples=len(datamodule.dataset),
         max_seq_len=policy.max_seq_len,
+    )
+    model.to(runtime.device)
+    initial_reference_metrics = evaluate_pra_model(
+        model=model,
+        loader=datamodule.val_loader(),
+        tokenizer=datamodule.tokenizer,
+        train_config=training_config,
+        device=runtime.device,
+        split="initial_val",
     )
     result = train_pra_model(
         cfg=cfg, train_config=training_config, datamodule=datamodule, model=model
     )
     result.update(
         {
-            "dataset_stage": "wikitext2_references",
+            "dataset_stage": str(
+                settings["experiment"]["dataset"].get("stage", "wikitext2_references")
+            ),
             "size": len(datamodule.dataset),
             "policy": policy,
             "cfg": cfg,
@@ -918,6 +997,9 @@ def train_wikitext_reference_experiment(
             "model_name": settings["model_name"],
             "experiment_settings": settings,
             "initial_checkpoint": str(initial_checkpoint) if initial_checkpoint else None,
+            "tokenizer_checkpoint": str(tokenizer_checkpoint) if tokenizer_checkpoint else None,
+            "initial_reference_metrics": initial_reference_metrics,
+            "training_mode": training_mode,
             "trainable_parameter_names": trainable_parameter_names,
             "trainable_parameter_count": sum(
                 parameter.numel() for parameter in result["model"].parameters() if parameter.requires_grad
@@ -925,7 +1007,15 @@ def train_wikitext_reference_experiment(
             "parameter_count": sum(parameter.numel() for parameter in result["model"].parameters()),
             "loader_summary": {
                 "dataset": settings["experiment"]["dataset"]["name"],
-                "stage": "wikitext2_references",
+                "stage": str(
+                    settings["experiment"]["dataset"].get("stage", "wikitext2_references")
+                ),
+                "generation_seed": settings["experiment"]["dataset"].get("seed", runtime.seed),
+                "generation_version": (
+                    "wikitext_refs_v2"
+                    if settings["experiment"]["dataset"].get("stage") == "wikitext2_references_v2"
+                    else "wikitext_refs_v1"
+                ),
                 "examples": len(datamodule.dataset),
                 "references_per_example": "1-5",
                 "tokenizer": "Tokenizer(BPE) + Whitespace",
@@ -971,7 +1061,7 @@ def evaluate_plain_after_reference(
 
 
 def evaluate_reference_conditions(result: dict[str, Any]) -> list[dict[str, Any]]:
-    """Evaluate valid, disabled, and shuffled reference conditions on one test split."""
+    """Evaluate the complete reference-content ablation set on one test split."""
     values = [
         evaluate_reference_ablation(
             model=result["model"],
@@ -982,7 +1072,7 @@ def evaluate_reference_conditions(result: dict[str, Any]) -> list[dict[str, Any]
             resolver_config=result["train_config"].resolver_config,
             cache_config=result["train_config"].cache_config,
         )
-        for condition in ("valid", "disabled", "shuffled")
+        for condition in ("valid", "disabled", "shuffled", "irrelevant", "empty", "oracle")
     ]
     result["reference_ablations"] = values
     return values

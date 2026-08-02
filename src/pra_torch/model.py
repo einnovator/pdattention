@@ -22,7 +22,7 @@ class VanillaTransformerBlock(nn.Module):
         self.layer = nn.TransformerEncoderLayer(
             d_model=cfg.d_model,
             nhead=cfg.n_heads,
-            dim_feedforward=4 * cfg.d_model,
+            dim_feedforward=cfg.d_ff,
             dropout=cfg.dropout,
             activation="gelu",
             batch_first=True,
@@ -55,9 +55,9 @@ class PRATransformerBlock(nn.Module):
         )
         self.ln2 = nn.LayerNorm(cfg.d_model)
         self.ff = nn.Sequential(
-            nn.Linear(cfg.d_model, 4 * cfg.d_model),
+            nn.Linear(cfg.d_model, cfg.d_ff),
             nn.GELU(),
-            nn.Linear(4 * cfg.d_model, cfg.d_model),
+            nn.Linear(cfg.d_ff, cfg.d_model),
         )
 
     def forward(self, x, use_pra_memory: bool = True):
@@ -101,10 +101,10 @@ class PRASATransformerBlock(nn.Module):
         )
         self.ln3 = nn.LayerNorm(cfg.d_model)
         self.ff = nn.Sequential(
-            nn.Linear(cfg.d_model, 4 * cfg.d_model),
+            nn.Linear(cfg.d_model, cfg.d_ff),
             nn.GELU(),
             nn.Dropout(cfg.dropout),
-            nn.Linear(4 * cfg.d_model, cfg.d_model),
+            nn.Linear(cfg.d_ff, cfg.d_model),
         )
 
     def _apply_self_attention(self, x):
@@ -164,6 +164,15 @@ class TinyPRAModel(nn.Module):
     def clear_pra_cache(self) -> None:
         """Remove all cached reference entries from the current cache."""
         self.pra_cache.clear()
+
+    def selected_references_by_layer(self) -> dict[int, list[tuple[str, float]]]:
+        """Return router selections recorded by the most recent forward pass."""
+        selections = {}
+        for block in self.blocks:
+            attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
+            if attention is not None:
+                selections[block.layer_id] = list(attention.last_selected_references)
+        return selections
 
     def forward(self, input_ids, use_pra_memory: bool = True):
         """Return next-token logits for a batch of token ids."""

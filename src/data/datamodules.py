@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import DataLoader, random_split
 
 from .collators import PRACollator
@@ -20,6 +21,7 @@ class PRADataModule:
         pin_memory: bool = False,
         persistent_workers: bool = False,
         tokenizer: PRATokenizer | None = None,
+        split_seed: int = 0,
     ):
         self.dataset_stage = dataset_stage
         self.data_dir = data_dir
@@ -31,6 +33,7 @@ class PRADataModule:
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers and num_workers > 0
         self.tokenizer = tokenizer
+        self.split_seed = int(split_seed)
         self.dataset: PRADataset | None = None
         self.train_dataset = None
         self.val_dataset = None
@@ -44,7 +47,9 @@ class PRADataModule:
         if self.tokenizer is None:
             self.tokenizer = PRATokenizer(self._corpus(self.dataset))
         self.collator = PRACollator(self.tokenizer, max_seq_len=self.max_seq_len)
-        self.train_dataset, self.val_dataset, self.test_dataset = self._split(self.dataset)
+        self.train_dataset, self.val_dataset, self.test_dataset = self._split(
+            self.dataset, seed=self.split_seed
+        )
         return self
 
     def train_loader(self) -> DataLoader:
@@ -89,7 +94,7 @@ class PRADataModule:
         return texts
 
     @staticmethod
-    def _split(dataset):
+    def _split(dataset, *, seed: int = 0):
         n = len(dataset)
         if n < 3:
             return dataset, dataset, dataset
@@ -99,4 +104,5 @@ class PRADataModule:
         if test_len <= 0:
             test_len = 1
             train_len = n - val_len - test_len
-        return random_split(dataset, [train_len, val_len, test_len])
+        generator = torch.Generator().manual_seed(seed)
+        return random_split(dataset, [train_len, val_len, test_len], generator=generator)

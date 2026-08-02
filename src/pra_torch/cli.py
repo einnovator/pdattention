@@ -25,6 +25,7 @@ BUILTIN_CONFIG = {
         "n_layers": 4,
         "n_vanilla_layers": 0,
         "n_mixed_layers": 0,
+        "d_ff": None,
         "max_seq_len": 96,
         "dropout": 0.0,
     },
@@ -149,6 +150,7 @@ def model_kwargs(cfg: dict) -> dict:
         "n_layers": int(model["n_layers"]),
         "n_vanilla_layers": int(model.get("n_vanilla_layers", 0)),
         "n_mixed_layers": int(model.get("n_mixed_layers", 0)),
+        "d_ff": int(model["d_ff"]) if model.get("d_ff") is not None else None,
         "max_seq_len": int(model["max_seq_len"]),
         "dropout": float(model["dropout"]),
         "model_variant": str(model.get("model_variant", "custom")),
@@ -181,7 +183,7 @@ def apply_service_overrides(cfg: dict, options: dict) -> None:
 
 
 def apply_common_overrides(cfg: dict, options: dict) -> None:
-    model_keys = {"d_model", "n_heads", "n_layers", "n_vanilla_layers", "n_mixed_layers", "max_seq_len", "dropout", "model_variant"}
+    model_keys = {"d_model", "n_heads", "n_layers", "n_vanilla_layers", "n_mixed_layers", "d_ff", "max_seq_len", "dropout", "model_variant"}
     pra_keys = {
         "pra_layer_ids",
         "top_k_refs",

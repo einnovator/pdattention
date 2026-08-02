@@ -30,6 +30,7 @@ def _pra_batch_step(
     batch = move_batch(batch, device)
     logits_by_example = []
     caches = []
+    selections = []
     for index, metadata in enumerate(batch["metadata"]):
         cache = build_cache_from_metadata(
             model,
@@ -41,6 +42,7 @@ def _pra_batch_step(
         )
         logits_by_example.append(model(batch["input_ids"][index : index + 1]))
         caches.append(cache)
+        selections.append(model.selected_references_by_layer())
     logits = torch.cat(logits_by_example, dim=0)
     loss = F.cross_entropy(logits.view(-1, logits.size(-1)), batch["labels"].view(-1), ignore_index=0)
     return loss, {
@@ -49,6 +51,7 @@ def _pra_batch_step(
         "batch": batch,
         "cache": caches[-1],
         "caches": caches,
+        "selections": selections,
         "logits": logits,
     }
 
@@ -72,7 +75,9 @@ def evaluate_pra_model(
     was_training = model.training
     model.eval()
     averages = RunningAverages()
-    exact = ref_hits = anchor_hits = cache_hits = total = 0
+    exact = anchor_hits = cache_hits = total = 0
+    selection_units = selection_top1_hits = selection_topk_hits = 0
+    selection_reciprocal_rank = selected_refs = 0
     retrieved_tokens = expanded_refs = expansion_depth = token_total = 0
     start = time.perf_counter()
 
@@ -117,8 +122,18 @@ def evaluate_pra_model(
                     }
                     cache_hit = not expected_uris or bool(expected_uris.intersection(cache.entries))
                     if cache_hit:
-                        ref_hits += 1
                         cache_hits += 1
+                    layer_selections = batch_metrics["selections"][index]
+                    for ranked in layer_selections.values():
+                        selection_units += 1
+                        selected_refs += len(ranked)
+                        selected_uris = [uri for uri, _score in ranked]
+                        if selected_uris and selected_uris[0] in expected_uris:
+                            selection_top1_hits += 1
+                        ranks = [rank for rank, uri in enumerate(selected_uris, start=1) if uri in expected_uris]
+                        if ranks:
+                            selection_topk_hits += 1
+                            selection_reciprocal_rank += 1.0 / min(ranks)
                     anchors = item.get("expected_anchors", [])
                     expansion_depth += len(anchors)
                     cached_text = "\n".join(entry.text for entry in cache.all_entries())
@@ -132,7 +147,11 @@ def evaluate_pra_model(
                         "answer": item["answer"],
                         "predicted_answer": prediction,
                         "available_references": [asdict(ref) for ref in item["references"]],
-                        "selected_references": list(cache.entries.keys()),
+                        "cached_references": list(cache.entries.keys()),
+                        "selected_references_by_layer": {
+                            str(layer_id): [uri for uri, _score in ranked]
+                            for layer_id, ranked in layer_selections.items()
+                        },
                         "expanded_anchors": anchors,
                         "expansion_depth": len(anchors),
                         "cache_hits": cache_hit,
@@ -165,7 +184,11 @@ def evaluate_pra_model(
             "loss": loss,
             "perplexity": perplexity(loss),
             "answer_accuracy": exact / max(total, 1),
-            "reference_retrieval_accuracy": ref_hits / max(total, 1),
+            "reference_retrieval_accuracy": selection_topk_hits / max(selection_units, 1),
+            "reference_selection_top1_accuracy": selection_top1_hits / max(selection_units, 1),
+            "reference_selection_topk_accuracy": selection_topk_hits / max(selection_units, 1),
+            "reference_selection_mrr": selection_reciprocal_rank / max(selection_units, 1),
+            "selected_ref_count": selected_refs / max(selection_units, 1),
             "expected_anchor_hit": anchor_hits / max(total, 1),
             "expansion_depth": expansion_depth / max(total, 1),
             "expanded_ref_count": expanded_refs / max(total, 1),
@@ -190,8 +213,9 @@ def evaluate_reference_ablation(
     resolver_config=None,
     cache_config=None,
 ) -> dict:
-    """Measure answer-token LM quality with valid, disabled, or shuffled references."""
-    if condition not in {"valid", "disabled", "shuffled"}:
+    """Measure answer-token LM quality under reference-content ablations."""
+    supported = {"valid", "disabled", "shuffled", "irrelevant", "empty", "oracle"}
+    if condition not in supported:
         raise ValueError(f"Unsupported reference condition: {condition}")
     was_training = model.training
     model.eval()
@@ -201,19 +225,34 @@ def evaluate_reference_ablation(
     reference_sets = [
         item["references"] for batch in batches for item in batch["metadata"]
     ]
+    reference_pool = [reference for references in reference_sets for reference in references]
     shuffle_offset = max(len(reference_sets) // 2, 1)
     reference_index = 0
     with torch.no_grad():
         for batch in batches:
             moved = move_batch(batch, device)
             for index, item in enumerate(batch["metadata"]):
-                if condition == "disabled":
+                if condition in {"disabled", "empty"}:
                     model.clear_pra_cache()
                 else:
                     metadata = item
                     if condition == "shuffled":
                         shuffled_index = (reference_index + shuffle_offset) % len(reference_sets)
                         metadata = {**item, "references": reference_sets[shuffled_index]}
+                    elif condition == "irrelevant":
+                        own_uris = {reference.uri for reference in item["references"]}
+                        start_index = (reference_index + shuffle_offset) % max(len(reference_pool), 1)
+                        candidates = reference_pool[start_index:] + reference_pool[:start_index]
+                        irrelevant = [reference for reference in candidates if reference.uri not in own_uris]
+                        metadata = {**item, "references": irrelevant[: len(item["references"])]}
+                    elif condition == "oracle":
+                        target_ids = set(item["target_reference_ids"])
+                        metadata = {
+                            **item,
+                            "references": [
+                                reference for reference in item["references"] if reference.id in target_ids
+                            ],
+                        }
                     build_cache_from_metadata(
                         model,
                         tokenizer,

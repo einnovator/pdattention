@@ -11,6 +11,7 @@ class PRAConfig:
     n_layers: int = 4
     n_vanilla_layers: int = 0
     n_mixed_layers: int = 0
+    d_ff: int | None = None
     max_seq_len: int = 128
     dropout: float = 0.0
     model_variant: str = "custom"
@@ -30,6 +31,9 @@ class PRAConfig:
     device: str = "cuda"
 
     def __post_init__(self) -> None:
+        self.d_ff = 4 * self.d_model if self.d_ff is None else int(self.d_ff)
+        if self.d_ff <= 0:
+            raise ValueError("d_ff must be positive.")
         variants = {"custom", "td_sa", "td_pra", "tdx_pra"}
         if self.model_variant not in variants:
             raise ValueError(f"Unsupported model_variant: {self.model_variant}")
