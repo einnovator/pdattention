@@ -17,14 +17,14 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). The prototype is intentionally small: a decoder-only transformer is augmented with reference handles, an in-memory URI resolver, a per-layer key/value memory cache, and a PRA attention branch that performs cross-attention over selected reference memories. The system is designed for controlled experiments on synthetic, hierarchical, code, documentation, Wikipedia, book, and GitHub-style datasets where each question carries explicit reference metadata and expected anchors. We formalize the model, document the implemented cache-construction path, define the training and evaluation pipeline, and specify ablations required to separate ordinary language-model capacity from reference-memory use. The present manuscript is implementation-backed but not yet a report of completed experiments. All numerical result tables are mock placeholders and must be replaced by measured results before publication as an empirical paper.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific key/value memory, and a cross-attention branch over selected reference memories. We formalize the implementation, document per-example cache construction, and define a two-phase evaluation that separates ordinary language modeling from learning a new reference path. Preliminary two-seed experiments compare four-layer SelfAttention, four-layer PRAttention, and a two-plus-two hybrid on WikiText-2. At a matched 524,288-token pretraining budget, mean test losses are 4.7691, 4.7457, and 4.7574, respectively. After reference-conditioned fine-tuning, valid references improve loss relative to disabled references by 0.1165 for full PRA and 0.0841 for the hybrid; shuffled-reference penalties of 0.0145 and 0.0122 provide weaker but consistent evidence of content sensitivity. Freezing the base model preserves plain-text loss exactly for PRA variants, whereas the fully fine-tuned SelfAttention control increases plain-text loss by 0.1859. These results are preliminary engineering evidence, not a claim of general superiority: the study uses two seeds, one small model scale, a generated reference task, and same-width rather than parameter-matched controls.
 \end{abstract}
 
 \section{Introduction}
 
 Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-context language modeling. Many tasks require access to large external context, but the relevant evidence is sparse, hierarchical, and often discovered only after partial reasoning. A conventional decoder-only transformer receives a flat token sequence. Retrieval-augmented generation improves this interface by prepending retrieved passages, but the retrieved text still becomes ordinary prompt context \cite{lewis2020rag}. PRA instead represents external context through lightweight reference handles that can be resolved into URI-addressed memory and attended to through a dedicated memory path.
 
-This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model.
+This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model. The contribution now includes an initial empirical pilot and an evaluation design intended to make failure visible rather than merely demonstrate that a memory branch can lower loss.
 
 The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them to URI-addressed references. Third, a resolver and cache encode referenced documents separately, storing per-layer key/value tensors. Fourth, a PRA attention layer retrieves cache entries by summary-vector similarity and adds a scaled cross-attention memory branch to ordinary causal self-attention.
 
@@ -123,7 +123,7 @@ At generation or training time, if the cache is non-empty, the current implement
 \frac{q^\top s_u}{\lVert q\rVert_2 \lVert s_u\rVert_2}.
 \end{equation}
 
-The cache returns the top-$k$ entries. Entries with similarity below \texttt{trigger\_threshold} are ignored. The current default hyperparameters are \texttt{top\_k\_refs=2} and \texttt{trigger\_threshold=0.2}.
+The cache returns the top-$k$ entries. Entries with similarity below \texttt{trigger\_threshold} are ignored. Library defaults are \texttt{top\_k\_refs=2} and \texttt{trigger\_threshold=0.2}. The reference pilot deliberately uses \texttt{top\_k\_refs=5}, \texttt{trigger\_threshold=-1.0}, and \texttt{memory\_alpha=1.0} so that all one-to-five candidate references are available and the experiment tests the memory path before introducing a selective trigger. This is an experimental simplification, not the intended final retrieval policy.
 
 \subsection{Memory Cross-Attention Branch}
 
@@ -175,11 +175,17 @@ The loaded sample type is \texttt{QuestionSample}, containing a question, answer
 
 \subsection{Collation}
 
-The \texttt{PRACollator} tokenizes each question and answer, forms next-token labels, pads variable-length rows, builds a per-sample reference table, and preserves non-tensor metadata. This metadata is essential: the training step uses it to resolve and encode references before the main model forward pass.
+The \texttt{PRACollator} tokenizes each question and answer, forms next-token labels, pads variable-length rows, builds a per-sample reference table, and preserves non-tensor metadata. Prompt labels are replaced by the padding/ignore id, so reference-conditioned loss is computed only over answer-continuation tokens. This metadata is essential: the training step uses it to resolve and encode references before the main model forward pass.
 
 \subsection{Data Module}
 
-The \texttt{PRADataModule} instantiates a dataset stage, builds a character-level tokenizer from questions, answers, summaries, and reference texts, constructs a collator, and creates train/validation/test splits. This pipeline keeps the prototype independent from pretrained tokenizers while still exercising the full reference-memory path.
+The \texttt{PRADataModule} used by synthetic and repository-style stages builds a compact tokenizer from questions, answers, summaries, and reference texts. The WikiText-2 study instead trains a 2,000-token BPE tokenizer with whitespace pre-tokenization and reserves \texttt{<REF\_1>} through \texttt{<REF\_5>}. The serialized phase-1 tokenizer is restored for phase 2 and for post-fine-tuning plain-text evaluation. This prevents vocabulary drift from masquerading as an architectural effect.
+
+\subsection{Reference-Conditioned WikiText-2}
+
+The pilot generator retains natural WikiText language and creates \emph{reference-conditioned continuation}, not conventional question answering. Each eligible source entry is divided into one to five earlier parts plus a tail. Earlier parts become URI-addressed references; the final 8--16 words of the tail become the prediction target. The visible prompt contains only reference handles and the neutral instruction \texttt{Continue the referenced WikiText passage:}. It therefore does not provide a local lexical prefix from which the target can be copied. Provenance records include the source entry, part boundaries and identifiers, candidate and intended references, tail span, token distance, part count, local-context sufficiency, and relation type.
+
+The current generator labels all earlier parts as intended references and marks local context as insufficient. This gives a useful first stress test but does not identify a single causal evidence span. Future datasets should distinguish necessary from merely available parts and stratify examples by semantic dependency and reference distance.
 
 \section{Training Objective and System}
 
@@ -197,11 +203,21 @@ The implemented PRA batch step is:
 
 \begin{enumerate}[leftmargin=*]
 \item Move tensor fields to the target device.
-\item Build the PRA cache from batch metadata.
-\item Attach the cache to the model and all attention blocks.
-\item Run the language-model forward pass with PRA memory enabled.
+\item For each example, build a fresh PRA cache from only that example's metadata.
+\item Attach that cache to the model and all PRA attention blocks.
+\item Run a one-example forward pass with PRA memory enabled and concatenate the resulting logits across the minibatch.
 \item Compute cross-entropy with padding ignored.
 \end{enumerate}
+
+Per-example cache isolation is semantically important. A previous batch-union implementation allowed each sequence to attend to references belonging to other examples and made within-batch shuffling ineffective. The corrected adapter sacrifices some batching efficiency to prevent cross-example memory leakage. Production batching will require a batched cache representation or an attention mask that preserves this isolation.
+
+\subsection{Two-Phase Optimization}
+
+Phase 1 trains each architecture as an ordinary causal language model with PRA memory absent. Phase 2 restores the matching phase-1 checkpoint and tokenizer. For full and hybrid PRA, all base parameters are frozen; each memory output projection $W_{O,\mathrm{mem}}$ is zero-initialized and is the only trainable module. Zero initialization makes the initial reference branch an exact no-op and therefore preserves the pretrained function before the first update. The SelfAttention control has no new reference branch, so all of its parameters are fine-tuned on the changed data format. This asymmetry is intentional in the preservation study, but it also means phase-2 reference-task scores compare adaptation strategies as well as architectures. A future joint-tuning study must add parameter-budget-matched controls.
+
+\subsection{Execution-Time Accounting}
+
+The generic training engine records batch, epoch, and complete-run timing. CUDA is synchronized immediately before and after timed GPU regions so queued kernels are included. Reports contain training, validation, test, and wall-clock durations; processed tokens; sequences seen; optimizer steps; optimizer steps per second; and training tokens per second. Training duration sums synchronized batch regions, validation duration sums explicit validation passes, and wall-clock duration includes orchestration and test evaluation. These definitions should not be interchanged when comparing runtime cost.
 
 \section{Evaluation Metrics}
 
@@ -217,56 +233,84 @@ The evaluation code reports both language-model and reference-behavior metrics:
 \item \textbf{Full-context token count}: token cost of a full-context baseline.
 \item \textbf{Cache hit ratio}: fraction of examples whose expected references are represented in cache.
 \item \textbf{Latency and throughput}: wall-clock evaluation time, examples per second, and tokens per second.
+\item \textbf{Preservation loss}: plain WikiText-2 loss before and after reference-format fine-tuning.
+\item \textbf{Reference ablation loss}: answer-token loss with valid, disabled, and shuffled reference memory.
 \end{itemize}
 
 These metrics are designed to test the PRA hypothesis directly. A useful PRA model should not merely achieve high answer accuracy; it should do so while selecting the right references and using fewer retrieved tokens than a full-context baseline.
 
+The implemented disabled condition clears the PRA cache and calls the model with \texttt{use\_pra\_memory=False}. The shuffled condition keeps target tokens and visible prompt structure fixed but replaces each example's reference set by a deterministic half-dataset rotation before rebuilding its isolated cache. A valid-minus-disabled comparison tests whether the memory branch contributes; valid versus shuffled is stricter because it asks whether the contribution depends on reference content rather than only branch activation or formatting. The SelfAttention control is invariant across these conditions by construction.
+
 \section{Experimental Protocol}
 
-The intended baseline variants are:
+The pilot compares three same-width architectures:
 
 \begin{enumerate}[leftmargin=*]
-\item \textbf{No references}: question only, PRA cache cleared.
-\item \textbf{Full context}: all available reference text prepended to the question.
-\item \textbf{Simple RAG}: reference summaries prepended to the question.
-\item \textbf{PRA}: question with reference handles and batch-specific PRA cache.
+\item \textbf{SelfAttention}: four PyTorch causal SelfAttention layers.
+\item \textbf{Full PRA}: four local-plus-memory PRAttention layers.
+\item \textbf{Hybrid PRA}: two lower SelfAttention layers followed by two PRAttention layers.
 \end{enumerate}
 
-The required ablations are:
+All use four layers, four heads, width 256, context length 128, dropout 0.1, and the same 2,000-token BPE vocabulary. Phase 1 uses seeds 1 and 7, batch size 2, learning rate $5\times10^{-4}$, 2,048 optimizer steps, and exactly 524,288 processed tokens per run. Phase 2 restores the matching checkpoint, uses 512 generated reference examples, 512 steps, and learning rate $2\times10^{-4}$. The runs execute with Python 3.10.11, PyTorch 2.12.1 with CUDA 12.6, and an NVIDIA GeForce GTX 950M.
+
+The same-width parameter counts are 4,216,320 for SelfAttention, 4,479,488 for full PRA, and 4,347,904 for hybrid PRA. Full and hybrid PRA therefore contain 6.2\% and 3.1\% more parameters than SelfAttention. In phase 2, the PRA trainable counts are 263,168 and 131,584 because only four or two memory output projections are optimized; the SelfAttention control fine-tunes all 4,216,320 parameters. These differences delimit the claims that can be drawn from the pilot.
+
+The evaluated ablations are:
 
 \begin{itemize}[leftmargin=*]
-\item No PRA memory branch.
-\item Summary-only reference memory.
-\item One-level retrieval.
-\item Recursive retrieval through child anchors.
-\item Cross-attention memory branch versus native KV injection.
-\item Varying PRA-enabled layers.
-\item Varying \texttt{top\_k\_refs}, \texttt{trigger\_threshold}, and \texttt{memory\_alpha}.
+\item valid per-example references;
+\item a cleared and explicitly disabled PRA path;
+\item references deterministically shuffled across examples;
+\item plain WikiText-2 reevaluation after phase 2.
 \end{itemize}
 
-The current implementation exposes configuration fields for several of these ablations. Some, such as native KV injection and full recursive learned expansion, remain future work and should be marked as such in experimental reports.
+Summary-only memory, recursive expansion, irrelevant/empty references, native KV injection, learned triggering, distance-stratified analysis, and parameter-matched controls remain required future ablations.
 
-\section{Mock Results Template}
+\section{Preliminary Results}
 
-Table~\ref{tab:mock-results} is a placeholder showing the intended reporting format. The values are illustrative mock numbers only.
+Tables~\ref{tab:plain-results} and~\ref{tab:reference-results} report population means and standard deviations over seeds 1 and 7. They are pilot measurements from the checked-in implementation and report artifacts, not mock values.
 
 \begin{table}[h]
 \centering
-\caption{Mock result table. Values are illustrative placeholders and are not experimental measurements.}
-\label{tab:mock-results}
+\caption{Phase-1 WikiText-2 language modeling at a matched 524,288-token budget.}
+\label{tab:plain-results}
 \begin{tabular}{lrrrrr}
 \toprule
-Variant & Accuracy & Ref hit & Tokens in & Retrieved & Latency \\
+Architecture & Parameters & Test loss & Perplexity & Token acc. & Train s \\
 \midrule
-No references & 0.00 & 0.00 & 96 & 0 & 1.00x \\
-Full context & 0.00 & 1.00 & 512 & 512 & 1.80x \\
-Simple RAG & 0.00 & 0.60 & 160 & 64 & 1.15x \\
-PRA & 0.00 & 0.00 & 96 & 0 & 1.00x \\
+SelfAttention & 4,216,320 & $4.7691\pm.0036$ & $117.82\pm.42$ & $.1264\pm.0006$ & $94.07\pm1.43$ \\
+Full PRA & 4,479,488 & $4.7457\pm.0011$ & $115.09\pm.13$ & $.1250\pm.0012$ & $90.86\pm1.13$ \\
+Hybrid PRA & 4,347,904 & $4.7574\pm.0017$ & $116.44\pm.19$ & $.1271\pm.0004$ & $95.66\pm.04$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Before publication as an empirical paper, this table must be regenerated from real runs and accompanied by configuration files, seeds, checkpoint identifiers, dataset versions, and confidence intervals or repeated-run variance where feasible.
+All three architectures learn an ordinary token-prediction function and finish within 0.024 test-loss units of one another. This supports the narrow claim that a PRA block behaves comparably to the local baseline when no external memory is present at this scale and budget. It does not establish equivalence under scaling, and the models are not parameter matched.
+
+\begin{table}[h]
+\centering
+\caption{Phase-2 reference-conditioned answer-token loss and plain-text retention. Lower is better.}
+\label{tab:reference-results}
+\begin{tabular}{lrrrrr}
+\toprule
+Architecture & Valid & Disabled & Shuffled & Plain $\Delta$ & Train s \\
+\midrule
+SelfAttention & $4.7791\pm.0734$ & $4.7791\pm.0734$ & $4.7791\pm.0734$ & $+0.1859$ & $44.82\pm.45$ \\
+Full PRA & $4.6749\pm.0607$ & $4.7914\pm.0683$ & $4.6894\pm.0563$ & $0.0000$ & $45.13\pm2.83$ \\
+Hybrid PRA & $4.7111\pm.0356$ & $4.7953\pm.0284$ & $4.7233\pm.0351$ & $0.0000$ & $31.14\pm.02$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Disabling reference memory increases mean loss by 0.1165 for full PRA and 0.0841 for hybrid PRA. Shuffling increases loss by 0.0145 and 0.0122. The larger disabled gap shows that the learned memory branch is useful; the consistent but modest shuffled gap is the stronger evidence that the branch depends on which content is supplied. The latter effect remains small and requires confirmation with more seeds, irrelevant-reference controls, and targets with known necessary evidence.
+
+Plain-text reevaluation after phase 2 exactly reproduces the phase-1 losses for full and hybrid PRA because frozen base parameters and zero-initialized isolated output projections protect the local path. The SelfAttention control's mean plain loss rises from 4.7691 to 4.9550, a 0.1859 increase corresponding to about a 20\% perplexity increase. This demonstrates preservation by the chosen training strategy, not an inherent guarantee of PRA: the control updates all parameters while PRA updates only reference-specific projections.
+
+Phase-1 mean synchronized validation times are 1.07--1.14 seconds and mean wall-clock times are 97.0--102.0 seconds. Phase-2 mean synchronized training times are 31.1--45.1 seconds, with 46,301.5 mean processed prompt/answer tokens and 512 optimizer steps. Per-example cache isolation makes these timings honest for the prototype but leaves batching optimization as future systems work.
+
+\subsection{Reproducibility and Artifact Scope}
+
+Resolved per-seed HTML and JSON reports, plots, timing counters, checkpoints, and a six-experiment aggregate are generated under \texttt{out/reports}. The aggregate report computes population mean and standard deviation without discarding individual seed values. The current pilot has two seeds, despite the protocol recommending at least three for a final tiny-model comparison. Dataset hashes, parameter-component accounting, peak allocated memory, and a parameter-matched SelfAttention model should be added before treating the result as publication-grade.
 
 \section{Relationship to Prior Work}
 
@@ -278,11 +322,78 @@ Finally, the implementation anticipates runtime concerns raised by serving syste
 
 \section{Limitations}
 
-The current prototype has important limitations. The tokenizer is character-level and intended for controlled experiments rather than competitive language modeling. Summary vectors are computed by averaging summary-token embeddings, which is simple but likely weaker than learned summary encoders. Retrieval currently uses the last hidden state rather than explicit attention to reference-token positions. Recursive anchor expansion is represented in the resolver interface but is not yet a fully learned iterative policy. Evaluation contains containment-style answer checks that are useful for synthetic QA but insufficient for open-ended generation. Finally, no real experimental superiority is claimed in this manuscript.
+The current prototype and pilot have important limitations. Two seeds are sufficient for an engineering pilot but not for a robust empirical claim. Models are same-width rather than parameter matched, and phase-2 trainable parameter budgets differ by design. The reference dataset labels all earlier parts as relevant and uses a generic continuation prompt; it does not yet provide human-verified causal evidence spans. The small shuffled-reference penalty suggests content sensitivity but leaves open how much performance comes from generic domain memory.
+
+Summary vectors are computed by averaging summary-token embeddings, retrieval uses the last hidden state rather than explicit reference-token positions, and the pilot disables thresholding. Recursive anchor expansion is represented in the resolver interface but is not a learned iterative policy. Per-example cache construction prevents leakage but serializes examples inside a nominal minibatch. Reference encodings are detached, so the cache-building path itself receives no gradient in the present phase-2 setup. Evaluation lacks irrelevant, empty, oracle, all-context, and distance-stratified controls. Finally, exact answer containment is useful for synthetic stages but insufficient for open-ended generation. No broad experimental superiority is claimed.
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype provides a concrete testbed for demand-driven, URI-addressed memory expansion. Its main contribution is not a final architecture but an inspectable experimental substrate: explicit reference handles, resolver-backed memory, per-layer K/V cache construction, a cross-attention memory branch, and metrics that measure reference behavior alongside answer quality. This substrate enables the next step in the PRA program: controlled experiments that determine when progressive retrieval attention improves the tradeoff among accuracy, context cost, latency, and interpretability.
+The standalone PyTorch PRA prototype provides a concrete testbed for demand-driven, URI-addressed memory expansion. Its main contribution is an inspectable experimental substrate: explicit reference handles, resolver-backed memory, per-layer K/V cache construction, a cross-attention memory branch, isolated per-example caches, and ablations that distinguish branch activation from content use. The initial WikiText-2 pilot establishes three narrow facts: PRA variants retain ordinary language-model performance when memory is absent; an isolated reference path can improve reference-conditioned loss without changing the frozen local function; and correct reference content is modestly better than shuffled content. Larger, parameter-matched, multi-seed studies with stronger controls are required to determine when these mechanisms improve accuracy-cost tradeoffs.
+
+\appendix
+\section{Reference-Memory Forward Pass Pseudocode}
+
+\begin{verbatim}
+for sample in minibatch:
+    cache = empty_cache()
+    for handle in sample.references:
+        resolved = resolver.resolve(handle.uri)
+        h_ref = token_embedding(resolved.text) + positions
+        entry = CacheEntry(uri=handle.uri)
+        entry.summary = mean(token_embedding(handle.summary))
+        for layer in model.layers:
+            if layer.has_pra:
+                entry.kv[layer.id] = layer.project_reference_kv(h_ref)
+            h_ref = layer(h_ref, use_pra_memory=False)
+        cache.put(detach(entry))
+
+    model.set_pra_cache(cache)
+    logits.append(model(sample.input_ids, use_pra_memory=True))
+
+loss = cross_entropy(concat(logits), labels, ignore_index=PAD)
+\end{verbatim}
+
+The per-sample loop is intentional: cache identity is part of the example. A future batched implementation can vectorize reference encoding but must preserve an example-to-cache mask.
+
+\section{Simplified PyTorch PRAttention}
+
+The following excerpt omits retrieval thresholds, multiple layers, dropout, and shape utilities while retaining the implemented residual-memory idea.
+
+\begin{verbatim}
+class PRAttention(nn.Module):
+    def __init__(self, d_model, n_heads, memory_alpha=1.0):
+        super().__init__()
+        self.n_heads = n_heads
+        self.head_dim = d_model // n_heads
+        self.q_proj = nn.Linear(d_model, d_model)
+        self.k_proj = nn.Linear(d_model, d_model)
+        self.v_proj = nn.Linear(d_model, d_model)
+        self.local_out = nn.Linear(d_model, d_model)
+        self.memory_out = nn.Linear(d_model, d_model)
+        self.memory_alpha = memory_alpha
+
+    def forward(self, x, memory_k=None, memory_v=None):
+        q = split_heads(self.q_proj(x), self.n_heads)
+        k = split_heads(self.k_proj(x), self.n_heads)
+        v = split_heads(self.v_proj(x), self.n_heads)
+
+        local_scores = q @ k.transpose(-2, -1) / sqrt(self.head_dim)
+        local_scores = local_scores.masked_fill(causal_mask(x), -inf)
+        local = softmax(local_scores, dim=-1) @ v
+        local = self.local_out(merge_heads(local))
+
+        if memory_k is None:
+            return local
+
+        memory_scores = (
+            q @ memory_k.transpose(-2, -1) / sqrt(self.head_dim)
+        )
+        memory = softmax(memory_scores, dim=-1) @ memory_v
+        memory = self.memory_out(merge_heads(memory))
+        return local + self.memory_alpha * memory
+\end{verbatim}
+
+Zero-initializing \texttt{memory\_out} makes the second term exactly zero at phase-2 initialization. Disabling references either omits memory tensors or bypasses the branch explicitly.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

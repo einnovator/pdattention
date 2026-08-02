@@ -12,4 +12,7 @@ Vision, motivation, architectural thesis, comparison with long context, RAG, and
 
 ## Status
 
-Initial scaffold. Expand with Codex according to `AGENTS.md`.
+Expanded position-paper draft with a reference-memory lifecycle, evaluation and
+falsification criteria, and carefully scoped feasibility evidence from the
+standalone pilot. The generated `paper.pdf` is a local build artifact and is
+intentionally ignored by Git.
