@@ -4,10 +4,27 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{enumitem}
+\usepackage{float}
 \usepackage{tabularx}
+\usepackage{tikz}
 \usepackage[hidelinks]{hyperref}
+\usetikzlibrary{arrows.meta,fit,positioning,shapes.geometric}
 \input{../shared/macros.tex}
 \setlength{\emergencystretch}{3em}
+\definecolor{prablue}{HTML}{245A8D}
+\definecolor{pragreen}{HTML}{2D7A68}
+\definecolor{pragold}{HTML}{A66A18}
+\definecolor{pragray}{HTML}{5F6B76}
+\definecolor{pralight}{HTML}{EEF3F7}
+\tikzset{
+  sysnode/.style={draw=prablue, fill=pralight, rounded corners=2pt,
+    align=center, minimum height=8mm, inner sep=4pt, font=\small},
+  cachenode/.style={draw=pragreen, fill=green!6, rounded corners=2pt,
+    align=center, minimum height=8mm, inner sep=4pt, font=\small},
+  datanode/.style={draw=pragold, fill=orange!7, rounded corners=2pt,
+    align=center, minimum height=8mm, inner sep=4pt, font=\small},
+  sysflow/.style={-{Stealth[length=2mm]}, thick, draw=pragray}
+}
 
 \title{Standalone Progressive Retrieval Attention: A PyTorch Architecture for URI-Addressed Memory Expansion}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
@@ -17,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific key/value memory, and a cross-attention branch over selected reference memories. We formalize the implementation, document per-example cache construction, and define a two-phase evaluation that separates ordinary language modeling from learning a new reference path. Preliminary two-seed experiments compare four-layer SelfAttention, four-layer PRAttention, and a two-plus-two hybrid on WikiText-2. At a matched 524,288-token pretraining budget, mean test losses are 4.7691, 4.7457, and 4.7574, respectively. After reference-conditioned fine-tuning, valid references improve loss relative to disabled references by 0.1165 for full PRA and 0.0841 for the hybrid; shuffled-reference penalties of 0.0145 and 0.0122 provide weaker but consistent evidence of content sensitivity. Freezing the base model preserves plain-text loss exactly for PRA variants, whereas the fully fine-tuned SelfAttention control increases plain-text loss by 0.1859. These results are preliminary engineering evidence, not a claim of general superiority: the study uses two seeds, one small model scale, a generated reference task, and same-width rather than parameter-matched controls.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific key/value memory, and a cross-attention branch over selected reference memories. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and per-example cache construction. A two-phase evaluation separates ordinary language modeling from learning a new reference path. Preliminary two-seed experiments compare four-layer SelfAttention, four-layer PRAttention, and a two-plus-two hybrid on WikiText-2. At a matched 524,288-token pretraining budget, mean test losses are 4.7691, 4.7457, and 4.7574, respectively. After reference-conditioned fine-tuning, valid references improve loss relative to disabled references by 0.1165 for full PRA and 0.0841 for the hybrid; shuffled-reference penalties of 0.0145 and 0.0122 provide weaker but consistent evidence of content sensitivity. Freezing the base model preserves plain-text loss exactly for PRA variants, whereas the fully fine-tuned SelfAttention control increases plain-text loss by 0.1859. These results are preliminary engineering evidence, not a claim of general superiority: the study uses two seeds, one small model scale, a generated reference task, and same-width rather than parameter-matched controls. We specify the five-seed, parameter-matched, counterfactual, systems-diagnostic matrix required for a publication-grade follow-up without fabricating its results.
 \end{abstract}
 
 \section{Introduction}
@@ -64,6 +81,66 @@ O_{\mathrm{local}} &= W_O \,
 \end{align}
 
 The implementation stores a lower-triangular causal mask with maximum sequence length configured by \texttt{PRAConfig.max\_seq\_len}.
+
+\section{Reference Graph and Runtime State}
+
+\subsection{Reference Graph}
+
+Let the external context be a directed attributed graph
+
+\begin{equation}
+\mathcal{G}=(\mathcal{V},\mathcal{E}),
+\end{equation}
+
+where each node $v\in\mathcal{V}$ is a tuple $(u,z,s,m)$ containing a stable URI $u$, content $z$, summary $s$, and metadata $m$. An edge $(v_i,a,v_j)\in\mathcal{E}$ states that anchor $a$ in $v_i$ identifies or expands to $v_j$. The current implementation stores these relations through reference handles, URI fragments, and optional children exposed by the resolver. The graph formalism is broader than the current one-level WikiText pilot and makes recursive expansion explicit.
+
+For input sequence $x$, the reference table exposes a candidate set $\mathcal{H}(x)\subseteq\mathcal{V}$. A resolver
+
+\begin{equation}
+\rho(u,p,t) \rightarrow (z,s,\mathrm{children},m)
+\end{equation}
+
+maps URI $u$, authorization policy $p$, and logical time or version $t$ to a resolved object. Including $p$ and $t$ in the interface clarifies two systems requirements that the in-memory prototype currently simplifies: access control and freshness.
+
+\subsection{Selection and Expansion Operators}
+
+At layer $\ell$, a selection operator ranks candidate summaries using query $q_{t,\ell}$:
+
+\begin{equation}
+\mathcal{S}_{k,\tau}(q_{t,\ell},\mathcal{C}_t)
+= \operatorname{TopK}_{u}\left\{
+\cos(q_{t,\ell},s_u) \mid \cos(q_{t,\ell},s_u)\geq\tau
+\right\}.
+\end{equation}
+
+The prototype sets $q_{t,\ell}$ to the last hidden state entering the layer, uses mean token embeddings for $s_u$, and retrieves at most $k$ entries. An expansion operator
+
+\begin{equation}
+\mathcal{X}(A,\mathcal{G},b,d) \rightarrow A'
+\end{equation}
+
+maps active set $A$ to an expanded set $A'$ under branching budget $b$ and depth budget $d$. The resolver supports child anchors, but the pilot does not yet learn or benchmark $\mathcal{X}$; it is included here to define the intended systems boundary.
+
+\subsection{Cache and Lifecycle State}
+
+The runtime state before token $t$ is
+
+\begin{equation}
+\Omega_t=(\mathcal{G},\mathcal{H}_t,A_t,\mathcal{C}_t,p_t,\nu_t),
+\end{equation}
+
+where $A_t$ is the active reference set, $\mathcal{C}_t$ the resident encoded cache, $p_t$ policy state, and $\nu_t$ provenance/version state. A cache entry is keyed conceptually by $(u,v,\ell,m,\theta,p)$: URI, content version, layer, model identity, relevant encoder parameters, and policy domain. The prototype key is only URI because each cache is rebuilt per example; persistent or shared caches require the fuller identity.
+
+One runtime transition can be written
+
+\begin{align}
+A_t &= \mathcal{S}_{k,\tau}(q_t,\mathcal{C}_t),\\
+A'_t &= \mathcal{X}(A_t,\mathcal{G},b,d),\\
+\mathcal{C}'_t &= \operatorname{admit}(\operatorname{encode}(\rho(A'_t))),\\
+(y_t,\Omega_{t+1}) &= \operatorname{attend}(x_{\leq t},\mathcal{C}'_t,\Omega_t).
+\end{align}
+
+In the pilot, resolution and encoding happen before each example forward pass, $\mathcal{X}$ is one-level identity, admission retains all provided references, and the cache is discarded when the next example begins. This explicit specialization prevents claims about recursion, persistence, or learned admission that the code does not yet support.
 
 \section{Reference Handles and Resolver}
 
@@ -155,9 +232,62 @@ O = O_{\mathrm{local}} + \alpha O_{\mathrm{mem}},
 
 where $\alpha$ is \texttt{memory\_alpha}, defaulting to $0.5$. If the cache is empty, PRA is disabled, no selected entry passes the threshold, or the selected entry lacks layer-$\ell$ memory, the layer returns only the local self-attention output.
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=6mm and 12mm]
+\node[sysnode] (hidden) {$X^{(\ell)}$};
+\node[sysnode, above right=of hidden] (local) {causal self-attention};
+\node[cachenode, below right=of hidden] (select) {select URI memory};
+\node[cachenode, right=of select] (cross) {memory cross-attention};
+\node[sysnode, right=28mm of hidden] (sum) {$O_{\rm local}+\alpha O_{\rm mem}$};
+\node[sysnode, right=of sum] (ffn) {residual + FFN};
+\draw[sysflow] (hidden) -- (local);
+\draw[sysflow] (hidden) -- (select);
+\draw[sysflow] (select) -- (cross);
+\draw[sysflow] (local) -- (sum);
+\draw[sysflow] (cross) -- (sum);
+\draw[sysflow] (sum) -- (ffn);
+\end{tikzpicture}
+\caption{Implemented PRA block. Local causal attention remains intact; selected layer-specific memory contributes through a separately projected residual branch.}
+\label{fig:pra-block}
+\end{figure}
+
 \subsection{Cross-Attention Rather than Native KV Injection}
 
 The standalone prototype uses a separate cross-attention memory branch. Direct concatenation into native self-attention KV is listed as an ablation and future integration path, but it is intentionally not the default mechanism. Cross-attention cleanly separates local causal attention from external memory attention and avoids immediate complications from rotary position embeddings, grouped-query attention, and production cache layout. This makes the prototype suitable for controlled research before adapting large pretrained models.
+
+\section{Complexity and Resource Model}
+
+Let $L$ be the number of decoder layers, $L_p$ the number of PRA-enabled layers, $T$ local sequence length, $r$ the number of resolved references, $m_i$ the token length of reference $i$, $M=\sum_{i\in A}m_i$ the selected resident memory length, $d$ hidden width, and $w$ bytes per cached scalar. Ignoring heads and constant factors, local decoder attention costs
+
+\begin{equation}
+O(LT^2d).
+\end{equation}
+
+The prototype separately encodes every resolved reference through the model, costing approximately
+
+\begin{equation}
+O\left(Ld\sum_{i=1}^{r}m_i^2\right)
++ O\left(L_p d^2\sum_{i=1}^{r}m_i\right)
+\end{equation}
+
+for reference self-attention and layer-specific K/V projection. Memory cross-attention adds
+
+\begin{equation}
+O(L_p T M d)
+\end{equation}
+
+to a full-sequence forward pass. The resident K/V payload is approximately
+
+\begin{equation}
+B_{\rm cache}=2wL_pMd
+\end{equation}
+
+bytes, excluding summaries, object metadata, allocator overhead, and duplicated entries. Each PRA layer adds one $d\times d$ memory output projection plus bias in the current implementation, or $d^2+d$ parameters. Full PRA therefore adds $L_p(d^2+d)$ parameters relative to the corresponding custom local block.
+
+These costs explain why shorter visible prompts alone are not a sufficient efficiency result. If every reference is encoded once per example and never reused, $\sum_i m_i^2$ can dominate. PRA becomes attractive only when selection keeps $M$ small, encoding is amortized across tokens or requests, summaries avoid unnecessary resolution, or quality improves under a fixed compute budget. A systems evaluation must decompose resolver time, tokenization, reference encoding, selection, memory attention, local model compute, cache transfer, and synchronization.
+
+The current per-example cache adapter prevents semantic leakage but serializes examples within a minibatch. A production design would pack memory tensors and associate each sequence with offsets or masks. Its complexity can approach the same aggregate arithmetic while recovering parallel execution, provided selection and cache identity remain isolated.
 
 \section{Dataset and DataLoader Pipeline}
 
@@ -211,6 +341,28 @@ The implemented PRA batch step is:
 
 Per-example cache isolation is semantically important. A previous batch-union implementation allowed each sequence to attend to references belonging to other examples and made within-batch shuffling ineffective. The corrected adapter sacrifices some batching efficiency to prevent cross-example memory leakage. Production batching will require a batched cache representation or an attention mask that preserves this isolation.
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=4mm]
+\node[datanode] (sample) {sample + reference metadata};
+\node[sysnode, right=of sample] (resolve) {resolve URIs};
+\node[cachenode, right=of resolve] (encode) {encode per-layer K/V};
+\node[cachenode, right=of encode] (attach) {attach isolated cache};
+\node[sysnode, below=8mm of attach] (forward) {main forward};
+\node[sysnode, left=of forward] (loss) {masked LM loss};
+\node[sysnode, left=of loss] (update) {optimizer + metrics};
+\draw[sysflow] (sample) -- (resolve);
+\draw[sysflow] (resolve) -- (encode);
+\draw[sysflow] (encode) -- (attach);
+\draw[sysflow] (attach) -- (forward);
+\draw[sysflow] (forward) -- (loss);
+\draw[sysflow] (loss) -- (update);
+\draw[sysflow, dashed] (update.west) to[bend left=25] (sample.south);
+\end{tikzpicture}
+\caption{Implemented training/runtime pipeline. Cache construction occurs per example before the main forward pass; prompt labels are ignored in reference-conditioned loss.}
+\label{fig:runtime-pipeline}
+\end{figure}
+
 \subsection{Two-Phase Optimization}
 
 Phase 1 trains each architecture as an ordinary causal language model with PRA memory absent. Phase 2 restores the matching phase-1 checkpoint and tokenizer. For full and hybrid PRA, all base parameters are frozen; each memory output projection $W_{O,\mathrm{mem}}$ is zero-initialized and is the only trainable module. Zero initialization makes the initial reference branch an exact no-op and therefore preserves the pretrained function before the first update. The SelfAttention control has no new reference branch, so all of its parameters are fine-tuned on the changed data format. This asymmetry is intentional in the preservation study, but it also means phase-2 reference-task scores compare adaptation strategies as well as architectures. A future joint-tuning study must add parameter-budget-matched controls.
@@ -241,6 +393,31 @@ These metrics are designed to test the PRA hypothesis directly. A useful PRA mod
 
 The implemented disabled condition clears the PRA cache and calls the model with \texttt{use\_pra\_memory=False}. The shuffled condition keeps target tokens and visible prompt structure fixed but replaces each example's reference set by a deterministic half-dataset rotation before rebuilding its isolated cache. A valid-minus-disabled comparison tests whether the memory branch contributes; valid versus shuffled is stricter because it asks whether the contribution depends on reference content rather than only branch activation or formatting. The SelfAttention control is invariant across these conditions by construction.
 
+\subsection{Required Systems Diagnostics}
+
+Task loss is insufficient to explain a memory system. Table~\ref{tab:diagnostics} separates signals already emitted by the prototype from publication-grade diagnostics still required.
+
+\begin{table}[H]
+\centering
+\caption{Systems diagnostics and current implementation status.}
+\label{tab:diagnostics}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Diagnostic & Measurement & Status \\
+\midrule
+Reference selection & top-$k$ hit, MRR, NDCG against relevant URIs & URI hit implemented; ranked metrics pending \\
+Attention behavior & token-by-reference heatmaps, entropy, relevant mass & pending instrumentation \\
+Layer utilization & selected entries, memory norm, gate/branch ratio per layer & pending instrumentation \\
+Cache reuse & hit rate by URI/version and avoided encoding tokens & per-run hit only; persistent reuse pending \\
+Latency & resolve, tokenize, encode, select, attend, synchronize & aggregate train/eval timing implemented; decomposition pending \\
+GPU memory & peak allocated bytes and cache payload bytes & current allocation emitted; peak/decomposition pending \\
+Failure cases & wrong URI, stale content, local insufficiency, poisoning, leakage & traces implemented; labeled taxonomy pending \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Attention heatmaps should retain URI and token boundaries rather than concatenate memory into an anonymous axis. Layer utilization should distinguish a selected entry from an entry that receives meaningful attention mass. Cache reuse should count avoided encoding work, not merely dictionary hits. Failure reports should preserve prompt, target, candidate references, selected references, content versions, per-layer behavior, and the counterfactual outputs under disabled and shuffled conditions.
+
 \section{Experimental Protocol}
 
 The pilot compares three same-width architectures:
@@ -255,6 +432,30 @@ All use four layers, four heads, width 256, context length 128, dropout 0.1, and
 
 The same-width parameter counts are 4,216,320 for SelfAttention, 4,479,488 for full PRA, and 4,347,904 for hybrid PRA. Full and hybrid PRA therefore contain 6.2\% and 3.1\% more parameters than SelfAttention. In phase 2, the PRA trainable counts are 263,168 and 131,584 because only four or two memory output projections are optimized; the SelfAttention control fine-tunes all 4,216,320 parameters. These differences delimit the claims that can be drawn from the pilot.
 
+\begin{table}[H]
+\centering
+\caption{Current pilot hyperparameters. Phase-2 processed tokens vary slightly with generated example lengths.}
+\label{tab:hyperparameters}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Setting & Phase 1: plain WikiText-2 & Phase 2: references \\
+\midrule
+Tokenizer & shared BPE, vocabulary 2,000 & restored phase-1 BPE \\
+Model & 4 layers, 4 heads, width 256 & matching phase-1 checkpoint \\
+Context/batch & 128 / 2 & 128 / 2 \\
+Optimizer budget & 2,048 steps; 524,288 tokens & 512 steps; mean 46,301.5 tokens \\
+Learning rate & $5\times10^{-4}$ & $2\times10^{-4}$ \\
+Dropout & 0.1 & 0.1 \\
+References & absent & 1--5 parts; top-$k=5$ \\
+Threshold/$\alpha$ & inactive & $-1.0$ / $1.0$ \\
+Trainable parameters & all & all SA; memory output only for PRA \\
+Seeds & 1, 7 & 1, 7 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+An approximately parameter-matched SelfAttention control can retain width 256 and increase each four-layer FFN hidden width from 1,024 to 1,152. This adds 262,656 parameters, within 512 parameters of the full-PRA overhead. A second FFN width of 1,088 adds 131,328 parameters, within 256 of the hybrid overhead. These controls require a configurable FFN width and have not yet been run.
+
 The evaluated ablations are:
 
 \begin{itemize}[leftmargin=*]
@@ -265,6 +466,34 @@ The evaluated ablations are:
 \end{itemize}
 
 Summary-only memory, recursive expansion, irrelevant/empty references, native KV injection, learned triggering, distance-stratified analysis, and parameter-matched controls remain required future ablations.
+
+\subsection{Publication-Grade Experiment Matrix}
+
+The current pilot is the first row of a larger preregistered-style matrix. Table~\ref{tab:experiment-matrix} marks required comparisons without assigning unmeasured values.
+
+\begin{table}[H]
+\centering
+\caption{Required experiment matrix. ``Pending'' means no empirical claim is made in this paper.}
+\label{tab:experiment-matrix}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Axis & Required comparison & Status \\
+\midrule
+Reproducibility & seeds $\{1,7,21,42,87\}$ with intervals/effect sizes & seeds 1 and 7 complete \\
+Capacity & same-width plus FFN parameter-matched SA controls & same-width complete; matched pending \\
+Reference causality & valid, disabled, shuffled, irrelevant, empty, oracle & first three complete; remainder pending \\
+Cache budget & entries/tokens/bytes; reuse on/off; eviction policies & pending \\
+Memory strength & $\alpha$ sweep including zero and learned gate & $\alpha=1$ only \\
+Selection & top-$k$, threshold, oracle router, learned router & forced top-5 only \\
+Transport & separate cross-attention versus native K/V injection & cross-attention only \\
+Adaptation & frozen branch, LoRA, adapters, joint fine-tuning & frozen output branch plus SA control complete \\
+Placement & full PRA, upper-layer hybrid, layer-count sweep & full and 2+2 hybrid complete \\
+Difficulty & distance, candidate count, local sufficiency, recursion depth & metadata present; grouped analysis pending \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The five-seed comparison should use fixed tokenizer and split hashes, equal processed-token budgets, and paired seeds. Cache and selector sweeps should initialize from the same checkpoint. Oracle references isolate memory transport from selection; irrelevant and empty controls distinguish content use from generic branch activation. Native K/V injection must account for positional encoding and causal semantics rather than simply concatenate tensors. LoRA, adapters, and joint fine-tuning should be matched by trainable parameter count or reported as separate adaptation regimes.
 
 \section{Preliminary Results}
 
@@ -319,6 +548,16 @@ The prototype builds on the transformer attention architecture \cite{vaswani2017
 It also relates to memory-augmented and retrieval-conditioned models. Compressive Transformers maintain compressed memories over earlier activations \cite{rae2020compressive}. Memorizing Transformers retrieve nearest-neighbor memories \cite{wu2022memorizing}. RETRO conditions generation on retrieved chunks from a large database \cite{borgeaud2022retro}. RAG and REALM connect generation to non-parametric retrieval \cite{lewis2020rag,guu2020realm}. PRA differs in its emphasis on explicit handles, URI-addressed references, recursive anchors, and per-layer cache construction.
 
 Finally, the implementation anticipates runtime concerns raised by serving systems such as vLLM's PagedAttention \cite{kwon2023vllm}. A mature PRA system would require cache admission, sharing, eviction, batching, and memory safety policies.
+
+\section{Safety and Systems Correctness}
+
+Reference memory expands the model's attack and failure surface. A malicious or compromised reference can poison summaries, embed adversarial instructions, or exploit trusted URI namespaces. URI resolution must therefore preserve source, content digest, version, authorization decision, and resolver identity. Entries from different trust domains should not be merged into an anonymous K/V pool, and outputs should retain enough provenance to reconstruct which objects were resident.
+
+Freshness is part of correctness. A cache key based only on URI can return stale memory after content or model parameters change. Persistent implementations should bind entries to content version, model/adapter identity, layer, representation format, and policy domain. Revocation must invalidate both object lookup and already encoded resident representations.
+
+Batching creates a confidentiality boundary. The corrected prototype constructs a cache per example after a batch-union design exposed cross-example references. Optimized kernels must preserve equivalent masks and should include adversarial tests proving that logits for one sequence are invariant to another sequence's private cache. Cache reuse across users or tenants requires authorization-aware deduplication.
+
+Recursive expansion can amplify work. Cycles, high branching factors, oversized objects, and repeated faults require depth, token, latency, and byte budgets. Resolvers should validate schemes and anchors, detect cycles, and fail closed when authorization or freshness cannot be established. None of these controls is fully implemented in the standalone in-memory resolver; they define the boundary between this research instrument and a deployable runtime.
 
 \section{Limitations}
 

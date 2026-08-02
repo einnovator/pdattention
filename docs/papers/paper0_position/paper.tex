@@ -5,9 +5,26 @@
 \usepackage{amssymb}
 \usepackage{enumitem}
 \usepackage{tabularx}
+\usepackage{tikz}
 \usepackage[hidelinks]{hyperref}
+\usetikzlibrary{arrows.meta,backgrounds,fit,positioning,shapes.geometric}
 \input{../shared/macros.tex}
 \setlength{\emergencystretch}{3em}
+\definecolor{prablue}{HTML}{245A8D}
+\definecolor{pragreen}{HTML}{2D7A68}
+\definecolor{pragold}{HTML}{A66A18}
+\definecolor{pragray}{HTML}{5F6B76}
+\definecolor{pralight}{HTML}{EEF3F7}
+\tikzset{
+  pranode/.style={draw=prablue, fill=pralight, rounded corners=2pt,
+    align=center, minimum height=8mm, inner sep=4pt, font=\small},
+  memnode/.style={draw=pragreen, fill=green!6, rounded corners=2pt,
+    align=center, minimum height=8mm, inner sep=4pt, font=\small},
+  extnode/.style={draw=pragold, fill=orange!7, rounded corners=2pt,
+    align=center, minimum height=8mm, inner sep=4pt, font=\small},
+  flow/.style={-{Stealth[length=2mm]}, thick, draw=pragray},
+  selected/.style={draw=pragreen, very thick, fill=green!12}
+}
 
 \title{Progressive Retrieval Attention: A Position Paper on Demand-Driven Context Expansion}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
@@ -29,6 +46,28 @@ Retrieval-augmented generation (RAG) addresses part of this issue by selecting e
 This paper proposes Progressive Retrieval Attention as a research program for internalizing part of that progressive-disclosure pattern. PRA treats context not only as tokens but as a graph of references. A prompt may contain compact handles such as \texttt{<REF\_1>}; each handle points through a reference table to a URI such as \texttt{mem://manual\#installation.cuda}. The runtime can resolve a summary, a fragment, or child anchors. A PRA-enabled layer can then attend to a layer-specific memory cache built from the resolved fragment. The model need not read every referenced document eagerly. Instead, context can be expanded when attention scores, learned gates, uncertainty, or explicit reference-token positions indicate that additional memory is useful.
 
 The paper has four goals. First, it argues that flat long-context scaling, one-shot RAG, and external agent loops occupy different points in a broader design space of memory access. Second, it defines the PRA vocabulary used throughout this research program: reference handles, URI-addressed memory, recursive anchors, layer-specific memory cache, progressive disclosure, and latent context expansion. Third, it separates the architectural, runtime, optimization, and evaluation claims that are often collapsed under the word ``retrieval.'' Fourth, it lays out falsifiable research questions for implementation papers that follow this position paper.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=4mm]
+\node[pranode, text width=2.25cm] (short) {Short\\prompt};
+\node[pranode, text width=2.25cm, right=of short] (long) {Long/sparse\\context};
+\node[extnode, text width=2.25cm, right=of long] (rag) {Retrieved\\prompt};
+\node[extnode, text width=2.25cm, right=of rag] (agent) {Agent/tool\\loop};
+\node[memnode, text width=2.25cm, right=of agent] (pra) {Addressed\\context graph};
+\draw[flow] (short) -- (long);
+\draw[flow] (long) -- (rag);
+\draw[flow] (rag) -- (agent);
+\draw[flow] (agent) -- (pra);
+\node[font=\scriptsize, text=pragray, below=2mm of short] {eager, small};
+\node[font=\scriptsize, text=pragray, below=2mm of long] {eager, large};
+\node[font=\scriptsize, text=pragray, below=2mm of rag] {select then eager};
+\node[font=\scriptsize, text=pragray, below=2mm of agent] {iterative external};
+\node[font=\scriptsize, text=pragray, below=2mm of pra] {lazy, internalizable};
+\end{tikzpicture}
+\caption{Evolution of context interfaces. PRA is proposed as the next design point, not as a claim that earlier interfaces should disappear.}
+\label{fig:evolution}
+\end{figure}
 
 \section{Motivation}
 
@@ -88,6 +127,24 @@ $\rightarrow$
 
 Recursive anchors turn context into a graph rather than a bag of chunks. The model can begin with summaries and progressively expand detail. This is particularly important for tasks where the correct evidence is not known from the initial query alone.
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[level distance=11mm,
+  level 1/.style={sibling distance=46mm},
+  level 2/.style={sibling distance=23mm},
+  edge from parent/.style={flow}]
+\node[pranode] {manual\#summary}
+  child {node[memnode, selected] {installation}
+    child {node[memnode, selected] {cuda}}
+    child {node[memnode] {cpu}}}
+  child {node[memnode] {operations}
+    child {node[memnode] {monitoring}}
+    child {node[memnode] {backup}}};
+\end{tikzpicture}
+\caption{Recursive anchor expansion. A coarse handle exposes children; only the highlighted path is materialized to greater depth.}
+\label{fig:recursive-expansion}
+\end{figure}
+
 \subsection{Layer-Specific Memory Cache}
 
 If an external fragment is encoded into memory for attention, the representation should respect the transformer's layer structure. A key/value pair computed for one layer is not generally interchangeable with another. PRA therefore uses a layer-specific memory cache:
@@ -97,6 +154,31 @@ If an external fragment is encoded into memory for attention, the representation
 \end{equation}
 
 where $u$ is a URI and $\ell$ is a transformer layer. This distinction matters because lower layers may encode lexical and syntactic information while higher layers may encode task-specific abstractions. A single embedding vector can be useful for retrieval, but it is not a substitute for per-layer attention memory.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=7mm and 12mm]
+\node[pranode] (prompt) {Prompt + handles};
+\node[memnode, below left=of prompt] (r1) {\texttt{<REF\_1>}\\schema URI};
+\node[memnode, below=of prompt] (r2) {\texttt{<REF\_2>}\\ticket URI};
+\node[memnode, below right=of prompt] (r3) {\texttt{<REF\_3>}\\code URI};
+\node[extnode, below=of r1] (d1) {semantic\\model};
+\node[extnode, below=of r2] (d2) {incident\\history};
+\node[extnode, below=of r3] (d3) {function\\body};
+\node[pranode, below=13mm of d2] (cache) {selected layer-specific working set};
+\draw[flow] (prompt) -- (r1);
+\draw[flow] (prompt) -- (r2);
+\draw[flow] (prompt) -- (r3);
+\draw[flow] (r1) -- (d1);
+\draw[flow] (r2) -- (d2);
+\draw[flow] (r3) -- (d3);
+\draw[flow] (d1) -- (cache);
+\draw[flow] (d2) -- (cache);
+\draw[flow] (d3) -- (cache);
+\end{tikzpicture}
+\caption{A context graph separates compact handles, addressable objects, and the active layer-specific working set.}
+\label{fig:context-graph}
+\end{figure}
 
 \section{Progressive Retrieval Attention}
 
@@ -169,6 +251,60 @@ This distinction motivates staged optimization. First establish that each archit
 
 URI identity is part of the conditioning state. If a batched implementation combines references from unrelated examples without a corresponding mask, it changes the task and can leak evidence across samples. The standalone implementation exposed this issue directly: a batch-union cache made within-batch shuffling ineffective. Correctness required a cache per example. Efficient PRA runtimes must preserve the same logical isolation through cache indices or attention masks even when physical storage and kernels are shared.
 
+\section{Virtual Memory for Transformers}
+
+Virtual memory changed computing by separating the address space visible to a program from the finite physical memory resident at a given moment. Pages are named independently of their current location, loaded lazily, cached while useful, and evicted under pressure. Working-set theory connects recent access behavior to resource allocation rather than pretending that every address must remain resident \cite{denning1968workingset}. Foundation-model context has an analogous tension: the logical information relevant to a task can be far larger than the token and K/V memory physically active during one decoding step.
+
+PRA proposes a \emph{virtual context space}. URIs and anchors play the role of stable logical addresses. Resolved text or structured objects are backing-store content. Encoded layer-specific K/V entries are resident pages. Selection or gating acts as an admission policy. A missing selected representation creates a context fault that triggers resolution and encoding. The active reference cache approximates a working set, while eviction and reuse determine whether the abstraction saves end-to-end cost.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=5mm and 17mm]
+\node[font=\bfseries, text=prablue] (cpuhead) {CPU virtual memory};
+\node[font=\bfseries, text=pragreen, right=55mm of cpuhead] (prahead) {Transformer virtual context};
+\node[pranode, below=of cpuhead, text width=38mm] (va) {virtual address};
+\node[pranode, below=of va, text width=38mm] (page) {page table + fault};
+\node[pranode, below=of page, text width=38mm] (ram) {resident page in RAM};
+\node[pranode, below=of ram, text width=38mm] (disk) {backing store};
+\node[memnode, below=of prahead, text width=38mm] (uri) {URI + anchor};
+\node[memnode, below=of uri, text width=38mm] (resolve) {resolver + admission};
+\node[memnode, below=of resolve, text width=38mm] (kv) {resident layer K/V};
+\node[memnode, below=of kv, text width=38mm] (store) {document/tool/world store};
+\draw[flow] (va) -- (page);
+\draw[flow] (page) -- (ram);
+\draw[flow] (disk) -- (ram);
+\draw[flow] (uri) -- (resolve);
+\draw[flow] (resolve) -- (kv);
+\draw[flow] (store) -- (kv);
+\draw[dashed, draw=pragray] (va) -- (uri);
+\draw[dashed, draw=pragray] (page) -- (resolve);
+\draw[dashed, draw=pragray] (ram) -- (kv);
+\draw[dashed, draw=pragray] (disk) -- (store);
+\end{tikzpicture}
+\caption{Virtual-memory analogy. Dashed lines indicate functional correspondences, not implementation equivalence.}
+\label{fig:virtual-memory}
+\end{figure}
+
+\subsection{Address Spaces, Protection, and Lifetime}
+
+A useful virtual context address is more than a string. It should identify scheme, authority, object, semantic anchor, version, tenant, and access policy. Two identical texts with different provenance may not be interchangeable; one URI whose content changes over time should not silently reuse stale K/V. Cache keys may therefore require a tuple such as
+
+\begin{equation}
+(u, v, \ell, m, \theta, p),
+\end{equation}
+
+where $u$ is URI, $v$ content version, $\ell$ layer, $m$ model identity, $\theta$ relevant encoder parameters, and $p$ policy domain. Cache lifetime can range from one sequence to a user session, repository revision, model deployment, or immutable corpus version. Longer reuse improves amortization but increases freshness and revocation risk.
+
+Permissions must be enforced before resolution and again when resident memory is shared. A model should not infer a protected reference because another tenant populated the same physical cache. Logical address spaces and attention masks must survive batching, deduplication, paging, and distributed placement.
+
+\subsection{Page Faults and Progressive Disclosure}
+
+A conventional page fault is generated by an exact address access. A model's ``context fault'' is less crisp: it may be inferred from explicit handle attention, uncertainty, a learned router, or a runtime policy. False negatives omit evidence; false positives waste resolution and encoding. This turns fault prediction into a joint learning-and-systems problem. Recursive anchors further resemble multi-level page tables only loosely: following a child changes semantic granularity rather than merely translating an address.
+
+\subsection{Where the Analogy Breaks}
+
+CPU pages are intended to preserve exact program semantics regardless of placement. Neural memory is approximate, content-dependent, and transformed by model parameters. Loading a document into K/V does not guarantee that the model will use it correctly. Attention can blend untrusted entries, positional semantics may matter, and encoding may be more expensive than transport. The virtual-memory analogy is therefore valuable for identifying address, isolation, admission, working-set, and eviction problems; it is not evidence that operating-system policies can be copied unchanged.
+
 \section{A Reference-Memory Lifecycle}
 
 A PRA runtime can be described as a lifecycle rather than a single retrieval call:
@@ -184,6 +320,33 @@ A PRA runtime can be described as a lifecycle rather than a single retrieval cal
 \item \textbf{Reuse or evict}: retain useful entries across tokens or requests, or release them under pressure.
 \item \textbf{Audit}: record which version, URI, layer, and policy influenced the output.
 \end{enumerate}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=4mm]
+\node[pranode] (advertise) {Advertise};
+\node[pranode, right=of advertise] (select) {Select};
+\node[pranode, right=of select] (resolve) {Resolve};
+\node[memnode, right=of resolve] (encode) {Encode};
+\node[memnode, right=of encode] (admit) {Admit};
+\node[memnode, below=8mm of admit] (attend) {Attend};
+\node[memnode, left=of attend] (expand) {Expand};
+\node[pranode, left=of expand] (reuse) {Reuse/evict};
+\node[pranode, left=of reuse] (audit) {Audit};
+\draw[flow] (advertise) -- (select);
+\draw[flow] (select) -- (resolve);
+\draw[flow] (resolve) -- (encode);
+\draw[flow] (encode) -- (admit);
+\draw[flow] (admit) -- (attend);
+\draw[flow] (attend) -- (expand);
+\draw[flow] (expand) -- (reuse);
+\draw[flow] (reuse) -- (audit);
+\draw[flow, dashed] (expand.south) to[bend left=25] (select.south);
+\draw[flow, dashed] (reuse.north) to[bend left=18] (admit.south);
+\end{tikzpicture}
+\caption{PRA lifecycle. Dashed feedback paths represent recursive selection and cache reuse.}
+\label{fig:lifecycle}
+\end{figure}
 
 This lifecycle suggests a cost objective. For task quality $Q$, prompt tokens $T_p$, encoded reference tokens $T_r$, latency $L$, and active cache bytes $B$, a system should be compared on a frontier such as
 
@@ -222,9 +385,112 @@ RAG, REALM, and dense passage retrieval moved language models toward non-paramet
 
 ReAct and Toolformer show that language models can coordinate reasoning and external actions \cite{yao2023react,schick2023toolformer}. PRA does not replace tool use. It attempts to make a subset of memory access cheaper and more structured by moving reference resolution and cache access closer to attention.
 
+\subsection{MCP and IDE Assistants}
+
+The Model Context Protocol (MCP) defines a client--server interface through which AI applications discover resources, prompts, and tools \cite{mcp2025spec}. IDE assistants similarly expose repository search, symbol navigation, diagnostics, terminals, and version-control state. These systems make external capability discoverable, but the host application still decides how retrieved resource content enters a model context. PRA is complementary: MCP can supply the address space and resolver boundary, while PRA can define how selected resources become internal attention memory.
+
+This combination suggests a layered interface. MCP or an IDE host handles authentication, capability discovery, transport, and side effects. A PRA runtime handles content identity, versioned encoding, cache admission, and model-local use. High-level tool calls should remain explicit and auditable; repeated read-only access to stable resources is the more plausible target for latent memory.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=4mm and 5mm]
+\node[font=\bfseries, text=pragray] (raglabel) {RAG};
+\node[extnode, right=of raglabel] (retriever) {retrieve};
+\node[pranode, right=of retriever] (prompt) {append prompt};
+\node[pranode, right=of prompt] (ragmodel) {model};
+\draw[flow] (retriever) -- (prompt);
+\draw[flow] (prompt) -- (ragmodel);
+
+\node[font=\bfseries, text=pragray, below=9mm of raglabel] (agentlabel) {Agent/MCP};
+\node[pranode, right=of agentlabel] (amodel) {model/host};
+\node[extnode, right=19mm of amodel] (tool) {resource/tool};
+\draw[flow, bend left=18] (amodel) to (tool);
+\draw[flow, bend left=18] (tool) to (amodel);
+
+\node[font=\bfseries, text=pragray, below=9mm of agentlabel] (pralabel) {PRA};
+\node[pranode, right=of pralabel] (handles) {handles};
+\node[memnode, right=of handles] (memory) {resident memory};
+\node[pranode, right=of memory] (pramodel) {model layers};
+\draw[flow] (handles) -- (memory);
+\draw[flow] (memory) -- (pramodel);
+\draw[flow, dashed, bend left=35] (pramodel.south) to (memory.south);
+
+\node[draw=pragray, dashed, rounded corners=2pt, fit=(ragmodel),
+  inner sep=4pt, label={[font=\scriptsize]above:model boundary}] {};
+\node[draw=pragray, dashed, rounded corners=2pt, fit=(amodel),
+  inner sep=4pt] {};
+\node[draw=pragreen, dashed, rounded corners=2pt, fit=(memory)(pramodel),
+  inner sep=4pt] (praboundary) {};
+\node[font=\scriptsize, text=pragreen, below=1mm of praboundary]
+  {PRA runtime/model boundary};
+\end{tikzpicture}
+\caption{RAG selects before a model call, agents and MCP iterate across an application boundary, and PRA proposes addressable memory consumption within a runtime/model boundary.}
+\label{fig:rag-agent-pra}
+\end{figure}
+
 \subsection{KV-Cache Runtime Systems}
 
 Serving systems such as vLLM's PagedAttention show that memory layout, paging, and cache management are first-class concerns for modern inference \cite{kwon2023vllm}. PRA extends this systems perspective from generated-token KV caches to external reference-memory KV caches. A production PRA runtime would need admission policies, eviction, batching, cache reuse, and memory isolation.
+
+\section{Embodied, Situated, and Referential Memory}
+
+Embodied and enactive approaches argue that cognition is shaped by recurrent interaction among brain, body, and environment rather than by isolated symbol manipulation alone \cite{varela1991embodied}. The extended-mind thesis further asks when reliably available external artifacts participate in a cognitive process rather than merely serving as passive background \cite{clark1998extended}. PRA does not imply that a transformer is embodied or that neural attention reproduces human memory. These traditions instead offer a useful design question: what changes when external structure is not compressed entirely into internal parameters, but remains available through stable, action-conditioned references?
+
+Human activity routinely relies on referential scaffolding. A person remembers that evidence is in a notebook, a clause is in a contract section, a procedure is in a manual, or an explanation belongs to a colleague. The remembered address, cue, and access routine can be more useful than a lossy internal copy. Retrieval is often situated: the object sought depends on the current task, physical or social environment, and sequence of prior actions. Hierarchical cues support progressive refinement from place or document to section and detail.
+
+PRA translates only the computational aspects of this observation. Reference handles are cues; URIs stabilize identity; resolvers implement access routines; summaries support selection; and layer-specific caches provide a temporary active representation. Recursive anchors make access path-dependent. The analogy predicts that a useful model memory system should preserve provenance and affordances, not only vector similarity. It also predicts failure when the environment is unreliable, addresses become stale, or access policy is ignored.
+
+This perspective broadens evaluation beyond factual recall. A referential memory architecture should be tested on navigation, coordination, revision, and action: whether it can locate the right object, notice when it changed, follow a dependency, respect a permission, and update a plan after new evidence. Those are situated-memory behaviors, not merely next-token improvements.
+
+\section{A Future Foundation-Model Memory Stack}
+
+Foundation models are likely to require a hierarchy rather than one universal memory mechanism. Table~\ref{tab:memory-stack} sketches distinct roles. The boundaries are conceptual and may be implemented by multiple coupled systems.
+
+\begin{table}[t]
+\centering
+\caption{Conceptual foundation-model memory stack. Entries are architectural roles, not claims about current product implementations.}
+\label{tab:memory-stack}
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+Layer & Typical content & Lifetime & Access mode \\
+\midrule
+Parametric memory & linguistic and learned regularities & model version & dense forward pass \\
+Working memory & current goals, dialogue, active evidence & sequence/session & local attention \\
+Episodic memory & prior interactions and outcomes & user/project history & event retrieval \\
+Semantic memory & documents, schemas, concepts, policies & corpus version & addressed retrieval \\
+Procedural memory & tools, workflows, APIs, permissions & deployment & explicit action \\
+World-state memory & environment, simulations, live systems & dynamic & observation/model update \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+PRA is best viewed as an addressing and materialization fabric across this stack. It does not replace weights, local context, databases, tool protocols, or world models. It could allow compact working memory to refer to episodic events, semantic objects, and procedural capabilities; runtime policy would decide which representations can cross into model-local memory. Different classes require different consistency. Immutable literature can use content-addressed caches, while live operational state may require short leases and mandatory revalidation.
+
+A complete stack also needs a control plane. It must assign identity, authenticate principals, describe provenance, negotiate capabilities, track versions, account for cost, and revoke access. The neural data plane then consumes authorized representations. MCP provides one possible application-level discovery and transport interface \cite{mcp2025spec}; PRA addresses the separate question of selective internal materialization.
+
+\section{Enterprise and Professional Applications}
+
+Enterprise information is unusually compatible with context graphs because it already has identifiers, ownership, revisions, links, and permissions. The opportunity is not to pour every enterprise object into a prompt, but to expose a governed address space whose active working set follows the task.
+
+\subsection{Software Engineering}
+
+A software task can begin from repository, branch, commit, package, symbol, test, issue, and build-log handles. GitHub objects and IDE symbol graphs provide stable navigation edges; PRA could keep interfaces and summaries active while materializing implementation bodies or historical diffs only when needed. Required controls include commit-aware cache keys, generated-file labeling, repository permission isolation, and tests that detect stale symbol memory. SWE-bench-style tasks and repository navigation benchmarks can measure whether progressive access reduces loaded tokens without hiding required dependencies.
+
+\subsection{Analytics, BI, and SQL}
+
+Data work spans warehouses, catalogs, SQL schemas, semantic layers, dashboards, lineage graphs, and business glossaries. A Snowflake table, BI metric, or transformation can be a versioned reference with ownership and freshness metadata. The model may first inspect a semantic metric definition, then expand the underlying model, columns, joins, and query history. Evaluation must penalize stale schemas, unauthorized columns, invalid SQL, and semantically wrong but executable queries. Live execution should remain an explicit tool action, while read-only schema memory is a candidate for caching.
+
+\subsection{Organizational Knowledge and Operations}
+
+Confluence pages, Jira issues, runbooks, incidents, and service catalogs form a cross-linked operational memory. Handles can preserve the distinction between approved policy, draft discussion, resolved incident, and current ticket state. Freshness and authority are central: an old runbook should not silently outrank a current service notice. Useful tasks include incident diagnosis, change-impact analysis, status reporting, and tracing a decision from ticket to documentation and code.
+
+\subsection{Scientific Literature}
+
+Scientific assistants need identity at article, version, section, figure, dataset, and claim level. Recursive anchors can move from abstract to method, result, appendix, and cited source. Provenance traces should distinguish quoted evidence from model inference. Benchmarks should test multi-paper synthesis, contradictory findings, retractions, and whether the model can expose the exact evidence path rather than only produce plausible prose.
+
+\subsection{Legal and Medical Assistance}
+
+Legal and medical domains make the risks clearest. Jurisdiction, effective date, patient identity, consent, and source authority are part of meaning, not optional metadata. PRA could help preserve these constraints through versioned, permissioned references and auditable access paths. It must not turn latent memory into an unreviewable decision channel. High-stakes outputs require authoritative-source validation, explicit uncertainty, human review, and strict separation between informational retrieval and actions affecting rights, treatment, or records. Evaluation should emphasize provenance completeness, stale-evidence detection, privacy leakage, and calibrated abstention rather than fluency.
 
 \section{Illustrative Design Space}
 
@@ -324,7 +590,11 @@ These limitations motivate careful experimental design. PRA should not be judged
 
 \section{Conclusion}
 
-Progressive Retrieval Attention proposes a shift in how language models interact with large context. Rather than treating context as a flat token budget to be filled eagerly, PRA treats context as a graph of references that can be named, selected, materialized, attended to, expanded, reused, and audited. The idea draws from long-context transformers, retrieval-augmented generation, memory-augmented models, agentic progressive disclosure, and KV-cache runtime systems. The initial standalone pilot supports feasibility and motivates sharper counterfactual evaluation, but it does not establish the efficiency thesis. The central hypothesis remains precise and testable: for tasks with sparse, hierarchical relevance, demand-driven context expansion should improve the frontier of quality, latency, token processing, and active memory relative to strong long-context, retrieval, and agentic baselines.
+Progressive Retrieval Attention proposes a shift in how foundation models interact with memory. Rather than treating context as a flat token budget to be filled eagerly, PRA treats references as first-class computational objects that can be named, selected, materialized, attended to, expanded, reused, revoked, and audited. The model's logical context may then be much larger than its active working set, just as a program's address space can exceed resident memory. Unlike conventional paging, however, neural materialization is approximate and learned; success must be demonstrated, not presumed.
+
+The long-term vision is a foundation-model memory stack with explicit boundaries among parametric knowledge, working context, episodic history, semantic resources, procedures and tools, and changing world state. URI identity, provenance, freshness, hierarchy, permissions, and cache lifetime become architectural concerns rather than application-side annotations. Protocols such as MCP can expose resources and actions, agents can manage high-level plans, and PRA-like runtimes can test whether repeated read-oriented access can move closer to attention without losing governance.
+
+The initial standalone pilot supports feasibility and motivates sharper counterfactual evaluation, but it does not establish the efficiency thesis. The program should proceed only if valid content consistently beats shuffled and irrelevant controls, local capabilities are preserved under matched adaptation, and end-to-end quality improves per unit of latency, encoded tokens, and active memory against strong long-context, RAG, RETRO, and agentic baselines. If those conditions fail, the virtual-context proposal should be revised or rejected. If they hold across scales and domains, foundation models may evolve from systems with larger prompts into systems with principled memory architectures.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
