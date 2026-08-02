@@ -1,0 +1,259 @@
+model:
+  d_model: 128
+  n_heads: 4
+  n_layers: 4
+  n_vanilla_layers: 0
+  n_mixed_layers: 0
+  max_seq_len: 96
+  dropout: 0.0
+  model_variant: custom
+
+pra:
+  pra_layer_ids: [2, 3]
+  top_k_refs: 2
+  trigger_threshold: 0.2
+  use_cross_attention_memory: true
+  use_concat_memory: false
+  memory_alpha: 0.5
+
+resolver:
+  type: in_memory
+  options: {}
+
+cache:
+  type: simple
+  options: {}
+
+models:
+  default:
+    n_layers: 4
+  standalone_tiny:
+    model:
+      d_model: 32
+      n_heads: 4
+      n_layers: 2
+      n_vanilla_layers: 0
+      n_mixed_layers: 0
+      max_seq_len: 64
+      dropout: 0.0
+    pra:
+      pra_layer_ids: [0, 1]
+      top_k_refs: 2
+      trigger_threshold: 0.2
+      use_cross_attention_memory: true
+      use_concat_memory: false
+      memory_alpha: 0.5
+    resolver:
+      type: in_memory
+      options: {}
+    cache:
+      type: simple
+      options: {}
+  tiny:
+    model:
+      d_model: 64
+      n_heads: 4
+      n_layers: 2
+      max_seq_len: 64
+    pra:
+      pra_layer_ids: [0, 1]
+    train:
+      batch_size: 4
+      steps: 100
+    resolver:
+      type: in_memory
+    cache:
+      type: simple
+  medium:
+    model:
+      d_model: 256
+      n_heads: 8
+      n_layers: 6
+      n_vanilla_layers: 1
+      n_mixed_layers: 1
+      max_seq_len: 128
+      dropout: 0.1
+    pra:
+      pra_layer_ids: [2, 3, 4, 5]
+      top_k_refs: 3
+      memory_alpha: 0.5
+    train:
+      batch_size: 6
+      steps: 600
+      lr: 0.0003
+  large:
+    model:
+      d_model: 512
+      n_heads: 8
+      n_layers: 8
+      n_vanilla_layers: 2
+      n_mixed_layers: 2
+      max_seq_len: 192
+      dropout: 0.1
+    pra:
+      pra_layer_ids: [4, 5, 6, 7]
+      top_k_refs: 4
+      memory_alpha: 0.4
+    train:
+      batch_size: 2
+      steps: 1000
+      lr: 0.0002
+
+  td_sa_tiny:
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: td_sa}
+    pra: {pra_layer_ids: []}
+  td_pra_tiny:
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: td_pra}
+    pra: {pra_layer_ids: [0, 1, 2, 3], top_k_refs: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
+  tdx_pra_tiny:
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 2, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: tdx_pra}
+    pra: {pra_layer_ids: [2, 3], top_k_refs: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
+
+  td_sa_small:
+    model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 6, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: td_sa}
+    pra: {pra_layer_ids: []}
+  td_pra_small:
+    model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: td_pra}
+    pra: {pra_layer_ids: [0, 1, 2, 3, 4, 5]}
+  tdx_pra_small:
+    model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 4, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: tdx_pra}
+    pra: {pra_layer_ids: [4, 5]}
+
+  td_sa_medium:
+    model: {d_model: 512, n_heads: 8, n_layers: 8, n_vanilla_layers: 8, n_mixed_layers: 0, max_seq_len: 512, dropout: 0.1, model_variant: td_sa}
+    pra: {pra_layer_ids: []}
+  td_pra_medium:
+    model: {d_model: 512, n_heads: 8, n_layers: 8, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 512, dropout: 0.1, model_variant: td_pra}
+    pra: {pra_layer_ids: [0, 1, 2, 3, 4, 5, 6, 7]}
+  tdx_pra_medium:
+    model: {d_model: 512, n_heads: 8, n_layers: 8, n_vanilla_layers: 6, n_mixed_layers: 0, max_seq_len: 512, dropout: 0.1, model_variant: tdx_pra}
+    pra: {pra_layer_ids: [6, 7]}
+
+  td_sa_gpt2_small:
+    model: {d_model: 768, n_heads: 12, n_layers: 12, n_vanilla_layers: 12, n_mixed_layers: 0, max_seq_len: 1024, dropout: 0.1, model_variant: td_sa}
+    pra: {pra_layer_ids: []}
+  td_pra_gpt2_small:
+    model: {d_model: 768, n_heads: 12, n_layers: 12, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 1024, dropout: 0.1, model_variant: td_pra}
+    pra: {pra_layer_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]}
+  tdx_pra_gpt2_small:
+    model: {d_model: 768, n_heads: 12, n_layers: 12, n_vanilla_layers: 10, n_mixed_layers: 0, max_seq_len: 1024, dropout: 0.1, model_variant: tdx_pra}
+    pra: {pra_layer_ids: [10, 11]}
+
+model_size_reference:
+  tiny: {layers: 4, heads: 4, d_model: 256, expected_parameters: "4-5M", quick_run: "10-25 min", single_epoch: "3-8 h", full_run: "7-17 h"}
+  small: {layers: 6, heads: 6, d_model: 384, expected_parameters: "10-12M", quick_run: "25-60 min", single_epoch: "8-20 h", full_run: "17-40 h"}
+  medium: {layers: 8, heads: 8, d_model: 512, expected_parameters: "28-35M", quick_run: "1.2-3 h", single_epoch: "1-2.5 days", full_run: "2-5 days"}
+  gpt2_small: {layers: 12, heads: 12, d_model: 768, expected_parameters: "124M", quick_run: "5-12 h*", single_epoch: "4-10 days*", full_run: "8-20 days*"}
+
+experiments:
+  td_sa_tiny_wikitext2_smoke:
+    model_name: td_sa_tiny
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 256, max_eval_documents: 64, max_train_blocks: 64}
+    train: {epochs: 1, max_steps: 16, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+  tdx_pra_tiny_wikitext2_smoke:
+    model_name: tdx_pra_tiny
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 256, max_eval_documents: 64, max_train_blocks: 64}
+    train: {epochs: 1, max_steps: 16, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+  td_sa_tiny_wikitext2_refs_smoke:
+    model_name: td_sa_tiny
+    dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 32, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+  td_pra_tiny_wikitext2_refs_smoke:
+    model_name: td_pra_tiny
+    dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 32, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+
+  plain_sa_pretrain:
+    model_name: td_sa_tiny
+    seeds: [1, 7]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 2048, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+  plain_pra_pretrain:
+    model_name: td_pra_tiny
+    seeds: [1, 7]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 2048, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+  plain_hybrid_pretrain:
+    model_name: tdx_pra_tiny
+    seeds: [1, 7]
+    dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
+    train: {epochs: 20, max_steps: 2048, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
+
+  refs_sa_control_finetune:
+    model_name: td_sa_tiny
+    initialize_from: plain_sa_pretrain
+    seeds: [1, 7]
+    dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 20, max_steps: 512, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
+  refs_pra_refpath:
+    model_name: td_pra_tiny
+    initialize_from: plain_pra_pretrain
+    seeds: [1, 7]
+    dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 20, max_steps: 512, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
+  refs_hybrid_refpath:
+    model_name: tdx_pra_tiny
+    initialize_from: plain_hybrid_pretrain
+    seeds: [1, 7]
+    dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
+    train: {epochs: 20, max_steps: 512, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
+
+train:
+  steps: 300
+  batch_size: 8
+  lr: 0.0003
+  device: auto
+  out: pra_tiny.pt
+  dataset_stage: stage0_synthetic_memory
+  data_dir: data
+  max_examples:
+  shuffle: true
+  num_workers: 0
+  pin_memory: false
+  persistent_workers: false
+
+standalone:
+  experiment_name: standalone_tiny
+  output_dir: out
+  seed: 0
+  device: auto
+  dtype: float32
+  epochs: 2
+  batch_size: 4
+  grad_accum_steps: 1
+  learning_rate: 0.0003
+  weight_decay: 0.0
+  warmup_steps: 0
+  max_grad_norm: 1.0
+  eval_every_steps: 10
+  save_every_steps: 20
+  log_every_steps: 5
+  num_workers: 0
+  pin_memory: false
+  persistent_workers: false
+  resume_from:
+  use_tensorboard: true
+  save_metric_plots: true
+  use_wandb: false
+  use_clearml: false
+  mixed_precision: false
+  early_stopping_patience:
+  dataset_stage: stage0_synthetic_memory
+  data_dir: data
+  max_examples: 4
+  max_seq_len: 64
+  shuffle: true
+
+eval:
+  ckpt: pra_tiny.pt
+  device: auto
+  examples: 20
+  dataset_stage: stage0_synthetic_memory
+  data_dir: data
+  max_examples:
+  max_new_tokens: 24
+  seed: 0
+  batch_size: 8
+  num_workers: 0
+  pin_memory: false
+  persistent_workers: false

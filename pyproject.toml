@@ -1,0 +1,27 @@
+[project]
+name = "pra-handoff"
+version = "0.1.0"
+description = "URI-addressed Progressive Retrieval Attention research prototype"
+requires-python = ">=3.10"
+dependencies = [
+  "torch>=2.2",
+  "click>=8.1",
+  "PyYAML>=6.0",
+  "numpy>=1.24",
+  "tqdm>=4.66",
+  "pytest>=8.0",
+  "matplotlib>=3.8",
+  "jupyter>=1.0",
+  "transformers>=4.45",
+  "accelerate>=0.33",
+  "peft>=0.12",
+  "datasets>=3.0",
+  "tokenizers>=0.20",
+]
+
+[project.scripts]
+pra = "pra_torch.cli:cli"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

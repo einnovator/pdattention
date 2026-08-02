@@ -1,0 +1,212 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage[hidelinks]{hyperref}
+\input{../shared/macros.tex}
+\setlength{\emergencystretch}{3em}
+
+\title{Progressive Retrieval Attention: A Position Paper on Demand-Driven Context Expansion}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context to the model in a largely flat and eager form: tokens are either placed in the prompt, retrieved once before generation, or acquired through explicit tool calls outside the transformer's attention computation. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), a family of architectures and runtimes in which lightweight reference handles point to URI-addressed memory and can be expanded on demand into layer-specific attention memory. The central thesis is that long-context inference should move from monolithic token streams toward hierarchical, demand-driven context graphs. PRA is positioned as a bridge between sparse long-context transformers, retrieval-augmented generation, agentic progressive disclosure, and KV-cache runtime systems. We define the main abstractions--reference handles, recursive anchors, URI-addressed memory, layer-specific memory caches, and latent context expansion--and outline a research program for evaluating whether such systems can reduce effective context cost while preserving factual and procedural accuracy. We do not claim experimental superiority; all quantitative examples in this position paper are conceptual and are intended to specify testable hypotheses.
+\end{abstract}
+
+\section{Introduction}
+
+The transformer attention mechanism made it possible for models to condition every token on every earlier token in a sequence \cite{vaswani2017attention}. The same mechanism also created a central systems problem: when a model needs access to many documents, code files, logs, prior decisions, or external knowledge fragments, the simplest interface is to concatenate more text into a longer sequence. Modern long-context systems have stretched this interface dramatically, but a larger window does not by itself solve the problem of \emph{selective use}. If only a small fraction of the context is relevant at any generation step, eager inclusion wastes computation and forces the model to perform implicit search inside an expensive dense attention substrate.
+
+Retrieval-augmented generation (RAG) addresses part of this issue by selecting external passages before generation \cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. However, standard RAG often makes a single retrieval decision at the boundary of the model call. The retrieved passages are still inserted as flat prompt text, and the model must consume them whether or not each passage becomes useful later. Agentic systems take the opposite approach: they inspect tool descriptions, issue searches, open files, follow references, and progressively disclose detail only when needed \cite{yao2023react,schick2023toolformer}. This behavior is effective but expensive because the loop is mediated by external actions, repeated model invocations, and hand-designed orchestration.
+
+This paper proposes Progressive Retrieval Attention as a research program for internalizing part of that progressive-disclosure pattern. PRA treats context not only as tokens but as a graph of references. A prompt may contain compact handles such as \texttt{<REF\_1>}; each handle points through a reference table to a URI such as \texttt{mem://manual\#installation.cuda}. The runtime can resolve a summary, a fragment, or child anchors. A PRA-enabled layer can then attend to a layer-specific memory cache built from the resolved fragment. The model need not read every referenced document eagerly. Instead, context can be expanded when attention scores, learned gates, uncertainty, or explicit reference-token positions indicate that additional memory is useful.
+
+The paper has three goals. First, it argues that flat long-context scaling, one-shot RAG, and external agent loops occupy different points in a broader design space of memory access. Second, it defines the PRA vocabulary used throughout this research program: reference handles, URI-addressed memory, recursive anchors, layer-specific memory cache, progressive disclosure, and latent context expansion. Third, it lays out falsifiable research questions for implementation papers that follow this position paper.
+
+\section{Motivation}
+
+\subsection{The Cost of Flat Context}
+
+In a decoder-only transformer with dense self-attention, the attention matrix for a sequence of length $T$ contains $O(T^2)$ pairwise interactions per layer. Efficient kernels and hardware-aware implementations reduce constants, and sparse-attention variants reduce asymptotic or effective cost \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. Yet a conceptual mismatch remains: many tasks contain large amounts of potentially relevant context but only a small amount of immediately relevant evidence.
+
+Consider a coding task. A repository may contain thousands of files. A developer rarely reads every file before making a change; they inspect a project map, open candidate modules, follow definitions, and read details near the call sites that matter. The useful information is embedded in a hierarchy: repository, package, file, class, method, block. The flat prompt interface collapses that hierarchy into a token sequence. Once collapsed, the model must recover structure through positional and lexical cues that were never designed as stable memory addresses.
+
+The same pattern appears in scientific QA, technical support, legal analysis, and book-length reasoning. The system often knows that a reference exists before it knows whether the reference must be expanded. A long context window encourages eager expansion because the only available memory interface is token inclusion.
+
+\subsection{The Shallowness of One-Shot Retrieval}
+
+RAG retrieves documents or passages and places them in the model context \cite{lewis2020rag}. This often improves factuality and makes model behavior auditable because generated answers can be traced to retrieved evidence. The limitation is that retrieval is usually performed at one granularity and one time. A retriever may return a passage that is too broad, too narrow, or missing the second-hop information required by the question. The generator then has limited ability to request a more specific subdocument without leaving the forward pass and entering an external loop.
+
+Hierarchical retrieval partially addresses this issue by retrieving coarse summaries before detailed chunks, but the retrieved evidence is still usually materialized as prompt text. The generator receives the results of a pipeline rather than participating in a continuous memory-selection process. PRA asks whether part of this selection can be made differentiable, layer-local, or runtime-local.
+
+\subsection{The Expense of Agentic Search}
+
+Agentic systems use tools to search, read, execute, and revise. Their strength is not simply tool use; it is progressive disclosure. A capable agent first consumes compact descriptions and only loads detailed instructions, files, or logs when the task demands them. This style is naturally suited to large workspaces and multi-document tasks. Its weakness is cost and latency. Each search or file read may require a model turn, an external call, and a new prompt construction step.
+
+The motivating question for PRA is therefore not whether agents should disappear. Rather, the question is whether the model/runtime boundary can absorb a lower-level version of progressive disclosure: reference-aware memory expansion during inference, with external agents reserved for high-level planning, verification, and action.
+
+\section{From Flat Context to Context Graphs}
+
+\subsection{Reference Handles}
+
+A \emph{reference handle} is a lightweight token or latent marker that names an external memory object without expanding it immediately. In the simplest textual form:
+
+\begin{center}
+\texttt{<REF\_1>} $\rightarrow$ \texttt{mem://doc42\#summary}
+\end{center}
+
+The handle is paired with a reference table containing at least an identifier, token, URI, summary, and metadata. The prompt can include the handle, the table can expose a human-readable summary, and the runtime can resolve the URI when needed. This separates the existence of a possible context item from its full token cost.
+
+\subsection{URI-Addressed Memory}
+
+PRA assumes that external memory can be addressed by URIs. The scheme may denote local memory, files, repository objects, search results, database rows, or runtime objects:
+
+\begin{center}
+\texttt{mem://manual\#installation.cuda.vllm}
+\end{center}
+
+The anchor fragment after \texttt{\#} is not merely a byte offset. It can encode semantic hierarchy: document, section, subsection, paragraph, function, class, or trace event. URI addressing gives the runtime a stable object to cache and gives the model a compact symbol for a potentially large subtree of context.
+
+\subsection{Recursive Anchors}
+
+Many references are best exposed recursively. A root summary may contain child anchors, and child anchors may contain more specific anchors:
+
+\begin{center}
+\texttt{mem://manual\#summary}
+$\rightarrow$
+\texttt{mem://manual\#installation}
+$\rightarrow$
+\texttt{mem://manual\#installation.cuda}
+\end{center}
+
+Recursive anchors turn context into a graph rather than a bag of chunks. The model can begin with summaries and progressively expand detail. This is particularly important for tasks where the correct evidence is not known from the initial query alone.
+
+\subsection{Layer-Specific Memory Cache}
+
+If an external fragment is encoded into memory for attention, the representation should respect the transformer's layer structure. A key/value pair computed for one layer is not generally interchangeable with another. PRA therefore uses a layer-specific memory cache:
+
+\begin{equation}
+\mathrm{cache}[u,\ell] = (K_{u,\ell}, V_{u,\ell}),
+\end{equation}
+
+where $u$ is a URI and $\ell$ is a transformer layer. This distinction matters because lower layers may encode lexical and syntactic information while higher layers may encode task-specific abstractions. A single embedding vector can be useful for retrieval, but it is not a substitute for per-layer attention memory.
+
+\section{Progressive Retrieval Attention}
+
+\subsection{Conceptual Computation}
+
+Let $X \in \mathbb{R}^{T \times d}$ be the hidden states of a sequence at a given layer. Standard causal self-attention computes
+
+\begin{equation}
+\mathrm{SelfAttn}(X) =
+\mathrm{softmax}\left(\frac{QK^\top + M}{\sqrt{d_h}}\right)V,
+\end{equation}
+
+where $M$ is a causal mask. A PRA layer augments this with memory selected from a cache. Let $\mathcal{U}_t$ be a set of URIs selected for the current sequence or position. A simple cross-attention variant computes
+
+\begin{equation}
+\mathrm{PRA}(X) =
+\mathrm{SelfAttn}(X) +
+\alpha \cdot
+\mathrm{softmax}\left(\frac{QK_{\mathcal{U},\ell}^{\top}}{\sqrt{d_h}}\right)
+V_{\mathcal{U},\ell},
+\end{equation}
+
+where $K_{\mathcal{U},\ell}$ and $V_{\mathcal{U},\ell}$ concatenate layer-$\ell$ memory from selected references, and $\alpha$ controls the contribution of the memory branch.
+
+The central research problem is selection: how should $\mathcal{U}_t$ be chosen? Possible triggers include similarity between the current hidden state and summary vectors, attention to explicit reference-token positions, uncertainty in the next-token distribution, learned gates, or runtime policies that trade accuracy against latency.
+
+\subsection{PRA as Architecture, Runtime, and Research Program}
+
+The term PRA is intentionally broader than one neural module. It refers to three coupled objects:
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Architecture}: attention layers that can consume external reference memory through cross-attention, KV injection, adapters, or other differentiable mechanisms.
+\item \textbf{Runtime}: resolvers, caches, URI stores, anchor expansion policies, and scheduling decisions that decide when and how memory is materialized.
+\item \textbf{Research program}: benchmarks, ablations, scaling studies, and theoretical analyses for demand-driven context expansion.
+\end{enumerate}
+
+This distinction helps avoid overclaiming. A standalone research prototype can validate cache construction and attention mechanics without proving that PRA is ready for production-scale pretrained models. Runtime integration can study scheduling and KV memory without resolving all training questions. Scaling theory can ask which tasks benefit from context graphs without committing to a single implementation.
+
+\section{Relationship to Existing Work}
+
+\subsection{Long-Context and Sparse Transformers}
+
+Longformer, BigBird, Reformer, Routing Transformer, and related models reduce the cost of attending over long sequences by imposing locality, sparsity, hashing, routing, or structured global tokens \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. PRA is complementary. It does not primarily ask how to attend over a single long sequence more cheaply; it asks whether all candidate context should become part of that sequence in the first place.
+
+\subsection{Memory-Augmented Transformers}
+
+Compressive Transformers store compressed memories of past activations \cite{rae2020compressive}. Memorizing Transformers retrieve nearest-neighbor memories from previous tokens \cite{wu2022memorizing}. RETRO retrieves chunks from a large text database and conditions generation on them \cite{borgeaud2022retro}. PRA shares the ambition of memory-augmented generation but emphasizes explicit reference handles, URI addressing, recursive anchors, and layer-specific cache entries.
+
+\subsection{Hierarchical Attention and Adaptive Computation}
+
+Hierarchical Attention Networks demonstrated the value of multi-level document structure \cite{yang2016han}. Universal Transformers and adaptive computation time study dynamic depth or recurrent refinement \cite{dehghani2019universal,graves2016adaptive}. PRA can be viewed as adaptive computation over context rather than only over layers or recurrent steps: the system spends more memory bandwidth on references that prove useful.
+
+\subsection{Retrieval-Augmented Generation}
+
+RAG, REALM, and dense passage retrieval moved language models toward non-parametric memory \cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. PRA inherits their motivation but changes the interface between retrieval and generation. Instead of treating retrieval as a pre-generation pipeline stage, PRA treats retrieval products as addressable memory objects that can be expanded and attended to during inference.
+
+\subsection{Agentic Tool Use}
+
+ReAct and Toolformer show that language models can coordinate reasoning and external actions \cite{yao2023react,schick2023toolformer}. PRA does not replace tool use. It attempts to make a subset of memory access cheaper and more structured by moving reference resolution and cache access closer to attention.
+
+\subsection{KV-Cache Runtime Systems}
+
+Serving systems such as vLLM's PagedAttention show that memory layout, paging, and cache management are first-class concerns for modern inference \cite{kwon2023vllm}. PRA extends this systems perspective from generated-token KV caches to external reference-memory KV caches. A production PRA runtime would need admission policies, eviction, batching, cache reuse, and memory isolation.
+
+\section{Illustrative Design Space}
+
+Table~\ref{tab:conceptual} gives a conceptual comparison. The entries are hypotheses and design claims, not measured results.
+
+\begin{table}[h]
+\centering
+\caption{Conceptual comparison of context-access strategies. This table is illustrative and does not report experimental measurements.}
+\label{tab:conceptual}
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+Strategy & Context interface & Strength & Failure mode \\
+\midrule
+Flat long context & Eager token sequence & Simple and general & High cost when relevance is sparse \\
+One-shot RAG & Retrieved prompt passages & Good factual grounding & Retrieval granularity fixed before generation \\
+Agentic search & External tool loop & Flexible progressive disclosure & High latency and orchestration cost \\
+PRA & URI-addressed memory cache & Demand-driven latent expansion & Requires learned/runtime selection policy \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Research Agenda}
+
+The PRA research program should proceed through increasingly demanding stages.
+
+\paragraph{Standalone controlled models.}
+Train small decoder-only transformers where all memory objects, reference handles, cache entries, and evaluation labels are controlled. This stage tests whether the basic architecture learns to use reference memory.
+
+\paragraph{Pretrained-model integration.}
+Adapt pretrained Hugging Face models using cross-attention adapters before attempting direct KV injection. This stage should isolate compatibility issues such as rotary position encodings, grouped-query attention, cache layout, and fine-tuning stability.
+
+\paragraph{Runtime and serving integration.}
+Study how reference memories are resolved, encoded, cached, paged, shared, and evicted. The central metric is no longer only accuracy, but accuracy per token, per millisecond, and per byte of cache.
+
+\paragraph{Scaling and theory.}
+Develop task families where relevant context occupies a controllable fraction of the available corpus. PRA should be evaluated against full-context, sparse-attention, RAG, summary-first RAG, and agentic-search baselines.
+
+\section{Risks and Limitations}
+
+PRA introduces several risks. First, reference selection can fail silently: if the system does not expand the right anchor, the model may answer from incomplete context. Second, URI-addressed memory creates provenance and security questions. A reference table is a powerful interface; poisoning or misaddressing entries can mislead the model. Third, cache construction may move cost rather than eliminate it. Encoding references separately is only beneficial when cache reuse, selective expansion, or reduced prompt length outweighs encoding overhead. Fourth, pretrained integration is technically difficult because external K/V must respect layer semantics, position encodings, attention variants, and batching constraints.
+
+These limitations motivate careful experimental design. PRA should not be judged by a single accuracy number. It should be evaluated through controlled ablations that measure answer accuracy, expected-reference hit rate, expansion depth, retrieved-token count, full-context token count, latency, and cache hit ratio.
+
+\section{Conclusion}
+
+Progressive Retrieval Attention proposes a shift in how language models interact with large context. Rather than treating context as a flat token budget to be filled eagerly, PRA treats context as a graph of references that can be expanded on demand into layer-specific memory. The idea draws from long-context transformers, retrieval-augmented generation, memory-augmented models, agentic progressive disclosure, and KV-cache runtime systems. Its promise is not established superiority but a precise and testable hypothesis: for tasks with sparse, hierarchical relevance, demand-driven context expansion may offer a better tradeoff between accuracy, cost, and controllability than either brute-force long context or shallow one-shot retrieval.
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+\end{document}
