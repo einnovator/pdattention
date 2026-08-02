@@ -1156,6 +1156,11 @@ def generate_matrix_findings_report(
         - mean(reference_names[architecture], "reference_valid_loss")
         for architecture in ("full PRAttention", "hybrid PRAttention")
     }
+    shuffled_penalties = {
+        architecture: mean(reference_names[architecture], "reference_shuffled_loss")
+        - mean(reference_names[architecture], "reference_valid_loss")
+        for architecture in ("full PRAttention", "hybrid PRAttention")
+    }
     findings = [
         (
             "Plain WikiText equivalence",
@@ -1176,6 +1181,11 @@ def generate_matrix_findings_report(
             f"and {reference_benefits['hybrid PRAttention']:.4f} for the hybrid. SelfAttention has no reference path, so its valid/disabled delta is zero by construction.",
         ),
         (
+            "Reference specificity",
+            f"Shuffling reference documents increased loss by {shuffled_penalties['full PRAttention']:.4f} for full PRAttention and "
+            f"{shuffled_penalties['hybrid PRAttention']:.4f} for the hybrid. The consistent but modest penalty shows content sensitivity while leaving room for stronger reference-use training.",
+        ),
+        (
             "Full versus hybrid PRAttention",
             f"Mean valid-reference loss was {mean(reference_names['full PRAttention'], 'reference_valid_loss'):.4f} for full PRAttention and "
             f"{mean(reference_names['hybrid PRAttention'], 'reference_valid_loss'):.4f} for hybrid PRAttention. "
@@ -1188,6 +1198,7 @@ def generate_matrix_findings_report(
         "findings": [{"title": title, "text": value} for title, value in findings],
         "retention_loss_deltas": retention_deltas,
         "valid_reference_loss_benefits": reference_benefits,
+        "shuffled_reference_loss_penalties": shuffled_penalties,
         "aggregate_reports": [str(Path(path).resolve()) for path in aggregate_paths],
     }
     (report_dir / "report.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")

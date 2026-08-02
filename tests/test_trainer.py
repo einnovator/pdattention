@@ -59,6 +59,11 @@ def test_one_training_epoch_and_validation_run(tmp_path):
     assert "answer_accuracy" in metrics
     assert trainer.checkpoint.latest_path.exists()
     assert trainer.checkpoint.best_path.exists()
+    timing = metrics["timing_metrics"]
+    assert timing["train_duration_seconds"] > 0
+    assert timing["validation_duration_seconds"] > 0
+    assert timing["processed_tokens"] > 0
+    assert timing["optimizer_steps"] == trainer.global_step
 
 
 def test_metric_history_tracks_every_batch_and_epoch(tmp_path):

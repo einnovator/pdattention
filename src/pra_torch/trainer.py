@@ -82,7 +82,10 @@ class PRAStandaloneTrainer:
             cache_config=self.cache_config,
             state=self._state,
         )
-        return result["test_metrics"]
+        return {
+            **result["test_metrics"],
+            "timing_metrics": result["timing_metrics"],
+        }
 
     def validate(self) -> dict:
         return self._evaluate(self.datamodule.val_loader(), "val")

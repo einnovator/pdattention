@@ -49,6 +49,9 @@ def test_collator_builds_tensors_and_reference_tables():
     assert batch["input_ids"].shape == batch["labels"].shape == batch["attention_mask"].shape
     assert batch["input_ids"].shape[0] == 2
     assert batch["reference_tables"][0].find_by_token("<REF_1>") is not None
+    prompt_length = len(tok.encode(dataset[0].question))
+    assert batch["labels"][0, : prompt_length - 1].eq(0).all()
+    assert batch["labels"][0, prompt_length - 1 :].ne(0).any()
 
 
 def test_datamodule_returns_dataloader_batches():
