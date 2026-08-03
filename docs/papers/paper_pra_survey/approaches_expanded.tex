@@ -1,0 +1,1299 @@
+\section{Category I: Dense, Sparse, and Approximate Long-Context Attention}
+
+This family changes the token-interaction graph after information has already been
+materialized as one sequence.  It is therefore the cleanest ``all evidence local'' control
+for PRA: selection is either absent or encoded in the attention mask, object identity is
+reduced to position, and no cross-request materialization is implied.
+
+\subsection{Dense attention and positional extension}
+
+\textbf{Motivation and mechanism.} Dense causal attention is the least structured but
+most general access rule: every position can read every earlier position.  RoPE scaling,
+position interpolation, and long-context continued pretraining extend the usable position
+range without changing this graph.  For $T$ tokens,
+\begin{equation}
+A=\operatorname{softmax}((QK^\top+M_{\rm causal})/\sqrt{d_h})V,
+\qquad \text{time }O(T^2d),\;\text{attention storage }O(T^2).
+\end{equation}
+The important teaching point is that positional extrapolation and attention efficiency are
+different problems.  A model may accept a long index while still allocating quadratic
+work, or execute efficiently while failing to use distant positions.
+
+\begin{lstlisting}[caption={Dense causal attention; PyTorch uses optimized kernels when possible}]
+def dense_causal(q, k, v):              # [B,H,T,D]
+    return F.scaled_dot_product_attention(q, k, v, is_causal=True)
+\end{lstlisting}
+\methodflow{all source tokens}{tokenize eagerly}{dense causal graph}{layer-by-layer KV}{decoder output}{localgray}
+
+\textbf{Evidence, failure modes, and lineage.} Standard language modeling and long-context
+adaptations use perplexity, long-document QA, retrieval probes, and throughput/memory
+sweeps.  Dense attention is a strong baseline when sources are short or densely relevant,
+and modern fused kernels make it unexpectedly competitive at moderate lengths.  Its
+failures include quadratic cost, distraction, positional degradation, and lack of stable
+object identity or reuse beyond exact prefixes.  Needle tests diagnose reachability but do
+not establish synthesis or citation behavior.
+
+\textbf{Relation and comparison to PRA.} Dense context performs eager materialization;
+PRA advertises a potentially larger logical context and materializes selected objects.
+Compare them on the same source corpus under (i) equal visible-plus-retrieved tokens,
+(ii) equal FLOPs, (iii) equal peak KV bytes, and (iv) equal synchronized latency.  Sweep
+evidence density and object reuse.  Dense attention should be expected to win when most
+tokens matter once; PRA's hypothesis is strongest when few named objects serve many
+queries.  The all-content-local condition is also PRA's transport upper control.
+
+\subsection{Longformer}
+
+\textbf{Motivation and mechanism.} Longformer observes that document dependencies are
+mostly local but a few task positions need global connectivity.  A token attends within a
+window and, optionally, to a set $\mathcal G$ of global positions
+\citep{beltagy2020longformer}:
+\begin{equation}
+\mathcal N(i)=\{j:|i-j|\leq w/2\}\cup\mathcal G,
+\qquad O(Tw+T|\mathcal G|).
+\end{equation}
+Local layers propagate information gradually; global tokens create short paths across the
+document and can be task-selected (for example, question tokens in QA).  Unlike truncation,
+the model retains an explicit sparse graph over the entire input.
+
+\begin{lstlisting}[caption={Educational Longformer mask; production kernels avoid materializing $T^2$}]
+def longformer_mask(T, window, global_pos, device):
+    i = torch.arange(T, device=device)
+    local = (i[:, None] - i[None, :]).abs() <= window // 2
+    g = torch.zeros(T, dtype=torch.bool, device=device)
+    g[global_pos] = True
+    return local | g[:, None] | g[None, :]
+\end{lstlisting}
+\methodflow{long token sequence}{sliding window}{task global tokens}{sparse self-attention}{document state}{localgray}
+
+\textbf{Evidence and paper trail.} The original paper studies character language modeling,
+long-document classification, and QA; its encoder-decoder continuation LED applies the
+pattern to long-input generation.  Comparisons include RoBERTa-style dense baselines and
+task-specific long-document systems, using bits-per-character, accuracy/F1, and generation
+metrics.  Longformer became a template for domain adaptations and local/global attention.
+Its main failure is structural: useful long-range routes must be known through the global
+mask or emerge through multiple local hops.  Fixed windows can split tables, citations,
+or cross-section evidence, and global positions can become a bottleneck.
+
+\textbf{PRA relation and matched experiment.} Longformer makes relevance a sparse edge
+decision over already materialized tokens; PRA makes it an object-admission decision
+before latent transport.  Give both the same documents and vary evidence sparsity,
+distance, and whether section boundaries are known.  Match the number of attended key
+positions: Longformer local/global edges versus PRA top-$k$ object tokens.  Add shuffled
+global markers and shuffled URI content.  This separates sensitivity to graph placement
+from sensitivity to object semantics.  A hybrid can use Longformer locally inside a large
+resolved object and PRA between objects.
+
+\subsection{BigBird}
+
+\textbf{Motivation and mechanism.} BigBird combines window, random, and global edges so
+that each token has bounded degree while the graph mixes rapidly
+\citep{zaheer2020bigbird}:
+\begin{equation}
+\mathcal N(i)=\mathcal N_{\rm window}(i)\cup
+\mathcal N_{\rm random}(i)\cup\mathcal G.
+\end{equation}
+The random component supplies shortcuts without content-dependent routing; global tokens
+connect task anchors to all positions.  Under the paper's graph assumptions this pattern
+retains strong expressivity results while reducing sequence complexity to linear in $T$
+for fixed block sizes.
+
+\begin{lstlisting}[caption={Block-level BigBird adjacency sketch}]
+def bigbird_blocks(n_blocks, radius, random_k, global_blocks=(0,)):
+    edges = []
+    for i in range(n_blocks):
+        local = range(max(0, i-radius), min(n_blocks, i+radius+1))
+        random = torch.randperm(n_blocks)[:random_k].tolist()
+        edges.append(sorted(set(local) | set(random) | set(global_blocks)))
+    return edges
+\end{lstlisting}
+\methodflow{blocked sequence}{local + random edges}{global task blocks}{sparse attention}{mixed document state}{localgray}
+
+\textbf{Evidence, ablations, and limitations.} BigBird evaluates natural-language QA and
+summarization as well as genomic sequences, comparing dense BERT/RoBERTa-style models and
+other efficient Transformers with task accuracy/F1, ROUGE, and sequence-scale behavior.
+The meaningful ablation is the contribution of local, random, and global edges.  Random
+connectivity is cheap and robust on average but can miss a particular necessary route;
+global tokens require a placement rule, and sparse kernels do not automatically make an
+otherwise identical pretrained model work at new lengths.
+
+\textbf{PRA relation and experiment.} BigBird constructs content-independent shortcuts
+inside one anonymous token graph.  PRA constructs content-dependent edges to explicitly
+named external objects.  Compare a matched sparse-edge budget in which random/global block
+edges and top-$k$ URI objects expose the same number of keys.  Sweep distractor blocks,
+wrong handles, evidence distance, and repeated queries.  Report cold and warm materialization
+for PRA; otherwise BigBird is unfairly charged only for attention while PRA hides encoding.
+An instructive hybrid replaces random inter-document edges with URI-restricted routing and
+retains BigBird within each selected document.
+
+\subsection{Performer}
+
+\textbf{Motivation and mechanism.} Performer approximates softmax attention with positive
+random features (FAVOR+), exchanging a $T\times T$ matrix for associative summaries
+\citep{choromanski2021performer}.  If
+$\exp(q^\top k)\approx\phi(q)^\top\phi(k)$, then
+\begin{equation}
+\operatorname{Attn}(Q,K,V)\approx
+D^{-1}\phi(Q)\bigl(\phi(K)^\top V\bigr),
+\quad D=\operatorname{diag}(\phi(Q)(\phi(K)^\top\mathbf1)).
+\end{equation}
+For fixed feature count, time and memory are linear in sequence length.  Causal execution
+uses prefix sums of $\phi(k_i)v_i^\top$ and $\phi(k_i)$.
+
+\begin{lstlisting}[caption={Causal kernel-attention recurrence; phi must be a positive feature map}]
+def causal_linear_attention(qf, kf, v, eps=1e-6):
+    kv = torch.einsum('...tm,...td->...tmd', kf, v).cumsum(dim=-3)
+    kz = kf.cumsum(dim=-2)
+    num = torch.einsum('...tm,...tmd->...td', qf, kv)
+    den = torch.einsum('...tm,...tm->...t', qf, kz).unsqueeze(-1)
+    return num / den.clamp_min(eps)
+\end{lstlisting}
+\methodflow{all token Q/K/V}{random feature map}{associative KV statistic}{normalized query}{approximate output}{localgray}
+
+\textbf{Evidence, failure modes, and lineage.} Performer reports image, text, and protein
+experiments and measures both downstream quality and approximation/efficiency.  Its paper
+trail lies in kernelized linear attention and random-feature estimation.  Feature variance,
+finite-precision instability, causal implementation details, and inability to recover a
+specific token after destructive aggregation are central failure modes.  Linear cost does
+not mean selective relevance: every token contributes to the statistic.
+
+\textbf{PRA relation and comparison.} Performer approximates computation after eager
+materialization; PRA changes which objects enter computation.  The two are complementary:
+use linear attention for the local stream or within a resolved memory.  A fair experiment
+crosses exact versus FAVOR+ local attention with all-local versus PRA access, reports
+approximation error and exact-value recall, and sweeps random-feature count under fixed
+FLOPs.  PRA corruption tests remain necessary because a low approximation error says
+nothing about whether the correct reference was selected.
+
+\section{Category II: Recurrence and Compression}
+
+Recurrence changes the temporal boundary: earlier segments leave behind state rather than
+remaining as raw local tokens.  The central distinction from PRA is \emph{write-time
+retention versus read-time dereferencing}.  Recurrent systems decide what history survives
+as it passes; PRA assumes an addressable backing object can be fetched later.
+
+\subsection{Transformer-XL}
+
+\textbf{Motivation and mechanism.} Transformer-XL addresses fixed context and segment
+fragmentation by carrying the previous segment's hidden states forward as stop-gradient
+memory and using relative positional attention \citep{dai2019transformerxl}:
+\begin{equation}
+\widetilde H_{s}^{(\ell-1)}=[\operatorname{SG}(H_{s-1}^{(\ell-1)});H_s^{(\ell-1)}],
+\quad Q=H_sW_Q,\quad K,V=\widetilde H_sW_{K,V}.
+\end{equation}
+Only current-segment states receive gradients through the recurrent boundary.  The memory
+extends effective context without backpropagating across the entire history; relative
+positions prevent a cached state from being confused with a current absolute position.
+
+\begin{lstlisting}[caption={Segment recurrence; detach is the defining optimization boundary}]
+def transformer_xl_segment(layer, x, old_memory, memory_len):
+    kv_source = torch.cat([old_memory.detach(), x], dim=1)
+    y = layer(query=x, key=kv_source, value=kv_source, relative_positions=True)
+    new_memory = torch.cat([old_memory, x], dim=1)[:, -memory_len:].detach()
+    return y, new_memory
+\end{lstlisting}
+\methodflow{current segment}{append cached history}{relative-position attention}{truncate memory}{next segment}{memorygreen}
+
+\textbf{Evidence and limitations.} The paper evaluates WikiText-103, One Billion Word,
+Penn Treebank, enwiki8, and text8 using perplexity or bits-per-character, alongside recurrent
+and Transformer language-model baselines.  It reports state-of-the-art results at the time
+and much faster evaluation than recomputing overlapping windows.  Ablations isolate
+recurrence and relative positions.  Memory is chronological, anonymous, fixed-length, and
+not revisable: evicted information is gone, irrelevant history consumes capacity, and a
+detached boundary limits credit assignment.
+
+\textbf{PRA relation and direct test.} Transformer-XL answers ``what recent state should
+remain?''; PRA answers ``which named remote object should be loaded now?''  Compare them on
+streams with either recency-correlated evidence or remote named evidence.  Match resident
+KV bytes and total encoding FLOPs, sweep distance beyond the recurrent window, and include
+repeated access to the same old object.  A hybrid keeps Transformer-XL memory for recent
+discourse while letting a URI handle reload evicted or non-contiguous source material.
+
+\subsection{Compressive Transformer}
+
+\textbf{Motivation and mechanism.} Compressive Transformer extends Transformer-XL with a
+second, lower-resolution memory.  States evicted from fine memory $M^m$ are transformed by
+a compressor $C$ before entering compressed memory $M^c$ \citep{rae2020compressive}:
+\begin{equation}
+M^c_s=\operatorname{tail}_{n_c}([M^c_{s-1};C(E_{s-1})]),
+\end{equation}
+where $E_{s-1}$ denotes the fine states being evicted.  Attention reads both stores.  Pooling,
+convolution, and usage-based compression trade temporal resolution for longer reach; auxiliary
+reconstruction losses encourage retained predictive information.
+
+\begin{lstlisting}[caption={Two-tier chronological memory update}]
+def update_memory(fine, compressed, new_states, fine_cap, comp_cap, compress):
+    merged = torch.cat([fine, new_states], dim=1)
+    evicted, fine = merged[:, :-fine_cap], merged[:, -fine_cap:]
+    compressed = torch.cat([compressed, compress(evicted)], dim=1)
+    return fine.detach(), compressed[:, -comp_cap:].detach()
+\end{lstlisting}
+\methodflow{new segment}{fine recurrent memory}{compress evictions}{coarse long memory}{dual-memory attention}{memorygreen}
+
+\textbf{Evidence and failure modes.} The original work studies long-range language modeling,
+compares compression functions and auxiliary objectives, and uses perplexity plus attention
+and memory diagnostics.  The method's honest trade-off is rate versus fidelity.  Pooling can
+erase identifiers, superposition can merge distractors, learned compression can optimize
+average prediction while losing rare facts, and chronological stores cannot directly
+invalidate a stale semantic object.
+
+\textbf{PRA relation and experiment.} PRA ordinarily reloads an original or cached object;
+Compressive Transformer obligatorily summarizes passing history.  A useful hybrid attaches
+several materializations to one URI: metadata, summary, compressed latent, and full KV, with
+uncertainty-driven escalation.  Compare fine-only recurrence, dual-memory compression,
+summary-only PRA, and full-object PRA under equal resident bytes.  Sweep compression ratio,
+rare exact facts, semantic synthesis, and stale-object replacement.  Report whether escalation
+recovers failures and charge full-object encoding in cold-cache trials.
+
+\subsection{Recurrent Memory Transformer (RMT)}
+
+\textbf{Motivation and mechanism.} RMT inserts a small set of learned memory tokens into
+every segment.  Their output states become the memory-token inputs to the next segment,
+creating an end-to-end learned bottleneck \citep{bulatov2022rmt}.  If $m_s$ are incoming
+memory tokens and $x_s$ current tokens,
+\begin{equation}
+[\hat m_s,H_s,m_{s+1}]=\operatorname{Transformer}([m_s,x_s,m_s^{\rm write}]).
+\end{equation}
+The exact placement varies by implementation, but the conceptual operation is stable:
+read old slots, process the segment, and write a fixed number of new slots.
+
+\begin{lstlisting}[caption={RMT segment interface}]
+def rmt_step(model, tokens, memory, write_tokens):
+    sequence = torch.cat([memory, tokens, write_tokens], dim=1)
+    hidden = model(sequence)
+    next_memory = hidden[:, -write_tokens.size(1):]
+    token_hidden = hidden[:, memory.size(1):-write_tokens.size(1)]
+    return token_hidden, next_memory
+\end{lstlisting}
+\methodflow{memory tokens + segment}{full local processing}{write memory slots}{carry fixed bottleneck}{next segment}{memorygreen}
+
+\textbf{Evidence, lineage, and failures.} RMT is evaluated on language modeling and
+algorithmic/long-sequence tasks; later work demonstrates extrapolation on very long synthetic
+problems.  Baselines include finite-window Transformers and recurrent-memory variants, with
+loss, task accuracy, and length extrapolation as metrics.  The learned bottleneck is simple
+and differentiable, but it must anticipate future needs at write time.  Rare details can be
+overwritten, slot semantics lack stable provenance, and backpropagation depth or memory
+curricula strongly affect training.
+
+\textbf{PRA relation and experiment.} RMT learns \emph{what to remember while reading};
+PRA learns \emph{what to fetch while answering}.  Compare both on matched memory bytes under
+two datasets: one where future questions are predictable during ingestion and one where they
+are not.  Substitute or reset RMT slots and shuffle PRA references to measure content use.
+A hybrid stores an RMT summary in the URI metadata tier but preserves the source object for
+read-time expansion when the summary is insufficient.
+
+\subsection{Infini-attention}
+
+\textbf{Motivation and mechanism.} Infini-attention combines masked local attention with a
+bounded associative memory inside each block \citep{munkhdalai2024infini}.  With positive
+feature map $\phi$, a segment updates
+\begin{equation}
+M_s=M_{s-1}+\phi(K_s)^\top V_s,\qquad
+z_s=z_{s-1}+\sum_i\phi(k_{s,i}),
+\end{equation}
+and reads $\phi(Q_s)M_{s-1}/(\phi(Q_s)z_{s-1})$.  A learned gate mixes this compressive
+read with dot-product attention over the current segment.  Memory size is independent of
+total processed length, which makes streaming execution possible.
+
+\begin{lstlisting}[caption={Associative-memory read and write}]
+def infini(qf, kf, v, M, z, eps=1e-6):
+    read = torch.einsum('btd,bdh->bth', qf, M)
+    denom = torch.einsum('btd,bd->bt', qf, z).unsqueeze(-1)
+    read = read / denom.clamp_min(eps)
+    M = M + torch.einsum('btd,bth->bdh', kf, v)
+    z = z + kf.sum(dim=1)
+    return read, M.detach(), z.detach()
+\end{lstlisting}
+\methodflow{local segment}{kernel feature map}{bounded associative state}{gated local + memory read}{stream output}{memorygreen}
+
+\textbf{Evidence and limitations.} The paper evaluates long-context language modeling,
+one-million-token passkey retrieval, and 500K-token book summarization with 1B- and 8B-scale
+models.  Metrics include perplexity, retrieval accuracy, summarization quality, and memory
+scaling.  Bounded state is the strength and the limitation: many keys superpose, collisions
+and normalization can obscure exact facts, and there is no explicit object version,
+authorization boundary, or selective invalidation.
+
+\textbf{PRA relation and direct comparison.} Infini-attention offers constant-size lossy
+history; PRA offers selective identity with potentially unbounded backing storage and
+bounded resident working set.  Match resident bytes and local window, then sweep number of
+objects, repeated keys, exact-value queries, semantic summaries, and stale replacements.
+PRA must include resolution/encoding latency.  A hybrid maintains cheap Infini state for
+the stream while a collision, low-confidence query, or explicit handle faults in a named
+PRA object.
+
+\section{Category III: Differentiable and Episodic External Memory}
+
+These methods move state outside the ordinary recurrent or token representation while
+keeping access near neural computation.  They introduce two questions that recur in PRA:
+who writes the memory, and whether an address denotes a stable object or only a similar
+vector.
+
+\subsection{Memory Networks}
+
+\textbf{Motivation and mechanism.} Memory Networks separate input encoding, memory
+storage, addressing, and response production \citep{weston2015memory}.  Facts become slots
+$m_i$; a query $q$ produces a content read
+\begin{equation}
+p_i=\operatorname{softmax}_i(q^\top m_i),\qquad
+o=\sum_i p_i c_i,\qquad q' = q+o.
+\end{equation}
+Repeating the read implements multi-hop reasoning.  End-to-end variants learn embeddings
+from question-answer supervision; earlier variants used stronger supporting-fact labels.
+
+\begin{lstlisting}[caption={One differentiable memory hop}]
+def memory_hop(query, address_slots, content_slots):
+    weights = torch.softmax(query @ address_slots.transpose(-1, -2), dim=-1)
+    read = weights @ content_slots
+    return query + read, weights
+\end{lstlisting}
+\methodflow{query + stored facts}{content scores}{soft slot read}{repeat hops}{answer head}{memorygreen}
+
+\textbf{Evidence, lineage, and failure modes.} The paper trail runs from supervised Memory
+Networks through end-to-end memory networks and key-value memory networks.  Evaluations
+include synthetic bAbI reasoning and question answering, using answer accuracy and
+supporting-fact retrieval.  Multiple hops make compositional access inspectable, but soft
+attention across a large flat store scales poorly; embeddings can exploit lexical shortcuts;
+and overwrite, provenance, and slot lifecycle are under-specified for production knowledge.
+
+\textbf{PRA relation and experiment.} Memory Networks establish the learned-read primitive
+that PRA reuses, but PRA delegates object writes and identity to a resolver/cache.  Compare
+flat learned slots with URI candidate restriction followed by the same within-candidate
+attention.  Hold stored facts and read hops fixed; sweep memory size, paraphrase, distractors,
+and wrong-object substitutions.  Report supporting-fact recall and counterfactual answer
+change, not attention maps alone.  The expected trade-off is open semantic discovery versus
+cheap exact restriction when a handle is available.
+
+\subsection{Differentiable Neural Computer (DNC)}
+
+\textbf{Motivation and mechanism.} The DNC couples a neural controller to a read/write
+matrix with content lookup, temporal links, usage-based allocation, and differentiable
+erase/add operations \citep{graves2016dnc}.  A write updates row $i$ as
+\begin{equation}
+M_t(i)=M_{t-1}(i)\odot(1-w_t^w(i)e_t)+w_t^w(i)a_t,
+\end{equation}
+while read weights mix content addressing with forward/backward traversal of a learned
+temporal linkage.  It therefore supports both associative recall and ordered walks.
+
+\begin{lstlisting}[caption={Core DNC erase/add write; allocation and link updates omitted}]
+def dnc_write(memory, write_weight, erase, add):
+    w = write_weight.unsqueeze(-1)
+    return memory * (1 - w * erase.unsqueeze(1)) + w * add.unsqueeze(1)
+\end{lstlisting}
+\methodflow{controller state}{allocate/content address}{erase + write matrix}{content/link read heads}{controller output}{memorygreen}
+
+\textbf{Evidence and limitations.} DNC experiments emphasize synthetic graph traversal,
+question answering, and algorithmic tasks, comparing recurrent controllers and earlier
+memory systems with exact task accuracy or sequence error.  The machine can learn elegant
+algorithm-like behavior, yet many interacting gates make training brittle.  Soft access
+is expensive at large slot counts, learned addresses lack stable external meaning, and
+catastrophic write errors can corrupt later computation.
+
+\textbf{PRA relation and experiment.} DNC learns both memory management and access;
+PRA externalizes durable writes, versions, and permissions, narrowing learning to selection
+and fusion.  Compare DNC, read-only DNC, and PRA on a graph task whose nodes have stable
+IDs plus a variant with IDs hidden.  Match active memory bytes and controller parameters.
+Test node substitution, temporal traversal, stale updates, and multi-tenant isolation.
+A hybrid can use a small DNC as transient scratch space while PRA supplies immutable,
+auditable backing objects.
+
+\subsection{Memformer}
+
+\textbf{Motivation and mechanism.} Memformer carries a fixed number of dynamic memory
+slots across segments and introduces memory replay backpropagation so training need not
+retain every old activation \citep{wu2020memformer}.  A segment attends to slots and local
+tokens, then a write operation updates the slots:
+\begin{equation}
+S_{t+1}=\operatorname{Write}(S_t,H_t),\qquad |S_t|=N_s \text{ constant}.
+\end{equation}
+Replay reconstructs selected memory states during backward computation, trading extra
+compute for lower activation storage.
+
+\begin{lstlisting}[caption={Simplified fixed-slot segment update}]
+def memformer_step(block, tokens, slots):
+    joint = torch.cat([slots, tokens], dim=1)
+    hidden = block(joint)
+    new_slots = hidden[:, :slots.size(1)]
+    token_hidden = hidden[:, slots.size(1):]
+    return token_hidden, new_slots
+\end{lstlisting}
+\methodflow{fixed slots + segment}{joint attention}{update slots}{replay for gradients}{next segment}{memorygreen}
+
+\textbf{Evidence, ablations, and failures.} The paper evaluates sequence modeling under
+long inputs, reporting task quality, training memory, and speed against Transformer and
+memory-augmented baselines.  Slot count, recurrence, and replay are key ablations.  Constant
+space is attractive, but slots are lossy summaries without stable semantic names; useful
+facts may be overwritten; replay adds complexity; and a slot cannot be independently
+revoked or refreshed when its source changes.
+
+\textbf{PRA relation and experiment.} Memformer provides a learned working set; PRA adds a
+named backing store and explicit faults.  Use identical segment encoders and match resident
+slots/KV bytes.  Ask questions whose evidence is either predictable during ingestion or
+selected only after ingestion, and sweep time-to-query.  Compare slot reset/substitution
+with PRA disabled/shuffled controls.  A tiered design stores Memformer summaries as cheap
+URI metadata and faults in full layer-specific memory when summary confidence is low.
+
+\subsection{Memorizing Transformer}
+
+\textbf{Motivation and mechanism.} Memorizing Transformer records past key/value pairs in
+a large non-differentiable episodic database and retrieves nearest keys for current queries
+\citep{wu2022memorizing}.  For query $q$,
+\begin{equation}
+\mathcal I=\operatorname{kNN}(q,\{k_i\}),\qquad
+o_{\rm mem}=\operatorname{softmax}(qK_{\mathcal I}^\top)V_{\mathcal I},
+\end{equation}
+which is gated with ordinary attention.  The store can span many batches and does not need
+gradients through nearest-neighbor selection.
+
+\begin{lstlisting}[caption={Episodic KV retrieval; an ANN index replaces the dense distance}]
+def memorizing_read(q, key_db, value_db, k):
+    dist = torch.cdist(q.float(), key_db.float())
+    idx = dist.topk(k, largest=False).indices
+    keys, values = key_db[idx], value_db[idx]
+    score = torch.einsum('...d,...kd->...k', q, keys)
+    return torch.einsum('...k,...kd->...d', score.softmax(-1), values)
+\end{lstlisting}
+\methodflow{current hidden query}{ANN over episodic keys}{top-$k$ past KV}{gated memory attention}{next-token state}{memorygreen}
+
+\textbf{Evidence and failure modes.} Experiments span language-model datasets and model
+scales up to billions of parameters, measuring perplexity versus memory size and retrieval
+configuration.  The method demonstrates that latent episodic retrieval can improve a
+Transformer without differentiating through a huge store.  Its risks are near-duplicate
+memorization, index cost, stale states after model updates, cross-example contamination,
+and weak source provenance.  Similarity can retrieve the right surface continuation while
+failing compositional evidence use.
+
+\textbf{PRA relation and experiment.} This is a close latent-memory precursor.  The main
+difference is open kNN over anonymous stream states versus two-stage object identity and
+within-object attention.  Compare (a) global episodic kNN, (b) exact URI restriction,
+(c) semantic object routing then token kNN, and (d) oracle object restriction.  Hold total
+indexed KVs and returned keys fixed.  Include near-duplicate continuation, multi-object
+composition, wrong URI, and stale-model cache conditions, and report source-level recall
+alongside perplexity.
+
+\section{Category IV: Retrieval-Augmented Pretraining and Generation}
+
+Retrieval augmentation places a corpus outside model parameters.  The decisive axes are
+whether selection is supervised or latent, whether retrieved material enters as text or
+hidden state, and whether retrieval occurs once, per chunk, or per generated token.
+
+\subsection{kNN-LM}
+
+\textbf{Motivation and mechanism.} kNN-LM stores training-context representations paired
+with observed next tokens.  At inference it builds a distance-weighted neighbor distribution
+and interpolates it with the parametric language model \citep{khandelwal2020knnlm}:
+\begin{align}
+p_{\rm kNN}(y\mid q)&\propto\sum_{i:y_i=y}
+\exp(-d(q,k_i)/\tau),\\
+p(y\mid q)&=\lambda p_{\rm kNN}(y\mid q)+(1-\lambda)p_{\rm LM}(y\mid q).
+\end{align}
+No retrieved passage is read compositionally; memory changes the final token distribution.
+
+\begin{lstlisting}[caption={kNN-LM probability interpolation}]
+def knn_lm(log_p_lm, q, keys, next_tokens, k, vocab, lam, tau):
+    d, idx = torch.cdist(q, keys).topk(k, largest=False)
+    weights = torch.softmax(-d / tau, dim=-1)
+    p_knn = torch.zeros(*q.shape[:-1], vocab, device=q.device)
+    p_knn.scatter_add_(-1, next_tokens[idx], weights)
+    return torch.logaddexp(log_p_lm + math.log1p(-lam),
+                           p_knn.clamp_min(1e-12).log() + math.log(lam))
+\end{lstlisting}
+\methodflow{LM context vector}{kNN datastore}{neighbor token labels}{distribution interpolation}{next token}{retrievalblue}
+
+\textbf{Evidence, lineage, and limitations.} The original work reports perplexity on
+WikiText-103 and domain-adaptation settings, comparing the base LM and cache/retrieval
+baselines.  Improvements without parameter updates motivate later datastore adaptation,
+pruning, and efficient kNN work.  Storage and ANN latency can be large; interpolation needs
+calibration; privacy risks follow from training-example memorization; and the mechanism is
+strongest for continuation similarity rather than multi-fact reasoning.
+
+\textbf{PRA relation and comparison.} kNN-LM fuses at the output distribution; PRA fuses
+rich memory within hidden computation.  Compare them with the same corpus encoder and
+retrieval budget on near-duplicate prediction versus questions requiring composition.
+Report perplexity, calibration, exact-match, datastore bytes, and latency.  Add shuffled
+token labels for kNN-LM and shuffled objects for PRA.  If PRA only matches kNN-LM on
+near-copy tasks at higher cost, its richer transport is not justified.
+
+\subsection{REALM}
+
+\textbf{Motivation and mechanism.} REALM jointly pretrains a dense retriever and a masked
+language model over an external corpus \citep{guu2020realm}.  With latent document $z$,
+\begin{equation}
+p(y\mid x)=\sum_{z\in\operatorname{TopK}(x)}p_\eta(z\mid x)
+p_\theta(y\mid x,z),
+\end{equation}
+where approximate maximum inner-product search supplies candidates and the language loss
+provides a learning signal to the retriever.  Retrieved text is encoded jointly with the
+masked input, so the knowledge store can change without retraining all model parameters.
+
+\begin{lstlisting}[caption={REALM-style latent-document marginalization}]
+scores, doc_ids = retriever.topk(query_encoder(masked_input), k)
+log_p_doc = scores.log_softmax(-1)
+log_p_y = torch.stack([reader(masked_input, corpus[i]) for i in doc_ids], -1)
+loss = -torch.logsumexp(log_p_doc + log_p_y, dim=-1).mean()
+\end{lstlisting}
+\methodflow{masked text query}{dense corpus retrieval}{encode top documents}{latent marginalization}{token/QA prediction}{retrievalblue}
+
+\textbf{Evidence and failure modes.} REALM evaluates open-domain QA and knowledge-intensive
+pretraining, comparing retrieval-free language models and retrieval pipelines with exact
+match and retrieval diagnostics.  Its important legacy is end-to-end retriever learning
+from the task objective.  Index refresh is expensive, top-$k$ truncation biases the latent
+sum, corpus snapshots become stale, and retrieval may learn shortcuts when answers are
+predictable locally.
+
+\textbf{PRA relation and experiment.} PRA should borrow REALM's trainable selection rather
+than rely on fixed summary cosine scores.  REALM materializes retrieved text in an encoder;
+PRA can reuse per-object layer KVs and explicit handles.  Cross oracle/learned retrieval
+with text/cross-attention transport on the same corpus.  Match retrieved tokens and index
+queries; evaluate locally sufficient and reference-required subsets, shuffled documents,
+random handles, warm caches, and index refresh after source updates.
+
+\subsection{Retrieval-Augmented Generation (RAG)}
+
+\textbf{Motivation and mechanism.} RAG combines a dense retriever with a seq2seq generator.
+RAG-Sequence holds a document mixture for a whole output; RAG-Token permits the latent
+document to vary by token \citep{lewis2020rag}:
+\begin{equation}
+p(y\mid x)=\prod_t\sum_{z\in\operatorname{TopK}(x)}
+p_\eta(z\mid x)p_\theta(y_t\mid x,z,y_{<t}).
+\end{equation}
+In common systems practice, retrieved passages are concatenated into a prompt rather than
+exactly marginalized, but the selection/materialization distinction is the same.
+
+\begin{lstlisting}[caption={Minimal retrieve-then-read RAG pipeline}]
+def rag_answer(question, retriever, generator, k):
+    hits = retriever.search(question, k=k)
+    context = "\n\n".join(f"[{h.id}] {h.text}" for h in hits)
+    return generator(f"Sources:\n{context}\nQuestion: {question}\nAnswer:")
+\end{lstlisting}
+\methodflow{question}{dense/sparse top-$k$}{passage text}{reader or prompt fusion}{answer + citations}{retrievalblue}
+
+\textbf{Evidence, descendants, and failures.} RAG evaluates Natural Questions, TriviaQA,
+WebQuestions, CuratedTREC, MS MARCO-style knowledge tasks, and generation, comparing DPR,
+closed-book, and retrieval-augmented baselines with exact match and generation/diversity
+metrics.  It seeded extensive work on reranking, query rewriting, corrective and agentic
+RAG.  Failure modes include chunk boundary errors, retrieval miss, distractor sensitivity,
+prompt-token cost, citation mismatch, and stale indexes.  A fluent answer does not prove
+that retrieved evidence caused the output.
+
+\textbf{PRA relation and direct comparison.} Both keep knowledge external; they differ in
+timing and materialization.  RAG usually chooses text before generation, while PRA can
+expose named latent objects by layer or step.  Use one corpus, retriever, generator backbone,
+and evidence budget.  Compare prompt text, encoder cross-attention, cached object KVs, and
+iterative retrieval.  Report task quality, citation precision/recall, valid/disabled/shuffled
+effects, cold/warm latency, tokenization/encoding cost, and behavior as queries over the same
+documents repeat.
+
+\subsection{RETRO}
+
+\textbf{Motivation and mechanism.} RETRO retrieves neighbors for fixed-size chunks from a
+massive token database, encodes each neighbor and its continuation, and interleaves chunked
+cross-attention in the decoder \citep{borgeaud2022retro}.  For input chunk $x_c$ and
+neighbors $N_c$,
+\begin{equation}
+N_c=\operatorname{kNN}(E(x_c),\mathcal D),\qquad
+H_c'=H_c+\operatorname{CrossAttn}(H_c,\operatorname{Enc}(N_c)).
+\end{equation}
+Retrieval happens at chunk boundaries, bringing non-parametric data closer to layer
+computation than prompt-only RAG.
+
+\begin{lstlisting}[caption={RETRO-style chunk retrieval and cross-attention}]
+for chunk in split(tokens, chunk_len):
+    ids = index.search(chunk_encoder(chunk), k=neighbors)
+    neighbor_states = encoder(corpus.with_continuations(ids))
+    h = decoder_chunk(chunk, retrieved=neighbor_states)  # selected layers cross-attend
+\end{lstlisting}
+\methodflow{input chunk}{nearest corpus chunks}{encode neighbor + continuation}{chunked cross-attention}{decoder layers}{retrievalblue}
+
+\textbf{Evidence, ablations, and limitations.} RETRO trains models with a database on the
+order of trillions of tokens and compares perplexity and downstream behavior against larger
+parametric Transformers.  Retrieval neighbors, database scale, cross-attention placement,
+and corpus overlap are central ablations.  Results support non-parametric scaling, but the
+system inherits corpus/index cost, possible benchmark leakage, chunk-boundary mismatch,
+and retrieval latency; source identity is incidental rather than an explicit user-facing
+contract.
+
+\textbf{PRA relation and experiment.} RETRO is one of PRA's closest architectural ancestors:
+both transport external representations through cross-attention.  PRA adds explicit handles,
+object boundaries, layer-specific reusable cache identity, progressive admission, and causal
+reference controls.  Under one corpus and backbone, compare no handle, noisy handle, exact
+handle, and global semantic retrieval; keep returned tokens and PRA layers fixed.  Measure
+selection recall, quality, per-stage latency, cache reuse, source corruption, and multi-object
+composition.  Oracle selection isolates whether PRA's transport works before router claims.
+
+\section{Category V: Attention-Level Retrieval and KV Runtime Management}
+
+This category is easy to conflate because all methods manipulate latent states.  Unlimiformer
+performs semantic token selection; PagedAttention virtualizes physical allocation; the four
+KV-retention methods decide which already-produced stream tokens remain resident.  Only the
+first is a retriever in the usual information-access sense.
+
+\subsection{Unlimiformer}
+
+\textbf{Motivation and mechanism.} Unlimiformer lets a pretrained encoder-decoder process
+arbitrarily segmented input, indexes all encoder hidden states, and replaces dense decoder
+cross-attention with exact attention over MIPS-selected states \citep{bertsch2023unlimiformer}.
+Because the cross-attention score is an inner product, each decoder query can retrieve its
+largest candidate logits without first forming the full query--key matrix:
+\begin{equation}
+\mathcal I(q)=\operatorname{TopK}_i(q^\top k_i),\qquad
+o=\operatorname{softmax}(qK_{\mathcal I}^\top)V_{\mathcal I}.
+\end{equation}
+
+\begin{lstlisting}[caption={Token-state MIPS followed by exact attention}]
+def unlimiformer_cross_attention(q, index, value_store, k):
+    scores, ids = index.search(q, k)
+    values = value_store[ids]
+    return torch.einsum('...k,...kd->...d', scores.softmax(-1), values)
+\end{lstlisting}
+\methodflow{segmented long input}{index encoder states}{per-query top-$k$ MIPS}{exact sparse cross-attention}{decoder output}{retrievalblue}
+
+\textbf{Evidence and limitations.} The paper evaluates long-input encoder-decoder tasks,
+especially summarization, against truncated, segmented, and long-context baselines using
+ROUGE and memory/length measures.  It also studies training-free wrapping and fine-tuning.
+Selection occurs at token granularity and can miss jointly useful low-ranked tokens; the
+index is tied to the current encoded input; ANN setup and query cost remain; and source
+provenance must be reconstructed from token offsets.
+
+\textbf{PRA relation and comparison.} Unlimiformer and PRA meet at sparse latent attention.
+Unlimiformer indexes all token states of the current long input, while PRA first selects
+named objects and may persist their per-layer KVs.  Compare full cross-attention,
+Unlimiformer token MIPS, PRA object routing plus dense within-object attention, and a
+hierarchical object-to-token cascade.  Match returned KVs, encoder FLOPs, and peak bytes;
+sweep object size, distractors, repeated queries, and object-level corruption.  The cascade
+tests whether explicit identity improves efficiency without sacrificing token precision.
+
+\subsection{PagedAttention}
+
+\textbf{Motivation and mechanism.} PagedAttention is a serving-memory design in vLLM, not
+a semantic attention rule.  It partitions a sequence's KV cache into fixed-size physical
+blocks addressed through a logical block table, reducing fragmentation and enabling
+copy-on-write sharing \citep{kwon2023vllm}.  For logical token position $t$,
+\begin{equation}
+b=\lfloor t/B\rfloor,\quad o=t\bmod B,\quad
+(K_t,V_t)=\operatorname{blockTable}[b][o].
+\end{equation}
+
+\begin{lstlisting}[caption={Logical-to-physical KV lookup}]
+def paged_lookup(logical_positions, block_table, blocks, block_size):
+    logical_block = logical_positions // block_size
+    offset = logical_positions % block_size
+    physical_block = block_table[logical_block]
+    return blocks[physical_block, offset]
+\end{lstlisting}
+\methodflow{logical sequence KV}{block table}{non-contiguous physical blocks}{paged attention kernel}{batched decoding}{localgray}
+
+\textbf{Evidence, systems lineage, and failures.} vLLM evaluates serving throughput,
+latency, memory utilization, and scheduling across model sizes and workloads against
+contemporary inference systems.  Block size, batching, sharing, and scheduling are systems
+variables rather than accuracy ablations.  Paging cannot decide which knowledge is useful;
+small blocks increase metadata, large blocks reintroduce internal fragmentation, and shared
+physical storage must preserve isolation and copy-on-write semantics.
+
+\textbf{PRA relation and experiment.} The designs compose: PRA supplies semantic object
+identity and PagedAttention supplies allocation.  Map an immutable $(u,v,\ell,m,p)$ object
+to reference-counted KV blocks and maintain per-sequence block tables/masks.  Compare
+contiguous and paged PRA caches under cold, warm, and authorized cross-request reuse.
+Measure bytes allocated, fragmentation, blocks shared, avoided encoding, time to first token,
+throughput, eviction, and a confidentiality test where another sequence's private cache
+must leave the target logits invariant.
+
+\subsection{StreamingLLM}
+
+\textbf{Motivation and mechanism.} StreamingLLM observes that autoregressive models often
+assign disproportionate attention to initial ``sink'' tokens even when those tokens are
+not semantically important.  Retaining a few initial KVs plus a rolling recent window
+allows stable streaming beyond the training context \citep{xiao2023streamingllm}:
+\begin{equation}
+\mathcal K_t=\{0,\ldots,s-1\}\cup\{t-w+1,\ldots,t\}.
+\end{equation}
+Middle-history KVs are evicted; no semantic retrieval or reconstruction is attempted.
+
+\begin{lstlisting}[caption={Attention-sink plus rolling-window retention}]
+def streaming_keep(length, sinks=4, window=1024):
+    first = torch.arange(min(sinks, length))
+    recent = torch.arange(max(sinks, length-window), length)
+    return torch.unique(torch.cat([first, recent]))
+\end{lstlisting}
+\methodflow{growing token stream}{keep sink tokens}{keep recent window}{evict middle KV}{stable streaming decode}{localgray}
+
+\textbf{Evidence and failure modes.} The paper tests long streaming language modeling and
+generation with LLaMA-style models, comparing sliding windows and cache baselines through
+perplexity and long-run behavior.  Sink tokens repair an attention-distribution pathology;
+they do not preserve arbitrary facts.  Middle-history details are irrecoverable, sink
+behavior depends on model training, and the method is not a solution for non-chronological
+external knowledge.
+
+\textbf{PRA relation and experiment.} StreamingLLM manages the local chronological cache;
+PRA retrieves named backing objects.  Combine them by keeping sinks/recent discourse locally
+and dereferencing remote evidence.  Under a fixed total KV budget, compare rolling window,
+sink+window, PRA, and the hybrid.  Sweep query distance, explicit handles, and whether lost
+facts are still present in the backing store.  Charge PRA faults and test shuffled content;
+test StreamingLLM with sink removal and exact middle-history probes.
+
+\subsection{\texorpdfstring{H$_2$O}{H2O}: Heavy-Hitter Oracle}
+
+\textbf{Motivation and mechanism.} H$_2$O treats KV eviction as a dynamic submodular
+selection problem.  It retains recent tokens and ``heavy hitters'' with large accumulated
+attention contribution \citep{zhang2023h2o}.  A simplified score is
+\begin{equation}
+I_i^{(t)}=I_i^{(t-1)}+\sum_h A_{h,t,i},\qquad
+\mathcal K_t=\operatorname{Recent}_r\cup\operatorname{TopK}_h(I^{(t)}).
+\end{equation}
+The policy reacts to observed decoder attention rather than using a static window.
+
+\begin{lstlisting}[caption={Educational heavy-hitter update}]
+def h2o_keep(importance, attn_to_past, recent_ids, heavy_budget):
+    importance[:attn_to_past.numel()] += attn_to_past.detach()
+    heavy = importance.topk(heavy_budget).indices
+    return torch.unique(torch.cat([heavy, recent_ids])), importance
+\end{lstlisting}
+\methodflow{past stream KV}{accumulate attention importance}{heavy + recent selection}{evict low-score KV}{memory-bounded decode}{localgray}
+
+\textbf{Evidence and limitations.} H$_2$O evaluates OPT, LLaMA, and GPT-NeoX across language
+and generation tasks, measuring quality preservation, cache size, throughput, and latency
+against inference systems and eviction baselines.  Its reported systems gains are conditional
+on model, hardware, batch, cache fraction, and implementation.  Accumulated attention is a
+lagging proxy, early errors are irreversible, low-attention setup facts can matter later,
+and raw attention mass is not causal importance.
+
+\textbf{PRA relation and experiment.} H$_2$O decides which states from one active stream
+remain; PRA decides which external objects enter.  Use H$_2$O within each selected PRA object
+or across the resident object working set, but preserve URI/version metadata for every KV.
+Compare full object KVs, H$_2$O-compressed objects, object-level eviction, and both tiers.
+Sweep delayed-use facts, distractors, object count, and warm-cache reuse.  Removal/substitution
+tests should verify that retained heavy hitters, rather than generic branch activation,
+cause correct answers.
+
+\subsection{Scissorhands}
+
+\textbf{Motivation and mechanism.} Scissorhands builds on the ``persistence of importance''
+hypothesis: tokens important in earlier attention tend to remain important later.  It
+maintains importance statistics and discards KVs predicted to stay unimportant
+\citep{liu2023scissorhands}.  At an eviction step,
+\begin{equation}
+\mathcal K=\operatorname{Recent}_r\cup
+\operatorname{TopK}_{B-r}(\operatorname{score}_{\rm history}(i)).
+\end{equation}
+Policies can be applied per head/layer and periodically rather than at every token.
+
+\begin{lstlisting}[caption={Periodic history-score pruning}]
+def scissorhands(kv, score, recent, budget):
+    protected = torch.arange(max(0, len(score)-recent), len(score))
+    old = torch.arange(0, max(0, len(score)-recent))
+    keep_old = old[score[old].topk(max(0, budget-len(protected))).indices]
+    keep = torch.cat([keep_old, protected])
+    return kv.index_select(-2, keep), score.index_select(0, keep)
+\end{lstlisting}
+\methodflow{full past KV}{historical importance}{protect recent tokens}{periodic token pruning}{smaller active cache}{localgray}
+
+\textbf{Evidence and failure modes.} The work evaluates cache reduction across language
+models/tasks using perplexity or task quality plus memory and throughput.  Comparisons with
+window and heuristic eviction establish the value of history-aware scores.  Importance
+persistence can fail under topic shifts or late references; dropped tokens cannot be
+reconstructed; per-head policies complicate kernels; and attention history remains a
+correlational diagnostic.
+
+\textbf{PRA relation and experiment.} Scissorhands compresses already materialized stream
+history, whereas PRA can reload a stable object after eviction.  Compare irreversible token
+eviction, eviction plus raw backing-text reload, and eviction plus cached PRA object KVs.
+Match total bytes and include late queries after long distractor gaps.  Report reload rate,
+quality, end-to-end latency, and counterfactual content effects.  Object boundaries may
+provide a cleaner eviction unit than anonymous tokens, but that is a testable hypothesis.
+
+\subsection{SnapKV}
+
+\textbf{Motivation and mechanism.} SnapKV compresses a long prompt's KV cache before
+generation by using attention from a recent observation window to identify prompt positions
+likely to matter during decoding, then pooling nearby selections \citep{li2024snapkv}.  A
+schematic per-head rule is
+\begin{equation}
+s_i=\operatorname{pool}\left(\sum_{q\in W_{\rm obs}}A_{q,i}\right),\qquad
+\mathcal K=\operatorname{TopK}_B(s).
+\end{equation}
+Unlike online eviction, it takes a ``snapshot'' of prompt relevance before the answer grows.
+
+\begin{lstlisting}[caption={Observation-window prompt selection}]
+def snapkv_scores(attn, observation, pool=7):
+    # attn: [heads, query, key]; exclude generated/recent keys as appropriate
+    score = attn[:, -observation:, :].sum(dim=1).unsqueeze(1)
+    return F.max_pool1d(score, kernel_size=pool, stride=1, padding=pool//2).squeeze(1)
+\end{lstlisting}
+\methodflow{long prompt KV}{recent observation window}{per-head attention votes}{cluster + retain positions}{compressed generation KV}{localgray}
+
+\textbf{Evidence and limitations.} SnapKV evaluates long-context QA/retrieval and generation
+across instruction-tuned LLMs, measuring task quality, prompt-cache reduction, and speed
+against eviction/compression baselines.  Its main assumption is that the observation window
+predicts future importance.  Later reasoning can change the relevant region; prompt
+positions lose object/version identity; selection errors are irreversible unless the source
+remains elsewhere; and head-wise layouts complicate reuse.
+
+\textbf{PRA relation and experiment.} SnapKV is query-aware token compression after eager
+prompt ingestion; PRA is object admission before or during latent use.  Compare full prompt,
+SnapKV, PRA, and PRA with SnapKV-compressed object KVs.  Match resident bytes and include
+questions whose relevance is evident initially versus revealed after intermediate reasoning.
+Measure prefill, selection, cold encoding, decode latency, exact evidence retention, and
+valid/shuffled object effects.  A multi-fidelity PRA cache could store a SnapKV snapshot and
+escalate to full object KVs on low confidence.
+
+\section{Category VI: Structural and Hierarchical Indexing}
+
+Flat chunk retrieval treats document structure as noise.  Hierarchical and graph approaches
+make sentences, sections, entities, communities, or claims explicit intermediate units.
+Their advantage is not merely fewer tokens: the index supplies a reasoning topology and a
+natural provenance coordinate system.
+
+\subsection{Hierarchical Attention Networks (HAN)}
+
+\textbf{Motivation and mechanism.} HAN mirrors document composition: a bidirectional word
+encoder and attention pool create sentence vectors, then a sentence encoder and attention
+pool create a document vector \citep{yang2016han}.  At either level,
+\begin{equation}
+u_i=\tanh(Wh_i+b),\quad
+\alpha_i=\frac{\exp(u_i^\top u_c)}{\sum_j\exp(u_j^\top u_c)},\quad
+v=\sum_i\alpha_i h_i.
+\end{equation}
+The context vector $u_c$ learns which units matter for classification.  Hierarchy reduces a
+variable document to semantically meaningful intermediate representations.
+
+\begin{lstlisting}[caption={Reusable hierarchical attention pool}]
+class AttnPool(nn.Module):
+    def __init__(self, d):
+        super().__init__(); self.proj = nn.Linear(d, d); self.context = nn.Parameter(torch.randn(d))
+    def forward(self, h, mask=None):
+        score = torch.tanh(self.proj(h)) @ self.context
+        if mask is not None: score = score.masked_fill(~mask, -torch.inf)
+        return torch.einsum('bt,btd->bd', score.softmax(-1), h)
+\end{lstlisting}
+\methodflow{words in sentences}{word encoder + attention}{sentence vectors}{sentence encoder + attention}{document class}{structurepurple}
+
+\textbf{Evidence and limitations.} The original paper evaluates document classification on
+Yelp, IMDB, Yahoo Answers, and Amazon review datasets against bag-of-words, convolutional,
+and recurrent baselines using classification accuracy.  Word- and sentence-level attention
+visualizations are useful diagnostics, not causal explanations.  The hierarchy is fixed at
+two levels, pooling is lossy, bidirectional encoding is not a streaming solution, and the
+model is designed for one document-level prediction rather than open-ended retrieval.
+
+\textbf{PRA relation and experiment.} HAN supplies the principle that intermediate document
+units deserve representations.  PRA generalizes those units to named sections, tables,
+records, and code symbols and permits later expansion.  Compare flat chunks, HAN-style
+sentence summaries, and URI hierarchy on classification plus evidence-required QA.  Remove
+or substitute high-attention sentences and selected PRA nodes.  A strong hybrid uses HAN
+pooling to construct cheap summaries while preserving children as resolvable objects.
+
+\subsection{RAPTOR}
+
+\textbf{Motivation and mechanism.} RAPTOR recursively embeds and clusters leaf chunks, asks
+a language model to summarize each cluster, and repeats until a tree of increasingly abstract
+nodes is formed \citep{sarthi2024raptor}.  With nodes $V_0$ at the leaves,
+\begin{equation}
+V_{\ell+1}=\{\operatorname{summarize}(C):
+C\in\operatorname{cluster}(\{E(v):v\in V_\ell\})\}.
+\end{equation}
+Retrieval can search a collapsed set of all levels or traverse the tree, letting a query
+choose between detailed evidence and broad synthesis.
+
+\begin{lstlisting}[caption={Bottom-up RAPTOR index construction}]
+level = chunk(document)
+tree = [level]
+while len(level) > 1:
+    groups = cluster(embed(level))
+    level = [summarizer(group) for group in groups]
+    tree.append(level)
+return tree
+\end{lstlisting}
+\methodflow{leaf text chunks}{embed + cluster}{recursive LLM summaries}{multi-level retrieval}{reader answer}{structurepurple}
+
+\textbf{Evidence, paper trail, and failures.} RAPTOR reports QA results on QuALITY,
+NarrativeQA, and QASPER, comparing conventional retrieval and long-context/retrieval
+baselines with accuracy or task metrics.  The paper highlights a 20-point absolute QuALITY
+gain for its GPT-4 configuration; that number is conditional on its model, tree, prompts,
+and evaluation.  Descendants study dynamic maintenance and cheaper tree construction.
+Indexing is expensive, abstractive summaries can omit or invent facts, clustering is unstable,
+and an error at a high node can misroute an entire subtree.
+
+\textbf{PRA relation and experiment.} RAPTOR chooses representations during indexing;
+PRA chooses when and at which layer a representation becomes resident.  Assign immutable
+URIs to every tree node and let the router escalate from summary to children.  Compare flat
+RAG, collapsed-tree retrieval, explicit tree traversal, and PRA transport using the same
+tree.  Measure answer quality, retrieved source tokens, LLM index cost, expansions, cache
+reuse, summary corruption, and whether leaf evidence supports generated claims.
+
+\subsection{MemWalker}
+
+\textbf{Motivation and mechanism.} MemWalker recursively summarizes a long document into a
+memory tree and has an LLM navigate it by choosing children until sufficient evidence is
+found \citep{chen2023memwalker}.  At node $v_t$, a policy reads the query and child summaries:
+\begin{equation}
+a_t\sim\pi_\theta(a\mid q,s(v_t),\{s(c):c\in\mathrm{child}(v_t)\}),
+\qquad v_{t+1}=\mathrm{child}(v_t,a_t).
+\end{equation}
+The traversal trace externalizes intermediate access decisions instead of retrieving all
+nodes in one ranking call.
+
+\begin{lstlisting}[caption={Bounded tree walk}]
+node = root
+for depth in range(max_depth):
+    action = navigator.choose(question, node.summary,
+                              [c.summary for c in node.children])
+    if action == "answer": break
+    node = node.children[action]
+return reader(question, node.source_text)
+\end{lstlisting}
+\methodflow{question + root}{inspect child summaries}{LLM chooses branch}{repeat tree walk}{read leaf + answer}{structurepurple}
+
+\textbf{Evidence and failure modes.} MemWalker evaluates long-context reasoning/QA against
+retrieval and long-context baselines, measuring answer quality and traversal behavior.  It
+is closer to an agent than static RAG, but the action space is confined to a prebuilt tree.
+Serial LLM calls add latency, greedy early choices can make relevant siblings unreachable,
+summary errors compound, and navigation traces show decisions without proving causal use
+of the selected leaf.
+
+\textbf{PRA relation and experiment.} Both implement progressive disclosure.  MemWalker
+serializes branch decisions as language-model actions; PRA proposes a latent router inside
+selected layers.  Use the same tree and compare textual navigation, latent top-$k$ child
+selection, oracle paths, and a hybrid that escalates ambiguous nodes to the agent.  Match
+node-expansion budgets and report latency, depth, backtracking, path recall, valid/shuffled
+leaf effects, and calibration at the escalation boundary.
+
+\subsection{PageIndex}
+
+\textbf{Motivation and mechanism.} PageIndex builds a table-of-contents-like tree from
+natural document sections and uses an LLM to reason over titles, summaries, and page ranges
+rather than relying on vector similarity \citep{pageindex2026}.  A typical node is
+$(\mathrm{id},\mathrm{title},[p_s,p_e],\mathrm{summary},\mathrm{children})$; retrieval is a
+reasoned tree search followed by page/section extraction.
+
+\begin{lstlisting}[caption={Reasoning-first section traversal}]
+frontier = [root]
+while budget.remaining() and not evidence_sufficient(frontier, query):
+    decision = llm_rank(query, describe(frontier))
+    frontier = expand_selected(frontier, decision.node_ids)
+pages = merge_ranges([n.page_range for n in frontier])
+return answer(query, pdf.extract(pages))
+\end{lstlisting}
+\methodflow{PDF/Markdown structure}{LLM-built section tree}{reason over node descriptions}{drill into page ranges}{answer with trace}{structurepurple}
+
+\textbf{Evidence status and reproducibility.} PageIndex is an evolving open-source/product
+system, not a settled peer-reviewed architecture result.  This survey pins its inspection
+target to repository commit
+\href{https://github.com/VectifyAI/PageIndex/commit/7592163e2a376b3917181fff9ac1858dc5daa2c6}{\texttt{7592163e2a37}}
+(mirror snapshot synchronized 15 June 2026) and records the repository's then-documented
+default \texttt{gpt-4o-2024-11-20}; access date is 3 August 2026.  The repository advertises
+98.7\% FinanceBench accuracy, but this remains a vendor-reported compound-system result.
+Reproduction must freeze PDFs/questions, parser/OCR, tree-building and answering prompts,
+model versions, judge, exact-match policy, retries, and dollar/token cost.  Natural structure
+can itself be missing or malformed, and every LLM tree call can introduce nondeterminism.
+
+\textbf{PRA relation and experiment.} PageIndex supplies a strong logical namespace for
+PRA: node IDs/page ranges become versioned URIs, and selected sections can materialize as
+text or per-layer KV.  Compare vector RAG, PageIndex traversal, PRA latent traversal, and
+agent escalation on the same tree.  Stratify exact lookup, cross-reference, multi-section
+synthesis, and cross-document reasoning.  Report source-page recall, answer/citation quality,
+tree calls, latency, cost, and invalidation after a PDF revision.
+
+\subsection{GraphRAG}
+
+\textbf{Motivation and mechanism.} GraphRAG extracts entities, relations, and claims from a
+corpus, clusters the resulting graph into communities, and creates community reports
+\citep{edge2024graphrag}.  Local search expands around query entities; global search maps a
+question over community reports and reduces partial answers:
+\begin{equation}
+\hat y=\operatorname{reduce}\{\operatorname{answer}(q,R_c):
+c\in\operatorname{select}(q,\mathcal C)\}.
+\end{equation}
+The graph exposes corpus-wide themes and multi-hop relationships that may not be similar to
+the surface query.
+
+\begin{lstlisting}[caption={GraphRAG global map-reduce sketch}]
+reports = select_community_reports(query, graph.communities, token_budget)
+partials = [llm.map_answer(query, report) for report in reports]
+return llm.reduce_answer(query, partials)
+\end{lstlisting}
+\methodflow{source corpus}{extract entity/relation graph}{community summaries}{local or global search}{map-reduce answer}{structurepurple}
+
+\textbf{Evidence and failure modes.} The GraphRAG preprint studies global sensemaking over
+roughly million-token corpora and reports LLM-judged comprehensiveness and diversity relative
+to conventional RAG.  These are inference-time judgments over an expensive LLM-derived
+index, so model, prompts, judge, and cost are integral conditions.  Extraction errors,
+entity resolution, hallucinated relations, index cost, stale derived summaries, and judge
+bias are prominent risks.  Local factual QA and global thematic synthesis are distinct tasks.
+
+\textbf{PRA relation and experiment.} A PRA URI can address a node, neighborhood, graph
+query result, or community report.  The hard problem becomes dependency-aware invalidation:
+changing one source may stale many derived KVs.  Compare flat RAG, GraphRAG text transport,
+and graph-node PRA transport on local and global questions.  Match source and answer models;
+report index cost separately from per-query cost, provenance to original spans, stale-update
+tests, and counterfactual removal of decisive nodes.
+
+\subsection{PaperTrail as provenance and HCI}
+
+\textbf{Motivation and mechanism.} PaperTrail is not a context architecture.  It decomposes
+an answer and its sources into claims and evidence, then visualizes supported claims,
+unsupported assertions, and omitted source information \citep{martinboyle2026papertrail}.
+If $C$ is answer claims and $E$ source evidence units, the interface exposes a relation
+$R\subseteq C\times E$ plus unsupported $C\setminus\operatorname{dom}(R)$ and uncovered
+source claims.
+
+\begin{lstlisting}[caption={Claim--evidence audit pipeline}]
+answer_claims = decompose_claims(answer)
+source_claims = decompose_claims(sources)
+links = align_and_verify(answer_claims, source_claims)
+render(answer_claims, source_claims, links,
+       unsupported=set(answer_claims)-links.claims())
+\end{lstlisting}
+\methodflow{answer + sources}{claim decomposition}{claim--evidence alignment}{support/omission labels}{verification interface}{structurepurple}
+
+\textbf{Evidence and limitations.} The 2026 work evaluates PaperTrail in a within-subjects
+study with 26 researchers performing scholarly editing tasks.  The interface lowered trust
+relative to a baseline but did not produce corresponding behavioral change: participants
+still relied on generated edits when verification was cognitively costly.  This is an HCI
+result about provenance presentation, not evidence for longer context or retrieval quality.
+Claim decomposition and alignment can themselves be wrong, and more visible evidence can
+overload rather than assist a user.
+
+\textbf{PRA relation and experiment.} PRA's URI/version and routing traces can populate a
+PaperTrail-like view, but attended memory is not causal support.  Record selected objects,
+source spans, cache versions, generated claims, and outputs under removal/substitution.
+Compare citation-only, route-trace, and counterfactual claim-evidence interfaces.  Measure
+verification accuracy, time, calibrated trust, unsupported-claim detection, omissions, and
+cognitive load.  This positions PaperTrail correctly as provenance/HCI rather than a
+competitor in the context architecture table.
+
+\section{Category VII: Agents with Search and Tool Use}
+
+Agents move relevance decisions outside a single forward pass.  They can discover unknown
+sources, reformulate a question after observing evidence, act on the world, and backtrack.
+Their generality costs serial latency, tokens, tool failures, and a larger audit surface.
+PRA should be compared as a restricted fast path for repeated read-only access, not as a
+replacement for open-ended action.
+
+\subsection{ReAct}
+
+\textbf{Motivation and mechanism.} ReAct interleaves natural-language reasoning with
+actions and observations, allowing evidence acquisition to change the next reasoning step
+\citep{yao2023react}.  A trajectory is
+\begin{equation}
+\tau=(q,r_1,a_1,o_1,r_2,a_2,o_2,\ldots,y),\qquad
+(r_t,a_t)\sim\pi_\theta(\cdot\mid q,\tau_{<t}).
+\end{equation}
+Reasoning maintains a task state; tools ground or alter that state; the policy decides when
+to stop.  Search is only one environment---the paper also studies interactive tasks.
+
+\begin{lstlisting}[caption={ReAct execution loop with an explicit budget}]
+trace = []
+for step in range(max_steps):
+    thought, action = model.next(question, trace)
+    if action.name == "finish": return action.answer, trace
+    observation = tools[action.name](**action.arguments)
+    trace.append((thought, action, observation))
+raise BudgetExceeded(trace)
+\end{lstlisting}
+\methodflow{question + trace}{reason}{tool action}{observation}{repeat or finish}{agentred}
+
+\textbf{Evidence, descendants, and failures.} ReAct evaluates HotpotQA and FEVER plus
+ALFWorld and WebShop, comparing standard prompting, chain-of-thought, act-only, and ReAct
+using exact match, factual accuracy, or environment success.  Prompt examples, base model,
+tool interface, and action budget materially condition results.  Descendants add planning,
+reflection, memory, and richer tools.  Common failures are reasoning loops, malformed calls,
+irrelevant searches, premature stopping, prompt injection in observations, and high latency.
+
+\textbf{PRA relation and experiment.} Both progressively acquire context.  ReAct remains
+necessary when sources are unknown, actions have side effects, or explicit planning and
+backtracking are essential.  Compare ReAct search, PRA over a known reference graph, and a
+tiered policy that tries local context, cached URI memory, structural navigation, then search.
+Match evidence/action budgets and report answer quality, calls, tokens, latency, provenance,
+cache reuse, and escalation calibration.  Cache successful read-only discoveries as versioned
+references, never silently replay side-effecting actions.
+
+\subsection{Self-Ask with Search}
+
+\textbf{Motivation and mechanism.} Self-Ask addresses compositionality by explicitly
+generating follow-up questions.  An external search component answers each subquestion, and
+the model combines intermediate answers into the final response
+\citep{press2022selfask}:
+\begin{equation}
+q_t=\operatorname{decompose}(q,a_{<t}),\quad
+e_t=\operatorname{search}(q_t),\quad
+y=\operatorname{compose}(q,\{q_t,e_t\}).
+\end{equation}
+The textual protocol makes the retrieval chain easy to inspect and separates decomposition
+errors from search errors.
+
+\begin{lstlisting}[caption={Self-Ask protocol}]
+facts = []
+while model.needs_followup(question, facts):
+    subquestion = model.followup(question, facts)
+    evidence = search(subquestion)
+    facts.append((subquestion, evidence))
+return model.final_answer(question, facts)
+\end{lstlisting}
+\methodflow{compositional question}{generate follow-up}{search intermediate answer}{accumulate facts}{compose final answer}{agentred}
+
+\textbf{Evidence and limitations.} The work studies multi-hop/compositional question
+answering and the ``compositionality gap'', comparing direct answer, chain-of-thought, and
+search-assisted decomposition with exact match.  Decomposition improves observability, but
+one wrong subquestion can derail all later hops; intermediate search snippets may be noisy;
+serial calls cost latency; and a plausible intermediate answer can conceal missing evidence.
+
+\textbf{PRA relation and experiment.} PRA may represent a follow-up target as a generated
+reference only when a resolver can bind it deterministically; free-form web search is not a
+URI lookup.  Compare text subquestions, latent reference queries, and a hybrid that uses
+PRA for known namespaces and search otherwise.  Use the same search backend and hop budget;
+measure decomposition accuracy, evidence recall, calls, latency, valid/shuffled reference
+effects, and failures where the correct source is absent from the advertised graph.
+
+\subsection{IRCoT}
+
+\textbf{Motivation and mechanism.} IRCoT interleaves retrieval with chain-of-thought so
+partial reasoning becomes a better query for the next evidence hop
+\citep{trivedi2023ircot}.  Rather than retrieve once from the original question,
+\begin{equation}
+z_t=R(q,r_{<t},e_{<t}),\qquad
+r_t=G(q,r_{<t},e_{<t},z_t),
+\end{equation}
+and the cycle continues until an answer or budget limit.  Retrieval and reasoning therefore
+co-evolve.
+
+\begin{lstlisting}[caption={IRCoT-style retrieval/reasoning alternation}]
+state, evidence = question, []
+for hop in range(max_hops):
+    passages = retriever.search(state, k)
+    evidence.extend(passages)
+    state, answer = reasoner.step(question, state, passages)
+    if answer is not None: return answer, evidence
+\end{lstlisting}
+\methodflow{question + partial rationale}{retrieve passages}{extend evidence}{reason next hop}{answer or retrieve again}{agentred}
+
+\textbf{Evidence, paper trail, and failures.} IRCoT evaluates multi-step QA including
+HotpotQA, 2WikiMultiHopQA, MuSiQue, and related datasets, comparing retrieve-then-read,
+iterative retrieval, and chain-of-thought configurations with exact match/F1 and retrieval
+metrics.  It motivates later iterative and agentic RAG.  Reasoning text can introduce false
+entities that poison later queries, cost grows by hop, stopping is difficult, and answer
+gains can reflect a stronger prompt rather than a better retriever.
+
+\textbf{PRA relation and experiment.} PRA layers or decoding states could emit successive
+latent queries, approximating IRCoT without serializing each query.  Compare textual query
+rewriting and latent queries against the same frozen retriever, plus oracle evidence order.
+Match retrieval calls/candidates and report answer quality, hop recall, latency, and
+counterfactual evidence effects.  The hybrid should expose an auditable object path even if
+queries are latent; otherwise reduced tokens come at the cost of provenance.
+
+\subsection{Toolformer}
+
+\textbf{Motivation and mechanism.} Toolformer teaches a language model when and how to call
+APIs by sampling candidate calls and retaining those that reduce language-model loss
+\citep{schick2023toolformer}.  For call $c$ inserted at position $i$, a simplified filter is
+\begin{equation}
+\Delta(c)=L(x_{i:}\mid x_{<i})-L(x_{i:}\mid x_{<i},c,\operatorname{result}(c));
+\quad c\text{ kept if }\Delta(c)>\tau.
+\end{equation}
+Fine-tuning on retained demonstrations yields discrete call triggering and result integration
+without dense human call labels.
+
+\begin{lstlisting}[caption={Loss-improvement filtering for pseudo-labeled calls}]
+for position in candidate_positions(text):
+    for call in sample_calls(model, text, position):
+        result = execute_sandboxed(call)
+        gain = loss_without(call) - loss_with(call, result)
+        if gain > threshold: training_examples.append(insert(text, call, result))
+\end{lstlisting}
+\methodflow{raw text}{sample API calls}{execute + score loss gain}{self-supervised call data}{tool-aware LM}{agentred}
+
+\textbf{Evidence and limitations.} Toolformer evaluates a 6.7B GPT-J model with calculator,
+QA, search, translation, and calendar tools on zero/few-shot downstream tasks and language
+modeling, comparing base and tool-aware models.  Tool choice and API formatting ablations
+matter.  Pseudo-labels inherit the base model's blind spots, unsafe or costly calls require
+sandboxing, tool errors enter the context, and lower token loss does not guarantee factual
+or task utility.
+
+\textbf{PRA relation and experiment.} Toolformer's call-retention principle is directly
+useful for PRA router training: sample candidate object accesses, keep those whose controlled
+insertion lowers loss, then train a gate with corrupted negatives.  Compare heuristic cosine,
+supervised relevance, and loss-filtered routers under equal trainable parameters.  Evaluate
+selection recall, calibration, task loss, valid/shuffled/irrelevant effects, and access cost.
+PRA can internalize deterministic reads; arbitrary or side-effecting APIs should remain
+explicit tool calls.
+
+\subsection{WebGPT and browser agents}
+
+\textbf{Motivation and mechanism.} WebGPT trains a model to issue search queries, open
+results, navigate pages, collect quotations, and answer with citations, using demonstrations,
+behavior cloning, reward modeling, and human feedback \citep{nakano2021webgpt}.  The browser
+state makes information acquisition a sequential decision process:
+\begin{equation}
+a_t\sim\pi_\theta(a\mid s_t),\quad s_{t+1}=\operatorname{browser}(s_t,a_t),
+\quad y=G(q,\operatorname{quotes}(\tau)).
+\end{equation}
+
+\begin{lstlisting}[caption={Citation-preserving browser loop}]
+state, evidence = browser.start(question), []
+for _ in range(action_budget):
+    action = policy(state, evidence)
+    if action.kind == "quote": evidence.append(browser.quote(action.span))
+    elif action.kind == "answer": return compose_with_citations(question, evidence)
+    else: state = browser.execute(action)
+\end{lstlisting}
+\methodflow{question}{search/open/navigate}{quote source spans}{human-feedback policy}{cited answer}{agentred}
+
+\textbf{Evidence, descendants, and failures.} WebGPT evaluates long-form question answering
+using human preference, factuality, and citation-related judgments against retrieval and
+human-written baselines.  It established a lineage toward browser-assisted research agents.
+Results are bound to the web snapshot, search engine, model, demonstrations, reward model,
+and evaluator.  Failures include source-quality errors, selective quotation, citation drift,
+prompt injection, browsing loops, changing pages, and high serial latency.
+
+\textbf{PRA relation and experiment.} PRA cannot discover an unknown open-web source.
+It can cache already discovered pages, versions, sections, and evidence for later questions.
+Compare fresh browser search, cached text RAG, cached PRA KVs, and a policy that searches on
+cache miss or staleness.  Measure answer/citation correctness, source diversity, actions,
+latency, cache hit and avoided encoding, update detection, and security under malicious page
+instructions.  Provenance must retain the original page/version even when KVs are reused.
+
+\subsection{Recursive Language Models and context as environment}
+
+\textbf{Motivation and mechanism.} Recursive language-model approaches treat an oversized
+context as an external environment.  A model writes code or issues subcalls that inspect,
+partition, summarize, and recursively solve pieces instead of consuming the entire source
+in one forward pass.  For context $D$ and budget $B$,
+\begin{equation}
+y=F(q,D,B)=\operatorname{aggregate}\{F(q_j,D_j,B_j)\}_{j=1}^m,
+\qquad \sum_j B_j\leq B.
+\end{equation}
+The model controls the decomposition and can adapt it to each question.
+
+\begin{lstlisting}[caption={Budgeted recursive context program}]
+def solve(query, view, budget):
+    if view.fits() or budget.depth == 0:
+        return model(query, view.read(budget.tokens))
+    plan = model.plan_partitions(query, view.metadata(), budget)
+    partials = [solve(p.subquery, view.slice(p.range), budget.child(p)) for p in plan]
+    return model.aggregate(query, partials)
+\end{lstlisting}
+\methodflow{oversized context environment}{plan partitions/search}{recursive model subcalls}{aggregate partial results}{final answer}{agentred}
+
+\textbf{Evidence and failure modes.} The family is evaluated on inputs beyond a model's
+window, code/document analysis, aggregation, and long-context reasoning, with answer quality,
+subcall count, tokens, and cost.  Baselines should include truncation, long context, RAG, and
+non-recursive map-reduce.  Generality is high, but recursive calls are expensive, partition
+boundaries can destroy dependencies, summaries compound errors, arbitrary generated code
+needs sandboxing, and budgets/stopping rules can dominate outcomes.
+
+\textbf{PRA relation and experiment.} PRA can be viewed as a differentiable cached fast path
+for recurring read operations discovered by an agent or recursive program.  Use identical
+source partitions and compare RLM subcalls, tree navigation, PRA references, and a tiered
+system that escalates on uncertainty.  Match total model FLOPs/tokens and wall-clock budget;
+report depth, calls, source coverage, provenance, cache reuse, and tasks whose relevant
+partition is unknown initially.  The agent should win on open-ended discovery; PRA must
+justify itself through repeated low-latency reuse and causal content selection.
+
+\Needspace{12\baselineskip}
+\subsection{A tiered agent--PRA design}
+
+The categories are best composed as a monotone escalation policy.  Local attention handles
+dense immediate context; a warm URI cache handles repeated named reads; a tree/graph index
+handles bounded structural search; and a general agent handles discovery or action.  Each
+tier returns both evidence and calibrated confidence.  Expensive discoveries may be cached
+only if the source is immutable or versioned, authorization permits reuse, and the action is
+read-only.  The evaluation must include wrong-confidence costs: unnecessary escalation,
+silent cache hits on stale data, and premature stopping before an agent search.
+
+\methodflow{local context}{PRA URI cache}{tree/graph navigation}{external agent/tools}{answer + causal provenance}{praorange}

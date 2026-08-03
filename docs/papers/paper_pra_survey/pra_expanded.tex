@@ -1,0 +1,244 @@
+\subsection{The proposal reconstructed from Papers 0 and 1}
+
+PRA is easiest to understand as an \emph{access contract}, not as a claim that one more
+attention formula solves long context.  Paper~0 proposes a logical context graph whose
+nodes are stable, URI-addressed objects and whose edges are semantic anchors.  Paper~1
+specializes that proposal into a small decoder-only PyTorch model.  The two manuscripts
+make five separations that must remain explicit throughout this survey:
+\begin{enumerate}
+\item \textbf{naming}: a handle states which object may be consulted;
+\item \textbf{selection}: a policy chooses among advertised objects;
+\item \textbf{resolution}: a resolver binds a URI, policy, and version to content;
+\item \textbf{materialization}: content becomes text, a summary, hidden states, or
+      layer-specific keys and values; and
+\item \textbf{fusion}: the decoder consumes that representation through prompt tokens,
+      cross-attention, native KV injection, or another transport.
+\end{enumerate}
+This decomposition is pedagogically important.  A better retriever does not establish a
+better transport, and a useful memory branch does not establish that the router selected
+the correct object.  PRA's distinctive package is explicit URI identity, separation of
+naming from materialization, reusable per-layer KV objects, progressive triggering, and
+counterfactual evaluation.  Each component has precursors; the package, interface, and
+experimental doctrine are the proposal under study.
+
+\subsection{Reference graph, resolver, and runtime state}
+
+Let a context graph be $\mathcal G=(\mathcal V,\mathcal E)$.  A node
+$v=(u,z,s,m)$ contains a stable URI $u$, content $z$, a cheap summary $s$, and metadata
+$m$.  An edge $(v_i,a,v_j)$ says that anchor $a$ in $v_i$ expands to $v_j$.  The
+resolver is deliberately outside the neural layer:
+\begin{equation}
+ \rho(u,p,t)\longrightarrow(z,s,\mathrm{children},m),
+\end{equation}
+where $p$ is an authorization domain and $t$ identifies logical time or version.  This
+interface permits a file, database row, document section, code symbol, graph query, or
+tool result to be named in the same logical space without pretending that they share the
+same physical representation.
+
+The runtime state before token $t$ is
+\begin{equation}
+ \Omega_t=(\mathcal G,\mathcal H_t,A_t,\mathcal C_t,p_t,\nu_t),
+\end{equation}
+with advertised handles $\mathcal H_t$, active references $A_t$, resident materializations
+$\mathcal C_t$, policy state $p_t$, and provenance/version state $\nu_t$.  A persistent
+cache key must include at least $(u,v,\ell,m,\theta,p)$: URI, content version, consumer
+layer, model identity, relevant encoder parameters, and policy domain.  Paper~1 uses only
+the URI because it rebuilds and discards a private cache for every example; that
+specialization prevents cross-example leakage but does not demonstrate persistent reuse.
+
+\methodflow{handle + metadata}{select summary}{resolve URI}{encode/admit layer KV}{attend + audit}{praorange}
+
+\subsection{Selection, recursive expansion, and the implemented specialization}
+
+At layer $\ell$, a query $q_{t,\ell}$ ranks the summaries of candidate objects:
+\begin{equation}
+\mathcal S_{k,\tau}(q,\mathcal C)=\operatorname{TopK}_{u}
+\left\{\cos(q,s_u):\cos(q,s_u)\geq\tau\right\}.
+\end{equation}
+An expansion operator $\mathcal X(A,\mathcal G,b,d)$ follows children subject to branching
+budget $b$ and depth $d$.  The intended transition is therefore
+\begin{align}
+A_t&=\mathcal S_{k,\tau}(q_t,\mathcal C_t),&
+A'_t&=\mathcal X(A_t,\mathcal G,b,d),\\
+\mathcal C'_t&=\operatorname{admit}(\operatorname{encode}(\rho(A'_t))),&
+(y_t,\Omega_{t+1})&=\operatorname{attend}(x_{\leq t},\mathcal C'_t,\Omega_t).
+\end{align}
+Paper~1 implements a much narrower case: the last hidden state is the query, mean summary
+token embeddings are candidates, all one-to-five references are admitted in the reported
+reference experiment, recursive expansion is the identity, and caches are constructed
+before an example forward pass.  Thus ``progressive'', ``recursive'', and ``persistent''
+describe the research target, not measured properties of the current pilot.
+
+\subsection{Layer-specific materialization and PRAttention}
+
+For URI $u$, the cache entry is
+\begin{equation}
+C_u=(u,z_u,s_u,\bar s_u,\{(K_{u,\ell},V_{u,\ell})\}_{\ell\in\mathcal L_{\rm PRA}}).
+\end{equation}
+The reference text is passed through the same decoder with external memory disabled.
+For each PRA-enabled layer, the pre-attention normalized hidden states are projected by
+that layer's $W_K$ and $W_V$ and detached.  A selected set $\mathcal U$ is concatenated
+within the layer.  Local attention remains causal; reference memory is a separate,
+non-causal cross-attention source:
+\begin{align}
+O_{\rm local}&=\operatorname{softmax}((QK^\top+M_{\rm causal})/\sqrt{d_h})V,\\
+O_{\rm mem}&=W_{O,\rm mem}\operatorname{merge}
+ \left[\operatorname{softmax}(QK_{\mathcal U,\ell}^\top/\sqrt{d_h})
+ V_{\mathcal U,\ell}\right],\\
+O&=O_{\rm local}+\alpha O_{\rm mem}.
+\end{align}
+The prototype zero-initializes $W_{O,\rm mem}$ for isolated phase-2 adaptation.  This
+makes the memory contribution exactly zero at initialization and preserves the local
+path when only that projection is trained.  It is a useful engineering control, not an
+intrinsic no-forgetting theorem for PRA.
+
+\begin{lstlisting}[caption={Reference-memory construction and consumption in Paper 1}]
+for sample in batch:                    # private semantic address space
+    cache = {}
+    for handle in sample.references:
+        obj = resolver.resolve(handle.uri, policy, version)
+        h_ref = model.encode(obj.text, pra_enabled=False)
+        entry = {"summary": mean_embed(obj.summary), "kv": {}}
+        for layer in pra_layers:
+            entry["kv"][layer.id] = layer.project_kv(h_ref[layer.id]).detach()
+        cache[handle.uri] = entry
+    logits = model(sample.tokens, pra_cache=cache)
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Minimal executable shape of the PRA branch}]
+class PRAttention(nn.Module):
+    def __init__(self, d, heads):
+        super().__init__()
+        self.local = nn.MultiheadAttention(d, heads, batch_first=True)
+        self.memory = nn.MultiheadAttention(d, heads, batch_first=True)
+        self.memory_out = nn.Linear(d, d)
+        nn.init.zeros_(self.memory_out.weight); nn.init.zeros_(self.memory_out.bias)
+
+    def forward(self, x, memory=None, causal_mask=None):
+        local, _ = self.local(x, x, x, attn_mask=causal_mask,
+                              need_weights=False)
+        if memory is None or memory.size(1) == 0:
+            return local
+        mem, _ = self.memory(x, memory, memory, need_weights=False)
+        return local + self.memory_out(mem)
+\end{lstlisting}
+
+\subsection{Reference-data construction and leakage controls}
+
+The version-1 pilot split a WikiText-2 article into one-to-five URI-addressed earlier
+parts and a held-out continuation, but regenerated examples from each model seed and
+labeled every earlier part relevant.  It is retained as engineering history, not causal
+selection evidence.  Version~2 fixes data generation with seed 1729 and shares the same
+512-example corpus across architectures and model seeds.  It yields 409/51/52
+train/validation/test examples, assigns candidate identifiers and order independently of
+relevance, designates one adjacent source part as the expected reference, and records
+source/split provenance.  The candidate-count-weighted test chance rate is 0.4202.
+
+\begin{lstlisting}[caption={Reproducible version-2 reference corpus construction}]
+rng = Random(1729)
+entries = parse_wikitext_articles(raw_text)
+for article_id, entry in stable_order(entries):
+    parts = split_natural_units(entry, min_parts=2, max_parts=6)
+    target_i = choose_target_with_predecessor(parts, rng)
+    positive = target_i - 1
+    distractors = sample_other_prior_parts(parts, positive, rng)
+    candidates = rng.shuffle([positive] + distractors)
+    emit(prompt=make_handles(candidates), answer=parts[target_i],
+         expected_uri=uri(article_id, positive),
+         source_hash=sha256(entry), generator_seed=1729)
+fixed_train, fixed_val, fixed_test = split_once(examples, 409, 51, 52)
+\end{lstlisting}
+
+Leakage controls are part of the architecture, not merely data hygiene.  Candidate IDs
+must not encode relevance; all architectures must receive identical examples; train,
+validation, and test source partitions must be stable; reference content must be private
+to its example; and batched physical storage must preserve a sequence-to-cache mask.
+Content-only, random-URI, same-URI/wrong-version, shuffled, irrelevant, empty, oracle, and
+all-content-local variants are required to detect shortcuts.  The adjacent-part label is
+still only a programmatic proxy; future data must mark human-verified necessary evidence.
+
+\subsection{Complexity and the systems claim}
+
+Let $L$ be decoder layers, $L_p$ PRA layers, $T$ local tokens, $r$ resolved references,
+$m_i$ tokens in object $i$, and $M$ selected resident memory tokens.  Ignoring constant
+head factors, the stages cost
+\begin{center}
+\begin{tabular}{p{2.4cm}p{4.5cm}p{7.3cm}}
+\toprule
+Stage & Asymptotic work & What must be measured \\\midrule
+resolve & $O(r)$ lookups plus source I/O & authorization, version check, bytes and latency \\
+encode & $O(Ld\sum_i m_i^2)$ & cold tokenization/encoding and accelerator transfer \\
+cache projection & $O(L_p d^2\sum_i m_i)$ & per-layer projection, bytes written, deduplication \\
+route & $O(rd)$ exact summary scoring & candidate count, top-$k$ latency, recall and calibration \\
+cross-attend & $O(L_pTMd)$ & selected tokens, layer utilization, synchronized latency \\
+resident KV & $2wL_pMd$ bytes & allocator overhead, hit rate, eviction and tenant isolation \\
+\bottomrule
+\end{tabular}
+\end{center}
+These terms expose the central unproven systems hypothesis.  A shorter prompt is not an
+efficiency win if all references are re-encoded for every request.  PRA becomes plausible
+when $M$ is small, resolution avoids unnecessary objects, encoded KVs are reused across
+tokens or authorized requests, or quality improves at a fixed total cost.  Results must
+therefore report cold, warm, and shared-cache regimes and separate lookup hits from
+\emph{avoided encoding work}.
+
+\subsection{What the preliminary experiments establish---and do not establish}
+
+All models have four layers, four heads, width 256, context 128, dropout 0.1, and a
+2,000-token BPE vocabulary.  The initial two-seed pilot processes 524,288 tokens.  The
+controlled follow-up uses seeds 1, 7, and 21, 1,048,576 ordinary-language tokens, fixed
+reference data, and 512 reference-stage optimizer steps.  Parameter counts are 4,216,320
+for same-width SelfAttention, 4,479,488 for full PRA, and 4,347,904 for the two-local/
+two-PRA hybrid.  FFN-expanded controls contain 4,478,976 and 4,347,648 parameters.
+
+\begin{table}[ht]
+\centering\small
+\caption{Controlled three-seed ordinary-language results transcribed from Paper 1.
+Population standard deviations are across seeds 1, 7, and 21.}
+\begin{tabular}{lrr}
+\toprule Model & Parameters & WikiText-2 test loss \\\midrule
+SelfAttention, same width & 4,216,320 & $4.6378\pm0.0431$ \\
+SelfAttention, matched to full PRA & 4,478,976 & $4.5706\pm0.0258$ \\
+Full PRA & 4,479,488 & $4.5463\pm0.0270$ \\
+SelfAttention, matched to hybrid & 4,347,648 & $4.5725\pm0.0362$ \\
+Hybrid PRA & 4,347,904 & $4.6049\pm0.0359$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Full PRA is 0.0243 loss units below its nearly matched control, while the hybrid is
+0.0323 above its matched control.  This supports compatibility and approximate parity at
+this scale, not architectural superiority.  In the fixed reference task, valid-reference
+loss after frozen-path training is 4.7052 for full PRA and 4.7932 for hybrid PRA.
+Complete disabling raises loss by 0.0292 and 0.0214, but shuffled and irrelevant penalties
+are only 0.0064--0.0088 and oracle content changes loss by at most 0.0018.  Top-1 selection
+remains near or below chance.  The branch contributes, but correct content has not been
+shown to cause the gain.  The current experiment therefore passes compatibility and
+preservation gates and fails the causal-selection gate.
+
+The source manuscript reports aggregate seed means and population standard deviations,
+not a complete seed-by-seed ledger for every run.  A submission version must export one
+row per run (architecture, seed, data hash, checkpoint hash, trainable parameters, tokens,
+loss, uncertainty inputs, timing, and counterfactual condition) rather than attempting to
+reconstruct individual values from aggregates.
+
+\subsection{Counterfactual doctrine and falsifiable comparison}
+
+For loss $L$, define
+\begin{equation}
+\Delta_{\rm use}=L_{\rm disabled}-L_{\rm valid},\qquad
+\Delta_{\rm content}=L_{\rm shuffled}-L_{\rm valid}.
+\end{equation}
+$\Delta_{\rm use}>0$ only shows that activating the path helps.  A credible content claim
+requires a reproducible $\Delta_{\rm content}>0$, a similar penalty for irrelevant
+references, increasing advantage on locally insufficient examples, and routing above a
+candidate-count-aware chance baseline.  Attention weights are diagnostics; removal,
+substitution, stale-version, and mediation-style interventions supply stronger evidence.
+
+The decisive experiment crosses selection and transport: oracle versus learned selection;
+prompt-text, cross-attention, and native-KV transport; valid/disabled/shuffled/irrelevant/
+oracle content; and cold/warm/shared caches.  It matches model parameters, trainable
+parameters, source corpus, visible and retrieved token budgets, optimizer tokens, FLOPs,
+peak memory, and synchronized latency.  PRA's efficiency thesis is falsified in a target
+regime if it does not improve the quality--cost frontier after reference encoding and cache
+misses are included, or if correct content does not outperform corrupted controls.
