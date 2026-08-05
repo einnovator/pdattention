@@ -16,7 +16,7 @@ class SimpleHFMemoryIndex:
         self.model = model
         self.device = device
         self.memory_hidden = []
-        self.summary_vectors = []
+        self.content_routing_vectors = []
         self.build()
 
     @torch.no_grad()
@@ -25,15 +25,15 @@ class SimpleHFMemoryIndex:
         for text in self.memory_texts:
             ids = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=256).input_ids.to(self.device)
             hidden = emb(ids).squeeze(0)
-            summary = hidden.mean(dim=0)
+            routing_vector = hidden.mean(dim=0)
             self.memory_hidden.append(hidden.detach())
-            self.summary_vectors.append(summary.detach())
-        self.summary_vectors = torch.stack(self.summary_vectors, dim=0)
+            self.content_routing_vectors.append(routing_vector.detach())
+        self.content_routing_vectors = torch.stack(self.content_routing_vectors, dim=0)
 
     def search(self, query, top_k=2, threshold=0.2):
         query = F.normalize(query[0], dim=-1)
-        summaries = F.normalize(self.summary_vectors.to(query.device), dim=-1)
-        scores = summaries @ query
+        routing_vectors = F.normalize(self.content_routing_vectors.to(query.device), dim=-1)
+        scores = routing_vectors @ query
         vals, idx = torch.topk(scores, k=min(top_k, len(self.memory_hidden)))
         blocks = []
         for v, i in zip(vals, idx):

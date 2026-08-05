@@ -19,17 +19,19 @@ def test_reference_cache_shapes():
     tok = CharTokenizer(["abc", "summary"])
     cfg = PRAConfig(vocab_size=tok.vocab_size, max_seq_len=16, d_model=32, n_heads=4, n_layers=2)
     model = TinyPRALanguageModel(cfg)
-    entry = model.encode_reference_to_cache("mem://x", "abc", "summary", tok, "cpu")
-    assert 0 in entry.layer_kv
-    assert entry.layer_kv[0].k.ndim == 4
-    assert entry.layer_kv[0].v.ndim == 4
+    entry = model.encode_reference_to_cache("mem://x", "abc", tok, "cpu")
+    assert 0 in entry.layer_memory
+    chunk = entry.layer_memory[0].chunks[0]
+    assert chunk.token_kv.k.ndim == 4
+    assert chunk.token_kv.v.ndim == 4
+    assert chunk.routing_gist.k.shape == (cfg.d_model,)
 
 
 def test_model_forward_with_cache():
     tok = CharTokenizer(["question <REF_1> answer", "secret code red"])
     cfg = PRAConfig(vocab_size=tok.vocab_size, max_seq_len=24, d_model=32, n_heads=4, n_layers=2, trigger_threshold=-1.0)
     model = TinyPRALanguageModel(cfg)
-    entry = model.encode_reference_to_cache("mem://x", "secret code red", "secret code", tok, "cpu")
+    entry = model.encode_reference_to_cache("mem://x", "secret code red", tok, "cpu")
     cache = PRASimpleMemoryCache()
     cache.put(entry)
     model.set_pra_cache(cache)
@@ -67,8 +69,8 @@ def test_model_builds_ordered_vanilla_mixed_and_pra_layers():
         PRATransformerBlock,
     ]
 
-    entry = model.encode_reference_to_cache("mem://x", "secret code red", "secret code", tok, "cpu")
-    assert sorted(entry.layer_kv) == [1, 2, 3]
+    entry = model.encode_reference_to_cache("mem://x", "secret code red", tok, "cpu")
+    assert sorted(entry.layer_memory) == [1, 2, 3]
 
 
 def test_explicit_model_variants_select_expected_blocks():
@@ -117,16 +119,16 @@ def test_model_records_actual_reference_selections():
         d_model=32,
         n_heads=4,
         n_layers=2,
-        top_k_refs=1,
+        top_k_references=1,
         trigger_threshold=-1.0,
     )
     model = TinyPRALanguageModel(cfg)
     cache = PRASimpleMemoryCache()
-    cache.put(model.encode_reference_to_cache("mem://selected", "secret code red", "secret code", tok, "cpu"))
+    cache.put(model.encode_reference_to_cache("mem://selected", "secret code red", tok, "cpu"))
     model.set_pra_cache(cache)
 
     model(torch.tensor([tok.encode("question <REF_1> answer")[:24]]))
 
-    selections = model.selected_references_by_layer()
+    selections = model.selected_chunks_by_layer()
     assert selections
-    assert all(ranked[0][0] == "mem://selected" for ranked in selections.values())
+    assert all(ranked[0][0].reference_uri == "mem://selected" for ranked in selections.values())

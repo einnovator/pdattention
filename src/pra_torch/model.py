@@ -1,11 +1,23 @@
 """Tiny standalone transformer used to study Progressive Retrieval Attention."""
 
+from contextlib import nullcontext
+import warnings
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .config import PRAConfig
 from .attention import PRAttention
-from .memory import PRAMemoryCache, PRACacheEntry, PRASimpleMemoryCache
+from .chunking import partition_reference
+from .gist import GRUGistPooler, compute_routing_gist
+from .memory import (
+    ChunkRoutingGist,
+    LayerReferenceMemory,
+    PRAMemoryCache,
+    PRACacheEntry,
+    PRASimpleMemoryCache,
+    ReferenceChunkMemory,
+)
 
 
 def causal_attention_mask(seq_len: int, device) -> torch.Tensor:
@@ -49,9 +61,7 @@ class PRATransformerBlock(nn.Module):
             max_seq_len=cfg.max_seq_len,
             layer_id=layer_id,
             pra_cache=pra_cache,
-            top_k_refs=cfg.top_k_refs,
-            trigger_threshold=cfg.trigger_threshold,
-            memory_alpha=cfg.memory_alpha,
+            config=cfg,
         )
         self.ln2 = nn.LayerNorm(cfg.d_model)
         self.ff = nn.Sequential(
@@ -70,9 +80,9 @@ class PRATransformerBlock(nn.Module):
         """Attach a cache to this block's PRA attention."""
         self.attn.pra_cache = pra_cache
 
-    def project_reference_kv(self, x):
+    def project_reference_kv(self, x, *, detach: bool = True):
         """Project reference hidden states into this block's PRA K/V space."""
-        return self.attn.project_kv(self.ln1(x))
+        return self.attn.project_kv(self.ln1(x), detach=detach)
 
 
 class PRASATransformerBlock(nn.Module):
@@ -95,9 +105,7 @@ class PRASATransformerBlock(nn.Module):
             max_seq_len=cfg.max_seq_len,
             layer_id=layer_id,
             pra_cache=pra_cache,
-            top_k_refs=cfg.top_k_refs,
-            trigger_threshold=cfg.trigger_threshold,
-            memory_alpha=cfg.memory_alpha,
+            config=cfg,
         )
         self.ln3 = nn.LayerNorm(cfg.d_model)
         self.ff = nn.Sequential(
@@ -124,10 +132,10 @@ class PRASATransformerBlock(nn.Module):
         """Attach a cache to this block's PRA attention."""
         self.pra_attn.pra_cache = pra_cache
 
-    def project_reference_kv(self, x):
+    def project_reference_kv(self, x, *, detach: bool = True):
         """Project reference states after the vanilla sublayer into PRA K/V."""
         x = self._apply_self_attention(x)
-        return self.pra_attn.project_kv(self.ln2(x))
+        return self.pra_attn.project_kv(self.ln2(x), detach=detach)
 
 
 class TinyPRAModel(nn.Module):
@@ -139,6 +147,17 @@ class TinyPRAModel(nn.Module):
         self.pra_cache = pra_cache if pra_cache is not None else PRASimpleMemoryCache()
         self.token_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
         self.pos_emb = nn.Embedding(cfg.max_seq_len, cfg.d_model)
+        self.gist_pooler = (
+            GRUGistPooler(
+                cfg.d_model,
+                hidden_size=cfg.gist_gru_hidden_size,
+                num_layers=cfg.gist_gru_num_layers,
+                bidirectional=cfg.gist_gru_bidirectional,
+                dropout=cfg.dropout,
+            )
+            if cfg.gist_mode == "gru"
+            else None
+        )
         self.blocks = nn.ModuleList(self._build_blocks(cfg))
         self.ln = nn.LayerNorm(cfg.d_model)
         self.head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
@@ -165,14 +184,43 @@ class TinyPRAModel(nn.Module):
         """Remove all cached reference entries from the current cache."""
         self.pra_cache.clear()
 
-    def selected_references_by_layer(self) -> dict[int, list[tuple[str, float]]]:
-        """Return router selections recorded by the most recent forward pass."""
+    def selected_chunks_by_layer(self) -> dict[int, list[list]]:
+        """Return per-layer, per-batch selected chunks from the latest forward."""
         selections = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
             if attention is not None:
-                selections[block.layer_id] = list(attention.last_selected_references)
+                selections[block.layer_id] = [list(items) for items in attention.last_selected_chunks]
         return selections
+
+    def selected_references_by_layer(self) -> dict[int, list[list[tuple[str, float]]]]:
+        """Deprecated compatibility view derived from chunk-aware selections."""
+        warnings.warn(
+            "selected_references_by_layer() is deprecated; use selected_chunks_by_layer().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        result = {}
+        for layer_id, batches in self.selected_chunks_by_layer().items():
+            layer_batches = []
+            for selected in batches:
+                by_uri = {}
+                for hit in selected:
+                    by_uri.setdefault(hit.reference_uri, hit.reference_score)
+                layer_batches.append(list(by_uri.items()))
+            result[layer_id] = layer_batches
+        return result
+
+    def pra_diagnostics_by_layer(self) -> dict[int, dict]:
+        diagnostics = {}
+        for block in self.blocks:
+            attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
+            if attention is not None:
+                diagnostics[block.layer_id] = {
+                    **attention.last_diagnostics,
+                    "batching": attention.last_memory_batching_stats,
+                }
+        return diagnostics
 
     def forward(self, input_ids, use_pra_memory: bool = True):
         """Return next-token logits for a batch of token ids."""
@@ -185,30 +233,128 @@ class TinyPRAModel(nn.Module):
         x = self.ln(x)
         return self.head(x)
 
-    @torch.no_grad()
-    def encode_reference_to_cache(self, uri: str, text: str, summary: str, tokenizer, device) -> PRACacheEntry:
-        """Encode a reference document separately and capture per-layer K/V.
-
-        This is the standalone version. It runs the reference text through the same
-        model path, but projects/stores K/V for each layer from that layer's normalized
-        hidden state before attention.
-        """
-        ids = torch.tensor([tokenizer.encode(text)[: self.cfg.max_seq_len]], dtype=torch.long, device=device)
-        sum_ids = torch.tensor([tokenizer.encode(summary)[: self.cfg.max_seq_len]], dtype=torch.long, device=device)
-
-        # Summary vector from input embeddings for initial prototype. TODO: optionally use final hidden.
-        summary_hidden = self.token_emb(sum_ids).mean(dim=1).squeeze(0).detach()
-        entry = PRACacheEntry(uri=uri, text=text, summary=summary, summary_vector=summary_hidden)
-
-        b, t = ids.shape
-        pos = torch.arange(t, device=device)
+    def _encode_reference_tokens(self, token_ids, device, *, detach: bool, use_pra_memory: bool):
+        ids = torch.tensor([token_ids], dtype=torch.long, device=device)
+        pos = torch.arange(ids.shape[1], device=device)
         x = self.token_emb(ids) + self.pos_emb(pos)[None, :, :]
-
+        layer_kv = {}
         for block in self.blocks:
             if hasattr(block, "project_reference_kv"):
-                entry.layer_kv[block.layer_id] = block.project_reference_kv(x)
-            x = block(x, use_pra_memory=False)  # no recursive PRA while building first cache
+                layer_kv[block.layer_id] = block.project_reference_kv(x, detach=detach)
+            x = block(x, use_pra_memory=use_pra_memory)
+        return layer_kv
 
+    def encode_reference_to_cache(
+        self,
+        uri: str,
+        text: str,
+        tokenizer,
+        device,
+        metadata: dict | None = None,
+        *,
+        use_pra_memory: bool = False,
+    ) -> PRACacheEntry:
+        """Encode content chunks into layer-specific routing gists and token K/V."""
+        metadata = dict(metadata or {})
+        detach = self.cfg.cache_build_mode == "detached"
+        context = torch.no_grad() if detach else nullcontext()
+        chunks = partition_reference(uri, text, tokenizer, self.cfg, metadata)
+        entry = PRACacheEntry(
+            uri=uri,
+            text=text,
+            child_uris=list(metadata.get("child_uris") or []),
+            metadata={
+                **metadata,
+                "chunking_mode": self.cfg.chunking_mode,
+                "gist_mode": self.cfg.gist_mode,
+                "cache_build_mode": self.cfg.cache_build_mode,
+                "use_summary": self.cfg.use_summary,
+                "summary_mode": self.cfg.summary_mode,
+                "chunk_count": len(chunks),
+            },
+        )
+        summary_by_layer = {}
+        summary = metadata.get("summary")
+        with context:
+            if self.cfg.use_summary and summary:
+                summary_ids = list(tokenizer.encode(str(summary)))
+                if len(summary_ids) > self.cfg.max_seq_len:
+                    summary_ids = summary_ids[: self.cfg.max_seq_len]
+                if summary_ids:
+                    summary_kv = self._encode_reference_tokens(
+                        summary_ids, device, detach=detach, use_pra_memory=False
+                    )
+                    for layer_id, kv in summary_kv.items():
+                        summary_by_layer[layer_id] = compute_routing_gist(
+                            kv.k,
+                            mode="gru" if self.cfg.gist_mode == "gru" else "mean",
+                            token_ids=summary_ids,
+                            tokenizer=tokenizer,
+                            ref_end_token=self.cfg.ref_end_token,
+                            gru_pooler=self.gist_pooler,
+                        )
+
+            for chunk in chunks:
+                token_ids = list(chunk.token_ids)
+                original_length = len(token_ids)
+                if original_length > self.cfg.max_seq_len:
+                    if self.cfg.reference_overflow_policy == "error":
+                        raise ValueError(
+                            f"Chunk {chunk.chunk_id} has {original_length} tokens, exceeding "
+                            f"max_seq_len={self.cfg.max_seq_len}."
+                        )
+                    token_ids = token_ids[: self.cfg.max_seq_len]
+                layer_kv = self._encode_reference_tokens(
+                    token_ids,
+                    device,
+                    detach=detach,
+                    use_pra_memory=use_pra_memory,
+                )
+                for layer_id, kv in layer_kv.items():
+                    gist_k = compute_routing_gist(
+                        kv.k,
+                        mode=self.cfg.gist_mode,
+                        token_ids=token_ids,
+                        tokenizer=tokenizer,
+                        ref_end_token=self.cfg.ref_end_token,
+                        gru_pooler=self.gist_pooler,
+                    )
+                    gist_v = compute_routing_gist(
+                        kv.v,
+                        mode=self.cfg.gist_mode,
+                        token_ids=token_ids,
+                        tokenizer=tokenizer,
+                        ref_end_token=self.cfg.ref_end_token,
+                        gru_pooler=self.gist_pooler,
+                    )
+                    if detach:
+                        gist_k = gist_k.detach()
+                        gist_v = gist_v.detach()
+                    chunk_memory = ReferenceChunkMemory(
+                        chunk_id=chunk.chunk_id,
+                        source_uri=chunk.source_uri,
+                        token_start=chunk.token_start,
+                        token_end=min(chunk.token_start + len(token_ids), chunk.token_end),
+                        char_start=chunk.char_start,
+                        char_end=chunk.char_end,
+                        token_kv=kv,
+                        routing_gist=ChunkRoutingGist(
+                            k=gist_k,
+                            v=gist_v,
+                            method=self.cfg.gist_mode,
+                            summary_k=summary_by_layer.get(layer_id),
+                            metadata={"summary_available": layer_id in summary_by_layer},
+                        ),
+                        metadata={
+                            **chunk.metadata,
+                            "original_token_count": original_length,
+                            "retained_token_count": len(token_ids),
+                            "truncated": original_length != len(token_ids),
+                        },
+                    )
+                    entry.layer_memory.setdefault(layer_id, LayerReferenceMemory()).chunks.append(
+                        chunk_memory
+                    )
         return entry
 
     @torch.no_grad()

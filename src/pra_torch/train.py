@@ -171,6 +171,23 @@ def default_batch_step(model, batch: dict, device: str) -> tuple[torch.Tensor, d
     }
 
 
+def validated_extra_metrics(values: dict | None, reserved: set[str]) -> dict[str, float]:
+    """Detach scalar batch metrics without allowing generic metric overwrite."""
+    result = {}
+    for key, value in (values or {}).items():
+        if key in reserved or not isinstance(key, str):
+            continue
+        if not key.startswith(("retrieval_", "memory_", "bucket_", "cache_", "layer_")):
+            continue
+        if torch.is_tensor(value):
+            if value.numel() != 1:
+                continue
+            value = value.detach().item()
+        if isinstance(value, (int, float, bool)):
+            result[key] = float(value)
+    return result
+
+
 def _validation_checkpoint(state: TrainingState, metrics: dict, epoch: int) -> bool:
     val_loss = metrics.get("val_loss", metrics.get("loss", float("inf")))
     improved = val_loss < state.best_val_loss
@@ -312,6 +329,7 @@ def train_model(
                 "gpu_memory_allocated": cuda_memory_allocated(state.device),
                 "train_batch_duration_seconds": train_batch_duration,
             }
+            metrics.update(validated_extra_metrics(batch_metrics.get("metrics"), set(metrics)))
             averages.update(metrics, weight=max(examples, 1))
             state.logger.log_metrics(
                 {

@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
 
 import pytest
 
 from pra_core.datasets import load_dataset, load_documents, load_questions, load_references
+from data.generators import books, code_repo, docs, hierarchy, synthetic, wikipedia
 
 
 STAGES = [
@@ -35,3 +37,17 @@ def test_raw_stage_loaders_read_jsonl_rows():
     assert load_documents(stage_path)[0]["uri"] == "memory://animal/cat"
     assert load_references(stage_path)[0]["token"] == "<REF_1>"
     assert load_questions(stage_path)[0]["expected_ref_ids"] == [1]
+
+
+@pytest.mark.parametrize(
+    "generator",
+    [synthetic, hierarchy, code_repo, wikipedia, books, docs],
+)
+def test_generators_do_not_require_or_emit_summaries(generator, tmp_path):
+    output = tmp_path / generator.__name__.rsplit(".", 1)[-1]
+    generator.generate(output)
+    for filename in ("documents.jsonl", "references.jsonl"):
+        with (output / filename).open(encoding="utf-8") as stream:
+            rows = [json.loads(line) for line in stream]
+        assert rows
+        assert all("summary" not in row for row in rows)

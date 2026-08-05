@@ -29,26 +29,35 @@ def train_config_from_dict(raw: dict) -> TrainConfig:
 def model_config_from_dict(raw: dict, vocab_size: int, train_cfg: TrainConfig) -> PRAConfig:
     model = raw.get("model", {})
     pra = raw.get("pra", model)
-    return PRAConfig(
-        vocab_size=vocab_size,
-        d_model=int(model.get("d_model", 128)),
-        n_heads=int(model.get("n_heads", 4)),
-        n_layers=int(model.get("n_layers", 4)),
-        n_vanilla_layers=int(model.get("n_vanilla_layers", 0)),
-        n_mixed_layers=int(model.get("n_mixed_layers", 0)),
-        max_seq_len=train_cfg.max_seq_len,
-        dropout=float(model.get("dropout", 0.0)),
-        pra_layer_ids=tuple(pra.get("pra_layer_ids", (2, 3))),
-        top_k_refs=int(pra.get("top_k_refs", 2)),
-        trigger_threshold=float(pra.get("trigger_threshold", 0.2)),
-        use_cross_attention_memory=bool(pra.get("use_cross_attention_memory", True)),
-        use_concat_memory=bool(pra.get("use_concat_memory", False)),
-        memory_alpha=float(pra.get("memory_alpha", 0.5)),
-        batch_size=train_cfg.batch_size,
-        lr=train_cfg.learning_rate,
-        steps=train_cfg.epochs,
-        device=train_cfg.device,
+    values = {
+        field.name: pra[field.name]
+        for field in fields(PRAConfig)
+        if field.name in pra
+    }
+    values.update(
+        {
+            "vocab_size": vocab_size,
+            "d_model": int(model.get("d_model", 128)),
+            "n_heads": int(model.get("n_heads", 4)),
+            "n_layers": int(model.get("n_layers", 4)),
+            "n_vanilla_layers": int(model.get("n_vanilla_layers", 0)),
+            "n_mixed_layers": int(model.get("n_mixed_layers", 0)),
+            "d_ff": int(model["d_ff"]) if model.get("d_ff") is not None else None,
+            "max_seq_len": train_cfg.max_seq_len,
+            "dropout": float(model.get("dropout", 0.0)),
+            "model_variant": str(model.get("model_variant", "custom")),
+            "pra_layer_ids": tuple(pra.get("pra_layer_ids", (2, 3))),
+            "trigger_threshold": float(pra.get("trigger_threshold", 0.2)),
+            "use_cross_attention_memory": bool(pra.get("use_cross_attention_memory", True)),
+            "use_concat_memory": bool(pra.get("use_concat_memory", False)),
+            "memory_alpha": float(pra.get("memory_alpha", 0.5)),
+            "batch_size": train_cfg.batch_size,
+            "lr": train_cfg.learning_rate,
+            "steps": train_cfg.epochs,
+            "device": train_cfg.device,
+        }
     )
+    return PRAConfig(**values)
 
 
 def build_trainer(

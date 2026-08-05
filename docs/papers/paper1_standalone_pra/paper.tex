@@ -34,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific key/value memory, and a cross-attention branch over selected reference memories. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and per-example cache construction. A controlled three-seed follow-up compares four-layer SelfAttention, full PRAttention, and a two-plus-two hybrid on WikiText-2 at a 1,048,576-token budget, including FFN-based parameter-matched controls. Mean test losses are 4.6378 for same-width SelfAttention, 4.5463 for full PRA, 4.6049 for hybrid PRA, 4.5706 for SelfAttention matched to full PRA, and 4.5725 for SelfAttention matched to hybrid PRA. Thus ordinary-language parity survives approximate parameter matching, but the hybrid shows no advantage over its matched control. A fixed reference benchmark then compares scratch, frozen-reference-path, and direct joint training. Freezing preserves plain-text loss exactly and produces lower reference-task loss than joint tuning; joint tuning increases plain-text loss by 0.1598 for full PRA and 0.1429 for the hybrid. However, selected-reference top-1 accuracy remains near chance, valid references barely outperform shuffled or irrelevant controls, and oracle content does not materially improve loss. The current prototype therefore passes an ordinary-language compatibility and preservation gate, but not the causal reference-selection gate required for a PRA efficacy claim. The negative result identifies the heuristic, non-differentiable selector as the next experimental bottleneck.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific chunk memories, one contextual routing gist per chunk, and a cross-attention branch over selected chunk K/V. The corrected implementation routes every batch item independently with a projected last-token query, separates reference and chunk budgets, supports bounded child-first recursive cache construction, and batches variable memory lengths without violating semantic isolation. Summaries are optional routing evidence rather than the primary memory representation. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and training diagnostics. Earlier controlled experiments compared SelfAttention, full PRAttention, and hybrid PRA on WikiText-2 and a fixed reference benchmark. Their ordinary-language and optimization observations remain useful, but their reference-conditioned measurements used a version-1 summary router and whole-reference materialization. They therefore do not validate the corrected chunk-routing architecture and are reported only as historical feasibility evidence pending rerun. No causal or efficiency superiority is claimed.
 \end{abstract}
 
 \section{Introduction}
@@ -43,7 +43,7 @@ Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-
 
 This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model. The contribution includes an initial empirical pilot, a three-seed parameter-controlled follow-up, and an evaluation design intended to make failure visible rather than merely demonstrate that a memory branch can lower loss.
 
-The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them to URI-addressed references. Third, a resolver and cache encode referenced documents separately, storing per-layer key/value tensors. Fourth, a PRA attention layer retrieves cache entries by summary-vector similarity and adds a scaled cross-attention memory branch to ordinary causal self-attention.
+The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references. Third, a resolver partitions each document into bounded chunks and stores full per-layer token K/V together with exactly one contextual projected-key gist per chunk. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and adds a scaled cross-attention branch over only the selected chunk memories.
 
 \section{Model Definition}
 
@@ -92,34 +92,38 @@ Let the external context be a directed attributed graph
 \mathcal{G}=(\mathcal{V},\mathcal{E}),
 \end{equation}
 
-where each node $v\in\mathcal{V}$ is a tuple $(u,z,s,m)$ containing a stable URI $u$, content $z$, summary $s$, and metadata $m$. An edge $(v_i,a,v_j)\in\mathcal{E}$ states that anchor $a$ in $v_i$ identifies or expands to $v_j$. The current implementation stores these relations through reference handles, URI fragments, and optional children exposed by the resolver. The graph formalism is broader than the current one-level WikiText pilot and makes recursive expansion explicit.
+where each node $v\in\mathcal{V}$ is a tuple $(u,z,s,m,R)$ containing a stable URI $u$, content $z$, optional summary $s$, metadata $m$, and an explicit local reference table $R$. An edge $(v_i,a,v_j)\in\mathcal{E}$ exists only when $R_i[a]=u_j$; URI-prefix scans do not silently invent children. This local namespace makes recursive dependencies inspectable and prevents unrelated objects with similar URI prefixes from entering the graph.
 
 For input sequence $x$, the reference table exposes a candidate set $\mathcal{H}(x)\subseteq\mathcal{V}$. A resolver
 
 \begin{equation}
-\rho(u,p,t) \rightarrow (z,s,\mathrm{children},m)
+\rho(u,p,t) \rightarrow (z,s,R,m,\nu)
 \end{equation}
 
 maps URI $u$, authorization policy $p$, and logical time or version $t$ to a resolved object. Including $p$ and $t$ in the interface clarifies two systems requirements that the in-memory prototype currently simplifies: access control and freshness.
 
 \subsection{Selection and Expansion Operators}
 
-At layer $\ell$, a selection operator ranks candidate summaries using query $q_{t,\ell}$:
+At layer $\ell$, document $u$ is partitioned into chunks $c\in\mathcal{C}_u$. Encoding produces full token memory $(K_{u,c,\ell},V_{u,c,\ell})$ and exactly one routing gist per chunk. The default mean gist reconstructs the projected key heads into $d$ dimensions and pools over chunk tokens:
 
 \begin{equation}
-\mathcal{S}_{k,\tau}(q_{t,\ell},\mathcal{C}_t)
-= \operatorname{TopK}_{u}\left\{
-\cos(q_{t,\ell},s_u) \mid \cos(q_{t,\ell},s_u)\geq\tau
-\right\}.
+g^K_{u,c,\ell} = \frac{1}{|c|}\sum_{j\in c}
+\operatorname{mergeheads}(K_{u,c,\ell,j}).
 \end{equation}
 
-The prototype sets $q_{t,\ell}$ to the last hidden state entering the layer, uses mean token embeddings for $s_u$, and retrieves at most $k$ entries. An expansion operator
+Alternatives include last-token, explicit reference-end, and a registered GRU pooler. The routing query is the last projected query reconstructed across heads,
+
+\begin{equation}
+q_{t,\ell}=\operatorname{mergeheads}\left(X^{(\ell)}W_Q^{(\ell)}\right)_{t}.
+\end{equation}
+
+Content scores are $a_{u,c,\ell}=\cos(q_{t,\ell},g^K_{u,c,\ell})$. Hierarchical search aggregates chunk scores within each reference using maximum, mean, or log-sum-exp, selects at most $k_r$ references, and then selects at most $k_c$ chunks independently inside each retained reference. A threshold is applied without converting the two budgets into one flattened top-$k$. A global-chunk strategy is available for ablation but still enforces both constraints; reference-first routing is accepted only when an explicit reference-level representation is configured. An expansion operator
 
 \begin{equation}
 \mathcal{X}(A,\mathcal{G},b,d) \rightarrow A'
 \end{equation}
 
-maps active set $A$ to an expanded set $A'$ under branching budget $b$ and depth budget $d$. The resolver supports child anchors, but the pilot does not yet learn or benchmark $\mathcal{X}$; it is included here to define the intended systems boundary.
+maps active set $A$ to an expanded set $A'$ under branching budget $b$ and depth budget $d$. The corrected cache builder implements bounded child-first expansion. It follows only each resolved object's local table, shares reference and token budgets across the traversal, records build states and dependencies, and applies explicit cycle, missing-reference, depth, and overflow policies. This deterministic expansion is a runtime policy, not yet a learned iterative controller.
 
 \subsection{Cache and Lifecycle State}
 
@@ -140,24 +144,25 @@ A'_t &= \mathcal{X}(A_t,\mathcal{G},b,d),\\
 (y_t,\Omega_{t+1}) &= \operatorname{attend}(x_{\leq t},\mathcal{C}'_t,\Omega_t).
 \end{align}
 
-In the pilot, resolution and encoding happen before each example forward pass, $\mathcal{X}$ is one-level identity, admission retains all provided references, and the cache is discarded when the next example begins. This explicit specialization prevents claims about recursion, persistence, or learned admission that the code does not yet support.
+In the corrected prototype, resolution and encoding still happen before an example forward pass and the cache is discarded when the next example begins. Recursive construction is available, but admission retains every successfully built entry within fixed budgets and expansion is not learned. Entries move through explicit \texttt{unseen}, \texttt{building}, \texttt{ready}, and failure states so partially built cyclic entries never become searchable. Persistent admission, eviction, and cross-request reuse remain outside the implementation.
 
 \section{Reference Handles and Resolver}
 
 \subsection{Reference Tokens}
 
-The prototype uses explicit textual handles of the form \texttt{<REF\_n>}. A regular expression parser extracts occurrences and optionally attaches entries from a \texttt{ReferenceTable}. Each reference table entry stores an id, token, URI, summary, and metadata. Legacy \texttt{!!ref:uri!!} syntax is retained only for compatibility.
+The prototype uses explicit textual handles of the form \texttt{<REF\_n>}. A regular expression parser extracts occurrences and resolves them only through the current object's \texttt{ReferenceTable}. Each table entry stores an id, token, URI, optional summary, and metadata. Legacy \texttt{!!ref:uri!!} syntax is retained only for compatibility.
 
 \subsection{URI and Anchor Semantics}
 
-References point to simple URIs such as \path{mem://doc1}. Anchored locations use URI fragments, for example \path{mem://doc1#section.a}. Utility functions split the URI base from the anchor, compute parent anchors, and construct child anchors. The current in-memory resolver stores a dictionary from URI to text plus an optional dictionary from URI to summary. If a URI is requested with \texttt{summary\_only=True}, the resolver returns the summary in place of the full text. Child references are exposed when stored keys extend the requested URI with hierarchical suffixes.
+References point to simple URIs such as \path{mem://doc1}. Anchored locations may use URI fragments, for example \path{mem://doc1#section.a}, but lexical URI ancestry is not semantic graph ancestry. The in-memory resolver stores structured document records containing text, an optional summary, metadata, version, anchors, and a local reference table. A missing URI raises an explicit error; missing-reference policy is owned by the recursive builder rather than hidden inside resolution.
 
 \subsection{Resolved References}
 
 Given a handle $r$ with URI $u$, the resolver returns
 
 \begin{equation}
-\mathrm{resolve}(u) = (\mathrm{text}_u, \mathrm{summary}_u, \mathrm{children}_u, \mathrm{metadata}_u).
+\mathrm{resolve}(u) = (\mathrm{text}_u, \mathrm{summary}_u, R_u,
+\mathrm{metadata}_u, \mathrm{version}_u).
 \end{equation}
 
 This simple resolver is sufficient for synthetic and local experiments. Future systems can replace it with file, database, vector-index, search, or web resolvers while preserving the same high-level interface.
@@ -166,50 +171,53 @@ This simple resolver is sufficient for synthetic and local experiments. Future s
 
 \subsection{Cache Entries}
 
-The PRA cache stores entries of the form
+The PRA cache stores a reference entry containing layer-specific chunk memory:
 
 \begin{equation}
-C_u = (u,\; \mathrm{text}_u,\; \mathrm{summary}_u,\; s_u,\; \{(K_{u,\ell},V_{u,\ell})\}_{\ell}).
+C_u = \left(u,z_u,m_u,\left\{
+\left(c,K_{u,c,\ell},V_{u,c,\ell},g^K_{u,c,\ell},g^V_{u,c,\ell}\right)
+\right\}_{c,\ell}\right).
 \end{equation}
 
-Here $s_u \in \mathbb{R}^{d}$ is a summary vector used for retrieval, and $(K_{u,\ell},V_{u,\ell})$ are detached key/value tensors projected for layer $\ell$. The implementation exposes an abstract \texttt{PRAMemoryCache} and a dictionary-backed \texttt{PRASimpleMemoryCache}.
+Each chunk records a deterministic identifier, source URI, token interval, metadata, full projected token K/V, and one layer-specific routing gist. K/V and gists are detached by default; a trainable-gist mode preserves the registered GRU gist path. Optional summary evidence, when present, is projected contextually into the same layer space and attached to the chunk gist. The implementation exposes an abstract \texttt{PRAMemoryCache} and a dictionary-backed \texttt{PRASimpleMemoryCache}.
 
 \subsection{Reference Encoding Pass}
 
-Before a batch forward pass, the training code builds a cache from batch metadata. For each referenced document:
+Before a batch forward pass, the training code builds isolated caches from batch metadata. For each referenced document:
 
 \begin{enumerate}[leftmargin=*]
-\item Resolve the URI to text and summary.
-\item Tokenize the reference text and truncate to \texttt{max\_seq\_len}.
-\item Tokenize the summary and compute a prototype summary vector by averaging summary-token embeddings.
-\item Run the reference text through the same model path with PRA memory disabled.
-\item At each layer, take the pre-attention normalized hidden state and project it through that layer's $W_K$ and $W_V$.
-\item Store the resulting detached layer-specific tensors in the cache.
+\item Resolve the URI to text, optional summary, metadata, and its explicit local reference table.
+\item Recursively ensure children are ready first when recursive references are enabled, subject to shared depth, reference, and token budgets.
+\item Partition the text with \texttt{none}, bounded fixed windows, explicit markers, or a supplied semantic partitioner. Semantic mode without a plugin fails explicitly.
+\item Run each document through the same model path. Parent encoding may read already-ready child memory; nonrecursive encoding disables PRA memory.
+\item At every PRA layer, project each chunk's token states through that layer's $W_K$ and $W_V$, then derive exactly one routing gist from projected keys.
+\item Store provenance, fingerprints, truncation details, layer-specific chunk tensors, and dependency events before atomically marking the entry ready.
 \end{enumerate}
 
-This design is deliberately conservative. It avoids recursive PRA during first-level cache construction and ensures that external memory for layer $\ell$ uses the same projection matrices as the layer that will consume it.
+Fixed windows can overlap, but selected materialization deduplicates overlapping source-token spans. Maximum gist counts and overflow policies bound routing state. Cache fingerprints include content, model, tokenizer, and routing identities so a persistent implementation can invalidate stale representations. The current per-example cache remains ephemeral, but the identity rules are explicit.
 
 \section{PRA Attention}
 
-\subsection{Summary-Based Retrieval}
+\subsection{Hierarchical Content Routing}
 
-At generation or training time, if the cache is non-empty, the current implementation uses the last hidden state before attention as a retrieval query. For a query $q \in \mathbb{R}^{d}$ and cache summary vectors $s_u$, retrieval scores are cosine similarities:
+At generation or training time, each batch row independently compares its projected last-token query with layer-specific chunk gists. For query $q_{b,t,\ell}$ and chunk gist $g^K_{u,c,\ell}$, the default content score is
 
 \begin{equation}
-\mathrm{score}(u \mid q) =
-\frac{q^\top s_u}{\lVert q\rVert_2 \lVert s_u\rVert_2}.
+\mathrm{score}(u,c \mid q) =
+\frac{q^\top g^K_{u,c,\ell}}{\lVert q\rVert_2
+\lVert g^K_{u,c,\ell}\rVert_2}.
 \end{equation}
 
-The cache returns the top-$k$ entries. Entries with similarity below \texttt{trigger\_threshold} are ignored. Library defaults are \texttt{top\_k\_refs=2} and \texttt{trigger\_threshold=0.2}. The reference pilot deliberately uses \texttt{top\_k\_refs=5}, \texttt{trigger\_threshold=-1.0}, and \texttt{memory\_alpha=1.0} so that all one-to-five candidate references are available and the experiment tests the memory path before introducing a selective trigger. This is an experimental simplification, not the intended final retrieval policy.
+The default hierarchical policy uses independent reference and per-reference chunk top-$k$ settings. They are configured as \texttt{top\_k\_references} and \texttt{top\_k\_chunks\_per\_reference}; either may be zero, yielding no memory. \texttt{top\_k\_refs} remains a warning-producing compatibility alias for one release. Summaries are disabled by default. If enabled, \texttt{replace}, \texttt{hybrid}, and \texttt{augment} policies combine projected summary evidence with content scores; a missing summary always falls back to content routing.
 
 \subsection{Memory Cross-Attention Branch}
 
-For selected URI set $\mathcal{U}$ and layer $\ell$, the implementation concatenates cached keys and values across the selected entries:
+For selected chunk set $\mathcal{A}_{b,\ell}$ and layer $\ell$, the implementation materializes only selected full-token memories for each batch row:
 
 \begin{equation}
-K_{\mathcal{U},\ell} = \mathrm{concat}_{u \in \mathcal{U}} K_{u,\ell},
+K_{b,\ell}^{\rm mem} = \mathrm{concat}_{(u,c) \in \mathcal{A}_{b,\ell}} K_{u,c,\ell},
 \quad
-V_{\mathcal{U},\ell} = \mathrm{concat}_{u \in \mathcal{U}} V_{u,\ell}.
+V_{b,\ell}^{\rm mem} = \mathrm{concat}_{(u,c) \in \mathcal{A}_{b,\ell}} V_{u,c,\ell}.
 \end{equation}
 
 It then computes a memory branch using the same query tensor $Q$ from the local branch:
@@ -219,8 +227,8 @@ O_{\mathrm{mem}} =
 W_{O,\mathrm{mem}}
 \mathrm{merge}\left[
 \mathrm{softmax}\left(
-\frac{QK_{\mathcal{U},\ell}^{\top}}{\sqrt{d_h}}
-\right)V_{\mathcal{U},\ell}
+\frac{Q_b(K_{b,\ell}^{\rm mem})^{\top}}{\sqrt{d_h}}
+\right)V_{b,\ell}^{\rm mem}
 \right].
 \end{equation}
 
@@ -230,14 +238,16 @@ The returned attention output is
 O = O_{\mathrm{local}} + \alpha O_{\mathrm{mem}},
 \end{equation}
 
-where $\alpha$ is \texttt{memory\_alpha}, defaulting to $0.5$. If the cache is empty, PRA is disabled, no selected entry passes the threshold, or the selected entry lacks layer-$\ell$ memory, the layer returns only the local self-attention output.
+where $\alpha$ is \texttt{memory\_alpha}, defaulting to $0.5$. If the cache is empty, PRA is disabled, no chunk passes the threshold, or selected memory is unavailable at layer $\ell$, the memory residual is exactly zero, including in the presence of output-projection bias.
+
+Variable memory lengths are executed in one of three modes. Mode zero evaluates each nonempty row independently; mode one pads a single masked rectangle; and mode $K\geq2$ deterministically partitions rows into at most $K$ contiguous length buckets using either equal-count grouping or a dynamic-programming minimum-padding plan. Masks preserve numerical equivalence, empty rows remain zero, and outputs are restored to original batch order. Diagnostics report actual bucket count, selected versus padded positions, and allocation ratio.
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[node distance=6mm and 12mm]
 \node[sysnode] (hidden) {$X^{(\ell)}$};
 \node[sysnode, above right=of hidden] (local) {causal self-attention};
-\node[cachenode, below right=of hidden] (select) {select URI memory};
+\node[cachenode, below right=of hidden] (select) {route chunk gists};
 \node[cachenode, right=of select] (cross) {memory cross-attention};
 \node[sysnode, right=28mm of hidden] (sum) {$O_{\rm local}+\alpha O_{\rm mem}$};
 \node[sysnode, right=of sum] (ffn) {residual + FFN};
@@ -296,12 +306,12 @@ The current per-example cache adapter prevents semantic leakage but serializes e
 Datasets are represented by three JSONL files per stage:
 
 \begin{itemize}[leftmargin=*]
-\item \texttt{documents.jsonl}: URI-addressed documents, summaries, titles, and anchors.
+\item \texttt{documents.jsonl}: URI-addressed documents, optional summaries, titles, anchors, metadata, and local reference tables.
 \item \texttt{references.jsonl}: reference ids, URIs, summaries, anchors, and metadata.
-\item \texttt{questions.jsonl}: prompts, answers, expected reference ids, and expected anchors.
+\item \texttt{questions.jsonl}: prompts, answers, expected reference ids/URIs, expected chunk ids or spans, and expected anchors.
 \end{itemize}
 
-The loaded sample type is \texttt{QuestionSample}, containing a question, answer, list of \texttt{ReferenceSample} objects, target reference ids, and metadata. The current registry includes synthetic memory QA, hierarchical synthetic references, code repositories, Wikipedia, books, technical documentation, and GitHub-style repositories.
+The loaded sample type is \texttt{QuestionSample}, containing a question, answer, list of \texttt{ReferenceSample} objects, optional reference/chunk relevance labels, and metadata. Chunk labels are optional: chunk metrics are omitted rather than fabricated when labels are absent. New dataset generators do not emit summaries; loaders retain backward compatibility with legacy optional summary fields and explicit summary experiments. The current registry includes synthetic memory QA, hierarchical synthetic references, code repositories, Wikipedia, books, technical documentation, and GitHub-style repositories.
 
 \subsection{Collation}
 
@@ -378,10 +388,12 @@ The evaluation code reports both language-model and reference-behavior metrics:
 \begin{itemize}[leftmargin=*]
 \item \textbf{Loss and perplexity}: autoregressive language-model quality.
 \item \textbf{Answer accuracy}: exact containment of the expected answer in generated output or decoded continuation.
-\item \textbf{Reference ranking}: actual selected-URI top-1, top-$k$, and mean reciprocal rank against expected URIs.
+\item \textbf{Reference ranking}: actual selected-URI hit, recall, precision, F1, MRR, and NDCG at $k$, globally and per layer.
+\item \textbf{Chunk ranking}: selected-chunk hit, recall, precision, F1, MRR, NDCG, and optional source-span IoU against labeled chunks.
 \item \textbf{Expected anchor hit}: whether expected anchors appear in cached text or selected URI strings.
-\item \textbf{Expanded reference count}: average number of expanded references per example.
-\item \textbf{Average retrieved tokens}: tokenized size of resolved reference text.
+\item \textbf{Expanded reference count}: average number of ready and recursively expanded references per example, with budget and failure events.
+\item \textbf{Available versus selected memory}: cache references, cache chunks/tokens, selected chunks, and actually materialized memory tokens.
+\item \textbf{Batching efficiency}: requested/actual bucket count, selected positions, allocated padded positions, and allocation ratio.
 \item \textbf{Full-context token count}: token cost of a full-context baseline.
 \item \textbf{Cache hit ratio}: fraction of examples whose expected references are represented in cache.
 \item \textbf{Latency and throughput}: wall-clock evaluation time, examples per second, and tokens per second.
@@ -391,7 +403,11 @@ The evaluation code reports both language-model and reference-behavior metrics:
 
 These metrics are designed to test the PRA hypothesis directly. A useful PRA model should not merely achieve high answer accuracy; it should do so while selecting the right references and using fewer retrieved tokens than a full-context baseline.
 
-The implemented disabled condition clears the PRA cache and calls the model with \texttt{use\_pra\_memory=False}. Shuffled and irrelevant conditions keep target tokens and visible prompt structure fixed while replacing candidate content; empty removes candidate memory; oracle supplies the labeled relevant content. A valid-minus-disabled comparison tests whether the memory branch contributes. Valid versus shuffled or irrelevant is stricter because it asks whether the contribution depends on the supplied content. Oracle performance separates memory transport from selection. The SelfAttention control is invariant across these conditions by construction.
+The implemented ablation path supports disabled memory, shuffled references, irrelevant references, empty memory, oracle chunks, all selected chunks, full-reference materialization, and gist-only materialization. These are distinct interventions: cache size is not reported as selected-memory use, and a selected URI does not imply that all of its chunks were materialized. A valid-minus-disabled comparison tests whether the memory branch contributes. Valid versus shuffled or irrelevant is stricter because it asks whether the contribution depends on supplied content. Oracle chunks separate chunk routing from transport. The SelfAttention control is invariant across these conditions by construction.
+
+\subsection{Implementation Validation}
+
+The corrected mechanics are covered by focused tests rather than presented as model-quality evidence. Tests verify exact projected-key mean pooling; layer- and batch-specific routing; independent reference/chunk budgets; deterministic chunk provenance and overflow; explicit failure for unconfigured semantic chunking; optional summary fallback; GRU-gist gradients and checkpoint registration; recursive child-first build order and cycle safety; no-match equality with the local-only path; and dynamic-bucket output/gradient equivalence. A CUDA smoke test with two batch rows, different selected URIs, unequal memory lengths, and two buckets verifies finite forward/backward execution and independent selections. These checks establish implementation invariants only; controlled training and counterfactual evaluation remain pending.
 
 \subsection{Required Systems Diagnostics}
 
@@ -405,11 +421,13 @@ Task loss is insufficient to explain a memory system. Table~\ref{tab:diagnostics
 \toprule
 Diagnostic & Measurement & Status \\
 \midrule
-Reference selection & top-$k$ hit, MRR, NDCG against relevant URIs & top-1, top-$k$, MRR implemented; NDCG pending \\
-Attention behavior & token-by-reference heatmaps, entropy, relevant mass & pending instrumentation \\
-Layer utilization & selected entries, memory norm, gate/branch ratio per layer & pending instrumentation \\
+Reference selection & hit, recall, precision, F1, MRR, NDCG against relevant URIs & implemented globally and by layer \\
+Chunk selection & ranking metrics and source-span IoU & implemented when labels are available \\
+Attention behavior & routing scores, selected provenance, memory norms & structured trace implemented; heatmaps pending \\
+Layer utilization & selected references/chunks/tokens and branch diagnostics & implemented per layer \\
 Cache reuse & hit rate by URI/version and avoided encoding tokens & per-run hit only; persistent reuse pending \\
-Latency & resolve, tokenize, encode, select, attend, synchronize & aggregate train/eval timing implemented; decomposition pending \\
+Latency & resolve/cache build, routing, materialization, memory attention, train/eval & cache and attention detail available; full resolver decomposition pending \\
+Dynamic batching & selected versus allocated positions and bucket count & implemented with exact mode comparisons \\
 GPU memory & peak allocated bytes and cache payload bytes & current allocation emitted; peak/decomposition pending \\
 Failure cases & wrong URI, stale content, local insufficiency, poisoning, leakage & traces implemented; labeled taxonomy pending \\
 \bottomrule
@@ -465,7 +483,7 @@ The evaluated ablations are:
 \item plain WikiText-2 reevaluation after phase 2.
 \end{itemize}
 
-The follow-up additionally evaluates irrelevant, empty, and oracle references plus parameter-matched controls. Summary-only memory, recursive expansion, native KV injection, learned triggering, distance-stratified analysis, and memory-strength sweeps remain required future ablations.
+The follow-up additionally evaluated irrelevant, empty, and oracle references plus parameter-matched controls. The corrected runtime now implements chunk-level oracle, full-reference, selected-chunk, gist-only, and recursive modes, but none has yet been rerun as a controlled experiment. Native KV injection, learned triggering, distance-stratified analysis, and memory-strength sweeps remain future ablations.
 
 \subsection{Publication-Grade Experiment Matrix}
 
@@ -481,23 +499,23 @@ Axis & Required comparison & Status \\
 \midrule
 Reproducibility & seeds $\{1,7,21,42,87\}$ with intervals/effect sizes & seeds 1, 7, 21 complete \\
 Capacity & same-width plus FFN parameter-matched SA controls & complete at tiny scale \\
-Reference causality & valid, disabled, shuffled, irrelevant, empty, oracle & complete on fixed version-2 task \\
+Reference causality & valid, disabled, shuffled, irrelevant, empty, oracle chunks & old router complete; corrected router pending \\
 Cache budget & entries/tokens/bytes; reuse on/off; eviction policies & pending \\
 Memory strength & $\alpha$ sweep including zero and learned gate & $\alpha=1$ only \\
-Selection & top-$k$, threshold, oracle router, learned router & top-1 selection measured; learned router pending \\
+Selection & reference/chunk top-$k$, threshold, oracle chunks, learned router & instrumentation complete; corrected runs pending \\
 Transport & separate cross-attention versus native K/V injection & cross-attention only \\
 Adaptation & scratch, frozen branch, LoRA, adapters, joint fine-tuning & scratch/frozen/joint complete \\
 Placement & full PRA, upper-layer hybrid, layer-count sweep & full and 2+2 hybrid complete \\
-Difficulty & distance, candidate count, local sufficiency, recursion depth & metadata present; grouped analysis pending \\
+Difficulty & distance, candidate count, local sufficiency, recursion depth & recursive runtime present; experiments pending \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 The five-seed comparison should use fixed tokenizer and split hashes, equal processed-token budgets, and paired seeds. Cache and selector sweeps should initialize from the same checkpoint. Oracle references isolate memory transport from selection; irrelevant and empty controls distinguish content use from generic branch activation. Native K/V injection must account for positional encoding and causal semantics rather than simply concatenate tensors. LoRA, adapters, and joint fine-tuning should be matched by trainable parameter count or reported as separate adaptation regimes.
 
-\section{Preliminary Results}
+\section{Historical Version-1 Results}
 
-Tables~\ref{tab:plain-results} and~\ref{tab:reference-results} report population means and standard deviations over seeds 1 and 7. They are pilot measurements from the checked-in implementation and report artifacts, not mock values.
+Tables~\ref{tab:plain-results} and~\ref{tab:reference-results} report population means and standard deviations over seeds 1 and 7. They are real report artifacts, but the reference runs predate the corrected hierarchy. They routed a single raw summary embedding per whole reference, reused a batch-collapsed query in an early path, and materialized whole-reference K/V. Accordingly, only the no-memory language-model results transfer directly to the current implementation; reference-conditioned values are engineering history, not evidence for corrected PRA.
 
 \begin{table}[h]
 \centering
@@ -531,15 +549,15 @@ Hybrid PRA & $4.7111\pm.0356$ & $4.7953\pm.0284$ & $4.7233\pm.0351$ & $0.0000$ &
 \end{tabular}
 \end{table}
 
-Disabling reference memory increases mean loss by 0.1165 for full PRA and 0.0841 for hybrid PRA. Shuffling increases loss by 0.0145 and 0.0122. The larger disabled gap shows that the learned memory branch is useful; the consistent but modest shuffled gap is the stronger evidence that the branch depends on which content is supplied. The latter effect remains small and requires confirmation with more seeds, irrelevant-reference controls, and targets with known necessary evidence.
+In that implementation, disabling reference memory increased mean loss by 0.1165 for full PRA and 0.0841 for hybrid PRA, while shuffling increased loss by 0.0145 and 0.0122. These deltas show that the old residual branch changed predictions, but cannot establish correct per-example chunk selection under the corrected semantics. They motivate, but do not substitute for, rerunning counterfactuals with the new reference/chunk traces.
 
 Plain-text reevaluation after phase 2 exactly reproduces the phase-1 losses for full and hybrid PRA because frozen base parameters and zero-initialized isolated output projections protect the local path. The SelfAttention control's mean plain loss rises from 4.7691 to 4.9550, a 0.1859 increase corresponding to about a 20\% perplexity increase. This demonstrates preservation by the chosen training strategy, not an inherent guarantee of PRA: the control updates all parameters while PRA updates only reference-specific projections.
 
 Phase-1 mean synchronized validation times are 1.07--1.14 seconds and mean wall-clock times are 97.0--102.0 seconds. Phase-2 mean synchronized training times are 31.1--45.1 seconds, with 46,301.5 mean processed prompt/answer tokens and 512 optimizer steps. Per-example cache isolation makes these timings honest for the prototype but leaves batching optimization as future systems work.
 
-\section{Controlled Phase-1 Follow-Up}
+\section{Historical Controlled Follow-Up}
 
-The follow-up executes 39 CUDA runs: 15 ordinary-language runs (five capacity/architecture groups times three seeds) and 24 fixed-reference runs spanning SelfAttention controls and scratch, frozen-reference-path, and joint training. Table~\ref{tab:followup-plain} reports the 1,048,576-token ordinary-language comparison. Population standard deviations are over paired seeds 1, 7, and 21.
+The follow-up executed 39 CUDA runs: 15 ordinary-language runs (five capacity/architecture groups times three seeds) and 24 fixed-reference runs spanning SelfAttention controls and scratch, frozen-reference-path, and joint training. Table~\ref{tab:followup-plain} reports the 1,048,576-token ordinary-language comparison. Population standard deviations are over paired seeds 1, 7, and 21. Reference-task tables in this section use the superseded router and are retained to document optimization behavior, not corrected routing efficacy.
 
 \begin{table}[H]
 \centering
@@ -596,7 +614,7 @@ Hybrid PRA & 4.7932 & 4.8146 & 4.8016 & 4.8010 & 4.7914 \\
 
 The frozen memory branch contributes relative to disabling it, by 0.0292 loss for full PRA and 0.0214 for hybrid PRA. Yet shuffled and irrelevant penalties are only 0.0064--0.0088, and oracle content changes loss by at most 0.0018. Actual test top-1 selection remains near or below the 0.4202 candidate-count chance rate. Periodic validation top-1 curves are nearly flat around their 0.4859 validation chance rate rather than showing faster acquisition after pretraining. Pretraining therefore improves language and final task loss but does not improve generalized reference-selection speed in this experiment.
 
-This negative result is consistent with the implementation: summaries are compared by a fixed embedding-similarity heuristic, top-$k$ selection is discrete, and no auxiliary routing loss trains the selector against relevance labels. The experiment establishes that a zero-initialized memory residual can be adapted while preserving a frozen local path. It does not establish causal use of the correct memory content. The next Phase-1 experiment should make routing trainable, add a selection objective, and use targets whose required evidence is known; scaling to the Small model before that gate passes would spend compute without resolving the present ambiguity.
+This negative result is consistent with the version-1 implementation: summaries were compared by a fixed embedding-similarity heuristic, top-$k$ selection was discrete, and no auxiliary routing loss trained the selector against relevance labels. The experiment establishes that a zero-initialized memory residual can be adapted while preserving a frozen local path. It does not establish causal use of correct memory content. The corrected implementation removes raw-summary routing, restores per-row queries, makes layer/chunk provenance observable, and supports oracle chunks, but these repairs are engineering preconditions rather than new empirical results. The next Phase-1 experiment must rerun the fixed benchmark before adding a learned routing objective.
 
 \subsection{Reproducibility and Artifact Scope}
 
@@ -618,17 +636,17 @@ Freshness is part of correctness. A cache key based only on URI can return stale
 
 Batching creates a confidentiality boundary. The corrected prototype constructs a cache per example after a batch-union design exposed cross-example references. Optimized kernels must preserve equivalent masks and should include adversarial tests proving that logits for one sequence are invariant to another sequence's private cache. Cache reuse across users or tenants requires authorization-aware deduplication.
 
-Recursive expansion can amplify work. Cycles, high branching factors, oversized objects, and repeated faults require depth, token, latency, and byte budgets. Resolvers should validate schemes and anchors, detect cycles, and fail closed when authorization or freshness cannot be established. None of these controls is fully implemented in the standalone in-memory resolver; they define the boundary between this research instrument and a deployable runtime.
+Recursive expansion can amplify work. The standalone builder now bounds depth, child count, total references, and encoded tokens; detects cycles; exposes missing-reference and overflow policies; and prevents partial entries from becoming searchable. It also fingerprints content, model, tokenizer, and routing configuration. Authorization, latency/byte budgets, revocation, cryptographic provenance, and durable cache invalidation remain deployment requirements beyond the in-memory resolver.
 
 \section{Limitations}
 
 The current prototype and follow-up have important limitations. Three seeds improve on the engineering pilot but remain short of the planned five-seed study. Parameter matching controls ordinary-language capacity but reference-stage trainable budgets still differ by design. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans, and the model can reduce continuation loss through language pretraining without learning candidate selection. The near-chance selector and weak counterfactual deltas leave open how much of the memory gain is a content-independent domain-adapter effect.
 
-Summary vectors are computed by averaging summary-token embeddings, retrieval uses the last hidden state rather than explicit reference-token positions, and thresholding is disabled. Selection is heuristic and receives no relevance loss. Recursive anchor expansion is represented in the resolver interface but is not a learned iterative policy. Per-example cache construction prevents leakage but serializes examples inside a nominal minibatch. Reference encodings are detached, so the cache-building path itself receives no gradient in the present frozen-path setup. Evaluation now includes irrelevant, empty, and oracle controls, but still lacks all-context, distance-stratified, summary-only, recursive, and learned-router comparisons. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
+The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Mean/last gists and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter still serializes examples to preserve cache identity, although the attention kernel itself supports semantically isolated variable-length batching. Summary modes, chunk routing, recursion, and dynamic bucketing are unit- and CUDA-smoke-tested but not yet evaluated in the six-way controlled experiment. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype provides a concrete testbed for demand-driven, URI-addressed memory expansion. Its main contribution is an inspectable experimental substrate: explicit reference handles, resolver-backed memory, per-layer K/V cache construction, a cross-attention memory branch, isolated per-example caches, and ablations that distinguish branch activation from content use. The controlled follow-up establishes three narrow facts. First, PRA preserves ordinary language-model functionality under approximate parameter matching, and full PRA benefits from a longer tested pretraining budget. Second, isolated frozen-path adaptation prevents catastrophic forgetting and outperforms scratch and direct joint training on the fixed reference task. Third, the present heuristic selector remains near chance and correct content does not yet beat corrupted controls by a convincing margin. PRA therefore passes compatibility and preservation gates but fails the current causal-selection gate. The immediate research priority is a trainable router and reference-required benchmark, followed by five-seed replication; larger model scaling should wait until that mechanism is identifiable.
+The standalone PyTorch PRA prototype now provides a more faithful testbed for demand-driven, URI-addressed memory expansion: explicit local reference tables, bounded child-first recursion, deterministic chunking, one contextual projected-key gist per chunk and layer, independent reference/chunk routing budgets, selected-chunk K/V materialization, batch isolation, and structured diagnostics. The historical studies establish ordinary-language compatibility and useful optimization controls, but their reference-conditioned conclusions belong to the superseded version-1 router. The corrected architecture has passed focused CPU tests and a multi-row CUDA forward/backward smoke test, not the causal experiment gate. The immediate priority is to rerun matched valid, disabled, shuffled, irrelevant, empty, oracle-chunk, full-reference, and gist-only conditions before introducing a learned router or scaling the model.
 
 \appendix
 \section{Reference-Memory Forward Pass Pseudocode}
@@ -636,16 +654,34 @@ The standalone PyTorch PRA prototype provides a concrete testbed for demand-driv
 \begin{verbatim}
 for sample in minibatch:
     cache = empty_cache()
-    for handle in sample.references:
-        resolved = resolver.resolve(handle.uri)
-        h_ref = token_embedding(resolved.text) + positions
-        entry = CacheEntry(uri=handle.uri)
-        entry.summary = mean(token_embedding(handle.summary))
+
+    def ensure_cached(uri, depth, shared_budget, path):
+        if uri in path: apply_cycle_policy(); return
+        if cache.state(uri) == READY: return
+        resolved = resolver.resolve(uri)
+        cache.mark_building(uri)
+        shared_budget.consume_reference(uri)
+
+        # Explicit local table only; children become searchable first.
+        for child_uri in resolved.reference_table.values():
+            ensure_cached(child_uri, depth + 1,
+                          shared_budget, path + [uri])
+
+        chunks = partition(resolved.text, routing_config)
+        hidden = embed(resolved.text)
+        entry = CacheEntry(uri=uri, chunks=chunks)
         for layer in model.layers:
             if layer.has_pra:
-                entry.kv[layer.id] = layer.project_reference_kv(h_ref)
-            h_ref = layer(h_ref, use_pra_memory=False)
-        cache.put(detach(entry))
+                for chunk in chunks:
+                    K, V = layer.project_reference_kv(hidden[chunk.span])
+                    gist = pool(projected_keys=K)  # exactly one/chunk
+                    entry.add(layer.id, chunk.id, K, V, gist)
+            hidden = layer(hidden, use_ready_child_memory=True)
+
+        cache.put_ready(detach_by_policy(entry))
+
+    for handle in sample.references:
+        ensure_cached(handle.uri, 0, shared_budget(), [])
 
     model.set_pra_cache(cache)
     logits.append(model(sample.input_ids, use_pra_memory=True))
@@ -653,11 +689,11 @@ for sample in minibatch:
 loss = cross_entropy(concat(logits), labels, ignore_index=PAD)
 \end{verbatim}
 
-The per-sample loop is intentional: cache identity is part of the example. A future batched implementation can vectorize reference encoding but must preserve an example-to-cache mask.
+The per-sample outer loop is intentional: cache identity is part of the example. The attention implementation can execute variable selected-memory lengths in masked buckets, but a future batched cache builder must still preserve an example-to-cache mask.
 
 \section{Simplified PyTorch PRAttention}
 
-The following excerpt omits retrieval thresholds, multiple layers, dropout, and shape utilities while retaining the implemented residual-memory idea.
+The following excerpt omits thresholds, score aggregation, summary modes, recursion, dropout, and shape utilities while retaining the corrected separation between routing gists and materialized token memory.
 
 \begin{verbatim}
 class PRAttention(nn.Module):
@@ -672,7 +708,7 @@ class PRAttention(nn.Module):
         self.memory_out = nn.Linear(d_model, d_model)
         self.memory_alpha = memory_alpha
 
-    def forward(self, x, memory_k=None, memory_v=None):
+    def forward(self, x, cache, layer_id):
         q = split_heads(self.q_proj(x), self.n_heads)
         k = split_heads(self.k_proj(x), self.n_heads)
         v = split_heads(self.v_proj(x), self.n_heads)
@@ -682,18 +718,25 @@ class PRAttention(nn.Module):
         local = softmax(local_scores, dim=-1) @ v
         local = self.local_out(merge_heads(local))
 
-        if memory_k is None:
-            return local
-
-        memory_scores = (
-            q @ memory_k.transpose(-2, -1) / sqrt(self.head_dim)
+        # Each row routes independently using the projected last query.
+        routing_q = merge_heads(q[:, :, -1:, :]).squeeze(1)
+        selected_by_row = cache.hierarchical_search(
+            routing_q, layer_id,
+            top_k_references=kr,
+            top_k_chunks_per_reference=kc,
         )
-        memory = softmax(memory_scores, dim=-1) @ memory_v
+        memory_k, memory_v = materialize_selected_chunks(
+            selected_by_row, layer_id
+        )
+        memory, has_memory = masked_bucketed_attention(
+            q, memory_k, memory_v
+        )
         memory = self.memory_out(merge_heads(memory))
+        memory = memory * has_memory[:, None, None]
         return local + self.memory_alpha * memory
 \end{verbatim}
 
-Zero-initializing \texttt{memory\_out} makes the second term exactly zero at phase-2 initialization. Disabling references either omits memory tensors or bypasses the branch explicitly.
+Zero-initializing \texttt{memory\_out} makes the second term exactly zero at phase-2 initialization. The explicit \texttt{has\_memory} mask also guarantees an exact zero residual for empty rows even when the output projection has a nonzero bias.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

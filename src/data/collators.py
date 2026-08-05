@@ -42,6 +42,12 @@ class PRACollator:
                     "answer": sample.answer,
                     "references": sample.references,
                     "target_reference_ids": sample.target_reference_ids,
+                    "target_reference_uris": sample.target_reference_uris
+                    or sample.metadata.get("target_reference_uris", []),
+                    "target_chunk_ids": sample.target_chunk_ids
+                    or sample.metadata.get("target_chunk_ids", []),
+                    "target_chunk_spans": sample.target_chunk_spans
+                    or sample.metadata.get("target_chunk_spans", []),
                     "expected_anchors": sample.metadata.get("expected_anchors", []),
                     "sample": sample,
                     "asdict": asdict(sample),

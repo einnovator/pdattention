@@ -9,7 +9,9 @@ The core idea: instead of placing all long context directly in the prompt, the p
 <REF_2>
 ```
 
-A PRA-enabled transformer treats those references as latent memory handles. At runtime, a `ReferenceTable` maps each token to a URI, and the resolver maps that URI to a fragment, summary, child anchors, or search result. The referenced fragment is encoded separately, and each PRA layer can retrieve/cache **layer-specific K/V tensors** for that URI. During main inference, selected layers cross-attend or concatenate attention over the resolved reference memory.
+A PRA-enabled transformer treats those references as latent memory handles. At runtime, an explicit local `ReferenceTable` maps each token to a URI. The resolver partitions content into deterministic chunks and caches, for every PRA layer, full token K/V plus exactly one contextual projected-key routing gist per chunk. Each batch row independently uses its projected last-token query to select references and then chunks; only selected chunk K/V is materialized for cross-attention. Textual summaries are optional routing metadata and are disabled by default.
+
+Recursive construction is child-first and follows only local reference tables. Shared depth/reference/token budgets, cycle and missing-reference policies, build states, and cache fingerprints keep expansion bounded and prevent partial or stale entries from becoming searchable. Variable selected-memory lengths can run independently or in deterministic masked buckets without sharing one example's memory with another.
 
 ## Repository goals
 
@@ -42,8 +44,10 @@ Implement and validate:
 - PRA attention layer.
 - `<REF_n>` token parser and runtime reference table.
 - In-memory URI resolver.
-- Layer-specific K/V cache.
-- Recursive anchor expansion.
+- Layer-specific chunk K/V and routing-gist cache.
+- Independent reference/chunk top-k routing.
+- Bounded recursive anchor expansion through explicit local tables.
+- Batch-isolated variable-length memory attention.
 - Synthetic QA dataset.
 - Training and evaluation scripts.
 
@@ -250,12 +254,12 @@ The evaluation should compare at least:
 1. No retrieval / no refs.
 2. Full context, if sequence length allows.
 3. Standard RAG-style prompt retrieval.
-4. PRA refs with summary-first expansion.
-5. PRA recursive anchor expansion.
+4. PRA content-gist routing, with optional summary-only/hybrid/augment ablations.
+5. PRA recursive anchor expansion and oracle-chunk controls.
 
 ## Core claim to test
 
-> Long-context inference can be represented as explicit latent references. During inference, attention over those references triggers recursive resolution into layer-specific memory K/V, enabling demand-driven context expansion inside the model/runtime loop.
+> Long-context inference can be represented as explicit latent references. Layer-specific content gists route to bounded reference chunks, while selected full-token K/V supplies evidence through a batch-isolated memory path and explicit recursive runtime.
 
 ## Important caution
 

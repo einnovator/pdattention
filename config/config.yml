@@ -10,7 +10,31 @@ model:
 
 pra:
   pra_layer_ids: [2, 3]
-  top_k_refs: 2
+  top_k_references: 2
+  top_k_chunks_per_reference: 1
+  search_strategy: hierarchical
+  reference_score_aggregation: max
+  reference_level_gist_mode: null
+  gist_mode: mean
+  max_gists_per_reference: 4
+  gist_overflow_policy: truncate
+  chunking_mode: none
+  fixed_chunk_tokens: 64
+  fixed_chunk_overlap_tokens: 0
+  reference_overflow_policy: truncate
+  detail_materialization: selected_chunks
+  memory_bucket_count: 1
+  memory_bucket_strategy: optimal_contiguous
+  cache_build_mode: detached
+  use_summary: false
+  summary_mode: replace
+  recursive_refs_enabled: false
+  recursive_max_depth: 2
+  recursive_max_total_references: 16
+  recursive_max_total_tokens: 2048
+  recursive_max_children_per_reference: 8
+  recursive_cycle_policy: skip
+  recursive_missing_ref_policy: warn
   trigger_threshold: 0.2
   use_cross_attention_memory: true
   use_concat_memory: false
@@ -38,7 +62,7 @@ models:
       dropout: 0.0
     pra:
       pra_layer_ids: [0, 1]
-      top_k_refs: 2
+      top_k_references: 2
       trigger_threshold: 0.2
       use_cross_attention_memory: true
       use_concat_memory: false
@@ -75,7 +99,7 @@ models:
       dropout: 0.1
     pra:
       pra_layer_ids: [2, 3, 4, 5]
-      top_k_refs: 3
+      top_k_references: 3
       memory_alpha: 0.5
     train:
       batch_size: 6
@@ -92,7 +116,7 @@ models:
       dropout: 0.1
     pra:
       pra_layer_ids: [4, 5, 6, 7]
-      top_k_refs: 4
+      top_k_references: 4
       memory_alpha: 0.4
     train:
       batch_size: 2
@@ -110,10 +134,10 @@ models:
     pra: {pra_layer_ids: []}
   td_pra_tiny:
     model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: td_pra}
-    pra: {pra_layer_ids: [0, 1, 2, 3], top_k_refs: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra: {pra_layer_ids: [0, 1, 2, 3], top_k_references: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
   tdx_pra_tiny:
     model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 2, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: tdx_pra}
-    pra: {pra_layer_ids: [2, 3], top_k_refs: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra: {pra_layer_ids: [2, 3], top_k_references: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
 
   td_sa_small:
     model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 6, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: td_sa}
@@ -238,13 +262,13 @@ experiments:
   phase1_order_pra_refs_v2:
     model_name: td_pra_tiny
     seeds: [1, 7, 21]
-    pra_overrides: {top_k_refs: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
     dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 20, max_steps: 512, eval_every_steps: 128, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
   phase1_order_hybrid_refs_v2:
     model_name: tdx_pra_tiny
     seeds: [1, 7, 21]
-    pra_overrides: {top_k_refs: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
     dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 20, max_steps: 512, eval_every_steps: 128, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
 

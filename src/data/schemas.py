@@ -22,6 +22,9 @@ class QuestionSample:
     answer: str
     references: list[ReferenceSample]
     target_reference_ids: list[int] = field(default_factory=list)
+    target_reference_uris: list[str] = field(default_factory=list)
+    target_chunk_ids: list[str] = field(default_factory=list)
+    target_chunk_spans: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

@@ -91,6 +91,21 @@ class PRADataset(Dataset, ABC):
             metadata.setdefault("text", doc.get("text", ""))
             metadata.setdefault("title", doc.get("title"))
             metadata.setdefault("anchors", doc.get("anchors", []))
+            metadata.setdefault("reference_table", dict(doc.get("reference_table") or {}))
+            if metadata["reference_table"]:
+                metadata.setdefault(
+                    "documents",
+                    {
+                        uri: {
+                            "text": value.get("text", ""),
+                            "summary": value.get("summary"),
+                            "reference_table": value.get("reference_table", {}),
+                            "metadata": value.get("metadata", {}),
+                            "version": value.get("version"),
+                        }
+                        for uri, value in docs_by_uri.items()
+                    },
+                )
             refs.append(
                 ReferenceSample(
                     id=int(row["id"]),
@@ -120,6 +135,9 @@ class PRADataset(Dataset, ABC):
                     answer=str(row["answer"]),
                     references=sample_refs,
                     target_reference_ids=[int(v) for v in row.get("expected_ref_ids", [])],
+                    target_reference_uris=[str(v) for v in row.get("expected_ref_uris", [])],
+                    target_chunk_ids=[str(v) for v in row.get("expected_chunk_ids", [])],
+                    target_chunk_spans=list(row.get("expected_chunk_spans", [])),
                     metadata={
                         "expected_anchors": list(row.get("expected_anchors", [])),
                         "row": row,
@@ -301,7 +319,7 @@ def generate_wikitext_reference_dataset(
                 {"id": f"wiki-{example_index}-{local_id}", "uri": uri, "title": f"WikiText {example_index} part {local_id}", "text": part}
             )
             references.append(
-                {"id": local_id, "token": f"<REF_{local_id}>", "uri": uri, "summary": " ".join(part.split()[:16]), "metadata": {"dataset": dataset_name}}
+                {"id": local_id, "token": f"<REF_{local_id}>", "uri": uri, "metadata": {"dataset": dataset_name}}
             )
         ref_tokens = " ".join(f"<REF_{index}>" for index in range(1, reference_count + 1))
         questions.append(
@@ -400,7 +418,6 @@ def generate_wikitext_reference_dataset_v2(
                     "id": reference_id,
                     "token": f"<REF_{reference_id}>",
                     "uri": uri,
-                    "summary": " ".join(part.split()[:16]),
                     "metadata": {
                         "dataset": dataset_name,
                         "source_entry_id": source_index,

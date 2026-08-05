@@ -52,7 +52,7 @@ def test_build_cache_from_metadata_uses_service_configs():
 
     assert model.pra_cache is cache
     assert len(cache.entries) == len(batch["metadata"][0]["references"])
-    assert all(entry.layer_kv for entry in cache.all_entries())
+    assert all(entry.layer_memory for entry in cache.all_entries())
 
 
 def test_build_cache_for_example_helper_lives_in_tests():
@@ -81,4 +81,5 @@ def test_cache_builder_accepts_prebuilt_cache_instance():
     cache = build_cache_from_metadata(model, dm.tokenizer, batch["metadata"], "cpu", cache=prebuilt_cache)
 
     assert cache is prebuilt_cache
-    assert torch.is_tensor(cache.all_entries()[0].summary_vector)
+    first = cache.all_entries()[0]
+    assert torch.is_tensor(first.layer_memory[0].chunks[0].routing_gist.k)

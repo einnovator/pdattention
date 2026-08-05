@@ -50,13 +50,15 @@ def load_model_and_tokenizer(
     n_mixed_layers: int = 0,
     dropout: float = 0.0,
     pra_layer_ids: tuple[int, ...] = (2, 3),
-    top_k_refs: int = 2,
+    top_k_references: int = 2,
+    top_k_chunks_per_reference: int = 1,
     trigger_threshold: float = 0.2,
     use_cross_attention_memory: bool = True,
     use_concat_memory: bool = False,
     memory_alpha: float = 0.5,
     resolver_config=None,
     cache_config=None,
+    **routing_kwargs,
 ):
     if not os.path.exists(ckpt_path):
         corpus = build_training_corpus(examples)
@@ -71,12 +73,14 @@ def load_model_and_tokenizer(
             max_seq_len=max_seq_len,
             dropout=dropout,
             pra_layer_ids=tuple(pra_layer_ids),
-            top_k_refs=top_k_refs,
+            top_k_references=top_k_references,
+            top_k_chunks_per_reference=top_k_chunks_per_reference,
             trigger_threshold=trigger_threshold,
             use_cross_attention_memory=use_cross_attention_memory,
             use_concat_memory=use_concat_memory,
             memory_alpha=memory_alpha,
             device=device,
+            **routing_kwargs,
         )
         model = TinyPRAModel(cfg).to(device)
         return model, tokenizer, False
@@ -272,13 +276,15 @@ def run_evaluation(
     n_mixed_layers: int = 0,
     dropout: float = 0.0,
     pra_layer_ids: tuple[int, ...] = (2, 3),
-    top_k_refs: int = 2,
+    top_k_references: int = 2,
+    top_k_chunks_per_reference: int = 1,
     trigger_threshold: float = 0.2,
     use_cross_attention_memory: bool = True,
     use_concat_memory: bool = False,
     memory_alpha: float = 0.5,
     resolver_config=None,
     cache_config=None,
+    **routing_kwargs,
 ):
     model, tokenizer, loaded_checkpoint = load_model_and_tokenizer(
         ckpt,
@@ -292,11 +298,13 @@ def run_evaluation(
         n_mixed_layers=n_mixed_layers,
         dropout=dropout,
         pra_layer_ids=pra_layer_ids,
-        top_k_refs=top_k_refs,
+        top_k_references=top_k_references,
+        top_k_chunks_per_reference=top_k_chunks_per_reference,
         trigger_threshold=trigger_threshold,
         use_cross_attention_memory=use_cross_attention_memory,
         use_concat_memory=use_concat_memory,
         memory_alpha=memory_alpha,
+        **routing_kwargs,
     )
     datamodule.tokenizer = tokenizer
     datamodule.collator = PRACollator(tokenizer, max_seq_len=max_seq_len)

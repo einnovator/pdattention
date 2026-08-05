@@ -22,11 +22,12 @@ def generate(out_dir: str | Path, n: int = 4) -> None:
                 "uri": uri,
                 "title": animal,
                 "text": f"The animal is {animal}. Secret code: CODE{i * 17}.",
-                "summary": f"Facts about {animal}.",
                 "anchors": [],
             }
         )
-        references.append({"id": i, "token": f"<REF_{i}>", "uri": uri, "summary": f"Facts about {animal}.", "metadata": {"stage": 0}})
+        references.append(
+            {"id": i, "token": f"<REF_{i}>", "uri": uri, "metadata": {"stage": 0}}
+        )
     questions.append({"id": "q0", "prompt": "Which animal hunts mice? <REF_1> <REF_2>", "answer": "cat", "expected_ref_ids": [1], "expected_anchors": []})
     save_jsonl(out_dir / "documents.jsonl", documents)
     save_jsonl(out_dir / "references.jsonl", references)

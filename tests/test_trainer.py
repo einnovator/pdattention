@@ -80,6 +80,8 @@ def test_metric_history_tracks_every_batch_and_epoch(tmp_path):
     assert [record["epoch"] for record in batch_records] == [1.0, 2.0, 3.0]
     assert [record["step"] for record in epoch_records] == [1, 2, 3]
     assert [record["step"] for record in val_epoch_records] == [1, 2, 3]
+    assert all("retrieval_selected_chunk_count" in record["metrics"] for record in batch_records)
+    assert "retrieval_selected_chunk_count" in epoch_records[-1]["metrics"]
     assert trainer.batch_step == 3
 
 
@@ -136,6 +138,12 @@ def test_metrics_have_expected_keys(tmp_path):
         "reference_selection_top1_accuracy",
         "reference_selection_topk_accuracy",
         "reference_selection_mrr",
+        "retrieval_reference_recall_at_k",
+        "retrieval_reference_precision_at_k",
+        "retrieval_reference_ndcg",
+        "retrieval_selected_chunk_count",
+        "memory_selected_token_count",
+        "retrieval_chunk_labels_available_fraction",
         "expected_anchor_hit",
         "expansion_depth",
         "expanded_ref_count",
@@ -159,6 +167,9 @@ def test_test_writes_predictions_and_traces(tmp_path):
     assert "test_loss" in metrics
     assert predictions.read_text(encoding="utf-8").strip()
     assert traces.read_text(encoding="utf-8").strip()
+    trace = json.loads(traces.read_text(encoding="utf-8").splitlines()[0])
+    assert "selected_chunks_by_layer" in trace
+    assert "bucket_stats_by_layer" in trace
 
 
 def test_eval_script_can_load_checkpoint(tmp_path):

@@ -44,7 +44,7 @@ def test_load_config_applies_named_model_profile(tmp_path):
                 "train:",
                 "  batch_size: 8",
                 "pra:",
-                "  top_k_refs: 2",
+                "  top_k_references: 2",
                 "resolver:",
                 "  type: in_memory",
                 "cache:",
@@ -55,7 +55,7 @@ def test_load_config_applies_named_model_profile(tmp_path):
                 "    train:",
                 "      batch_size: 2",
                 "    pra:",
-                "      top_k_refs: 1",
+                "      top_k_references: 1",
                 "    resolver:",
                 "      type: in_memory",
                 "    cache:",
@@ -71,14 +71,14 @@ def test_load_config_applies_named_model_profile(tmp_path):
     assert cfg["model"]["d_model"] == 32
     assert cfg["model"]["n_heads"] == 4
     assert cfg["train"]["batch_size"] == 2
-    assert cfg["pra"]["top_k_refs"] == 1
+    assert cfg["pra"]["top_k_references"] == 1
 
 
 def test_apply_named_model_default_falls_back_to_global_when_missing():
     cfg = {
         "model": {"d_model": 128},
         "train": {"batch_size": 8},
-        "pra": {"top_k_refs": 2},
+        "pra": {"top_k_references": 2},
         "resolver": {"type": "in_memory"},
         "cache": {"type": "simple"},
         "models": {"small": {"d_model": 32}},

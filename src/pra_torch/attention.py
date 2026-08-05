@@ -1,20 +1,21 @@
-"""Progressive Retrieval Attention layer for the standalone transformer."""
+"""Progressive Retrieval Attention with chunk-aware, batch-isolated routing."""
+
+from __future__ import annotations
 
 import math
+import time
+from dataclasses import replace
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .memory import PRAMemoryCache, LayerKV
+
+from .memory import LayerKV, PRAMemoryCache, SelectedChunk
+from .memory_batching import MemoryBatchingStats, dynamic_memory_attention
 
 
 class PRAttention(nn.Module):
-    """Standalone PRA attention for TinyGPT.
-
-    This version preserves normal causal self-attention, then optionally adds a
-    cross-attention memory branch from layer-specific cached reference K/V.
-
-    The memory cache must contain K/V for the same layer_id.
-    """
+    """Causal self-attention plus routed cross-attention over selected chunk K/V."""
 
     def __init__(
         self,
@@ -23,53 +24,120 @@ class PRAttention(nn.Module):
         max_seq_len,
         layer_id,
         pra_cache: PRAMemoryCache,
-        top_k_refs=2,
-        trigger_threshold=0.2,
-        memory_alpha=0.5,
+        *,
+        config,
     ):
         super().__init__()
-        assert d_model % n_heads == 0
+        if d_model % n_heads:
+            raise ValueError("d_model must be divisible by n_heads.")
         self.d_model = d_model
         self.n_heads = n_heads
         self.head_dim = d_model // n_heads
         self.max_seq_len = max_seq_len
         self.layer_id = layer_id
-        self.top_k_refs = top_k_refs
-        self.trigger_threshold = trigger_threshold
-        self.memory_alpha = memory_alpha
+        self.config = config
+        self.trigger_threshold = config.trigger_threshold
+        self.memory_alpha = config.memory_alpha
         self.pra_cache = pra_cache
-        self.last_selected_references: list[tuple[str, float]] = []
+        self.last_selected_chunks: list[list[SelectedChunk]] = []
+        self.last_memory_batching_stats: MemoryBatchingStats | None = None
+        self.last_diagnostics: dict[str, float] = {}
 
         self.q_proj = nn.Linear(d_model, d_model)
         self.k_proj = nn.Linear(d_model, d_model)
         self.v_proj = nn.Linear(d_model, d_model)
         self.o_proj = nn.Linear(d_model, d_model)
-
-        # Separate output projection for memory branch. Simpler than sharing o_proj.
         self.mem_o_proj = nn.Linear(d_model, d_model)
 
         mask = torch.tril(torch.ones(max_seq_len, max_seq_len))
         self.register_buffer("causal_mask", mask.view(1, 1, max_seq_len, max_seq_len))
 
     def split_heads(self, x):
-        """Convert ``[batch, seq, model]`` tensors to multi-head layout."""
         b, t, d = x.shape
         return x.view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
 
     def merge_heads(self, x):
-        """Convert multi-head attention output back to model layout."""
         b, h, t, d = x.shape
         return x.transpose(1, 2).contiguous().view(b, t, h * d)
 
-    def project_kv(self, hidden_states) -> LayerKV:
-        """Project hidden states into detached K/V tensors for cache storage."""
+    def project_kv(self, hidden_states, *, detach: bool = True) -> LayerKV:
         k = self.split_heads(self.k_proj(hidden_states))
         v = self.split_heads(self.v_proj(hidden_states))
-        return LayerKV(k=k.detach(), v=v.detach())
+        if detach:
+            k = k.detach()
+            v = v.detach()
+        return LayerKV(k=k, v=v)
+
+    def _expand_full_references(self, selected: list[SelectedChunk]) -> list[SelectedChunk]:
+        expanded = []
+        seen_references = set()
+        for hit in selected:
+            if hit.reference_uri in seen_references:
+                continue
+            seen_references.add(hit.reference_uri)
+            memory = hit.entry.layer_memory.get(self.layer_id)
+            if memory is None:
+                continue
+            for chunk_rank, chunk in enumerate(memory.chunks, start=1):
+                expanded.append(
+                    replace(
+                        hit,
+                        chunk=chunk,
+                        rank_within_reference=chunk_rank,
+                        metadata={**hit.metadata, "materialization": "full_reference"},
+                    )
+                )
+        return expanded
+
+    def _materialize(self, selected: list[SelectedChunk], q: torch.Tensor):
+        if self.config.detail_materialization == "full_reference":
+            selected = self._expand_full_references(selected)
+        selected = [hit for hit in selected if hit.chunk_score >= self.trigger_threshold]
+        deduplicated = []
+        seen = set()
+        for hit in selected:
+            identity = (hit.reference_uri, hit.chunk_id)
+            if identity not in seen:
+                seen.add(identity)
+                deduplicated.append(hit)
+        selected = deduplicated
+        if not selected:
+            empty = q.new_empty((1, self.n_heads, 0, self.head_dim))
+            return empty, empty, selected, 0
+
+        keys = []
+        values = []
+        duplicate_tokens = 0
+        covered_end_by_uri: dict[str, int] = {}
+        for hit in sorted(selected, key=lambda item: (item.reference_uri, item.token_start, item.chunk_id)):
+            if self.config.detail_materialization == "gist_only":
+                gist = hit.chunk.routing_gist
+                key = gist.k.view(1, self.n_heads, 1, self.head_dim)
+                value_vector = gist.v if gist.v is not None else gist.k
+                value = value_vector.view(1, self.n_heads, 1, self.head_dim)
+            else:
+                key = hit.chunk.token_kv.k
+                value = hit.chunk.token_kv.v
+                covered_end = covered_end_by_uri.get(hit.reference_uri, hit.token_start)
+                overlap = max(covered_end - hit.token_start, 0)
+                if overlap:
+                    overlap = min(overlap, int(key.shape[2]))
+                    duplicate_tokens += overlap
+                    key = key[:, :, overlap:, :]
+                    value = value[:, :, overlap:, :]
+                covered_end_by_uri[hit.reference_uri] = max(covered_end, hit.token_end)
+            if key.shape[2]:
+                keys.append(key.to(q.device, q.dtype))
+                values.append(value.to(q.device, q.dtype))
+        if not keys:
+            empty = q.new_empty((1, self.n_heads, 0, self.head_dim))
+            return empty, empty, selected, duplicate_tokens
+        return torch.cat(keys, dim=2), torch.cat(values, dim=2), selected, duplicate_tokens
 
     def forward(self, x, use_pra_memory: bool = True):
-        """Apply causal self-attention and optionally add retrieved memory output."""
-        self.last_selected_references = []
+        self.last_selected_chunks = [[] for _ in range(x.shape[0])]
+        self.last_memory_batching_stats = None
+        self.last_diagnostics = {}
         b, t, _ = x.shape
         q = self.split_heads(self.q_proj(x))
         k = self.split_heads(self.k_proj(x))
@@ -79,38 +147,60 @@ class PRAttention(nn.Module):
         mask = self.causal_mask[:, :, :t, :t]
         scores = scores.masked_fill(mask == 0, float("-inf"))
         weights = F.softmax(scores, dim=-1)
-        local_out = self.merge_heads(weights @ v)
-        local_out = self.o_proj(local_out)
+        local_out = self.o_proj(self.merge_heads(weights @ v))
 
         if not use_pra_memory or not self.pra_cache.entries:
             return local_out
 
-        # Retrieval query = last hidden state before attention. For better version,
-        # use attention to explicit ref token positions too.
-        retrieved = self.pra_cache.search_by_summary(x[:, -1, :], top_k=self.top_k_refs)
-        selected_k = []
-        selected_v = []
-        for entry, sim in retrieved:
-            if sim < self.trigger_threshold:
-                continue
-            if self.layer_id not in entry.layer_kv:
-                continue
-            self.last_selected_references.append((entry.uri, sim))
-            kv = entry.layer_kv[self.layer_id]
-            selected_k.append(kv.k.to(x.device))
-            selected_v.append(kv.v.to(x.device))
+        routing_query = q[:, :, -1, :].contiguous().view(b, self.d_model)
+        routing_start = time.perf_counter()
+        selected_by_batch = self.pra_cache.search(routing_query, self.layer_id, self.config)
+        routing_duration = time.perf_counter() - routing_start
 
-        if not selected_k:
-            return local_out
+        materialization_start = time.perf_counter()
+        memory_k = []
+        memory_v = []
+        duplicate_tokens = 0
+        for batch_index, selected in enumerate(selected_by_batch):
+            key, value, retained, duplicates = self._materialize(selected, q[batch_index : batch_index + 1])
+            memory_k.append(key)
+            memory_v.append(value)
+            self.last_selected_chunks[batch_index] = retained
+            duplicate_tokens += duplicates
+        materialization_duration = time.perf_counter() - materialization_start
 
-        mem_k = torch.cat(selected_k, dim=2)  # [1,h,mem_len,d]
-        mem_v = torch.cat(selected_v, dim=2)
-        if mem_k.shape[0] == 1 and b > 1:
-            mem_k = mem_k.expand(b, -1, -1, -1)
-            mem_v = mem_v.expand(b, -1, -1, -1)
-
-        mem_scores = q @ mem_k.transpose(-2, -1) / math.sqrt(self.head_dim)
-        mem_weights = F.softmax(mem_scores, dim=-1)
-        mem_out = self.merge_heads(mem_weights @ mem_v)
-        mem_out = self.mem_o_proj(mem_out)
-        return local_out + self.memory_alpha * mem_out
+        memory_start = time.perf_counter()
+        memory_heads, stats = dynamic_memory_attention(
+            q,
+            memory_k,
+            memory_v,
+            bucket_count=self.config.memory_bucket_count,
+            bucket_strategy=self.config.memory_bucket_strategy,
+        )
+        memory_attention_duration = time.perf_counter() - memory_start
+        self.last_memory_batching_stats = stats
+        memory_out = self.mem_o_proj(self.merge_heads(memory_heads))
+        has_memory = torch.tensor(
+            [length > 0 for length in stats.selected_lengths],
+            device=memory_out.device,
+            dtype=memory_out.dtype,
+        ).view(b, 1, 1)
+        memory_out = memory_out * has_memory
+        memory_norm = float(memory_out.detach().norm().cpu())
+        local_norm = float(local_out.detach().norm().cpu())
+        self.last_diagnostics = {
+            **stats.as_metrics(),
+            "memory_duplicate_chunk_tokens": float(duplicate_tokens),
+            "memory_output_norm": memory_norm,
+            "local_output_norm": local_norm,
+            "memory_to_local_output_norm_ratio": memory_norm / max(local_norm, 1e-12),
+        }
+        if self.config.collect_detailed_timing:
+            self.last_diagnostics.update(
+                {
+                    "routing_duration_seconds": routing_duration,
+                    "materialization_duration_seconds": materialization_duration,
+                    "memory_attention_duration_seconds": memory_attention_duration,
+                }
+            )
+        return local_out + self.memory_alpha * memory_out

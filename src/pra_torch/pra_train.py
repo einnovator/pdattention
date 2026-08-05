@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -14,9 +15,154 @@ import torch.nn.functional as F
 from data.datamodules import PRADataModule
 from .cache_services import build_cache_from_metadata
 from .config import CacheServiceConfig, PRAConfig, ResolverServiceConfig, TrainConfig
-from .metrics import RunningAverages, cuda_memory_allocated, perplexity
+from .metrics import (
+    RunningAverages,
+    chunk_is_relevant,
+    cuda_memory_allocated,
+    perplexity,
+    ranking_metrics,
+)
 from .model import TinyPRAModel
 from .train import TrainingState, create_training_state, move_batch, train_model
+
+
+def _expected_reference_uris(item: dict) -> set[str]:
+    explicit = set(item.get("target_reference_uris") or [])
+    if explicit:
+        return explicit
+    target_ids = set(item.get("target_reference_ids") or [])
+    return {ref.uri for ref in item["references"] if ref.id in target_ids}
+
+
+def _chunk_ranking_metrics(selected, item, cfg):
+    target_ids = set(item.get("target_chunk_ids") or [])
+    target_spans = list(item.get("target_chunk_spans") or [])
+    if not target_ids and not target_spans:
+        return None
+    flags = [
+        chunk_is_relevant(
+            hit,
+            target_ids,
+            target_spans,
+            cfg.chunk_match_mode,
+            cfg.chunk_iou_threshold,
+        )
+        for hit in selected
+    ]
+    expected_count = len(target_ids) or len(target_spans)
+    hits = sum(flags)
+    reciprocal_rank = next((1.0 / rank for rank, flag in enumerate(flags, 1) if flag), 0.0)
+    dcg = sum(1.0 / math.log2(rank + 1) for rank, flag in enumerate(flags, 1) if flag)
+    ideal_hits = min(expected_count, len(flags))
+    ideal_dcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, ideal_hits + 1))
+    recall = hits / max(expected_count, 1)
+    precision = hits / max(len(flags), 1)
+    return {
+        "hit_at_1": float(bool(flags and flags[0])),
+        "hit_at_k": float(hits > 0),
+        "recall_at_k": recall,
+        "precision_at_k": precision,
+        "f1_at_k": 2 * precision * recall / max(precision + recall, 1e-12),
+        "mrr": reciprocal_rank,
+        "ndcg": dcg / max(ideal_dcg, 1e-12),
+        "selected_count": float(len(selected)),
+    }
+
+
+def _deduplicated_reference_order(selected) -> list[str]:
+    ranked = sorted(selected, key=lambda hit: (hit.reference_rank, hit.rank_within_reference))
+    return list(dict.fromkeys(hit.reference_uri for hit in ranked))
+
+
+def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[str, float]:
+    averages = RunningAverages()
+    chunk_label_units = selection_units = 0
+    for cache, by_layer, item, layer_diagnostics in zip(caches, selections, metadata, diagnostics):
+        expected_uris = _expected_reference_uris(item)
+        for layer_id, selected in by_layer.items():
+            selection_units += 1
+            reference_metrics = ranking_metrics(_deduplicated_reference_order(selected), expected_uris)
+            layer_metrics = {
+                f"retrieval_reference_{key}": value for key, value in reference_metrics.items()
+            }
+            chunk_metrics = _chunk_ranking_metrics(selected, item, cfg)
+            if chunk_metrics is not None:
+                chunk_label_units += 1
+                layer_metrics.update(
+                    {f"retrieval_chunk_{key}": value for key, value in chunk_metrics.items()}
+                )
+            counts = cache.layer_counts(layer_id)
+            selected_refs = len(set(hit.reference_uri for hit in selected))
+            selected_chunks = len(selected)
+            diagnostic = layer_diagnostics.get(layer_id, {})
+            batching = diagnostic.get("batching")
+            selected_tokens = (
+                sum(batching.selected_lengths)
+                if batching is not None
+                else sum(hit.selected_token_count for hit in selected)
+            )
+            selected_scores = [hit.chunk_score for hit in selected]
+            recursive_depth = max(
+                (int(entry.metadata.get("resolution_depth", 0)) for entry in cache.all_entries()),
+                default=0,
+            )
+            recursion_refs = max(
+                (
+                    int(entry.metadata.get("resolution_budget_references_used", 0))
+                    for entry in cache.all_entries()
+                ),
+                default=0,
+            )
+            recursion_tokens = max(
+                (
+                    int(entry.metadata.get("resolution_budget_tokens_used", 0))
+                    for entry in cache.all_entries()
+                ),
+                default=0,
+            )
+            layer_metrics.update(
+                {
+                    "memory_available_reference_count": counts["references"],
+                    "memory_available_chunk_count": counts["chunks"],
+                    "cache_reference_token_count": counts["tokens"],
+                    "retrieval_selected_reference_count": selected_refs,
+                    "retrieval_selected_chunk_count": selected_chunks,
+                    "memory_selected_token_count": selected_tokens,
+                    "memory_selected_reference_fraction": selected_refs / max(counts["references"], 1),
+                    "memory_selected_chunk_fraction": selected_chunks / max(counts["chunks"], 1),
+                    "memory_selected_token_fraction": selected_tokens / max(counts["tokens"], 1),
+                    "retrieval_routing_score_mean": sum(selected_scores) / max(len(selected_scores), 1),
+                    "retrieval_routing_score_max": max(selected_scores, default=0.0),
+                    "retrieval_zero_chunk_fraction": float(selected_chunks == 0),
+                    "memory_retrieved_chunk_attended_fraction": float(selected_tokens > 0)
+                    if selected_chunks
+                    else 0.0,
+                    "cache_recursive_expansion_depth": recursive_depth,
+                    "cache_recursive_reference_budget_fraction": recursion_refs
+                    / max(cfg.recursive_max_total_references, 1),
+                    "cache_recursive_token_budget_fraction": recursion_tokens
+                    / max(cfg.recursive_max_total_tokens, 1),
+                }
+            )
+            layer_metrics.update(
+                {
+                    key: value
+                    for key, value in diagnostic.items()
+                    if isinstance(value, (int, float))
+                }
+            )
+            averages.update(layer_metrics)
+            averages.update(
+                {f"layer_{layer_id}_{key.removeprefix('retrieval_')}": value for key, value in layer_metrics.items()}
+            )
+    result = averages.compute()
+    result["retrieval_chunk_labels_available_fraction"] = chunk_label_units / max(selection_units, 1)
+    result["reference_retrieval_accuracy"] = result.get("retrieval_reference_hit_at_k", 0.0)
+    result["reference_selection_top1_accuracy"] = result.get("retrieval_reference_hit_at_1", 0.0)
+    result["reference_selection_topk_accuracy"] = result.get("retrieval_reference_hit_at_k", 0.0)
+    result["reference_selection_mrr"] = result.get("retrieval_reference_mrr", 0.0)
+    result["selected_ref_count"] = result.get("retrieval_reference_selected_count", 0.0)
+    return result
 
 
 def _pra_batch_step(
@@ -31,7 +177,10 @@ def _pra_batch_step(
     logits_by_example = []
     caches = []
     selections = []
+    diagnostics = []
+    cache_build_duration = 0.0
     for index, metadata in enumerate(batch["metadata"]):
+        cache_start = time.perf_counter()
         cache = build_cache_from_metadata(
             model,
             tokenizer,
@@ -40,11 +189,24 @@ def _pra_batch_step(
             resolver_config=resolver_config,
             cache_config=cache_config,
         )
+        cache_build_duration += time.perf_counter() - cache_start
         logits_by_example.append(model(batch["input_ids"][index : index + 1]))
         caches.append(cache)
-        selections.append(model.selected_references_by_layer())
+        selections.append(
+            {
+                layer_id: (batch_selected[0] if batch_selected else [])
+                for layer_id, batch_selected in model.selected_chunks_by_layer().items()
+            }
+        )
+        diagnostics.append(model.pra_diagnostics_by_layer())
     logits = torch.cat(logits_by_example, dim=0)
     loss = F.cross_entropy(logits.view(-1, logits.size(-1)), batch["labels"].view(-1), ignore_index=0)
+    retrieval_metrics = _retrieval_metrics(
+        caches, selections, batch["metadata"], model.cfg, diagnostics
+    )
+    retrieval_metrics["cache_build_duration_seconds"] = cache_build_duration / max(
+        len(caches), 1
+    )
     return loss, {
         "tokens": int(batch["attention_mask"].sum().item()),
         "examples": int(batch["input_ids"].shape[0]),
@@ -52,6 +214,8 @@ def _pra_batch_step(
         "cache": caches[-1],
         "caches": caches,
         "selections": selections,
+        "diagnostics": diagnostics,
+        "metrics": retrieval_metrics,
         "logits": logits,
     }
 
@@ -76,8 +240,6 @@ def evaluate_pra_model(
     model.eval()
     averages = RunningAverages()
     exact = anchor_hits = cache_hits = total = 0
-    selection_units = selection_top1_hits = selection_topk_hits = 0
-    selection_reciprocal_rank = selected_refs = 0
     retrieved_tokens = expanded_refs = expansion_depth = token_total = 0
     start = time.perf_counter()
 
@@ -103,7 +265,13 @@ def evaluate_pra_model(
                 )
                 moved_batch = batch_metrics["batch"]
                 predicted_ids = batch_metrics["logits"].argmax(dim=-1).detach().cpu()
-                averages.update({f"{split}_loss": float(loss.detach().cpu())})
+                averages.update(
+                    {
+                        f"{split}_loss": float(loss.detach().cpu()),
+                        **batch_metrics.get("metrics", {}),
+                    },
+                    weight=max(int(batch_metrics["examples"]), 1),
+                )
                 token_total += int(batch_metrics["tokens"])
 
                 for index, item in enumerate(moved_batch["metadata"]):
@@ -117,25 +285,15 @@ def evaluate_pra_model(
                     total += 1
                     if answer in prediction:
                         exact += 1
-                    expected_uris = {
-                        ref.uri for ref in item["references"] if ref.id in item["target_reference_ids"]
-                    }
+                    expected_uris = _expected_reference_uris(item)
                     cache_hit = not expected_uris or bool(expected_uris.intersection(cache.entries))
                     if cache_hit:
                         cache_hits += 1
                     layer_selections = batch_metrics["selections"][index]
-                    for ranked in layer_selections.values():
-                        selection_units += 1
-                        selected_refs += len(ranked)
-                        selected_uris = [uri for uri, _score in ranked]
-                        if selected_uris and selected_uris[0] in expected_uris:
-                            selection_top1_hits += 1
-                        ranks = [rank for rank, uri in enumerate(selected_uris, start=1) if uri in expected_uris]
-                        if ranks:
-                            selection_topk_hits += 1
-                            selection_reciprocal_rank += 1.0 / min(ranks)
                     anchors = item.get("expected_anchors", [])
-                    expansion_depth += len(anchors)
+                    resolution_events = getattr(cache, "resolution_events", [])
+                    item_depth = max((event.depth for event in resolution_events), default=0)
+                    expansion_depth += item_depth
                     cached_text = "\n".join(entry.text for entry in cache.all_entries())
                     anchor_hit = not anchors or any(
                         anchor in cached_text or anchor in " ".join(cache.entries) for anchor in anchors
@@ -149,15 +307,40 @@ def evaluate_pra_model(
                         "available_references": [asdict(ref) for ref in item["references"]],
                         "cached_references": list(cache.entries.keys()),
                         "selected_references_by_layer": {
-                            str(layer_id): [uri for uri, _score in ranked]
-                            for layer_id, ranked in layer_selections.items()
+                            str(layer_id): _deduplicated_reference_order(selected)
+                            for layer_id, selected in layer_selections.items()
+                        },
+                        "selected_chunks_by_layer": {
+                            str(layer_id): [hit.as_trace_dict() for hit in selected]
+                            for layer_id, selected in layer_selections.items()
                         },
                         "expanded_anchors": anchors,
-                        "expansion_depth": len(anchors),
+                        "expansion_depth": item_depth,
                         "cache_hits": cache_hit,
                         "retrieved_token_counts": [
                             len(tokenizer.encode(entry.text)) for entry in cache.all_entries()
                         ],
+                        "memory_lengths_by_layer": {
+                            str(layer_id): sum(hit.selected_token_count for hit in selected)
+                            for layer_id, selected in layer_selections.items()
+                        },
+                        "bucket_stats_by_layer": {
+                            str(layer_id): (
+                                diagnostic["batching"].as_metrics()
+                                if diagnostic.get("batching") is not None
+                                else {}
+                            )
+                            for layer_id, diagnostic in batch_metrics["diagnostics"][index].items()
+                        },
+                        "recursive_paths": [asdict(event) for event in resolution_events],
+                        "routing_configuration": {
+                            "search_strategy": model.cfg.search_strategy,
+                            "top_k_references": model.cfg.top_k_references,
+                            "top_k_chunks_per_reference": model.cfg.top_k_chunks_per_reference,
+                            "gist_mode": model.cfg.gist_mode,
+                            "chunking_mode": model.cfg.chunking_mode,
+                            "detail_materialization": model.cfg.detail_materialization,
+                        },
                     }
                     if pred_f:
                         pred_f.write(
@@ -184,11 +367,6 @@ def evaluate_pra_model(
             "loss": loss,
             "perplexity": perplexity(loss),
             "answer_accuracy": exact / max(total, 1),
-            "reference_retrieval_accuracy": selection_topk_hits / max(selection_units, 1),
-            "reference_selection_top1_accuracy": selection_top1_hits / max(selection_units, 1),
-            "reference_selection_topk_accuracy": selection_topk_hits / max(selection_units, 1),
-            "reference_selection_mrr": selection_reciprocal_rank / max(selection_units, 1),
-            "selected_ref_count": selected_refs / max(selection_units, 1),
             "expected_anchor_hit": anchor_hits / max(total, 1),
             "expansion_depth": expansion_depth / max(total, 1),
             "expanded_ref_count": expanded_refs / max(total, 1),
@@ -214,71 +392,114 @@ def evaluate_reference_ablation(
     cache_config=None,
 ) -> dict:
     """Measure answer-token LM quality under reference-content ablations."""
-    supported = {"valid", "disabled", "shuffled", "irrelevant", "empty", "oracle"}
+    supported = {
+        "valid",
+        "disabled",
+        "shuffled",
+        "irrelevant",
+        "empty",
+        "oracle",
+        "full_reference",
+        "selected_chunks",
+        "oracle_chunks",
+        "shuffled_chunks",
+        "irrelevant_chunks",
+        "gist_only",
+    }
     if condition not in supported:
         raise ValueError(f"Unsupported reference condition: {condition}")
     was_training = model.training
     model.eval()
     loss_sum = correct = token_count = 0
     start = time.perf_counter()
-    batches = list(loader)
+    reference_conditions = {"shuffled", "irrelevant"}
     reference_sets = [
-        item["references"] for batch in batches for item in batch["metadata"]
-    ]
+        item["references"]
+        for batch in loader
+        for item in batch["metadata"]
+    ] if condition in reference_conditions else []
     reference_pool = [reference for references in reference_sets for reference in references]
     shuffle_offset = max(len(reference_sets) // 2, 1)
     reference_index = 0
-    with torch.no_grad():
-        for batch in batches:
-            moved = move_batch(batch, device)
-            for index, item in enumerate(batch["metadata"]):
-                if condition in {"disabled", "empty"}:
-                    model.clear_pra_cache()
-                else:
-                    metadata = item
-                    if condition == "shuffled":
-                        shuffled_index = (reference_index + shuffle_offset) % len(reference_sets)
-                        metadata = {**item, "references": reference_sets[shuffled_index]}
-                    elif condition == "irrelevant":
-                        own_uris = {reference.uri for reference in item["references"]}
-                        start_index = (reference_index + shuffle_offset) % max(len(reference_pool), 1)
-                        candidates = reference_pool[start_index:] + reference_pool[:start_index]
-                        irrelevant = [reference for reference in candidates if reference.uri not in own_uris]
-                        metadata = {**item, "references": irrelevant[: len(item["references"])]}
-                    elif condition == "oracle":
-                        target_ids = set(item["target_reference_ids"])
-                        metadata = {
-                            **item,
-                            "references": [
-                                reference for reference in item["references"] if reference.id in target_ids
-                            ],
-                        }
-                    build_cache_from_metadata(
-                        model,
-                        tokenizer,
-                        [metadata],
-                        device,
-                        resolver_config=resolver_config,
-                        cache_config=cache_config,
+    previous_materialization = model.cfg.detail_materialization
+    if condition in {"full_reference", "selected_chunks", "gist_only"}:
+        model.cfg.detail_materialization = condition
+    ablation_materialization = model.cfg.detail_materialization
+    try:
+        with torch.no_grad():
+            for batch in loader:
+                moved = move_batch(batch, device)
+                for index, item in enumerate(batch["metadata"]):
+                    if condition in {"disabled", "empty"}:
+                        model.clear_pra_cache()
+                    else:
+                        metadata = item
+                        if condition == "shuffled":
+                            shuffled_index = (reference_index + shuffle_offset) % len(reference_sets)
+                            metadata = {**item, "references": reference_sets[shuffled_index]}
+                        elif condition == "irrelevant":
+                            own_uris = {reference.uri for reference in item["references"]}
+                            start_index = (reference_index + shuffle_offset) % max(len(reference_pool), 1)
+                            candidates = reference_pool[start_index:] + reference_pool[:start_index]
+                            irrelevant = [reference for reference in candidates if reference.uri not in own_uris]
+                            metadata = {**item, "references": irrelevant[: len(item["references"])]}
+                        elif condition == "oracle":
+                            target_ids = set(item["target_reference_ids"])
+                            metadata = {
+                                **item,
+                                "references": [
+                                    reference for reference in item["references"] if reference.id in target_ids
+                                ],
+                            }
+                        cache = build_cache_from_metadata(
+                            model,
+                            tokenizer,
+                            [metadata],
+                            device,
+                            resolver_config=resolver_config,
+                            cache_config=cache_config,
+                        )
+                        if condition == "oracle_chunks":
+                            target_ids = set(item.get("target_chunk_ids") or [])
+                            if target_ids:
+                                for entry in cache.all_entries():
+                                    for memory in entry.layer_memory.values():
+                                        memory.chunks[:] = [
+                                            chunk for chunk in memory.chunks if chunk.chunk_id in target_ids
+                                        ]
+                        elif condition in {"shuffled_chunks", "irrelevant_chunks"}:
+                            for layer_id in range(model.cfg.n_layers):
+                                chunks = [
+                                    chunk
+                                    for entry in cache.all_entries()
+                                    if layer_id in entry.layer_memory
+                                    for chunk in entry.layer_memory[layer_id].chunks
+                                ]
+                                if len(chunks) > 1:
+                                    payloads = [chunk.token_kv for chunk in chunks]
+                                    rotated = payloads[1:] + payloads[:1]
+                                    for chunk, payload in zip(chunks, rotated):
+                                        chunk.token_kv = payload
+                    logits = model(
+                        moved["input_ids"][index : index + 1],
+                        use_pra_memory=condition != "disabled",
                     )
-                logits = model(
-                    moved["input_ids"][index : index + 1],
-                    use_pra_memory=condition != "disabled",
-                )
-                labels = moved["labels"][index : index + 1]
-                valid = labels.ne(0)
-                count = int(valid.sum().item())
-                loss_sum += float(
-                    F.cross_entropy(
-                        logits.reshape(-1, logits.size(-1)),
-                        labels.reshape(-1),
-                        ignore_index=0,
-                        reduction="sum",
-                    ).detach().cpu()
-                )
-                correct += int((logits.argmax(dim=-1).eq(labels) & valid).sum().item())
-                token_count += count
-                reference_index += 1
+                    labels = moved["labels"][index : index + 1]
+                    valid = labels.ne(0)
+                    count = int(valid.sum().item())
+                    loss_sum += float(
+                        F.cross_entropy(
+                            logits.reshape(-1, logits.size(-1)),
+                            labels.reshape(-1),
+                            ignore_index=0,
+                            reduction="sum",
+                        ).detach().cpu()
+                    )
+                    correct += int((logits.argmax(dim=-1).eq(labels) & valid).sum().item())
+                    token_count += count
+                    reference_index += 1
+    finally:
+        model.cfg.detail_materialization = previous_materialization
     if was_training:
         model.train()
     elapsed = max(time.perf_counter() - start, 1e-9)
@@ -290,6 +511,8 @@ def evaluate_reference_ablation(
         "token_accuracy": correct / max(token_count, 1),
         "tokens": token_count,
         "duration_seconds": elapsed,
+        "detail_materialization": ablation_materialization,
+        "ablation": condition,
     }
 
 
