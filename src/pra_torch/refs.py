@@ -10,19 +10,23 @@ REF_TOKEN_PATTERN = re.compile(r"<REF_(?P<id>\d+)>")
 
 @dataclass(frozen=True)
 class RefHandle:
-    raw: str
-    uri: str
-    start: int
-    end: int
+    """Located legacy ``!!ref:uri!!`` occurrence retained for migration tools."""
+
+    raw: str  # Exact source spelling.
+    uri: str  # URI embedded directly in the legacy marker.
+    start: int  # Inclusive character offset.
+    end: int  # Exclusive character offset.
 
 
 @dataclass(frozen=True)
 class ReferenceTokenOccurrence:
-    token: str
-    id: int
-    start: int
-    end: int
-    handle: ReferenceHandle | None = None
+    """Located lightweight token and its optional runtime URI-table binding."""
+
+    token: str  # Exact token, for example ``<REF_3>``.
+    id: int  # Numeric token-local identifier, not a URI or global identity.
+    start: int  # Inclusive character offset in the prompt.
+    end: int  # Exclusive character offset in the prompt.
+    handle: ReferenceHandle | None = None  # Runtime table record carrying the URI.
 
 
 def parse_refs(text: str) -> list[RefHandle]:
@@ -68,6 +72,7 @@ def normalize_ref_tokens(text: str, ref_token: str | None = None) -> str:
 
 
 def split_uri_anchor(uri: str) -> tuple[str, str | None]:
+    """Split ``document-uri#anchor`` while preserving an anchor-free base URI."""
     if "#" not in uri:
         return uri, None
     base, anchor = uri.split("#", 1)
@@ -75,12 +80,14 @@ def split_uri_anchor(uri: str) -> tuple[str, str | None]:
 
 
 def parent_anchor(anchor: str | None) -> str | None:
+    """Return the dotted parent path of a hierarchical anchor."""
     if not anchor or "." not in anchor:
         return None
     return ".".join(anchor.split(".")[:-1])
 
 
 def child_anchor(anchor: str | None, child: str) -> str:
+    """Append one component to a dotted hierarchical anchor."""
     if not anchor:
         return child
     return f"{anchor}.{child}"

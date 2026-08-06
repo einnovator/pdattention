@@ -11,26 +11,31 @@ import torch.nn.functional as F
 
 @dataclass(frozen=True)
 class MemoryBucket:
-    original_indices: tuple[int, ...]
-    lengths: tuple[int, ...]
-    max_length: int
+    """Batch rows grouped into one padded memory-attention rectangle."""
+
+    original_indices: tuple[int, ...]  # Row positions restored after bucket attention.
+    lengths: tuple[int, ...]  # Valid selected-memory lengths for those rows.
+    max_length: int  # Rectangle width and maximum member length.
 
 
 @dataclass(frozen=True)
 class MemoryBatchingStats:
-    selected_lengths: tuple[int, ...]
-    requested_bucket_count: int
-    actual_bucket_count: int
-    bucket_membership: tuple[tuple[int, ...], ...]
-    bucket_max_lengths: tuple[int, ...]
-    valid_positions: int
-    allocated_positions: int
-    padding_positions: int
-    padding_fraction: float
-    attention_entropy: float = 0.0
-    attention_max_weight: float = 0.0
+    """Diagnostics for variable-length memory packing and attention concentration."""
+
+    selected_lengths: tuple[int, ...]  # Materialized memory positions per input row.
+    requested_bucket_count: int  # Configured cap; zero requests isolated rows.
+    actual_bucket_count: int  # Non-empty rectangles executed.
+    bucket_membership: tuple[tuple[int, ...], ...]  # Original rows in each rectangle.
+    bucket_max_lengths: tuple[int, ...]  # Padded memory width per rectangle.
+    valid_positions: int  # Sum of real memory positions across rows.
+    allocated_positions: int  # Rectangle positions allocated across all buckets.
+    padding_positions: int  # Allocated positions hidden by masks.
+    padding_fraction: float  # Padding divided by allocated positions.
+    attention_entropy: float = 0.0  # Mean entropy over memory-attention distributions.
+    attention_max_weight: float = 0.0  # Mean bucket maximum attention weight.
 
     def as_metrics(self) -> dict[str, float]:
+        """Flatten packing/attention statistics into experiment metric names."""
         lengths = self.selected_lengths
         return {
             "memory_valid_positions": float(self.valid_positions),
@@ -49,12 +54,20 @@ class MemoryBatchingStats:
 
 
 class MemoryBucketPlanner:
+    """Group similar memory lengths to reduce masked rectangular padding."""
+
     def plan(
         self,
         lengths: Sequence[int],
         max_buckets: int,
         strategy: str = "optimal_contiguous",
     ) -> list[MemoryBucket]:
+        """Plan at most ``max_buckets`` without mixing data between batch rows.
+
+        ``optimal_contiguous`` minimizes allocated positions after sorting by
+        length; ``equal_count`` is a cheaper deterministic baseline. A zero cap
+        deliberately creates one unpadded bucket per non-empty row.
+        """
         if max_buckets <= 0:
             return [MemoryBucket((index,), (int(length),), int(length)) for index, length in enumerate(lengths) if length]
         items = sorted(
@@ -88,6 +101,7 @@ class MemoryBucketPlanner:
 
     @staticmethod
     def _optimal_groups(items, bucket_count):
+        """Use dynamic programming to minimize total padded positions."""
         n = len(items)
         infinity = float("inf")
         costs = [[infinity] * (n + 1) for _ in range(bucket_count + 1)]
@@ -114,12 +128,18 @@ def padded_memory_attention(
     memory_k_by_item: Sequence[torch.Tensor],
     memory_v_by_item: Sequence[torch.Tensor],
 ) -> tuple[torch.Tensor, float, float]:
-    """Attend over one masked rectangle and return reduced diagnostics."""
+    """Attend over one masked variable-memory rectangle.
+
+    Queries are ``[B,H,T,Dh]``. Each input K/V row is ``[1,H,M_i,Dh]``;
+    padding forms ``[B,H,max(M_i),Dh]`` and a mask keeps rows isolated. The
+    output restores the query shape and includes reduced attention diagnostics.
+    """
     if len(memory_k_by_item) != q.shape[0] or len(memory_v_by_item) != q.shape[0]:
         raise ValueError("Memory rows must match the query batch.")
     lengths = [int(value.shape[2]) for value in memory_k_by_item]
     if not lengths or max(lengths, default=0) == 0:
         return torch.zeros_like(q), 0.0, 0.0
+    # Pad only the memory-token dimension; head and feature dimensions stay fixed.
     max_length = max(lengths)
     padded_k = []
     padded_v = []
@@ -135,6 +155,7 @@ def padded_memory_attention(
     memory_v = torch.cat(padded_v, dim=0)
     length_tensor = torch.tensor(lengths, device=q.device)
     mask = torch.arange(max_length, device=q.device)[None, :] < length_tensor[:, None]
+    # [B,H,T,Dh] x [B,H,Dh,M] -> [B,H,T,M].
     scores = q @ memory_k.transpose(-2, -1) / (q.shape[-1] ** 0.5)
     scores = scores.masked_fill(~mask[:, None, None, :], torch.finfo(scores.dtype).min)
     weights = F.softmax(scores, dim=-1)
@@ -154,7 +175,7 @@ def dynamic_memory_attention(
     bucket_count: int,
     bucket_strategy: str,
 ) -> tuple[torch.Tensor, MemoryBatchingStats]:
-    """Run isolated or bucketed attention and restore original batch order."""
+    """Run bucketed memory attention and restore ``[B,H,T,Dh]`` row order."""
     if len(memory_k_by_item) != q.shape[0] or len(memory_v_by_item) != q.shape[0]:
         raise ValueError("Memory list length must match query batch size.")
     lengths = [int(key.shape[2]) for key in memory_k_by_item]
@@ -163,6 +184,7 @@ def dynamic_memory_attention(
     output = torch.zeros_like(q)
     entropies = []
     maxima = []
+    # Each bucket is an efficiency device only; attention remains row-local.
     for bucket in buckets:
         indices = torch.tensor(bucket.original_indices, device=q.device, dtype=torch.long)
         bucket_q = q.index_select(0, indices)

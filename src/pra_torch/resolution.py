@@ -11,17 +11,22 @@ from .memory import CacheBuildState, PRACacheEntry, PRAMemoryCache
 
 
 class ResolutionBudgetExceeded(RuntimeError):
+    """Raised when one recursive root traversal exceeds its shared limits."""
+
     pass
 
 
 @dataclass
 class ResolutionBudget:
-    max_total_references: int
-    max_total_tokens: int
-    references_used: int = 0
-    tokens_used: int = 0
+    """Mutable reference/token allowance shared by a recursive cache build."""
+
+    max_total_references: int  # Maximum entries resolved from one root request.
+    max_total_tokens: int  # Maximum source tokens encoded across those entries.
+    references_used: int = 0  # Entries charged so far.
+    tokens_used: int = 0  # Resolved source tokens charged so far.
 
     def consume(self, token_count: int) -> None:
+        """Atomically charge one reference and its source-token count."""
         if self.references_used + 1 > self.max_total_references:
             raise ResolutionBudgetExceeded("max_total_references exhausted")
         if self.tokens_used + token_count > self.max_total_tokens:
@@ -32,37 +37,48 @@ class ResolutionBudget:
 
 @dataclass(frozen=True)
 class ResolutionEvent:
-    uri: str
-    event: str
-    depth: int
-    parent_uri: str | None = None
-    detail: str | None = None
+    """Compact audit event for recursive resolution and cache construction."""
+
+    uri: str  # URI affected by the event.
+    event: str  # building, ready, hit, cycle, missing, failed, and so on.
+    depth: int  # Number of child edges from the requested root.
+    parent_uri: str | None = None  # URI whose local table named this child.
+    detail: str | None = None  # Optional failure/budget explanation.
 
 
 def _fingerprint(value) -> str:
+    """Hash JSON-compatible identity material for stale-cache detection."""
     serialized = json.dumps(value, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(serialized).hexdigest()
 
 
 class RecursiveReferenceCacheBuilder:
-    """Resolve children depth-first and expose only complete cache entries."""
+    """Resolve references child-first and publish only complete cache entries.
+
+    A child is encoded before its parent so recursive mode can let the parent's
+    independent encoding attend to already cached child memory. Depth, token,
+    reference, cycle, and missing-reference policies bound this expansion.
+    """
 
     def __init__(self, model, resolver, tokenizer, cache: PRAMemoryCache, config):
+        """Bind the model-side encoder to resolver/cache services and PRA policy."""
         self.model = model
-        self.resolver = resolver
-        self.tokenizer = tokenizer
-        self.cache = cache
-        self.config = config
-        self.events: list[ResolutionEvent] = []
-        self.dependencies: list[dict] = []
+        self.resolver = resolver  # Converts stable URIs to text and local child tables.
+        self.tokenizer = tokenizer  # Defines budget counts and reference tokenization.
+        self.cache = cache  # Stores ready layer-specific K/V and lifecycle state.
+        self.config = config  # Recursion, chunking, gist, and cache identity settings.
+        self.events: list[ResolutionEvent] = []  # Ordered build audit trail.
+        self.dependencies: list[dict] = []  # Parent-child edges and their actions.
 
     def new_budget(self) -> ResolutionBudget:
+        """Create one allowance to share across a root and all descendants."""
         return ResolutionBudget(
             max_total_references=self.config.recursive_max_total_references,
             max_total_tokens=self.config.recursive_max_total_tokens,
         )
 
     def _identity(self, resolved) -> dict:
+        """Describe inputs whose change makes an existing cache entry stale."""
         routing_config = {
             key: value
             for key, value in asdict(self.config).items()
@@ -97,6 +113,7 @@ class RecursiveReferenceCacheBuilder:
         }
 
     def _missing(self, uri: str, depth: int, error: Exception):
+        """Record an unresolved URI and apply skip/warn/error policy."""
         self.events.append(ResolutionEvent(uri, "missing", depth, detail=str(error)))
         policy = self.config.recursive_missing_ref_policy
         if policy == "error":
@@ -114,7 +131,16 @@ class RecursiveReferenceCacheBuilder:
         budget: ResolutionBudget | None = None,
         parent_uri: str | None = None,
     ) -> PRACacheEntry | None:
+        """Ensure a URI and permitted descendants have ready cache entries.
+
+        The traversal is depth-first. ``ancestry`` detects graph cycles while
+        cache ``BUILDING`` state catches re-entrant construction. A matching
+        fingerprint is a cache hit; otherwise the stale object is rebuilt.
+        """
         budget = budget or self.new_budget()
+
+        # Stop cycles before resolver or model work. ``link_only`` may reuse an
+        # already-ready target but never exposes a partially building entry.
         if uri in ancestry:
             self.dependencies.append(
                 {"parent_uri": parent_uri, "child_uri": uri, "cyclic": True, "action": self.config.recursive_cycle_policy}
@@ -128,11 +154,13 @@ class RecursiveReferenceCacheBuilder:
             if self.config.recursive_cycle_policy == "error":
                 raise RuntimeError(f"Re-entrant reference cache construction for {uri}")
             return None
+        # Resolution provides source text, version, summary, and a local token->URI table.
         try:
             resolved = self.resolver.resolve(uri)
         except KeyError as error:
             return self._missing(uri, depth, error)
 
+        # Reuse only when content, model, tokenizer, and routing configuration match.
         identity = self._identity(resolved)
         existing = self.cache.get(uri)
         if existing is not None and all(existing.metadata.get(key) == value for key, value in identity.items()):
@@ -141,6 +169,7 @@ class RecursiveReferenceCacheBuilder:
         if existing is not None and hasattr(self.cache, "invalidate"):
             self.cache.invalidate(uri)
 
+        # Charge the shared traversal budget before making this URI visible as BUILDING.
         token_count = len(self.tokenizer.encode(resolved.text))
         budget.consume(token_count)
         if hasattr(self.cache, "begin_build"):
@@ -149,6 +178,8 @@ class RecursiveReferenceCacheBuilder:
         child_uris = list(dict.fromkeys(resolved.reference_table.values()))
         child_uris = child_uris[: self.config.recursive_max_children_per_reference]
         try:
+            # Build children first. Their ready K/V can participate while encoding
+            # this parent when recursive_refs_enabled is active.
             if self.config.recursive_refs_enabled and depth < self.config.recursive_max_depth:
                 for child_uri in child_uris:
                     self.dependencies.append(
@@ -174,6 +205,7 @@ class RecursiveReferenceCacheBuilder:
                         {"parent_uri": uri, "child_uri": child_uri, "cyclic": False, "action": reason}
                     )
 
+            # Encode all chunks/layers, then atomically publish the complete parent.
             self.model.set_pra_cache(self.cache)
             entry = self.model.encode_reference_to_cache(
                 uri,

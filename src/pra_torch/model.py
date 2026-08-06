@@ -21,17 +21,18 @@ from .memory import (
 
 
 def causal_attention_mask(seq_len: int, device) -> torch.Tensor:
-    """Return a boolean causal mask for PyTorch attention modules."""
+    """Return ``[T,T]`` mask where true entries hide future key positions."""
     return torch.triu(torch.ones(seq_len, seq_len, dtype=torch.bool, device=device), diagonal=1)
 
 
 class VanillaTransformerBlock(nn.Module):
-    """Standard PyTorch transformer encoder layer used as an early block."""
+    """Causally masked PyTorch block with no reference-memory branch."""
 
     def __init__(self, cfg: PRAConfig, layer_id: int):
+        """Create one baseline block for ``td_sa`` or a model's vanilla prefix."""
         super().__init__()
-        self.layer_id = layer_id
-        self.layer = nn.TransformerEncoderLayer(
+        self.layer_id = layer_id  # Stable depth used by traces and block ordering.
+        self.layer = nn.TransformerEncoderLayer(  # Complete baseline attention/MLP block.
             d_model=cfg.d_model,
             nhead=cfg.n_heads,
             dim_feedforward=cfg.d_ff,
@@ -42,20 +43,21 @@ class VanillaTransformerBlock(nn.Module):
         )
 
     def forward(self, x, use_pra_memory: bool = True):
-        """Run vanilla causal transformer attention without PRA memory."""
+        """Transform ``[B,T,D]`` states; ``use_pra_memory`` has no effect here."""
         _ = use_pra_memory
         mask = causal_attention_mask(x.shape[1], x.device)
         return self.layer(x, src_mask=mask)
 
 
 class PRATransformerBlock(nn.Module):
-    """One decoder block with causal self-attention plus optional PRA memory."""
+    """Decoder block whose attention branch combines local and PRA memory output."""
 
     def __init__(self, cfg: PRAConfig, layer_id: int, pra_cache: PRAMemoryCache):
+        """Create a pre-norm PRA attention branch and feed-forward branch."""
         super().__init__()
-        self.layer_id = layer_id
-        self.ln1 = nn.LayerNorm(cfg.d_model)
-        self.attn = PRAttention(
+        self.layer_id = layer_id  # Selects this depth's independently encoded cache K/V.
+        self.ln1 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes local and routing queries.
+        self.attn = PRAttention(  # Combined causal self-attention and memory branch.
             d_model=cfg.d_model,
             n_heads=cfg.n_heads,
             max_seq_len=cfg.max_seq_len,
@@ -63,15 +65,15 @@ class PRATransformerBlock(nn.Module):
             pra_cache=pra_cache,
             config=cfg,
         )
-        self.ln2 = nn.LayerNorm(cfg.d_model)
-        self.ff = nn.Sequential(
+        self.ln2 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes the feed-forward branch.
+        self.ff = nn.Sequential(  # Position-wise [D] -> [d_ff] -> [D] transform.
             nn.Linear(cfg.d_model, cfg.d_ff),
             nn.GELU(),
             nn.Linear(cfg.d_ff, cfg.d_model),
         )
 
     def forward(self, x, use_pra_memory: bool = True):
-        """Run the block, optionally allowing the attention layer to read memory."""
+        """Run pre-norm attention/MLP residuals on ``[B,T,D]`` hidden states."""
         x = x + self.attn(self.ln1(x), use_pra_memory=use_pra_memory)
         x = x + self.ff(self.ln2(x))
         return x
@@ -81,25 +83,31 @@ class PRATransformerBlock(nn.Module):
         self.attn.pra_cache = pra_cache
 
     def project_reference_kv(self, x, *, detach: bool = True):
-        """Project reference hidden states into this block's PRA K/V space."""
+        """Map ``[1,M,D]`` reference states to this layer's ``[1,H,M,Dh]`` K/V."""
         return self.attn.project_kv(self.ln1(x), detach=detach)
 
 
 class PRASATransformerBlock(nn.Module):
-    """Mixed block with vanilla self-attention followed by PRA attention."""
+    """Mixed block with an extra vanilla self-attention before the PRA branch.
+
+    ``PRAttention`` itself contains local causal attention, so this experimental
+    mode intentionally has a vanilla residual followed by a second local-plus-
+    memory residual. It tests adding PRA to a conventional decoder sublayer.
+    """
 
     def __init__(self, cfg: PRAConfig, layer_id: int, pra_cache: PRAMemoryCache):
+        """Create vanilla attention, PRA attention, and MLP pre-norm sublayers."""
         super().__init__()
-        self.layer_id = layer_id
-        self.ln1 = nn.LayerNorm(cfg.d_model)
-        self.self_attn = nn.MultiheadAttention(
+        self.layer_id = layer_id  # Selects matching layer cache K/V and trace identity.
+        self.ln1 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes the vanilla branch.
+        self.self_attn = nn.MultiheadAttention(  # Added conventional causal attention.
             embed_dim=cfg.d_model,
             num_heads=cfg.n_heads,
             dropout=cfg.dropout,
             batch_first=True,
         )
-        self.ln2 = nn.LayerNorm(cfg.d_model)
-        self.pra_attn = PRAttention(
+        self.ln2 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes the PRA branch.
+        self.pra_attn = PRAttention(  # Second local attention plus reference memory.
             d_model=cfg.d_model,
             n_heads=cfg.n_heads,
             max_seq_len=cfg.max_seq_len,
@@ -107,8 +115,8 @@ class PRASATransformerBlock(nn.Module):
             pra_cache=pra_cache,
             config=cfg,
         )
-        self.ln3 = nn.LayerNorm(cfg.d_model)
-        self.ff = nn.Sequential(
+        self.ln3 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes the MLP branch.
+        self.ff = nn.Sequential(  # Position-wise mixed-block feed-forward network.
             nn.Linear(cfg.d_model, cfg.d_ff),
             nn.GELU(),
             nn.Dropout(cfg.dropout),
@@ -116,13 +124,14 @@ class PRASATransformerBlock(nn.Module):
         )
 
     def _apply_self_attention(self, x):
+        """Apply the leading vanilla causal residual to ``[B,T,D]`` states."""
         norm_x = self.ln1(x)
         mask = causal_attention_mask(x.shape[1], x.device)
         attn_out, _ = self.self_attn(norm_x, norm_x, norm_x, attn_mask=mask, need_weights=False)
         return x + attn_out
 
     def forward(self, x, use_pra_memory: bool = True):
-        """Run vanilla causal self-attention, then PRA attention, then MLP."""
+        """Run vanilla attention, local-plus-memory PRA attention, then the MLP."""
         x = self._apply_self_attention(x)
         x = x + self.pra_attn(self.ln2(x), use_pra_memory=use_pra_memory)
         x = x + self.ff(self.ln3(x))
@@ -133,20 +142,29 @@ class PRASATransformerBlock(nn.Module):
         self.pra_attn.pra_cache = pra_cache
 
     def project_reference_kv(self, x, *, detach: bool = True):
-        """Project reference states after the vanilla sublayer into PRA K/V."""
+        """Project reference K/V from the same post-vanilla state queried by PRA."""
         x = self._apply_self_attention(x)
         return self.pra_attn.project_kv(self.ln2(x), detach=detach)
 
 
 class TinyPRAModel(nn.Module):
-    """A compact GPT-style model with a shared PRA cache across all layers."""
+    """Compact decoder-only language model and reference-cache encoder.
+
+    The token/position embeddings and block stack are reused in two contexts:
+    normal prompt inference returns logits, while independent reference encoding
+    captures K/V before each PRA sublayer. The cache object is shared across PRA
+    layers, but every entry owns different K/V and gists for each layer ID.
+    """
 
     def __init__(self, cfg: PRAConfig, pra_cache: PRAMemoryCache | None = None):
+        """Construct the configured vanilla, mixed, and PRA block sequence."""
         super().__init__()
-        self.cfg = cfg
-        self.pra_cache = pra_cache if pra_cache is not None else PRASimpleMemoryCache()
-        self.token_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
-        self.pos_emb = nn.Embedding(cfg.max_seq_len, cfg.d_model)
+        self.cfg = cfg  # Architecture and all routing/cache operating modes.
+        self.pra_cache = (  # Shared service storing all URI entries and layer payloads.
+            pra_cache if pra_cache is not None else PRASimpleMemoryCache()
+        )
+        self.token_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)  # IDs -> [B,T,D].
+        self.pos_emb = nn.Embedding(cfg.max_seq_len, cfg.d_model)  # Absolute local positions.
         self.gist_pooler = (
             GRUGistPooler(
                 cfg.d_model,
@@ -158,11 +176,12 @@ class TinyPRAModel(nn.Module):
             if cfg.gist_mode == "gru"
             else None
         )
-        self.blocks = nn.ModuleList(self._build_blocks(cfg))
-        self.ln = nn.LayerNorm(cfg.d_model)
-        self.head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
+        self.blocks = nn.ModuleList(self._build_blocks(cfg))  # Ordered decoder depth.
+        self.ln = nn.LayerNorm(cfg.d_model)  # Final decoder normalization.
+        self.head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)  # [B,T,D] -> logits.
 
     def _build_blocks(self, cfg: PRAConfig) -> list[nn.Module]:
+        """Lay out vanilla prefix, mixed middle, then PRA-only remainder."""
         blocks: list[nn.Module] = []
         for layer_id in range(cfg.n_layers):
             if layer_id < cfg.n_vanilla_layers:
@@ -185,7 +204,7 @@ class TinyPRAModel(nn.Module):
         self.pra_cache.clear()
 
     def selected_chunks_by_layer(self) -> dict[int, list[list]]:
-        """Return per-layer, per-batch selected chunks from the latest forward."""
+        """Return latest selections as ``layer -> batch row -> ranked chunks``."""
         selections = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
@@ -212,6 +231,7 @@ class TinyPRAModel(nn.Module):
         return result
 
     def pra_diagnostics_by_layer(self) -> dict[int, dict]:
+        """Collect latest routing/materialization/batching metrics by PRA layer."""
         diagnostics = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
@@ -223,7 +243,7 @@ class TinyPRAModel(nn.Module):
         return diagnostics
 
     def forward(self, input_ids, use_pra_memory: bool = True):
-        """Return next-token logits for a batch of token ids."""
+        """Map ``[B,T]`` token IDs to next-token logits ``[B,T,vocab_size]``."""
         b, t = input_ids.shape
         assert t <= self.cfg.max_seq_len
         pos = torch.arange(t, device=input_ids.device)
@@ -234,11 +254,18 @@ class TinyPRAModel(nn.Module):
         return self.head(x)
 
     def _encode_reference_tokens(self, token_ids, device, *, detach: bool, use_pra_memory: bool):
+        """Run one chunk independently and capture K/V before each PRA sublayer.
+
+        ``token_ids`` has length ``M``. Each captured value is ``LayerKV`` with
+        shape ``[1,H,M,Dh]``. Normal cache builds disable PRA memory to avoid
+        self-dependence; recursive parent builds may read already-ready children.
+        """
         ids = torch.tensor([token_ids], dtype=torch.long, device=device)
         pos = torch.arange(ids.shape[1], device=device)
         x = self.token_emb(ids) + self.pos_emb(pos)[None, :, :]
         layer_kv = {}
         for block in self.blocks:
+            # Capture the exact normalized state consumed by this depth's memory branch.
             if hasattr(block, "project_reference_kv"):
                 layer_kv[block.layer_id] = block.project_reference_kv(x, detach=detach)
             x = block(x, use_pra_memory=use_pra_memory)
@@ -254,7 +281,14 @@ class TinyPRAModel(nn.Module):
         *,
         use_pra_memory: bool = False,
     ) -> PRACacheEntry:
-        """Encode content chunks into layer-specific routing gists and token K/V."""
+        """Encode one resolved URI into layer-specific routing gists and token K/V.
+
+        The method first partitions text, then independently runs each retained
+        chunk through the decoder. For every PRA layer it stores full token K/V
+        ``[1,H,M,Dh]`` plus content/value gists ``[D]``. An optional summary is
+        encoded separately and contributes only a routing key. The returned entry
+        is not visible to attention until a cache backend publishes it with ``put``.
+        """
         metadata = dict(metadata or {})
         detach = self.cfg.cache_build_mode == "detached"
         context = torch.no_grad() if detach else nullcontext()
@@ -273,6 +307,7 @@ class TinyPRAModel(nn.Module):
                 "chunk_count": len(chunks),
             },
         )
+        # Summary routing is computed once per layer and shared by all URI chunks.
         summary_by_layer = {}
         summary = metadata.get("summary")
         with context:
@@ -294,6 +329,8 @@ class TinyPRAModel(nn.Module):
                             gru_pooler=self.gist_pooler,
                         )
 
+            # Each chunk receives a fresh positional context starting at zero. Source
+            # offsets remain on the chunk for provenance and overlap removal.
             for chunk in chunks:
                 token_ids = list(chunk.token_ids)
                 original_length = len(token_ids)
@@ -310,6 +347,8 @@ class TinyPRAModel(nn.Module):
                     detach=detach,
                     use_pra_memory=use_pra_memory,
                 )
+                # Gists are pooled from projected keys/values in the same layer space
+                # later used by routing queries and cross-attention.
                 for layer_id, kv in layer_kv.items():
                     gist_k = compute_routing_gist(
                         kv.k,
@@ -359,7 +398,7 @@ class TinyPRAModel(nn.Module):
 
     @torch.no_grad()
     def generate(self, input_ids, max_new_tokens=64, temperature=1.0, use_pra_memory: bool = True):
-        """Sample autoregressive continuations from the model."""
+        """Sample continuations, routing memory again at each autoregressive step."""
         self.eval()
         for _ in range(max_new_tokens):
             idx = input_ids[:, -self.cfg.max_seq_len:]

@@ -10,17 +10,24 @@ from .refs import split_uri_anchor
 
 @dataclass
 class ResolvedReference:
-    uri: str
-    text: str
-    reference_table: dict[str, str] = field(default_factory=dict)
-    anchors: dict[str, str] = field(default_factory=dict)
-    metadata: dict = field(default_factory=dict)
-    version: str | None = None
-    summary: str | None = None
+    """Backend-neutral source object consumed by recursive cache construction."""
+
+    uri: str  # Canonical identity requested by the caller.
+    text: str  # Full source content encoded into chunk/layer K/V.
+    reference_table: dict[str, str] = field(default_factory=dict)  # Local <REF_n> -> URI map.
+    anchors: dict[str, str] = field(default_factory=dict)  # Optional named source fragments.
+    metadata: dict = field(default_factory=dict)  # Dataset/backend provenance.
+    version: str | None = None  # Source version included in cache identity.
+    summary: str | None = None  # Optional short text encoded for summary routing.
 
 
 class InMemoryResolver:
-    """Dictionary-backed resolver with explicit local child-reference tables."""
+    """Dictionary-backed implementation of PRA's URI resolution boundary.
+
+    PRA routes stable identities, not embedded document text. The resolver owns
+    the mapping from a URI to current content, version, summary, and the local
+    reference table used for recursive expansion.
+    """
 
     def __init__(
         self,
@@ -30,13 +37,19 @@ class InMemoryResolver:
         metadata: dict[str, dict] | None = None,
         versions: dict[str, str] | None = None,
     ):
-        self.documents = dict(documents)
-        self.summaries = summaries or {}
-        self.reference_tables = reference_tables or {}
-        self.metadata = metadata or {}
-        self.versions = versions or {}
+        """Store document payloads and optional side tables by canonical URI."""
+        self.documents = dict(documents)  # URI -> string or structured source object.
+        self.summaries = summaries or {}  # URI -> routing summary text.
+        self.reference_tables = reference_tables or {}  # URI -> local token/child URI map.
+        self.metadata = metadata or {}  # URI -> backend/dataset metadata.
+        self.versions = versions or {}  # URI -> source version for invalidation.
 
     def resolve(self, uri: str, summary_only: bool = False) -> ResolvedReference:
+        """Resolve a URI (or its base anchor) into a normalized source object.
+
+        ``summary_only`` changes returned text for compatibility; the summary is
+        still retained separately so normal cache construction can encode both.
+        """
         value = self.documents.get(uri)
         if value is None:
             base, _anchor = split_uri_anchor(uri)
@@ -68,6 +81,7 @@ class InMemoryResolver:
         )
 
     def resolve_handle(self, handle: ReferenceHandle, summary_only: bool = False) -> LegacyResolvedReference:
+        """Adapt the URI resolver result to the older handle-oriented API."""
         resolved = self.resolve(handle.uri, summary_only=summary_only)
         children = [
             ReferenceHandle(id=-1, token=token, uri=uri)

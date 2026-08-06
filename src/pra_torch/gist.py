@@ -25,12 +25,16 @@ def projected_token_keys(layer_k: torch.Tensor) -> torch.Tensor:
 
 
 def mean_pool_layer_keys(layer_k: torch.Tensor) -> torch.Tensor:
-    """Return the arithmetic mean of full-width, per-token projected keys."""
+    """Pool ``[1,H,T,Dh]`` keys into one ``[d_model]`` routing vector."""
     return projected_token_keys(layer_k).mean(dim=0)
 
 
 class GRUGistPooler(nn.Module):
-    """Registered recurrent pooler used by the experimental GRU gist mode."""
+    """Learned recurrent reduction from ``[B,T,d_model]`` to ``[B,d_model]``.
+
+    Unlike mean/last pooling, this module has parameters and must be registered
+    on ``TinyPRAModel`` so optimizers and checkpoints include it.
+    """
 
     def __init__(
         self,
@@ -40,6 +44,7 @@ class GRUGistPooler(nn.Module):
         bidirectional: bool = False,
         dropout: float = 0.0,
     ):
+        """Create the GRU and a projection back to the model/routing width."""
         super().__init__()
         hidden_size = int(hidden_size or d_model)
         self.bidirectional = bool(bidirectional)
@@ -55,6 +60,7 @@ class GRUGistPooler(nn.Module):
         self.output = nn.Linear(hidden_size * directions, d_model)
 
     def forward(self, token_keys: torch.Tensor, lengths: torch.Tensor | None = None) -> torch.Tensor:
+        """Pool padded token-key sequences, optionally using true lengths."""
         if token_keys.ndim != 3:
             raise ValueError(f"Expected token keys [batch,tokens,model], got {token_keys.shape}.")
         if lengths is not None:
@@ -83,7 +89,13 @@ def compute_routing_gist(
     ref_end_token: str = "<REF_END>",
     gru_pooler: GRUGistPooler | None = None,
 ) -> torch.Tensor:
-    """Compute exactly one model-width routing gist for one chunk and layer."""
+    """Compute one ``[d_model]`` routing gist for a chunk at a specific layer.
+
+    Gists are derived from projected attention keys, not raw token embeddings,
+    so the query and gist inhabit the same layer-specific key space. ``ref_end``
+    selects an explicit terminator position; ``gru`` delegates to the model's
+    registered learned pooler.
+    """
     token_keys = projected_token_keys(layer_k)
     if token_keys.shape[0] == 0:
         raise ValueError("Cannot compute a routing gist from an empty chunk.")

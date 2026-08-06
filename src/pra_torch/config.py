@@ -4,70 +4,92 @@ import warnings
 
 @dataclass
 class PRAConfig:
-    """Model and PRA architecture hyperparameters."""
+    """Architecture, routing, cache, and legacy training settings for PRA.
 
-    vocab_size: int = 128
-    d_model: int = 128
-    n_heads: int = 4
-    n_layers: int = 4
-    n_vanilla_layers: int = 0
-    n_mixed_layers: int = 0
-    d_ff: int | None = None
-    max_seq_len: int = 128
-    dropout: float = 0.0
-    model_variant: str = "custom"
+    The model first encodes each reference into layer-specific token K/V and one
+    routing gist per chunk. During a normal forward pass, ``search_strategy``
+    selects references/chunks and ``detail_materialization`` chooses which K/V
+    is exposed to :class:`PRAttention`.
+    """
 
-    # PRA-specific
-    pra_layer_ids: tuple[int, ...] = (2, 3)
-    top_k_references: int = 2
-    top_k_chunks_per_reference: int = 1
-    top_k_refs: int | None = None
-    trigger_threshold: float = 0.2
-    use_cross_attention_memory: bool = True
-    use_concat_memory: bool = False
-    memory_alpha: float = 0.5
+    # Decoder dimensions. Tensors entering a block have shape [B, T, d_model].
+    vocab_size: int = 128  # Tokenizer vocabulary and output-logit width.
+    d_model: int = 128  # Hidden-state and routing-gist width.
+    n_heads: int = 4  # Attention heads; each head has d_model / n_heads features.
+    n_layers: int = 4  # Total decoder blocks.
+    n_vanilla_layers: int = 0  # Leading blocks with only built-in self-attention.
+    n_mixed_layers: int = 0  # Following blocks with self-attention then PRA.
+    d_ff: int | None = None  # MLP width; defaults to 4 * d_model.
+    max_seq_len: int = 128  # Largest prompt or independently encoded reference chunk.
+    dropout: float = 0.0  # Dropout used by vanilla/mixed blocks and the GRU pooler.
+    model_variant: str = "custom"  # custom, td_sa, td_pra, or last-two-layer tdx_pra.
+
+    # Routing budgets and fusion. Remaining blocks after vanilla/mixed are PRA blocks.
+    pra_layer_ids: tuple[int, ...] = (2, 3)  # Experiment metadata; variants normalize it.
+    top_k_references: int = 2  # Maximum distinct URIs selected for each batch item/layer.
+    top_k_chunks_per_reference: int = 1  # Maximum chunks retained from each selected URI.
+    top_k_refs: int | None = None  # Deprecated alias for top_k_references.
+    trigger_threshold: float = 0.2  # Drop selected chunks whose cosine score is lower.
+    use_cross_attention_memory: bool = True  # Legacy flag; standalone PRA cross-attends.
+    use_concat_memory: bool = False  # Reserved compatibility flag; concat is not implemented.
+    memory_alpha: float = 0.5  # Scale in local_output + alpha * memory_output.
+
+    # Search modes: hierarchical scores chunks then URIs; reference_first builds a
+    # URI vector first; global_chunks ranks all chunks while enforcing both budgets.
     search_strategy: str = "hierarchical"
-    reference_score_aggregation: str = "max"
-    reference_level_gist_mode: str | None = None
-    gist_mode: str = "mean"
-    max_gists_per_reference: int = 4
-    gist_overflow_policy: str = "truncate"
-    gist_gru_hidden_size: int | None = None
-    gist_gru_num_layers: int = 1
-    gist_gru_bidirectional: bool = False
-    ref_end_token: str = "<REF_END>"
-    chunking_mode: str = "none"
-    fixed_chunk_tokens: int = 64
-    fixed_chunk_overlap_tokens: int = 0
-    reference_overflow_policy: str = "truncate"
-    marker_rules: tuple[str, ...] = ("<PRA_CHUNK>",)
-    semantic_chunker: object | None = None
-    detail_materialization: str = "selected_chunks"
-    memory_bucket_count: int = 1
-    memory_bucket_strategy: str = "optimal_contiguous"
-    cache_build_mode: str = "detached"
-    use_summary: bool = False
-    summary_mode: str = "replace"
-    recursive_refs_enabled: bool = False
-    recursive_max_depth: int = 2
-    recursive_max_total_references: int = 16
-    recursive_max_total_tokens: int = 2048
-    recursive_max_children_per_reference: int = 8
-    recursive_cycle_policy: str = "skip"
-    recursive_missing_ref_policy: str = "warn"
-    collect_detailed_timing: bool = False
-    collect_attention_metrics: bool = True
-    collect_per_head_metrics: bool = False
-    chunk_match_mode: str = "exact_id"
-    chunk_iou_threshold: float = 0.5
+    reference_score_aggregation: str = "max"  # max, mean, or logsumexp over chunk scores.
+    reference_level_gist_mode: str | None = None  # mean/last URI vector for reference_first.
+    gist_mode: str = "mean"  # Pool chunk token keys by mean, last, ref_end, or GRU.
+    max_gists_per_reference: int = 4  # Maximum independently routable chunks per URI.
+    gist_overflow_policy: str = "truncate"  # truncate, merge_tail, or error.
+    gist_gru_hidden_size: int | None = None  # GRU gist state width; defaults to d_model.
+    gist_gru_num_layers: int = 1  # Recurrent depth for experimental GRU pooling.
+    gist_gru_bidirectional: bool = False  # Read chunk keys in both directions when true.
+    ref_end_token: str = "<REF_END>"  # Atomic marker selected by ref_end gist mode.
 
-    # Training
+    # Reference partitioning and the detail made visible after routing.
+    chunking_mode: str = "none"  # none, fixed token windows, markers, or plugin semantic.
+    fixed_chunk_tokens: int = 64  # Window length used by fixed chunking.
+    fixed_chunk_overlap_tokens: int = 0  # Repeated tokens between adjacent fixed windows.
+    reference_overflow_policy: str = "truncate"  # Handling for a chunk over max_seq_len.
+    marker_rules: tuple[str, ...] = ("<PRA_CHUNK>",)  # Explicit text split markers.
+    semantic_chunker: object | None = None  # Plugin implementing SemanticChunker.
+    detail_materialization: str = "selected_chunks"  # selected_chunks, full_reference, gist_only.
+
+    # Variable memory lengths are padded per bucket before batched cross-attention.
+    memory_bucket_count: int = 1  # Zero isolates items; positive values cap bucket count.
+    memory_bucket_strategy: str = "optimal_contiguous"  # optimal_contiguous or equal_count.
+
+    # Cache construction can be offline/detached or preserve gradients into gist creation.
+    cache_build_mode: str = "detached"  # detached or trainable_gist.
+    use_summary: bool = False  # Include a separately encoded summary in routing.
+    summary_mode: str = "replace"  # replace, hybrid candidate scores, or normalized augment.
+
+    # Recursive references are resolved child-first under shared depth and size budgets.
+    recursive_refs_enabled: bool = False  # Let parent cache encoding attend to cached children.
+    recursive_max_depth: int = 2  # Maximum child edges followed from a root URI.
+    recursive_max_total_references: int = 16  # Cache entries built in one root traversal.
+    recursive_max_total_tokens: int = 2048  # Resolved source tokens in one traversal.
+    recursive_max_children_per_reference: int = 8  # Child URIs followed from one document.
+    recursive_cycle_policy: str = "skip"  # skip, error, or link_only for a cycle/re-entry.
+    recursive_missing_ref_policy: str = "warn"  # skip, warn, or error for unresolved URIs.
+
+    # Diagnostics affect observability only, not routing or attention results.
+    collect_detailed_timing: bool = False  # Record routing/materialization/attention durations.
+    collect_attention_metrics: bool = True  # Compatibility flag; aggregates are always retained.
+    collect_per_head_metrics: bool = False  # Reserved for per-head diagnostics.
+    chunk_match_mode: str = "exact_id"  # Ground-truth match by ID, overlap, or IoU threshold.
+    chunk_iou_threshold: float = 0.5  # Minimum span IoU when chunk_match_mode uses IoU.
+
+    # Legacy convenience fields used by simple entry points; TrainConfig owns full training.
     batch_size: int = 8
     lr: float = 3e-4
     steps: int = 500
     device: str = "cuda"
 
     def __post_init__(self) -> None:
+        """Normalize aliases/variants and reject incompatible mode settings early."""
+        # Normalize routing choices before validating dependent fields.
         if self.top_k_refs is not None:
             warnings.warn(
                 "top_k_refs is deprecated; use top_k_references and "
@@ -133,6 +155,7 @@ class PRAConfig:
             raise ValueError(
                 f"Unsupported recursive_missing_ref_policy: {self.recursive_missing_ref_policy}"
             )
+        # A single traversal shares these limits across every recursively built child.
         for name in (
             "recursive_max_depth",
             "recursive_max_total_references",
@@ -150,6 +173,7 @@ class PRAConfig:
         self.d_ff = 4 * self.d_model if self.d_ff is None else int(self.d_ff)
         if self.d_ff <= 0:
             raise ValueError("d_ff must be positive.")
+        # Named variants map the paper's architecture labels onto block counts.
         variants = {"custom", "td_sa", "td_pra", "tdx_pra"}
         if self.model_variant not in variants:
             raise ValueError(f"Unsupported model_variant: {self.model_variant}")
@@ -175,13 +199,14 @@ class PRAConfig:
 
 @dataclass
 class ResolverServiceConfig:
-    """Configuration for constructing a reference resolver service."""
+    """Select the URI resolver backend used before cache construction."""
 
-    type: str = "in_memory"
-    options: dict = field(default_factory=dict)
+    type: str = "in_memory"  # Registered resolver implementation name.
+    options: dict = field(default_factory=dict)  # Backend-specific constructor arguments.
 
     @classmethod
     def from_value(cls, value) -> "ResolverServiceConfig":
+        """Normalize shorthand strings/dicts into a typed service configuration."""
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -195,13 +220,14 @@ class ResolverServiceConfig:
 
 @dataclass
 class CacheServiceConfig:
-    """Configuration for constructing a PRA memory cache service."""
+    """Select the storage/routing backend that holds encoded reference memory."""
 
-    type: str = "simple"
-    options: dict = field(default_factory=dict)
+    type: str = "simple"  # Registered cache implementation name.
+    options: dict = field(default_factory=dict)  # Backend-specific constructor arguments.
 
     @classmethod
     def from_value(cls, value) -> "CacheServiceConfig":
+        """Normalize shorthand strings/dicts into a typed service configuration."""
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -215,42 +241,43 @@ class CacheServiceConfig:
 
 @dataclass
 class TrainConfig:
-    """Standalone trainer, dataloader, logging, and checkpoint settings."""
+    """Generic loop, data, logging, and service settings for a PRA experiment."""
 
-    experiment_name: str = "standalone_tiny"
-    output_dir: str = "out"
-    seed: int = 0
-    device: str = "auto"
-    dtype: str = "float32"
-    epochs: int = 3
-    max_steps: int | None = None
-    batch_size: int = 8
-    grad_accum_steps: int = 1
-    learning_rate: float = 3e-4
-    weight_decay: float = 0.0
-    warmup_steps: int = 0
-    max_grad_norm: float = 1.0
-    eval_every_steps: int = 50
-    save_every_steps: int = 100
-    log_every_steps: int = 10
-    num_workers: int = 0
-    pin_memory: bool = False
-    persistent_workers: bool = False
-    resume_from: str | None = None
-    use_tensorboard: bool = True
-    save_metric_plots: bool = True
-    use_wandb: bool = False
-    use_clearml: bool = False
-    mixed_precision: bool = False
-    early_stopping_patience: int | None = None
-    dataset_stage: str = "stage0_synthetic_memory"
-    data_dir: str = "data"
-    max_examples: int | None = None
-    max_seq_len: int = 96
-    shuffle: bool = True
+    experiment_name: str = "standalone_tiny"  # Run-directory and logger label.
+    output_dir: str = "out"  # Parent directory for checkpoints, metrics, and traces.
+    seed: int = 0  # Shared Python, NumPy, and PyTorch random seed.
+    device: str = "auto"  # auto, cpu, cuda, or another PyTorch device string.
+    dtype: str = "float32"  # Requested parameter/compute dtype.
+    epochs: int = 3  # Maximum complete passes over the training loader.
+    max_steps: int | None = None  # Optional optimizer-step cap across epochs.
+    batch_size: int = 8  # Samples collated per dataloader batch.
+    grad_accum_steps: int = 1  # Backward passes accumulated per optimizer update.
+    learning_rate: float = 3e-4  # Optimizer base learning rate.
+    weight_decay: float = 0.0  # AdamW decoupled weight decay.
+    warmup_steps: int = 0  # Linear scheduler warm-up optimizer steps.
+    max_grad_norm: float = 1.0  # Global gradient-norm clipping threshold.
+    eval_every_steps: int = 50  # Validation cadence in optimizer steps.
+    save_every_steps: int = 100  # Latest-checkpoint cadence in optimizer steps.
+    log_every_steps: int = 10  # Batch/optimizer metric logging cadence.
+    num_workers: int = 0  # Worker processes used by each dataloader.
+    pin_memory: bool = False  # Pin host batches for faster CUDA transfer.
+    persistent_workers: bool = False  # Keep workers alive between epochs.
+    resume_from: str | None = None  # Checkpoint path restored before training.
+    use_tensorboard: bool = True  # Emit TensorBoard scalar/text events.
+    save_metric_plots: bool = True  # Render metric-history plots at run close.
+    use_wandb: bool = False  # Enable optional Weights & Biases logging.
+    use_clearml: bool = False  # Enable optional ClearML logging.
+    mixed_precision: bool = False  # Use CUDA autocast and gradient scaling.
+    early_stopping_patience: int | None = None  # Validations without improvement before stop.
+    dataset_stage: str = "stage0_synthetic_memory"  # Dataset directory/name to load.
+    data_dir: str = "data"  # Root containing generated dataset stages.
+    max_examples: int | None = None  # Optional dataset-size limit for quick runs.
+    max_seq_len: int = 96  # Collator sequence length; should not exceed model capacity.
+    shuffle: bool = True  # Shuffle the training split each epoch.
     resolver_config: ResolverServiceConfig = field(default_factory=ResolverServiceConfig)
     cache_config: CacheServiceConfig = field(default_factory=CacheServiceConfig)
 
     def __post_init__(self) -> None:
+        """Normalize nested resolver/cache settings accepted from YAML or Python."""
         self.resolver_config = ResolverServiceConfig.from_value(self.resolver_config)
         self.cache_config = CacheServiceConfig.from_value(self.cache_config)

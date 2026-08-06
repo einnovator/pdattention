@@ -27,6 +27,7 @@ from .train import TrainingState, create_training_state, move_batch, train_model
 
 
 def _expected_reference_uris(item: dict) -> set[str]:
+    """Normalize URI- or legacy ID-based supervision to a URI identity set."""
     explicit = set(item.get("target_reference_uris") or [])
     if explicit:
         return explicit
@@ -35,6 +36,7 @@ def _expected_reference_uris(item: dict) -> set[str]:
 
 
 def _chunk_ranking_metrics(selected, item, cfg):
+    """Score ranked chunks against optional ID/span ground truth."""
     target_ids = set(item.get("target_chunk_ids") or [])
     target_spans = list(item.get("target_chunk_spans") or [])
     if not target_ids and not target_spans:
@@ -70,11 +72,18 @@ def _chunk_ranking_metrics(selected, item, cfg):
 
 
 def _deduplicated_reference_order(selected) -> list[str]:
+    """Collapse chunk hits to URI order while preserving configured ranks."""
     ranked = sorted(selected, key=lambda hit: (hit.reference_rank, hit.rank_within_reference))
     return list(dict.fromkeys(hit.reference_uri for hit in ranked))
 
 
 def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[str, float]:
+    """Aggregate routing quality, sparsity, recursion, and batching diagnostics.
+
+    Language-model loss alone cannot show whether PRA found the intended source.
+    These metrics separately evaluate URI/chunk selection and how much of the
+    available memory was ultimately materialized into attention.
+    """
     averages = RunningAverages()
     chunk_label_units = selection_units = 0
     for cache, by_layer, item, layer_diagnostics in zip(caches, selections, metadata, diagnostics):
@@ -173,12 +182,19 @@ def _pra_batch_step(
     resolver_config: ResolverServiceConfig,
     cache_config: CacheServiceConfig,
 ) -> tuple[torch.Tensor, dict]:
+    """Build per-example caches, run the model, and return LM/retrieval outputs.
+
+    Cache construction and routing are per example because each prompt has its
+    own runtime reference table. Logits are concatenated back to ``[B,T,V]`` so
+    the generic training engine can optimize one ordinary next-token loss.
+    """
     batch = move_batch(batch, device)
     logits_by_example = []
     caches = []
     selections = []
     diagnostics = []
     cache_build_duration = 0.0
+    # Do not share a sample's URI table or selected memory with another batch row.
     for index, metadata in enumerate(batch["metadata"]):
         cache_start = time.perf_counter()
         cache = build_cache_from_metadata(
@@ -199,6 +215,7 @@ def _pra_batch_step(
             }
         )
         diagnostics.append(model.pra_diagnostics_by_layer())
+    # Reassemble independent [1,T,V] forwards into the logical training batch.
     logits = torch.cat(logits_by_example, dim=0)
     loss = F.cross_entropy(logits.view(-1, logits.size(-1)), batch["labels"].view(-1), ignore_index=0)
     retrieval_metrics = _retrieval_metrics(
@@ -233,7 +250,12 @@ def evaluate_pra_model(
     save_predictions: str | Path | None = None,
     save_traces: str | Path | None = None,
 ) -> dict:
-    """Evaluate one split and optionally emit JSONL predictions and PRA traces."""
+    """Evaluate LM quality, routing behavior, recursion, cost, and throughput.
+
+    Optional prediction files contain task outputs; trace files additionally
+    preserve URI/chunk selections, bucket statistics, and recursive paths so a
+    result can be causally inspected rather than inferred from loss alone.
+    """
     resolver_config = ResolverServiceConfig.from_value(resolver_config or train_config.resolver_config)
     cache_config = CacheServiceConfig.from_value(cache_config or train_config.cache_config)
     was_training = model.training
@@ -274,6 +296,7 @@ def evaluate_pra_model(
                 )
                 token_total += int(batch_metrics["tokens"])
 
+                # Convert model/cache state into per-example task and audit records.
                 for index, item in enumerate(moved_batch["metadata"]):
                     cache = batch_metrics["caches"][index]
                     retrieved_tokens += sum(
@@ -391,7 +414,15 @@ def evaluate_reference_ablation(
     resolver_config=None,
     cache_config=None,
 ) -> dict:
-    """Measure answer-token LM quality under reference-content ablations."""
+    """Measure answer-token quality under controlled PRA memory interventions.
+
+    ``valid`` uses normal routing; ``disabled`` bypasses the memory branch;
+    ``empty`` keeps the branch enabled with no entries. ``shuffled`` and
+    ``irrelevant`` replace URI sets, while ``oracle`` exposes only target URIs.
+    The chunk variants preserve routing structure but filter or rotate token K/V.
+    ``selected_chunks``, ``full_reference``, and ``gist_only`` compare the three
+    detail-materialization modes without retraining the model.
+    """
     supported = {
         "valid",
         "disabled",
@@ -412,6 +443,7 @@ def evaluate_reference_ablation(
     model.eval()
     loss_sum = correct = token_count = 0
     start = time.perf_counter()
+    # Build deterministic cross-example pools only for URI-content interventions.
     reference_conditions = {"shuffled", "irrelevant"}
     reference_sets = [
         item["references"]
@@ -422,6 +454,7 @@ def evaluate_reference_ablation(
     shuffle_offset = max(len(reference_sets) // 2, 1)
     reference_index = 0
     previous_materialization = model.cfg.detail_materialization
+    # Materialization ablations temporarily alter policy and restore it in finally.
     if condition in {"full_reference", "selected_chunks", "gist_only"}:
         model.cfg.detail_materialization = condition
     ablation_materialization = model.cfg.detail_materialization
@@ -430,6 +463,7 @@ def evaluate_reference_ablation(
             for batch in loader:
                 moved = move_batch(batch, device)
                 for index, item in enumerate(batch["metadata"]):
+                    # First intervene at URI/cache level, then optionally at chunk payload level.
                     if condition in {"disabled", "empty"}:
                         model.clear_pra_cache()
                     else:
@@ -468,6 +502,8 @@ def evaluate_reference_ablation(
                                             chunk for chunk in memory.chunks if chunk.chunk_id in target_ids
                                         ]
                         elif condition in {"shuffled_chunks", "irrelevant_chunks"}:
+                            # Rotate K/V payloads while retaining chunk identities/gists. A
+                            # routing hit now points to mismatched detail, testing causal use.
                             for layer_id in range(model.cfg.n_layers):
                                 chunks = [
                                     chunk
@@ -523,6 +559,7 @@ def _pra_checkpoint_extra(
     resolver_config: ResolverServiceConfig,
     cache_config: CacheServiceConfig,
 ) -> Callable[[], dict]:
+    """Create a lazy serializer for PRA/tokenizer/service reproducibility data."""
     return lambda: {
         "cfg": cfg.__dict__,
         "stoi": tokenizer.stoi,
@@ -570,7 +607,12 @@ def train_pra_model(
     cache_config: CacheServiceConfig | dict | str | None = None,
     state: TrainingState | None = None,
 ):
-    """Train ``TinyPRAModel`` through the generic functional engine."""
+    """Bind PRA cache-aware batch/eval steps to the generic training engine.
+
+    ``train_model`` owns optimization, scheduling, checkpoints, and logging;
+    this adapter owns the PRA-specific requirement to resolve and encode each
+    sample's references before its language-model forward pass.
+    """
     tokenizer = datamodule.tokenizer
     resolver_config = ResolverServiceConfig.from_value(resolver_config or train_config.resolver_config)
     cache_config = CacheServiceConfig.from_value(cache_config or train_config.cache_config)

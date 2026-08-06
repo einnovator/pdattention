@@ -24,23 +24,23 @@ from .metrics import RunningAverages, cuda_memory_allocated, grad_norm, perplexi
 class TrainingState:
     """Mutable runtime state shared by functional and compatibility APIs."""
 
-    model: torch.nn.Module
-    train_config: TrainConfig
-    device: str
-    optimizer: torch.optim.Optimizer
-    scheduler: object
-    run_dir: Path
-    checkpoint: ModelCheckpoint
-    logger: object
-    scaler: object | None
-    early_stopping: EarlyStopping
-    global_step: int = 0
-    batch_step: int = 0
-    start_epoch: int = 0
-    best_val_loss: float = float("inf")
-    epoch_history: list[dict] = field(default_factory=list)
-    checkpoint_extra: Callable[[], dict] | None = None
-    logger_closed: bool = False
+    model: torch.nn.Module  # Model being optimized; PRA behavior is injected by batch_step.
+    train_config: TrainConfig  # Loop, logging, data, and checkpoint policy.
+    device: str  # Resolved device on which the model and batches execute.
+    optimizer: torch.optim.Optimizer  # Parameter-update rule.
+    scheduler: object  # Learning-rate scheduler stepped after optimizer updates.
+    run_dir: Path  # Root for this run's checkpoints, metrics, and traces.
+    checkpoint: ModelCheckpoint  # Conventional latest/best checkpoint paths.
+    logger: object  # Composite experiment logger.
+    scaler: object | None  # CUDA gradient scaler when mixed precision is enabled.
+    early_stopping: EarlyStopping  # Validation-loss stopping state.
+    global_step: int = 0  # Completed optimizer updates.
+    batch_step: int = 0  # Consumed batches, including gradient accumulation.
+    start_epoch: int = 0  # Epoch restored from a checkpoint.
+    best_val_loss: float = float("inf")  # Best value used for model selection.
+    epoch_history: list[dict] = field(default_factory=list)  # Completed epoch summaries.
+    checkpoint_extra: Callable[[], dict] | None = None  # Lazy model-specific payload.
+    logger_closed: bool = False  # Prevents duplicate close/finalization calls.
 
 
 def resolve_device(device: str) -> str:
@@ -93,6 +93,7 @@ def create_training_state(
             else 1.0,
         )
 
+    # Artifact services are created once and shared by functional/object APIs.
     run_dir = Path(train_config.output_dir) / train_config.experiment_name
     checkpoint = ModelCheckpoint(run_dir / "checkpoints")
     logger = build_logger(train_config, run_dir)
@@ -155,6 +156,7 @@ def save_training_state(state: TrainingState, path: str | Path, epoch: int) -> P
 
 
 def close_training_state(state: TrainingState) -> None:
+    """Finalize experiment loggers exactly once."""
     if not state.logger_closed:
         state.logger.close()
         state.logger_closed = True
@@ -189,6 +191,7 @@ def validated_extra_metrics(values: dict | None, reserved: set[str]) -> dict[str
 
 
 def _validation_checkpoint(state: TrainingState, metrics: dict, epoch: int) -> bool:
+    """Persist latest/best state and return whether early stopping fired."""
     val_loss = metrics.get("val_loss", metrics.get("loss", float("inf")))
     improved = val_loss < state.best_val_loss
     if improved:
@@ -213,7 +216,12 @@ def train_model(
     checkpoint_extra: Callable[[], dict] | None = None,
     state: TrainingState | None = None,
 ):
-    """Train a model with one canonical loop and injected batch/evaluation behavior."""
+    """Train with one canonical loop and injected batch/evaluation behavior.
+
+    PRA uses the same optimizer loop as ordinary language modeling. Its adapter
+    supplies a ``batch_step`` that constructs reference caches and an ``eval_step``
+    that reports retrieval/recursion metrics; this function remains model-agnostic.
+    """
     run_start = time.perf_counter()
     state = state or create_training_state(
         model,
@@ -254,6 +262,7 @@ def train_model(
         values[f"{split}_duration_seconds"] = duration
         return values, duration
 
+    # Epoch/batch control is generic; all PRA-specific work occurs inside batch_step.
     for epoch in range(state.start_epoch, train_config.epochs):
         if stop_training:
             break
@@ -272,6 +281,7 @@ def train_model(
         pending_backward = False
 
         def optimizer_step() -> float:
+            """Apply clipping/update/scheduling after accumulated backward passes."""
             nonlocal pending_backward
             if state.scaler is not None:
                 state.scaler.unscale_(optimizer)
@@ -343,6 +353,7 @@ def train_model(
                 "train_batch",
             )
 
+            # Validation and persistence cadence follows optimizer, not batch, steps.
             if did_step:
                 if state.global_step % max(train_config.log_every_steps, 1) == 0:
                     state.logger.log_metrics(metrics, state.global_step, "train")
@@ -381,6 +392,7 @@ def train_model(
             if train_config.max_steps is not None and state.global_step >= train_config.max_steps:
                 stop_training = True
 
+        # Epoch summaries preserve evolution separately from noisy batch history.
         epoch_metrics = averages.compute()
         epoch_elapsed = max(time.perf_counter() - epoch_start, 1e-9)
         if "train_loss" in epoch_metrics:
@@ -420,6 +432,7 @@ def train_model(
                 "val_epoch",
             )
 
+    # Final test/timing records use the same injected evaluator and then close state.
     test_metrics: dict = {}
     if eval_step and test_loader is not None:
         test_metrics, test_duration_seconds = timed_evaluation(test_loader, "test")

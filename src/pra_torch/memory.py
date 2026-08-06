@@ -14,8 +14,14 @@ import torch.nn.functional as F
 
 @dataclass
 class LayerKV:
-    k: torch.Tensor
-    v: torch.Tensor
+    """Projected attention memory for one chunk at one decoder layer.
+
+    Both tensors have shape ``[1, heads, memory_tokens, head_dim]``. Reference
+    chunks are encoded independently, hence the singleton batch dimension.
+    """
+
+    k: torch.Tensor  # Keys used for routing-gist construction and cross-attention.
+    v: torch.Tensor  # Values returned when a query attends to this memory.
 
 
 ChunkKV = LayerKV
@@ -23,80 +29,98 @@ ChunkKV = LayerKV
 
 @dataclass
 class ChunkRoutingGist:
-    k: torch.Tensor
-    v: torch.Tensor | None = None
-    method: str = "mean"
-    summary_k: torch.Tensor | None = None
-    metadata: dict = field(default_factory=dict)
+    """Small layer-specific representation used to route before loading token K/V."""
+
+    k: torch.Tensor  # Content routing key with shape [d_model].
+    v: torch.Tensor | None = None  # Optional gist-only value with shape [d_model].
+    method: str = "mean"  # Pooling rule that produced k/v.
+    summary_k: torch.Tensor | None = None  # Separately encoded summary key [d_model].
+    metadata: dict = field(default_factory=dict)  # Pooling/source diagnostics.
 
 
 @dataclass
 class ReferenceChunkMemory:
-    chunk_id: str
-    source_uri: str
-    token_start: int
-    token_end: int
-    token_kv: ChunkKV
-    routing_gist: ChunkRoutingGist
-    char_start: int | None = None
-    char_end: int | None = None
-    metadata: dict = field(default_factory=dict)
+    """Cached detail and routing state for one provenance-preserving text span."""
+
+    chunk_id: str  # Stable URI-qualified identity, for example ``uri#chunk=2``.
+    source_uri: str  # Canonical document from which the span was encoded.
+    token_start: int  # Inclusive source-token offset.
+    token_end: int  # Exclusive source-token offset after truncation.
+    token_kv: ChunkKV  # Full detail K/V, each shaped [1, H, chunk_tokens, Dh].
+    routing_gist: ChunkRoutingGist  # Cheap [d_model] vectors searched first.
+    char_start: int | None = None  # Optional inclusive source-character offset.
+    char_end: int | None = None  # Optional exclusive source-character offset.
+    metadata: dict = field(default_factory=dict)  # Chunking and truncation provenance.
 
     @property
     def token_count(self) -> int:
+        """Return the retained K/V sequence length for this layer/chunk."""
         return int(self.token_kv.k.shape[2])
 
 
 @dataclass
 class LayerReferenceMemory:
+    """All independently routable chunks for one URI at one model layer."""
+
     chunks: list[ReferenceChunkMemory] = field(default_factory=list)
 
 
 @dataclass
 class PRACacheEntry:
-    uri: str
-    text: str
+    """Complete, versioned cache object for one resolved reference URI."""
+
+    uri: str  # Stable lookup identity used by routing, recursion, and traces.
+    text: str  # Resolved source text used to construct this cache entry.
     layer_memory: dict[int, LayerReferenceMemory] = field(default_factory=dict)
-    child_uris: list[str] = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
+    child_uris: list[str] = field(default_factory=list)  # Outgoing recursive references.
+    metadata: dict = field(default_factory=dict)  # Fingerprints, version, and build provenance.
 
 
 @dataclass(frozen=True)
 class SelectedChunk:
-    entry: PRACacheEntry
-    chunk: ReferenceChunkMemory
-    reference_score: float
-    chunk_score: float
-    layer_id: int
-    reference_rank: int
-    rank_within_reference: int
-    metadata: dict = field(default_factory=dict)
+    """One routed chunk plus scores/ranks needed for materialization and tracing."""
+
+    entry: PRACacheEntry  # Owning URI-level cache entry.
+    chunk: ReferenceChunkMemory  # Selected layer-specific chunk payload.
+    reference_score: float  # URI score after configured chunk aggregation.
+    chunk_score: float  # Cosine score between query and routing gist.
+    layer_id: int  # Decoder layer whose K/V and gist were searched.
+    reference_rank: int  # One-based URI rank for this query.
+    rank_within_reference: int  # One-based chunk rank within the selected URI.
+    metadata: dict = field(default_factory=dict)  # Routing source/materialization trace.
 
     @property
     def reference_uri(self) -> str:
+        """Return the stable URI of the owning cache entry."""
         return self.entry.uri
 
     @property
     def chunk_id(self) -> str:
+        """Return the selected chunk's stable identity."""
         return self.chunk.chunk_id
 
     @property
     def source_uri(self) -> str:
+        """Return the document URI represented by the selected chunk."""
         return self.chunk.source_uri
 
     @property
     def token_start(self) -> int:
+        """Return the inclusive source-token offset."""
         return self.chunk.token_start
 
     @property
     def token_end(self) -> int:
+        """Return the exclusive source-token offset."""
         return self.chunk.token_end
 
     @property
     def selected_token_count(self) -> int:
+        """Return how many token K/V positions this selection can materialize."""
         return self.chunk.token_count
 
     def as_trace_dict(self) -> dict:
+        """Serialize routing identity and scores without copying large K/V tensors."""
         return {
             "reference_uri": self.reference_uri,
             "reference_score": self.reference_score,
@@ -113,6 +137,8 @@ class SelectedChunk:
 
 
 class CacheBuildState(str, Enum):
+    """Visibility state for atomically constructed recursive cache entries."""
+
     MISSING = "missing"
     BUILDING = "building"
     READY = "ready"
@@ -120,6 +146,7 @@ class CacheBuildState(str, Enum):
 
 
 def _aggregate(scores: list[float], mode: str) -> float:
+    """Reduce chunk scores to one URI score for hierarchical routing."""
     if not scores:
         return float("-inf")
     if mode == "max":
@@ -133,6 +160,11 @@ def _aggregate(scores: list[float], mode: str) -> float:
 
 
 def _gist_vectors(gist: ChunkRoutingGist, *, use_summary: bool, summary_mode: str):
+    """Return candidate routing vectors and a label describing their source.
+
+    ``hybrid`` keeps content and summary as separate candidates and uses their
+    best score. ``augment`` combines their normalized directions into one key.
+    """
     content = gist.k
     summary = gist.summary_k
     if not use_summary or summary is None:
@@ -148,89 +180,120 @@ def _gist_vectors(gist: ChunkRoutingGist, *, use_summary: bool, summary_mode: st
 
 
 class PRAMemoryCache(ABC):
+    """Storage and layer-aware routing contract consumed by :class:`PRAttention`.
+
+    Backends may store entries differently, but ``search`` must preserve batch
+    isolation and return one ordered ``SelectedChunk`` list per query row.
+    """
+
     @abstractmethod
     def put(self, entry: PRACacheEntry) -> None:
+        """Publish one completely built URI entry."""
         raise NotImplementedError
 
     @abstractmethod
     def get(self, uri: str) -> PRACacheEntry | None:
+        """Return a ready entry by URI, or ``None`` when unavailable."""
         raise NotImplementedError
 
     @abstractmethod
     def has(self, uri: str) -> bool:
+        """Report whether a URI has a ready, visible cache entry."""
         raise NotImplementedError
 
     @abstractmethod
     def all_entries(self) -> list[PRACacheEntry]:
+        """Return every ready entry visible to routing."""
         raise NotImplementedError
 
     @abstractmethod
     def clear(self) -> None:
+        """Remove all entries and backend lifecycle state."""
         raise NotImplementedError
 
     @abstractmethod
     def search(self, query: torch.Tensor, layer_id: int, config) -> list[list[SelectedChunk]]:
+        """Route ``[B,d_model]`` queries against gists from one decoder layer."""
         raise NotImplementedError
 
     @property
     def entries(self) -> dict[str, PRACacheEntry]:
+        """Expose ready entries as a URI-keyed compatibility view."""
         return {entry.uri: entry for entry in self.all_entries()}
 
     def __len__(self) -> int:
+        """Return the number of ready URI entries."""
         return len(self.all_entries())
 
 
 class PRASimpleMemoryCache(PRAMemoryCache):
-    """In-memory cache with independent, hierarchical routing per batch item."""
+    """In-memory cache implementing the three experimental routing strategies.
+
+    Entries become searchable only in ``READY`` state. This matters for recursive
+    construction: a parent can never observe a partially encoded child.
+    """
 
     def __init__(self):
+        """Create empty payload, lifecycle-state, and failure registries."""
         self._entries: dict[str, PRACacheEntry] = {}
         self._states: dict[str, CacheBuildState] = {}
         self._failures: dict[str, str] = {}
 
     @property
     def entries(self) -> dict[str, PRACacheEntry]:
+        """Return the internal URI map; published entries are normally ``READY``."""
         return self._entries
 
     def begin_build(self, uri: str) -> None:
+        """Mark a URI as under construction to detect recursive re-entry."""
         self._states[uri] = CacheBuildState.BUILDING
 
     def mark_failed(self, uri: str, error: Exception | str) -> None:
+        """Hide a failed payload while retaining a diagnostic message."""
         self._entries.pop(uri, None)
         self._states[uri] = CacheBuildState.FAILED
         self._failures[uri] = str(error)
 
     def state(self, uri: str) -> CacheBuildState:
+        """Return the current lifecycle state, defaulting to ``MISSING``."""
         return self._states.get(uri, CacheBuildState.MISSING)
 
     def failure(self, uri: str) -> str | None:
+        """Return the last cache-build error recorded for a URI."""
         return self._failures.get(uri)
 
     def put(self, entry: PRACacheEntry) -> None:
+        """Atomically publish a completed entry as routable memory."""
         self._entries[entry.uri] = entry
         self._states[entry.uri] = CacheBuildState.READY
         self._failures.pop(entry.uri, None)
 
     def get(self, uri: str) -> PRACacheEntry | None:
+        """Return a URI payload only after it reaches ``READY`` state."""
         return self._entries.get(uri) if self.state(uri) == CacheBuildState.READY else None
 
     def has(self, uri: str) -> bool:
+        """Report whether a ready URI payload is available."""
         return self.get(uri) is not None
 
     def all_entries(self) -> list[PRACacheEntry]:
+        """Return only entries safe for attention to consume."""
         return [entry for uri, entry in self._entries.items() if self.state(uri) == CacheBuildState.READY]
 
     def clear(self) -> None:
+        """Reset payloads, lifecycle states, and failure diagnostics."""
         self._entries.clear()
         self._states.clear()
         self._failures.clear()
 
     def invalidate(self, uri: str) -> None:
+        """Remove a stale URI before rebuilding it with new fingerprints."""
         self._entries.pop(uri, None)
         self._states.pop(uri, None)
         self._failures.pop(uri, None)
 
     def layer_counts(self, layer_id: int) -> dict[str, int]:
+        """Count searchable URIs, chunks, and token positions for one layer."""
         entries = [entry for entry in self.all_entries() if layer_id in entry.layer_memory]
         chunks = [chunk for entry in entries for chunk in entry.layer_memory[layer_id].chunks]
         return {
@@ -240,6 +303,11 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         }
 
     def _score_chunks(self, query: torch.Tensor, layer_id: int, config):
+        """Cosine-score every layer gist independently for each query row.
+
+        ``query`` is ``[B,d_model]``. Each result tuple retains the entry/chunk
+        object so later stages can rank cheaply without moving full token K/V.
+        """
         records = []
         for entry in self.all_entries():
             memory = entry.layer_memory.get(layer_id)
@@ -255,6 +323,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         if not records:
             return [[] for _ in range(query.shape[0])]
 
+        # Normalize once per query; cache gists may live on CPU or another dtype.
         result = []
         query_norm = F.normalize(query, dim=-1)
         for batch_index in range(query.shape[0]):
@@ -276,6 +345,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         return result
 
     def _reference_first_scores(self, query, hits, config):
+        """Build one vector per URI, then score URIs before ranking their chunks."""
         grouped = defaultdict(list)
         for entry, chunk, chunk_score, routing_source in hits:
             grouped[entry.uri].append((entry, chunk, chunk_score, routing_source))
@@ -302,6 +372,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
 
     @staticmethod
     def _selected(entry, chunk, reference_score, chunk_score, layer_id, ref_rank, chunk_rank, source):
+        """Attach stable ranks and routing provenance to a selected payload."""
         return SelectedChunk(
             entry=entry,
             chunk=chunk,
@@ -314,6 +385,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         )
 
     def _hierarchical(self, hits, layer_id, config):
+        """Aggregate chunk scores per URI, select URIs, then select local chunks."""
         grouped = defaultdict(list)
         for hit in hits:
             grouped[hit[0].uri].append(hit)
@@ -336,6 +408,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         return selected
 
     def _reference_first(self, query, hits, layer_id, config):
+        """Select URIs from explicit URI gists, then use chunk scores within them."""
         grouped, reference_scores = self._reference_first_scores(query, hits, config)
         selected_uris = sorted(reference_scores, key=lambda uri: (-reference_scores[uri], uri))[
             : config.top_k_references
@@ -352,6 +425,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         return selected
 
     def _global_chunks(self, hits, layer_id, config):
+        """Rank chunks globally while enforcing distinct-URI and per-URI limits."""
         ranked = sorted(hits, key=lambda hit: (-hit[2], hit[0].uri, hit[1].chunk_id))
         selected = []
         selected_uris = []
@@ -384,12 +458,24 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         return selected
 
     def search(self, query: torch.Tensor, layer_id: int, config) -> list[list[SelectedChunk]]:
+        """Route each query row with the configured strategy and independent budgets.
+
+        Args:
+            query: Last-token routing keys shaped ``[B,d_model]`` or ``[d_model]``.
+            layer_id: Layer whose gists and eventual token K/V must be selected.
+            config: ``PRAConfig`` carrying strategy, summary, and top-k modes.
+
+        Returns:
+            A batch-length list of ranked chunk lists. No row can see another
+            row's selection, even though all rows search the same ready cache.
+        """
         if query.ndim == 1:
             query = query.unsqueeze(0)
         if query.ndim != 2:
             raise ValueError(f"Expected query [batch,model] or [model], got {tuple(query.shape)}.")
         if config.top_k_references == 0 or config.top_k_chunks_per_reference == 0:
             return [[] for _ in range(query.shape[0])]
+        # Stage 1 scores lightweight gists; stage 2 applies a policy and budgets.
         hits_by_batch = self._score_chunks(query, layer_id, config)
         selected_by_batch = []
         for batch_index, hits in enumerate(hits_by_batch):
@@ -410,7 +496,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         layer_id: int,
         top_k: int = 2,
     ) -> list[list[tuple[PRACacheEntry, float]]]:
-        """Compatibility API for one-chunk-per-reference callers."""
+        """Return URI entries/scores for legacy one-chunk-per-reference callers."""
         from types import SimpleNamespace
 
         search_config = SimpleNamespace(

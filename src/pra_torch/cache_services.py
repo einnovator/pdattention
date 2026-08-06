@@ -12,7 +12,11 @@ from .resolver import InMemoryResolver
 
 
 def create_resolver(config, documents: dict, summaries: dict[str, str] | None = None):
-    """Create a resolver service for the configured backend."""
+    """Instantiate the configured URI-to-source backend.
+
+    Cache construction depends only on this resolver contract, which keeps
+    storage/network concerns outside the model and routing implementation.
+    """
     config = ResolverServiceConfig.from_value(config)
     if config.type == "in_memory":
         return InMemoryResolver(documents, summaries, **config.options)
@@ -20,7 +24,7 @@ def create_resolver(config, documents: dict, summaries: dict[str, str] | None = 
 
 
 def create_cache(config) -> PRAMemoryCache:
-    """Create a PRA memory cache for the configured backend."""
+    """Instantiate the configured encoded-memory storage/routing backend."""
     config = CacheServiceConfig.from_value(config)
     if config.type == "simple":
         return PRASimpleMemoryCache(**config.options)
@@ -28,7 +32,11 @@ def create_cache(config) -> PRAMemoryCache:
 
 
 def collect_reference_metadata(metadata: Iterable[dict]) -> tuple[dict, dict[str, str], list]:
-    """Extract resolver documents, optional summaries, and root handles."""
+    """Convert collator records into resolver documents, summaries, and roots.
+
+    Dataset references carry text in metadata while the prompt carries only
+    lightweight tokens. This function reconstructs the runtime resolver view.
+    """
     documents: dict = {}
     summaries: dict[str, str] = {}
     handles = []
@@ -72,6 +80,7 @@ def build_cache_from_metadata(
     Passing explicit ``resolver`` or ``cache`` instances is useful for tests and
     custom research experiments.
     """
+    # Turn batch metadata into services, then resolve each distinct root URI.
     documents, summaries, handles = collect_reference_metadata(metadata)
     resolver = resolver if resolver is not None else create_resolver(resolver_config, documents, summaries)
     cache = cache if cache is not None else create_cache(cache_config)
@@ -79,6 +88,7 @@ def build_cache_from_metadata(
     builder = RecursiveReferenceCacheBuilder(model, resolver, tokenizer, cache, model.cfg)
     for handle in dict.fromkeys(ref.uri for ref in handles):
         builder.ensure_cached(handle)
+    # Attach lightweight audit data used by evaluation reports and causal traces.
     cache.resolution_events = list(builder.events)
     cache.dependencies = list(builder.dependencies)
     model.set_pra_cache(cache)

@@ -9,24 +9,30 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class ReferenceChunk:
-    chunk_id: str
-    source_uri: str
-    text: str
-    token_ids: tuple[int, ...]
-    token_start: int
-    token_end: int
-    char_start: int | None = None
-    char_end: int | None = None
-    marker_type: str | None = None
-    metadata: dict = field(default_factory=dict)
+    """Tokenizer-ready source span from which every PRA layer builds memory."""
+
+    chunk_id: str  # Stable URI-qualified identity used by labels and traces.
+    source_uri: str  # Canonical reference URI that owns the span.
+    text: str  # Human-readable span supplied to the tokenizer.
+    token_ids: tuple[int, ...]  # Exact token sequence encoded into layer K/V.
+    token_start: int  # Inclusive offset in the full reference tokenization.
+    token_end: int  # Exclusive offset in the full reference tokenization.
+    char_start: int | None = None  # Optional inclusive source-character offset.
+    char_end: int | None = None  # Optional exclusive source-character offset.
+    marker_type: str | None = None  # Boundary rule that created the chunk.
+    metadata: dict = field(default_factory=dict)  # Dataset and partition provenance.
 
 
 class ReferencePartitioner(Protocol):
+    """Contract for deterministic character-span partitioners."""
+
     def partition(self, uri: str, text: str, metadata: dict) -> list[tuple[int, int, str | None]]:
         """Return non-empty character spans and optional marker types."""
 
 
 class SemanticChunker(Protocol):
+    """Plugin contract for model- or domain-aware token chunking."""
+
     def partition(
         self,
         uri: str,
@@ -39,11 +45,15 @@ class SemanticChunker(Protocol):
 
 
 class ExplicitMarkerPartitioner:
+    """Split text at configured literal markers while preserving source offsets."""
+
     def __init__(self, markers: tuple[str, ...], retain_markers: bool = True):
+        """Store non-empty markers and whether each starts the following span."""
         self.markers = tuple(marker for marker in markers if marker)
         self.retain_markers = retain_markers
 
     def partition(self, uri: str, text: str, metadata: dict) -> list[tuple[int, int, str | None]]:
+        """Return non-empty spans separated by any configured literal marker."""
         del uri, metadata
         if not self.markers:
             return [(0, len(text), None)] if text else []
@@ -65,9 +75,12 @@ class ExplicitMarkerPartitioner:
 
 
 class MarkdownHeadingPartitioner:
+    """Treat Markdown headings as stable, human-readable chunk boundaries."""
+
     _heading = re.compile(r"(?m)^#{1,6}\s+.+$")
 
     def partition(self, uri: str, text: str, metadata: dict) -> list[tuple[int, int, str | None]]:
+        """Return preamble/section spans beginning at Markdown headings."""
         del uri, metadata
         matches = list(self._heading.finditer(text))
         if not matches:
@@ -84,10 +97,12 @@ class MarkdownHeadingPartitioner:
 
 
 def _chunk_id(uri: str, index: int) -> str:
+    """Build the stable local identity shared across layer-specific encodings."""
     return f"{uri}#chunk={index}"
 
 
 def _char_chunks(uri, text, tokenizer, spans, metadata) -> list[ReferenceChunk]:
+    """Tokenize character spans and translate them into full-document offsets."""
     chunks = []
     for index, (char_start, char_end, marker_type) in enumerate(spans):
         chunk_text = text[char_start:char_end]
@@ -113,6 +128,7 @@ def _char_chunks(uri, text, tokenizer, spans, metadata) -> list[ReferenceChunk]:
 
 
 def _apply_overflow(chunks, max_chunks, policy, all_token_ids, text, tokenizer):
+    """Apply the configured cap without silently losing overflow provenance."""
     if len(chunks) <= max_chunks:
         return chunks, 0
     discarded = len(chunks) - max_chunks
@@ -145,12 +161,19 @@ def _apply_overflow(chunks, max_chunks, policy, all_token_ids, text, tokenizer):
 
 
 def partition_reference(uri: str, text: str, tokenizer, config, metadata=None) -> list[ReferenceChunk]:
-    """Partition one reference according to the validated model configuration."""
+    """Partition one resolved URI into the chunks independently routed by PRA.
+
+    ``none`` keeps one document chunk, ``fixed`` creates optional overlapping
+    token windows, ``markers`` preserves explicit/Markdown structure, and
+    ``semantic`` delegates to a configured plugin. The returned source offsets
+    let evaluation distinguish retrieval quality from answer quality.
+    """
     metadata = dict(metadata or {})
     token_ids = list(tokenizer.encode(text))
     if not token_ids:
         return []
 
+    # Construct candidate chunks according to one mutually exclusive mode.
     if config.chunking_mode == "none":
         chunks = [
             ReferenceChunk(
@@ -207,6 +230,7 @@ def partition_reference(uri: str, text: str, tokenizer, config, metadata=None) -
     else:
         raise ValueError(f"Unsupported chunking_mode: {config.chunking_mode}")
 
+    # Enforce the routing-gist budget after partitioning so every mode behaves alike.
     chunks, discarded = _apply_overflow(
         chunks,
         config.max_gists_per_reference,
