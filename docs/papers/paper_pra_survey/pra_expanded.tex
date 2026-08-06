@@ -1,10 +1,12 @@
-\subsection{The proposal reconstructed from Papers 0 and 1}
+\subsection{PRA as a Worked Access Contract}
 
-PRA is easiest to understand as an \emph{access contract}, not as a claim that one more
-attention formula solves long context.  Paper~0 proposes a logical context graph whose
-nodes are stable, URI-addressed objects and whose edges are semantic anchors.  Paper~1
-specializes that proposal into a small decoder-only PyTorch model.  The two manuscripts
-make five separations that must remain explicit throughout this survey:
+PRA is easiest to understand as an \emph{access contract}, not as a claim that another
+attention formula solves long context. Consider the repository example from the
+introduction. A token such as \texttt{<REF\_1>} can name the authentication module without
+placing that module's full source in the prompt. The name identifies a possible source;
+it does not decide whether to read the source or how to represent it. Paper~0 generalizes
+this observation into a logical context graph. Paper~1 specializes it into a small
+decoder-only PyTorch model. Together they separate five operations:
 \begin{enumerate}
 \item \textbf{naming}: a handle states which object may be consulted;
 \item \textbf{selection}: a policy chooses among advertised objects;
@@ -14,114 +16,146 @@ make five separations that must remain explicit throughout this survey:
 \item \textbf{fusion}: the decoder consumes that representation through prompt tokens,
       cross-attention, native KV injection, or another transport.
 \end{enumerate}
-This decomposition is pedagogically important.  A better retriever does not establish a
-better transport, and a useful memory branch does not establish that the router selected
-the correct object.  PRA's distinctive package is explicit URI identity, separation of
-naming from materialization, reusable per-layer KV objects, progressive triggering, and
-counterfactual evaluation.  Each component has precursors; the package, interface, and
-experimental doctrine are the proposal under study.
+The list summarizes a causal chain rather than five interchangeable names. A better
+selector does not establish a better transport, and a useful memory branch does not show
+that the selector chose the correct object. PRA's proposed package combines explicit URI
+identity, separate reference and chunk routing, reusable per-layer K/V objects,
+progressive triggering, and counterfactual evaluation. Each component has precursors.
+The scientific question is whether this combination improves quality per unit of active
+context, latency, and memory in regimes with sparse, reusable, naturally named evidence.
 
 \subsection{Reference graph, resolver, and runtime state}
 
-Let a context graph be $\mathcal G=(\mathcal V,\mathcal E)$.  A node
-$v=(u,z,s,m)$ contains a stable URI $u$, content $z$, a cheap summary $s$, and metadata
-$m$.  An edge $(v_i,a,v_j)$ says that anchor $a$ in $v_i$ expands to $v_j$.  The
-resolver is deliberately outside the neural layer:
+The repository example becomes a graph when a module refers to a class, the class refers
+to a method, and the method refers to a configuration object. Let this context graph be
+$\mathcal G=(\mathcal V,\mathcal E)$. A node $v=(u,z,s,m,R)$ contains a stable URI $u$,
+content $z$, optional summary metadata $s$, metadata $m$, and a local reference table
+$R$. An edge $(v_i,a,v_j)$ exists when $R_i[a]=u_j$; lexical URI prefixes do not create
+edges implicitly. The resolver remains outside the neural layer:
 \begin{equation}
- \rho(u,p,t)\longrightarrow(z,s,\mathrm{children},m),
+ \rho(u,p,t)\longrightarrow(z,s,R,m,\nu),
 \end{equation}
-where $p$ is an authorization domain and $t$ identifies logical time or version.  This
-interface permits a file, database row, document section, code symbol, graph query, or
-tool result to be named in the same logical space without pretending that they share the
-same physical representation.
+where $p$ is an authorization domain, $t$ identifies logical time, and $\nu$ is the
+resolved version. This interface permits a file, database row, document section, code
+symbol, graph query, or tool result to share a naming scheme without pretending that
+they share a physical representation.
 
 The runtime state before token $t$ is
 \begin{equation}
  \Omega_t=(\mathcal G,\mathcal H_t,A_t,\mathcal C_t,p_t,\nu_t),
 \end{equation}
 with advertised handles $\mathcal H_t$, active references $A_t$, resident materializations
-$\mathcal C_t$, policy state $p_t$, and provenance/version state $\nu_t$.  A persistent
+$\mathcal C_t$, policy state $p_t$, and provenance/version state $\nu_t$. A persistent
 cache key must include at least $(u,v,\ell,m,\theta,p)$: URI, content version, consumer
 layer, model identity, relevant encoder parameters, and policy domain.  Paper~1 uses only
 the URI because it rebuilds and discards a private cache for every example; that
 specialization prevents cross-example leakage but does not demonstrate persistent reuse.
 
-\methodflow{handle + metadata}{select summary}{resolve URI}{encode/admit layer KV}{attend + audit}{praorange}
+\methodflow{handle + local table}{resolve bounded graph}{route chunk gists}{materialize token K/V}{attend + audit}{praorange}
 
 \subsection{Selection, recursive expansion, and the implemented specialization}
 
-At layer $\ell$, a query $q_{t,\ell}$ ranks the summaries of candidate objects:
+Selection should be cheap enough to avoid materializing every candidate, but it must use
+a representation compatible with the consuming layer. The corrected prototype therefore
+partitions reference $u$ into chunks $c\in\mathcal C_u$. At layer $\ell$, it reconstructs
+the projected key heads for every chunk token and mean-pools them into one routing gist:
 \begin{equation}
-\mathcal S_{k,\tau}(q,\mathcal C)=\operatorname{TopK}_{u}
-\left\{\cos(q,s_u):\cos(q,s_u)\geq\tau\right\}.
+g^K_{u,c,\ell}=\frac{1}{|c|}\sum_{j\in c}
+\operatorname{mergeheads}(K_{u,c,\ell,j}).
 \end{equation}
-An expansion operator $\mathcal X(A,\mathcal G,b,d)$ follows children subject to branching
-budget $b$ and depth $d$.  The intended transition is therefore
+
+The current layer's projected last-token query is
+\begin{equation}
+q_{t,\ell}=\operatorname{mergeheads}(X^{(\ell)}W_Q^{(\ell)})_t,
+\end{equation}
+and its content-routing score for chunk $c$ is
+\begin{equation}
+a_{u,c,\ell}=\cos(q_{t,\ell},g^K_{u,c,\ell}).
+\end{equation}
+The default hierarchical policy aggregates chunk scores into a reference score, selects
+at most $k_r$ references, and independently selects at most $k_c$ chunks within each
+retained reference. Optional summaries can replace, compete with, or augment the content
+score, but they are disabled by default and missing summaries fall back to content.
+
+An expansion operator $\mathcal X(A,\mathcal G,b,d)$ follows explicit child tables under
+shared branching, reference, token, and depth budgets. The resulting transition is
 \begin{align}
 A_t&=\mathcal S_{k,\tau}(q_t,\mathcal C_t),&
 A'_t&=\mathcal X(A_t,\mathcal G,b,d),\\
 \mathcal C'_t&=\operatorname{admit}(\operatorname{encode}(\rho(A'_t))),&
 (y_t,\Omega_{t+1})&=\operatorname{attend}(x_{\leq t},\mathcal C'_t,\Omega_t).
 \end{align}
-Paper~1 implements a much narrower case: the last hidden state is the query, mean summary
-token embeddings are candidates, all one-to-five references are admitted in the reported
-reference experiment, recursive expansion is the identity, and caches are constructed
-before an example forward pass.  Thus ``progressive'', ``recursive'', and ``persistent''
-describe the research target, not measured properties of the current pilot.
+The runtime now implements deterministic child-first construction, explicit build states,
+cycle policies, and shared budgets. Parent encoding may read already completed child
+memory. This establishes bounded recursive mechanics, not a learned expansion policy or
+an empirical recursion benefit. Persistent cross-request reuse also remains unmeasured.
 
 \subsection{Layer-specific materialization and PRAttention}
 
-For URI $u$, the cache entry is
+Routing gists identify promising chunks; they are not the evidence supplied to the
+decoder. For URI $u$, the cache entry instead stores full token memory and one gist for
+every chunk and PRA layer:
 \begin{equation}
-C_u=(u,z_u,s_u,\bar s_u,\{(K_{u,\ell},V_{u,\ell})\}_{\ell\in\mathcal L_{\rm PRA}}).
+C_u=\left(u,z_u,m_u,
+\{(c,K_{u,c,\ell},V_{u,c,\ell},g^K_{u,c,\ell},g^V_{u,c,\ell})\}_{c,\ell}\right).
 \end{equation}
-The reference text is passed through the same decoder with external memory disabled.
-For each PRA-enabled layer, the pre-attention normalized hidden states are projected by
-that layer's $W_K$ and $W_V$ and detached.  A selected set $\mathcal U$ is concatenated
-within the layer.  Local attention remains causal; reference memory is a separate,
-non-causal cross-attention source:
+Here $K_{u,c,\ell}$ and $V_{u,c,\ell}$ retain all selected chunk tokens, whereas the
+$d$-dimensional gists support routing. Mean, last-token, reference-end, and registered
+GRU pooling are configurable; detached mean pooling is the default. A selected set
+$\mathcal A_{b,\ell}$ is materialized independently for batch row $b$. Local attention
+remains causal, while reference memory is a separate non-causal cross-attention source:
 \begin{align}
 O_{\rm local}&=\operatorname{softmax}((QK^\top+M_{\rm causal})/\sqrt{d_h})V,\\
-O_{\rm mem}&=W_{O,\rm mem}\operatorname{merge}
- \left[\operatorname{softmax}(QK_{\mathcal U,\ell}^\top/\sqrt{d_h})
- V_{\mathcal U,\ell}\right],\\
+O_{{\rm mem},b}&=W_{O,\rm mem}\operatorname{merge}
+ \left[\operatorname{softmax}(Q_bK_{\mathcal A_b,\ell}^\top/\sqrt{d_h})
+ V_{\mathcal A_b,\ell}\right],\\
 O&=O_{\rm local}+\alpha O_{\rm mem}.
 \end{align}
-The prototype zero-initializes $W_{O,\rm mem}$ for isolated phase-2 adaptation.  This
+Variable memory lengths can be processed row by row, in one masked rectangle, or in
+deterministic length buckets. Empty rows receive an exact zero memory residual, including
+when the output projection has bias. The prototype can zero-initialize $W_{O,\rm mem}$
+for isolated phase-2 adaptation. This
 makes the memory contribution exactly zero at initialization and preserves the local
 path when only that projection is trained.  It is a useful engineering control, not an
 intrinsic no-forgetting theorem for PRA.
 
 \begin{lstlisting}[caption={Reference-memory construction and consumption in Paper 1}]
 for sample in batch:                    # private semantic address space
-    cache = {}
+    cache = PRASimpleMemoryCache()
+    builder = RecursiveReferenceCacheBuilder(model, resolver,
+                                               tokenizer, cache, cfg)
+    budget = builder.new_budget()
     for handle in sample.references:
-        obj = resolver.resolve(handle.uri, policy, version)
-        h_ref = model.encode(obj.text, pra_enabled=False)
-        entry = {"summary": mean_embed(obj.summary), "kv": {}}
-        for layer in pra_layers:
-            entry["kv"][layer.id] = layer.project_kv(h_ref[layer.id]).detach()
-        cache[handle.uri] = entry
-    logits = model(sample.tokens, pra_cache=cache)
+        builder.ensure_cached(handle.uri, budget=budget)
+        # ensure_cached resolves children first, partitions each object,
+        # and stores per-layer token K/V plus one routing gist per chunk.
+
+    model.set_pra_cache(cache)
+    logits = model(sample.tokens, use_pra_memory=True)
 \end{lstlisting}
 
-\begin{lstlisting}[caption={Minimal executable shape of the PRA branch}]
+\begin{lstlisting}[caption={Simplified shape of routing and materialization in one PRA layer}]
 class PRAttention(nn.Module):
-    def __init__(self, d, heads):
-        super().__init__()
-        self.local = nn.MultiheadAttention(d, heads, batch_first=True)
-        self.memory = nn.MultiheadAttention(d, heads, batch_first=True)
-        self.memory_out = nn.Linear(d, d)
-        nn.init.zeros_(self.memory_out.weight); nn.init.zeros_(self.memory_out.bias)
-
-    def forward(self, x, memory=None, causal_mask=None):
-        local, _ = self.local(x, x, x, attn_mask=causal_mask,
-                              need_weights=False)
-        if memory is None or memory.size(1) == 0:
-            return local
-        mem, _ = self.memory(x, memory, memory, need_weights=False)
-        return local + self.memory_out(mem)
+    def forward(self, x, cache, causal_mask):
+        q, k, v = self.project_local(x)
+        local = causal_attention(q, k, v, causal_mask)
+        rows = []
+        for row in range(x.size(0)):
+            q_last = merge_heads(q[row, :, -1])
+            hits = cache.route_chunks(q_last, layer=self.layer_id,
+                                      top_refs=self.k_ref,
+                                      top_chunks=self.k_chunk)
+            mem_k, mem_v = cache.materialize_selected(hits,
+                                                       layer=self.layer_id)
+            rows.append(cross_attention(q[row], mem_k, mem_v)
+                        if hits else torch.zeros_like(local[row]))
+        return local + self.memory_out(torch.stack(rows))
 \end{lstlisting}
+
+The second listing deliberately omits head reshaping, masking for rectangular batches,
+and diagnostics.  Its point is the boundary between the small objects used to rank
+chunks and the full token K/V tensors used after selection.  Conflating those two
+representations would turn a routing approximation into a lossy memory representation.
 
 \subsection{Reference-data construction and leakage controls}
 
@@ -160,8 +194,10 @@ still only a programmatic proxy; future data must mark human-verified necessary 
 \subsection{Complexity and the systems claim}
 
 Let $L$ be decoder layers, $L_p$ PRA layers, $T$ local tokens, $r$ resolved references,
-$m_i$ tokens in object $i$, and $M$ selected resident memory tokens.  Ignoring constant
-head factors, the stages cost
+$m_i$ tokens in object $i$, $G$ available routing gists, and $M$ selected resident memory
+tokens.  Thus $G$ determines how many small vectors are scored, whereas $M$ determines
+how much detailed evidence reaches attention.  Ignoring constant head factors, the
+stages cost
 \begin{center}
 \begin{tabular}{p{2.4cm}p{4.5cm}p{7.3cm}}
 \toprule
@@ -169,7 +205,7 @@ Stage & Asymptotic work & What must be measured \\\midrule
 resolve & $O(r)$ lookups plus source I/O & authorization, version check, bytes and latency \\
 encode & $O(Ld\sum_i m_i^2)$ & cold tokenization/encoding and accelerator transfer \\
 cache projection & $O(L_p d^2\sum_i m_i)$ & per-layer projection, bytes written, deduplication \\
-route & $O(rd)$ exact summary scoring & candidate count, top-$k$ latency, recall and calibration \\
+route & $O(Gd)$ exact gist scoring & gist count, hierarchical top-$k$ latency, recall and calibration \\
 cross-attend & $O(L_pTMd)$ & selected tokens, layer utilization, synchronized latency \\
 resident KV & $2wL_pMd$ bytes & allocator overhead, hit rate, eviction and tenant isolation \\
 \bottomrule
@@ -197,24 +233,30 @@ two-PRA hybrid.  FFN-expanded controls contain 4,478,976 and 4,347,648 parameter
 Population standard deviations are across seeds 1, 7, and 21.}
 \begin{tabular}{lrr}
 \toprule Model & Parameters & WikiText-2 test loss \\\midrule
-SelfAttention, same width & 4,216,320 & $4.6378\pm0.0431$ \\
-SelfAttention, matched to full PRA & 4,478,976 & $4.5706\pm0.0258$ \\
+SelfAttention, same width & 4,216,320 & $4.6378\pm0.0380$ \\
+SelfAttention, matched to full PRA & 4,478,976 & $4.5706\pm0.0037$ \\
 Full PRA & 4,479,488 & $4.5463\pm0.0270$ \\
-SelfAttention, matched to hybrid & 4,347,648 & $4.5725\pm0.0362$ \\
+SelfAttention, matched to hybrid & 4,347,648 & $4.5725\pm0.0108$ \\
 Hybrid PRA & 4,347,904 & $4.6049\pm0.0359$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Full PRA is 0.0243 loss units below its nearly matched control, while the hybrid is
-0.0323 above its matched control.  This supports compatibility and approximate parity at
-this scale, not architectural superiority.  In the fixed reference task, valid-reference
-loss after frozen-path training is 4.7052 for full PRA and 4.7932 for hybrid PRA.
+0.0323 above its matched control.  At this scale, those aggregate differences motivate
+larger replicated comparisons; they do not establish superiority.  More importantly,
+these ordinary-language runs test decoder compatibility rather than reference routing.
+
+The fixed reference task used the earlier v1 summary-level router, not the corrected
+chunk-gist mechanism described above.  In that historical system, valid-reference loss
+after frozen-path training is 4.7052 for full PRA and 4.7932 for hybrid PRA.
 Complete disabling raises loss by 0.0292 and 0.0214, but shuffled and irrelevant penalties
 are only 0.0064--0.0088 and oracle content changes loss by at most 0.0018.  Top-1 selection
 remains near or below chance.  The branch contributes, but correct content has not been
-shown to cause the gain.  The current experiment therefore passes compatibility and
-preservation gates and fails the causal-selection gate.
+shown to cause the gain.  The v1 experiment therefore passed compatibility and
+preservation gates but failed its causal-selection gate.  It cannot validate or
+invalidate the corrected router until the matched interventions are rerun against the
+new implementation.
 
 The source manuscript reports aggregate seed means and population standard deviations,
 not a complete seed-by-seed ledger for every run.  A submission version must export one
@@ -242,3 +284,11 @@ parameters, source corpus, visible and retrieved token budgets, optimizer tokens
 peak memory, and synchronized latency.  PRA's efficiency thesis is falsified in a target
 regime if it does not improve the quality--cost frontier after reference encoding and cache
 misses are included, or if correct content does not outperform corrupted controls.
+
+PRA has now supplied a concrete example of the survey's five-part vocabulary: handles
+name objects, gists support selection, the resolver and cache materialize selected chunks,
+token K/V transports their evidence, and cross-attention fuses that evidence with the
+local stream. The remaining sections widen the comparison. Some methods change the local
+interaction graph, some preserve state over time, and others move selection outside the
+model entirely. Reading them through the same five operations makes both overlaps and
+architectural differences easier to identify.

@@ -41,25 +41,37 @@
 \draw[flow] (a)--(b); \draw[flow] (b)--(c); \draw[flow] (c)--(d); \draw[flow] (d)--(e);
 \end{tikzpicture}
 \end{center}\par}
-\title{\textbf{Long Context, Retrieval, Structured Indexing, and Search Agents:}\\An Educational Architecture Review Centered on Progressive Retrieval Attention}
-\author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity\\\small Tutorial and research-design draft}
+\title{\textbf{How Language Models Access Information Beyond the Local Context:}\\A Tutorial on Long Context, Retrieval, Structured Indexing, Search Agents, and Progressive Retrieval Attention}
+\author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{August 2026}
 \begin{document}
 \maketitle
 \begin{abstract}
-Language models can gain access to more information by making the token window larger, restricting attention, carrying recurrent state, consulting an external memory, retrieving text before generation, retrieving latent key/value representations during attention, navigating a structured document index, or invoking search tools iteratively. These mechanisms are often discussed as separate subfields even though they answer the same architectural questions: \emph{what is stored, how is it named, when is relevance decided, where is retrieved information materialized, and how can its causal contribution be tested?}
+Language models can access information beyond their local token stream in several ways: they can enlarge or sparsify attention, carry recurrent state, read learned memory, retrieve text, retrieve latent representations, navigate an index, or call tools. These mechanisms are usually studied in separate literatures. We ask a common question instead: \emph{what access contract connects the model to information that is not already local?} An access contract specifies what is stored, how an item is identified, when selection occurs, which representation is materialized, how it enters the model, and which intervention would demonstrate that the selected information caused an output change.
 
-This tutorial organizes the field into seven categories and uses Progressive Retrieval Attention (PRAttention, PRA) as a unifying reference point. PRA represents external context through explicit URI-like handles, resolves selected objects into layer-specific key/value memory, and permits demand-driven access through a dedicated attention branch. We first reconstruct the PRA position and standalone prototype papers, including their preliminary WikiText-2 results and counterfactual evaluation doctrine. We then explain representative approaches using motivation, formalism, pseudocode, PyTorch sketches, diagrams, original experiments, research lineage, downstream influence, relation to PRA, and concrete comparison experiments. The final sections develop a common design space, propose fair experimental matrices, discuss provenance and the 2026 PaperTrail interface, and derive extensions that combine hierarchical references, learned routing, cache reuse, and agentic escalation. The intended audience is students, researchers, and implementers who need both a conceptual map and reusable experimental designs.
+This tutorial develops that comparison across seven architectural families. Progressive Retrieval Attention (PRAttention, PRA) serves as a worked case rather than a presumed winner. Its corrected prototype represents external documents as explicit URI-addressed references, partitions each reference into chunks, derives one contextual routing gist per chunk and layer, and transports full token K/V only for selected chunks. We reconstruct this design, distinguish it from prior retrieval and memory mechanisms, and mark its earlier reference-conditioned experiments as historical because they used a superseded router. The survey then derives matched comparisons and counterfactual controls for testing long context, retrieval, latent memory, structural navigation, and agents on common quality and cost frontiers.
 \end{abstract}
 \tableofcontents
 \newpage
 
 \section{Introduction}
-The canonical Transformer converts a sequence into contextual representations using dense self-attention. Its flexibility comes with a quadratic interaction matrix and an implicit assumption: all potentially useful information is already present as a flat token sequence. Long-document and knowledge-intensive tasks violate that assumption in several distinct ways. The information may be too large to fit; relevance may be sparse; the useful evidence may be hierarchically organized; a query may evolve during reasoning; or the relevant source may not be known until generation has begun.
+The canonical Transformer converts a token sequence into contextual representations using dense self-attention. Its generality comes with an implicit boundary: the model can use only information that has already been placed in the sequence or encoded in its parameters. Long-document and knowledge-intensive tasks violate this boundary in different ways. A source may be too large to fit, only a few passages may matter, evidence may be nested inside a document hierarchy, or the identity of the useful source may emerge only after partial reasoning.
 
-The literature responds with mechanisms at different system boundaries. Sparse attention changes the graph within a prompt. Recurrence carries state across prompt segments. Differentiable memory compresses or stores prior activations. Retrieval-augmented generation chooses passages and inserts them as text. Retrieval-attention systems index hidden states or key/value vectors. Structural indexes let a model navigate sections and summaries. Search agents act outside the model through repeated queries and tool calls. PRA is best understood not as replacing all of these, but as proposing a different interface between them: lightweight references remain in the local stream; named external objects are resolved only when useful; and the materialized representation is a layer-local latent memory rather than necessarily prompt text.
+Consider a model repairing a software repository. The repository contains thousands of files, but the immediate question concerns one failing authentication test. A dense-context system loads many files eagerly. A sparse transformer loads the same tokens but changes their interaction graph. A retriever inserts a few passages before generation. A structural navigator follows repository, module, class, and method nodes. An agent searches, opens files, runs tests, and revises its plan. A recurrent or latent-memory model may instead carry information from earlier inspection. These systems do not merely use different algorithms; they place the boundary between local computation and external information in different locations.
 
-\subsection{Seven categories}
+This observation motivates the survey's organizing question. Sparse attention changes the graph after source text is local. Recurrence preserves state across segments. Differentiable memory stores learned or episodic representations. Retrieval-augmented generation selects passages and usually materializes them as text. Attention-level retrieval inserts hidden states or K/V closer to the decoder. Structural indexes preserve document organization. Search agents acquire information through explicit actions. PRA proposes another contract: a compact local handle names an object, while selection, resolution, materialization, and fusion remain separate operations. The purpose of the taxonomy is to compare these contracts, not to declare one universally preferable.
+
+The review proceeds from a shared vocabulary to one worked architecture and then to the
+broader field. Section~2 reconstructs PRA in detail because its design exposes all parts
+of the access contract in one system. Sections~3--9 then examine the seven families at
+their own system boundaries. The landscape and comparison table synthesize those
+accounts, after which the experimental sections turn architectural differences into
+matched tests. The final sections develop research extensions and limitations. This
+order is pedagogical rather than evaluative: presenting PRA first does not assign it a
+higher evidential status than the established methods that follow.
+
+\subsection{Seven Access Families}
+The seven categories below follow the location at which an architecture changes the information path. They are not mutually exclusive. A practical system may use sparse local attention, a retrieval index, a K/V cache, and an agent escalation policy at the same time.
 \begin{enumerate}
 \item \textbf{Dense, sparse, and approximate long-context attention}: extend the visible token graph.
 \item \textbf{Recurrence and compression}: carry or summarize state across segments.
@@ -70,14 +82,31 @@ The literature responds with mechanisms at different system boundaries. Sparse a
 \item \textbf{Agents with search tools}: iteratively formulate queries, inspect results, follow links, and decide when to stop.
 \end{enumerate}
 
-\subsection{A shared vocabulary}
-Let $x_{1:T}$ be local tokens, $q_t$ a query representation at generation step $t$, $\mathcal{S}$ an external store, $R(q_t,\mathcal{S})$ a selection operator, and $M_t$ the materialized memory. A general access architecture is
+\subsection{A Shared Vocabulary}
+The repository example suggests a decomposition that applies across categories. The model first has a local state, such as the hidden representation of the failing test. A policy then chooses candidates, perhaps an authentication module or a prior incident. The system materializes those candidates as source tokens, summaries, hidden states, K/V tensors, graph nodes, or tool observations. Finally, a fusion mechanism makes the representation available to the model.
+
+We can express this process without committing to a particular architecture. Let $x_{1:T}$ denote the local tokens and let $h_t$ be the model state at generation step $t$. A query $q_t$ is derived from that state. The external store is $\mathcal{S}$, and $R$ is a selection policy with configuration $\pi$. The selected candidates are
 \begin{align}
 C_t &= R(q_t,\mathcal{S};\pi),\\
 M_t &= \operatorname{materialize}(C_t;\rho),\\
 h'_t &= \operatorname{combine}(h_t,M_t;\gamma),
 \end{align}
-where $\pi$ is a selection policy, $\rho$ determines representation (tokens, summaries, hidden states, KV tensors, tool observations), and $\gamma$ determines fusion. Every method in this review can be located by its choices for $\mathcal{S},R,\rho,$ and $\gamma$.
+where $C_t$ is the candidate set. The materialization policy $\rho$ determines whether those candidates become tokens, latent states, K/V tensors, or observations. The fusion policy $\gamma$ determines whether $M_t$ is concatenated to a prompt, read by cross-attention, injected into a cache, or processed by another model call. This vocabulary separates three questions that are often conflated: whether the right information was selected, whether its representation preserved the needed evidence, and whether the model used that representation. The next section applies the decomposition to PRA before the survey compares it with the other six families.
+
+\subsection{How to Read the Comparisons}
+Each method account follows the same sequence. It begins with the pressure that motivated
+the method, gives an intuition and formal mechanism, traces the resulting data flow, and
+then discusses evidence and failure modes. The final paragraph asks how to compare that
+method with PRA without changing several variables at once. These proposed comparisons
+are experimental designs, not reports of completed experiments.
+
+Claims also have different sources. Statements about prior systems are supported by the
+cited primary work. Statements about the corrected PRA prototype describe repository
+behavior that has been implemented and tested mechanically. Quantitative PRA results
+come from the superseded v1 router unless identified as ordinary-language backbone
+results. Predictions about reuse, recursive benefit, learned selection, or favorable
+quality--cost trade-offs remain hypotheses. Keeping these statuses visible prevents a
+software capability from being read as empirical validation.
 
 \section{Progressive Retrieval Attention}
 \input{pra_expanded}
@@ -351,6 +380,11 @@ Recursive language-model approaches treat an oversized context as an external en
 \begin{landscape}
 \thispagestyle{empty}
 \section{One-Page Architecture Landscape}
+The preceding method descriptions can obscure a simple pattern: architectures differ
+less by whether they ``use memory'' than by when they pay to expose information and what
+identity survives that exposure.  The landscape below places the seven families on
+those common axes.  Arrows indicate useful conceptual transitions, not a chronological
+claim or a relation of strict inheritance.
 \begin{center}
 {\LARGE \textbf{Landscape of Long-Context and Retrieval Architectures}}\\[5mm]
 \begin{tikzpicture}[x=1cm,y=1cm, every node/.style={font=\scriptsize}, method/.style={draw,rounded corners,align=center,minimum width=2.7cm,minimum height=.75cm}, cat/.style={draw,very thick,rounded corners,inner sep=4mm}, arr/.style={-{Latex[length=2mm]},thick}]
@@ -377,6 +411,12 @@ Recursive language-model approaches treat an oversized context as an external en
 \end{landscape}
 
 \section{Cross-Architecture Comparison}
+The comparison in this section treats each family as an access contract.  The
+\emph{store} column identifies what remains outside the current computation, while
+\emph{selection time} identifies when the system narrows that store.  The
+\emph{form} column then records what crosses the boundary into the model.  These
+distinctions matter because two systems can retrieve the same source yet incur different
+costs and preserve different evidence when one inserts text and the other retrieves K/V.
 \small
 \begin{longtable}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.4cm}>{\raggedright\arraybackslash}p{2.5cm}}
 \toprule
@@ -390,14 +430,25 @@ RETRO & token chunks & chunk boundary & cross-attention encodings & scale via no
 KV retrieval & hidden/KV index & attention time & selected states & efficient latent access & provenance and stale cache\\
 Tree/graph index & structural nodes & iterative or one-shot & summaries, spans, or subgraphs & multigranular reasoning & index construction errors\\
 Search agent & open tools/web & iterative decisions & observations or text & maximum flexibility & latency, cost, tool errors\\
-PRA & URI objects and KV caches & layer/step, demand-driven & selected per-layer KV & identity, reuse, progressive access & router training and runtime complexity\\
+PRA & URI objects and K/V caches & layer/step, demand-driven & selected chunk token K/V & identity, reuse, progressive access & router learning, stale caches, runtime complexity\\
 \bottomrule
 \end{longtable}
 \normalsize
 
+No row dominates every column.  Dense context provides the broadest interaction graph
+once tokens are local, whereas retrieval and navigation avoid loading much of the store.
+Agents can discover sources outside a fixed index but pay for iterative model and tool
+calls.  PRA is most directly compared with latent retrieval and hierarchical indexing:
+its URI identity and chunk routing are useful only if they improve selection, reuse, or
+auditability enough to repay cache construction and control-plane complexity.
+
 \section{Adapting Original Experiments to PRA}
 \subsection{A benchmark matrix}
-No single benchmark distinguishes all mechanisms. A credible program combines:
+The repository example exposes several separable abilities: preserving ordinary language
+modeling, locating a named module, selecting the relevant method within it, and
+discovering an unadvertised source when the named objects are insufficient.  A benchmark
+that tests only one ability cannot distinguish the access contracts above.  A credible
+program therefore combines:
 \begin{enumerate}
 \item \textbf{Language preservation}: WikiText-2/103 or C4 slices before and after memory adaptation.
 \item \textbf{Exact long-range retrieval}: passkeys, variable needles, UUID/value lookup, and repeated distractors.
@@ -406,11 +457,30 @@ No single benchmark distinguishes all mechanisms. A credible program combines:
 \item \textbf{Structured documents}: FinanceBench, legal filings, technical manuals, code repositories, and table/figure references.
 \item \textbf{Agentic discovery}: web or corpus search tasks where the correct source is initially unknown.
 \end{enumerate}
+The sequence is intentional.  Language preservation is a compatibility gate.  Synthetic
+retrieval isolates routing under known ground truth.  Natural documents test whether the
+mechanism survives realistic discourse.  Open-domain and agentic tasks should be added
+only when source discovery, rather than access to an advertised object, is itself under
+study.
 
 \subsection{Common conditions}
-For each task, compare: local-only SelfAttention; longer-context SelfAttention; sparse attention; one-shot RAG; iterative RAG; latent token retrieval; PRA with explicit handles; PRA with learned discovery; structural-tree retrieval; and agentic search. Hold corpus, tokenizer, generation model, evidence budget, and evaluation prompts fixed where meaningful.
+For each task, the baseline set should include local-only SelfAttention, longer-context
+SelfAttention, sparse attention, one-shot and iterative RAG, latent token retrieval, PRA
+with explicit handles, structural-tree retrieval, and agentic search.  PRA with learned
+source discovery is a separate system variant because it removes the advertised-object
+assumption.
+
+Comparisons should hold the corpus, tokenizer, generation model, evaluation prompts,
+and random data splits fixed where meaningful.  They should report both equal visible
+evidence budgets and equal end-to-end compute budgets.  Matching only parameter count is
+insufficient when one method performs retrieval, encoding, or extra model calls outside
+the measured forward pass.
 
 \subsection{PRA-specific causal matrix}
+Task improvement does not by itself show that a reference mechanism selected or used the
+right evidence.  The interventions below alter one part of the access chain at a time.
+For example, shuffled content preserves branch activation and approximate tensor shape
+while breaking the association between a handle and its evidence.
 \begin{center}
 \begin{tabular}{lll}
 \toprule
@@ -428,8 +498,22 @@ Agent oracle search & discovery upper bound & unresolved-source headroom\\
 \end{tabular}
 \end{center}
 
+The conditions are most informative when crossed rather than reported independently.
+If valid and shuffled references perform alike, the memory branch may be acting as an
+adapter rather than carrying content.  If an oracle object helps but learned routing does
+not, representation and fusion remain plausible while selection is the bottleneck.  If
+even the oracle fails, training or materialization should be repaired before scaling the
+router.
+
 \subsection{Metrics beyond task accuracy}
-Report task quality, retrieval recall, ranking, reference causality, preservation, and systems cost together. Systems measurements must separate resolve time, encode time, cache lookup, routing, attention, generation, and synchronization. Cache hit rate without latency reduction is not useful; latency reduction without answer preservation is not success.
+Report task quality, retrieval recall, ranking, reference causality, preservation, and
+systems cost together.  Selection metrics should use candidate-count-aware chance rates
+and distinguish reference recall from within-reference chunk recall.  Causal metrics
+should report loss or answer changes under removal and substitution, not attention weight
+alone.  Systems measurements must separate resolve time, encode time, cache lookup,
+routing, attention, generation, and synchronization in cold, warm, and shared-cache
+regimes.  Cache hit rate without avoided work is not useful; latency reduction without
+answer preservation is not success.
 
 \section{Research Lineage and Influence}
 The field can be read as a sequence of boundary shifts. Memory Networks moved relevant facts outside the recurrent state. Transformer-XL moved context across segments. REALM and RAG moved knowledge outside parameters. RETRO and Memorizing Transformer moved retrieved information closer to hidden-state computation. Unlimiformer recast cross-attention as nearest-neighbor search. PagedAttention made KV storage a virtual-memory systems problem. RAPTOR, MemWalker, and PageIndex restored document hierarchy. ReAct, IRCoT, Toolformer, and WebGPT made information acquisition an action policy. PRA's proposed step is to make \emph{named reference resolution and reusable latent materialization} a first-class attention capability.
@@ -437,20 +521,50 @@ The field can be read as a sequence of boundary shifts. Memory Networks moved re
 This lineage also tempers novelty claims. Cross-attention over external KV is not new; retrieval during model computation is not new; sparse top-$k$ selection is not new; and caches are not new. PRA's distinct contribution is the package and interface: URI-level identity, explicit reference syntax, separation of naming and materialization, per-layer cache objects, progressive triggering, and a causal evaluation doctrine. Its scientific value depends on showing that this package creates measurable advantages unavailable from simpler combinations.
 
 \section{Design Extensions Derived from the Survey}
+The survey suggests several combinations, but none should be read as a measured PRA
+capability.  Each extension below states a mechanism and the observation that would make
+it scientifically useful.
 \subsection{Hierarchical Progressive Retrieval Attention}
-Represent a document as a URI tree. Each node stores a summary KV and child handles. The router first attends to coarse nodes, then expands children only when posterior entropy or expected utility warrants it. This unifies RAPTOR/PageIndex with PRA while preserving traceability.
+Represent a document as a URI tree whose nodes expose child handles and optional routing
+metadata.  In the repository example, a project node leads to a module, then a class, and
+finally a method chunk.  A controller first ranks coarse nodes and expands children only
+when its uncertainty or expected utility warrants the additional work.  This proposal
+combines structural navigation with PRA's detailed token K/V transport.  It should be
+tested against flat chunk routing at matched total gist counts and materialized-token
+budgets; otherwise a gain could come merely from evaluating more candidates.
 
 \subsection{Agent-distilled routing}
-Use a capable search agent to generate trajectories: queries, selected sources, section paths, and evidence spans. Convert these into reference-routing supervision. The deployed PRA model learns a low-latency approximation; the agent remains an escalation path for out-of-index or ambiguous cases.
+Use a capable search agent to generate trajectories containing queries, selected sources,
+section paths, and evidence spans, then convert those trajectories into routing
+supervision.  The deployed model would approximate repeated, read-only search patterns,
+while the agent remains an escalation path when no advertised object is adequate.  The
+central risk is distilling the agent's shortcuts and index bias.  Evaluation must
+therefore include unseen repositories and compare both task quality and the number of
+avoided tool calls.
 
 \subsection{Multi-fidelity object caches}
-For each URI maintain tiers: metadata, summary vector, compressed KV, full KV, and raw source. A learned controller chooses the cheapest tier expected to reduce loss. This connects Compressive Transformer, Infini-attention, PagedAttention, and PRA.
+For each URI, maintain tiers such as metadata, a routing gist, compressed K/V, full token
+K/V, and raw source.  A controller chooses the least expensive tier expected to resolve
+the current uncertainty.  This connects recurrence and compression with K/V memory
+management, but it also introduces a new attribution problem: a failure may arise from
+selecting the wrong object or the wrong fidelity.  Factorial ablations with oracle object
+and oracle fidelity choices can separate those causes.
 
 \subsection{Reference compilation}
-Repeated agent/tool operations can be compiled into stable references. A SQL result, code symbol graph, dashboard panel, or document query becomes a versioned object with dependency metadata. PRA then retrieves the result cheaply until invalidated. This is especially relevant to data-analytics agents.
+Repeated read-only agent or tool operations can be compiled into stable, versioned
+references.  A SQL result, code-symbol graph, dashboard panel, or document query becomes
+an object with dependency metadata and an invalidation rule.  The possible benefit is
+avoided resolution and encoding work across repeated queries, not simply a higher cache
+hit count.  Experiments must therefore vary update frequency and sharing while checking
+that stale versions do not silently improve speed at the expense of correctness.
 
 \subsection{Causal provenance graph}
-Record reference selection, cache version, attended spans, generated claims, and counterfactual effects. Join these into a graph compatible with PaperTrail-like claim-evidence views. The strongest evidence edge is not raw attention weight but measured output change under controlled removal or substitution.
+Record reference selection, cache version, materialized spans, generated claims, and
+counterfactual effects, then join these records into a claim--evidence graph.  Such a
+graph would help a developer trace a repair suggestion back to a particular method and
+source version.  The strongest edge is not raw attention weight but a reproducible output
+change under controlled removal or substitution; attention remains a useful diagnostic,
+not causal proof.
 
 \section{Discussion}
 \subsection{The real design choice is the access contract}
@@ -474,7 +588,21 @@ PRA does not eliminate the agent loop. It can internalize routine read-only acti
 \section{Conclusion}
 Long-context modeling is not one problem. It is a family of access problems spanning compute graphs, state persistence, external memory, retrieval, indexing, runtime allocation, provenance, and action. The seven categories reviewed here form a continuum from eager anonymous tokens to progressive named actions. PRA occupies a strategically interesting middle point: more structured and reusable than flat long context or one-shot RAG, but potentially cheaper and more differentiable than general search agents.
 
-The current evidence establishes implementation feasibility, ordinary-language compatibility under approximate parameter matching, and preservation under a frozen reference-path adaptation strategy. It does not establish content-selective reference use: the fixed three-seed follow-up leaves the selector near chance, valid references barely outperform shuffled or irrelevant controls, and oracle content does not materially improve loss. The most valuable next experiments are therefore a trainable router and reference-required natural tasks, followed by five-seed replication, hierarchical and agentic baselines, and synchronized measurements of latency, memory, encoding, and cache reuse. If those experiments succeed, PRA could become a useful abstraction for compiling repeated referential work into a model-native memory interface. If they fail, the same experimental program will still clarify where dense context, RAG, structural navigation, and agentic search should meet.
+The evidence is narrower than the architectural proposal.  The current code establishes
+mechanical feasibility for chunked, layer-specific routing gists, selected token K/V,
+variable-length batches, optional summaries, and bounded child-first cache construction.
+Historical v1 experiments establish approximate ordinary-language compatibility and
+frozen-path preservation, but they do not validate the corrected router and did not show
+content-selective reference use.  The next decisive step is therefore not a larger claim
+but a clean rerun: fixed reference-required data, matched trainable capacity, oracle and
+corrupted-content interventions, multiple seeds, and end-to-end cold and warm costs.
+
+If those experiments show that correct chunks cause reproducible gains at a favorable
+quality--cost point, PRA would merit study as a model-native interface for repeated
+referential work.  If they do not, the access-contract framework still yields a useful
+result: it identifies whether the failure lies in naming, selection, materialization,
+fusion, or runtime reuse, and clarifies where dense context, RAG, structural navigation,
+and agentic search should meet.
 
 \section*{Online Resources}
 PRA source manuscripts used for this tutorial were supplied by the author. Live links for external works are embedded in the bibliography through DOI or arXiv URLs. The PageIndex discussion refers to its public repository and documentation; claims should be independently reproduced.

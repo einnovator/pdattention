@@ -43,9 +43,27 @@ The transformer attention mechanism made it possible for models to condition eve
 
 Retrieval-augmented generation (RAG) addresses part of this issue by selecting external passages before generation \cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. However, standard RAG often makes a single retrieval decision at the boundary of the model call. The retrieved passages are still inserted as flat prompt text, and the model must consume them whether or not each passage becomes useful later. Agentic systems take the opposite approach: they inspect tool descriptions, issue searches, open files, follow references, and progressively disclose detail only when needed \cite{yao2023react,schick2023toolformer}. This behavior is effective but expensive because the loop is mediated by external actions, repeated model invocations, and hand-designed orchestration.
 
-This paper proposes Progressive Retrieval Attention as a research program for internalizing part of that progressive-disclosure pattern. PRA treats context not only as tokens but as a graph of references. A prompt may contain compact handles such as \texttt{<REF\_1>}; each handle points through a reference table to a URI such as \texttt{mem://manual\#installation.cuda}. The runtime can resolve a summary, a fragment, or child anchors. A PRA-enabled layer can then attend to a layer-specific memory cache built from the resolved fragment. The model need not read every referenced document eagerly. Instead, context can be expanded when attention scores, learned gates, uncertainty, or explicit reference-token positions indicate that additional memory is useful.
+This paper proposes Progressive Retrieval Attention as a research program for internalizing part of that progressive-disclosure pattern.  Consider a model diagnosing a failing authentication test in a large repository.  Its local prompt can advertise compact handles such as \texttt{<REF\_1>}, whose local reference table maps to \texttt{repo://app/auth\#module}.  The runtime resolves that object, partitions it into chunks, constructs small routing representations, and exposes detailed layer-specific memory only for selected chunks.  If the module refers to a policy object or dependency, the same process can continue under a bounded expansion policy.  The model need not read every advertised object eagerly; attention scores, learned gates, uncertainty, or explicit reference positions can trigger additional access as the diagnosis develops.
 
-The paper has four goals. First, it argues that flat long-context scaling, one-shot RAG, and external agent loops occupy different points in a broader design space of memory access. Second, it defines the PRA vocabulary used throughout this research program: reference handles, URI-addressed memory, recursive anchors, layer-specific memory cache, progressive disclosure, and latent context expansion. Third, it separates the architectural, runtime, optimization, and evaluation claims that are often collapsed under the word ``retrieval.'' Fourth, it lays out falsifiable research questions for implementation papers that follow this position paper.
+The central question is therefore: \emph{can a model obtain better quality per unit of active context, latency, and memory by treating external information as a progressively materialized context graph rather than an eagerly flattened token sequence?}  The paper develops the vocabulary needed to answer that question, separates architectural, runtime, optimization, and evaluation claims that are often collapsed under ``retrieval,'' and states experiments that could reject the proposal.
+
+\subsection{Scope and Claim Types}
+
+The paper makes an architectural proposal, reports implementation facts, summarizes
+historical evidence, and advances hypotheses.  The proposal is the separation among
+naming, routing, materialization, and transport.  The current standalone implementation
+establishes that chunked, layer-specific caches and bounded child-first resolution can be
+constructed and consumed.  Earlier experiments provide evidence about backbone
+compatibility and optimization controls, but their reference results used a superseded
+summary-level router.  Claims about content-sensitive selection, cache reuse, recursive
+benefit, and end-to-end efficiency remain hypotheses.  This distinction is maintained
+throughout the paper so that an implemented mechanism is not mistaken for a measured
+advantage.
+
+Figure~\ref{fig:evolution} locates the proposal among neighboring interfaces.  The
+horizontal arrangement expresses increasing separation between the local token stream
+and the available information; it is not a historical sequence and does not imply that
+PRA should replace the earlier interfaces.
 
 \begin{figure}[t]
 \centering
@@ -65,7 +83,7 @@ The paper has four goals. First, it argues that flat long-context scaling, one-s
 \node[font=\scriptsize, text=pragray, below=2mm of agent] {iterative external};
 \node[font=\scriptsize, text=pragray, below=2mm of pra] {lazy, internalizable};
 \end{tikzpicture}
-\caption{Evolution of context interfaces. PRA is proposed as the next design point, not as a claim that earlier interfaces should disappear.}
+\caption{Context interfaces differ in when and where information becomes local to the model.  PRA is a proposed design point, not a claim that the other interfaces should disappear.}
 \label{fig:evolution}
 \end{figure}
 
@@ -93,12 +111,18 @@ The motivating question for PRA is therefore not whether agents should disappear
 
 \section{From Flat Context to Context Graphs}
 
+The repository example makes the required abstraction concrete.  Before the model can
+route to the authentication implementation, the system needs a stable name for the
+object, an explicit relation to any child objects, and a representation compatible with
+the layer that will consume it.  This section introduces those three pieces in that
+order.
+
 \subsection{Reference Handles}
 
 A \emph{reference handle} is a lightweight token or latent marker that names an external memory object without expanding it immediately. In the simplest textual form:
 
 \begin{center}
-\texttt{<REF\_1>} $\rightarrow$ \texttt{mem://doc42\#summary}
+\texttt{<REF\_1>} $\rightarrow$ \texttt{repo://app/auth\#module}
 \end{center}
 
 The handle is paired with a local reference table containing at least an identifier, token, and URI, with optional summary and metadata. Child edges exist only through this explicit table; URI-prefix similarity is not sufficient to create graph structure. The prompt can include the handle, and the runtime can resolve the URI when needed. This separates the existence of a possible context item from its full token cost.
@@ -115,10 +139,11 @@ The anchor fragment after \texttt{\#} is not merely a byte offset. It can encode
 
 \subsection{Recursive Anchors}
 
-Many references are best exposed recursively. A root summary may contain child anchors, and child anchors may contain more specific anchors:
+Many references are best exposed recursively.  A root object may advertise child
+anchors, and those child objects may advertise more specific anchors:
 
 \begin{center}
-\texttt{mem://manual\#summary}
+\texttt{mem://manual\#root}
 $\rightarrow$
 \texttt{mem://manual\#installation}
 $\rightarrow$
@@ -133,7 +158,7 @@ Recursive anchors turn context into a graph rather than a bag of chunks. Expansi
   level 1/.style={sibling distance=46mm},
   level 2/.style={sibling distance=23mm},
   edge from parent/.style={flow}]
-\node[pranode] {manual\#summary}
+\node[pranode] {manual\#root}
   child {node[memnode, selected] {installation}
     child {node[memnode, selected] {cuda}}
     child {node[memnode] {cpu}}}
@@ -184,21 +209,40 @@ where $u$ is a URI, $c$ a deterministic chunk, $\ell$ a transformer layer, $(K,V
 
 \subsection{Conceptual Computation}
 
-Let $X \in \mathbb{R}^{T \times d}$ be the hidden states of a sequence at a given layer. Standard causal self-attention computes
+Return to the authentication example.  Local self-attention relates the test tokens and
+the code already present in the prompt.  The memory branch answers a different question:
+given the current diagnosis, which advertised module chunks should become additional
+evidence at this layer?  The computation below separates the cheap ranking operation
+from the more expensive attention over detailed evidence.
+
+Let $X \in \mathbb{R}^{T \times d}$ contain the $d$-dimensional hidden states for $T$
+local tokens at layer $\ell$.  Standard causal self-attention first projects these states
+into queries $Q$, keys $K$, and values $V$.  Each head has width $d_h$, and $M$ masks
+future positions:
 
 \begin{equation}
 \mathrm{SelfAttn}(X) =
 \mathrm{softmax}\left(\frac{QK^\top + M}{\sqrt{d_h}}\right)V,
 \end{equation}
 
-where $M$ is a causal mask. A PRA layer augments this with memory selected from a cache. The corrected decomposition first derives a layer-specific query and chunk score,
+The output mixes values from preceding local positions according to query--key
+compatibility.  A PRA layer preserves that path and adds memory selected from a cache.
+For routing, it uses the projected query at the most recent position, merges its heads
+into $q_{t,\ell}$, and compares it with one projected-key gist
+$g^K_{u,c,\ell}$ for chunk $c$ of object $u$:
 
 \begin{align}
 q_{t,\ell} &= \operatorname{mergeheads}(XW_Q^{(\ell)})_t,\\
 a_{u,c,\ell} &= \cos(q_{t,\ell},g^K_{u,c,\ell}).
 \end{align}
 
-Hierarchical routing aggregates chunk scores to select at most $k_r$ references, then independently selects at most $k_c$ chunks inside each selected reference. Content-derived gists are the default. Summaries, when available, may replace, augment, or compete with content scores under an explicit policy, but missing summaries fall back to content. Let $\mathcal{A}_{t,\ell}$ be the selected reference--chunk pairs. A simple cross-attention transport computes
+The cosine score $a_{u,c,\ell}$ ranks a small routing representation rather than the
+full chunk.  Hierarchical routing aggregates chunk scores to select at most $k_r$
+references, then independently selects at most $k_c$ chunks inside each selected
+reference.  Content-derived gists are the default.  Summaries, when available, may
+replace, augment, or compete with content scores under an explicit policy, but missing
+summaries fall back to content.  Let $\mathcal{A}_{t,\ell}$ be the selected
+reference--chunk pairs.  A simple cross-attention transport then computes
 
 \begin{equation}
 \mathrm{PRA}(X) =
@@ -208,21 +252,30 @@ Hierarchical routing aggregates chunk scores to select at most $k_r$ references,
 V_{\mathcal{A},\ell},
 \end{equation}
 
-where $K_{\mathcal{A},\ell}$ and $V_{\mathcal{A},\ell}$ concatenate full layer-$\ell$ token memory from selected chunks only, and $\alpha$ controls the contribution of the memory branch. Routing representations are therefore cheap selectors, not compressed substitutes for transported evidence.
+Here $K_{\mathcal{A},\ell}$ and $V_{\mathcal{A},\ell}$ concatenate full layer-$\ell$
+token memory from selected chunks only, and $\alpha$ controls the memory residual.  In
+the running example, the gist may select the password-validation chunk, but the decoder
+receives that chunk's token-level keys and values.  Routing representations are therefore
+cheap selectors, not compressed substitutes for transported evidence.
 
 The central research problem is selection: how should $\mathcal{A}_{t,\ell}$ be chosen? Possible triggers include contextual gist similarity, attention to explicit reference-token positions, uncertainty in the next-token distribution, learned gates, or runtime policies that trade accuracy against latency. Reference ranking, chunk ranking, and materialization must remain separately measurable.
 
 \subsection{PRA as Architecture, Runtime, and Research Program}
 
-The term PRA is intentionally broader than one neural module. It refers to three coupled objects:
+The term PRA is intentionally broader than one neural module.  As an
+\emph{architecture}, it denotes attention layers that consume external reference memory
+through cross-attention, K/V injection, adapters, or another differentiable transport.
+As a \emph{runtime}, it includes the resolvers, caches, URI stores, expansion policies,
+and schedules that decide when and how the memory is constructed.  As a \emph{research
+program}, it includes the benchmarks, ablations, scaling studies, and analyses needed to
+test demand-driven context expansion.
 
-\begin{enumerate}[leftmargin=*]
-\item \textbf{Architecture}: attention layers that can consume external reference memory through cross-attention, KV injection, adapters, or other differentiable mechanisms.
-\item \textbf{Runtime}: resolvers, caches, URI stores, anchor expansion policies, and scheduling decisions that decide when and how memory is materialized.
-\item \textbf{Research program}: benchmarks, ablations, scaling studies, and theoretical analyses for demand-driven context expansion.
-\end{enumerate}
-
-This distinction helps avoid overclaiming. A standalone research prototype can validate cache construction and attention mechanics without proving that PRA is ready for production-scale pretrained models. Runtime integration can study scheduling and KV memory without resolving all training questions. Scaling theory can ask which tasks benefit from context graphs without committing to a single implementation.
+These scopes support different conclusions.  A standalone prototype can validate cache
+construction and attention mechanics without showing readiness for a production-scale
+pretrained model.  Runtime experiments can study scheduling and K/V reuse without
+settling how to train the selector.  Scaling studies can ask which task distributions
+benefit from context graphs without committing to one resolver or cache implementation.
+The following commitments keep those conclusions separable.
 
 \section{Conceptual Commitments}
 
@@ -379,6 +432,12 @@ The standalone study compares four local layers, four PRA layers, and two local 
 
 \section{Relationship to Existing Work}
 
+PRA draws mechanisms from several mature lines of work.  The comparison below is
+organized by the boundary each line changes: interaction among local tokens, persistence
+of latent state, retrieval of external evidence, or acquisition through actions.  This
+framing narrows the novelty claim to the combined access contract rather than any single
+component.
+
 \subsection{Long-Context and Sparse Transformers}
 
 Longformer, BigBird, Reformer, Routing Transformer, and related models reduce the cost of attending over long sequences by imposing locality, sparsity, hashing, routing, or structured global tokens \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. PRA is complementary. It does not primarily ask how to attend over a single long sequence more cheaply; it asks whether all candidate context should become part of that sequence in the first place.
@@ -452,7 +511,7 @@ Embodied and enactive approaches argue that cognition is shaped by recurrent int
 
 Human activity routinely relies on referential scaffolding. A person remembers that evidence is in a notebook, a clause is in a contract section, a procedure is in a manual, or an explanation belongs to a colleague. The remembered address, cue, and access routine can be more useful than a lossy internal copy. Retrieval is often situated: the object sought depends on the current task, physical or social environment, and sequence of prior actions. Hierarchical cues support progressive refinement from place or document to section and detail.
 
-PRA translates only the computational aspects of this observation. Reference handles are cues; URIs stabilize identity; resolvers implement access routines; summaries support selection; and layer-specific caches provide a temporary active representation. Recursive anchors make access path-dependent. The analogy predicts that a useful model memory system should preserve provenance and affordances, not only vector similarity. It also predicts failure when the environment is unreliable, addresses become stale, or access policy is ignored.
+PRA translates only the computational aspects of this observation. Reference handles are cues; URIs stabilize identity; resolvers implement access routines; routing gists and optional summaries support selection; and layer-specific caches provide a temporary active representation. Recursive anchors make access path-dependent. The analogy predicts that a useful model memory system should preserve provenance and affordances, not only vector similarity. It also predicts failure when the environment is unreliable, addresses become stale, or access policy is ignored.
 
 This perspective broadens evaluation beyond factual recall. A referential memory architecture should be tested on navigation, coordination, revision, and action: whether it can locate the right object, notice when it changed, follow a dependency, respect a permission, and update a plan after new evidence. Those are situated-memory behaviors, not merely next-token improvements.
 
@@ -590,7 +649,11 @@ Develop task families where relevant context occupies a controllable fraction of
 Compare projected content gists, explicit reference-token attention, optional summary evidence, learned routers, uncertainty triggers, and hybrid policies while holding selected-chunk transport fixed. The old summary-similarity selector did not improve with language pretraining and remained near chance despite lower final task loss. Reference and chunk selection should be evaluated through hit/recall/precision/F1, MRR, NDCG, span IoU, counterfactual task loss, and learning speed, not only whether an expected URI entered a cache.
 
 \paragraph{Hierarchical expansion.}
-Construct benchmarks in which a root summary identifies candidate child anchors but the answer requires one or more deeper fragments. Measure expansion depth, branching factor, missed-evidence rate, and quality per resolved token. Flat single-hop tasks cannot test the progressive part of PRA.
+Construct benchmarks in which a root object advertises candidate child anchors but the
+answer requires one or more deeper fragments.  Optional summaries can be introduced as
+a controlled routing condition rather than assumed metadata.  Measure expansion depth,
+branching factor, missed-evidence rate, and quality per resolved token.  Flat single-hop
+tasks cannot test the progressive part of PRA.
 
 \paragraph{Training and preservation.}
 Compare isolated reference-path adaptation, joint fine-tuning, adapters, low-rank updates, and curriculum mixtures. Report both reference improvement and local-task retention. Determine whether zero-initialized memory residuals remain stable at larger scale and whether learned gates avoid permanent saturation.

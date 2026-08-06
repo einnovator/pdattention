@@ -1,3 +1,11 @@
+The next seven sections apply the access-contract vocabulary to representative systems.
+To keep the mathematics comparable, $T$ denotes sequence length, $d$ model width, and
+$d_h$ the width of one attention head. The matrices $Q$, $K$, and $V$ contain projected
+queries, keys, and values; $M_{\rm causal}$ masks positions that a causal decoder may not
+read. Method-specific symbols are introduced where they appear. Complexity expressions
+describe the dominant conceptual operation and omit constant head and implementation
+factors unless those factors are themselves the subject of the method.
+
 \section{Category I: Dense, Sparse, and Approximate Long-Context Attention}
 
 This family changes the token-interaction graph after information has already been
@@ -15,8 +23,8 @@ range without changing this graph.  For $T$ tokens,
 A=\operatorname{softmax}((QK^\top+M_{\rm causal})/\sqrt{d_h})V,
 \qquad \text{time }O(T^2d),\;\text{attention storage }O(T^2).
 \end{equation}
-The important teaching point is that positional extrapolation and attention efficiency are
-different problems.  A model may accept a long index while still allocating quadratic
+Positional extrapolation and attention efficiency are different problems. A model may
+accept a long index while still allocating quadratic
 work, or execute efficiently while failing to use distant positions.
 
 \begin{lstlisting}[caption={Dense causal attention; PyTorch uses optimized kernels when possible}]
@@ -112,7 +120,7 @@ def bigbird_blocks(n_blocks, radius, random_k, global_blocks=(0,)):
 summarization as well as genomic sequences, comparing dense BERT/RoBERTa-style models and
 other efficient Transformers with task accuracy/F1, ROUGE, and sequence-scale behavior.
 The meaningful ablation is the contribution of local, random, and global edges.  Random
-connectivity is cheap and robust on average but can miss a particular necessary route;
+connectivity is inexpensive on average but can miss a particular necessary route;
 global tokens require a placement rule, and sparse kernels do not automatically make an
 otherwise identical pretrained model work at new lengths.
 
@@ -195,8 +203,8 @@ def transformer_xl_segment(layer, x, old_memory, memory_len):
 
 \textbf{Evidence and limitations.} The paper evaluates WikiText-103, One Billion Word,
 Penn Treebank, enwiki8, and text8 using perplexity or bits-per-character, alongside recurrent
-and Transformer language-model baselines.  It reports state-of-the-art results at the time
-and much faster evaluation than recomputing overlapping windows.  Ablations isolate
+and Transformer language-model baselines. It reports then-leading benchmark results and
+substantially faster evaluation than recomputing overlapping windows. Ablations isolate
 recurrence and relative positions.  Memory is chronological, anonymous, fixed-length, and
 not revisable: evicted information is gone, irrelevant history consumes capacity, and a
 detached boundary limits credit assignment.
@@ -382,7 +390,7 @@ def dnc_write(memory, write_weight, erase, add):
 
 \textbf{Evidence and limitations.} DNC experiments emphasize synthetic graph traversal,
 question answering, and algorithmic tasks, comparing recurrent controllers and earlier
-memory systems with exact task accuracy or sequence error.  The machine can learn elegant
+memory systems with exact task accuracy or sequence error. The machine can learn compact
 algorithm-like behavior, yet many interacting gates make training brittle.  Soft access
 is expensive at large slot counts, learned addresses lack stable external meaning, and
 catastrophic write errors can corrupt later computation.
