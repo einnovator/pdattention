@@ -289,6 +289,87 @@ are not.  Substitute or reset RMT slots and shuffle PRA references to measure co
 A hybrid stores an RMT summary in the URI metadata tier but preserves the source object for
 read-time expansion when the summary is insufficient.
 
+\subsection{Block-Recurrent Transformer}
+
+\textbf{Motivation and mechanism.} Token-wise recurrence is sequential, whereas ordinary
+self-attention is parallel but bounded by its active window. Block-Recurrent Transformer
+places the recurrent boundary at a block of tokens. A set of state vectors $S_{b-1}$ and
+the current token block $X_b$ exchange information through self- and cross-attention, then
+LSTM-style gates form the state passed to the next block \citep{hutchins2022blockrecurrent}:
+\begin{align}
+\widetilde X_b&=\operatorname{TokenBlock}(X_b,S_{b-1}),\\
+\widetilde S_b&=\operatorname{StateBlock}(S_{b-1},X_b),\\
+S_b&=g_b\odot S_{b-1}+(1-g_b)\odot\widetilde S_b.
+\end{align}
+The exact cell contains several gates, but the computational principle is visible here:
+parallel token processing occurs inside a block, while a fixed set of latent states carries
+information between blocks. For fixed block and state sizes, total work grows linearly with
+the number of processed tokens.
+
+\begin{lstlisting}[caption={Simplified block-recurrent update}]
+def block_recurrent_step(token_block, state, cell):
+    token_out = cell.tokens_attend(token_block, state)
+    state_candidate = cell.state_attends(state, token_block)
+    gate = torch.sigmoid(cell.gate(torch.cat([state, state_candidate], -1)))
+    next_state = gate * state + (1 - gate) * state_candidate
+    return token_out, next_state
+\end{lstlisting}
+\methodflow{token block + state}{bidirectional block exchange}{gated state update}{fixed recurrent state}{next block}{memorygreen}
+
+\textbf{Evidence and limitations.} The original study evaluates PG19 books, arXiv papers,
+and GitHub source code against long-range Transformer-XL variants, reporting language-model
+loss and execution behavior. The design uses accelerator-friendly block parallelism, but
+the state remains an anonymous write-time bottleneck. A gate can preserve a feature without
+preserving its source, version, or exact wording, and later queries cannot reload discarded
+detail.
+
+\textbf{PRA relation and experiment.} Block recurrence and PRA solve different halves of
+the working-set problem. The recurrent state keeps a compact summary of the path already
+read; PRA can dereference a named object that was never read or whose details no longer fit
+the state. Compare recurrent state, PRA, and a hybrid under matched resident bytes on tasks
+that independently vary temporal continuity and source addressability. State resets test
+dependence on recurrent content; shuffled URI objects test dependence on PRA content.
+
+\subsection{TransformerFAM}
+
+\textbf{Motivation and mechanism.} A sliding-window transformer eventually loses access
+to every old token, and a detached segment cache limits how gradients teach long-range
+retention. TransformerFAM introduces a short Feedback Attention Memory (FAM) whose current
+activations attend with each token block and whose updated activations feed the next block
+\citep{hwang2024transformerfam}. If $F_{b-1}$ is the previous feedback state, one abstract
+update is
+\begin{equation}
+[H_b,F_b]=\operatorname{MaskedAttn}([X_b,F_{b-1}],
+                                    [X_b,M_b,F_{b-1}]),
+\end{equation}
+where $M_b$ denotes the ordinary block-sliding memory. The feedback queries are contextual:
+they change after every block instead of using one static summary query. FAM adds no new
+projection weights when it reuses the transformer's attention parameters, although it
+changes training, masks, positions, and recurrent execution.
+
+\begin{lstlisting}[caption={Feedback attention memory across blocks}]
+def fam_step(block, sliding_memory, fam, attention, mask):
+    queries = torch.cat([block, fam], dim=1)
+    keys_values = torch.cat([block, sliding_memory, fam], dim=1)
+    outputs = attention(queries, keys_values, keys_values, attn_mask=mask)
+    return outputs[:, :block.size(1)], outputs[:, block.size(1):]
+\end{lstlisting}
+\methodflow{block + prior FAM}{joint masked attention}{contextual FAM update}{feedback to next block}{working-memory stream}{memorygreen}
+
+\textbf{Evidence and limitations.} The paper studies models at 1B, 8B, and 24B parameters
+on language modeling, passkey retrieval, NarrativeQA, and related long-context tasks. Its
+ablations show that static summary queries and some simpler feedback variants do not retain
+the passkey as well as contextual FAM. Improvements over block sliding attention can be
+modest on several natural tasks, and the latent slots still lack stable object identity,
+selective invalidation, or exact reconstruction after compression.
+
+\textbf{PRA relation and experiment.} FAM is dynamic working memory; PRA is addressed
+backing memory. A useful hybrid lets FAM carry the current reasoning state while PRA supplies
+source detail. Compare a static summary token, contextual FAM, content-gist PRA, and the
+hybrid. Use delayed exact recall, multi-hop synthesis, stale-source replacement, and unseen
+question types. The key question is whether a small feedback state reduces PRA faults
+without hiding content failures inside an uninterpretable latent bottleneck.
+
 \subsection{Infini-attention}
 
 \textbf{Motivation and mechanism.} Infini-attention combines masked local attention with a
@@ -327,6 +408,53 @@ objects, repeated keys, exact-value queries, semantic summaries, and stale repla
 PRA must include resolution/encoding latency.  A hybrid maintains cheap Infini state for
 the stream while a collision, low-confidence query, or explicit handle faults in a named
 PRA object.
+
+\subsection{Titans and Test-Time Neural Memory}
+
+\textbf{Motivation and mechanism.} Fixed-state recurrent models update activations, but
+their update rule is usually shallow. Titans instead treats a neural network
+$\mathcal M_{\theta_t}$ as long-term memory and updates its parameters while processing the
+test sequence \citep{behrouz2025titans}. For a key--value association $(k_t,v_t)$, an
+associative loss measures how poorly the current memory predicts the value,
+\begin{equation}
+\ell_t(\theta_t)=\|\mathcal M_{\theta_t}(k_t)-v_t\|_2^2,
+\qquad s_t=\|\nabla_{\theta_t}\ell_t\|,
+\end{equation}
+and the gradient magnitude $s_t$ acts as a surprise signal. Momentum and forgetting terms
+control how the parameter update incorporates surprising events. Titans combines this
+neural long-term memory with precise short-window attention and data-independent persistent
+memory. Its Memory-as-Context, Memory-as-Gate, and Memory-as-Layer variants differ in where
+the long-term read enters the sequence model.
+
+\begin{lstlisting}[caption={Conceptual surprise-weighted test-time memory update}]
+def neural_memory_step(memory, key, value, optimizer_state):
+    prediction = memory(key)
+    loss = F.mse_loss(prediction, value)
+    gradients = torch.autograd.grad(loss, memory.parameters())
+    surprise = global_norm(gradients)
+    optimizer_state = momentum_and_forgetting(optimizer_state, gradients, surprise)
+    apply_test_time_update(memory, optimizer_state)
+    return prediction, surprise
+\end{lstlisting}
+\methodflow{current token association}{neural memory loss}{surprise + momentum}{test-time parameter update}{long-term memory read}{memorygreen}
+
+\textbf{Evidence and limitations.} Titans reports language modeling, common-sense
+reasoning, genomics, time-series, and long-context retrieval experiments, including context
+lengths beyond two million tokens. Ablations examine memory depth, momentum, forgetting,
+convolution, persistent memory, and the three integration variants. These results motivate
+test-time neural memory, but online parameter updates introduce sequential optimization,
+state-reset, reproducibility, privacy, and contamination questions. The memory is content
+addressed rather than an authoritative source store; forgetting or correcting one object
+is not a simple URI invalidation.
+
+\textbf{PRA relation and experiment.} Titans learns a compressed latent history online;
+PRA resolves versioned external objects and transports selected evidence. Compare them on
+four operations: repeated semantic patterns, exact quotations, correction of stale facts,
+and access to an object never seen in the current stream. Cross both methods with state
+reset, corrupted evidence, and repeated-query conditions. A hybrid could use Titans for
+experience-dependent routing priors while PRA retains inspectable source identity. Such a
+hybrid must report whether test-time updates improve object selection or merely adapt the
+decoder independently of supplied content.
 
 \section{Category III: Differentiable and Episodic External Memory}
 
@@ -590,6 +718,81 @@ iterative retrieval.  Report task quality, citation precision/recall, valid/disa
 effects, cold/warm latency, tokenization/encoding cost, and behavior as queries over the same
 documents repeat.
 
+\subsection{Atlas}
+
+\textbf{Motivation and mechanism.} Atlas asks whether retrieval-augmented pretraining can
+make knowledge-intensive tasks data efficient, rather than treating retrieval only as an
+inference add-on \citep{izacard2022atlas}. A dual-encoder retriever selects passages and a
+Fusion-in-Decoder reader encodes each question--passage pair separately before the decoder
+attends across all encoded passages. Retriever supervision can come from reader attention
+or leave-one-out evidence estimates. Abstractly,
+\begin{equation}
+z_{1:k}=\operatorname{TopK}_{z\in\mathcal D}s_\eta(q,z),\qquad
+p(y\mid q,z_{1:k})=\operatorname{FiD}_\theta(q,z_{1:k}).
+\end{equation}
+The external index can be updated without storing all knowledge in model parameters, while
+joint pretraining teaches the retriever and reader a shared task interface.
+
+\begin{lstlisting}[caption={Atlas-style retrieve, encode separately, and fuse in the decoder}]
+def atlas_forward(question, retriever, reader, corpus, k):
+    passages = corpus.fetch(retriever.topk(question, k))
+    encoded = [reader.encode(question, passage) for passage in passages]
+    return reader.decode(torch.cat(encoded, dim=1))
+\end{lstlisting}
+\methodflow{few-shot question}{jointly pretrained retriever}{separate passage encodings}{decoder fusion}{knowledge-task output}{retrievalblue}
+
+\textbf{Evidence and limitations.} Atlas evaluates few-shot and full-data learning on
+Natural Questions, KILT tasks, MMLU, and related knowledge-intensive benchmarks. The paper
+also varies index content and retrieval-training objectives. Its contribution is strongest
+at the training interface: retrieval provides updateable evidence and sample-efficient task
+adaptation. It still pays to retrieve and encode a passage set before generation, and
+reader-derived retriever targets can reinforce the reader's own shortcuts.
+
+\textbf{PRA relation and experiment.} Atlas supplies a stronger pretrained retrieval
+baseline than prompt-only RAG. A direct comparison should initialize both systems from the
+same corpus and language backbone, then vary the number of task examples. Atlas materializes
+passage encodings; PRA materializes selected per-layer chunk K/V. Match retrieved tokens,
+pretraining data, and online encoding cost. Oracle passages test transport, while
+valid-versus-shuffled evidence and index-refresh tests measure content and updateability.
+
+\subsection{Self-RAG}
+
+\textbf{Motivation and mechanism.} Fixed-$k$ RAG retrieves even when parametric knowledge
+is sufficient and may accept irrelevant evidence without an explicit check. Self-RAG trains
+the generator to emit reflection tokens that control retrieval and assess passage relevance,
+support, and response quality \citep{asai2024selfrag}. A simplified policy alternates
+\begin{equation}
+a_t\in\{\textsc{retrieve},\textsc{continue}\},\qquad
+r_t=\operatorname{critique}(q,z_t,y_{<t}),
+\end{equation}
+then uses critique scores to filter or rank candidate continuations. Retrieval triggering
+and evidence criticism therefore become learned generation decisions rather than fixed
+pipeline settings.
+
+\begin{lstlisting}[caption={Simplified adaptive retrieval and reflection loop}]
+while not finished:
+    action = model.next_control_token(question, draft)
+    if action == RETRIEVE:
+        passages = retriever.search(question + draft)
+        passages = rank_by_reflection(model, question, draft, passages)
+    draft += model.generate_segment(question, draft, passages)
+return draft
+\end{lstlisting}
+\methodflow{question + partial answer}{retrieve decision}{passage relevance critique}{supported segment generation}{response critique}{retrievalblue}
+
+\textbf{Evidence and limitations.} Self-RAG evaluates open-domain QA, reasoning, fact
+verification, long-form factuality, and citation behavior with 7B- and 13B-scale models.
+Reflection tokens make retrieval frequency controllable, but their labels depend on a
+teacher and critic pipeline. A plausible self-critique can share the generator's errors,
+and discrete retrieve/generate cycles still incur text and serial decoding cost.
+
+\textbf{PRA relation and experiment.} Self-RAG is the closest retrieval analogue to PRA's
+proposed progressive trigger. Compare a reflection-token trigger, a latent PRA gate, and a
+shared oracle trigger while holding the retriever and evidence fixed. Measure trigger
+precision/recall, unnecessary accesses, evidence support, serial latency, and content
+counterfactuals. A hybrid can expose PRA route confidence and provenance to a Self-RAG
+critic, but the critic's approval must not replace removal and substitution tests.
+
 \subsection{RETRO}
 
 \textbf{Motivation and mechanism.} RETRO retrieves neighbors for fixed-size chunks from a
@@ -629,10 +832,14 @@ composition.  Oracle selection isolates whether PRA's transport works before rou
 
 \section{Category V: Attention-Level Retrieval and KV Runtime Management}
 
-This category is easy to conflate because all methods manipulate latent states.  Unlimiformer
-performs semantic token selection; PagedAttention virtualizes physical allocation; the four
-KV-retention methods decide which already-produced stream tokens remain resident.  Only the
-first is a retriever in the usual information-access sense.
+This category is easy to conflate because every method manipulates latent states. The
+systems nevertheless perform different operations. Unlimiformer and Landmark Attention
+select semantic states or blocks. PagedAttention virtualizes physical allocation.
+StreamingLLM, H$_2$O, Scissorhands, SnapKV, FastGen, PyramidKV, and Quest reduce which
+already-produced states are loaded or retained. MiniCache compresses across layers, while
+CacheBlend repairs reusable chunk caches that were encoded outside their new prompt
+position. Selection, allocation, retention, representation compression, and reuse should
+therefore be measured separately.
 
 \subsection{Unlimiformer}
 
@@ -668,6 +875,46 @@ Unlimiformer token MIPS, PRA object routing plus dense within-object attention, 
 hierarchical object-to-token cascade.  Match returned KVs, encoder FLOPs, and peak bytes;
 sweep object size, distractors, repeated queries, and object-level corruption.  The cascade
 tests whether explicit identity improves efficiency without sacrificing token precision.
+
+\subsection{Landmark Attention}
+
+\textbf{Motivation and mechanism.} Ordinary sparse attention requires a fixed graph or an
+external retriever. Landmark Attention instead trains the model's own attention to use one
+special landmark token as the representative key for each token block
+\citep{mohtashami2023landmark}. At inference, a query first scores landmarks, retrieves the
+top blocks, and then attends to token K/V inside those blocks. If $\lambda_b$ is the
+landmark for block $b$,
+\begin{equation}
+\mathcal B(q)=\operatorname{TopK}_b(q^\top k_{\lambda_b}),\qquad
+o=\operatorname{Attn}(q,K_{\mathcal B(q)},V_{\mathcal B(q)}).
+\end{equation}
+The method preserves random access to distant blocks while avoiding attention over every
+token. Its optional context-miss token also suggests a learned decision not to retrieve.
+
+\begin{lstlisting}[caption={Landmark routing followed by block attention}]
+def landmark_attention(query, landmark_keys, block_keys, block_values, k):
+    block_ids = (query @ landmark_keys.T).topk(k).indices
+    keys = torch.cat([block_keys[i] for i in block_ids], dim=-2)
+    values = torch.cat([block_values[i] for i in block_ids], dim=-2)
+    return scaled_dot_product_attention(query, keys, values)
+\end{lstlisting}
+\methodflow{token blocks + landmarks}{query scores landmarks}{top-$k$ block fetch}{token-level block attention}{random-access output}{retrievalblue}
+
+\textbf{Evidence and limitations.} The paper evaluates PG19 language modeling and passkey
+retrieval, including a LLaMA-7B adaptation beyond its original context. It studies block
+retrieval granularity and a context-miss threshold. Landmark keys are learned in the same
+attention space as their consumers, but every block must be ingested and assigned a
+landmark. Blocks remain positional rather than stable versioned objects, and a wrong
+landmark decision hides every token inside the missed block.
+
+\textbf{PRA relation and experiment.} Landmark Attention is the closest token-stream
+analogue to PRA's corrected chunk gists. Both rank a small projected-key representative and
+transport detailed token K/V after selection. The differences are identity, lifecycle,
+and scope: landmarks index blocks of an ingested stream, whereas PRA gists belong to
+resolved URI objects that may be cached and invalidated. Compare both with identical chunk
+boundaries, top-$k$, and attention projections; then vary object reuse, reorder blocks,
+change versions, and measure cold versus warm construction. This experiment can reveal
+whether explicit object identity adds value beyond learned block routing.
 
 \subsection{PagedAttention}
 
@@ -841,6 +1088,162 @@ questions whose relevance is evident initially versus revealed after intermediat
 Measure prefill, selection, cold encoding, decode latency, exact evidence retention, and
 valid/shuffled object effects.  A multi-fidelity PRA cache could store a SnapKV snapshot and
 escalate to full object KVs on low confidence.
+
+\subsection{FastGen and PyramidKV: Head- and Layer-Adaptive Budgets}
+
+\textbf{Motivation and mechanism.} A uniform cache budget assumes that every attention
+head and layer uses history in the same way. FastGen profiles each head and assigns a
+retention policy that matches its observed structure: local heads keep a window,
+special-token heads keep designated positions, and broadly distributed heads retain more
+of the cache \citep{ge2023fastgen}. PyramidKV operates along a different axis. It reports
+that attention is broad in lower layers and more concentrated in higher layers, then uses
+a decreasing layer budget \citep{cai2024pyramidkv}. A generic allocation is
+\begin{equation}
+B_{\ell,h}=B_{\rm total}\,
+\frac{w_{\ell,h}}{\sum_{j,g}w_{j,g}},
+\end{equation}
+where the weight $w_{\ell,h}$ comes from head profiling, layer depth, or both. The equation
+does not prescribe either paper's exact policy; it exposes their shared principle that
+cache capacity should follow attention structure rather than tensor shape.
+
+\begin{lstlisting}[caption={Composing head policy with a layer-dependent cache budget}]
+for layer, heads in enumerate(model.attention_heads):
+    layer_budget = pyramid_budget(layer, model.num_layers, total_budget)
+    for head in heads:
+        policy = profiled_policy(head)  # local, special-token, or broad
+        head.cache = policy.retain(head.cache, budget=layer_budget[head.id])
+\end{lstlisting}
+\methodflow{full per-layer KV}{profile head behavior}{allocate pyramidal budgets}{policy-specific retention}{non-uniform cache}{localgray}
+
+\textbf{Evidence and limitations.} FastGen evaluates training-free adaptive compression
+across language-model tasks and reports memory savings with small quality changes under its
+tested settings. PyramidKV evaluates LongBench and needle retrieval, including aggressive
+retention fractions. Both depend on attention patterns transferring across inputs. A head
+classified as local can become globally important on another task, and a depth trend does
+not identify which individual evidence tokens must survive. Specialized per-head layouts
+can also reduce kernel regularity.
+
+\textbf{PRA relation and experiment.} These methods can compress each selected PRA object's
+token K/V after object and chunk routing. Compare uniform and adaptive budgets under the
+same total bytes, with per-layer routing recall and content counterfactuals. The critical
+failure test delays a reference until a head or layer previously classified as low-value
+must retrieve it. A successful composition would reduce resident bytes without changing
+which URI and chunk caused the answer.
+
+\subsection{Quest: Query-Aware Page Selection}
+
+\textbf{Motivation and mechanism.} Retention policies decide what survives before the
+future query is known. Quest retains paged K/V metadata and decides which pages to load for
+the current query \citep{tang2024quest}. For each key dimension, a page stores extrema
+$k^{\min}_p$ and $k^{\max}_p$. The query signs choose an upper bound on the page's possible
+inner product,
+\begin{equation}
+U(q,p)=\sum_j \max(q_j k^{\min}_{p,j},q_j k^{\max}_{p,j}),
+\qquad \mathcal P(q)=\operatorname{TopK}_p U(q,p).
+\end{equation}
+Only selected pages are transferred for exact attention. The method therefore reduces
+memory bandwidth without first discarding the full backing cache.
+
+\begin{lstlisting}[caption={Quest-style query bound over KV pages}]
+def quest_page_scores(query, page_key_min, page_key_max):
+    lower = query * page_key_min
+    upper = query * page_key_max
+    return torch.maximum(lower, upper).sum(dim=-1)
+
+pages = quest_page_scores(q, key_min, key_max).topk(page_budget).indices
+output = exact_attention(q, load_keys(pages), load_values(pages))
+\end{lstlisting}
+\methodflow{paged full backing KV}{query + page extrema}{upper-bound top-$k$}{load selected pages}{exact sparse attention}{retrievalblue}
+
+\textbf{Evidence and limitations.} Quest reports self-attention speedups and end-to-end
+latency improvements on long-context tasks while preserving quality in the evaluated
+configurations. Its page bounds are inexpensive and query dependent, but loose bounds load
+irrelevant pages, tight budgets can omit diffuse evidence, and page layout determines
+selection granularity. The full cache still occupies a backing tier even when HBM traffic
+falls.
+
+\textbf{PRA relation and experiment.} Quest performs physical page routing inside an
+already materialized context; PRA performs semantic object and chunk routing before
+transport. The two-stage composition is natural: PRA selects URI chunks and Quest selects
+pages inside their token K/V. Compare flat Quest over all candidate objects, hierarchical
+PRA-to-Quest, and PRA with dense selected chunks. Match page metadata, loaded bytes, and
+top-$k$ tokens. Report both semantic recall and actual bandwidth, because a good router that
+loads loose pages may not improve the systems frontier.
+
+\subsection{MiniCache and CacheBlend: Depth Compression and Reusable Chunks}
+
+\textbf{Motivation and mechanism.} Token eviction compresses the sequence dimension, but
+KV redundancy also appears across depth and repeated prompts. MiniCache observes similarity
+between adjacent middle-to-late layers and merges corresponding states after separating
+vector direction from magnitude \citep{liu2024minicache}. Distinct state pairs can remain
+unmerged. CacheBlend addresses a different reuse problem: a document chunk encoded alone
+does not contain the cross-chunk interactions it would receive in a new RAG prompt. It
+reuses offline chunk K/V but selectively recomputes important tokens to repair the blended
+context \citep{yao2024cacheblend}.
+
+\begin{lstlisting}[caption={Two orthogonal cache transformations}]
+# Depth compression: share similar adjacent-layer states.
+merged = merge_direction_preserve_norm(kv[layer], kv[layer + 1], keep_distinct=True)
+
+# Reuse repair: blend cached chunks, then recompute selected contextual tokens.
+prompt_kv = concatenate(cached_chunk_kv)
+repair_ids = select_recompute_tokens(prompt_kv, query)
+prompt_kv[repair_ids] = model.prefill_tokens(prompt, repair_ids)
+\end{lstlisting}
+\methodflow{layer or chunk caches}{detect reusable structure}{merge or concatenate}{retain/recompute exceptions}{smaller prefill cost}{localgray}
+
+\textbf{Evidence and limitations.} MiniCache evaluates several LLaMA, Mistral, Phi, and
+Mixtral variants across language and long-context benchmarks, reporting compression,
+throughput, and quality. CacheBlend evaluates RAG serving with several open models and
+datasets, reporting time to first token and throughput against full recomputation and
+prefix reuse. Cross-layer similarity is model dependent, while chunk reuse is position and
+context dependent. In both cases, approximate equivalence must be tested on compositional
+questions, not inferred from cache similarity alone.
+
+\textbf{PRA relation and experiment.} MiniCache can reduce the depth cost of a PRA object;
+CacheBlend is a direct baseline for PRA's reusable-object systems claim. Compare full
+per-request encoding, prefix-only reuse, CacheBlend repair, position-independent PRA
+cross-attention, and PRA with depth-compressed object K/V. Use reordered documents,
+multi-document composition, stale versions, and shared-cache workloads. Measure answer
+quality, repair fraction, encoding avoided, bytes transferred, time to first token, and
+isolation. PRA should not claim reusable K/V advantage unless it beats these stronger
+reuse baselines at matched quality.
+
+\subsection{KV management design map}
+
+The methods above can be compared by the unit they control and by whether omitted detail
+still exists in a backing tier. That distinction predicts recoverability: page selection
+can load another page on the next query, whereas destructive token eviction cannot recover
+a dropped state unless raw content is re-encoded.
+
+\begin{table}[htbp]
+\centering\scriptsize
+\caption{KV-management mechanisms control different logical and physical units.}
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.0cm}>{\raggedright\arraybackslash}p{1.9cm}>{\raggedright\arraybackslash}p{2.4cm}>{\raggedright\arraybackslash}p{1.8cm}>{\raggedright\arraybackslash}p{2.8cm}}
+\toprule
+Method & Controlled unit & Decision time & Backing detail & Training change & Principal risk \\\midrule
+PagedAttention & physical block & allocation & full K/V remains & no & fragmentation or isolation bug \\
+StreamingLLM & token positions & decode & evicted middle absent & no & unrecoverable old detail \\
+H$_2$O & token positions & decode & evicted tokens absent & no & lagging attention score \\
+Scissorhands & token/head K/V & periodic decode & evicted tokens absent & no & importance changes later \\
+SnapKV & prompt token/head & before generation & source may remain external & no & observation window predicts poorly \\
+FastGen & head policy & profile/prefill & policy dependent & no fine-tuning & profile fails to transfer \\
+PyramidKV & layer budget & prefill & omitted tokens absent & no & depth heuristic misses evidence \\
+Quest & K/V page & each query & full backing K/V remains & no & loose bounds or page miss \\
+MiniCache & adjacent layers & prefill/decode & selected exceptions remain & no & cross-layer mismatch \\
+CacheBlend & reusable text chunk & prefill & raw text and offline K/V remain & no & insufficient contextual repair \\
+Landmark Attention & token block & each query & block K/V remains & yes & wrong landmark hides block \\
+PRA & URI chunk, then token K/V & layer/step & raw/versioned object may remain & yes/runtime policy & wrong route, stale identity \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The map exposes three promising compositions. PagedAttention can allocate any of the
+logical caches. Quest can reduce bandwidth inside a selected Landmark or PRA block.
+MiniCache or an adaptive budget can compress the resulting resident tensors. CacheBlend,
+by contrast, is a direct alternative when the goal is reuse of text chunks inside ordinary
+self-attention. End-to-end comparisons must include all metadata, repair, transfer, and
+re-encoding costs; nominal cache bytes alone do not identify the faster system.
 
 \section{Category VI: Structural and Hierarchical Indexing}
 
