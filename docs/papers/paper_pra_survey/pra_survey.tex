@@ -83,7 +83,12 @@ The seven categories below follow the location at which an architecture changes 
 \end{enumerate}
 
 \subsection{A Shared Vocabulary}
-The repository example suggests a decomposition that applies across categories. The model first has a local state, such as the hidden representation of the failing test. A policy then chooses candidates, perhaps an authentication module or a prior incident. The system materializes those candidates as source tokens, summaries, hidden states, K/V tensors, graph nodes, or tool observations. Finally, a fusion mechanism makes the representation available to the model.
+The repository example suggests a decomposition that applies across categories.  First,
+a name or index entry says what information is available; this may be a URI, document
+identifier, token position, or search result.  The model then has a local state, such as
+the hidden representation of the failing test. A policy chooses candidates, perhaps an authentication module or a prior incident. The system materializes those candidates as source tokens, summaries, hidden states, K/V tensors, graph nodes, or tool observations. Finally, a fusion mechanism makes the representation available to the model.  A compact
+item used to choose evidence should not be confused with the detailed evidence supplied
+after that choice.
 
 We can express this process without committing to a particular architecture. Let $x_{1:T}$ denote the local tokens and let $h_t$ be the model state at generation step $t$. A query $q_t$ is derived from that state. The external store is $\mathcal{S}$, and $R$ is a selection policy with configuration $\pi$. The selected candidates are
 \begin{align}

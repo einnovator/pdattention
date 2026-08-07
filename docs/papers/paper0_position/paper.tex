@@ -115,17 +115,28 @@ The repository example makes the required abstraction concrete.  Before the mode
 route to the authentication implementation, the system needs a stable name for the
 object, an explicit relation to any child objects, and a representation compatible with
 the layer that will consume it.  This section introduces those three pieces in that
-order.
+order.  A useful way to keep them straight is to distinguish three levels of detail.
+The handle is an address, the routing gist is a small representation used to decide
+whether a chunk looks useful, and the token-level K/V is the evidence the decoder can
+actually read.  Moving between these levels is the ``progressive'' part of PRA.
 
 \subsection{Reference Handles}
 
-A \emph{reference handle} is a lightweight token or latent marker that names an external memory object without expanding it immediately. In the simplest textual form:
+A \emph{reference handle} is a lightweight token or latent marker that names an external memory object without expanding it immediately.  It plays the role of a typed
+pointer in the prompt: the pointer says where the object can be found, but it is not a
+summary of the object and does not consume the object's full token budget.  In the
+simplest textual form:
 
 \begin{center}
 \texttt{<REF\_1>} $\rightarrow$ \texttt{repo://app/auth\#module}
 \end{center}
 
-The handle is paired with a local reference table containing at least an identifier, token, and URI, with optional summary and metadata. Child edges exist only through this explicit table; URI-prefix similarity is not sufficient to create graph structure. The prompt can include the handle, and the runtime can resolve the URI when needed. This separates the existence of a possible context item from its full token cost.
+The handle is paired with a local reference table containing at least an identifier,
+token, and URI, with optional summary and metadata.  The local table supplies the
+binding: \texttt{<REF\_1>} has meaning only in the example or object that advertises it.
+Child edges exist only through this explicit table; URI-prefix similarity is not
+sufficient to create graph structure.  The prompt can therefore advertise a possible
+source without pretending that the source has already been read.
 
 \subsection{URI-Addressed Memory}
 
@@ -172,13 +183,18 @@ Recursive anchors turn context into a graph rather than a bag of chunks. Expansi
 
 \subsection{Layer-Specific Memory Cache}
 
-If an external fragment is encoded into memory for attention, the representation should respect the transformer's layer structure. A key/value pair computed for one layer is not generally interchangeable with another. PRA therefore uses a layer-specific memory cache:
+If an external fragment is encoded into memory for attention, the representation should respect the transformer's layer structure. A key/value pair computed for one layer is not generally interchangeable with another.  In practical terms, PRA does not encode a
+chunk once and hand the same vector to every layer.  It runs the chunk through the same
+model stack used by the prompt and captures the K/V representation appropriate to each
+PRA-enabled depth. PRA therefore uses a layer-specific memory cache:
 
 \begin{equation}
 \mathrm{cache}[u,c,\ell] = (K_{u,c,\ell}, V_{u,c,\ell}, g^K_{u,c,\ell}),
 \end{equation}
 
-where $u$ is a URI, $c$ a deterministic chunk, $\ell$ a transformer layer, $(K,V)$ the full token memory, and $g^K$ exactly one contextual routing gist derived from that layer's projected chunk keys. This distinction matters because lower layers may encode lexical and syntactic information while higher layers may encode task-specific abstractions. Raw token embeddings or document summaries are not substitutes for layer-specific routing and attention memory.
+where $u$ is a URI, $c$ a deterministic chunk, $\ell$ a transformer layer, $(K,V)$ the full token memory, and $g^K$ exactly one contextual routing gist derived from that layer's projected chunk keys.  The gist is an index entry, not a compressed replacement for the
+chunk: it is cheap to compare with a query, while the full K/V preserves token-level
+detail after selection. This distinction matters because lower layers may encode lexical and syntactic information while higher layers may encode task-specific abstractions. Raw token embeddings or document summaries are not substitutes for layer-specific routing and attention memory.
 
 \begin{figure}[t]
 \centering
@@ -213,7 +229,11 @@ Return to the authentication example.  Local self-attention relates the test tok
 the code already present in the prompt.  The memory branch answers a different question:
 given the current diagnosis, which advertised module chunks should become additional
 evidence at this layer?  The computation below separates the cheap ranking operation
-from the more expensive attention over detailed evidence.
+from the more expensive attention over detailed evidence.  Operationally there are two
+phases.  A preparation phase resolves each advertised URI, partitions its content, and
+builds layer-specific chunk memories.  A use phase lets the live prompt query the small
+chunk gists, materializes only the selected K/V, and fuses the resulting memory read with
+ordinary causal self-attention.
 
 Let $X \in \mathbb{R}^{T \times d}$ contain the $d$-dimensional hidden states for $T$
 local tokens at layer $\ell$.  Standard causal self-attention first projects these states
@@ -242,7 +262,9 @@ references, then independently selects at most $k_c$ chunks inside each selected
 reference.  Content-derived gists are the default.  Summaries, when available, may
 replace, augment, or compete with content scores under an explicit policy, but missing
 summaries fall back to content.  Let $\mathcal{A}_{t,\ell}$ be the selected
-reference--chunk pairs.  A simple cross-attention transport then computes
+reference--chunk pairs.  This routing score answers ``which drawers should be opened?'';
+it is not an attention weight over the evidence inside a drawer.  A separate token-level
+cross-attention transport performs that read and computes
 
 \begin{equation}
 \mathrm{PRA}(X) =
@@ -255,8 +277,9 @@ V_{\mathcal{A},\ell},
 Here $K_{\mathcal{A},\ell}$ and $V_{\mathcal{A},\ell}$ concatenate full layer-$\ell$
 token memory from selected chunks only, and $\alpha$ controls the memory residual.  In
 the running example, the gist may select the password-validation chunk, but the decoder
-receives that chunk's token-level keys and values.  Routing representations are therefore
-cheap selectors, not compressed substitutes for transported evidence.
+receives that chunk's token-level keys and values and can assign different attention
+weights to its individual tokens.  Routing representations are therefore cheap
+selectors, not compressed substitutes for transported evidence.
 
 The central research problem is selection: how should $\mathcal{A}_{t,\ell}$ be chosen? Possible triggers include contextual gist similarity, attention to explicit reference-token positions, uncertainty in the next-token distribution, learned gates, or runtime policies that trade accuracy against latency. Reference ranking, chunk ranking, and materialization must remain separately measurable.
 
@@ -295,6 +318,13 @@ The separation creates a useful sequence of representations:
 
 Each transition has a cost and can be denied, cached, audited, or deferred. Progressive disclosure is therefore not merely truncation; it is movement through explicit levels of materialization.
 
+For a reader following one reference end to end, the sequence is concrete.  The prompt
+first carries a symbolic address.  Resolution turns that address into an authenticated,
+versioned object.  Encoding creates small layer-specific gists plus detailed token K/V.
+Routing scores the gists, and only then does memory attention consume selected K/V.  A
+system may prepare some of these representations eagerly or retrieve them from a cache,
+but the logical boundaries remain the same.
+
 \subsection{Selection Is Not Transport}
 
 Selecting a URI and transporting its representation into a model are different operations. Selection may use lexical retrieval, vector similarity, explicit handle positions, learned gates, uncertainty, or an oracle. Transport may use prompt concatenation, cross-attention, adapters, or direct K/V injection. An experiment that changes both at once cannot determine whether a gain comes from finding better evidence or from presenting the same evidence through a better neural interface.
@@ -305,7 +335,12 @@ The same separation applies inside selection. Reference ranking answers which ad
 
 \subsection{Logical Isolation Must Survive Physical Batching}
 
-Each sequence has a logical memory address space even when kernels share physical tensors. Correct batching may evaluate each row independently, pad one masked rectangle, or group rows into deterministic length buckets. These execution plans are equivalent only if empty rows receive an exact zero memory residual, outputs return to original order, and one row's cache cannot influence another row's logits. Padding allocation and bucket count are systems metrics, not semantic changes to routing.
+Each sequence has a logical memory address space even when kernels share physical tensors.
+Two rows may even use the same URI string for different content; the row-local reference
+table decides what that name means.  An efficient implementation can still run the
+prompt as one batch by keeping a private cache namespace for each row, routing row $i$
+only against namespace $i$, and masking padded memory positions. Correct batching may
+evaluate each row independently, pad one masked rectangle, or group rows into deterministic length buckets. These execution plans are equivalent only if empty rows receive an exact zero memory residual, outputs return to original order, and one row's cache cannot influence another row's logits. Padding allocation and bucket count are systems metrics, not semantic changes to routing.
 
 \subsection{Language Ability Is Not Reference Adaptation}
 

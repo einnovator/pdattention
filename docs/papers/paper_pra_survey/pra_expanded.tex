@@ -24,6 +24,12 @@ progressive triggering, and counterfactual evaluation. Each component has precur
 The scientific question is whether this combination improves quality per unit of active
 context, latency, and memory in regimes with sparse, reusable, naturally named evidence.
 
+At the representation level, the same chain has three easy-to-confuse objects.  A handle
+is a symbolic address.  A gist is a small, layer-specific index entry used to rank one
+chunk.  Detailed token K/V is the material the decoder reads after selection.  The
+prototype can compute the latter two ahead of the prompt forward or recover them from a
+cache; this scheduling choice does not erase their different roles.
+
 \subsection{Reference graph, resolver, and runtime state}
 
 The repository example becomes a graph when a module refers to a class, the class refers
@@ -76,6 +82,8 @@ The default hierarchical policy aggregates chunk scores into a reference score, 
 at most $k_r$ references, and independently selects at most $k_c$ chunks within each
 retained reference. Optional summaries can replace, compete with, or augment the content
 score, but they are disabled by default and missing summaries fall back to content.
+Thus the last local query first chooses a small working set.  It does not yet read the
+selected passages, and its cosine scores are not the later token-level attention map.
 
 An expansion operator $\mathcal X(A,\mathcal G,b,d)$ follows explicit child tables under
 shared branching, reference, token, and depth budgets. The resulting transition is
@@ -87,8 +95,10 @@ A'_t&=\mathcal X(A_t,\mathcal G,b,d),\\
 \end{align}
 The runtime now implements deterministic child-first construction, explicit build states,
 cycle policies, and shared budgets. Parent encoding may read already completed child
-memory. This establishes bounded recursive mechanics, not a learned expansion policy or
-an empirical recursion benefit. Persistent cross-request reuse also remains unmeasured.
+memory.  Concretely, if a module points to a policy object, the policy object is made
+ready before the parent module is encoded; the parent can then form its own layer states
+with that child memory available.  Cycle markers and shared budgets keep this procedure
+from turning a graph into unbounded recursion. This establishes bounded recursive mechanics, not a learned expansion policy or an empirical recursion benefit. Persistent cross-request reuse also remains unmeasured.
 
 \subsection{Layer-specific materialization and PRAttention}
 
@@ -111,6 +121,14 @@ O_{{\rm mem},b}&=W_{O,\rm mem}\operatorname{merge}
  V_{\mathcal A_b,\ell}\right],\\
 O&=O_{\rm local}+\alpha O_{\rm mem}.
 \end{align}
+The two attention operations answer different questions.  Causal self-attention asks
+which earlier prompt tokens matter at each local position.  Memory cross-attention asks
+which token details inside the already selected reference chunks matter.  In the default
+\texttt{selected\_chunks} mode only routed chunks enter this second computation.
+\texttt{full\_reference} opens every chunk in a selected URI and therefore removes the
+chunk-selection bottleneck; \texttt{gist\_only} exposes one position per selected chunk
+and tests what is lost when detailed token memory is withheld.
+
 Variable memory lengths can be processed row by row, in one masked rectangle, or in
 deterministic length buckets. Empty rows receive an exact zero memory residual, including
 when the output projection has bias. The prototype can zero-initialize $W_{O,\rm mem}$
@@ -120,6 +138,7 @@ path when only that projection is trained.  It is a useful engineering control, 
 intrinsic no-forgetting theorem for PRA.
 
 \begin{lstlisting}[caption={Reference-memory construction and consumption in Paper 1}]
+row_caches = []
 for sample in batch:                    # private semantic address space
     cache = PRASimpleMemoryCache()
     builder = RecursiveReferenceCacheBuilder(model, resolver,
@@ -129,9 +148,11 @@ for sample in batch:                    # private semantic address space
         builder.ensure_cached(handle.uri, budget=budget)
         # ensure_cached resolves children first, partitions each object,
         # and stores per-layer token K/V plus one routing gist per chunk.
+    row_caches.append(cache)
 
-    model.set_pra_cache(cache)
-    logits = model(sample.tokens, use_pra_memory=True)
+batch_cache = PRABatchedMemoryCache(row_caches)
+model.set_pra_cache(batch_cache)
+logits = model(tokens)                   # one [B,T] prompt forward
 \end{lstlisting}
 
 \begin{lstlisting}[caption={Simplified shape of routing and materialization in one PRA layer}]
@@ -139,12 +160,12 @@ class PRAttention(nn.Module):
     def forward(self, x, cache, causal_mask):
         q, k, v = self.project_local(x)
         local = causal_attention(q, k, v, causal_mask)
+        q_last = merge_heads(q[:, :, -1])       # [B,d_model]
+        hits_by_row = cache.route_chunks(q_last, layer=self.layer_id,
+                                         top_refs=self.k_ref,
+                                         top_chunks=self.k_chunk)
         rows = []
-        for row in range(x.size(0)):
-            q_last = merge_heads(q[row, :, -1])
-            hits = cache.route_chunks(q_last, layer=self.layer_id,
-                                      top_refs=self.k_ref,
-                                      top_chunks=self.k_chunk)
+        for row, hits in enumerate(hits_by_row):
             mem_k, mem_v = cache.materialize_selected(hits,
                                                        layer=self.layer_id)
             rows.append(cross_attention(q[row], mem_k, mem_v)
@@ -152,10 +173,14 @@ class PRAttention(nn.Module):
         return local + self.memory_out(torch.stack(rows))
 \end{lstlisting}
 
-The second listing deliberately omits head reshaping, masking for rectangular batches,
-and diagnostics.  Its point is the boundary between the small objects used to rank
-chunks and the full token K/V tensors used after selection.  Conflating those two
-representations would turn a routing approximation into a lossy memory representation.
+The second listing deliberately omits head reshaping, row ownership arguments,
+rectangular masks, and diagnostics.  Its point is the boundary between the small objects
+used to rank chunks and the full token K/V tensors used after selection.  The actual
+batch wrapper guarantees that query row $b$ searches only cache namespace $b$, even when
+two rows reuse the same URI string.  Unequal memory lengths are padded or bucketed only
+after selection, with masks preventing padding or another row's content from becoming
+evidence.  Conflating routing gists with detailed K/V would instead turn a routing
+approximation into a lossy memory representation.
 
 \subsection{Reference-data construction and leakage controls}
 
@@ -286,9 +311,9 @@ regime if it does not improve the quality--cost frontier after reference encodin
 misses are included, or if correct content does not outperform corrupted controls.
 
 PRA has now supplied a concrete example of the survey's five-part vocabulary: handles
-name objects, gists support selection, the resolver and cache materialize selected chunks,
-token K/V transports their evidence, and cross-attention fuses that evidence with the
-local stream. The remaining sections widen the comparison. Some methods change the local
+name objects, gists support selection, the resolver binds names to versioned content,
+the cache materializes layer-specific token K/V, and cross-attention fuses selected
+evidence with the local stream. The remaining sections widen the comparison. Some methods change the local
 interaction graph, some preserve state over time, and others move selection outside the
 model entirely. Reading them through the same five operations makes both overlaps and
 architectural differences easier to identify.

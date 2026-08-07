@@ -45,6 +45,15 @@ This paper documents the first standalone PyTorch prototype in the PRA program. 
 
 The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references. Third, a resolver partitions each document into bounded chunks and stores full per-layer token K/V together with exactly one contextual projected-key gist per chunk. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and adds a scaled cross-attention branch over only the selected chunk memories.
 
+The easiest way to follow the implementation is as a prepare-then-use pipeline.  During
+preparation, each batch row resolves its own handles, encodes the resulting chunks with
+the same Transformer stack used for prompts, and records two representations at every
+PRA layer: a small gist for routing and full token K/V for reading.  During use, all
+prompt rows pass through the Transformer together.  The last query in each row ranks
+only that row's gists; selected chunks are materialized as variable-length memory; and
+all prompt positions cross-attend to those detailed K/V tensors.  Local causal attention
+never disappears.  PRA adds a second, explicitly bounded source of evidence.
+
 \section{Model Definition}
 
 \subsection{Decoder Backbone}
@@ -144,7 +153,10 @@ A'_t &= \mathcal{X}(A_t,\mathcal{G},b,d),\\
 (y_t,\Omega_{t+1}) &= \operatorname{attend}(x_{\leq t},\mathcal{C}'_t,\Omega_t).
 \end{align}
 
-In the corrected prototype, resolution and encoding still happen before an example forward pass and the cache is discarded when the next example begins. Recursive construction is available, but admission retains every successfully built entry within fixed budgets and expansion is not learned. Entries move through explicit \texttt{unseen}, \texttt{building}, \texttt{ready}, and failure states so partially built cyclic entries never become searchable. Persistent admission, eviction, and cross-request reuse remain outside the implementation.
+In the corrected prototype, resolution and encoding happen before the batched prompt
+forward.  Each row's cache is ephemeral and private, and a batch-aware wrapper preserves
+those namespaces while the prompt itself executes once as a tensor of shape $[B,T]$.
+Recursive construction is available, but admission retains every successfully built entry within fixed budgets and expansion is not learned. Entries move through explicit \texttt{unseen}, \texttt{building}, \texttt{ready}, and failure states so partially built cyclic entries never become searchable. Persistent admission, eviction, and cross-request reuse remain outside the implementation.
 
 \section{Reference Handles and Resolver}
 
@@ -194,6 +206,14 @@ Before a batch forward pass, the training code builds isolated caches from batch
 \item Store provenance, fingerprints, truncation details, layer-specific chunk tensors, and dependency events before atomically marking the entry ready.
 \end{enumerate}
 
+The fourth and fifth steps are the important representation boundary.  Reference text is
+not mapped directly to a single static document vector.  A chunk starts at the embedding
+layer, advances through the model, and exposes the K/V that the corresponding PRA layer
+would consume.  Consequently a lower-layer cache and a higher-layer cache describe the
+same source at different model depths.  The one-vector gist is then pooled from the
+projected keys at that depth.  It is suitable for inexpensive ranking; it does not
+replace the detailed token memory.
+
 Fixed windows can overlap, but selected materialization deduplicates overlapping source-token spans. Maximum gist counts and overflow policies bound routing state. Cache fingerprints include content, model, tokenizer, and routing identities so a persistent implementation can invalidate stale representations. The current per-example cache remains ephemeral, but the identity rules are explicit.
 
 \section{PRA Attention}
@@ -208,7 +228,9 @@ At generation or training time, each batch row independently compares its projec
 \lVert g^K_{u,c,\ell}\rVert_2}.
 \end{equation}
 
-The default hierarchical policy uses independent reference and per-reference chunk top-$k$ settings. They are configured as \texttt{top\_k\_references} and \texttt{top\_k\_chunks\_per\_reference}; either may be zero, yielding no memory. \texttt{top\_k\_refs} remains a warning-producing compatibility alias for one release. Summaries are disabled by default. If enabled, \texttt{replace}, \texttt{hybrid}, and \texttt{augment} policies combine projected summary evidence with content scores; a missing summary always falls back to content routing.
+This score is a coarse admission decision: it asks which chunks are worth opening for
+the current row and layer.  It is distinct from the token-level attention weights
+computed after a chunk is opened. The default hierarchical policy uses independent reference and per-reference chunk top-$k$ settings. They are configured as \texttt{top\_k\_references} and \texttt{top\_k\_chunks\_per\_reference}; either may be zero, yielding no memory. \texttt{top\_k\_refs} remains a warning-producing compatibility alias for one release. Summaries are disabled by default. If enabled, \texttt{replace}, \texttt{hybrid}, and \texttt{augment} policies combine projected summary evidence with content scores; a missing summary always falls back to content routing.
 
 \subsection{Memory Cross-Attention Branch}
 
@@ -239,6 +261,13 @@ O = O_{\mathrm{local}} + \alpha O_{\mathrm{mem}},
 \end{equation}
 
 where $\alpha$ is \texttt{memory\_alpha}, defaulting to $0.5$. If the cache is empty, PRA is disabled, no chunk passes the threshold, or selected memory is unavailable at layer $\ell$, the memory residual is exactly zero, including in the presence of output-projection bias.
+
+The normal \texttt{selected\_chunks} mode transports exactly the token K/V belonging to
+the routed chunks.  Two diagnostic modes make the boundary testable:
+\texttt{full\_reference} opens every chunk belonging to a selected URI, while
+\texttt{gist\_only} supplies one K/V position per selected chunk.  The first removes
+chunk selection from the experiment; the second asks how much can be done without
+token-level detail.  Neither changes the URI or reference-ranking stage.
 
 Variable memory lengths are executed in one of three modes. Mode zero evaluates each nonempty row independently; mode one pads a single masked rectangle; and mode $K\geq2$ deterministically partitions rows into at most $K$ contiguous length buckets using either equal-count grouping or a dynamic-programming minimum-padding plan. Masks preserve numerical equivalence, empty rows remain zero, and outputs are restored to original batch order. Diagnostics report actual bucket count, selected versus padded positions, and allocation ratio.
 
@@ -297,7 +326,12 @@ bytes, excluding summaries, object metadata, allocator overhead, and duplicated 
 
 These costs explain why shorter visible prompts alone are not a sufficient efficiency result. If every reference is encoded once per example and never reused, $\sum_i m_i^2$ can dominate. PRA becomes attractive only when selection keeps $M$ small, encoding is amortized across tokens or requests, summaries avoid unnecessary resolution, or quality improves under a fixed compute budget. A systems evaluation must decompose resolver time, tokenization, reference encoding, selection, memory attention, local model compute, cache transfer, and synchronization.
 
-The current per-example cache adapter prevents semantic leakage but serializes examples within a minibatch. A production design would pack memory tensors and associate each sequence with offsets or masks. Its complexity can approach the same aggregate arithmetic while recovering parallel execution, provided selection and cache identity remain isolated.
+The current batch-aware cache wrapper preserves semantic isolation and permits one
+$[B,T]$ prompt forward.  Reference construction and row-local routing still iterate over
+logical rows, so they are not yet fully vectorized.  A production design would also pack
+reference encodings and routing candidates with row offsets or masks.  Its complexity
+can approach the same aggregate arithmetic while reducing launch and orchestration cost,
+provided selection and cache identity remain isolated.
 
 \section{Dataset and DataLoader Pipeline}
 
@@ -343,13 +377,16 @@ The implemented PRA batch step is:
 
 \begin{enumerate}[leftmargin=*]
 \item Move tensor fields to the target device.
-\item For each example, build a fresh PRA cache from only that example's metadata.
-\item Attach that cache to the model and all PRA attention blocks.
-\item Run a one-example forward pass with PRA memory enabled and concatenate the resulting logits across the minibatch.
+\item For each example, build a fresh PRA cache from only that example's metadata without attaching it as a global cache.
+\item Wrap the completed row caches in a batch-aware cache whose search maps query row $b$ only to cache namespace $b$.
+\item Attach that wrapper once and run one prompt forward on \texttt{input\_ids} with shape $[B,T]$.
 \item Compute cross-entropy with padding ignored.
 \end{enumerate}
 
-Per-example cache isolation is semantically important. A previous batch-union implementation allowed each sequence to attend to references belonging to other examples and made within-batch shuffling ineffective. The corrected adapter sacrifices some batching efficiency to prevent cross-example memory leakage. Production batching will require a batched cache representation or an attention mask that preserves this isolation.
+Per-example cache isolation is semantically important. A previous batch-union implementation allowed each sequence to attend to references belonging to other examples and made within-batch shuffling ineffective.  The corrected wrapper keeps the expensive
+Transformer prompt computation batched without flattening the logical address spaces.
+Reference-cache construction and routing are still row-wise; those are separate
+optimization targets from prompt-forward batching.
 
 \begin{figure}[t]
 \centering
@@ -357,7 +394,7 @@ Per-example cache isolation is semantically important. A previous batch-union im
 \node[datanode] (sample) {sample + reference metadata};
 \node[sysnode, right=of sample] (resolve) {resolve URIs};
 \node[cachenode, right=of resolve] (encode) {encode per-layer K/V};
-\node[cachenode, right=of encode] (attach) {attach isolated cache};
+\node[cachenode, right=of encode] (attach) {wrap row-private caches};
 \node[sysnode, below=8mm of attach] (forward) {main forward};
 \node[sysnode, left=of forward] (loss) {masked LM loss};
 \node[sysnode, left=of loss] (update) {optimizer + metrics};
@@ -369,7 +406,7 @@ Per-example cache isolation is semantically important. A previous batch-union im
 \draw[sysflow] (loss) -- (update);
 \draw[sysflow, dashed] (update.west) to[bend left=25] (sample.south);
 \end{tikzpicture}
-\caption{Implemented training/runtime pipeline. Cache construction occurs per example before the main forward pass; prompt labels are ignored in reference-conditioned loss.}
+\caption{Implemented training/runtime pipeline. Row-private caches are constructed before one batched prompt forward; prompt labels are ignored in reference-conditioned loss.}
 \label{fig:runtime-pipeline}
 \end{figure}
 
@@ -553,7 +590,7 @@ In that implementation, disabling reference memory increased mean loss by 0.1165
 
 Plain-text reevaluation after phase 2 exactly reproduces the phase-1 losses for full and hybrid PRA because frozen base parameters and zero-initialized isolated output projections protect the local path. The SelfAttention control's mean plain loss rises from 4.7691 to 4.9550, a 0.1859 increase corresponding to about a 20\% perplexity increase. This demonstrates preservation by the chosen training strategy, not an inherent guarantee of PRA: the control updates all parameters while PRA updates only reference-specific projections.
 
-Phase-1 mean synchronized validation times are 1.07--1.14 seconds and mean wall-clock times are 97.0--102.0 seconds. Phase-2 mean synchronized training times are 31.1--45.1 seconds, with 46,301.5 mean processed prompt/answer tokens and 512 optimizer steps. Per-example cache isolation makes these timings honest for the prototype but leaves batching optimization as future systems work.
+Phase-1 mean synchronized validation times are 1.07--1.14 seconds and mean wall-clock times are 97.0--102.0 seconds. Phase-2 mean synchronized training times are 31.1--45.1 seconds, with 46,301.5 mean processed prompt/answer tokens and 512 optimizer steps. These historical timings predate the batch-aware prompt-forward path and must not be used as measurements of its speedup. New reports should separate reference-cache construction, row-local routing, the single prompt forward, and bucketed memory attention.
 
 \section{Historical Controlled Follow-Up}
 
@@ -634,7 +671,7 @@ Reference memory expands the model's attack and failure surface. A malicious or 
 
 Freshness is part of correctness. A cache key based only on URI can return stale memory after content or model parameters change. Persistent implementations should bind entries to content version, model/adapter identity, layer, representation format, and policy domain. Revocation must invalidate both object lookup and already encoded resident representations.
 
-Batching creates a confidentiality boundary. The corrected prototype constructs a cache per example after a batch-union design exposed cross-example references. Optimized kernels must preserve equivalent masks and should include adversarial tests proving that logits for one sequence are invariant to another sequence's private cache. Cache reuse across users or tenants requires authorization-aware deduplication.
+Batching creates a confidentiality boundary. The corrected prototype constructs a cache per example after a batch-union design exposed cross-example references, then places those caches behind a row-indexed wrapper for one prompt forward. Optimized kernels must preserve equivalent masks and should include adversarial tests proving that logits for one sequence are invariant to another sequence's private cache. Cache reuse across users or tenants requires authorization-aware deduplication.
 
 Recursive expansion can amplify work. The standalone builder now bounds depth, child count, total references, and encoded tokens; detects cycles; exposes missing-reference and overflow policies; and prevents partial entries from becoming searchable. It also fingerprints content, model, tokenizer, and routing configuration. Authorization, latency/byte budgets, revocation, cryptographic provenance, and durable cache invalidation remain deployment requirements beyond the in-memory resolver.
 
@@ -642,7 +679,7 @@ Recursive expansion can amplify work. The standalone builder now bounds depth, c
 
 The current prototype and follow-up have important limitations. Three seeds improve on the engineering pilot but remain short of the planned five-seed study. Parameter matching controls ordinary-language capacity but reference-stage trainable budgets still differ by design. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans, and the model can reduce continuation loss through language pretraining without learning candidate selection. The near-chance selector and weak counterfactual deltas leave open how much of the memory gain is a content-independent domain-adapter effect.
 
-The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Mean/last gists and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter still serializes examples to preserve cache identity, although the attention kernel itself supports semantically isolated variable-length batching. Summary modes, chunk routing, recursion, and dynamic bucketing are unit- and CUDA-smoke-tested but not yet evaluated in the six-way controlled experiment. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
+The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Mean/last gists and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter now batches the prompt forward, but reference encoding and routing still iterate over row-private caches. Summary modes, chunk routing, recursion, and dynamic bucketing are unit- and CUDA-smoke-tested but not yet evaluated in the six-way controlled experiment. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
 
 \section{Conclusion}
 
@@ -652,8 +689,9 @@ The standalone PyTorch PRA prototype now provides a more faithful testbed for de
 \section{Reference-Memory Forward Pass Pseudocode}
 
 \begin{verbatim}
+row_caches = []
 for sample in minibatch:
-    cache = empty_cache()
+    cache = empty_row_cache()
 
     def ensure_cached(uri, depth, shared_budget, path):
         if uri in path: apply_cycle_policy(); return
@@ -683,13 +721,19 @@ for sample in minibatch:
     for handle in sample.references:
         ensure_cached(handle.uri, 0, shared_budget(), [])
 
-    model.set_pra_cache(cache)
-    logits.append(model(sample.input_ids, use_pra_memory=True))
+    row_caches.append(cache)
 
-loss = cross_entropy(concat(logits), labels, ignore_index=PAD)
+batch_cache = BatchCache(row_caches)  # query row i sees row_caches[i]
+model.set_pra_cache(batch_cache)
+logits = model(input_ids)             # one [B,T] -> [B,T,V] forward
+loss = cross_entropy(logits, labels, ignore_index=PAD)
 \end{verbatim}
 
-The per-sample outer loop is intentional: cache identity is part of the example. The attention implementation can execute variable selected-memory lengths in masked buckets, but a future batched cache builder must still preserve an example-to-cache mask.
+The preparation loop is intentional: cache identity is part of the example.  It no
+longer implies one Transformer prompt forward per sample.  The batch wrapper preserves
+row ownership during routing, and the attention implementation executes unequal selected
+memory lengths in masked buckets.  A future vectorized cache builder must preserve the
+same example-to-cache mapping.
 
 \section{Simplified PyTorch PRAttention}
 
