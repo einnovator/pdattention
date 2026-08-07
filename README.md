@@ -90,8 +90,8 @@ config/config.yml
 Both the Click CLI and standalone scripts use the model-independent infrastructure in
 `src/common`, with the canonical optimizer loop in `src/common/train.py`. PRA-specific
 cache construction, evaluation, and retrieval metrics remain in
-`src/pra_torch/pra_train.py`. `src/pra_torch/train.py` only preserves the old import path,
-and `PRAStandaloneTrainer` remains a compatibility shell for code that prefers an
+`src/pra_torch/pra_train.py`. Generic infrastructure should be imported directly from
+`common`; `PRAStandaloneTrainer` remains a thin shell for code that prefers an
 object-oriented `train()`, `validate()`, and `test()` API.
 
 Train:

@@ -99,8 +99,8 @@ Do not directly replace Llama/Qwen/Mistral attention first.
 A successful first prototype should run:
 
 ```bash
-python -m pra_torch.train --steps 200
-python -m pra_torch.eval
+python -m pra_torch.cli train --steps 200
+python -m pra_torch.cli eval
 pytest
 ```
 
