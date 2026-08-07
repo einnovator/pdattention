@@ -22,7 +22,9 @@ for path in (REPO / "src", REPO / "nb", REPO):
 import pra_notebook_utils as pnu  # noqa: E402
 
 
-SEEDS = (1, 7, 21)
+SEEDS = (1, 7, 21, 42, 87)
+RUN_TAG = "corrected_router_v2"
+REPORT_NAMESPACE = "phase1_followup_v2_5seed"
 PLAIN_EXPERIMENTS = {
     "sa": "phase1_plain_sa_1m",
     "pra": "phase1_plain_pra_1m",
@@ -40,13 +42,6 @@ REFERENCE_MODES = {
     "pra": ("scratch", "frozen_refpath", "joint"),
     "hybrid": ("scratch", "frozen_refpath", "joint"),
 }
-LEGACY_PLAIN_DIRS = {
-    "phase1_plain_sa_1m": "td_sa_tiny_wikitext2_seed{seed}_steps2048_seq128",
-    "phase1_plain_pra_1m": "td_pra_tiny_wikitext2_seed{seed}_steps2048_seq128",
-    "phase1_plain_hybrid_1m": "tdx_pra_tiny_wikitext2_seed{seed}_steps2048_seq128",
-}
-
-
 def checkpoint_step(path: Path) -> int:
     if not path.exists():
         return 0
@@ -61,6 +56,7 @@ def plain_artifact(runtime: pnu.NotebookRuntime, experiment_name: str) -> str:
         settings["model_name"],
         "wikitext2",
         settings["name"],
+        RUN_TAG,
         f"seed{runtime.seed}",
         f"steps{train['max_steps']}",
         f"seq{policy.max_seq_len}",
@@ -78,6 +74,7 @@ def reference_artifact(
         settings["model_name"],
         stage,
         settings["name"],
+        RUN_TAG,
         mode,
         f"seed{runtime.seed}",
         f"steps{train['max_steps']}",
@@ -95,7 +92,7 @@ def run_report_path(
     name = pnu.experiment_artifact_name(
         settings["model_name"], dataset_stage, *qualifiers
     )
-    return REPO / "out" / "reports" / "phase1_followup" / "runs" / name / "index.html"
+    return REPO / "out" / "reports" / REPORT_NAMESPACE / "runs" / name / "index.html"
 
 
 def run_plain(
@@ -107,23 +104,14 @@ def run_plain(
     run_dir = REPO / "out" / "notebook_wikitext" / plain_artifact(runtime, experiment_name)
     latest = run_dir / "checkpoints" / "latest.pt"
     best = run_dir / "checkpoints" / "best.pt"
-    report = run_report_path(runtime, experiment_name, "wikitext2", experiment_name, f"seed{seed}")
+    report = run_report_path(
+        runtime, experiment_name, "wikitext2", experiment_name, RUN_TAG, f"seed{seed}"
+    )
     if not force and checkpoint_step(latest) >= max_steps and report.exists():
         print(f"skip completed plain run: {experiment_name} seed={seed}")
         return best if best.exists() else latest, report
 
     resume_from = latest if latest.exists() else None
-    if resume_from is None and seed in {1, 7} and experiment_name in LEGACY_PLAIN_DIRS:
-        legacy = (
-            REPO
-            / "out"
-            / "notebook_wikitext"
-            / LEGACY_PLAIN_DIRS[experiment_name].format(seed=seed)
-            / "checkpoints"
-            / "latest.pt"
-        )
-        if legacy.exists():
-            resume_from = legacy
     print(
         f"run plain: experiment={experiment_name} seed={seed} "
         f"resume_step={checkpoint_step(resume_from) if resume_from else 0}"
@@ -136,8 +124,8 @@ def run_plain(
         runtime=runtime,
         dataset_details=result["loader_summary"],
         model_name=result["model_name"],
-        qualifiers=(experiment_name, f"seed{seed}"),
-        report_root=REPO / "out" / "reports" / "phase1_followup" / "runs",
+        qualifiers=(experiment_name, RUN_TAG, f"seed{seed}"),
+        report_root=REPO / "out" / "reports" / REPORT_NAMESPACE / "runs",
     )
     return result["state"].checkpoint.best_path, report
 
@@ -162,6 +150,7 @@ def run_reference(
         experiment_name,
         "wikitext2_references_v2",
         experiment_name,
+        RUN_TAG,
         mode,
         f"seed{seed}",
     )
@@ -186,13 +175,13 @@ def run_reference(
         runtime=runtime,
         dataset_details=result["loader_summary"],
         model_name=result["model_name"],
-        qualifiers=(experiment_name, mode, f"seed{seed}"),
-        report_root=REPO / "out" / "reports" / "phase1_followup" / "runs",
+        qualifiers=(experiment_name, RUN_TAG, mode, f"seed{seed}"),
+        report_root=REPO / "out" / "reports" / REPORT_NAMESPACE / "runs",
     )
 
 
 def aggregate_reports(grouped_reports: dict[str, list[Path]]) -> dict[str, Path]:
-    aggregate_root = REPO / "out" / "reports" / "phase1_followup" / "aggregates"
+    aggregate_root = REPO / "out" / "reports" / REPORT_NAMESPACE / "aggregates"
     outputs = {}
     for group, reports in grouped_reports.items():
         report_json_paths = []
@@ -258,7 +247,7 @@ def metric_curve(report_paths: list[Path], metric: str) -> dict[int, float]:
 def make_findings_report(
     aggregate_paths: dict[str, Path], grouped_reports: dict[str, list[Path]]
 ) -> Path:
-    report_dir = REPO / "out" / "reports" / "phase1_followup_findings"
+    report_dir = REPO / "out" / "reports" / f"{REPORT_NAMESPACE}_findings"
     assets = report_dir / "assets"
     assets.mkdir(parents=True, exist_ok=True)
     aggregates = {
@@ -460,6 +449,7 @@ def make_findings_report(
     ).strip()
     payload = {
         "title": "PRA Phase 1 Follow-up Findings",
+        "run_tag": RUN_TAG,
         "seeds": list(SEEDS),
         "dataset_seed": 1729,
         "split_seed": 1729,
@@ -507,7 +497,7 @@ def make_findings_report(
     )
     html = f"""<!doctype html><html><head><meta charset="utf-8"><title>PRA Phase 1 Follow-up</title>
 <style>body{{font-family:Segoe UI,Arial;margin:32px auto;max-width:1300px;color:#18202a}}table{{border-collapse:collapse;width:100%;font-size:13px}}th,td{{padding:7px;border-bottom:1px solid #ddd;text-align:left}}img{{width:100%}}h2{{margin-top:32px}}</style></head><body>
-<h1>PRA Phase 1 Follow-up Findings</h1><p>Three seeds, fixed WikiText-2 reference dataset and split, matched training budgets. Uncertainty is available in the aggregate reports.</p>
+<h1>PRA Phase 1 Follow-up Findings</h1><p>Five paired model seeds, fixed WikiText-2 reference dataset and split, matched training budgets. Uncertainty is available in the aggregate reports.</p>
 <h2>Answers</h2>{question_html}<h2>Plain-Language Parity</h2>{table(plain_rows)}
 <h2>Training Order And Retention</h2>{table(order_rows)}<h2>Curves</h2><img src="assets/phase1_followup.png">
 <h2>Aggregate Reports</h2><ul>{links}</ul><p><a href="report.json">Structured findings JSON</a></p></body></html>"""
@@ -527,6 +517,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if len(set(SEEDS)) < 5:
+        raise RuntimeError("Phase 1 comparisons require at least five distinct model seeds.")
+    experiment_names = (*PLAIN_EXPERIMENTS.values(), *REFERENCE_EXPERIMENTS.values())
+    runtime = pnu.configure_notebook(repo=REPO, seed=SEEDS[0])
+    for experiment_name in experiment_names:
+        settings = pnu.load_experiment_settings(runtime, experiment_name)
+        configured_seeds = tuple(settings["experiment"].get("seeds", ()))
+        if configured_seeds != SEEDS:
+            raise RuntimeError(
+                f"{experiment_name} must use the paired Phase 1 seeds {SEEDS}; "
+                f"found {configured_seeds}."
+            )
     if not torch.cuda.is_available():
         raise RuntimeError("The Phase 1 follow-up must run in the CUDA-enabled Python environment.")
     print(f"device={torch.cuda.get_device_name(0)} torch={torch.__version__} cuda={torch.version.cuda}")
@@ -573,6 +575,7 @@ def main() -> None:
                     experiment,
                     "wikitext2",
                     experiment,
+                    RUN_TAG,
                     f"seed{seed}",
                 )
                 for seed in SEEDS
@@ -585,6 +588,7 @@ def main() -> None:
                         experiment,
                         "wikitext2_references_v2",
                         experiment,
+                        RUN_TAG,
                         mode,
                         f"seed{seed}",
                     )
