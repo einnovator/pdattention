@@ -22,6 +22,7 @@ from .metrics import (
     perplexity,
     ranking_metrics,
 )
+from .memory import PRABatchedMemoryCache
 from .model import TinyPRAModel
 from .train import TrainingState, create_training_state, move_batch, train_model
 
@@ -77,6 +78,50 @@ def _deduplicated_reference_order(selected) -> list[str]:
     return list(dict.fromkeys(hit.reference_uri for hit in ranked))
 
 
+def _selections_by_row(by_layer: dict[int, list[list]], batch_size: int) -> list[dict[int, list]]:
+    """Transpose ``layer -> row -> hits`` into ``row -> layer -> hits`` once."""
+    selections = [dict() for _ in range(batch_size)]
+    for layer_id, layer_rows in by_layer.items():
+        if len(layer_rows) != batch_size:
+            raise ValueError(
+                f"Layer {layer_id} returned {len(layer_rows)} selection rows for batch {batch_size}."
+            )
+        for row_index, selected in enumerate(layer_rows):
+            selections[row_index][layer_id] = list(selected)
+    return selections
+
+
+def _row_batching_metrics(layer_diagnostics: dict, row_index: int) -> dict[str, float]:
+    """Extract genuine row-local memory packing values from layer diagnostics."""
+    batching = layer_diagnostics.get("batching")
+    if batching is None or row_index >= len(batching.selected_lengths):
+        return {}
+    valid = int(batching.selected_lengths[row_index])
+    bucket_index = next(
+        (
+            index
+            for index, members in enumerate(batching.bucket_membership)
+            if row_index in members
+        ),
+        None,
+    )
+    allocated = int(batching.bucket_max_lengths[bucket_index]) if bucket_index is not None else 0
+    padding = max(allocated - valid, 0)
+    return {
+        "memory_valid_positions": float(valid),
+        "memory_allocated_positions": float(allocated),
+        "memory_padding_positions": float(padding),
+        "memory_padding_fraction": padding / max(allocated, 1),
+        "memory_bucket_index": float(bucket_index) if bucket_index is not None else -1.0,
+    }
+
+
+def _synchronize_for_timing(device: str) -> None:
+    """Synchronize CUDA so prompt-forward timing excludes queued execution."""
+    if str(device).startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
 def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[str, float]:
     """Aggregate routing quality, sparsity, recursion, and batching diagnostics.
 
@@ -86,7 +131,9 @@ def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[s
     """
     averages = RunningAverages()
     chunk_label_units = selection_units = 0
-    for cache, by_layer, item, layer_diagnostics in zip(caches, selections, metadata, diagnostics):
+    if not (len(caches) == len(selections) == len(metadata)):
+        raise ValueError("Caches, selections, and metadata must align by logical batch row.")
+    for row_index, (cache, by_layer, item) in enumerate(zip(caches, selections, metadata)):
         expected_uris = _expected_reference_uris(item)
         for layer_id, selected in by_layer.items():
             selection_units += 1
@@ -103,12 +150,13 @@ def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[s
             counts = cache.layer_counts(layer_id)
             selected_refs = len(set(hit.reference_uri for hit in selected))
             selected_chunks = len(selected)
-            diagnostic = layer_diagnostics.get(layer_id, {})
-            batching = diagnostic.get("batching")
-            selected_tokens = (
-                sum(batching.selected_lengths)
-                if batching is not None
-                else sum(hit.selected_token_count for hit in selected)
+            diagnostic = diagnostics.get(layer_id, {})
+            row_batching = _row_batching_metrics(diagnostic, row_index)
+            selected_tokens = int(
+                row_batching.get(
+                    "memory_valid_positions",
+                    sum(hit.selected_token_count for hit in selected),
+                )
             )
             selected_scores = [hit.chunk_score for hit in selected]
             recursive_depth = max(
@@ -153,17 +201,20 @@ def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[s
                     / max(cfg.recursive_max_total_tokens, 1),
                 }
             )
-            layer_metrics.update(
-                {
-                    key: value
-                    for key, value in diagnostic.items()
-                    if isinstance(value, (int, float))
-                }
-            )
             averages.update(layer_metrics)
             averages.update(
                 {f"layer_{layer_id}_{key.removeprefix('retrieval_')}": value for key, value in layer_metrics.items()}
             )
+    # Layer diagnostics such as padding totals, output norms, and timing describe
+    # the batched execution. Aggregate them once per layer rather than copying a
+    # batch value into every row-level retrieval record.
+    for layer_id, diagnostic in diagnostics.items():
+        aggregate_metrics = {
+            key: value for key, value in diagnostic.items() if isinstance(value, (int, float))
+        }
+        averages.update(aggregate_metrics)
+        averages.update({f"layer_{layer_id}_{key}": value for key, value in aggregate_metrics.items()})
+
     result = averages.compute()
     result["retrieval_chunk_labels_available_fraction"] = chunk_label_units / max(selection_units, 1)
     result["reference_retrieval_accuracy"] = result.get("retrieval_reference_hit_at_k", 0.0)
@@ -182,20 +233,18 @@ def _pra_batch_step(
     resolver_config: ResolverServiceConfig,
     cache_config: CacheServiceConfig,
 ) -> tuple[torch.Tensor, dict]:
-    """Build per-example caches, run the model, and return LM/retrieval outputs.
+    """Build row-local caches, then execute one logical-batch prompt forward.
 
-    Cache construction and routing are per example because each prompt has its
-    own runtime reference table. Logits are concatenated back to ``[B,T,V]`` so
-    the generic training engine can optimize one ordinary next-token loss.
+    Reference encoding remains independent because each row owns a distinct URI
+    namespace. Completed row caches are wrapped by ``PRABatchedMemoryCache``;
+    ``input_ids [B,T]`` then traverses the Transformer once and returns logits
+    ``[B,T,V]``. Routing/materialization remain row-local inside that forward.
     """
     batch = move_batch(batch, device)
-    logits_by_example = []
     caches = []
-    selections = []
-    diagnostics = []
     cache_build_duration = 0.0
     # Do not share a sample's URI table or selected memory with another batch row.
-    for index, metadata in enumerate(batch["metadata"]):
+    for metadata in batch["metadata"]:
         cache_start = time.perf_counter()
         cache = build_cache_from_metadata(
             model,
@@ -204,19 +253,26 @@ def _pra_batch_step(
             device,
             resolver_config=resolver_config,
             cache_config=cache_config,
+            attach_to_model=False,
         )
         cache_build_duration += time.perf_counter() - cache_start
-        logits_by_example.append(model(batch["input_ids"][index : index + 1]))
         caches.append(cache)
-        selections.append(
-            {
-                layer_id: (batch_selected[0] if batch_selected else [])
-                for layer_id, batch_selected in model.selected_chunks_by_layer().items()
-            }
-        )
-        diagnostics.append(model.pra_diagnostics_by_layer())
-    # Reassemble independent [1,T,V] forwards into the logical training batch.
-    logits = torch.cat(logits_by_example, dim=0)
+
+    # URI strings may collide safely because the wrapper routes query row i only
+    # through caches[i]. It never creates a flattened cross-row namespace.
+    batch_cache = PRABatchedMemoryCache(caches)
+    model.set_pra_cache(batch_cache)
+
+    # This is the single expensive prompt Transformer execution for the logical batch.
+    _synchronize_for_timing(device)
+    prompt_start = time.perf_counter()
+    logits = model(batch["input_ids"])
+    _synchronize_for_timing(device)
+    prompt_forward_duration = time.perf_counter() - prompt_start
+
+    batch_size = int(batch["input_ids"].shape[0])
+    selections = _selections_by_row(model.selected_chunks_by_layer(), batch_size)
+    diagnostics = model.pra_diagnostics_by_layer()
     loss = F.cross_entropy(logits.view(-1, logits.size(-1)), batch["labels"].view(-1), ignore_index=0)
     retrieval_metrics = _retrieval_metrics(
         caches, selections, batch["metadata"], model.cfg, diagnostics
@@ -224,12 +280,21 @@ def _pra_batch_step(
     retrieval_metrics["cache_build_duration_seconds"] = cache_build_duration / max(
         len(caches), 1
     )
+    retrieval_metrics.update(
+        {
+            "cache_build_total_duration_seconds": cache_build_duration,
+            "logical_batch_size": float(batch_size),
+            "prompt_forward_calls": 1.0,
+            "prompt_forward_duration_seconds": prompt_forward_duration,
+        }
+    )
     return loss, {
         "tokens": int(batch["attention_mask"].sum().item()),
-        "examples": int(batch["input_ids"].shape[0]),
+        "examples": batch_size,
         "batch": batch,
-        "cache": caches[-1],
+        "cache": caches[-1] if caches else None,
         "caches": caches,
+        "batch_cache": batch_cache,
         "selections": selections,
         "diagnostics": diagnostics,
         "metrics": retrieval_metrics,
@@ -344,16 +409,22 @@ def evaluate_pra_model(
                             len(tokenizer.encode(entry.text)) for entry in cache.all_entries()
                         ],
                         "memory_lengths_by_layer": {
-                            str(layer_id): sum(hit.selected_token_count for hit in selected)
+                            str(layer_id): int(
+                                _row_batching_metrics(
+                                    batch_metrics["diagnostics"].get(layer_id, {}), index
+                                ).get(
+                                    "memory_valid_positions",
+                                    sum(hit.selected_token_count for hit in selected),
+                                )
+                            )
                             for layer_id, selected in layer_selections.items()
                         },
                         "bucket_stats_by_layer": {
-                            str(layer_id): (
-                                diagnostic["batching"].as_metrics()
-                                if diagnostic.get("batching") is not None
-                                else {}
+                            str(layer_id): _row_batching_metrics(
+                                diagnostic,
+                                index,
                             )
-                            for layer_id, diagnostic in batch_metrics["diagnostics"][index].items()
+                            for layer_id, diagnostic in batch_metrics["diagnostics"].items()
                         },
                         "recursive_paths": [asdict(event) for event in resolution_events],
                         "routing_configuration": {

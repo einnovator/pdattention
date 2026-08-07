@@ -179,7 +179,9 @@ def validated_extra_metrics(values: dict | None, reserved: set[str]) -> dict[str
     for key, value in (values or {}).items():
         if key in reserved or not isinstance(key, str):
             continue
-        if not key.startswith(("retrieval_", "memory_", "bucket_", "cache_", "layer_")):
+        if not key.startswith(
+            ("retrieval_", "memory_", "bucket_", "cache_", "layer_", "logical_", "prompt_")
+        ):
             continue
         if torch.is_tensor(value):
             if value.numel() != 1:

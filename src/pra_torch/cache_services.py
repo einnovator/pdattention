@@ -73,23 +73,33 @@ def build_cache_from_metadata(
     cache_config: CacheServiceConfig | dict | str | None = None,
     resolver=None,
     cache: PRAMemoryCache | None = None,
+    attach_to_model: bool = True,
 ) -> PRAMemoryCache:
     """Build, populate, and attach a PRA memory cache from collator metadata.
 
     ``resolver_config`` and ``cache_config`` select the service implementations.
     Passing explicit ``resolver`` or ``cache`` instances is useful for tests and
-    custom research experiments.
+    custom research experiments. ``attach_to_model=False`` restores the model's
+    previous cache after construction; recursive encoding may still attach the
+    row cache temporarily so a parent can attend to its completed children.
     """
     # Turn batch metadata into services, then resolve each distinct root URI.
     documents, summaries, handles = collect_reference_metadata(metadata)
     resolver = resolver if resolver is not None else create_resolver(resolver_config, documents, summaries)
     cache = cache if cache is not None else create_cache(cache_config)
 
+    previous_cache = model.pra_cache
     builder = RecursiveReferenceCacheBuilder(model, resolver, tokenizer, cache, model.cfg)
-    for handle in dict.fromkeys(ref.uri for ref in handles):
-        builder.ensure_cached(handle)
+    try:
+        for handle in dict.fromkeys(ref.uri for ref in handles):
+            builder.ensure_cached(handle)
+    finally:
+        if not attach_to_model:
+            model.set_pra_cache(previous_cache)
+
     # Attach lightweight audit data used by evaluation reports and causal traces.
     cache.resolution_events = list(builder.events)
     cache.dependencies = list(builder.dependencies)
-    model.set_pra_cache(cache)
+    if attach_to_model:
+        model.set_pra_cache(cache)
     return cache

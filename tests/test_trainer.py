@@ -81,6 +81,8 @@ def test_metric_history_tracks_every_batch_and_epoch(tmp_path):
     assert [record["step"] for record in epoch_records] == [1, 2, 3]
     assert [record["step"] for record in val_epoch_records] == [1, 2, 3]
     assert all("retrieval_selected_chunk_count" in record["metrics"] for record in batch_records)
+    assert all(record["metrics"]["prompt_forward_calls"] == 1.0 for record in batch_records)
+    assert all(record["metrics"]["logical_batch_size"] >= 1.0 for record in batch_records)
     assert "retrieval_selected_chunk_count" in epoch_records[-1]["metrics"]
     assert trainer.batch_step == 3
 

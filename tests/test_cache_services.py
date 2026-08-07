@@ -83,3 +83,24 @@ def test_cache_builder_accepts_prebuilt_cache_instance():
     assert cache is prebuilt_cache
     first = cache.all_entries()[0]
     assert torch.is_tensor(first.layer_memory[0].chunks[0].routing_gist.k)
+
+
+def test_cache_builder_can_restore_previous_model_cache_without_attaching_result():
+    dm = PRADataModule(
+        "stage0_synthetic_memory", "data", max_examples=1, batch_size=1, max_seq_len=64
+    ).load()
+    batch = next(iter(dm.train_loader()))
+    model = tiny_model(dm.tokenizer.vocab_size)
+    previous = model.pra_cache
+
+    built = build_cache_from_metadata(
+        model,
+        dm.tokenizer,
+        batch["metadata"],
+        "cpu",
+        attach_to_model=False,
+    )
+
+    assert built is not previous
+    assert built.all_entries()
+    assert model.pra_cache is previous

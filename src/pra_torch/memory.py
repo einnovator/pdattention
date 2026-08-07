@@ -212,6 +212,11 @@ class PRAMemoryCache(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def is_empty(self) -> bool:
+        """Return whether no memory is visible to routing."""
+        raise NotImplementedError
+
+    @abstractmethod
     def search(self, query: torch.Tensor, layer_id: int, config) -> list[list[SelectedChunk]]:
         """Route ``[B,d_model]`` queries against gists from one decoder layer."""
         raise NotImplementedError
@@ -285,6 +290,10 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         self._entries.clear()
         self._states.clear()
         self._failures.clear()
+
+    def is_empty(self) -> bool:
+        """Return whether this row-local namespace has no ready entries."""
+        return not any(self.state(uri) == CacheBuildState.READY for uri in self._entries)
 
     def invalidate(self, uri: str) -> None:
         """Remove a stale URI before rebuilding it with new fingerprints."""
@@ -513,3 +522,83 @@ class PRASimpleMemoryCache(PRAMemoryCache):
             [(hit.entry, hit.reference_score) for hit in batch_hits]
             for batch_hits in selected
         ]
+
+
+class PRABatchedMemoryCache(PRAMemoryCache):
+    """Route each logical batch row through its own completed cache namespace.
+
+    The wrapper is attached only for the batched prompt forward. URI lookup is
+    intentionally unavailable because two rows may bind the same URI to different
+    content. Routing remains row-local while ``PRAttention`` and
+    ``dynamic_memory_attention`` execute one query batch.
+    """
+
+    def __init__(self, row_caches: list[PRAMemoryCache]):
+        """Keep row caches in the same order as ``input_ids`` batch rows."""
+        self.row_caches = list(row_caches)
+
+    @property
+    def entries(self) -> dict[str, PRACacheEntry]:
+        """Reject ambiguous flattening of duplicate URIs across row namespaces."""
+        raise RuntimeError(
+            "PRABatchedMemoryCache has no flat entries view; inspect row_caches explicitly."
+        )
+
+    def put(self, entry: PRACacheEntry) -> None:
+        """Reject writes because row caches must be complete before wrapping."""
+        del entry
+        raise RuntimeError("Cannot put entries directly into PRABatchedMemoryCache.")
+
+    def get(self, uri: str) -> PRACacheEntry | None:
+        """Reject URI-only lookup because URI identity is scoped by batch row."""
+        del uri
+        raise RuntimeError("Batched cache lookup requires an explicit row cache.")
+
+    def has(self, uri: str) -> bool:
+        """Reject URI-only membership tests because namespaces are row-local."""
+        del uri
+        raise RuntimeError("Batched cache membership requires an explicit row cache.")
+
+    def all_entries(self) -> list[PRACacheEntry]:
+        """Return a diagnostic list that preserves duplicate entries as objects."""
+        return [entry for cache in self.row_caches for entry in cache.all_entries()]
+
+    def clear(self) -> None:
+        """Clear every owned row namespace."""
+        for cache in self.row_caches:
+            cache.clear()
+
+    def is_empty(self) -> bool:
+        """Return true only when every row-local namespace is empty."""
+        return all(cache.is_empty() for cache in self.row_caches)
+
+    def search(
+        self,
+        query: torch.Tensor,
+        layer_id: int,
+        config,
+    ) -> list[list[SelectedChunk]]:
+        """Route ``query[i]`` only against ``row_caches[i]``.
+
+        ``query`` is ``[B,d_model]`` and the result has one selected-chunk list
+        per row. The row loop is deliberate: the performance fix targets the
+        expensive Transformer prompt forward while leaving routing vectorization
+        as an independent optimization.
+        """
+        if query.ndim == 1:
+            query = query.unsqueeze(0)
+        if query.ndim != 2:
+            raise ValueError(f"Expected query [batch,model], got {tuple(query.shape)}.")
+        if query.shape[0] != len(self.row_caches):
+            raise ValueError(
+                "Routing-query batch size must match row-local cache count: "
+                f"{query.shape[0]} != {len(self.row_caches)}."
+            )
+        return [
+            cache.search(query[row_index : row_index + 1], layer_id, config)[0]
+            for row_index, cache in enumerate(self.row_caches)
+        ]
+
+    def __len__(self) -> int:
+        """Count ready entries without collapsing duplicate URI strings."""
+        return sum(len(cache) for cache in self.row_caches)

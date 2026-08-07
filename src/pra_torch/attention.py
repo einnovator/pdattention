@@ -183,7 +183,7 @@ class PRAttention(nn.Module):
         weights = F.softmax(scores, dim=-1)
         local_out = self.o_proj(self.merge_heads(weights @ v))
 
-        if not use_pra_memory or not self.pra_cache.entries:
+        if not use_pra_memory or self.pra_cache.is_empty():
             return local_out
 
         # The newest token decides what memory is relevant for each item/layer.

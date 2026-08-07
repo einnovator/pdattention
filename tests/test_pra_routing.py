@@ -352,7 +352,7 @@ def test_chunk_metrics_are_separate_from_cache_size_and_omitted_without_labels()
         [{0: selected}],
         [labeled],
         _routing_config(),
-        [{0: {}}],
+        {0: {}},
     )
     assert metrics["retrieval_chunk_hit_at_1"] == 1.0
     assert metrics["retrieval_chunk_recall_at_k"] == 1.0
@@ -361,7 +361,7 @@ def test_chunk_metrics_are_separate_from_cache_size_and_omitted_without_labels()
 
     unlabeled = {**labeled, "target_chunk_ids": []}
     missing = _retrieval_metrics(
-        [cache], [{0: selected}], [unlabeled], _routing_config(), [{0: {}}]
+        [cache], [{0: selected}], [unlabeled], _routing_config(), {0: {}}
     )
     assert "retrieval_chunk_hit_at_1" not in missing
     assert missing["retrieval_chunk_labels_available_fraction"] == 0.0

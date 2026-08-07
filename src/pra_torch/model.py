@@ -204,7 +204,7 @@ class TinyPRAModel(nn.Module):
         self.pra_cache.clear()
 
     def selected_chunks_by_layer(self) -> dict[int, list[list]]:
-        """Return latest selections as ``layer -> batch row -> ranked chunks``."""
+        """Return row-local selections as ``layer -> batch row -> ranked chunks``."""
         selections = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
@@ -231,7 +231,11 @@ class TinyPRAModel(nn.Module):
         return result
 
     def pra_diagnostics_by_layer(self) -> dict[int, dict]:
-        """Collect latest routing/materialization/batching metrics by PRA layer."""
+        """Collect latest batch-level routing/materialization metrics by PRA layer.
+
+        Unlike ``selected_chunks_by_layer``, output norms, padding totals, and
+        timing summarize the layer's complete logical batch rather than one row.
+        """
         diagnostics = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
