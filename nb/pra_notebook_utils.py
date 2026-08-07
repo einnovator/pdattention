@@ -716,7 +716,7 @@ def generate_split_count_html_report(
     runtime: NotebookRuntime,
     report_name: str = "wikitext2_split_count_comparison",
 ) -> Path:
-    """Compare quality and execution time for fixed WikiText split counts."""
+    """Aggregate paired-seed quality and timing for fixed WikiText split counts."""
     if len(results) != len(report_paths):
         raise ValueError("results and report_paths must describe the same runs")
     rows = []
@@ -728,6 +728,7 @@ def generate_split_count_html_report(
         rows.append(
             {
                 "model": result["model_name"],
+                "seed": int(result["train_config"].seed),
                 "split_count": int(result["loader_summary"]["split_count"]),
                 "reference_count": int(result["loader_summary"]["reference_count"]),
                 "test_loss": summary.get("test_loss"),
@@ -735,6 +736,14 @@ def generate_split_count_html_report(
                 "valid_loss": ablations.get("valid", {}).get("loss"),
                 "disabled_loss": ablations.get("disabled", {}).get("loss"),
                 "shuffled_loss": ablations.get("shuffled", {}).get("loss"),
+                "disabled_loss_delta": (
+                    ablations.get("disabled", {}).get("loss")
+                    - ablations.get("valid", {}).get("loss")
+                ),
+                "shuffled_loss_delta": (
+                    ablations.get("shuffled", {}).get("loss")
+                    - ablations.get("valid", {}).get("loss")
+                ),
                 "train_seconds": summary.get("train_duration_seconds"),
                 "validation_seconds": summary.get("validation_duration_seconds"),
                 "processed_tokens": summary.get("processed_tokens"),
@@ -745,29 +754,75 @@ def generate_split_count_html_report(
             }
         )
 
+    paired_model_seeds = validate_paired_model_seeds(rows)
+    metric_names = (
+        "test_loss",
+        "test_perplexity",
+        "valid_loss",
+        "disabled_loss",
+        "shuffled_loss",
+        "disabled_loss_delta",
+        "shuffled_loss_delta",
+        "train_seconds",
+        "validation_seconds",
+        "processed_tokens",
+        "training_tokens_per_second",
+        "reference_top1_accuracy",
+        "reference_mrr",
+    )
+    aggregate_rows = []
+    group_keys = sorted({(row["model"], row["split_count"]) for row in rows})
+    for model, split_count in group_keys:
+        group = [
+            row
+            for row in rows
+            if row["model"] == model and row["split_count"] == split_count
+        ]
+        metrics = {}
+        for metric in metric_names:
+            values = [float(row[metric]) for row in group]
+            metrics[metric] = {
+                "mean": statistics.fmean(values),
+                "stddev": statistics.pstdev(values),
+                "values": values,
+            }
+        aggregate_rows.append(
+            {
+                "model": model,
+                "split_count": split_count,
+                "reference_count": group[0]["reference_count"],
+                "seeds": sorted(row["seed"] for row in group),
+                "metrics": metrics,
+            }
+        )
+
     report_dir = runtime.repo / "out" / "reports" / report_name
     assets_dir = report_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
-    models = list(dict.fromkeys(row["model"] for row in rows))
+    models = list(dict.fromkeys(row["model"] for row in aggregate_rows))
     colors = ["#2563eb", "#dc2626", "#059669", "#d97706"]
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     for model, color in zip(models, colors):
         model_rows = sorted(
-            (row for row in rows if row["model"] == model),
+            (row for row in aggregate_rows if row["model"] == model),
             key=lambda row: row["split_count"],
         )
         splits = [row["split_count"] for row in model_rows]
-        axes[0].plot(
+        axes[0].errorbar(
             splits,
-            [row["test_loss"] for row in model_rows],
+            [row["metrics"]["test_loss"]["mean"] for row in model_rows],
+            yerr=[row["metrics"]["test_loss"]["stddev"] for row in model_rows],
             marker="o",
+            capsize=4,
             label=model,
             color=color,
         )
-        axes[1].plot(
+        axes[1].errorbar(
             splits,
-            [row["train_seconds"] for row in model_rows],
+            [row["metrics"]["train_seconds"]["mean"] for row in model_rows],
+            yerr=[row["metrics"]["train_seconds"]["stddev"] for row in model_rows],
             marker="o",
+            capsize=4,
             label=model,
             color=color,
         )
@@ -787,58 +842,85 @@ def generate_split_count_html_report(
         "report_name": report_name,
         "generated_at": datetime.now().astimezone().isoformat(),
         "runtime": runtime.as_dict(),
+        "model_seeds": paired_model_seeds,
         "split_count_semantics": "total parts including the final prediction tail",
         "controls": {
             "shared_tokenizer": True,
             "shared_source_examples": True,
-            "shared_seed": True,
+            "paired_model_seeds": True,
+            "fixed_dataset_generation_seed": 1729,
+            "fixed_dataset_split_seed": 1729,
             "shared_optimizer_step_budget": True,
             "shared_sequence_length": True,
             "equal_processed_token_budget": False,
             "target_span_changes_with_split_count": True,
         },
-        "runs": rows,
+        "aggregates": aggregate_rows,
+        "seed_runs": rows,
     }
     (report_dir / "report.json").write_text(
         json.dumps(payload, indent=2, default=str), encoding="utf-8"
     )
-    headers = [
-        "model",
-        "split_count",
-        "reference_count",
-        "test_loss",
-        "valid_loss",
-        "disabled_loss",
-        "shuffled_loss",
-        "reference_top1_accuracy",
-        "processed_tokens",
-        "train_seconds",
-        "validation_seconds",
-    ]
+    headers = ["model", "split_count", "seeds", "test_loss", "disabled_loss_delta", "shuffled_loss_delta", "reference_top1_accuracy", "train_seconds", "validation_seconds"]
     table = "<table><tr>" + "".join(
         f"<th>{escape(header.replace('_', ' ').title())}</th>" for header in headers
     ) + "</tr>"
-    for row in rows:
+    for row in aggregate_rows:
+        values = {
+            "model": row["model"],
+            "split_count": row["split_count"],
+            "seeds": row["seeds"],
+            **{
+                metric: f"{row['metrics'][metric]['mean']:.6g} +/- {row['metrics'][metric]['stddev']:.3g}"
+                for metric in headers[3:]
+            },
+        }
         table += "<tr>" + "".join(
-            f"<td>{escape(f'{row[header]:.6g}' if isinstance(row[header], float) else str(row[header]))}</td>"
-            for header in headers
+            f"<td>{escape(str(values[header]))}</td>" for header in headers
         ) + "</tr>"
     table += "</table>"
     links = "".join(
-        f'<li><a href="{escape(row["report"])}">{escape(row["model"])} split {row["split_count"]}</a></li>'
+        f'<li><a href="{escape(row["report"])}">{escape(row["model"])} split {row["split_count"]}, seed {row["seed"]}</a></li>'
         for row in rows
     )
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>WikiText-2 split-count comparison</title>
 <style>body{{font-family:Segoe UI,Arial;margin:32px auto;max-width:1150px;color:#18202a}}table{{border-collapse:collapse;width:100%}}th,td{{padding:8px;border-bottom:1px solid #ddd;text-align:left}}img{{width:100%}}code{{font-family:Consolas}}</style></head><body>
 <h1>WikiText-2 Split-Count Comparison</h1>
-<p>Split count is the total number of document parts, including the final prediction tail. Thus split 2 exposes one reference and split 5 exposes four. Runs share source examples, seed, tokenizer, optimizer-step budget, and sequence length.</p>
+<p>Population mean +/- standard deviation across paired model seeds 1, 7, 21, 42, and 87. Split count is the total number of document parts, including the final prediction tail. Thus split 2 exposes one reference and split 5 exposes four. Runs share source examples, dataset generation/split seeds, tokenizer, optimizer-step budget, and sequence length.</p>
 {table}<h2>Quality And Execution Time</h2><img src="assets/split_count_comparison.png" alt="Split-count comparison">
 <h2>Run Reports</h2><ul>{links}</ul><p><a href="report.json">Structured report JSON</a></p></body></html>"""
     path = report_dir / "index.html"
     path.write_text(html, encoding="utf-8")
     print(f"wrote split-count HTML report: {path}")
     return path
+
+
+def validate_paired_model_seeds(
+    rows: list[dict[str, Any]], minimum_seed_count: int = 5
+) -> list[int]:
+    """Require the same minimum set of model seeds in every comparison group."""
+    grouped: dict[tuple[str, int], list[int]] = defaultdict(list)
+    for row in rows:
+        grouped[(str(row["model"]), int(row["split_count"]))].append(int(row["seed"]))
+    if not grouped:
+        raise ValueError("A seed comparison requires at least one model/split group")
+
+    expected: set[int] | None = None
+    for key, seeds in grouped.items():
+        unique_seeds = set(seeds)
+        if len(unique_seeds) != len(seeds):
+            raise ValueError(f"Comparison group {key} contains duplicate model seeds")
+        if len(unique_seeds) < minimum_seed_count:
+            raise ValueError(
+                f"Comparison group {key} requires at least {minimum_seed_count} model seeds"
+            )
+        if expected is None:
+            expected = unique_seeds
+        elif unique_seeds != expected:
+            raise ValueError("All comparison groups must use the same paired model seeds")
+
+    return sorted(expected or ())
 
 
 def load_experiment_settings(runtime: NotebookRuntime, experiment_name: str) -> dict[str, Any]:
