@@ -1,16 +1,8 @@
 from pathlib import Path
-from dataclasses import asdict, is_dataclass
 
 import torch
 
-
-def serializable_config(config) -> dict:
-    """Return config as plain Python containers safe for weights-only loading."""
-    if is_dataclass(config):
-        return asdict(config)
-    if hasattr(config, "__dict__"):
-        return dict(config.__dict__)
-    return dict(config)
+from common.checkpointing import load_checkpoint, serializable_config
 
 
 def checkpoint_payload(model, optimizer, scheduler, config, epoch, global_step, best_val_loss, tokenizer) -> dict:
@@ -38,12 +30,9 @@ def save_checkpoint(path, model, optimizer, scheduler, config, epoch, global_ste
     return path
 
 
-def load_checkpoint(path, model, optimizer=None, scheduler=None, map_location="cpu") -> dict:
-    """Load a checkpoint into the provided model and optional optimizer state."""
-    checkpoint = torch.load(path, map_location=map_location)
-    model.load_state_dict(checkpoint["model"])
-    if optimizer is not None and checkpoint.get("optimizer") is not None:
-        optimizer.load_state_dict(checkpoint["optimizer"])
-    if scheduler is not None and checkpoint.get("scheduler") is not None:
-        scheduler.load_state_dict(checkpoint["scheduler"])
-    return checkpoint
+__all__ = [
+    "checkpoint_payload",
+    "load_checkpoint",
+    "save_checkpoint",
+    "serializable_config",
+]

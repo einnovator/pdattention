@@ -1,5 +1,7 @@
 import torch
 
+import pytest
+
 from data.collators import PRACollator
 from data.datamodules import PRADataModule
 from data.datasets import (
@@ -101,6 +103,32 @@ def test_wikitext_reference_v2_has_one_randomized_relevant_candidate(tmp_path, m
     )
     assert all(
         sample.metadata["row"]["generation_version"] == "wikitext_refs_v2"
+        for sample in dataset
+    )
+
+
+@pytest.mark.parametrize("split_count", [2, 5])
+def test_wikitext_reference_v2_supports_fixed_split_counts(
+    tmp_path, monkeypatch, split_count
+):
+    documents = [
+        {"text": " ".join(f"token{index}" for index in range(120))}
+        for _ in range(3)
+    ]
+    monkeypatch.setattr(
+        "data.datasets.load_wikitext_splits",
+        lambda *args, **kwargs: {"train": documents},
+    )
+
+    generate_wikitext_reference_dataset_v2(
+        tmp_path, max_examples=3, split_count=split_count, seed=1729
+    )
+    dataset = WikiTextReferenceV2Dataset(tmp_path)
+
+    assert all(len(sample.references) == split_count - 1 for sample in dataset)
+    assert all(sample.metadata["row"]["split_count"] == split_count for sample in dataset)
+    assert all(
+        sample.metadata["row"]["reference_count"] == split_count - 1
         for sample in dataset
     )
 

@@ -192,6 +192,24 @@ experiments:
     model_name: td_pra_tiny
     dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 32, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+  td_sa_tiny_wikitext2_refs_split2_smoke:
+    model_name: td_sa_tiny
+    dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, max_examples: 32, split_count: 2, bpe_vocab_size: 2000}
+    train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+  td_sa_tiny_wikitext2_refs_split5_smoke:
+    model_name: td_sa_tiny
+    dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, max_examples: 32, split_count: 5, bpe_vocab_size: 2000}
+    train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+  td_pra_tiny_wikitext2_refs_split2_smoke:
+    model_name: td_pra_tiny
+    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, max_examples: 32, split_count: 2, bpe_vocab_size: 2000}
+    train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
+  td_pra_tiny_wikitext2_refs_split5_smoke:
+    model_name: td_pra_tiny
+    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, max_examples: 32, split_count: 5, bpe_vocab_size: 2000}
+    train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
 
   plain_sa_pretrain:
     model_name: td_sa_tiny

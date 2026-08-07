@@ -1,0 +1,99 @@
+{
+  "report_name": "wikitext2_split_count_comparison",
+  "generated_at": "2026-08-07T19:46:12.565068+01:00",
+  "runtime": {
+    "repo": "D:\\git\\rd\\pdattention",
+    "seed": 7,
+    "device": "cuda",
+    "write_images_to_disk": false,
+    "python": "3.10.11",
+    "torch_version": "2.12.1+cu126",
+    "torch_cuda": "12.6",
+    "cuda_available": true,
+    "gpu": "NVIDIA GeForce GTX 950M",
+    "compute_capability": [
+      5,
+      0
+    ]
+  },
+  "split_count_semantics": "total parts including the final prediction tail",
+  "controls": {
+    "shared_tokenizer": true,
+    "shared_source_examples": true,
+    "shared_seed": true,
+    "shared_optimizer_step_budget": true,
+    "shared_sequence_length": true,
+    "equal_processed_token_budget": false,
+    "target_span_changes_with_split_count": true
+  },
+  "runs": [
+    {
+      "model": "td_sa_tiny",
+      "split_count": 2,
+      "reference_count": 1,
+      "test_loss": 7.183663606643677,
+      "test_perplexity": 1317.7270593691803,
+      "valid_loss": 7.178933017225151,
+      "disabled_loss": 7.178933017225151,
+      "shuffled_loss": 7.178933017225151,
+      "train_seconds": 0.7660808999789879,
+      "validation_seconds": 0.0395839000120759,
+      "processed_tokens": 927,
+      "training_tokens_per_second": 1210.054969423498,
+      "reference_top1_accuracy": 0.0,
+      "reference_mrr": 0.0,
+      "report": "../td_sa_tiny_wikitext2_references_v2_split2_steps8_seq128/index.html"
+    },
+    {
+      "model": "td_sa_tiny",
+      "split_count": 5,
+      "reference_count": 4,
+      "test_loss": 7.2147722244262695,
+      "test_perplexity": 1359.3640029035794,
+      "valid_loss": 7.220031034029447,
+      "disabled_loss": 7.220031034029447,
+      "shuffled_loss": 7.220031034029447,
+      "train_seconds": 0.8495239000767469,
+      "validation_seconds": 0.08411759999580681,
+      "processed_tokens": 1157,
+      "training_tokens_per_second": 1361.939316710778,
+      "reference_top1_accuracy": 0.0,
+      "reference_mrr": 0.0,
+      "report": "../td_sa_tiny_wikitext2_references_v2_split5_steps8_seq128/index.html"
+    },
+    {
+      "model": "td_pra_tiny",
+      "split_count": 2,
+      "reference_count": 1,
+      "test_loss": 7.142124652862549,
+      "test_perplexity": 1264.1113356919122,
+      "valid_loss": 7.137649719973645,
+      "disabled_loss": 7.167781508112529,
+      "shuffled_loss": 7.137999936758754,
+      "train_seconds": 0.9451767999562435,
+      "validation_seconds": 0.08039250003639609,
+      "processed_tokens": 927,
+      "training_tokens_per_second": 980.7688889982435,
+      "reference_top1_accuracy": 1.0,
+      "reference_mrr": 1.0,
+      "report": "../td_pra_tiny_wikitext2_references_v2_split2_steps8_seq128/index.html"
+    },
+    {
+      "model": "td_pra_tiny",
+      "split_count": 5,
+      "reference_count": 4,
+      "test_loss": 7.2172160148620605,
+      "test_perplexity": 1362.6900660980439,
+      "valid_loss": 7.220430227426382,
+      "disabled_loss": 7.248046405498798,
+      "shuffled_loss": 7.219970468374399,
+      "train_seconds": 1.1787713998928666,
+      "validation_seconds": 0.25812780001433566,
+      "processed_tokens": 1157,
+      "training_tokens_per_second": 981.5304308410899,
+      "reference_top1_accuracy": 0.125,
+      "reference_mrr": 0.125,
+      "report": "../td_pra_tiny_wikitext2_references_v2_split5_steps8_seq128/index.html"
+    }
+  ]
+}

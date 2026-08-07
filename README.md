@@ -87,10 +87,12 @@ The professional standalone trainer uses the `standalone_tiny` profile in:
 config/config.yml
 ```
 
-Both the Click CLI and standalone scripts use the generic functional engine in
-`src/pra_torch/train.py` through the PRA-specific adapters in
-`src/pra_torch/pra_train.py`. `PRAStandaloneTrainer` remains as a compatibility
-shell for code that prefers an object-oriented `train()`, `validate()`, and `test()` API.
+Both the Click CLI and standalone scripts use the model-independent infrastructure in
+`src/common`, with the canonical optimizer loop in `src/common/train.py`. PRA-specific
+cache construction, evaluation, and retrieval metrics remain in
+`src/pra_torch/pra_train.py`. `src/pra_torch/train.py` only preserves the old import path,
+and `PRAStandaloneTrainer` remains a compatibility shell for code that prefers an
+object-oriented `train()`, `validate()`, and `test()` API.
 
 Train:
 

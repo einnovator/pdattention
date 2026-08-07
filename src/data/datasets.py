@@ -279,14 +279,27 @@ def generate_wikitext_reference_dataset(
     dataset_name: str = "wikitext-2-raw-v1",
     max_examples: int = 128,
     max_reference_parts: int = 5,
+    split_count: int | None = None,
     seed: int = 7,
     min_words: int = 80,
+    cache_dir: str | Path | None = None,
 ) -> Path:
-    """Create PRA examples with a tail prompt referencing one to five earlier chunks."""
+    """Create PRA examples whose final split references the preceding text splits.
+
+    ``split_count`` fixes the total number of parts, including the final tail. When
+    omitted, the legacy mixed dataset cycles through one to ``max_reference_parts``
+    references per example.
+    """
+    if split_count is not None and split_count < 2:
+        raise ValueError("split_count must include at least one reference and one tail")
+    if max_reference_parts < 1:
+        raise ValueError("max_reference_parts must be at least 1")
     data_dir = Path(data_dir)
     stage_dir = data_dir / WikiTextReferenceDataset.stage
     stage_dir.mkdir(parents=True, exist_ok=True)
-    splits = load_wikitext_splits(dataset_name, cache_dir=data_dir / ".hf_cache")
+    splits = load_wikitext_splits(
+        dataset_name, cache_dir=cache_dir or data_dir / ".hf_cache"
+    )
     candidates = [
         text for text in wikitext_documents(splits["train"]) if len(text.split()) >= min_words
     ]
@@ -298,8 +311,8 @@ def generate_wikitext_reference_dataset(
 
     for example_index, text in enumerate(candidates[:max_examples]):
         words = text.split()
-        reference_count = 1 + example_index % max_reference_parts
-        part_count = reference_count + 1
+        part_count = split_count or (2 + example_index % max_reference_parts)
+        reference_count = part_count - 1
         part_size = max(1, len(words) // part_count)
         parts = [
             " ".join(words[index * part_size : (index + 1) * part_size])
@@ -338,6 +351,8 @@ def generate_wikitext_reference_dataset(
                 "tail_span": [len(words) - answer_size, len(words)],
                 "token_distance": max(len(words) - reference_count * part_size, 0),
                 "number_of_parts": part_count,
+                "split_count": part_count,
+                "reference_count": reference_count,
                 "local_context_sufficient": False,
                 "reference_relation": "indirect_natural_continuation",
             }
@@ -360,14 +375,26 @@ def generate_wikitext_reference_dataset_v2(
     dataset_name: str = "wikitext-2-raw-v1",
     max_examples: int = 512,
     max_reference_parts: int = 5,
+    split_count: int | None = None,
     seed: int = 1729,
     min_words: int = 80,
+    cache_dir: str | Path | None = None,
 ) -> Path:
-    """Create a fixed, selection-labelled reference-conditioned continuation set."""
+    """Create a selection-labelled reference-conditioned continuation set.
+
+    ``split_count`` fixes the total number of parts, including the held-out tail.
+    Omitting it retains the legacy mixed-reference-count generation policy.
+    """
+    if split_count is not None and split_count < 2:
+        raise ValueError("split_count must include at least one reference and one tail")
+    if max_reference_parts < 1:
+        raise ValueError("max_reference_parts must be at least 1")
     data_dir = Path(data_dir)
     stage_dir = data_dir / WikiTextReferenceV2Dataset.stage
     stage_dir.mkdir(parents=True, exist_ok=True)
-    splits = load_wikitext_splits(dataset_name, cache_dir=data_dir / ".hf_cache")
+    splits = load_wikitext_splits(
+        dataset_name, cache_dir=cache_dir or data_dir / ".hf_cache"
+    )
     candidates = [
         (source_index, text)
         for source_index, text in enumerate(wikitext_documents(splits["train"]))
@@ -381,8 +408,8 @@ def generate_wikitext_reference_dataset_v2(
 
     for example_index, (source_index, text) in enumerate(candidates[:max_examples]):
         words = text.split()
-        reference_count = 1 + example_index % max_reference_parts
-        part_count = reference_count + 1
+        part_count = split_count or (2 + example_index % max_reference_parts)
+        reference_count = part_count - 1
         part_size = max(1, len(words) // part_count)
         parts = [
             " ".join(words[index * part_size : (index + 1) * part_size])
@@ -444,6 +471,8 @@ def generate_wikitext_reference_dataset_v2(
                 "relevant_part_ids": [relevant_id],
                 "target_part_id": f"tail-{source_index}",
                 "num_parts": part_count,
+                "split_count": part_count,
+                "reference_count": reference_count,
                 "reference_distance_tokens": local_context_size,
                 "local_context_sufficient": False,
                 "dependency_type": "indirect_continuation",

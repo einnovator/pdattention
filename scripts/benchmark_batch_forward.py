@@ -22,7 +22,7 @@ from pra_torch.cache_services import build_cache_from_metadata
 from pra_torch.config import PRAConfig
 from pra_torch.memory import PRABatchedMemoryCache
 from pra_torch.model import TinyPRAModel
-from pra_torch.train import resolve_device
+from common.train import resolve_device
 
 
 def _samples(batch_size: int) -> list[QuestionSample]:

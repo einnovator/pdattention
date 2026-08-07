@@ -7,10 +7,10 @@ import time
 import torch
 import torch.nn.functional as F
 
+from common.metrics import cuda_memory_allocated, perplexity
+from common.train import create_training_state, default_batch_step, move_batch, train_model
 from .config import PRAConfig, TrainConfig
-from .metrics import cuda_memory_allocated, perplexity
 from .model import TinyPRAModel
-from .train import create_training_state, move_batch, train_model
 
 
 def evaluate_language_model(*, model, loader, device: str, split: str = "val") -> dict:
@@ -66,12 +66,17 @@ def train_language_model(
     def eval_step(current_model, loader, device: str, split: str = "val"):
         return evaluate_language_model(model=current_model, loader=loader, device=device, split=split)
 
+    def batch_step(current_model, batch, device: str):
+        # PRA data uses token zero for padded/ignored labels.
+        return default_batch_step(current_model, batch, device, ignore_index=0)
+
     return train_model(
         model=state.model,
         train_config=train_config,
         train_loader=datamodule.train_loader(),
         val_loader=datamodule.val_loader(),
         test_loader=datamodule.test_loader(),
+        batch_step=batch_step,
         eval_step=eval_step,
         state=state,
     )

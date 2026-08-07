@@ -3,10 +3,11 @@ import sys
 import json
 from pathlib import Path
 
+from common.checkpointing import load_checkpoint
+from common.logging import ClearMLLogger, TensorBoardLogger, WandBLogger
 from data.datamodules import PRADataModule
-from pra_torch.checkpointing import load_checkpoint
 from pra_torch.config import PRAConfig, TrainConfig
-from pra_torch.logging import ClearMLLogger, TensorBoardLogger, WandBLogger
+from pra_torch.lm_train import train_language_model
 from pra_torch.trainer import PRAStandaloneTrainer
 
 
@@ -50,6 +51,48 @@ def test_trainer_initializes(tmp_path):
     assert trainer.model is not None
     assert trainer.optimizer is not None
     assert trainer.datamodule.train_loader() is not None
+
+
+def test_plain_language_model_adapter_uses_common_engine(tmp_path):
+    datamodule = PRADataModule(
+        "stage0_synthetic_memory",
+        "data",
+        max_examples=3,
+        batch_size=2,
+        max_seq_len=32,
+    ).load()
+    model_config = PRAConfig(
+        vocab_size=datamodule.tokenizer.vocab_size,
+        d_model=16,
+        n_heads=4,
+        n_layers=1,
+        model_variant="td_sa",
+        max_seq_len=32,
+        device="cpu",
+    )
+    train_config = TrainConfig(
+        experiment_name="plain_lm_common_engine",
+        output_dir=str(tmp_path),
+        device="cpu",
+        epochs=1,
+        max_steps=1,
+        batch_size=2,
+        max_seq_len=32,
+        use_tensorboard=False,
+        save_metric_plots=False,
+        eval_every_steps=100,
+        save_every_steps=100,
+        log_every_steps=100,
+    )
+
+    result = train_language_model(
+        cfg=model_config,
+        train_config=train_config,
+        datamodule=datamodule,
+    )
+
+    assert result["global_step"] == 1
+    assert result["timing_metrics"]["processed_tokens"] > 0
 
 
 def test_one_training_epoch_and_validation_run(tmp_path):

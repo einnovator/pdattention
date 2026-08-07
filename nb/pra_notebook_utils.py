@@ -508,6 +508,10 @@ def summarize_workload(result: dict[str, Any]) -> dict[str, Any]:
         ),
         "test_reference_mrr": result["test_metrics"].get("reference_selection_mrr"),
     }
+    loader_summary = result.get("loader_summary", {})
+    if "split_count" in loader_summary:
+        summary["split_count"] = loader_summary["split_count"]
+        summary["reference_count"] = loader_summary.get("reference_count")
     if result.get("initial_reference_metrics"):
         initial = result["initial_reference_metrics"]
         summary["initial_validation_loss"] = initial.get("loss")
@@ -705,6 +709,138 @@ img{{display:block;width:100%;height:auto;border:1px solid #d7dde5;background:wh
     return report_path
 
 
+def generate_split_count_html_report(
+    results: list[dict[str, Any]],
+    report_paths: list[str | Path],
+    *,
+    runtime: NotebookRuntime,
+    report_name: str = "wikitext2_split_count_comparison",
+) -> Path:
+    """Compare quality and execution time for fixed WikiText split counts."""
+    if len(results) != len(report_paths):
+        raise ValueError("results and report_paths must describe the same runs")
+    rows = []
+    for result, report_path in zip(results, report_paths):
+        summary = summarize_workload(result)
+        ablations = {
+            item["condition"]: item for item in result.get("reference_ablations", [])
+        }
+        rows.append(
+            {
+                "model": result["model_name"],
+                "split_count": int(result["loader_summary"]["split_count"]),
+                "reference_count": int(result["loader_summary"]["reference_count"]),
+                "test_loss": summary.get("test_loss"),
+                "test_perplexity": summary.get("test_perplexity"),
+                "valid_loss": ablations.get("valid", {}).get("loss"),
+                "disabled_loss": ablations.get("disabled", {}).get("loss"),
+                "shuffled_loss": ablations.get("shuffled", {}).get("loss"),
+                "train_seconds": summary.get("train_duration_seconds"),
+                "validation_seconds": summary.get("validation_duration_seconds"),
+                "processed_tokens": summary.get("processed_tokens"),
+                "training_tokens_per_second": summary.get("training_tokens_per_second"),
+                "reference_top1_accuracy": summary.get("test_reference_top1_accuracy"),
+                "reference_mrr": summary.get("test_reference_mrr"),
+                "report": f"../{Path(report_path).parent.name}/index.html",
+            }
+        )
+
+    report_dir = runtime.repo / "out" / "reports" / report_name
+    assets_dir = report_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    models = list(dict.fromkeys(row["model"] for row in rows))
+    colors = ["#2563eb", "#dc2626", "#059669", "#d97706"]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    for model, color in zip(models, colors):
+        model_rows = sorted(
+            (row for row in rows if row["model"] == model),
+            key=lambda row: row["split_count"],
+        )
+        splits = [row["split_count"] for row in model_rows]
+        axes[0].plot(
+            splits,
+            [row["test_loss"] for row in model_rows],
+            marker="o",
+            label=model,
+            color=color,
+        )
+        axes[1].plot(
+            splits,
+            [row["train_seconds"] for row in model_rows],
+            marker="o",
+            label=model,
+            color=color,
+        )
+    axes[0].set(title="Loss by WikiText split count", xlabel="total split count", ylabel="test loss")
+    axes[1].set(title="Training time by WikiText split count", xlabel="total split count", ylabel="seconds")
+    for axis in axes:
+        axis.set_xticks([2, 5])
+        axis.grid(True, alpha=0.25)
+        axis.legend()
+    fig.tight_layout()
+    figure_path = assets_dir / "split_count_comparison.png"
+    fig.savefig(figure_path, dpi=150, bbox_inches="tight")
+    display(fig)
+    plt.close(fig)
+
+    payload = {
+        "report_name": report_name,
+        "generated_at": datetime.now().astimezone().isoformat(),
+        "runtime": runtime.as_dict(),
+        "split_count_semantics": "total parts including the final prediction tail",
+        "controls": {
+            "shared_tokenizer": True,
+            "shared_source_examples": True,
+            "shared_seed": True,
+            "shared_optimizer_step_budget": True,
+            "shared_sequence_length": True,
+            "equal_processed_token_budget": False,
+            "target_span_changes_with_split_count": True,
+        },
+        "runs": rows,
+    }
+    (report_dir / "report.json").write_text(
+        json.dumps(payload, indent=2, default=str), encoding="utf-8"
+    )
+    headers = [
+        "model",
+        "split_count",
+        "reference_count",
+        "test_loss",
+        "valid_loss",
+        "disabled_loss",
+        "shuffled_loss",
+        "reference_top1_accuracy",
+        "processed_tokens",
+        "train_seconds",
+        "validation_seconds",
+    ]
+    table = "<table><tr>" + "".join(
+        f"<th>{escape(header.replace('_', ' ').title())}</th>" for header in headers
+    ) + "</tr>"
+    for row in rows:
+        table += "<tr>" + "".join(
+            f"<td>{escape(f'{row[header]:.6g}' if isinstance(row[header], float) else str(row[header]))}</td>"
+            for header in headers
+        ) + "</tr>"
+    table += "</table>"
+    links = "".join(
+        f'<li><a href="{escape(row["report"])}">{escape(row["model"])} split {row["split_count"]}</a></li>'
+        for row in rows
+    )
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>WikiText-2 split-count comparison</title>
+<style>body{{font-family:Segoe UI,Arial;margin:32px auto;max-width:1150px;color:#18202a}}table{{border-collapse:collapse;width:100%}}th,td{{padding:8px;border-bottom:1px solid #ddd;text-align:left}}img{{width:100%}}code{{font-family:Consolas}}</style></head><body>
+<h1>WikiText-2 Split-Count Comparison</h1>
+<p>Split count is the total number of document parts, including the final prediction tail. Thus split 2 exposes one reference and split 5 exposes four. Runs share source examples, seed, tokenizer, optimizer-step budget, and sequence length.</p>
+{table}<h2>Quality And Execution Time</h2><img src="assets/split_count_comparison.png" alt="Split-count comparison">
+<h2>Run Reports</h2><ul>{links}</ul><p><a href="report.json">Structured report JSON</a></p></body></html>"""
+    path = report_dir / "index.html"
+    path.write_text(html, encoding="utf-8")
+    print(f"wrote split-count HTML report: {path}")
+    return path
+
+
 def load_experiment_settings(runtime: NotebookRuntime, experiment_name: str) -> dict[str, Any]:
     """Resolve one notebook experiment and its named model from central YAML."""
     config_path = runtime.repo / "config" / "config.yml"
@@ -847,17 +983,36 @@ def prepare_wikitext_reference_experiment(
         if dataset_stage == "wikitext2_references_v2"
         else generate_wikitext_reference_dataset
     )
+    data_root = runtime.repo / "data"
+    if dataset_cfg.get("split_count") is not None:
+        data_root = data_root / "generated" / experiment_artifact_name(
+            dataset_stage,
+            f"split{dataset_cfg['split_count']}",
+            f"seed{dataset_cfg.get('seed', runtime.seed)}",
+            f"examples{dataset_cfg['max_examples']}",
+        )
     generator(
-        runtime.repo / "data",
+        data_root,
         dataset_name=dataset_cfg["name"],
         max_examples=int(dataset_cfg["max_examples"]),
         max_reference_parts=int(dataset_cfg.get("max_reference_parts", 5)),
+        split_count=(
+            int(dataset_cfg["split_count"])
+            if dataset_cfg.get("split_count") is not None
+            else None
+        ),
         seed=int(dataset_cfg.get("seed", runtime.seed)),
+        cache_dir=runtime.repo / "data" / ".hf_cache",
     )
     dataset_cls = dataset_class_for_stage(dataset_stage)
-    dataset = dataset_cls(runtime.repo / "data", max_examples=int(dataset_cfg["max_examples"]))
+    dataset = dataset_cls(data_root, max_examples=int(dataset_cfg["max_examples"]))
     corpus = PRADataModule._corpus(dataset)
-    reference_tokens = [f"<REF_{index}>" for index in range(1, int(dataset_cfg.get("max_reference_parts", 5)) + 1)]
+    reference_count = (
+        int(dataset_cfg["split_count"]) - 1
+        if dataset_cfg.get("split_count") is not None
+        else int(dataset_cfg.get("max_reference_parts", 5))
+    )
+    reference_tokens = [f"<REF_{index}>" for index in range(1, reference_count + 1)]
     tokenizer = tokenizer or BPETokenizer.train(
         corpus,
         vocab_size=int(dataset_cfg.get("bpe_vocab_size", 2_000)),
@@ -866,7 +1021,7 @@ def prepare_wikitext_reference_experiment(
     torch.manual_seed(runtime.seed)
     datamodule = PRADataModule(
         dataset_stage=dataset_stage,
-        data_dir=runtime.repo / "data",
+        data_dir=data_root,
         max_examples=int(dataset_cfg["max_examples"]),
         batch_size=policy.batch_size,
         max_seq_len=policy.max_seq_len,
@@ -884,6 +1039,7 @@ def train_wikitext_reference_experiment(
     *,
     initial_checkpoint: str | Path | None = None,
     tokenizer_checkpoint: str | Path | None = None,
+    tokenizer: BPETokenizer | None = None,
     training_mode: str | None = None,
 ) -> dict[str, Any]:
     """Train a configured SA or PRA model on reference-split WikiText."""
@@ -891,7 +1047,7 @@ def train_wikitext_reference_experiment(
     tokenizer_source = checkpoint
     if tokenizer_source is None and tokenizer_checkpoint:
         tokenizer_source = torch.load(tokenizer_checkpoint, map_location="cpu")
-    pretrained_tokenizer = (
+    pretrained_tokenizer = tokenizer or (
         BPETokenizer.from_json(tokenizer_source["tokenizer_json"])
         if tokenizer_source and tokenizer_source.get("tokenizer_json")
         else None
@@ -899,6 +1055,7 @@ def train_wikitext_reference_experiment(
     settings, policy, datamodule = prepare_wikitext_reference_experiment(
         runtime, experiment_name, tokenizer=pretrained_tokenizer
     )
+    dataset_cfg = settings["experiment"]["dataset"]
     cfg = _named_pra_config(settings, datamodule.tokenizer, runtime)
     model = TinyPRAModel(cfg)
     if checkpoint:
@@ -969,7 +1126,7 @@ def train_wikitext_reference_experiment(
         dataset_stage=str(
             settings["experiment"]["dataset"].get("stage", "wikitext2_references")
         ),
-        data_dir=str(runtime.repo / "data"),
+        data_dir=str(datamodule.data_dir),
         max_examples=len(datamodule.dataset),
         max_seq_len=policy.max_seq_len,
     )
@@ -1018,8 +1175,15 @@ def train_wikitext_reference_experiment(
                     else "wikitext_refs_v1"
                 ),
                 "examples": len(datamodule.dataset),
-                "references_per_example": "1-5",
+                "generated_data_root": str(datamodule.data_dir),
+                "split_count": dataset_cfg.get("split_count", "mixed"),
+                "reference_count": (
+                    int(dataset_cfg["split_count"]) - 1
+                    if dataset_cfg.get("split_count") is not None
+                    else "1-" + str(dataset_cfg.get("max_reference_parts", 5))
+                ),
                 "tokenizer": "Tokenizer(BPE) + Whitespace",
+                "tokenizer_shared_across_split_counts": tokenizer is not None,
                 "vocab_size": datamodule.tokenizer.vocab_size,
                 "train_size": len(datamodule.train_dataset),
                 "validation_size": len(datamodule.val_dataset),

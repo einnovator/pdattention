@@ -194,6 +194,8 @@ The prototype compares four-layer width-256 SelfAttention, four-layer PRA, and a
 
 In a second phase, entries were split into one to five URI-addressed earlier parts and a held-out natural-language tail. The PRA base was frozen and zero-initialized memory output projections were trained. Valid references reduced answer-token loss relative to a disabled path by 0.1165 (full PRA) and 0.0841 (hybrid). Cross-example shuffled references increased loss by only 0.0145 and 0.0122. Thus the branch contributes, and there is preliminary content sensitivity, but the smaller shuffled delta warns that much of the benefit could be generic adaptation or weakly discriminative memory use.
 
+A later post-refactor smoke matrix tests the corrected batched chunk router at two and five total text splits, using one seed, 32 shared WikiText-2 sources, a shared tokenizer, and eight optimizer steps. Full PRA's disabled-minus-valid loss is 0.0301 and 0.0276, whereas shuffled-minus-valid loss rounds to 0.0004 and $-0.0005$. At five splits, reference top-1 is 0.1250 against a 0.25 uniform-candidate rate. The result confirms end-to-end execution and instrumentation, not content-selective retrieval. It also illustrates a reporting requirement: split count must be explicit, and processed tokens and target construction must accompany it because repartitioning changes both.
+
 \subsection{Evaluation doctrine}
 PRA's strongest methodological contribution may be its insistence on counterfactual reference evaluation. A task score alone does not establish retrieval use. Required conditions include valid, disabled, shuffled, irrelevant, empty, random-ID, content-only, position-only, oracle, and all-content-local controls. The principal causal quantities are
 \begin{equation}
@@ -631,9 +633,11 @@ mechanical feasibility for chunked, layer-specific routing gists, selected token
 variable-length batches, optional summaries, and bounded child-first cache construction.
 Historical v1 experiments establish approximate ordinary-language compatibility and
 frozen-path preservation, but they do not validate the corrected router and did not show
-content-selective reference use.  The next decisive step is therefore not a larger claim
-but a clean rerun: fixed reference-required data, matched trainable capacity, oracle and
-corrupted-content interventions, multiple seeds, and end-to-end cold and warm costs.
+content-selective reference use.  A one-seed corrected-router smoke rerun now verifies the
+pipeline at two and five splits, while its sub-0.001 shuffled penalties leave the causal
+question open.  The next decisive step is therefore not a larger claim but a controlled
+rerun: fixed reference-required data, matched token and trainable-capacity budgets, oracle
+and corrupted-content interventions, multiple seeds, and end-to-end cold and warm costs.
 
 If those experiments show that correct chunks cause reproducible gains at a favorable
 quality--cost point, PRA would merit study as a model-native interface for repeated

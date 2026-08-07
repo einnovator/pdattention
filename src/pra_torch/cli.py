@@ -8,6 +8,8 @@ import click
 import torch
 import yaml
 
+from common.config import deep_update, read_yaml as read_yaml_file
+from common.train import resolve_device
 from config.model_size import estimate_model_size
 from data.datamodules import PRADataModule
 from data.datasets import read_jsonl
@@ -100,21 +102,11 @@ BUILTIN_CONFIG = {
 }
 
 
-def deep_update(base: dict, updates: dict) -> dict:
-    for key, value in updates.items():
-        if isinstance(value, dict) and isinstance(base.get(key), dict):
-            deep_update(base[key], value)
-        else:
-            base[key] = value
-    return base
-
-
 def read_yaml(path: Path) -> dict:
     if not path.exists():
         click.echo(f"Warning: config file not found: {path}", err=True)
         return {}
-    with path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return read_yaml_file(path)
 
 
 def apply_named_model(cfg: dict, model_name: str = "default") -> dict:
@@ -145,12 +137,6 @@ def load_config(config_path: str | None = None, model_name: str = "default") -> 
     if config_path:
         deep_update(cfg, read_yaml(Path(config_path)))
     return apply_named_model(cfg, model_name)
-
-
-def resolve_device(device: str) -> str:
-    if device == "auto":
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    return device
 
 
 def parse_layer_ids(value) -> tuple[int, ...]:

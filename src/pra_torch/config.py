@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 import warnings
 
+from common.config import TrainConfig as CommonTrainConfig
+
 
 @dataclass
 class PRAConfig:
@@ -240,44 +242,16 @@ class CacheServiceConfig:
 
 
 @dataclass
-class TrainConfig:
-    """Generic loop, data, logging, and service settings for a PRA experiment."""
+class TrainConfig(CommonTrainConfig):
+    """Generic training settings extended with PRA resolver/cache services."""
 
-    experiment_name: str = "standalone_tiny"  # Run-directory and logger label.
-    output_dir: str = "out"  # Parent directory for checkpoints, metrics, and traces.
-    seed: int = 0  # Shared Python, NumPy, and PyTorch random seed.
-    device: str = "auto"  # auto, cpu, cuda, or another PyTorch device string.
-    dtype: str = "float32"  # Requested parameter/compute dtype.
-    epochs: int = 3  # Maximum complete passes over the training loader.
-    max_steps: int | None = None  # Optional optimizer-step cap across epochs.
-    batch_size: int = 8  # Samples collated per dataloader batch.
-    grad_accum_steps: int = 1  # Backward passes accumulated per optimizer update.
-    learning_rate: float = 3e-4  # Optimizer base learning rate.
-    weight_decay: float = 0.0  # AdamW decoupled weight decay.
-    warmup_steps: int = 0  # Linear scheduler warm-up optimizer steps.
-    max_grad_norm: float = 1.0  # Global gradient-norm clipping threshold.
-    eval_every_steps: int = 50  # Validation cadence in optimizer steps.
-    save_every_steps: int = 100  # Latest-checkpoint cadence in optimizer steps.
-    log_every_steps: int = 10  # Batch/optimizer metric logging cadence.
-    num_workers: int = 0  # Worker processes used by each dataloader.
-    pin_memory: bool = False  # Pin host batches for faster CUDA transfer.
-    persistent_workers: bool = False  # Keep workers alive between epochs.
-    resume_from: str | None = None  # Checkpoint path restored before training.
-    use_tensorboard: bool = True  # Emit TensorBoard scalar/text events.
-    save_metric_plots: bool = True  # Render metric-history plots at run close.
-    use_wandb: bool = False  # Enable optional Weights & Biases logging.
-    use_clearml: bool = False  # Enable optional ClearML logging.
-    mixed_precision: bool = False  # Use CUDA autocast and gradient scaling.
-    early_stopping_patience: int | None = None  # Validations without improvement before stop.
-    dataset_stage: str = "stage0_synthetic_memory"  # Dataset directory/name to load.
-    data_dir: str = "data"  # Root containing generated dataset stages.
-    max_examples: int | None = None  # Optional dataset-size limit for quick runs.
-    max_seq_len: int = 96  # Collator sequence length; should not exceed model capacity.
-    shuffle: bool = True  # Shuffle the training split each epoch.
+    experiment_name: str = "standalone_tiny"
+    dataset_stage: str = "stage0_synthetic_memory"
     resolver_config: ResolverServiceConfig = field(default_factory=ResolverServiceConfig)
     cache_config: CacheServiceConfig = field(default_factory=CacheServiceConfig)
 
     def __post_init__(self) -> None:
         """Normalize nested resolver/cache settings accepted from YAML or Python."""
+        super().__post_init__()
         self.resolver_config = ResolverServiceConfig.from_value(self.resolver_config)
         self.cache_config = CacheServiceConfig.from_value(self.cache_config)

@@ -1,9 +1,10 @@
-"""Compatibility shell for the canonical functional engine in ``train.py``."""
+"""Compatibility shell over ``common.train`` and PRA-specific adapters."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from common.train import resume_training_state, save_training_state
 from data.datamodules import PRADataModule
 from .config import CacheServiceConfig, PRAConfig, ResolverServiceConfig, TrainConfig
 from .pra_train import (
@@ -11,16 +12,12 @@ from .pra_train import (
     evaluate_pra_model,
     train_pra_model,
 )
-from .train import (
-    resume_training_state,
-    save_training_state,
-)
 
 
 class PRAStandaloneTrainer:
     """Thin object API over functional training and PRA cache-aware adapters.
 
-    This class owns no training algorithm. ``train.py`` manages generic state and
+    This class owns no training algorithm. ``common.train`` manages generic state and
     optimization, while ``pra_train.py`` builds reference caches and metrics.
     The properties below expose that shared ``TrainingState`` for older callers.
     """
