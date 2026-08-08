@@ -974,6 +974,7 @@ def train_wikitext_language_experiment(
     experiment_name: str,
     *,
     resume_from: str | Path | None = None,
+    artifact_qualifiers: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Train a configured model variant on plain WikiText BPE token blocks."""
     settings = load_experiment_settings(runtime, experiment_name)
@@ -996,6 +997,7 @@ def train_wikitext_language_experiment(
         settings["model_name"],
         "wikitext2",
         settings["name"],
+        *artifact_qualifiers,
         f"seed{runtime.seed}",
         f"steps{train_cfg.get('max_steps')}",
         f"seq{policy.max_seq_len}",
@@ -1123,6 +1125,7 @@ def train_wikitext_reference_experiment(
     tokenizer_checkpoint: str | Path | None = None,
     tokenizer: BPETokenizer | None = None,
     training_mode: str | None = None,
+    artifact_qualifiers: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Train a configured SA or PRA model on reference-split WikiText."""
     checkpoint = torch.load(initial_checkpoint, map_location="cpu") if initial_checkpoint else None
@@ -1183,6 +1186,7 @@ def train_wikitext_reference_experiment(
         settings["model_name"],
         settings["experiment"]["dataset"].get("stage", "wikitext2_references"),
         settings["name"],
+        *artifact_qualifiers,
         training_mode,
         f"seed{runtime.seed}",
         f"steps{train_cfg.get('max_steps')}",

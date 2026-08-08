@@ -117,7 +117,10 @@ def run_plain(
         f"resume_step={checkpoint_step(resume_from) if resume_from else 0}"
     )
     result = pnu.train_wikitext_language_experiment(
-        runtime, experiment_name, resume_from=resume_from
+        runtime,
+        experiment_name,
+        resume_from=resume_from,
+        artifact_qualifiers=(RUN_TAG,),
     )
     report = pnu.generate_html_report(
         result,
@@ -165,6 +168,7 @@ def run_reference(
         initial_checkpoint=parent_checkpoint if mode != "scratch" else None,
         tokenizer_checkpoint=parent_checkpoint if mode == "scratch" else None,
         training_mode=mode,
+        artifact_qualifiers=(RUN_TAG,),
     )
     pnu.evaluate_plain_after_reference(
         result, runtime, PLAIN_EXPERIMENTS[architecture]
