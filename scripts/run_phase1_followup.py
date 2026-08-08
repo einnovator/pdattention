@@ -600,8 +600,11 @@ def main() -> None:
                 ]
 
     aggregates = aggregate_reports(grouped)
-    final_report = make_findings_report(aggregates, grouped)
-    print(f"findings report: {final_report}")
+    if args.stage in {"all", "report"}:
+        final_report = make_findings_report(aggregates, grouped)
+        print(f"findings report: {final_report}")
+    else:
+        print(f"{args.stage} aggregates: {len(aggregates)}")
 
 
 if __name__ == "__main__":
