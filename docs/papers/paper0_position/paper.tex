@@ -34,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context to the model in a largely flat and eager form: tokens are either placed in the prompt, retrieved once before generation, or acquired through explicit tool calls outside the transformer's attention computation. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), a family of architectures and runtimes in which lightweight reference handles point to URI-addressed memory and can be expanded on demand into layer-specific attention memory. The central thesis is that long-context inference should move from monolithic token streams toward hierarchical, demand-driven context graphs. We distinguish naming from materialization, routing gists from transported token K/V, reference selection from chunk selection, and local language ability from reference-path adaptation. We also show how an overlong prompt prefix can become a request-local implicit reference while its recent suffix remains direct context. These separations position PRA as a bridge between sparse long-context transformers, retrieval-augmented generation, recurrent memory, and KV-cache runtime systems. We define the abstractions, propose a bounded recursive memory lifecycle and evaluation doctrine, and report a five-seed corrected-router study. The study supports ordinary-language compatibility, pretrained adaptation, and frozen-path preservation, but reference selection remains near chance and valid content barely outperforms shuffled or oracle controls. Prompt-prefix virtualization has passed mechanical tests but has not yet been evaluated for language quality or efficiency. The program therefore remains falsifiable by improved task quality per unit of context, latency, and memory.
+Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context in a largely flat and eager form. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse approximation to full long-context self-attention. Lightweight references index historical token K/V produced by the model's native layer projections; routing gists choose which original K/V becomes active; and selected memory is concatenated with local K/V under one shared softmax and the existing output projection. Canonical PRA therefore requires no separate cross-attention branch and no reference-specific trainable transport parameters. References may name external objects, prior conversation, or an implicit displaced prompt head, so PRA is not synonymous with RAG. We distinguish naming from materialization, routing from transport, and historical K/V reuse from independent chunk re-encoding. A legacy cross-attention mode remains useful as an adapted transport and supplies the existing five-seed results, which support ordinary-language compatibility and frozen-path preservation but do not establish content-causal retrieval. Native transport has passed exact layer-level and converted-checkpoint equivalence tests; its long-context quality and efficiency frontier remain to be measured. The program is falsifiable by quality per active K/V token, latency, transfer byte, and memory byte relative to full self-attention.
 \end{abstract}
 
 \section{Introduction}
@@ -290,19 +290,21 @@ reference.  Content-derived gists are the default.  Summaries, when available, m
 replace, augment, or compete with content scores under an explicit policy, but missing
 summaries fall back to content.  Let $\mathcal{A}_{t,\ell}$ be the selected
 reference--chunk pairs.  This routing score answers ``which drawers should be opened?'';
-it is not an attention weight over the evidence inside a drawer.  A separate token-level
-cross-attention transport performs that read and computes
+it is not an attention weight over the evidence inside a drawer. Canonical transport
+prepends selected historical keys and values to the local keys and values:
 
 \begin{equation}
-\mathrm{PRA}(X) =
-\mathrm{SelfAttn}(X) +
-\alpha \cdot
-\mathrm{softmax}\left(\frac{QK_{\mathcal{A},\ell}^{\top}}{\sqrt{d_h}}\right)
-V_{\mathcal{A},\ell},
+\mathrm{PRA}_{\ell}(X)=W_O^{(\ell)}\,
+\mathrm{softmax}\!\left(
+\frac{Q^{(\ell)}[K_{\mathcal A,\ell};K_{\rm local}^{(\ell)}]^\top}
+{\sqrt{d_h}}+M_{\rm causal}\right)
+[V_{\mathcal A,\ell};V_{\rm local}^{(\ell)}].
 \end{equation}
 
 Here $K_{\mathcal{A},\ell}$ and $V_{\mathcal{A},\ell}$ concatenate full layer-$\ell$
-token memory from selected chunks only, and $\alpha$ controls the memory residual.  In
+token memory from selected chunks only. Memory and local positions compete in one
+normalization, and the layer uses its existing $W_O$; there is no memory scale or new
+transport projection. In
 the running example, the gist may select the password-validation chunk, but the decoder
 receives that chunk's token-level keys and values and can assign different attention
 weights to its individual tokens.  Routing representations are therefore cheap
@@ -314,7 +316,8 @@ The central research problem is selection: how should $\mathcal{A}_{t,\ell}$ be 
 
 The term PRA is intentionally broader than one neural module.  As an
 \emph{architecture}, it denotes attention layers that consume external reference memory
-through cross-attention, K/V injection, adapters, or another differentiable transport.
+through native K/V injection. Optional adapted modes may use cross-attention or adapters,
+but they are secondary variants rather than the definition of PRA.
 As a \emph{runtime}, it includes the resolvers, caches, URI stores, expansion policies,
 and schedules that decide when and how the memory is constructed.  As a \emph{research
 program}, it includes the benchmarks, ablations, scaling studies, and analyses needed to
@@ -354,9 +357,9 @@ but the logical boundaries remain the same.
 
 \subsection{Selection Is Not Transport}
 
-Selecting a URI and transporting its representation into a model are different operations. Selection may use lexical retrieval, vector similarity, explicit handle positions, learned gates, uncertainty, or an oracle. Transport may use prompt concatenation, cross-attention, adapters, or direct K/V injection. An experiment that changes both at once cannot determine whether a gain comes from finding better evidence or from presenting the same evidence through a better neural interface.
+Selecting a URI and transporting its representation into a model are different operations. Selection may use lexical retrieval, vector similarity, explicit handle positions, learned gates, uncertainty, or an oracle. Canonical transport uses native layer K/V; prompt concatenation, cross-attention, and adapters are comparison transports. An experiment that changes both at once cannot determine whether a gain comes from finding better evidence or from presenting the same evidence through a better neural interface.
 
-PRA evaluations should cross selection policies with transport mechanisms. For example, oracle selection with cross-attention tests the transport upper bound, while fixed retrieval with alternative transport tests the architectural path. Learned selection should be evaluated only after these simpler controls establish that selected memory can be used.
+PRA evaluations should first bypass selection: restoring all historical native K/V must match full self-attention when positions and masks are equivalent. Oracle sparse selection then measures the cost of omitting K/V, and only afterward should routed, shuffled, and learned selection be evaluated. Cross-attention remains a separate adapted-transport comparison.
 
 The same separation applies inside selection. Reference ranking answers which addressable objects remain candidates; chunk ranking answers which portions of those objects are materialized. Independent budgets are necessary to prevent a prolific reference from consuming every chunk slot. Reported cache size, selected gist count, and transported token count are different quantities and should never be used interchangeably.
 
@@ -649,6 +652,10 @@ PRA & URI-addressed memory cache & Demand-driven latent expansion & Requires lea
 
 \section{Historical Feasibility Evidence}
 
+The results in this section use the optional adapted cross-attention transport, with a
+separately normalized memory branch, $W_{O,\mathrm{mem}}$, and a residual scale. They
+must not be read as measurements of the canonical native-KV path introduced above.
+
 A standalone PyTorch pilot first provided limited implementation evidence for parts of this position. At 524,288 processed tokens and seeds 1 and 7, mean plain WikiText-2 losses were 4.7691 for SelfAttention, 4.7457 for full PRAttention, and 4.7574 for a two-SelfAttention/two-PRAttention hybrid. Its version-1 reference task suggested a memory-path contribution, but regenerated data per model seed and labeled all candidate parts as relevant. More importantly, the old implementation routed one raw summary embedding per reference, collapsed a batch query in an early path, and materialized whole references. We therefore retain all reference-conditioned measurements as engineering history rather than use them for a causal claim about the corrected architecture.
 
 A corrected controlled follow-up uses paired seeds $\{1,7,21,42,87\}$; a 1,048,576-token budget; a fixed tokenizer; a fixed 512-example reference corpus and split; and SelfAttention controls parameter matched through FFN width. Table~\ref{tab:position-followup} summarizes ordinary-language results. Because external memory is absent in this phase, the comparison tests backbone compatibility. Both PRA variants finish below their matched controls in every paired seed, but five pairs permit only a minimum two-sided exact sign-flip $p$-value of 0.0625. This is encouraging directional evidence, not proof of superiority or equivalence.
@@ -701,7 +708,7 @@ The PRA research program should proceed through increasingly demanding stages.
 Train small decoder-only transformers where all memory objects, reference handles, chunks, cache entries, and evaluation labels are controlled. The five-seed corrected study now covers paired valid, disabled, shuffled, irrelevant, empty, and oracle-reference conditions with URI-level labels. Its near-chance selection and sub-0.005 shuffled penalties make the next step concrete: add chunk/span ground truth and compare the fixed router against trainable routing with an auxiliary relevance objective. Full-reference, gist-only, distance-bin, mixed-curriculum, optional-summary, and recursive-depth conditions should follow under the same paired checkpoints. Scaling to the Small model is deferred until valid content reliably beats shuffled and irrelevant controls.
 
 \paragraph{Pretrained-model integration.}
-Adapt pretrained Hugging Face models using cross-attention adapters before attempting direct KV injection. This stage should isolate compatibility issues such as rotary position encodings, grouped-query attention, cache layout, and fine-tuning stability.
+Wrap pretrained Hugging Face attention with native-KV selection first, preserving each model's rotary position convention, grouped-query layout, and cache format. Cross-attention adapters remain a useful comparison when native cache compatibility cannot be maintained, but are not the canonical integration target.
 
 \paragraph{Runtime and serving integration.}
 Study how reference memories are resolved, encoded, cached, paged, shared, and evicted. The central metric is no longer only accuracy, but accuracy per token, per millisecond, and per byte of cache.

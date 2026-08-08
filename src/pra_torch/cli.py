@@ -39,8 +39,7 @@ BUILTIN_CONFIG = {
         "top_k_references": 2,
         "top_k_chunks_per_reference": 1,
         "trigger_threshold": 0.2,
-        "use_cross_attention_memory": True,
-        "use_concat_memory": False,
+        "memory_transport": "native_kv",
         "memory_alpha": 0.5,
         "search_strategy": "hierarchical",
         "reference_score_aggregation": "max",
@@ -175,9 +174,13 @@ def model_kwargs(cfg: dict) -> dict:
         "top_k_references": int(pra["top_k_references"]),
         "top_k_chunks_per_reference": int(pra["top_k_chunks_per_reference"]),
         "trigger_threshold": float(pra["trigger_threshold"]),
-        "use_cross_attention_memory": bool(pra["use_cross_attention_memory"]),
-        "use_concat_memory": bool(pra["use_concat_memory"]),
+        "memory_transport": str(pra.get("memory_transport", "native_kv")),
         "memory_alpha": float(pra["memory_alpha"]),
+        **{
+            key: pra[key]
+            for key in ("use_cross_attention_memory", "use_concat_memory")
+            if pra.get(key) is not None
+        },
         **{
             key: pra[key]
             for key in (
@@ -270,6 +273,7 @@ def apply_common_overrides(cfg: dict, options: dict) -> None:
         "top_k_references",
         "top_k_chunks_per_reference",
         "trigger_threshold",
+        "memory_transport",
         "use_cross_attention_memory",
         "use_concat_memory",
         "memory_alpha",
@@ -294,6 +298,10 @@ def common_model_options(func):
         click.option("-k", "--top-k-references", "--top-k-refs", type=int),
         click.option("--top-k-chunks-per-reference", type=int),
         click.option("-t", "--trigger-threshold", type=float),
+        click.option(
+            "--memory-transport",
+            type=click.Choice(["native_kv", "cross_attention"]),
+        ),
         click.option("-x/-X", "--use-cross-attention-memory/--no-use-cross-attention-memory", default=None),
         click.option("-u/-U", "--use-concat-memory/--no-use-concat-memory", default=None),
         click.option("-a", "--memory-alpha", type=float),

@@ -54,6 +54,7 @@ def _config(tokenizer, **overrides) -> PRAConfig:
         "top_k_references": 3,
         "top_k_chunks_per_reference": 4,
         "trigger_threshold": -1.0,
+        "memory_transport": "cross_attention",
         "memory_alpha": 0.5,
         "memory_bucket_count": 2,
         "device": "cpu",

@@ -13,6 +13,8 @@ from data.datasets import (
     SyntheticMemoryQADataset,
     WikipediaDataset,
     WikiTextReferenceV2Dataset,
+    WikiTextNativeKVFixedTargetDataset,
+    generate_wikitext_nativekv_fixed_target_dataset,
     generate_wikitext_reference_dataset_v2,
 )
 from data.schemas import QuestionSample
@@ -131,6 +133,39 @@ def test_wikitext_reference_v2_supports_fixed_split_counts(
         sample.metadata["row"]["reference_count"] == split_count - 1
         for sample in dataset
     )
+
+
+def test_native_kv_split_counts_preserve_the_exact_local_target(tmp_path, monkeypatch):
+    documents = [
+        {"text": " ".join(f"source{source}_word{index}" for index in range(192))}
+        for source in range(3)
+    ]
+    monkeypatch.setattr(
+        "data.datasets.load_wikitext_splits",
+        lambda *args, **kwargs: {"train": documents},
+    )
+
+    snapshots = []
+    for split_count in (2, 3, 5, 8, 16, 32, 64):
+        generate_wikitext_nativekv_fixed_target_dataset(
+            tmp_path, max_examples=3, split_count=split_count, seed=1729
+        )
+        dataset = WikiTextNativeKVFixedTargetDataset(tmp_path)
+        sample = dataset[0]
+        snapshots.append(
+            (
+                sample.question,
+                sample.answer,
+                sample.metadata["row"]["fixed_target_id"],
+            )
+        )
+        assert len(sample.references) == split_count - 1
+        assert "<REF_" not in sample.question
+        assert " ".join(ref.metadata["text"] for ref in sample.references) == " ".join(
+            documents[sample.metadata["row"]["source_entry_id"]]["text"].split()[:-28]
+        )
+
+    assert len(set(snapshots)) == 1
 
 
 def test_training_loop_uses_dataloader(tmp_path):

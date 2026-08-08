@@ -11,16 +11,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .memory import LayerKV, PRAMemoryCache, SelectedChunk
-from .memory_batching import MemoryBatchingStats, dynamic_memory_attention
+from .memory_batching import (
+    MemoryBatchingStats,
+    dynamic_memory_attention,
+    native_kv_attention,
+)
 
 
 class PRAttention(nn.Module):
-    """Causal self-attention plus routed cross-attention over reference memory.
+    """Causal attention with routed native-K/V or adapted cross-attention memory.
 
     Input/output hidden states are ``[B,T,d_model]``. The final local query token
-    routes each batch item to layer-specific chunks. Selected memory is then used
-    as K/V for all ``T`` local query positions and fused through a residual-scale
-    factor in the enclosing transformer block.
+    routes each batch item to layer-specific chunks. Canonical ``native_kv``
+    transport inserts their original token K/V before local K/V under one shared
+    softmax and the ordinary output projection. Legacy ``cross_attention`` keeps
+    the separately normalized, scaled memory branch used by earlier experiments.
     """
 
     def __init__(
@@ -44,7 +49,8 @@ class PRAttention(nn.Module):
         self.layer_id = layer_id  # Selects matching layer-specific reference K/V.
         self.config = config  # Routing, materialization, batching, and metrics modes.
         self.trigger_threshold = config.trigger_threshold  # Post-search chunk score floor.
-        self.memory_alpha = config.memory_alpha  # Memory branch contribution scale.
+        self.memory_transport = config.memory_transport  # Native or adapted transport policy.
+        self.memory_alpha = config.memory_alpha  # Legacy cross-attention contribution scale.
         self.pra_cache = pra_cache  # Shared URI cache; selection remains batch-isolated.
         self.last_selected_chunks: list[list[SelectedChunk]] = []  # Latest trace by batch row.
         self.last_memory_batching_stats: MemoryBatchingStats | None = None
@@ -53,8 +59,12 @@ class PRAttention(nn.Module):
         self.q_proj = nn.Linear(d_model, d_model)  # Shared local and routing queries.
         self.k_proj = nn.Linear(d_model, d_model)  # Local keys and reference-cache keys.
         self.v_proj = nn.Linear(d_model, d_model)  # Local values and reference-cache values.
-        self.o_proj = nn.Linear(d_model, d_model)  # Local self-attention output projection.
-        self.mem_o_proj = nn.Linear(d_model, d_model)  # Separate memory-branch projection.
+        self.o_proj = nn.Linear(d_model, d_model)  # Shared native/local output projection.
+        if self.memory_transport == "cross_attention":
+            # This parameter exists only for backward-compatible adapted transport.
+            self.mem_o_proj = nn.Linear(d_model, d_model)
+        else:
+            self.mem_o_proj = None
 
         mask = torch.tril(torch.ones(max_seq_len, max_seq_len))
         self.register_buffer("causal_mask", mask.view(1, 1, max_seq_len, max_seq_len))
@@ -82,6 +92,35 @@ class PRAttention(nn.Module):
             k = k.detach()
             v = v.detach()
         return LayerKV(k=k, v=v)
+
+    def forward_native_kv(
+        self,
+        x: torch.Tensor,
+        memory_k: list[torch.Tensor],
+        memory_v: list[torch.Tensor],
+        *,
+        attention_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Apply native attention with caller-supplied historical K/V.
+
+        This bypasses gist routing so transport can be tested independently.
+        ``x`` is the current normalized tail ``[B,T,D]`` and each memory item is
+        historical native K/V ``[1,H,M_i,Dh]`` from the same layer projections.
+        """
+        if self.memory_transport != "native_kv":
+            raise RuntimeError("forward_native_kv requires memory_transport='native_kv'.")
+        q = self.split_heads(self.q_proj(x))
+        k = self.split_heads(self.k_proj(x))
+        v = self.split_heads(self.v_proj(x))
+        heads, _stats = native_kv_attention(
+            q,
+            k,
+            v,
+            memory_k,
+            memory_v,
+            attention_mask=attention_mask,
+        )
+        return self.o_proj(self.merge_heads(heads))
 
     def _expand_full_references(self, selected: list[SelectedChunk]) -> list[SelectedChunk]:
         """Replace routed chunks with every chunk belonging to each selected URI."""
@@ -225,8 +264,57 @@ class PRAttention(nn.Module):
             duplicate_tokens += duplicates
         materialization_duration = time.perf_counter() - materialization_start
 
+        if self.memory_transport == "native_kv":
+            selected_lengths = [int(key.shape[2]) for key in memory_k]
+            if not any(selected_lengths):
+                return local_out
+            memory_start = time.perf_counter()
+            native_heads, stats = native_kv_attention(
+                q,
+                k,
+                v,
+                memory_k,
+                memory_v,
+                attention_mask=attention_mask,
+            )
+            memory_attention_duration = time.perf_counter() - memory_start
+            self.last_memory_batching_stats = stats
+            output = self.o_proj(self.merge_heads(native_heads))
+            local_tokens = (
+                int(attention_mask.sum().item()) if attention_mask is not None else b * t
+            )
+            retrieved_tokens = int(stats.valid_positions)
+            accessible_tokens = local_tokens + retrieved_tokens
+            element_size = q.element_size()
+            kv_bytes = 2 * retrieved_tokens * self.n_heads * self.head_dim * element_size
+            output_norm = float(output.detach().norm().cpu())
+            local_norm = float(local_out.detach().norm().cpu())
+            self.last_diagnostics = {
+                **stats.as_metrics(),
+                "memory_duplicate_chunk_tokens": float(duplicate_tokens),
+                "memory_transport_native_kv": 1.0,
+                "active_local_tokens": float(local_tokens),
+                "retrieved_token_kv": float(retrieved_tokens),
+                "accessible_kv_tokens": float(accessible_tokens),
+                "active_memory_fraction": retrieved_tokens / max(accessible_tokens, 1),
+                "retrieved_kv_storage_bytes": float(kv_bytes),
+                "retrieved_kv_transfer_bytes": float(kv_bytes),
+                "attention_output_norm": output_norm,
+                "local_output_norm": local_norm,
+                "attention_to_local_output_norm_ratio": output_norm / max(local_norm, 1e-12),
+            }
+            if self.config.collect_detailed_timing:
+                self.last_diagnostics.update(
+                    {
+                        "routing_duration_seconds": routing_duration,
+                        "materialization_duration_seconds": materialization_duration,
+                        "memory_attention_duration_seconds": memory_attention_duration,
+                    }
+                )
+            return output
+
+        # Legacy adapted transport: normalize memory separately, then add its projection.
         # Bucket only compatible batch rows, pad within each bucket, and restore order.
-        # q remains [B,H,T,Dh], so every local position can read the selected memory.
         memory_start = time.perf_counter()
         memory_heads, stats = dynamic_memory_attention(
             q,
@@ -237,6 +325,7 @@ class PRAttention(nn.Module):
         )
         memory_attention_duration = time.perf_counter() - memory_start
         self.last_memory_batching_stats = stats
+        assert self.mem_o_proj is not None
         memory_out = self.mem_o_proj(self.merge_heads(memory_heads))
         # Empty rows receive exactly zero memory output despite rectangular batching.
         has_memory = torch.tensor(

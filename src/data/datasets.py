@@ -1,3 +1,4 @@
+import hashlib
 import json
 import random
 from abc import ABC, abstractmethod
@@ -234,6 +235,16 @@ class WikiTextReferenceV2Dataset(PRADataset):
         generate_wikitext_reference_dataset_v2(*args, **kwargs)
 
 
+class WikiTextNativeKVFixedTargetDataset(PRADataset):
+    """WikiText history partitions with an invariant direct tail and target."""
+
+    dataset_name = "wikitext_native_kv_fixed_target"
+    stage = "wikitext2_nativekv_fixed_target"
+
+    def generate(self, *args, **kwargs) -> None:
+        generate_wikitext_nativekv_fixed_target_dataset(*args, **kwargs)
+
+
 DATASET_REGISTRY = {
     SyntheticMemoryQADataset.stage: SyntheticMemoryQADataset,
     HierarchicalReferenceDataset.stage: HierarchicalReferenceDataset,
@@ -244,6 +255,7 @@ DATASET_REGISTRY = {
     GitHubRepositoryDataset.stage: GitHubRepositoryDataset,
     WikiTextReferenceDataset.stage: WikiTextReferenceDataset,
     WikiTextReferenceV2Dataset.stage: WikiTextReferenceV2Dataset,
+    WikiTextNativeKVFixedTargetDataset.stage: WikiTextNativeKVFixedTargetDataset,
 }
 
 
@@ -478,6 +490,121 @@ def generate_wikitext_reference_dataset_v2(
                 "dependency_type": "indirect_continuation",
                 "generation_version": "wikitext_refs_v2",
                 "candidate_order_randomized": True,
+            }
+        )
+
+    for filename, rows in (
+        ("documents.jsonl", documents),
+        ("references.jsonl", references),
+        ("questions.jsonl", questions),
+    ):
+        with (stage_dir / filename).open("w", encoding="utf-8") as stream:
+            for row in rows:
+                stream.write(json.dumps(row) + "\n")
+    return stage_dir
+
+
+def generate_wikitext_nativekv_fixed_target_dataset(
+    data_dir: str | Path,
+    *,
+    split_count: int,
+    dataset_name: str = "wikitext-2-raw-v1",
+    max_examples: int = 128,
+    seed: int = 1729,
+    min_words: int = 160,
+    local_tail_words: int = 16,
+    target_words: int = 12,
+    cache_dir: str | Path | None = None,
+) -> Path:
+    """Partition only displaced history while holding prompt and target fixed.
+
+    ``split_count`` includes the direct tail, so it creates ``split_count - 1``
+    metadata-only implicit history references. Across calls with the same source,
+    seed, and token budgets, the local prompt, answer, source rows, and evaluation
+    mask are identical. Only boundaries inside the historical prefix change.
+    """
+    if split_count not in {2, 3, 5, 8, 16, 32, 64}:
+        raise ValueError("split_count must be one of 2, 3, 5, 8, 16, 32, or 64")
+    if local_tail_words <= 0 or target_words <= 0:
+        raise ValueError("local_tail_words and target_words must be positive")
+    data_dir = Path(data_dir)
+    stage_dir = data_dir / WikiTextNativeKVFixedTargetDataset.stage
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    splits = load_wikitext_splits(
+        dataset_name, cache_dir=cache_dir or data_dir / ".hf_cache"
+    )
+    candidates = [
+        (source_index, text)
+        for source_index, text in enumerate(wikitext_documents(splits["train"]))
+        if len(text.split()) >= min_words
+    ]
+    random.Random(seed).shuffle(candidates)
+    documents: list[dict[str, Any]] = []
+    references: list[dict[str, Any]] = []
+    questions: list[dict[str, Any]] = []
+    reference_count = split_count - 1
+
+    for source_index, text in candidates[:max_examples]:
+        words = text.split()
+        target = words[-target_words:]
+        local_tail = words[-(target_words + local_tail_words) : -target_words]
+        history = words[: -(target_words + local_tail_words)]
+        if len(history) < reference_count:
+            continue
+        boundaries = [index * len(history) // reference_count for index in range(reference_count + 1)]
+        reference_ids = list(range(1, reference_count + 1))
+        reference_uris = []
+        for part_index, reference_id in enumerate(reference_ids):
+            start, end = boundaries[part_index], boundaries[part_index + 1]
+            uri = (
+                f"wikitext://{dataset_name}/{source_index}/"
+                f"native-history-{part_index + 1}-of-{reference_count}"
+            )
+            reference_uris.append(uri)
+            documents.append(
+                {
+                    "id": f"native-{source_index}-{part_index + 1}",
+                    "uri": uri,
+                    "title": f"WikiText source {source_index} history {part_index + 1}",
+                    "text": " ".join(history[start:end]),
+                }
+            )
+            references.append(
+                {
+                    "id": reference_id,
+                    "token": f"<REF_{reference_id}>",
+                    "uri": uri,
+                    "metadata": {
+                        "dataset": dataset_name,
+                        "source_entry_id": source_index,
+                        "implicit_reference": "#__head",
+                        "history_word_span": [start, end],
+                    },
+                }
+            )
+
+        prompt = " ".join(local_tail)
+        answer = " ".join(target)
+        fixed_target_id = hashlib.sha256(
+            f"{source_index}\n{prompt}\n{answer}".encode("utf-8")
+        ).hexdigest()
+        questions.append(
+            {
+                "id": f"wikitext-native-{source_index}",
+                "prompt": prompt,
+                "answer": answer,
+                "reference_uris": reference_uris,
+                "expected_ref_ids": reference_ids,
+                "source_entry_id": source_index,
+                "split_count": split_count,
+                "reference_count": reference_count,
+                "history_word_count": len(history),
+                "history_boundaries": boundaries,
+                "local_tail_word_count": len(local_tail),
+                "target_word_count": len(target),
+                "fixed_target_id": fixed_target_id,
+                "implicit_reference_uri": "#__head",
+                "generation_version": "wikitext_nativekv_fixed_target_v1",
             }
         )
 

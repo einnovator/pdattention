@@ -597,6 +597,10 @@ def evaluate_reference_ablation(
         "shuffled_chunks",
         "irrelevant_chunks",
         "gist_only",
+        "native_all",
+        "native_oracle",
+        "native_disabled",
+        "native_shuffled",
     }
     if condition not in supported:
         raise ValueError(f"Unsupported reference condition: {condition}")
@@ -605,7 +609,7 @@ def evaluate_reference_ablation(
     loss_sum = correct = token_count = 0
     start = time.perf_counter()
     # Build deterministic cross-example pools only for URI-content interventions.
-    reference_conditions = {"shuffled", "irrelevant"}
+    reference_conditions = {"shuffled", "irrelevant", "native_shuffled"}
     reference_sets = [
         item["references"]
         for batch in loader
@@ -615,6 +619,18 @@ def evaluate_reference_ablation(
     shuffle_offset = max(len(reference_sets) // 2, 1)
     reference_index = 0
     previous_materialization = model.cfg.detail_materialization
+    previous_routing = (
+        model.cfg.top_k_references,
+        model.cfg.top_k_chunks_per_reference,
+        model.cfg.trigger_threshold,
+    )
+    if condition.startswith("native_") and model.cfg.memory_transport != "native_kv":
+        raise ValueError(f"{condition} requires memory_transport='native_kv'")
+    if condition in {"native_all", "native_oracle"}:
+        model.cfg.top_k_references = 1_000_000
+        model.cfg.top_k_chunks_per_reference = 1_000_000
+        model.cfg.trigger_threshold = float("-inf")
+        model.cfg.detail_materialization = "full_reference"
     # Materialization ablations temporarily alter policy and restore it in finally.
     if condition in {"full_reference", "selected_chunks", "gist_only"}:
         model.cfg.detail_materialization = condition
@@ -625,11 +641,11 @@ def evaluate_reference_ablation(
                 moved = move_batch(batch, device)
                 for index, item in enumerate(batch["metadata"]):
                     # First intervene at URI/cache level, then optionally at chunk payload level.
-                    if condition in {"disabled", "empty"}:
+                    if condition in {"disabled", "empty", "native_disabled"}:
                         model.clear_pra_cache()
                     else:
                         metadata = item
-                        if condition == "shuffled":
+                        if condition in {"shuffled", "native_shuffled"}:
                             shuffled_index = (reference_index + shuffle_offset) % len(reference_sets)
                             metadata = {**item, "references": reference_sets[shuffled_index]}
                         elif condition == "irrelevant":
@@ -638,7 +654,7 @@ def evaluate_reference_ablation(
                             candidates = reference_pool[start_index:] + reference_pool[:start_index]
                             irrelevant = [reference for reference in candidates if reference.uri not in own_uris]
                             metadata = {**item, "references": irrelevant[: len(item["references"])]}
-                        elif condition == "oracle":
+                        elif condition in {"oracle", "native_oracle"}:
                             target_ids = set(item["target_reference_ids"])
                             metadata = {
                                 **item,
@@ -679,7 +695,7 @@ def evaluate_reference_ablation(
                                         chunk.token_kv = payload
                     logits = model(
                         moved["input_ids"][index : index + 1],
-                        use_pra_memory=condition != "disabled",
+                        use_pra_memory=condition not in {"disabled", "native_disabled"},
                     )
                     labels = moved["labels"][index : index + 1]
                     valid = labels.ne(0)
@@ -697,6 +713,11 @@ def evaluate_reference_ablation(
                     reference_index += 1
     finally:
         model.cfg.detail_materialization = previous_materialization
+        (
+            model.cfg.top_k_references,
+            model.cfg.top_k_chunks_per_reference,
+            model.cfg.trigger_threshold,
+        ) = previous_routing
     if was_training:
         model.train()
     elapsed = max(time.perf_counter() - start, 1e-9)
@@ -710,6 +731,23 @@ def evaluate_reference_ablation(
         "duration_seconds": elapsed,
         "detail_materialization": ablation_materialization,
         "ablation": condition,
+        "memory_transport": model.cfg.memory_transport,
+    }
+
+
+def native_kv_gap_metrics(results: list[dict]) -> dict[str, float]:
+    """Compute the preregistered native-KV quality gaps from condition results."""
+    losses = {str(result["condition"]): float(result["loss"]) for result in results}
+    required = {"sa_full", "sa_tail", "native_all", "native_oracle", "native_shuffled"}
+    missing = sorted(required.difference(losses))
+    if missing:
+        raise ValueError(f"Missing native-KV conditions: {', '.join(missing)}")
+    return {
+        "transport_gap": losses["native_all"] - losses["sa_full"],
+        "sparse_gap": losses["native_oracle"] - losses["native_all"],
+        "memory_benefit": losses["sa_tail"] - losses["native_oracle"],
+        "content_causality": losses["native_shuffled"] - losses["native_oracle"],
+        "dependency_gain": losses["sa_tail"] - losses["sa_full"],
     }
 
 

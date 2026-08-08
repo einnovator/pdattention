@@ -442,8 +442,7 @@ def evaluate_trained_workload(
         top_k_references=cfg.top_k_references,
         top_k_chunks_per_reference=cfg.top_k_chunks_per_reference,
         trigger_threshold=cfg.trigger_threshold,
-        use_cross_attention_memory=cfg.use_cross_attention_memory,
-        use_concat_memory=cfg.use_concat_memory,
+        memory_transport=cfg.memory_transport,
         memory_alpha=cfg.memory_alpha,
     )
 
@@ -1168,6 +1167,11 @@ def train_wikitext_reference_experiment(
     if training_mode == "frozen_refpath":
         if cfg.model_variant not in {"td_pra", "tdx_pra"}:
             raise ValueError("frozen_refpath requires a PRA architecture")
+        if cfg.memory_transport != "cross_attention":
+            raise ValueError(
+                "frozen_refpath is the historical cross-attention adaptation regime; "
+                "native_kv introduces no reference-path parameters to optimize"
+            )
         for parameter in model.parameters():
             parameter.requires_grad = False
         for name, module in model.named_modules():

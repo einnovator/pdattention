@@ -34,16 +34,16 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific chunk memories, configurable sets of contextual routing gists, and a cross-attention branch over selected chunk K/V. The corrected implementation routes every batch item independently with a projected last-valid-token query, separates reference and chunk budgets, supports bounded child-first recursive cache construction, and batches variable memory lengths without violating semantic isolation. It can also preserve an overlong prompt's recent suffix as direct context while encoding the displaced prefix as a request-local implicit reference. Summaries are optional routing evidence rather than the primary memory representation. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and training diagnostics. A corrected-router CUDA study compares SelfAttention, full PRA, hybrid PRA, and parameter-matched controls over five paired seeds. At 1,048,576 ordinary-language tokens, full PRA, hybrid PRA, and same-width SelfAttention reach mean test losses 4.5034, 4.5500, and 4.5704. On a fixed reference corpus, pretrained frozen-path adaptation reaches 4.6720 for full PRA and 4.7296 for hybrid PRA while exactly preserving their plain-language losses; scratch training remains above 6.35 and direct joint tuning both loses more and forgets. Reference top-1 remains near the 0.4202 candidate-count chance rate, however, and shuffled or oracle content changes loss by less than 0.005 on average. Multi-gist and implicit-prompt mechanics are tested, but their quality and cost effects have not been benchmarked. The implementation and optimization path are functional; content-causal retrieval and efficiency superiority are not established.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA), recast as an inference-time sparse approximation to full native self-attention. A trained SelfAttention checkpoint can be converted by splitting its existing Q/K/V projection, with no newly trained transport module. Selected historical token K/V is concatenated with local K/V under one shared softmax and the existing output projection; routing gists act only as an index. Exact tests show that reinserting all historical K/V reproduces the corresponding full causal-attention tail and that converted PRA logits match the source SelfAttention model when memory is disabled. The prototype also retains an optional cross-attention transport used by earlier experiments. Those five-seed CUDA results reach mean plain losses 4.5034, 4.5500, and 4.5704 for full PRA, hybrid PRA, and same-width SelfAttention, and show that frozen cross-attention adaptation preserves plain loss. They do not validate native transport: reference top-1 remains near chance and shuffled or oracle content changes cross-attention loss by less than 0.005. We add fixed-target WikiText controls for 2, 3, 5, 8, 16, 32, and 64 partitions, active-K/V diagnostics, and explicit transport, sparsity, memory-benefit, causality, and dependency gaps. Long-context native-KV quality and efficiency results remain pending.
 \end{abstract}
 
 \section{Introduction}
 
-Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-context language modeling. Many tasks require access to large external context, but the relevant evidence is sparse, hierarchical, and often discovered only after partial reasoning. A conventional decoder-only transformer receives a flat token sequence. Retrieval-augmented generation improves this interface by prepending retrieved passages, but the retrieved text still becomes ordinary prompt context \cite{lewis2020rag}. PRA instead represents external context through lightweight reference handles that can be resolved into URI-addressed memory and attended to through a dedicated memory path.
+Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-context language modeling. Many tasks require access to large context, but the relevant evidence is sparse, hierarchical, and often discovered only after partial reasoning. A conventional decoder-only transformer receives a flat token sequence. PRA treats references as an index over model-native historical K/V and activates only selected positions. References may denote prior tokens, external objects, or an implicit prompt head; retrieval-augmented generation is therefore one possible source of memory, not the definition of PRA \cite{lewis2020rag}.
 
 This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model. The contribution includes an initial empirical pilot, a five-seed corrected-router and parameter-controlled follow-up, and an evaluation design intended to make failure visible rather than merely demonstrate that a memory branch can lower loss.
 
-The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references; the prompt adapter can create a reserved implicit reference without adding a visible handle. Third, a resolver partitions each object into bounded chunks and stores full per-layer token K/V together with one or more paired projected-key/value gists. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and adds a scaled cross-attention branch over only the selected chunk memories.
+The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references; the prompt adapter can create a reserved implicit reference without adding a visible handle. Third, a resolver partitions each object into bounded chunks and stores full per-layer token K/V together with one or more paired projected-key/value gists. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and inserts selected native token K/V into ordinary causal attention. An optional scaled cross-attention branch preserves earlier experiments.
 
 The easiest way to follow the implementation is as a prepare-then-use pipeline.  During
 preparation, each batch row resolves its own handles, encodes the resulting chunks with
@@ -51,8 +51,9 @@ the same Transformer stack used for prompts, and records two representations at 
 PRA layer: a small gist for routing and full token K/V for reading.  During use, all
 prompt rows pass through the Transformer together.  The last query in each row ranks
 only that row's gists; selected chunks are materialized as variable-length memory; and
-all prompt positions cross-attend to those detailed K/V tensors.  Local causal attention
-never disappears.  PRA adds a second, explicitly bounded source of evidence.
+their original token K/V is prepended to local K/V under one softmax. Local causal
+attention never disappears. The optional legacy mode instead reads the same memory
+through a separately normalized cross-attention residual.
 
 \section{Model Definition}
 
@@ -268,7 +269,7 @@ This score is a coarse admission decision: it asks which chunks are worth openin
 the current row and layer.  It is distinct from the token-level attention weights
 computed after a chunk is opened. The default hierarchical policy uses independent reference and per-reference chunk top-$k$ settings. They are configured as \texttt{top\_k\_references} and \texttt{top\_k\_chunks\_per\_reference}; either may be zero, yielding no memory. \texttt{top\_k\_refs} remains a warning-producing compatibility alias for one release. Summaries are disabled by default. If enabled, \texttt{replace}, \texttt{hybrid}, and \texttt{augment} policies combine projected summary evidence with content scores; a missing summary always falls back to content routing.
 
-\subsection{Memory Cross-Attention Branch}
+\subsection{Canonical Native-KV Transport}
 
 For selected chunk set $\mathcal{A}_{b,\ell}$ and layer $\ell$, the implementation materializes only selected full-token memories for each batch row:
 
@@ -278,25 +279,22 @@ K_{b,\ell}^{\rm mem} = \mathrm{concat}_{(u,c) \in \mathcal{A}_{b,\ell}} K_{u,c,\
 V_{b,\ell}^{\rm mem} = \mathrm{concat}_{(u,c) \in \mathcal{A}_{b,\ell}} V_{u,c,\ell}.
 \end{equation}
 
-It then computes a memory branch using the same query tensor $Q$ from the local branch:
+It then prepends memory K/V to local K/V and computes one causal normalization:
 
 \begin{equation}
-O_{\mathrm{mem}} =
-W_{O,\mathrm{mem}}
-\mathrm{merge}\left[
+O = W_O\,\mathrm{merge}\left[
 \mathrm{softmax}\left(
-\frac{Q_b(K_{b,\ell}^{\rm mem})^{\top}}{\sqrt{d_h}}
-\right)V_{b,\ell}^{\rm mem}
+\frac{Q_b[K_{b,\ell}^{\rm mem};K_{b,\ell}^{\rm local}]^{\top}}{\sqrt{d_h}}
++M_{\rm causal}\right)
+[V_{b,\ell}^{\rm mem};V_{b,\ell}^{\rm local}]
 \right].
 \end{equation}
 
-The returned attention output is
-
-\begin{equation}
-O = O_{\mathrm{local}} + \alpha O_{\mathrm{mem}},
-\end{equation}
-
-where $\alpha$ is \texttt{memory\_alpha}, defaulting to $0.5$. If the cache is empty, PRA is disabled, no chunk passes the threshold, or selected memory is unavailable at layer $\ell$, the memory residual is exactly zero, including in the presence of output-projection bias.
+Memory positions are visible to every local query; local positions retain their ordinary
+causal and padding masks. There is no $W_{O,\mathrm{mem}}$, separate softmax, or memory
+scale. If memory is disabled or selection is empty, the implementation takes the exact
+local path. Routing gists index token K/V and are not themselves transported, except in
+the explicit \texttt{gist\_only} diagnostic.
 
 The normal \texttt{selected\_chunks} mode transports exactly the token K/V belonging to
 the routed chunks.  Two diagnostic modes make the boundary testable:
@@ -313,8 +311,8 @@ Variable memory lengths are executed in one of three modes. Mode zero evaluates 
 \node[sysnode] (hidden) {$X^{(\ell)}$};
 \node[sysnode, above right=of hidden] (local) {causal self-attention};
 \node[cachenode, below right=of hidden] (select) {route chunk gists};
-\node[cachenode, right=of select] (cross) {memory cross-attention};
-\node[sysnode, right=28mm of hidden] (sum) {$O_{\rm local}+\alpha O_{\rm mem}$};
+\node[cachenode, right=of select] (cross) {prepend native K/V};
+\node[sysnode, right=28mm of hidden] (sum) {one softmax + $W_O$};
 \node[sysnode, right=of sum] (ffn) {residual + FFN};
 \draw[sysflow] (hidden) -- (local);
 \draw[sysflow] (hidden) -- (select);
@@ -323,13 +321,17 @@ Variable memory lengths are executed in one of three modes. Mode zero evaluates 
 \draw[sysflow] (cross) -- (sum);
 \draw[sysflow] (sum) -- (ffn);
 \end{tikzpicture}
-\caption{Implemented PRA block. Local causal attention remains intact; selected layer-specific memory contributes through a separately projected residual branch.}
+\caption{Canonical PRA block. Selected native K/V and local K/V share one normalization and the existing output projection.}
 \label{fig:pra-block}
 \end{figure}
 
-\subsection{Cross-Attention Rather than Native KV Injection}
+\subsection{Optional Adapted Cross-Attention Transport}
 
-The standalone prototype uses a separate cross-attention memory branch. Direct concatenation into native self-attention KV is listed as an ablation and future integration path, but it is intentionally not the default mechanism. Cross-attention cleanly separates local causal attention from external memory attention and avoids immediate complications from rotary position embeddings, grouped-query attention, and production cache layout. This makes the prototype suitable for controlled research before adapting large pretrained models.
+Setting \texttt{memory\_transport=cross\_attention} restores the earlier separately
+normalized branch, output projection, and residual scale. Legacy checkpoint booleans
+migrate to this mode, so historical reports remain reproducible. This mode changes the
+model and requires adaptation; it is retained as a later transport comparison rather
+than the definition or default of PRA.
 
 \section{Complexity and Resource Model}
 
@@ -346,7 +348,7 @@ O\left(Ld\sum_{i=1}^{r}m_i^2\right)
 + O\left(L_p d^2\sum_{i=1}^{r}m_i\right)
 \end{equation}
 
-for reference self-attention and layer-specific K/V projection. Memory cross-attention adds
+for independent reference self-attention and layer-specific K/V projection. Native memory attention adds
 
 \begin{equation}
 O(L_p T M d)
@@ -358,7 +360,7 @@ to a full-sequence forward pass. The resident K/V payload is approximately
 B_{\rm cache}=2wL_pMd
 \end{equation}
 
-bytes, excluding summaries, object metadata, allocator overhead, and duplicated entries. Each PRA layer adds one $d\times d$ memory output projection plus bias in the current implementation, or $d^2+d$ parameters. Full PRA therefore adds $L_p(d^2+d)$ parameters relative to the corresponding custom local block.
+bytes, excluding summaries, object metadata, allocator overhead, and duplicated entries. Canonical native transport adds no trainable projection. The optional cross-attention mode adds one $d\times d$ memory output projection plus bias per PRA layer.
 
 For an overlong prompt with displaced head length $P=N-D$, the direct local term becomes
 $O(LD^2d)$, while cold construction of head memory adds approximately the sum of the
@@ -454,9 +456,9 @@ optimization targets from prompt-forward batching.
 \label{fig:runtime-pipeline}
 \end{figure}
 
-\subsection{Two-Phase Optimization}
+\subsection{Native Evaluation and Historical Two-Phase Optimization}
 
-Phase 1 trains each architecture as an ordinary causal language model with PRA memory absent. The follow-up evaluates three reference-task orders: (i) training from scratch; (ii) restoring the matching phase-1 checkpoint, freezing the base, zero-initializing $W_{O,\mathrm{mem}}$, and optimizing only memory output projections; and (iii) restoring the checkpoint and directly fine-tuning all parameters jointly. Zero initialization makes the initial reference branch an exact no-op. The frozen regime therefore preserves the pretrained local function by construction, while the measured plain-task reevaluation verifies that the implementation honors this constraint. The joint regime tests whether unconstrained adaptation is sufficient and quantifies catastrophic forgetting. The SelfAttention control is invariant to reference ablations and is trained from scratch or jointly as a formatting and optimization control.
+The canonical path trains an ordinary SelfAttention language model, freezes its checkpoint, converts the existing Q/K/V and output projections, and evaluates native K/V without PRA training. The historical cross-attention follow-up instead evaluates three reference-task orders: (i) training from scratch; (ii) restoring the matching phase-1 checkpoint, freezing the base, zero-initializing $W_{O,\mathrm{mem}}$, and optimizing only memory output projections; and (iii) restoring the checkpoint and directly fine-tuning all parameters jointly. Zero initialization makes the initial adapted branch an exact no-op. The frozen regime therefore preserves the pretrained local function by construction, while the measured plain-task reevaluation verifies that the implementation honors this constraint. The joint regime tests whether unconstrained adaptation is sufficient and quantifies catastrophic forgetting. These optimization findings apply to adapted cross-attention, not parameter-free native transport.
 
 \subsection{Execution-Time Accounting}
 
@@ -564,7 +566,29 @@ The evaluated ablations are:
 \item plain WikiText-2 reevaluation after phase 2.
 \end{itemize}
 
-The corrected follow-up evaluates valid, disabled, shuffled, irrelevant, empty, and oracle-reference conditions plus parameter-matched controls. The runtime also implements chunk-level oracle, full-reference, selected-chunk, gist-only, and recursive modes; controlled sweeps over those transport and expansion choices remain pending. Native KV injection, learned triggering, distance-stratified analysis, and memory-strength sweeps are future ablations.
+The corrected follow-up evaluates valid, disabled, shuffled, irrelevant, empty, and oracle-reference conditions plus parameter-matched controls in cross-attention mode. Native evaluation begins instead with \texttt{SA-full}, \texttt{SA-tail}, \texttt{PRA-native-all}, \texttt{PRA-native-oracle}, \texttt{PRA-native-disabled}, and \texttt{PRA-native-shuffled}. The report computes
+$\Delta_{\rm transport}=L_{\rm native-all}-L_{\rm SA-full}$,
+$\Delta_{\rm sparse}=L_{\rm native-oracle}-L_{\rm native-all}$,
+$\Delta_{\rm memory}=L_{\rm SA-tail}-L_{\rm native-oracle}$, and
+$\Delta_{\rm causal}=L_{\rm native-shuffled}-L_{\rm native-oracle}$.
+It also records accessible K/V tokens, active local tokens, retrieved token K/V, active fraction, K/V storage and transfer bytes, routing/materialization/attention time, throughput, and peak GPU memory.
+
+\subsection{Native-KV Experimental Progression}
+
+The first gate converts one trained SelfAttention checkpoint and verifies disabled-memory
+logit equivalence. The second extracts historical K/V while processing prefix $A$ in its
+original left context and reinserts all of it while processing tail $B$; this must match
+the tail of full attention with equivalent positions and masks. Independent chunk
+re-encoding is reported separately because reset positions and missing left context make
+it a different intervention. Only after all-K/V transport passes should an oracle active
+K/V budget frontier be measured, followed by routed and shuffled controls.
+
+The fixed-target WikiText generator supports split counts $\{2,3,5,8,16,32,64\}$.
+For a given source and seed, it keeps the recent direct tail, answer, target identifier,
+and evaluation mask unchanged. Only the boundaries inside displaced prefix history vary;
+metadata-only implicit references avoid adding visible handle tokens. This corrects the
+earlier split-2/split-5 design, whose target and processed-token count changed with split
+count. No native split-scaling quality result is reported yet.
 
 \subsection{Publication-Grade Experiment Matrix}
 
@@ -584,7 +608,7 @@ Reference causality & valid, disabled, shuffled, irrelevant, empty, oracle chunk
 Cache budget & entries/tokens/bytes; reuse on/off; eviction policies & pending \\
 Memory strength & $\alpha$ sweep including zero and learned gate & $\alpha=1$ only \\
 Selection & reference/chunk top-$k$, threshold, oracle chunks, learned router & fixed-$k$ smoke complete; controlled sweep pending \\
-Transport & separate cross-attention versus native K/V injection & cross-attention only \\
+Transport & native all/oracle/routed versus adapted cross-attention & native mechanics complete; quality sweep pending \\
 Adaptation & scratch, frozen branch, LoRA, adapters, joint fine-tuning & scratch/frozen/joint complete \\
 Placement & full PRA, upper-layer hybrid, layer-count sweep & full and 2+2 hybrid complete \\
 Difficulty & distance, candidate count, local sufficiency, recursion depth & recursive runtime present; experiments pending \\
@@ -595,6 +619,11 @@ Difficulty & distance, candidate count, local sufficiency, recursion depth & rec
 The five-seed comparison uses a fixed tokenizer and split, equal processed-token budgets, and paired seeds. Future cache and selector sweeps should initialize from the same checkpoints. Oracle references isolate memory transport from selection; irrelevant and empty controls distinguish content use from generic branch activation. Native K/V injection must account for positional encoding and causal semantics rather than simply concatenate tensors. LoRA, adapters, and joint fine-tuning should be matched by trainable parameter count or reported as separate adaptation regimes.
 
 \section{Historical Version-1 Results}
+
+Every result from this section through the corrected five-seed reference adaptation
+study uses the optional cross-attention transport. The values remain informative about
+adaptation and preservation, but they are not evidence for native-KV equivalence,
+sparsity, or inference economics.
 
 Tables~\ref{tab:plain-results} and~\ref{tab:reference-results} report population means and standard deviations over seeds 1 and 7. They are real report artifacts, but the reference runs predate the corrected hierarchy. They routed a single raw summary embedding per whole reference, reused a batch-collapsed query in an early path, and materialized whole-reference K/V. Accordingly, only the no-memory language-model results transfer directly to the current implementation; reference-conditioned values are engineering history, not evidence for corrected PRA.
 
@@ -748,13 +777,13 @@ Recursive expansion can amplify work. The standalone builder now bounds depth, c
 
 \section{Limitations}
 
-The current prototype and follow-up have important limitations. The corrected-router smoke matrix now reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans, and the model can reduce continuation loss without learning candidate selection. The near-chance selector and weak counterfactual deltas leave open how much of the memory gain is a content-independent adapter effect.
+The current prototype and follow-up have important limitations. Native-KV transport has exact mechanical tests but no completed long-context quality or systems sweep; historical K/V reuse has not yet been compared with independent chunk re-encoding across position policies. The corrected-router cross-attention smoke matrix reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans, and the model can reduce continuation loss without learning candidate selection. The near-chance selector and weak counterfactual deltas leave open how much of the memory gain is a content-independent adapter effect.
 
 The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-valid-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Most gist modes and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter now batches the prompt forward, but reference encoding and routing still iterate over row-private caches. Multi-gist modes and the implicit prompt-head path have focused tests but no controlled quality, routing, or timing study. In particular, prompt-head encoding can relocate rather than remove computation, and generated-token rollover is absent. The 20-run fixed-split matrix varies model initialization but keeps one generated dataset and split; summary modes, oracle chunks, full-reference transport, recursion, and dynamic bucketing remain unit- and CUDA-smoke-tested rather than evaluated in a controlled training study. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype now provides a more faithful testbed for demand-driven, URI-addressed memory expansion: explicit local reference tables, bounded child-first recursion, deterministic chunking, configurable paired gist sets at chunk and URI levels, independent reference/chunk routing budgets, selected-chunk K/V materialization, request-local prompt-head virtualization, batch isolation, and structured diagnostics. The historical studies establish ordinary-language compatibility and useful optimization controls. The corrected architecture has passed focused CPU tests, a multi-row CUDA forward/backward smoke test, and a five-seed end-to-end fixed-split matrix. It has not passed the causal experiment gate: branch use is reproducible, content use is not; nor have multi-gist or implicit-prompt quality and cost been measured. The immediate priority is a matched-token rerun with oracle chunks, full-reference and gist-only transport, stronger content controls, explicit chunk labels, and longer training, followed by long-prompt comparisons against truncation, dense extended context, and recurrent/KV-retention baselines.
+The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Layer-level historical-K/V reinsertion and whole-model disabled-memory conversion pass numerical equivalence tests. Fixed-target split generation and active-K/V diagnostics are implemented, but the native long-context experiment remains pending; consequently no quality, sparsity, or efficiency advantage is claimed. The earlier cross-attention studies establish useful adaptation controls but fail the content-causality gate. The immediate priority is the frozen-checkpoint sequence: full SA, tail SA, native all, native oracle across active-K/V budgets, then routed and shuffled native memory over invariant targets. Only after that gate should the work move to pretrained Hugging Face attention, where rotary positions, grouped-query caches, and layer-specific cache layouts must be preserved.
 
 \appendix
 \section{Reference-Memory Forward Pass Pseudocode}
@@ -819,26 +848,19 @@ The following excerpt omits thresholds, score aggregation, summary modes, recurs
 
 \begin{verbatim}
 class PRAttention(nn.Module):
-    def __init__(self, d_model, n_heads, memory_alpha=1.0):
+    def __init__(self, d_model, n_heads):
         super().__init__()
         self.n_heads = n_heads
         self.head_dim = d_model // n_heads
         self.q_proj = nn.Linear(d_model, d_model)
         self.k_proj = nn.Linear(d_model, d_model)
         self.v_proj = nn.Linear(d_model, d_model)
-        self.local_out = nn.Linear(d_model, d_model)
-        self.memory_out = nn.Linear(d_model, d_model)
-        self.memory_alpha = memory_alpha
+        self.o_proj = nn.Linear(d_model, d_model)
 
     def forward(self, x, cache, layer_id):
         q = split_heads(self.q_proj(x), self.n_heads)
         k = split_heads(self.k_proj(x), self.n_heads)
         v = split_heads(self.v_proj(x), self.n_heads)
-
-        local_scores = q @ k.transpose(-2, -1) / sqrt(self.head_dim)
-        local_scores = local_scores.masked_fill(causal_mask(x), -inf)
-        local = softmax(local_scores, dim=-1) @ v
-        local = self.local_out(merge_heads(local))
 
         # Each row routes independently using the projected last query.
         routing_q = merge_heads(q[:, :, -1:, :]).squeeze(1)
@@ -850,15 +872,23 @@ class PRAttention(nn.Module):
         memory_k, memory_v = materialize_selected_chunks(
             selected_by_row, layer_id
         )
-        memory, has_memory = masked_bucketed_attention(
-            q, memory_k, memory_v
-        )
-        memory = self.memory_out(merge_heads(memory))
-        memory = memory * has_memory[:, None, None]
-        return local + self.memory_alpha * memory
+        rows = []
+        for i, (mem_k, mem_v) in enumerate(zip(memory_k, memory_v)):
+            # Memory is historical, so every local query can see it.
+            all_k = cat([mem_k, k[i:i+1]], dim=2)
+            all_v = cat([mem_v, v[i:i+1]], dim=2)
+            scores = q[i:i+1] @ all_k.transpose(-2, -1)
+            scores = scores / sqrt(self.head_dim)
+            mask = native_causal_mask(x, mem_k.shape[2])
+            scores = scores.masked_fill(mask, -inf)
+            rows.append(softmax(scores, dim=-1) @ all_v)
+        return self.o_proj(merge_heads(cat(rows, dim=0)))
 \end{verbatim}
 
-Zero-initializing \texttt{memory\_out} makes the second term exactly zero at phase-2 initialization. The explicit \texttt{has\_memory} mask also guarantees an exact zero residual for empty rows even when the output projection has a nonzero bias.
+The actual implementation takes the original local-attention fast path when every
+selected memory is empty, preserving exact disabled-memory behavior. The optional
+cross-attention class path retains \texttt{memory\_out} and \texttt{memory\_alpha}
+only for legacy checkpoints and adapted-transport experiments.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

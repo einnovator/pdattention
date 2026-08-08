@@ -591,3 +591,78 @@ class TinyPRAModel(nn.Module):
 
 TinyPRALanguageModel = TinyPRAModel
 TransformerBlock = PRATransformerBlock
+
+
+def convert_sa_model_to_pra(
+    source: TinyPRAModel,
+    target_config: PRAConfig,
+    *,
+    pra_cache: PRAMemoryCache | None = None,
+) -> TinyPRAModel:
+    """Convert a trained ``td_sa`` model into a native-KV PRA architecture.
+
+    The conversion copies each PyTorch multi-head attention Q/K/V slice into
+    the corresponding PRA projections and preserves output projection, layer
+    norms, MLP, embeddings, and LM head. It introduces no transport parameters
+    in the canonical native mode. The resulting model therefore matches the SA
+    checkpoint exactly when memory is disabled (with dropout inactive).
+    """
+    if source.cfg.model_variant != "td_sa":
+        raise ValueError("Source model must use model_variant='td_sa'.")
+    if target_config.memory_transport != "native_kv":
+        raise ValueError("SA conversion targets canonical memory_transport='native_kv'.")
+    architecture = ("vocab_size", "d_model", "n_heads", "n_layers", "d_ff", "max_seq_len")
+    mismatches = [
+        name
+        for name in architecture
+        if getattr(source.cfg, name) != getattr(target_config, name)
+    ]
+    if mismatches:
+        raise ValueError(f"Source and target architecture differ in: {', '.join(mismatches)}")
+
+    target = TinyPRAModel(target_config, pra_cache=pra_cache)
+    with torch.no_grad():
+        target.token_emb.load_state_dict(source.token_emb.state_dict())
+        target.pos_emb.load_state_dict(source.pos_emb.state_dict())
+        target.ln.load_state_dict(source.ln.state_dict())
+        target.head.load_state_dict(source.head.state_dict())
+        for source_block, target_block in zip(source.blocks, target.blocks):
+            if not isinstance(source_block, VanillaTransformerBlock):
+                raise TypeError("Every source td_sa block must be vanilla self-attention.")
+            if isinstance(target_block, VanillaTransformerBlock):
+                target_block.load_state_dict(source_block.state_dict())
+                continue
+            if not isinstance(target_block, PRATransformerBlock):
+                raise TypeError("SA conversion supports vanilla or PRA target blocks.")
+
+            layer = source_block.layer
+            target_block.ln1.load_state_dict(layer.norm1.state_dict())
+            target_block.ln2.load_state_dict(layer.norm2.state_dict())
+            q_weight, k_weight, v_weight = layer.self_attn.in_proj_weight.chunk(3, dim=0)
+            q_bias, k_bias, v_bias = layer.self_attn.in_proj_bias.chunk(3, dim=0)
+            for projection, weight, bias in (
+                (target_block.attn.q_proj, q_weight, q_bias),
+                (target_block.attn.k_proj, k_weight, k_bias),
+                (target_block.attn.v_proj, v_weight, v_bias),
+            ):
+                projection.weight.copy_(weight)
+                projection.bias.copy_(bias)
+            target_block.attn.o_proj.load_state_dict(layer.self_attn.out_proj.state_dict())
+            target_block.ff[0].load_state_dict(layer.linear1.state_dict())
+            target_block.ff[2].load_state_dict(layer.linear2.state_dict())
+    return target
+
+
+def convert_sa_checkpoint_to_pra(
+    checkpoint: dict,
+    target_config: PRAConfig,
+    *,
+    map_location: str | torch.device = "cpu",
+) -> TinyPRAModel:
+    """Instantiate and convert a serialized project ``td_sa`` checkpoint."""
+    source_config_values = dict(checkpoint["cfg"])
+    source_config_values["device"] = str(map_location)
+    source_config = PRAConfig(**source_config_values)
+    source = TinyPRAModel(source_config).to(map_location)
+    source.load_state_dict(checkpoint["model"])
+    return convert_sa_model_to_pra(source, target_config).to(map_location)

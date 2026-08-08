@@ -70,8 +70,7 @@ pra:
   recursive_cycle_policy: skip
   recursive_missing_ref_policy: warn
   trigger_threshold: 0.2
-  use_cross_attention_memory: true
-  use_concat_memory: false
+  memory_transport: native_kv
   memory_alpha: 0.5
 
 resolver:
@@ -98,8 +97,7 @@ models:
       pra_layer_ids: [0, 1]
       top_k_references: 2
       trigger_threshold: 0.2
-      use_cross_attention_memory: true
-      use_concat_memory: false
+      memory_transport: native_kv
       memory_alpha: 0.5
     resolver:
       type: in_memory
@@ -224,6 +222,7 @@ experiments:
     train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
   td_pra_tiny_wikitext2_refs_smoke:
     model_name: td_pra_tiny
+    pra_overrides: {memory_transport: cross_attention}
     dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 32, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
   td_sa_tiny_wikitext2_refs_split2_smoke:
@@ -239,13 +238,13 @@ experiments:
   td_pra_tiny_wikitext2_refs_split2_smoke:
     model_name: td_pra_tiny
     seeds: [1, 7, 21, 42, 87]
-    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra_overrides: {memory_transport: cross_attention, top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
     dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 32, split_count: 2, bpe_vocab_size: 2000}
     train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
   td_pra_tiny_wikitext2_refs_split5_smoke:
     model_name: td_pra_tiny
     seeds: [1, 7, 21, 42, 87]
-    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra_overrides: {memory_transport: cross_attention, top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
     dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 32, split_count: 5, bpe_vocab_size: 2000}
     train: {epochs: 1, max_steps: 8, batch_size: 2, learning_rate: 0.0003, max_seq_len: 128}
 
@@ -256,11 +255,13 @@ experiments:
     train: {epochs: 20, max_steps: 2048, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
   plain_pra_pretrain:
     model_name: td_pra_tiny
+    pra_overrides: {memory_transport: cross_attention}
     seeds: [1, 7, 21, 42, 87]
     dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
     train: {epochs: 20, max_steps: 2048, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
   plain_hybrid_pretrain:
     model_name: tdx_pra_tiny
+    pra_overrides: {memory_transport: cross_attention}
     seeds: [1, 7, 21, 42, 87]
     dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
     train: {epochs: 20, max_steps: 2048, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
@@ -273,12 +274,14 @@ experiments:
     train: {epochs: 20, max_steps: 512, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
   refs_pra_refpath:
     model_name: td_pra_tiny
+    pra_overrides: {memory_transport: cross_attention}
     initialize_from: plain_pra_pretrain
     seeds: [1, 7, 21, 42, 87]
     dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 20, max_steps: 512, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
   refs_hybrid_refpath:
     model_name: tdx_pra_tiny
+    pra_overrides: {memory_transport: cross_attention}
     initialize_from: plain_hybrid_pretrain
     seeds: [1, 7, 21, 42, 87]
     dataset: {type: wikitext_references, name: wikitext-2-raw-v1, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
@@ -291,11 +294,13 @@ experiments:
     train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
   phase1_plain_pra_1m:
     model_name: td_pra_tiny
+    pra_overrides: {memory_transport: cross_attention}
     seeds: [1, 7, 21, 42, 87]
     dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
     train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
   phase1_plain_hybrid_1m:
     model_name: tdx_pra_tiny
+    pra_overrides: {memory_transport: cross_attention}
     seeds: [1, 7, 21, 42, 87]
     dataset: {type: wikitext, name: wikitext-2-raw-v1, vocab_size: 2000, max_train_documents: 8192, max_eval_documents: 256, max_train_blocks: 4096}
     train: {epochs: 20, max_steps: 4096, eval_every_steps: 512, batch_size: 2, learning_rate: 0.0005, max_seq_len: 128}
@@ -318,13 +323,13 @@ experiments:
   phase1_order_pra_refs_v2:
     model_name: td_pra_tiny
     seeds: [1, 7, 21, 42, 87]
-    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra_overrides: {memory_transport: cross_attention, top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
     dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 20, max_steps: 512, eval_every_steps: 128, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
   phase1_order_hybrid_refs_v2:
     model_name: tdx_pra_tiny
     seeds: [1, 7, 21, 42, 87]
-    pra_overrides: {top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
+    pra_overrides: {memory_transport: cross_attention, top_k_references: 1, top_k_chunks_per_reference: 1, trigger_threshold: -1.0, memory_alpha: 1.0}
     dataset: {type: wikitext_references, stage: wikitext2_references_v2, name: wikitext-2-raw-v1, seed: 1729, split_seed: 1729, max_examples: 512, max_reference_parts: 5, bpe_vocab_size: 2000}
     train: {epochs: 20, max_steps: 512, eval_every_steps: 128, batch_size: 2, learning_rate: 0.0002, max_seq_len: 128}
 

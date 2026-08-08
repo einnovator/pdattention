@@ -109,6 +109,7 @@ def test_multi_gist_defaults_flow_from_yaml_into_model_config():
     assert kwargs["max_prompt_direct_tokens"] is None
     assert kwargs["prompt_overflow_mode"] == "truncate"
     assert kwargs["max_prompt_gists"] is None
+    assert kwargs["memory_transport"] == "native_kv"
 
 
 def test_named_decoder_variants_are_in_central_config():

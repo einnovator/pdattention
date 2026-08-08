@@ -211,3 +211,88 @@ def dynamic_memory_attention(
         attention_max_weight=sum(maxima) / max(len(maxima), 1),
     )
     return output, stats
+
+
+def native_kv_attention(
+    q: torch.Tensor,
+    local_k: torch.Tensor,
+    local_v: torch.Tensor,
+    memory_k_by_item: Sequence[torch.Tensor],
+    memory_v_by_item: Sequence[torch.Tensor],
+    *,
+    attention_mask: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, MemoryBatchingStats]:
+    """Attend jointly over selected historical K/V and causal local K/V.
+
+    All projected tensors use ``[B,H,T,Dh]`` except each variable memory row,
+    which is ``[1,H,M_i,Dh]``. Memory positions precede local positions and are
+    visible to every local query. Local positions retain the ordinary causal and
+    padding masks. Crucially, one softmax normalizes both sources; no separate
+    memory branch or output projection is introduced.
+    """
+    if q.shape != local_k.shape or q.shape != local_v.shape:
+        raise ValueError("Local Q/K/V must have matching [B,H,T,Dh] shapes.")
+    batch_size, _heads, token_count, _head_dim = q.shape
+    if len(memory_k_by_item) != batch_size or len(memory_v_by_item) != batch_size:
+        raise ValueError("Memory list length must match query batch size.")
+    if attention_mask is not None and attention_mask.shape != (batch_size, token_count):
+        raise ValueError("attention_mask must match the local [B,T] shape.")
+
+    scale = q.shape[-1] ** -0.5
+    causal = torch.tril(
+        torch.ones(token_count, token_count, dtype=torch.bool, device=q.device)
+    )
+    output_rows = []
+    lengths = []
+    entropies = []
+    maxima = []
+    for row_index, (memory_k, memory_v) in enumerate(
+        zip(memory_k_by_item, memory_v_by_item)
+    ):
+        if memory_k.ndim != 4 or memory_v.shape != memory_k.shape:
+            raise ValueError("Each memory K/V pair must have matching [1,H,M,Dh] shapes.")
+        if (
+            memory_k.shape[0] != 1
+            or memory_k.shape[1] != q.shape[1]
+            or memory_k.shape[3] != q.shape[3]
+        ):
+            raise ValueError("Memory K/V head dimensions do not match the query.")
+        memory_k = memory_k.to(q.device, q.dtype)
+        memory_v = memory_v.to(q.device, q.dtype)
+        memory_length = int(memory_k.shape[2])
+        lengths.append(memory_length)
+
+        keys = torch.cat((memory_k, local_k[row_index : row_index + 1]), dim=2)
+        values = torch.cat((memory_v, local_v[row_index : row_index + 1]), dim=2)
+        scores = q[row_index : row_index + 1] @ keys.transpose(-2, -1) * scale
+        memory_visible = torch.ones(
+            token_count, memory_length, dtype=torch.bool, device=q.device
+        )
+        visible = torch.cat((memory_visible, causal), dim=1)
+        if attention_mask is not None:
+            local_valid = attention_mask[row_index].to(device=q.device, dtype=torch.bool)
+            visible[:, memory_length:] &= local_valid[None, :]
+        scores = scores.masked_fill(~visible[None, None, :, :], float("-inf"))
+        weights = F.softmax(scores, dim=-1)
+        output_rows.append(weights @ values)
+        safe_weights = weights.clamp_min(torch.finfo(weights.dtype).tiny)
+        entropies.append(
+            float((-(weights * safe_weights.log()).sum(dim=-1).mean()).detach().cpu())
+        )
+        maxima.append(float(weights.max().detach().cpu()))
+
+    valid = sum(lengths)
+    stats = MemoryBatchingStats(
+        selected_lengths=tuple(lengths),
+        requested_bucket_count=0,
+        actual_bucket_count=sum(length > 0 for length in lengths),
+        bucket_membership=tuple((index,) for index, length in enumerate(lengths) if length),
+        bucket_max_lengths=tuple(length for length in lengths if length),
+        valid_positions=valid,
+        allocated_positions=valid,
+        padding_positions=0,
+        padding_fraction=0.0,
+        attention_entropy=sum(entropies) / max(len(entropies), 1),
+        attention_max_weight=sum(maxima) / max(len(maxima), 1),
+    )
+    return torch.cat(output_rows, dim=0), stats

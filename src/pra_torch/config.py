@@ -26,15 +26,16 @@ class PRAConfig:
     dropout: float = 0.0  # Dropout used by vanilla/mixed blocks and the GRU pooler.
     model_variant: str = "custom"  # custom, td_sa, td_pra, or last-two-layer tdx_pra.
 
-    # Routing budgets and fusion. Remaining blocks after vanilla/mixed are PRA blocks.
+    # Routing budgets and transport. Remaining blocks after vanilla/mixed are PRA blocks.
     pra_layer_ids: tuple[int, ...] = (2, 3)  # Experiment metadata; variants normalize it.
     top_k_references: int = 2  # Maximum distinct URIs selected for each batch item/layer.
     top_k_chunks_per_reference: int = 1  # Maximum chunks retained from each selected URI.
     top_k_refs: int | None = None  # Deprecated alias for top_k_references.
     trigger_threshold: float = 0.2  # Drop selected chunks whose cosine score is lower.
-    use_cross_attention_memory: bool = True  # Legacy flag; standalone PRA cross-attends.
-    use_concat_memory: bool = False  # Reserved compatibility flag; concat is not implemented.
-    memory_alpha: float = 0.5  # Scale in local_output + alpha * memory_output.
+    memory_transport: str = "native_kv"  # native_kv (canonical) or adapted cross_attention.
+    use_cross_attention_memory: bool | None = None  # Deprecated checkpoint/config alias.
+    use_concat_memory: bool | None = None  # Deprecated alias for native_kv transport.
+    memory_alpha: float = 0.5  # Cross-attention-only residual scale; ignored by native_kv.
 
     # Long prompts keep a bounded recent tail and can expose displaced history as PRA memory.
     max_prompt_direct_tokens: int | None = None  # None inherits max_seq_len.
@@ -135,6 +136,26 @@ class PRAConfig:
     def __post_init__(self) -> None:
         """Normalize aliases/variants and reject incompatible mode settings early."""
         # Normalize routing choices before validating dependent fields.
+        if self.use_cross_attention_memory is not None:
+            warnings.warn(
+                "use_cross_attention_memory is deprecated; use memory_transport.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.memory_transport = (
+                "cross_attention" if self.use_cross_attention_memory else "native_kv"
+            )
+        if self.use_concat_memory:
+            warnings.warn(
+                "use_concat_memory is deprecated; native_kv is the concatenated-K/V mode.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if self.memory_transport == "cross_attention":
+                raise ValueError("Legacy cross-attention and concat-memory flags conflict.")
+            self.memory_transport = "native_kv"
+        if self.memory_transport not in {"native_kv", "cross_attention"}:
+            raise ValueError(f"Unsupported memory_transport: {self.memory_transport}")
         if self.top_k_refs is not None:
             warnings.warn(
                 "top_k_refs is deprecated; use top_k_references and "

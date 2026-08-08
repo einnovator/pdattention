@@ -177,7 +177,7 @@ def test_top_k_zero_selects_none_and_reference_first_requires_representation():
 
 
 def test_attention_uses_independent_memory_per_batch_item_and_no_match_is_exact():
-    cfg = _routing_config(memory_bucket_count=1)
+    cfg = _routing_config(memory_bucket_count=1, memory_transport="cross_attention")
     cache = PRASimpleMemoryCache()
     cache.put(_entry("A", {0: [_chunk("A", "A0", [1, 0], [10, 0])]}))
     cache.put(_entry("B", {0: [_chunk("B", "B0", [0, 1], [0, 20])]}))
