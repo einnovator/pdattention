@@ -1,0 +1,287 @@
+{
+  "title": "PRA Phase 1 Follow-up Findings",
+  "run_tag": "corrected_router_v2",
+  "seeds": [
+    1,
+    7,
+    21,
+    42,
+    87
+  ],
+  "dataset_seed": 1729,
+  "split_seed": 1729,
+  "reference_top1_chance": 0.4201923076923077,
+  "previous_524k_full_pra_test_loss": 4.745706090927124,
+  "git_commit": "473ebba3744329999debd34e6da3eebed6bc8eb2",
+  "dirty_worktree": true,
+  "plain_parity": [
+    {
+      "architecture": "sa",
+      "parameters": 4216320,
+      "test_loss": 4.57036474609375,
+      "test_perplexity": 96.58209513547646,
+      "training_budget_tokens": 1048576.0,
+      "active_train_seconds": 193.89768401941984,
+      "host_interruption_seconds": 0.0
+    },
+    {
+      "architecture": "pra",
+      "parameters": 4479488,
+      "test_loss": 4.503417254384359,
+      "test_perplexity": 90.33721240161645,
+      "training_budget_tokens": 1048576.0,
+      "active_train_seconds": 186.35873101975304,
+      "host_interruption_seconds": 0.20224752000067384
+    },
+    {
+      "architecture": "hybrid",
+      "parameters": 4347904,
+      "test_loss": 4.5500088915507,
+      "test_perplexity": 94.63920662725357,
+      "training_budget_tokens": 1048576.0,
+      "active_train_seconds": 192.9234872795176,
+      "host_interruption_seconds": 0.0
+    },
+    {
+      "architecture": "sa_match_full",
+      "parameters": 4478976,
+      "test_loss": 4.585467182159424,
+      "test_perplexity": 98.10867297922387,
+      "training_budget_tokens": 1048576.0,
+      "active_train_seconds": 169.7305760410847,
+      "host_interruption_seconds": 0.7254728800035082
+    },
+    {
+      "architecture": "sa_match_hybrid",
+      "parameters": 4347648,
+      "test_loss": 4.57147993850708,
+      "test_perplexity": 96.69035651368715,
+      "training_budget_tokens": 1048576.0,
+      "active_train_seconds": 185.3718737200601,
+      "host_interruption_seconds": 0.0
+    }
+  ],
+  "training_order": [
+    {
+      "architecture": "sa",
+      "mode": "scratch",
+      "valid_loss": 6.345948666659269,
+      "disabled_loss": 6.345948666659269,
+      "shuffled_loss": 6.345948666659269,
+      "irrelevant_loss": 6.345948666659269,
+      "oracle_loss": 6.345948666659269,
+      "initial_top1": 0.0,
+      "final_top1": 0.0,
+      "plain_after": 6.478712697601319,
+      "forgetting_delta": 1.9083479515075688
+    },
+    {
+      "architecture": "sa",
+      "mode": "joint",
+      "valid_loss": 4.923008966619318,
+      "disabled_loss": 4.923008966619318,
+      "shuffled_loss": 4.923008966619318,
+      "irrelevant_loss": 4.923008966619318,
+      "oracle_loss": 4.923008966619318,
+      "initial_top1": 0.0,
+      "final_top1": 0.0,
+      "plain_after": 4.712481335449219,
+      "forgetting_delta": 0.142116589355469
+    },
+    {
+      "architecture": "pra",
+      "mode": "scratch",
+      "valid_loss": 6.355723868630149,
+      "disabled_loss": 6.375416391546076,
+      "shuffled_loss": 6.357128252896396,
+      "irrelevant_loss": 6.356016670227051,
+      "oracle_loss": 6.35548711603338,
+      "initial_top1": 0.49411764705882355,
+      "final_top1": 0.42115384615384616,
+      "plain_after": 6.494763158671061,
+      "forgetting_delta": 1.9913459042867023
+    },
+    {
+      "architecture": "pra",
+      "mode": "frozen_refpath",
+      "valid_loss": 4.672046864596281,
+      "disabled_loss": 4.689525639620695,
+      "shuffled_loss": 4.676864963184704,
+      "irrelevant_loss": 4.6722944502397015,
+      "oracle_loss": 4.670213369889693,
+      "initial_top1": 0.4588235294117647,
+      "final_top1": 0.42211538461538456,
+      "plain_after": 4.503417254384359,
+      "forgetting_delta": 0.0
+    },
+    {
+      "architecture": "pra",
+      "mode": "joint",
+      "valid_loss": 4.912857217962092,
+      "disabled_loss": 4.893758293845437,
+      "shuffled_loss": 4.915572706049138,
+      "irrelevant_loss": 4.9134036497636275,
+      "oracle_loss": 4.912751561945135,
+      "initial_top1": 0.4588235294117647,
+      "final_top1": 0.4269230769230769,
+      "plain_after": 4.680897998046875,
+      "forgetting_delta": 0.17748074366251654
+    },
+    {
+      "architecture": "hybrid",
+      "mode": "scratch",
+      "valid_loss": 6.364225598421964,
+      "disabled_loss": 6.384641926158558,
+      "shuffled_loss": 6.364902331265536,
+      "irrelevant_loss": 6.3647358509410505,
+      "oracle_loss": 6.364096574263139,
+      "initial_top1": 0.5078431372549019,
+      "final_top1": 0.4230769230769231,
+      "plain_after": 6.513988121287028,
+      "forgetting_delta": 1.9639792297363279
+    },
+    {
+      "architecture": "hybrid",
+      "mode": "frozen_refpath",
+      "valid_loss": 4.729639987598766,
+      "disabled_loss": 4.741312853726474,
+      "shuffled_loss": 4.730416751514782,
+      "irrelevant_loss": 4.730383437416771,
+      "oracle_loss": 4.727905140963467,
+      "initial_top1": 0.4882352941176471,
+      "final_top1": 0.3980769230769231,
+      "plain_after": 4.5500088915507,
+      "forgetting_delta": 0.0
+    },
+    {
+      "architecture": "hybrid",
+      "mode": "joint",
+      "valid_loss": 4.9195693061135035,
+      "disabled_loss": 4.912492290150036,
+      "shuffled_loss": 4.92211981825395,
+      "irrelevant_loss": 4.921069881092419,
+      "oracle_loss": 4.919348761125045,
+      "initial_top1": 0.4882352941176471,
+      "final_top1": 0.4076923076923077,
+      "plain_after": 4.706164956919352,
+      "forgetting_delta": 0.156156065368652
+    }
+  ],
+  "questions": [
+    {
+      "question": "Does pretraining improve reference-selection speed?",
+      "answer": false,
+      "detail": "frozen pretrained final top-1=0.4101; scratch=0.4221; candidate-count chance=0.4202; periodic curves show no sustained rise"
+    },
+    {
+      "question": "Does pretraining improve final loss for pra?",
+      "answer": true,
+      "detail": "direct joint valid loss=4.9129; scratch=6.3557"
+    },
+    {
+      "question": "Does frozen reference-path training preserve plain LM for pra?",
+      "answer": true,
+      "detail": "frozen plain-loss delta=+0.0000; direct joint=+0.1775"
+    },
+    {
+      "question": "Does pretraining improve final loss for hybrid?",
+      "answer": true,
+      "detail": "direct joint valid loss=4.9196; scratch=6.3642"
+    },
+    {
+      "question": "Does frozen reference-path training preserve plain LM for hybrid?",
+      "answer": true,
+      "detail": "frozen plain-loss delta=+0.0000; direct joint=+0.1562"
+    },
+    {
+      "question": "Does the hybrid benefit more from staged training than full PRA?",
+      "answer": false,
+      "detail": "hybrid scratch-to-staged gain=1.6346; full PRA gain=1.6837"
+    },
+    {
+      "question": "Does full PRA benefit from longer ordinary-language pretraining?",
+      "answer": true,
+      "detail": "mean test loss fell from 4.7457 at 524,288 tokens to 4.5034 at 1,048,576 tokens"
+    },
+    {
+      "question": "Does ordinary-language parity survive parameter matching?",
+      "answer": false,
+      "detail": "full PRA=4.5034 vs matched SA=4.5855; hybrid=4.5500 vs matched SA=4.5715"
+    },
+    {
+      "question": "Is direct joint fine-tuning sufficient for pra?",
+      "answer": false,
+      "detail": "direct joint valid loss=4.9129; frozen=4.6720; forgetting must be considered separately"
+    },
+    {
+      "question": "Is direct joint fine-tuning sufficient for hybrid?",
+      "answer": false,
+      "detail": "direct joint valid loss=4.9196; frozen=4.7296; forgetting must be considered separately"
+    }
+  ],
+  "selection_curves": {
+    "refs_pra_scratch": {
+      "128": 0.4794117647058823,
+      "205": 0.4794117647058823,
+      "256": 0.48725490196078436,
+      "384": 0.4901960784313726,
+      "410": 0.4911764705882353,
+      "512": 0.4931372549019608
+    },
+    "refs_pra_frozen_refpath": {
+      "128": 0.45588235294117646,
+      "205": 0.4549019607843137,
+      "256": 0.453921568627451,
+      "384": 0.4549019607843137,
+      "410": 0.453921568627451,
+      "512": 0.4568627450980392
+    },
+    "refs_pra_joint": {
+      "128": 0.453921568627451,
+      "205": 0.4450980392156863,
+      "256": 0.44803921568627453,
+      "384": 0.45294117647058824,
+      "410": 0.44607843137254904,
+      "512": 0.44607843137254904
+    },
+    "refs_hybrid_scratch": {
+      "128": 0.4764705882352941,
+      "205": 0.4745098039215686,
+      "256": 0.4862745098039216,
+      "384": 0.4549019607843137,
+      "410": 0.46470588235294114,
+      "512": 0.46862745098039216
+    },
+    "refs_hybrid_frozen_refpath": {
+      "128": 0.4882352941176471,
+      "205": 0.4882352941176471,
+      "256": 0.4882352941176471,
+      "384": 0.4901960784313726,
+      "410": 0.4882352941176471,
+      "512": 0.4862745098039216
+    },
+    "refs_hybrid_joint": {
+      "128": 0.49411764705882355,
+      "205": 0.48039215686274506,
+      "256": 0.48235294117647054,
+      "384": 0.488235294117647,
+      "410": 0.46862745098039216,
+      "512": 0.4725490196078431
+    }
+  },
+  "aggregate_reports": {
+    "plain_sa": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\plain_sa\\index.html",
+    "plain_pra": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\plain_pra\\index.html",
+    "plain_hybrid": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\plain_hybrid\\index.html",
+    "plain_sa_match_full": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\plain_sa_match_full\\index.html",
+    "plain_sa_match_hybrid": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\plain_sa_match_hybrid\\index.html",
+    "refs_sa_scratch": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_sa_scratch\\index.html",
+    "refs_sa_joint": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_sa_joint\\index.html",
+    "refs_pra_scratch": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_pra_scratch\\index.html",
+    "refs_pra_frozen_refpath": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_pra_frozen_refpath\\index.html",
+    "refs_pra_joint": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_pra_joint\\index.html",
+    "refs_hybrid_scratch": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_hybrid_scratch\\index.html",
+    "refs_hybrid_frozen_refpath": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_hybrid_frozen_refpath\\index.html",
+    "refs_hybrid_joint": "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\aggregates\\refs_hybrid_joint\\index.html"
+  }
+}

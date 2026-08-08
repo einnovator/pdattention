@@ -1,0 +1,605 @@
+{
+  "report_name": "refs_sa_scratch",
+  "title": "Refs Sa Scratch",
+  "generated_at": "2026-08-08T18:33:12.906604+01:00",
+  "seeds": [
+    1,
+    7,
+    21,
+    42,
+    87
+  ],
+  "model": {
+    "name": "td_sa_tiny",
+    "parameter_count": 4216320,
+    "vocab_size": 2000,
+    "d_model": 256,
+    "n_heads": 4,
+    "n_layers": 4,
+    "n_vanilla_layers": 4,
+    "n_mixed_layers": 0,
+    "d_ff": 1024,
+    "max_seq_len": 128,
+    "dropout": 0.1,
+    "model_variant": "td_sa",
+    "pra_layer_ids": [],
+    "top_k_references": 2,
+    "top_k_chunks_per_reference": 1,
+    "top_k_refs": null,
+    "trigger_threshold": 0.2,
+    "use_cross_attention_memory": true,
+    "use_concat_memory": false,
+    "memory_alpha": 0.5,
+    "search_strategy": "hierarchical",
+    "reference_score_aggregation": "max",
+    "reference_level_gist_mode": null,
+    "gist_mode": "mean",
+    "max_gists_per_reference": 4,
+    "gist_overflow_policy": "truncate",
+    "gist_gru_hidden_size": null,
+    "gist_gru_num_layers": 1,
+    "gist_gru_bidirectional": false,
+    "ref_end_token": "<REF_END>",
+    "chunking_mode": "none",
+    "fixed_chunk_tokens": 64,
+    "fixed_chunk_overlap_tokens": 0,
+    "reference_overflow_policy": "truncate",
+    "marker_rules": [
+      "<PRA_CHUNK>"
+    ],
+    "semantic_chunker": null,
+    "detail_materialization": "selected_chunks",
+    "memory_bucket_count": 1,
+    "memory_bucket_strategy": "optimal_contiguous",
+    "cache_build_mode": "detached",
+    "use_summary": false,
+    "summary_mode": "replace",
+    "recursive_refs_enabled": false,
+    "recursive_max_depth": 2,
+    "recursive_max_total_references": 16,
+    "recursive_max_total_tokens": 2048,
+    "recursive_max_children_per_reference": 8,
+    "recursive_cycle_policy": "skip",
+    "recursive_missing_ref_policy": "warn",
+    "collect_detailed_timing": false,
+    "collect_attention_metrics": true,
+    "collect_per_head_metrics": false,
+    "chunk_match_mode": "exact_id",
+    "chunk_iou_threshold": 0.5,
+    "batch_size": 2,
+    "lr": 0.0002,
+    "steps": 512,
+    "device": "cuda"
+  },
+  "dataset": {
+    "dataset": "wikitext-2-raw-v1",
+    "stage": "wikitext2_references_v2",
+    "generation_seed": 1729,
+    "generation_version": "wikitext_refs_v2",
+    "examples": 512,
+    "generated_data_root": "D:\\git\\rd\\pdattention\\data",
+    "split_count": "mixed",
+    "reference_count": "1-5",
+    "tokenizer": "Tokenizer(BPE) + Whitespace",
+    "tokenizer_shared_across_split_counts": false,
+    "vocab_size": 2000,
+    "train_size": 409,
+    "validation_size": 51,
+    "test_size": 52
+  },
+  "aggregate": {
+    "active_train_seconds": {
+      "mean": 48.76082247993909,
+      "stddev": 2.1382873667349704,
+      "values": [
+        46.67137549968902,
+        47.68243399908533,
+        48.6938720002654,
+        47.9189216993982,
+        52.83750920125749
+      ]
+    },
+    "batch_steps": {
+      "mean": 512.0,
+      "stddev": 0.0,
+      "values": [
+        512.0,
+        512.0,
+        512.0,
+        512.0,
+        512.0
+      ]
+    },
+    "epochs": {
+      "mean": 20.0,
+      "stddev": 0.0,
+      "values": [
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0
+      ]
+    },
+    "host_interruption_seconds": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "initial_reference_mrr": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "initial_reference_top1_accuracy": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "initial_reference_topk_accuracy": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "initial_validation_loss": {
+      "mean": 7.75543680378035,
+      "stddev": 0.013615531517390186,
+      "values": [
+        7.739041870715571,
+        7.777181606666715,
+        7.758549204059675,
+        7.742845310884364,
+        7.759566026575425
+      ]
+    },
+    "optimizer_steps": {
+      "mean": 512.0,
+      "stddev": 0.0,
+      "values": [
+        512.0,
+        512.0,
+        512.0,
+        512.0,
+        512.0
+      ]
+    },
+    "optimizer_steps_per_second": {
+      "mean": 10.519499802551007,
+      "stddev": 0.4395682886332121,
+      "values": [
+        10.970321626869804,
+        10.737706888239417,
+        10.514670100525368,
+        10.68471455204782,
+        9.690085845072629
+      ]
+    },
+    "parameters": {
+      "mean": 4216320.0,
+      "stddev": 0.0,
+      "values": [
+        4216320.0,
+        4216320.0,
+        4216320.0,
+        4216320.0,
+        4216320.0
+      ]
+    },
+    "plain_test_after_reference_loss": {
+      "mean": 6.478712697601319,
+      "stddev": 0.01674766432749257,
+      "values": [
+        6.469124900817871,
+        6.46458157602946,
+        6.508290648142497,
+        6.4653240331014,
+        6.486242329915364
+      ]
+    },
+    "plain_test_after_reference_perplexity": {
+      "mean": 651.2239617118423,
+      "stddev": 10.984748325986038,
+      "values": [
+        644.9191117666979,
+        641.9956808564868,
+        670.6790107966151,
+        642.4725120813472,
+        656.0534930580649
+      ]
+    },
+    "plain_test_after_reference_token_accuracy": {
+      "mean": 0.047154166666666664,
+      "stddev": 0.0010575948867333122,
+      "values": [
+        0.046375,
+        0.0485625,
+        0.0466875,
+        0.04589583333333333,
+        0.04825
+      ]
+    },
+    "processed_tokens": {
+      "mean": 78610.8,
+      "stddev": 78.40765268773195,
+      "values": [
+        78725.0,
+        78509.0,
+        78566.0,
+        78676.0,
+        78578.0
+      ]
+    },
+    "processed_tokens_this_invocation": {
+      "mean": 78610.8,
+      "stddev": 78.40765268773195,
+      "values": [
+        78725.0,
+        78509.0,
+        78566.0,
+        78676.0,
+        78578.0
+      ]
+    },
+    "reference_disabled_loss": {
+      "mean": 6.345948666659269,
+      "stddev": 0.0295118671306953,
+      "values": [
+        6.347404133189809,
+        6.297263280695135,
+        6.357162191217596,
+        6.3885336095636545,
+        6.3393801186301495
+      ]
+    },
+    "reference_disabled_loss_delta": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "reference_disabled_perplexity": {
+      "mean": 570.4256787784107,
+      "stddev": 16.763509529048616,
+      "values": [
+        571.0085214013834,
+        543.0836071292747,
+        576.6077299590794,
+        594.983461620576,
+        566.4450737817397
+      ]
+    },
+    "reference_empty_loss": {
+      "mean": 6.345948666659269,
+      "stddev": 0.0295118671306953,
+      "values": [
+        6.347404133189809,
+        6.297263280695135,
+        6.357162191217596,
+        6.3885336095636545,
+        6.3393801186301495
+      ]
+    },
+    "reference_empty_perplexity": {
+      "mean": 570.4256787784107,
+      "stddev": 16.763509529048616,
+      "values": [
+        571.0085214013834,
+        543.0836071292747,
+        576.6077299590794,
+        594.983461620576,
+        566.4450737817397
+      ]
+    },
+    "reference_irrelevant_loss": {
+      "mean": 6.345948666659269,
+      "stddev": 0.0295118671306953,
+      "values": [
+        6.347404133189809,
+        6.297263280695135,
+        6.357162191217596,
+        6.3885336095636545,
+        6.3393801186301495
+      ]
+    },
+    "reference_irrelevant_perplexity": {
+      "mean": 570.4256787784107,
+      "stddev": 16.763509529048616,
+      "values": [
+        571.0085214013834,
+        543.0836071292747,
+        576.6077299590794,
+        594.983461620576,
+        566.4450737817397
+      ]
+    },
+    "reference_oracle_loss": {
+      "mean": 6.345948666659269,
+      "stddev": 0.0295118671306953,
+      "values": [
+        6.347404133189809,
+        6.297263280695135,
+        6.357162191217596,
+        6.3885336095636545,
+        6.3393801186301495
+      ]
+    },
+    "reference_oracle_perplexity": {
+      "mean": 570.4256787784107,
+      "stddev": 16.763509529048616,
+      "values": [
+        571.0085214013834,
+        543.0836071292747,
+        576.6077299590794,
+        594.983461620576,
+        566.4450737817397
+      ]
+    },
+    "reference_shuffled_loss": {
+      "mean": 6.345948666659269,
+      "stddev": 0.0295118671306953,
+      "values": [
+        6.347404133189809,
+        6.297263280695135,
+        6.357162191217596,
+        6.3885336095636545,
+        6.3393801186301495
+      ]
+    },
+    "reference_shuffled_perplexity": {
+      "mean": 570.4256787784107,
+      "stddev": 16.763509529048616,
+      "values": [
+        571.0085214013834,
+        543.0836071292747,
+        576.6077299590794,
+        594.983461620576,
+        566.4450737817397
+      ]
+    },
+    "reference_valid_loss": {
+      "mean": 6.345948666659269,
+      "stddev": 0.0295118671306953,
+      "values": [
+        6.347404133189809,
+        6.297263280695135,
+        6.357162191217596,
+        6.3885336095636545,
+        6.3393801186301495
+      ]
+    },
+    "reference_valid_perplexity": {
+      "mean": 570.4256787784107,
+      "stddev": 16.763509529048616,
+      "values": [
+        571.0085214013834,
+        543.0836071292747,
+        576.6077299590794,
+        594.983461620576,
+        566.4450737817397
+      ]
+    },
+    "sequences_seen": {
+      "mean": 1022.0,
+      "stddev": 0.0,
+      "values": [
+        1022.0,
+        1022.0,
+        1022.0,
+        1022.0,
+        1022.0
+      ]
+    },
+    "size": {
+      "mean": 512.0,
+      "stddev": 0.0,
+      "values": [
+        512.0,
+        512.0,
+        512.0,
+        512.0,
+        512.0
+      ]
+    },
+    "test_answer_accuracy": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "test_duration_seconds": {
+      "mean": 1.4307719000033103,
+      "stddev": 0.07594235090869748,
+      "values": [
+        1.453188199957367,
+        1.3989423000020906,
+        1.5619029000517912,
+        1.4067752999835648,
+        1.3330508000217378
+      ]
+    },
+    "test_loss": {
+      "mean": 6.336541289549608,
+      "stddev": 0.02872714484457786,
+      "values": [
+        6.340000996222863,
+        6.288211382352388,
+        6.344653349656325,
+        6.377692149235652,
+        6.3321485702808085
+      ]
+    },
+    "test_perplexity": {
+      "mean": 565.0716147170352,
+      "stddev": 16.149878762751626,
+      "values": [
+        566.7968760373212,
+        538.1898518285445,
+        569.4399589402129,
+        588.5678123687177,
+        562.3635744103797
+      ]
+    },
+    "test_reference_accuracy": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "test_reference_mrr": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "test_reference_top1_accuracy": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "test_reference_topk_accuracy": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "train_batch_duration_median_seconds": {
+      "mean": 0.09324829999823123,
+      "stddev": 0.004444435511128835,
+      "values": [
+        0.08831609998014756,
+        0.09242649999214336,
+        0.09349440000369214,
+        0.09059234999585897,
+        0.10141215001931414
+      ]
+    },
+    "train_duration_seconds": {
+      "mean": 48.76082247993909,
+      "stddev": 2.1382873667349704,
+      "values": [
+        46.67137549968902,
+        47.68243399908533,
+        48.6938720002654,
+        47.9189216993982,
+        52.83750920125749
+      ]
+    },
+    "train_loss": {
+      "mean": 5.562550059486838,
+      "stddev": 0.021271135388005936,
+      "values": [
+        5.585394985535565,
+        5.551872753629498,
+        5.526852888219497,
+        5.580450899460736,
+        5.568178770588894
+      ]
+    },
+    "training_tokens_per_second": {
+      "mean": 1615.1558355128989,
+      "stddev": 68.1354838335185,
+      "values": [
+        1686.79408217837,
+        1646.497324392165,
+        1613.4679123396018,
+        1641.8566447205358,
+        1487.1632139338224
+      ]
+    },
+    "validation_duration_seconds": {
+      "mean": 7.158896840014495,
+      "stddev": 0.31626893509488146,
+      "values": [
+        6.987230999977328,
+        6.940575700078625,
+        7.258513800043147,
+        6.873433499946259,
+        7.734730200027116
+      ]
+    },
+    "validation_loss": {
+      "mean": 6.33983050327675,
+      "stddev": 0.020399778127229404,
+      "values": [
+        6.351595831852333,
+        6.338545247620227,
+        6.369327619964001,
+        6.331493349636302,
+        6.308190467310887
+      ]
+    },
+    "wall_clock_seconds": {
+      "mean": 60.602796540001876,
+      "stddev": 2.4415907984508705,
+      "values": [
+        58.39247580000665,
+        59.28313190001063,
+        60.689993100007996,
+        59.38771390001057,
+        65.26066799997352
+      ]
+    }
+  },
+  "source_reports": [
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\td_sa_tiny_wikitext2_references_v2_phase1_order_sa_refs_v2_corrected_router_v2_scratch_seed1\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\td_sa_tiny_wikitext2_references_v2_phase1_order_sa_refs_v2_corrected_router_v2_scratch_seed7\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\td_sa_tiny_wikitext2_references_v2_phase1_order_sa_refs_v2_corrected_router_v2_scratch_seed21\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\td_sa_tiny_wikitext2_references_v2_phase1_order_sa_refs_v2_corrected_router_v2_scratch_seed42\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\td_sa_tiny_wikitext2_references_v2_phase1_order_sa_refs_v2_corrected_router_v2_scratch_seed87\\report.json"
+  ]
+}

@@ -1,0 +1,349 @@
+{
+  "report_name": "plain_hybrid",
+  "title": "Plain Hybrid",
+  "generated_at": "2026-08-08T18:33:08.771522+01:00",
+  "seeds": [
+    1,
+    7,
+    21,
+    42,
+    87
+  ],
+  "model": {
+    "name": "tdx_pra_tiny",
+    "parameter_count": 4347904,
+    "vocab_size": 2000,
+    "d_model": 256,
+    "n_heads": 4,
+    "n_layers": 4,
+    "n_vanilla_layers": 2,
+    "n_mixed_layers": 0,
+    "d_ff": 1024,
+    "max_seq_len": 128,
+    "dropout": 0.1,
+    "model_variant": "tdx_pra",
+    "pra_layer_ids": [
+      2,
+      3
+    ],
+    "top_k_references": 5,
+    "top_k_chunks_per_reference": 1,
+    "top_k_refs": null,
+    "trigger_threshold": -1.0,
+    "use_cross_attention_memory": true,
+    "use_concat_memory": false,
+    "memory_alpha": 1.0,
+    "search_strategy": "hierarchical",
+    "reference_score_aggregation": "max",
+    "reference_level_gist_mode": null,
+    "gist_mode": "mean",
+    "max_gists_per_reference": 4,
+    "gist_overflow_policy": "truncate",
+    "gist_gru_hidden_size": null,
+    "gist_gru_num_layers": 1,
+    "gist_gru_bidirectional": false,
+    "ref_end_token": "<REF_END>",
+    "chunking_mode": "none",
+    "fixed_chunk_tokens": 64,
+    "fixed_chunk_overlap_tokens": 0,
+    "reference_overflow_policy": "truncate",
+    "marker_rules": [
+      "<PRA_CHUNK>"
+    ],
+    "semantic_chunker": null,
+    "detail_materialization": "selected_chunks",
+    "memory_bucket_count": 1,
+    "memory_bucket_strategy": "optimal_contiguous",
+    "cache_build_mode": "detached",
+    "use_summary": false,
+    "summary_mode": "replace",
+    "recursive_refs_enabled": false,
+    "recursive_max_depth": 2,
+    "recursive_max_total_references": 16,
+    "recursive_max_total_tokens": 2048,
+    "recursive_max_children_per_reference": 8,
+    "recursive_cycle_policy": "skip",
+    "recursive_missing_ref_policy": "warn",
+    "collect_detailed_timing": false,
+    "collect_attention_metrics": true,
+    "collect_per_head_metrics": false,
+    "chunk_match_mode": "exact_id",
+    "chunk_iou_threshold": 0.5,
+    "batch_size": 2,
+    "lr": 0.0005,
+    "steps": 4096,
+    "device": "cuda"
+  },
+  "dataset": {
+    "dataset": "wikitext-2-raw-v1",
+    "references": 0,
+    "tokenizer": "Tokenizer(BPE) + Whitespace",
+    "vocab_size": 2000,
+    "train_blocks": 4096,
+    "validation_blocks": 294,
+    "test_blocks": 375,
+    "sequence_length": 128
+  },
+  "aggregate": {
+    "active_train_seconds": {
+      "mean": 192.9234872795176,
+      "stddev": 4.394429367185151,
+      "values": [
+        188.16678419936216,
+        196.45040070189862,
+        192.0368761967984,
+        188.57502280094195,
+        199.38835249858676
+      ]
+    },
+    "batch_steps": {
+      "mean": 4096.0,
+      "stddev": 0.0,
+      "values": [
+        4096.0,
+        4096.0,
+        4096.0,
+        4096.0,
+        4096.0
+      ]
+    },
+    "epochs": {
+      "mean": 20.0,
+      "stddev": 0.0,
+      "values": [
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0
+      ]
+    },
+    "host_interruption_seconds": {
+      "mean": 0.0,
+      "stddev": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "optimizer_steps": {
+      "mean": 4096.0,
+      "stddev": 0.0,
+      "values": [
+        4096.0,
+        4096.0,
+        4096.0,
+        4096.0,
+        4096.0
+      ]
+    },
+    "optimizer_steps_per_second": {
+      "mean": 21.242165780315894,
+      "stddev": 0.48081717462919027,
+      "values": [
+        21.767922630065783,
+        20.850046553050444,
+        21.329236764934876,
+        21.720798116109467,
+        20.542824837418888
+      ]
+    },
+    "parameters": {
+      "mean": 4347904.0,
+      "stddev": 0.0,
+      "values": [
+        4347904.0,
+        4347904.0,
+        4347904.0,
+        4347904.0,
+        4347904.0
+      ]
+    },
+    "processed_tokens": {
+      "mean": 1048576.0,
+      "stddev": 0.0,
+      "values": [
+        1048576.0,
+        1048576.0,
+        1048576.0,
+        1048576.0,
+        1048576.0
+      ]
+    },
+    "processed_tokens_this_invocation": {
+      "mean": 1048576.0,
+      "stddev": 0.0,
+      "values": [
+        1048576.0,
+        1048576.0,
+        1048576.0,
+        1048576.0,
+        1048576.0
+      ]
+    },
+    "sequences_seen": {
+      "mean": 8192.0,
+      "stddev": 0.0,
+      "values": [
+        8192.0,
+        8192.0,
+        8192.0,
+        8192.0,
+        8192.0
+      ]
+    },
+    "size": {
+      "mean": 4096.0,
+      "stddev": 0.0,
+      "values": [
+        4096.0,
+        4096.0,
+        4096.0,
+        4096.0,
+        4096.0
+      ]
+    },
+    "test_duration_seconds": {
+      "mean": 1.6155948400031774,
+      "stddev": 0.13862397182632594,
+      "values": [
+        1.4542791999992914,
+        1.6451121999998577,
+        1.8374016000307165,
+        1.4813156999880448,
+        1.6598654999979772
+      ]
+    },
+    "test_loss": {
+      "mean": 4.5500088915507,
+      "stddev": 0.011225601961111569,
+      "values": [
+        4.543605052947998,
+        4.53270751953125,
+        4.560077463785808,
+        4.549921815236409,
+        4.563732606252034
+      ]
+    },
+    "test_perplexity": {
+      "mean": 94.63920662725357,
+      "stddev": 1.0608167456867401,
+      "values": [
+        94.02916996879046,
+        93.010046995814,
+        95.59088437506293,
+        94.62500979168163,
+        95.94092200491879
+      ]
+    },
+    "test_token_accuracy": {
+      "mean": 0.14606666666666665,
+      "stddev": 0.001619724342116414,
+      "values": [
+        0.14575,
+        0.14870833333333333,
+        0.14695833333333333,
+        0.14427083333333332,
+        0.14464583333333333
+      ]
+    },
+    "train_batch_duration_median_seconds": {
+      "mean": 0.04526596999494359,
+      "stddev": 0.0009361200287460854,
+      "values": [
+        0.04430870001669973,
+        0.04602440001326613,
+        0.0456523000029847,
+        0.04400534997694194,
+        0.046339099964825436
+      ]
+    },
+    "train_duration_seconds": {
+      "mean": 192.9234872795176,
+      "stddev": 4.394429367185151,
+      "values": [
+        188.16678419936216,
+        196.45040070189862,
+        192.0368761967984,
+        188.57502280094195,
+        199.38835249858676
+      ]
+    },
+    "train_loss": {
+      "mean": 4.343647398380563,
+      "stddev": 0.005848415260827633,
+      "values": [
+        4.346601684112102,
+        4.332222974975593,
+        4.345214297762141,
+        4.348756127641536,
+        4.345441907411441
+      ]
+    },
+    "training_budget_tokens": {
+      "mean": 1048576.0,
+      "stddev": 0.0,
+      "values": [
+        1048576.0,
+        1048576.0,
+        1048576.0,
+        1048576.0,
+        1048576.0
+      ]
+    },
+    "training_tokens_per_second": {
+      "mean": 5437.994439760869,
+      "stddev": 123.08919670507271,
+      "values": [
+        5572.5881932968405,
+        5337.6119175809135,
+        5460.284611823328,
+        5560.524317724024,
+        5258.963158379235
+      ]
+    },
+    "validation_duration_seconds": {
+      "mean": 10.189893359993585,
+      "stddev": 0.7963848640812726,
+      "values": [
+        9.61526779999258,
+        9.864537599903997,
+        9.353764600062277,
+        10.543680500122719,
+        11.57221629988635
+      ]
+    },
+    "validation_loss": {
+      "mean": 4.477151291062232,
+      "stddev": 0.018622118100847608,
+      "values": [
+        4.465567309840196,
+        4.452451474001618,
+        4.4866598933732424,
+        4.474095383468939,
+        4.506982394627163
+      ]
+    },
+    "wall_clock_seconds": {
+      "mean": 946.7230139800231,
+      "stddev": 1459.9448706090252,
+      "values": [
+        3866.599053700047,
+        219.16492500004824,
+        213.84597050002776,
+        210.4594660999719,
+        223.5456546000205
+      ]
+    }
+  },
+  "source_reports": [
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\tdx_pra_tiny_wikitext2_phase1_plain_hybrid_1m_corrected_router_v2_seed1\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\tdx_pra_tiny_wikitext2_phase1_plain_hybrid_1m_corrected_router_v2_seed7\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\tdx_pra_tiny_wikitext2_phase1_plain_hybrid_1m_corrected_router_v2_seed21\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\tdx_pra_tiny_wikitext2_phase1_plain_hybrid_1m_corrected_router_v2_seed42\\report.json",
+    "D:\\git\\rd\\pdattention\\out\\reports\\phase1_followup_v2_5seed\\runs\\tdx_pra_tiny_wikitext2_phase1_plain_hybrid_1m_corrected_router_v2_seed87\\report.json"
+  ]
+}

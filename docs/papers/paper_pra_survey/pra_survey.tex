@@ -49,7 +49,7 @@
 \begin{abstract}
 Language models can access information beyond their local token stream in several ways: they can enlarge or sparsify attention, carry recurrent state, update neural memory at test time, retrieve text or latent representations, compress and reuse K/V caches, navigate an index, or call tools. These mechanisms are usually studied in separate literatures. We ask a common question instead: \emph{what access contract connects the model to information that is not already local?} An access contract specifies what is stored, how an item is identified, when selection occurs, which representation is materialized, how it enters the model, and which intervention would demonstrate that the selected information caused an output change.
 
-This tutorial develops that comparison across seven architectural families. Progressive Retrieval Attention (PRAttention, PRA) serves as a worked case rather than a presumed winner. Its corrected prototype represents external documents as explicit URI-addressed references, partitions each reference into chunks, derives one contextual routing gist per chunk and layer, and transports full token K/V only for selected chunks. We reconstruct this design, distinguish it from prior retrieval and memory mechanisms, and mark its earlier reference-conditioned experiments as historical because they used a superseded router. The survey then derives matched comparisons and counterfactual controls for testing long context, retrieval, latent memory, structural navigation, and agents on common quality and cost frontiers.
+This tutorial develops that comparison across seven architectural families. Progressive Retrieval Attention (PRAttention, PRA) serves as a worked case rather than a presumed winner. Its corrected prototype represents external documents as explicit URI-addressed references, partitions each reference into chunks, derives one contextual routing gist per chunk and layer, and transports full token K/V only for selected chunks. We reconstruct this design, distinguish it from prior retrieval and memory mechanisms, and use a five-seed corrected-router study to show why optimization success is not evidence of causal retrieval: pretraining and frozen-path adaptation improve loss and preserve language ability, while selection remains near chance and content counterfactuals barely separate. The survey then derives matched comparisons and controls for testing long context, retrieval, latent memory, structural navigation, and agents on common quality and cost frontiers.
 \end{abstract}
 \tableofcontents
 \newpage
@@ -189,12 +189,12 @@ class PRABlock(nn.Module):
         return x + self.ff(self.norm(x))
 \end{lstlisting}
 
-\subsection{Preliminary experiments in Paper 1}
-The prototype compares four-layer width-256 SelfAttention, four-layer PRA, and a two-SelfAttention/two-PRA hybrid on WikiText-2, with a 2,000-token BPE vocabulary, context length 128, seeds 1 and 7, and 524,288 processed tokens per run. Mean plain-text test losses were 4.7691, 4.7457, and 4.7574. The defensible conclusion is functional equivalence at this pilot scale, not superiority, because same-width models were not parameter matched.
+\subsection{Controlled experiments in Paper 1}
+The corrected study compares four-layer width-256 SelfAttention, four-layer PRA, a two-SelfAttention/two-PRA hybrid, and nearly parameter-matched SelfAttention controls on WikiText-2. It uses context length 128, a shared BPE tokenizer, 1,048,576 processed tokens, and paired seeds $\{1,7,21,42,87\}$. Mean plain-text test losses are $4.5704\pm0.0076$ for same-width SelfAttention, $4.5034\pm0.0163$ for full PRA, and $4.5500\pm0.0112$ for hybrid PRA. Full and hybrid PRA finish 0.0820 and 0.0215 below their matched controls in every paired seed, although five pairs give a minimum two-sided exact sign-flip $p$-value of 0.0625. The defensible conclusion is ordinary-language compatibility with encouraging directional evidence, not superiority or statistical equivalence.
 
-In a second phase, entries were split into one to five URI-addressed earlier parts and a held-out natural-language tail. The PRA base was frozen and zero-initialized memory output projections were trained. Valid references reduced answer-token loss relative to a disabled path by 0.1165 (full PRA) and 0.0841 (hybrid). Cross-example shuffled references increased loss by only 0.0145 and 0.0122. Thus the branch contributes, and there is preliminary content sensitivity, but the smaller shuffled delta warns that much of the benefit could be generic adaptation or weakly discriminative memory use.
+The reference phase uses one fixed 512-example corpus and compares scratch, pretrained frozen-reference-path, and pretrained joint training for 512 steps. Full-PRA valid-reference losses are 6.3557, 4.6720, and 4.9129; hybrid losses are 6.3642, 4.7296, and 4.9196. Pretraining therefore improves adaptation substantially. Freezing the local path exactly preserves plain-language loss, whereas joint tuning increases it by 0.1775 for full PRA and 0.1562 for hybrid PRA. The frozen stage is also faster because it trains fewer parameters: approximately 1,244 tokens/s for full PRA and 1,622 for hybrid PRA on the prototype GPU, compared with 1,052 and 1,141 for joint tuning.
 
-A later post-refactor smoke matrix tests the corrected batched chunk router at two and five total text splits. It uses five paired model seeds, 32 shared WikiText-2 sources, fixed data-generation and split seeds, a shared tokenizer, and eight optimizer steps. Full PRA's disabled-minus-valid loss is $0.0189\pm0.0030$ and $0.0312\pm0.0048$; every seed has a positive gap. Shuffled-minus-valid loss is only $0.0002\pm0.0006$ and $-0.0006\pm0.0009$. At five splits, reference top-1 is $0.150\pm0.102$ against a 0.25 uniform-candidate rate. The result confirms reproducible branch activation and end-to-end instrumentation, not content-selective retrieval. It also illustrates a reporting requirement: split count must be explicit, and processed tokens and target construction must accompany it because repartitioning changes both.
+Optimization success does not imply retrieval success. After frozen adaptation, disabling memory raises loss by 0.0175 for full PRA and 0.0117 for hybrid PRA, but shuffling raises it by only 0.0048 and 0.0008. Irrelevant penalties are below 0.001 and oracle gains below 0.002. Test top-1 is $0.4221\pm0.0156$ and $0.3981\pm0.0397$ against a candidate-count-weighted chance rate of 0.4202. The branch is active, but correct content is not causally established. A separate five-seed, eight-step split-count smoke matrix reaches the same qualitative conclusion while verifying the batched pipeline at two and five total text splits.
 
 \subsection{Evaluation doctrine}
 PRA's strongest methodological contribution may be its insistence on counterfactual reference evaluation. A task score alone does not establish retrieval use. Required conditions include valid, disabled, shuffled, irrelevant, empty, random-ID, content-only, position-only, oracle, and all-content-local controls. The principal causal quantities are
@@ -631,14 +631,13 @@ Long-context modeling is not one problem. It is a family of access problems span
 The evidence is narrower than the architectural proposal.  The current code establishes
 mechanical feasibility for chunked, layer-specific routing gists, selected token K/V,
 variable-length batches, optional summaries, and bounded child-first cache construction.
-Historical v1 experiments establish approximate ordinary-language compatibility and
-frozen-path preservation, but they do not validate the corrected router and did not show
-content-selective reference use.  A five-seed corrected-router smoke rerun now verifies the
-pipeline at two and five splits and shows consistent branch activation, while its
-sub-0.001 mean shuffled penalties leave the causal question open.  The next decisive step
-is therefore not a larger claim but a controlled rerun: fixed reference-required data,
-matched token and trainable-capacity budgets, oracle and corrupted-content interventions,
-longer training, and end-to-end cold and warm costs.
+A five-seed corrected-router study establishes tiny-scale ordinary-language compatibility,
+large benefits from pretraining, and exact local-path preservation under frozen adaptation.
+It does not show content-selective reference use: top-1 remains near chance, shuffled
+penalties are at most 0.0048, and oracle gains stay below 0.002.  The next decisive step is
+therefore a learned-routing comparison with chunk/span supervision, followed by recursive
+tasks and end-to-end cold, warm, and reused-cache costs against strong long-context and
+retrieval baselines.
 
 If those experiments show that correct chunks cause reproducible gains at a favorable
 quality--cost point, PRA would merit study as a model-native interface for repeated

@@ -34,14 +34,14 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific chunk memories, one contextual routing gist per chunk, and a cross-attention branch over selected chunk K/V. The corrected implementation routes every batch item independently with a projected last-token query, separates reference and chunk budgets, supports bounded child-first recursive cache construction, and batches variable memory lengths without violating semantic isolation. Summaries are optional routing evidence rather than the primary memory representation. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and training diagnostics. Earlier controlled experiments compared SelfAttention, full PRAttention, and hybrid PRA on WikiText-2 and a fixed reference benchmark. Their ordinary-language and optimization observations remain useful, but their reference-conditioned measurements used a version-1 summary router and whole-reference materialization. A five-seed, eight-step post-refactor smoke matrix now exercises the corrected path at two and five total text splits. It shows reproducible activation of the memory branch, but shuffled-reference loss changes remain below 0.001 on average and do not establish content-causal retrieval. No causal or efficiency superiority is claimed.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific chunk memories, one contextual routing gist per chunk, and a cross-attention branch over selected chunk K/V. The corrected implementation routes every batch item independently with a projected last-token query, separates reference and chunk budgets, supports bounded child-first recursive cache construction, and batches variable memory lengths without violating semantic isolation. Summaries are optional routing evidence rather than the primary memory representation. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and training diagnostics. A corrected-router CUDA study compares SelfAttention, full PRA, hybrid PRA, and parameter-matched controls over five paired seeds. At 1,048,576 ordinary-language tokens, full PRA, hybrid PRA, and same-width SelfAttention reach mean test losses 4.5034, 4.5500, and 4.5704. On a fixed reference corpus, pretrained frozen-path adaptation reaches 4.6720 for full PRA and 4.7296 for hybrid PRA while exactly preserving their plain-language losses; scratch training remains above 6.35 and direct joint tuning both loses more and forgets. Reference top-1 remains near the 0.4202 candidate-count chance rate, however, and shuffled or oracle content changes loss by less than 0.005 on average. The implementation and optimization path are functional, but content-causal retrieval and efficiency superiority are not established.
 \end{abstract}
 
 \section{Introduction}
 
 Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-context language modeling. Many tasks require access to large external context, but the relevant evidence is sparse, hierarchical, and often discovered only after partial reasoning. A conventional decoder-only transformer receives a flat token sequence. Retrieval-augmented generation improves this interface by prepending retrieved passages, but the retrieved text still becomes ordinary prompt context \cite{lewis2020rag}. PRA instead represents external context through lightweight reference handles that can be resolved into URI-addressed memory and attended to through a dedicated memory path.
 
-This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model. The contribution includes an initial empirical pilot, a three-seed parameter-controlled follow-up, and an evaluation design intended to make failure visible rather than merely demonstrate that a memory branch can lower loss.
+This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model. The contribution includes an initial empirical pilot, a five-seed corrected-router and parameter-controlled follow-up, and an evaluation design intended to make failure visible rather than merely demonstrate that a memory branch can lower loss.
 
 The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references. Third, a resolver partitions each document into bounded chunks and stores full per-layer token K/V together with exactly one contextual projected-key gist per chunk. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and adds a scaled cross-attention branch over only the selected chunk memories.
 
@@ -444,7 +444,7 @@ The implemented ablation path supports disabled memory, shuffled references, irr
 
 \subsection{Implementation Validation}
 
-The corrected mechanics are covered by focused tests rather than presented as model-quality evidence. Tests verify exact projected-key mean pooling; layer- and batch-specific routing; independent reference/chunk budgets; deterministic chunk provenance and overflow; explicit failure for unconfigured semantic chunking; optional summary fallback; GRU-gist gradients and checkpoint registration; recursive child-first build order and cycle safety; no-match equality with the local-only path; and dynamic-bucket output/gradient equivalence. A CUDA smoke test with two batch rows, different selected URIs, unequal memory lengths, and two buckets verifies finite forward/backward execution and independent selections. These checks establish implementation invariants only. The post-refactor training smoke study below exercises counterfactual paths, but controlled multi-seed training remains pending.
+The corrected mechanics are covered by focused tests rather than presented as model-quality evidence. Tests verify exact projected-key mean pooling; layer- and batch-specific routing; independent reference/chunk budgets; deterministic chunk provenance and overflow; explicit failure for unconfigured semantic chunking; optional summary fallback; GRU-gist gradients and checkpoint registration; recursive child-first build order and cycle safety; no-match equality with the local-only path; and dynamic-bucket output/gradient equivalence. A CUDA smoke test with two batch rows, different selected URIs, unequal memory lengths, and two buckets verifies finite forward/backward execution and independent selections. These checks establish implementation invariants only. The five-seed controlled study below then exercises the corrected path through training, counterfactual evaluation, retention checks, and synchronized timing; it does not by itself establish causal retrieval.
 
 \subsection{Required Systems Diagnostics}
 
@@ -483,7 +483,7 @@ The pilot compares three same-width architectures:
 \item \textbf{Hybrid PRA}: two lower SelfAttention layers followed by two PRAttention layers.
 \end{enumerate}
 
-All use four layers, four heads, width 256, context length 128, dropout 0.1, and the same 2,000-token BPE vocabulary. The version-1 pilot uses seeds 1 and 7, batch size 2, learning rate $5\times10^{-4}$, 2,048 optimizer steps, and exactly 524,288 processed tokens per run. The controlled follow-up adds seed 21, extends ordinary-language training to 4,096 steps and 1,048,576 tokens, fixes reference data and splitting with seed 1729, and compares 512-step scratch, frozen-reference-path, and joint reference training at learning rate $2\times10^{-4}$. All runs execute with Python 3.10.11, PyTorch 2.12.1 with CUDA 12.6, and an NVIDIA GeForce GTX 950M.
+All use four layers, four heads, width 256, context length 128, dropout 0.1, and one shared BPE tokenizer per study. The version-1 pilot uses seeds 1 and 7, batch size 2, learning rate $5\times10^{-4}$, 2,048 optimizer steps, and exactly 524,288 processed tokens per run. The corrected controlled follow-up uses paired seeds $\{1,7,21,42,87\}$, extends ordinary-language training to 4,096 steps and 1,048,576 tokens, fixes reference data and splitting with seed 1729, and compares 512-step scratch, frozen-reference-path, and joint reference training at learning rate $2\times10^{-4}$. All corrected runs execute with Python 3.10, PyTorch 2.12.1 with CUDA 12.6, and an NVIDIA GeForce GTX 950M.
 
 The same-width parameter counts are 4,216,320 for SelfAttention, 4,479,488 for full PRA, and 4,347,904 for hybrid PRA. Full and hybrid PRA therefore contain 6.2\% and 3.1\% more parameters than SelfAttention. In phase 2, the PRA trainable counts are 263,168 and 131,584 because only four or two memory output projections are optimized; the SelfAttention control fine-tunes all 4,216,320 parameters. These differences delimit the claims that can be drawn from the pilot.
 
@@ -520,7 +520,7 @@ The evaluated ablations are:
 \item plain WikiText-2 reevaluation after phase 2.
 \end{itemize}
 
-The follow-up additionally evaluated irrelevant, empty, and oracle references plus parameter-matched controls. The corrected runtime now implements chunk-level oracle, full-reference, selected-chunk, gist-only, and recursive modes, but none has yet been rerun as a controlled experiment. Native KV injection, learned triggering, distance-stratified analysis, and memory-strength sweeps remain future ablations.
+The corrected follow-up evaluates valid, disabled, shuffled, irrelevant, empty, and oracle-reference conditions plus parameter-matched controls. The runtime also implements chunk-level oracle, full-reference, selected-chunk, gist-only, and recursive modes; controlled sweeps over those transport and expansion choices remain pending. Native KV injection, learned triggering, distance-stratified analysis, and memory-strength sweeps are future ablations.
 
 \subsection{Publication-Grade Experiment Matrix}
 
@@ -534,7 +534,7 @@ The current pilot is the first row of a larger preregistered-style matrix. Table
 \toprule
 Axis & Required comparison & Status \\
 \midrule
-Reproducibility & seeds $\{1,7,21,42,87\}$ with intervals/effect sizes & seeds 1, 7, 21 complete \\
+Reproducibility & seeds $\{1,7,21,42,87\}$ with intervals/effect sizes & five paired seeds complete \\
 Capacity & same-width plus FFN parameter-matched SA controls & complete at tiny scale \\
 Reference causality & valid, disabled, shuffled, irrelevant, empty, oracle chunks & corrected URI-level smoke complete; chunk-level study pending \\
 Cache budget & entries/tokens/bytes; reuse on/off; eviction policies & pending \\
@@ -548,7 +548,7 @@ Difficulty & distance, candidate count, local sufficiency, recursion depth & rec
 \end{tabularx}
 \end{table}
 
-The five-seed comparison should use fixed tokenizer and split hashes, equal processed-token budgets, and paired seeds. Cache and selector sweeps should initialize from the same checkpoint. Oracle references isolate memory transport from selection; irrelevant and empty controls distinguish content use from generic branch activation. Native K/V injection must account for positional encoding and causal semantics rather than simply concatenate tensors. LoRA, adapters, and joint fine-tuning should be matched by trainable parameter count or reported as separate adaptation regimes.
+The five-seed comparison uses a fixed tokenizer and split, equal processed-token budgets, and paired seeds. Future cache and selector sweeps should initialize from the same checkpoints. Oracle references isolate memory transport from selection; irrelevant and empty controls distinguish content use from generic branch activation. Native K/V injection must account for positional encoding and causal semantics rather than simply concatenate tensors. LoRA, adapters, and joint fine-tuning should be matched by trainable parameter count or reported as separate adaptation regimes.
 
 \section{Historical Version-1 Results}
 
@@ -592,66 +592,70 @@ Plain-text reevaluation after phase 2 exactly reproduces the phase-1 losses for 
 
 Phase-1 mean synchronized validation times are 1.07--1.14 seconds and mean wall-clock times are 97.0--102.0 seconds. Phase-2 mean synchronized training times are 31.1--45.1 seconds, with 46,301.5 mean processed prompt/answer tokens and 512 optimizer steps. These historical timings predate the batch-aware prompt-forward path and must not be used as measurements of its speedup. New reports should separate reference-cache construction, row-local routing, the single prompt forward, and bucketed memory attention.
 
-\section{Historical Controlled Follow-Up}
+\section{Corrected Five-Seed Controlled Follow-Up}
 
-The follow-up executed 39 CUDA runs: 15 ordinary-language runs (five capacity/architecture groups times three seeds) and 24 fixed-reference runs spanning SelfAttention controls and scratch, frozen-reference-path, and joint training. Table~\ref{tab:followup-plain} reports the 1,048,576-token ordinary-language comparison. Population standard deviations are over paired seeds 1, 7, and 21. Reference-task tables in this section use the superseded router and are retained to document optimization behavior, not corrected routing efficacy.
+The corrected study executes 65 CUDA runs: 25 ordinary-language runs (five architecture/capacity groups times five seeds) and 40 fixed-reference runs. Every condition uses paired model seeds $\{1,7,21,42,87\}$, the same fixed tokenizer and data split, and the corrected per-row, per-layer chunk router. Tables report means and population standard deviations over seeds. With five pairs, a two-sided exact sign-flip test cannot attain $p<0.05$ when every paired difference has the same sign; its minimum is $p=0.0625$. We therefore emphasize paired effect direction and magnitude rather than binary significance.
 
 \begin{table}[H]
 \centering
-\caption{Three-seed plain WikiText-2 follow-up at a 1,048,576-token budget.}
+\small
+\caption{Five-seed plain WikiText-2 follow-up at a 1,048,576-token budget. Active time is synchronized GPU training time.}
 \label{tab:followup-plain}
-\begin{tabular}{lrr}
+\begin{tabular}{lrrrr}
 \toprule
-Architecture & Parameters & Test loss \\
+Architecture & Parameters & Test loss & Train tok/s & Active s \\
 \midrule
-SelfAttention, same width & 4,216,320 & $4.6378\pm.0380$ \\
-Full PRA & 4,479,488 & $4.5463\pm.0270$ \\
-Hybrid PRA & 4,347,904 & $4.6049\pm.0359$ \\
-SelfAttention, matched to full & 4,478,976 & $4.5706\pm.0037$ \\
-SelfAttention, matched to hybrid & 4,347,648 & $4.5725\pm.0108$ \\
+SelfAttention, same width & 4,216,320 & $4.5704\pm.0076$ & $5411\pm125$ & $193.9\pm4.5$ \\
+Full PRA & 4,479,488 & $4.5034\pm.0163$ & $5623\pm110$ & $186.4\pm3.4$ \\
+Hybrid PRA & 4,347,904 & $4.5500\pm.0112$ & $5438\pm123$ & $192.9\pm4.4$ \\
+SelfAttention, matched to full & 4,478,976 & $4.5855\pm.0347$ & -- & -- \\
+SelfAttention, matched to hybrid & 4,347,648 & $4.5715\pm.0082$ & $5657\pm38$ & $185.4\pm1.2$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Full PRA is 0.0915 loss units better than same-width SelfAttention, but only 0.0243 better than the nearly parameter-matched control. Hybrid PRA is 0.0323 worse than its matched control. The defensible conclusion is compatibility and approximate parity at this scale, not architectural superiority. Doubling full-PRA pretraining from the earlier 524,288-token pilot to 1,048,576 tokens lowers mean test loss from 4.7457 to 4.5463, a 0.1994 improvement. Full PRA therefore benefits from the longer tested schedule and catches up despite slower early learning; this does not identify an optimal pretraining duration.
+Full PRA is 0.0820 loss units better than its nearly parameter-matched SelfAttention control, and hybrid PRA is 0.0215 better than its matched control; every paired seed has the same sign. The exact paired $p$-value is nevertheless 0.0625 in both comparisons. These results support ordinary-language compatibility and motivate replication; they do not establish architectural superiority or statistical equivalence. Relative to the historical 524,288-token pilot, full-PRA mean test loss falls from 4.7457 to 4.5034, a 0.2423 reduction. The longer tested pretraining schedule helps, but it does not identify an optimum. One matched-full run resumed after a host-side wrapper timeout, so its quality result is retained while its aggregate timing is omitted from the table.
 
 \begin{table}[H]
 \centering
-\caption{Reference-task training order on the fixed version-2 corpus. Values are three-seed means; lower loss is better.}
+\small
+\caption{Corrected-router reference-task training order. Values are five-seed means; lower loss is better.}
 \label{tab:training-order}
-\begin{tabular}{llrrrr}
+\begin{tabular}{llrrrrr}
 \toprule
-Architecture & Order & Valid & Disabled & Plain after & Top-1 \\
+Architecture & Order & Valid & Disabled & Plain after & Top-1 & Train tok/s \\
 \midrule
-Full PRA & scratch & 6.3545 & 6.3762 & 6.5103 & .4199 \\
-Full PRA & frozen path & 4.7052 & 4.7344 & 4.5463 & .4119 \\
-Full PRA & joint & 4.9504 & 4.9354 & 4.7060 & .4103 \\
-Hybrid PRA & scratch & 6.3715 & 6.3929 & 6.5074 & .3718 \\
-Hybrid PRA & frozen path & 4.7932 & 4.8146 & 4.6049 & .4006 \\
-Hybrid PRA & joint & 4.9883 & 4.9796 & 4.7478 & .3878 \\
+SelfAttention & scratch & 6.3459 & 6.3459 & 6.4787 & -- & 1615 \\
+SelfAttention & joint & 4.9230 & 4.9230 & 4.7125 & -- & -- \\
+Full PRA & scratch & 6.3557 & 6.3754 & 6.4948 & .4212 & 983 \\
+Full PRA & frozen path & 4.6720 & 4.6895 & 4.5034 & .4221 & 1244 \\
+Full PRA & joint & 4.9129 & 4.8938 & 4.6809 & .4269 & 1052 \\
+Hybrid PRA & scratch & 6.3642 & 6.3846 & 6.5140 & .4231 & 1157 \\
+Hybrid PRA & frozen path & 4.7296 & 4.7413 & 4.5500 & .3981 & 1622 \\
+Hybrid PRA & joint & 4.9196 & 4.9125 & 4.7062 & .4077 & 1141 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Pretraining substantially improves final reference-task loss: direct joint training improves over scratch by 1.4041 for full PRA and 1.3833 for hybrid PRA, while frozen-path training improves by 1.6493 and 1.5783. Frozen training exactly preserves the respective 4.5463 and 4.6049 plain losses because the base is frozen. Direct joint tuning instead increases plain loss by 0.1598 for full PRA and 0.1429 for hybrid PRA. Direct joint fine-tuning is therefore not sufficient under this budget: it both forgets and yields worse reference loss than the isolated path. The hybrid does not benefit more from staging than full PRA; its scratch-to-frozen improvement is smaller, and its staged final loss is higher.
+Pretraining strongly improves final reference-task loss. Frozen-path training improves over scratch by 1.6837 for full PRA and 1.6346 for hybrid PRA; direct joint training improves by 1.4429 and 1.4447. Each paired effect has the same sign in all five seeds. Frozen training exactly reproduces the corresponding 4.5034 and 4.5500 plain losses because the base is frozen. Direct joint tuning instead increases plain loss by 0.1775 for full PRA and 0.1562 for hybrid PRA. It also finishes 0.2408 and 0.1899 loss units worse than frozen-path adaptation. Direct joint fine-tuning is therefore not sufficient under this budget. The hybrid does not benefit more from staging than full PRA: its scratch-to-frozen improvement is smaller.
 
 \begin{table}[H]
 \centering
-\caption{Counterfactual reference losses after frozen-path training. Three-seed means.}
+\caption{Counterfactual losses after corrected frozen-path training. Five-seed means.}
 \label{tab:followup-counterfactual}
 \begin{tabular}{lrrrrr}
 \toprule
 Architecture & Valid & Disabled & Shuffled & Irrelevant & Oracle \\
 \midrule
-Full PRA & 4.7052 & 4.7344 & 4.7116 & 4.7140 & 4.7051 \\
-Hybrid PRA & 4.7932 & 4.8146 & 4.8016 & 4.8010 & 4.7914 \\
+Full PRA & 4.6720 & 4.6895 & 4.6769 & 4.6723 & 4.6702 \\
+Hybrid PRA & 4.7296 & 4.7413 & 4.7304 & 4.7304 & 4.7279 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The frozen memory branch contributes relative to disabling it, by 0.0292 loss for full PRA and 0.0214 for hybrid PRA. Yet shuffled and irrelevant penalties are only 0.0064--0.0088, and oracle content changes loss by at most 0.0018. Actual test top-1 selection remains near or below the 0.4202 candidate-count chance rate. Periodic validation top-1 curves are nearly flat around their 0.4859 validation chance rate rather than showing faster acquisition after pretraining. Pretraining therefore improves language and final task loss but does not improve generalized reference-selection speed in this experiment.
+The frozen memory branch contributes relative to disabling it, by 0.0175 loss for full PRA and 0.0117 for hybrid PRA. Correct content is not yet the source of that advantage: shuffled-reference penalties are only 0.0048 and 0.0008, irrelevant penalties are below 0.001, and oracle references improve loss by only 0.0018 and 0.0017. Full-PRA test top-1 is $0.4221\pm0.0156$ and hybrid top-1 is $0.3981\pm0.0397$, against a candidate-count-weighted chance rate of 0.4202. Periodic curves remain flat rather than showing faster selection after pretraining. Thus pretraining improves language competence and adaptation loss, while the current unsupervised discrete router does not learn generalized reference selection.
 
-This negative result is consistent with the version-1 implementation: summaries were compared by a fixed embedding-similarity heuristic, top-$k$ selection was discrete, and no auxiliary routing loss trained the selector against relevance labels. The experiment establishes that a zero-initialized memory residual can be adapted while preserving a frozen local path. It does not establish causal use of correct memory content. The corrected implementation removes raw-summary routing, restores per-row queries, makes layer/chunk provenance observable, and supports oracle chunks. The smoke rerun below exercises those mechanics; the next Phase-1 experiment must repeat the fixed benchmark with matched token budgets, longer training, and the same paired-seed discipline before adding a learned routing objective.
+The timing counters also separate optimization conclusions from systems claims. Across uninterrupted runs, full-PRA scratch, frozen, and joint training process approximately 983, 1,244, and 1,052 tokens/s; hybrid variants process 1,157, 1,622, and 1,141 tokens/s. Frozen training is faster because only the memory output path receives gradients. These are single-device prototype measurements with per-example reference encoding and no persistent cache reuse. They characterize this implementation, not an efficiency advantage over long-context baselines.
 
 \section{Post-Refactor Fixed-Split Smoke Study}
 
@@ -678,7 +682,7 @@ The SelfAttention invariance across valid, disabled, and shuffled conditions is 
 
 \subsection{Reproducibility and Artifact Scope}
 
-Resolved per-seed HTML and JSON reports, plots, timing counters, checkpoints, and aggregate reports are generated under \texttt{out/reports}. The aggregate computes population mean and standard deviation without discarding individual seed values and records the fixed data-generation and split seed. Active GPU training time is reconstructed from synchronized batch durations. Content hashes, peak allocated memory, matched token and trainable-capacity budgets, longer training, and independent replication remain necessary before treating the result as publication-grade.
+Resolved per-seed HTML and JSON reports, plots, timing counters, checkpoints, and aggregate reports are generated under \path{out/reports}; the consolidated study is in \path{out/reports/phase1_followup_v2_5seed_findings}. The aggregate computes population mean and standard deviation without discarding individual seed values and records the fixed data-generation and split seed. Active GPU training time is reconstructed from synchronized batch durations. Content hashes, peak allocated memory, matched token and trainable-capacity budgets, longer training, and independent replication remain necessary before treating the result as publication-grade.
 
 \section{Relationship to Prior Work}
 
