@@ -5,6 +5,7 @@
 \usepackage{amssymb}
 \usepackage{enumitem}
 \usepackage{float}
+\usepackage{graphicx}
 \usepackage{tabularx}
 \usepackage{tikz}
 \usepackage[hidelinks]{hyperref}
@@ -689,6 +690,13 @@ SelfAttention, matched to hybrid & 4,347,648 & $4.5715\pm.0082$ & $5657\pm38$ & 
 
 Full PRA is 0.0820 loss units better than its nearly parameter-matched SelfAttention control, and hybrid PRA is 0.0215 better than its matched control; every paired seed has the same sign. The exact paired $p$-value is nevertheless 0.0625 in both comparisons. These results support ordinary-language compatibility and motivate replication; they do not establish architectural superiority or statistical equivalence. Relative to the historical 524,288-token pilot, full-PRA mean test loss falls from 4.7457 to 4.5034, a 0.2423 reduction. The longer tested pretraining schedule helps, but it does not identify an optimum. One matched-full run resumed after a host-side wrapper timeout, so its quality result is retained while its aggregate timing is omitted from the table.
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/phase1_plain_paired.pdf}
+\caption{Paired ordinary-language losses for the historical cross-attention-capable backbones. Each line connects one seed to its nearly parameter-matched SelfAttention control; diamonds mark five-seed means. External memory is absent in these runs. The directional result is encouraging but underpowered ($p=0.0625$), and it is not a native-KV quality measurement.}
+\label{fig:followup-plain-paired}
+\end{figure}
+
 \begin{table}[H]
 \centering
 \small
@@ -727,6 +735,13 @@ Hybrid PRA & 4.7296 & 4.7413 & 4.7304 & 4.7304 & 4.7279 \\
 \end{table}
 
 The frozen memory branch contributes relative to disabling it, by 0.0175 loss for full PRA and 0.0117 for hybrid PRA. Correct content is not yet the source of that advantage: shuffled-reference penalties are only 0.0048 and 0.0008, irrelevant penalties are below 0.001, and oracle references improve loss by only 0.0018 and 0.0017. Full-PRA test top-1 is $0.4221\pm0.0156$ and hybrid top-1 is $0.3981\pm0.0397$, against a candidate-count-weighted chance rate of 0.4202. Periodic curves remain flat rather than showing faster selection after pretraining. Thus pretraining improves language competence and adaptation loss, while the current unsupervised discrete router does not learn generalized reference selection.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/phase1_adaptation_causality.pdf}
+\caption{Historical cross-attention adaptation results. Left: frozen-path adaptation finishes substantially below scratch and direct joint tuning for both PRA placements. Right: frozen-path loss changes relative to valid references; positive values are worse. Disabling memory has a visible cost, but shuffled and irrelevant changes and oracle gains are small, so the branch effect is not evidence of content-causal retrieval.}
+\label{fig:followup-adaptation-causality}
+\end{figure}
 
 The timing counters also separate optimization conclusions from systems claims. Across uninterrupted runs, full-PRA scratch, frozen, and joint training process approximately 983, 1,244, and 1,052 tokens/s; hybrid variants process 1,157, 1,622, and 1,141 tokens/s. Frozen training is faster because only the memory output path receives gradients. These are single-device prototype measurements with per-example reference encoding and no persistent cache reuse. They characterize this implementation, not an efficiency advantage over long-context baselines.
 

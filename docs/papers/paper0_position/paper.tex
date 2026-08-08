@@ -4,6 +4,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{enumitem}
+\usepackage{graphicx}
 \usepackage{tabularx}
 \usepackage{tikz}
 \usepackage[hidelinks]{hyperref}
@@ -679,7 +680,21 @@ SelfAttention, matched to hybrid & 4,347,648 & $4.5715\pm.0082$ \\
 
 The corrected reference follow-up compares training from scratch, frozen-reference-path adaptation, and direct joint fine-tuning. For full PRA, respective valid-reference losses are 6.3557, 4.6720, and 4.9129; for hybrid PRA they are 6.3642, 4.7296, and 4.9196. Frozen adaptation improves over scratch by 1.6837 and 1.6346, with the same effect direction in every paired seed. It exactly preserves the plain WikiText losses 4.5034 and 4.5500 because the base is frozen. Direct joint tuning increases plain loss by 0.1775 for full PRA and 0.1562 for hybrid PRA and ends 0.2408 and 0.1899 worse than frozen adaptation. It is therefore not sufficient under this budget. Full PRA benefits at least as much from staging as the hybrid. Extending full-PRA ordinary-language pretraining from the historical 524,288-token pilot to 1,048,576 tokens lowers mean loss by 0.2423, indicating benefit from the longer tested schedule without establishing how long is enough.
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/phase1_plain_paired.pdf}
+\caption{Paired ordinary-language losses for historical cross-attention-capable backbones. Each line connects one seed to its nearly parameter-matched SelfAttention control; diamonds mark means. The same direction across five seeds gives an exact two-sided sign-flip $p=0.0625$, so the figure motivates replication rather than a superiority claim. It does not measure native-KV quality.}
+\label{fig:position-plain-paired}
+\end{figure}
+
 The corrected causal result remains negative. After frozen adaptation, full-PRA loss is 4.6720 with valid references, 4.6895 with disabled memory, 4.6769 with shuffled references, 4.6723 with irrelevant references, and 4.6702 with oracle content. Hybrid values are 4.7296, 4.7413, 4.7304, 4.7304, and 4.7279. The memory branch changes predictions, but shuffled penalties are at most 0.0048, irrelevant penalties are below 0.001, and oracle gains are below 0.002. Full and hybrid top-1 are $0.4221\pm0.0156$ and $0.3981\pm0.0397$ against a candidate-count-weighted chance rate of 0.4202. Pretraining improves language competence and final loss, not generalized selection speed. The likely next intervention is a differentiable or explicitly supervised router rather than a larger claim.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/phase1_adaptation_causality.pdf}
+\caption{Historical cross-attention adaptation and counterfactual results. Frozen-path adaptation gives the lowest reference-task loss while preserving the frozen backbone. Positive counterfactual deltas indicate worse loss than valid references. The much larger disabled effect than shuffled, irrelevant, or oracle effects exposes branch use without demonstrating content-causal retrieval.}
+\label{fig:position-adaptation-causality}
+\end{figure}
 
 A post-refactor smoke rerun now exercises the corrected batched router at fixed total split counts 2 and 5. Twenty tiny CUDA runs share 32 source entries, one BPE tokenizer, context length 128, a fixed data-generation and split seed, and an eight-step budget while pairing model seeds \{1, 7, 21, 42, 87\} across architecture and split count. For full PRA, mean valid-reference loss improves over disabled-reference loss by $0.0189\pm0.0030$ at split 2 and $0.0312\pm0.0048$ at split 5. Every seed has a positive gap, establishing reproducible branch activation. Mean shuffled-reference changes are only $0.0002\pm0.0006$ and $-0.0006\pm0.0009$, however, and split-5 reference top-1 is $0.150\pm0.102$ against a 0.25 uniform-candidate rate. Correct content is therefore not causally established. SelfAttention is exactly invariant to the reference interventions, as required of the control. Because split count also changes the target span and processed tokens, these values remain end-to-end regression and cost diagnostics rather than an isolated split-count effect.
 
