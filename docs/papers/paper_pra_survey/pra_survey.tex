@@ -49,7 +49,7 @@
 \begin{abstract}
 Language models can access information beyond their local token stream in several ways: they can enlarge or sparsify attention, carry recurrent state, update neural memory at test time, retrieve text or latent representations, compress and reuse K/V caches, navigate an index, or call tools. These mechanisms are usually studied in separate literatures. We ask a common question instead: \emph{what access contract connects the model to information that is not already local?} An access contract specifies what is stored, how an item is identified, when selection occurs, which representation is materialized, how it enters the model, and which intervention would demonstrate that the selected information caused an output change.
 
-This tutorial develops that comparison across seven architectural families. Progressive Retrieval Attention (PRAttention, PRA) serves as a worked case rather than a presumed winner. Its corrected prototype represents external documents as explicit URI-addressed references, partitions each reference into chunks, derives one contextual routing gist per chunk and layer, and transports full token K/V only for selected chunks. We reconstruct this design, distinguish it from prior retrieval and memory mechanisms, and use a five-seed corrected-router study to show why optimization success is not evidence of causal retrieval: pretraining and frozen-path adaptation improve loss and preserve language ability, while selection remains near chance and content counterfactuals barely separate. The survey then derives matched comparisons and controls for testing long context, retrieval, latent memory, structural navigation, and agents on common quality and cost frontiers.
+This tutorial develops that comparison across seven architectural families. Progressive Retrieval Attention (PRAttention, PRA) serves as a worked case rather than a presumed winner. Its corrected prototype represents documents as URI-addressed references, partitions each object into chunks, derives configurable layer-specific gist sets, and transports full token K/V only for selected chunks. The same mechanism can reclassify a displaced prompt prefix as a request-local implicit reference while preserving its recent suffix as direct context. We reconstruct this design, distinguish it from prior retrieval and memory mechanisms, and use a five-seed corrected-router study to show why optimization success is not evidence of causal retrieval: pretraining and frozen-path adaptation improve loss and preserve language ability, while selection remains near chance and content counterfactuals barely separate. Multi-gist and implicit-prompt mechanics are implemented but not yet benchmarked. The survey then derives matched comparisons and controls for testing long context, retrieval, latent memory, structural navigation, and agents on common quality and cost frontiers.
 \end{abstract}
 \tableofcontents
 \newpage
@@ -440,7 +440,7 @@ KV/landmark retrieval & hidden/KV index & attention time & selected states or pa
 KV retention/reuse & active or stored KV & runtime stages & pruned, merged, or repaired KV & lower bytes and avoided prefill & irreversible loss, context mismatch\\
 Tree/graph index & structural nodes & iterative or one-shot & summaries, spans, or subgraphs & multigranular reasoning & index construction errors\\
 Search agent & open tools/web & iterative decisions & observations or text & maximum flexibility & latency, cost, tool errors\\
-PRA & URI objects and K/V caches & layer/step, demand-driven & selected chunk token K/V & identity, reuse, progressive access & router learning, stale caches, runtime complexity\\
+PRA & URI objects, displaced prompt prefixes, and K/V caches & layer/step, demand-driven & selected chunk token K/V & identity, reuse, progressive access & router learning, stale caches, cold encoding cost\\
 \bottomrule
 \end{longtable}
 \normalsize
@@ -541,6 +541,24 @@ This lineage also tempers novelty claims. Cross-attention over external KV is no
 The survey suggests several combinations, but none should be read as a measured PRA
 capability.  Each extension below states a mechanism and the observation that would make
 it scientifically useful.
+\subsection{Prompt-history virtualization}
+The current prototype supplies one concrete extension: when an initial prompt exceeds a
+direct-token budget, its older exact token prefix becomes a request-local URI object and
+its recent tail stays in causal self-attention.  The head then uses ordinary PRA chunking,
+gist routing, and selected-token K/V transport.  This differs from Transformer-XL and RMT,
+which carry chronological states across segment processing, and from StreamingLLM,
+H$_2$O, and SnapKV, which retain or evict positions in an existing stream cache.  It also
+differs from an external document handle: the object is created implicitly from already
+observed prompt history and expires with the request.
+
+The mechanism has focused correctness tests, not a long-context result.  A fair experiment
+must compare it with recent-tail truncation, dense extended context, recurrent segment
+memory, and matched-budget KV retention.  It should vary displaced-prefix length and
+answer dependence on old versus recent spans, while reporting cold head-encoding time,
+gists scored, K/V materialized, peak memory, perplexity by position, and exact-recall
+accuracy.  Streaming evaluation must remain separate because generated-token rollover is
+not yet implemented.
+
 \subsection{Hierarchical Progressive Retrieval Attention}
 Represent a document as a URI tree whose nodes expose child handles and optional routing
 metadata.  In the repository example, a project node leads to a module, then a class, and
@@ -629,15 +647,17 @@ is useful only when it yields a falsifiable computational question.
 Long-context modeling is not one problem. It is a family of access problems spanning compute graphs, recurrent and test-time state, external memory, retrieval, K/V retention and reuse, indexing, runtime allocation, provenance, and action. The seven categories reviewed here form a continuum from eager anonymous tokens to progressive named actions. PRA occupies a middle point: more structured and reusable than flat long context or one-shot RAG, but potentially cheaper and more differentiable than general search agents. Landmark routing, adaptive RAG, Titans, Quest, and CacheBlend sharpen the required comparisons by solving neighboring parts of the same access problem.
 
 The evidence is narrower than the architectural proposal.  The current code establishes
-mechanical feasibility for chunked, layer-specific routing gists, selected token K/V,
-variable-length batches, optional summaries, and bounded child-first cache construction.
+mechanical feasibility for configurable chunk- and URI-level gist sets, selected token
+K/V, variable-length batches, optional summaries, bounded child-first cache construction,
+and request-local virtualization of an overlong initial-prompt prefix.
 A five-seed corrected-router study establishes tiny-scale ordinary-language compatibility,
 large benefits from pretraining, and exact local-path preservation under frozen adaptation.
 It does not show content-selective reference use: top-1 remains near chance, shuffled
 penalties are at most 0.0048, and oracle gains stay below 0.002.  The next decisive step is
 therefore a learned-routing comparison with chunk/span supervision, followed by recursive
 tasks and end-to-end cold, warm, and reused-cache costs against strong long-context and
-retrieval baselines.
+retrieval baselines.  The implicit-head extension additionally requires matched long-prompt
+quality and cost comparisons; no such result is implied by its mechanical tests.
 
 If those experiments show that correct chunks cause reproducible gains at a favorable
 quality--cost point, PRA would merit study as a model-native interface for repeated

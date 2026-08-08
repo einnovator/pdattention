@@ -8,8 +8,8 @@ from common.config import TrainConfig as CommonTrainConfig
 class PRAConfig:
     """Architecture, routing, cache, and legacy training settings for PRA.
 
-    The model first encodes each reference into layer-specific token K/V and one
-    routing gist per chunk. During a normal forward pass, ``search_strategy``
+    The model first encodes each reference into layer-specific token K/V and
+    configurable routing-gist sets per chunk and URI. During a normal forward pass, ``search_strategy``
     selects references/chunks and ``detail_materialization`` chooses which K/V
     is exposed to :class:`PRAttention`.
     """
@@ -36,18 +36,55 @@ class PRAConfig:
     use_concat_memory: bool = False  # Reserved compatibility flag; concat is not implemented.
     memory_alpha: float = 0.5  # Scale in local_output + alpha * memory_output.
 
-    # Search modes: hierarchical scores chunks then URIs; reference_first builds a
-    # URI vector first; global_chunks ranks all chunks while enforcing both budgets.
+    # Long prompts keep a bounded recent tail and can expose displaced history as PRA memory.
+    max_prompt_direct_tokens: int | None = None  # None inherits max_seq_len.
+    prompt_overflow_mode: str = "truncate"  # truncate, implicit_reference, or error.
+    max_prompt_gists: int | None = None  # Prompt-head chunk cap; None keeps every chunk.
+
+    # Search modes and the independent chunk/reference gist representations.
     search_strategy: str = "hierarchical"
     reference_score_aggregation: str = "max"  # max, mean, or logsumexp over chunk scores.
-    reference_level_gist_mode: str | None = None  # mean/last URI vector for reference_first.
-    gist_mode: str = "mean"  # Pool chunk token keys by mean, last, ref_end, or GRU.
+    reference_level_gist_mode: str | None = None  # URI gist strategy for reference_first.
+    reference_gists_per_reference: int = 1  # Requested URI-level gists per layer.
+    reference_gist_score_aggregation: str = "max"  # Reduce query scores over URI gists.
+    gist_mode: str = "mean"  # Chunk gist strategy; single or multi-prototype.
+    gists_per_chunk: int = 1  # Requested chunk-level gists; single modes still produce one.
+    gist_score_aggregation: str = "max"  # Reduce query scores over one chunk's gist set.
     max_gists_per_reference: int = 4  # Maximum independently routable chunks per URI.
     gist_overflow_policy: str = "truncate"  # truncate, merge_tail, or error.
     gist_gru_hidden_size: int | None = None  # GRU gist state width; defaults to d_model.
     gist_gru_num_layers: int = 1  # Recurrent depth for experimental GRU pooling.
     gist_gru_bidirectional: bool = False  # Read chunk keys in both directions when true.
     ref_end_token: str = "<REF_END>"  # Atomic marker selected by ref_end gist mode.
+
+    # Multi-gist strategies cluster keys and aggregate values with the same assignments.
+    gist_kmeans_max_iters: int = 8  # Maximum local Lloyd iterations.
+    gist_kmeans_init: str = "kmeans++"  # kmeans++ or deterministic seeded sample.
+    gist_kmeans_tol: float = 1e-4  # Stop when maximum centroid movement is below this value.
+    gist_kmeans_normalize: bool = True  # Cluster normalized projected keys.
+    gist_kmeans_seed: int = 0  # Local RNG seed; global torch state is never consumed.
+    gist_kmeans_empty_cluster_policy: str = "farthest"  # farthest reseed or error.
+    gist_som_steps: int = 32  # Local self-organizing-map update count.
+    gist_som_learning_rate: float = 0.2  # Initial SOM prototype learning rate.
+    gist_som_final_learning_rate: float = 0.05  # Final SOM learning rate.
+    gist_som_neighborhood_radius: float = 1.0  # Initial line-topology radius.
+    gist_som_final_neighborhood_radius: float = 0.0  # Final line-topology radius.
+    gist_som_distance: str = "cosine"  # cosine or euclidean winner selection.
+    gist_som_normalize: bool = True  # Keep SOM input/prototypes in normalized key space.
+    gist_som_init: str = "sample"  # Deterministic seeded sample initialization.
+    gist_som_seed: int = 0  # Local SOM RNG seed.
+    gist_som_topology: str = "line"  # Supported local prototype topology.
+    gist_prototype_method: str = "farthest"  # Diversity-selection method.
+    gist_prototype_init: str = "mean_nearest"  # mean_nearest or deterministic sample.
+    gist_prototype_refine: bool = True  # Replace selected points with assigned K means.
+    gist_prototype_normalize: bool = True  # Select prototypes in normalized key space.
+    gist_prototype_distance: str = "cosine"  # cosine or euclidean assignments.
+    gist_prototype_seed: int = 0  # Local prototype RNG seed for sample initialization.
+    gist_hybrid_global_mode: str = "mean"  # Single gist prepended to local prototypes.
+    gist_hybrid_local_mode: str = "kmeans"  # kmeans, som, or prototype.
+    gist_hybrid_global_count: int = 1  # Requested global slots; single modes yield one.
+    gist_hybrid_deduplicate: bool = True  # Remove nearly identical global/local gists.
+    gist_hybrid_min_cosine_separation: float = 0.0  # Minimum retained pairwise distance.
 
     # Reference partitioning and the detail made visible after routing.
     chunking_mode: str = "none"  # none, fixed token windows, markers, or plugin semantic.
@@ -89,6 +126,12 @@ class PRAConfig:
     steps: int = 500
     device: str = "cuda"
 
+    @property
+    def effective_prompt_direct_tokens(self) -> int:
+        """Return the direct prompt budget clamped to positional capacity."""
+        requested = self.max_prompt_direct_tokens or self.max_seq_len
+        return min(int(requested), int(self.max_seq_len))
+
     def __post_init__(self) -> None:
         """Normalize aliases/variants and reject incompatible mode settings early."""
         # Normalize routing choices before validating dependent fields.
@@ -104,23 +147,96 @@ class PRAConfig:
         self.top_k_chunks_per_reference = int(self.top_k_chunks_per_reference)
         if self.top_k_references < 0 or self.top_k_chunks_per_reference < 0:
             raise ValueError("PRA top-k values must be non-negative; zero selects nothing.")
+        if self.max_prompt_direct_tokens is not None:
+            self.max_prompt_direct_tokens = int(self.max_prompt_direct_tokens)
+            if self.max_prompt_direct_tokens <= 0:
+                raise ValueError("max_prompt_direct_tokens must be positive or None.")
+        if self.prompt_overflow_mode not in {"truncate", "implicit_reference", "error"}:
+            raise ValueError(f"Unsupported prompt_overflow_mode: {self.prompt_overflow_mode}")
+        if self.max_prompt_gists is not None:
+            self.max_prompt_gists = int(self.max_prompt_gists)
+            if self.max_prompt_gists <= 0:
+                raise ValueError("max_prompt_gists must be positive or None.")
         if self.search_strategy not in {"hierarchical", "reference_first", "global_chunks"}:
             raise ValueError(f"Unsupported search_strategy: {self.search_strategy}")
         if self.reference_score_aggregation not in {"max", "mean", "logsumexp"}:
             raise ValueError(
                 f"Unsupported reference_score_aggregation: {self.reference_score_aggregation}"
             )
-        if self.reference_level_gist_mode not in {None, "mean", "last", "gru"}:
+        gist_modes = {"mean", "last", "ref_end", "gru", "kmeans", "som", "prototype", "hybrid"}
+        if self.reference_level_gist_mode not in {None, *gist_modes}:
             raise ValueError(
                 f"Unsupported reference_level_gist_mode: {self.reference_level_gist_mode}"
             )
-        if self.gist_mode not in {"mean", "last", "ref_end", "gru"}:
+        if self.reference_level_gist_mode == "ref_end":
+            raise ValueError("reference_level_gist_mode='ref_end' has no URI-level token marker.")
+        if self.gist_mode not in gist_modes:
             raise ValueError(f"Unsupported gist_mode: {self.gist_mode}")
+        self.gists_per_chunk = int(self.gists_per_chunk)
+        self.reference_gists_per_reference = int(self.reference_gists_per_reference)
+        if self.gists_per_chunk <= 0 or self.reference_gists_per_reference <= 0:
+            raise ValueError("Chunk and reference gist counts must be positive.")
+        gist_aggregations = {"max", "mean", "logsumexp"}
+        if self.gist_score_aggregation not in gist_aggregations:
+            raise ValueError(f"Unsupported gist_score_aggregation: {self.gist_score_aggregation}")
+        if self.reference_gist_score_aggregation not in gist_aggregations:
+            raise ValueError(
+                "Unsupported reference_gist_score_aggregation: "
+                f"{self.reference_gist_score_aggregation}"
+            )
         self.max_gists_per_reference = int(self.max_gists_per_reference)
         if self.max_gists_per_reference <= 0:
             raise ValueError("max_gists_per_reference must be positive.")
         if self.gist_overflow_policy not in {"truncate", "merge_tail", "error"}:
             raise ValueError(f"Unsupported gist_overflow_policy: {self.gist_overflow_policy}")
+        self.gist_kmeans_max_iters = int(self.gist_kmeans_max_iters)
+        if self.gist_kmeans_max_iters <= 0 or float(self.gist_kmeans_tol) < 0:
+            raise ValueError("K-means iterations must be positive and tolerance non-negative.")
+        if self.gist_kmeans_init not in {"kmeans++", "sample"}:
+            raise ValueError(f"Unsupported gist_kmeans_init: {self.gist_kmeans_init}")
+        if self.gist_kmeans_empty_cluster_policy not in {"farthest", "error"}:
+            raise ValueError(
+                "Unsupported gist_kmeans_empty_cluster_policy: "
+                f"{self.gist_kmeans_empty_cluster_policy}"
+            )
+        self.gist_som_steps = int(self.gist_som_steps)
+        if self.gist_som_steps < 0:
+            raise ValueError("gist_som_steps must be non-negative.")
+        if min(
+            float(self.gist_som_learning_rate),
+            float(self.gist_som_final_learning_rate),
+            float(self.gist_som_neighborhood_radius),
+            float(self.gist_som_final_neighborhood_radius),
+        ) < 0:
+            raise ValueError("SOM rates and neighborhood radii must be non-negative.")
+        if self.gist_som_distance not in {"cosine", "euclidean"}:
+            raise ValueError(f"Unsupported gist_som_distance: {self.gist_som_distance}")
+        if self.gist_som_init != "sample" or self.gist_som_topology != "line":
+            raise ValueError("The current SOM implementation supports sample initialization and line topology.")
+        if self.gist_prototype_method != "farthest":
+            raise ValueError(f"Unsupported gist_prototype_method: {self.gist_prototype_method}")
+        if self.gist_prototype_init not in {"mean_nearest", "sample"}:
+            raise ValueError(f"Unsupported gist_prototype_init: {self.gist_prototype_init}")
+        if self.gist_prototype_distance not in {"cosine", "euclidean"}:
+            raise ValueError(
+                f"Unsupported gist_prototype_distance: {self.gist_prototype_distance}"
+            )
+        if self.gist_hybrid_global_mode not in {"mean", "last", "ref_end", "gru"}:
+            raise ValueError(
+                f"Unsupported gist_hybrid_global_mode: {self.gist_hybrid_global_mode}"
+            )
+        if (
+            self.reference_level_gist_mode == "hybrid"
+            and self.gist_hybrid_global_mode == "ref_end"
+        ):
+            raise ValueError("Reference-level hybrid gists cannot use a ref_end global gist.")
+        if self.gist_hybrid_local_mode not in {"kmeans", "som", "prototype"}:
+            raise ValueError(f"Unsupported gist_hybrid_local_mode: {self.gist_hybrid_local_mode}")
+        self.gist_hybrid_global_count = int(self.gist_hybrid_global_count)
+        if self.gist_hybrid_global_count <= 0:
+            raise ValueError("gist_hybrid_global_count must be positive.")
+        if not 0.0 <= float(self.gist_hybrid_min_cosine_separation) <= 2.0:
+            raise ValueError("gist_hybrid_min_cosine_separation must be between zero and two.")
         if self.chunking_mode not in {"none", "fixed", "markers", "semantic"}:
             raise ValueError(f"Unsupported chunking_mode: {self.chunking_mode}")
         self.fixed_chunk_tokens = int(self.fixed_chunk_tokens)

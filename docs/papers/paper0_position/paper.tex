@@ -34,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context to the model in a largely flat and eager form: tokens are either placed in the prompt, retrieved once before generation, or acquired through explicit tool calls outside the transformer's attention computation. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), a family of architectures and runtimes in which lightweight reference handles point to URI-addressed memory and can be expanded on demand into layer-specific attention memory. The central thesis is that long-context inference should move from monolithic token streams toward hierarchical, demand-driven context graphs. We distinguish naming from materialization, routing gists from transported token K/V, reference selection from chunk selection, and local language ability from reference-path adaptation. These separations position PRA as a bridge between sparse long-context transformers, retrieval-augmented generation, agentic progressive disclosure, and KV-cache runtime systems. We define the abstractions, propose a bounded recursive memory lifecycle and evaluation doctrine, and report a five-seed corrected-router study. The study supports ordinary-language compatibility, pretrained adaptation, and frozen-path preservation, but reference selection remains near chance and valid content barely outperforms shuffled or oracle controls. The program therefore remains falsifiable by improved task quality per unit of context, latency, and memory.
+Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context to the model in a largely flat and eager form: tokens are either placed in the prompt, retrieved once before generation, or acquired through explicit tool calls outside the transformer's attention computation. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), a family of architectures and runtimes in which lightweight reference handles point to URI-addressed memory and can be expanded on demand into layer-specific attention memory. The central thesis is that long-context inference should move from monolithic token streams toward hierarchical, demand-driven context graphs. We distinguish naming from materialization, routing gists from transported token K/V, reference selection from chunk selection, and local language ability from reference-path adaptation. We also show how an overlong prompt prefix can become a request-local implicit reference while its recent suffix remains direct context. These separations position PRA as a bridge between sparse long-context transformers, retrieval-augmented generation, recurrent memory, and KV-cache runtime systems. We define the abstractions, propose a bounded recursive memory lifecycle and evaluation doctrine, and report a five-seed corrected-router study. The study supports ordinary-language compatibility, pretrained adaptation, and frozen-path preservation, but reference selection remains near chance and valid content barely outperforms shuffled or oracle controls. Prompt-prefix virtualization has passed mechanical tests but has not yet been evaluated for language quality or efficiency. The program therefore remains falsifiable by improved task quality per unit of context, latency, and memory.
 \end{abstract}
 
 \section{Introduction}
@@ -148,6 +148,29 @@ PRA assumes that external memory can be addressed by URIs. The scheme may denote
 
 The anchor fragment after \texttt{\#} is not merely a byte offset. It can encode semantic hierarchy: document, section, subsection, paragraph, function, class, or trace event. URI addressing gives the runtime a stable object to cache and gives the model a compact symbol for a potentially large subtree of context.
 
+\subsection{Prompt History as an Implicit Reference}
+
+Explicit handles are not the only way an object can enter the context graph.  Once a
+prompt exceeds the direct-token budget $D$, its older prefix can be reclassified as a
+request-local object while the most recent suffix remains in causal self-attention.  For
+token sequence $x_{1:N}$ with $N>D$, the implemented split is exact:
+\begin{equation}
+z_{\mathrm{head}}=x_{1:N-D},\qquad x_{\mathrm{direct}}=x_{N-D+1:N}.
+\end{equation}
+The head is registered under \path{pra://implicit/prompt/head} (shown in diagnostics as
+\texttt{\#\_\_head}), chunked, encoded, and routed through the ordinary PRA memory path.
+No visible marker is inserted into the suffix, and no decode--re-encode round trip changes
+the token identities.  The reserved URI is scoped to one batch row and one request; a new
+request replaces it rather than inheriting stale prompt history.
+
+This mechanism turns chronological displacement into the same named-object interface used
+for external documents.  It is not equivalent to keeping the entire prefix in dense
+self-attention: the head becomes non-causal memory after it has been observed, and only
+selected chunks are transported.  The implementation also retains \texttt{truncate} and
+\texttt{error} overflow policies.  It currently virtualizes the initial prompt only;
+rolling generated tokens into new implicit references during streaming remains future
+work.
+
 \subsection{Recursive Anchors}
 
 Many references are best exposed recursively.  A root object may advertise child
@@ -189,10 +212,10 @@ model stack used by the prompt and captures the K/V representation appropriate t
 PRA-enabled depth. PRA therefore uses a layer-specific memory cache:
 
 \begin{equation}
-\mathrm{cache}[u,c,\ell] = (K_{u,c,\ell}, V_{u,c,\ell}, g^K_{u,c,\ell}),
+\mathrm{cache}[u,c,\ell] = (K_{u,c,\ell}, V_{u,c,\ell}, G^K_{u,c,\ell},G^V_{u,c,\ell}),
 \end{equation}
 
-where $u$ is a URI, $c$ a deterministic chunk, $\ell$ a transformer layer, $(K,V)$ the full token memory, and $g^K$ exactly one contextual routing gist derived from that layer's projected chunk keys.  The gist is an index entry, not a compressed replacement for the
+where $u$ is a URI, $c$ a deterministic chunk, $\ell$ a transformer layer, $(K,V)$ the full token memory, and $G^K,G^V\in\mathbb{R}^{G_c\times d}$ paired contextual routing gists derived from that layer's projected chunk keys and values.  Mean, last-token, reference-end, and GRU modes produce $G_c=1$; k-means, prototype, self-organizing-map, and hybrid modes may retain several local regions.  A gist is an index entry, not a compressed replacement for the
 chunk: it is cheap to compare with a query, while the full K/V preserves token-level
 detail after selection. This distinction matters because lower layers may encode lexical and syntactic information while higher layers may encode task-specific abstractions. Raw token embeddings or document summaries are not substitutes for layer-specific routing and attention memory.
 
@@ -247,16 +270,20 @@ future positions:
 
 The output mixes values from preceding local positions according to query--key
 compatibility.  A PRA layer preserves that path and adds memory selected from a cache.
-For routing, it uses the projected query at the most recent position, merges its heads
-into $q_{t,\ell}$, and compares it with one projected-key gist
-$g^K_{u,c,\ell}$ for chunk $c$ of object $u$:
+For routing, it uses the projected query at the most recent valid position, merges its
+heads into $q_{t,\ell}$, and compares it with every projected-key gist
+$g^K_{u,c,\ell,j}\in G^K_{u,c,\ell}$ for chunk $c$ of object $u$:
 
 \begin{align}
 q_{t,\ell} &= \operatorname{mergeheads}(XW_Q^{(\ell)})_t,\\
-a_{u,c,\ell} &= \cos(q_{t,\ell},g^K_{u,c,\ell}).
+a_{u,c,\ell,j} &= \cos(q_{t,\ell},g^K_{u,c,\ell,j}),\\
+a_{u,c,\ell} &= \operatorname{Agg}_{j=1}^{G_c}a_{u,c,\ell,j}.
 \end{align}
 
-The cosine score $a_{u,c,\ell}$ ranks a small routing representation rather than the
+The default aggregation is maximum; mean and log-sum-exp are alternatives.  URI-level
+gist sets can likewise select references before chunk scoring, so ``reference-first'' is
+a real two-stage route rather than a relabeling of flattened chunk scores.  The aggregate
+score $a_{u,c,\ell}$ ranks small routing representations rather than the
 full chunk.  Hierarchical routing aggregates chunk scores to select at most $k_r$
 references, then independently selects at most $k_c$ chunks inside each selected
 reference.  Content-derived gists are the default.  Summaries, when available, may
@@ -415,7 +442,7 @@ A PRA runtime can be described as a lifecycle rather than a single retrieval cal
 \item \textbf{Select references}: rank candidate handles for a sequence, position, layer, or decoding interval.
 \item \textbf{Resolve}: map selected URIs to immutable or versioned content.
 \item \textbf{Expand}: recursively resolve explicit child tables under shared budgets and cycle policy.
-\item \textbf{Chunk and encode}: transform content into bounded layer-compatible token K/V and one gist per chunk.
+\item \textbf{Chunk and encode}: transform content into bounded layer-compatible token K/V and one or more paired routing gists per chunk.
 \item \textbf{Select chunks}: choose bounded materialization units inside retained references.
 \item \textbf{Admit}: place entries in a bounded active cache under an admission policy.
 \item \textbf{Attend}: allow authorized sequence positions and layers to consume the memory.
@@ -717,7 +744,7 @@ These criteria make PRA a testable systems-and-model hypothesis rather than a la
 
 PRA introduces several risks. First, reference selection can fail silently: if the system does not expand the right anchor, the model may answer from incomplete context. Second, URI-addressed memory creates provenance and security questions. A reference table is a powerful interface; poisoning or misaddressing entries can mislead the model. Third, cache construction may move cost rather than eliminate it. Encoding references separately is only beneficial when cache reuse, selective expansion, or reduced prompt length outweighs encoding overhead. Fourth, pretrained integration is technically difficult because external K/V must respect layer semantics, position encodings, attention variants, and batching constraints.
 
-Fifth, content-independent branch effects can be mistaken for retrieval. A memory residual may improve a domain simply because it contributes additional activations, even when references are shuffled. Sixth, batching can violate semantic isolation: a physically shared cache must not expose one sequence's references to another, and empty rows must not inherit projection bias. Seventh, preservation claims can be artifacts of freezing rather than architecture. Eighth, hierarchical expansion can amplify latency variance and create denial-of-service surfaces when references recursively fan out. Ninth, raw summaries can introduce a representation mismatch when compared with projected layer queries; optional summary evidence must inhabit the same contextual layer space. Finally, stale cache entries create a consistency problem: URI, content version, model/tokenizer/routing fingerprints, and encoded layer memory must remain aligned.
+Fifth, content-independent branch effects can be mistaken for retrieval. A memory residual may improve a domain simply because it contributes additional activations, even when references are shuffled. Sixth, batching can violate semantic isolation: a physically shared cache must not expose one sequence's references to another, and empty rows must not inherit projection bias. Seventh, preservation claims can be artifacts of freezing rather than architecture. Eighth, hierarchical expansion can amplify latency variance and create denial-of-service surfaces when references recursively fan out. Ninth, raw summaries can introduce a representation mismatch when compared with projected layer queries; optional summary evidence must inhabit the same contextual layer space. Tenth, implicit prompt heads can merely move quadratic work into a separate encoding pass, and the present implementation does not roll generated history into memory. Finally, stale cache entries create a consistency problem: URI, content version, model/tokenizer/routing fingerprints, and encoded layer memory must remain aligned.
 
 These limitations motivate careful experimental design. PRA should not be judged by a single accuracy number. It should be evaluated through controlled ablations that measure answer accuracy, reference and chunk ranking, expansion depth and budget exhaustion, available and materialized token counts, full-context token count, timing decomposition, padding allocation, cache hit ratio, content-specific counterfactual deltas, plain-task retention, and cache isolation. The five-seed corrected follow-up addresses tiny-scale capacity, training order, preservation, first-order counterfactuals, and synchronized prototype timing. Learned routing, recursive behavior, persistent cache reuse, and end-to-end efficiency against strong baselines remain untested empirically.
 
@@ -727,7 +754,7 @@ Progressive Retrieval Attention proposes a shift in how foundation models intera
 
 The long-term vision is a foundation-model memory stack with explicit boundaries among parametric knowledge, working context, episodic history, semantic resources, procedures and tools, and changing world state. URI identity, provenance, freshness, hierarchy, permissions, and cache lifetime become architectural concerns rather than application-side annotations. Protocols such as MCP can expose resources and actions, agents can manage high-level plans, and PRA-like runtimes can test whether repeated read-oriented access can move closer to attention without losing governance.
 
-The five-seed corrected follow-up supports backbone compatibility, demonstrates useful preservation controls, and shows that pretraining is essential under the tested adaptation budget. It does not establish causal selection or the efficiency thesis: routing remains near chance and correct content barely separates from counterfactuals. The implementation makes the proposal sharper: projected per-layer content gists route independently to references and chunks; only selected full-token K/V is transported; recursion is explicit, bounded, and child-first; and physical batching preserves logical memory isolation. The program should proceed only if corrected and eventually learned selectors make valid chunks consistently beat shuffled and irrelevant controls, local capabilities remain preserved under matched adaptation, and end-to-end quality improves per unit of latency, encoded tokens, and active memory against strong long-context, RAG, RETRO, and agentic baselines. If those conditions fail, the virtual-context proposal should be revised or rejected. If they hold across scales and domains, foundation models may evolve from systems with larger prompts into systems with principled memory architectures.
+The five-seed corrected follow-up supports backbone compatibility, demonstrates useful preservation controls, and shows that pretraining is essential under the tested adaptation budget. It does not establish causal selection or the efficiency thesis: routing remains near chance and correct content barely separates from counterfactuals. The implementation makes the proposal sharper: configurable per-layer gist sets route independently to references and chunks; only selected full-token K/V is transported; recursion is explicit, bounded, and child-first; long prompt prefixes can enter the same machinery as request-local implicit objects; and physical batching preserves logical memory isolation. The prompt extension is an implemented capability, not yet an empirical result. The program should proceed only if corrected and eventually learned selectors make valid chunks consistently beat shuffled and irrelevant controls, local capabilities remain preserved under matched adaptation, and end-to-end quality improves per unit of latency, encoded tokens, and active memory against strong long-context, recurrent-memory, RAG, RETRO, and agentic baselines. If those conditions fail, the virtual-context proposal should be revised or rejected. If they hold across scales and domains, foundation models may evolve from systems with larger prompts into systems with principled memory architectures.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

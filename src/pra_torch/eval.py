@@ -114,12 +114,13 @@ def generate_greedy(model, tokenizer, prompt: str, device: str, max_new_tokens: 
 def generate_pra(model, tokenizer, prompt: str, device: str, max_new_tokens: int) -> str:
     ids = tokenizer.encode(prompt)
     input_ids = torch.tensor([ids], dtype=torch.long, device=device)
-    for _ in range(max_new_tokens):
-        idx = input_ids[:, -model.cfg.max_seq_len :]
-        logits = model(idx)
-        next_id = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-        input_ids = torch.cat([input_ids, next_id], dim=1)
-    return tokenizer.decode(input_ids[0])
+    generated = model.generate(
+        input_ids,
+        max_new_tokens=max_new_tokens,
+        tokenizer=tokenizer,
+        do_sample=False,
+    )
+    return tokenizer.decode(generated[0])
 
 
 def baseline_prompts_from_metadata(item):

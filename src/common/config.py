@@ -45,39 +45,43 @@ class TrainConfig:
     configuration that may subclass this base class.
     """
 
-    experiment_name: str = "experiment"
-    output_dir: str = "out"
-    seed: int = 0
-    device: str = "auto"
-    dtype: str = "float32"
-    epochs: int = 3
-    max_steps: int | None = None
-    batch_size: int = 8
-    grad_accum_steps: int = 1
-    learning_rate: float = 3e-4
-    weight_decay: float = 0.0
-    warmup_steps: int = 0
-    max_grad_norm: float = 1.0
-    eval_every_steps: int = 50
-    save_every_steps: int = 100
-    log_every_steps: int = 10
-    num_workers: int = 0
-    pin_memory: bool = False
-    persistent_workers: bool = False
-    resume_from: str | None = None
-    use_tensorboard: bool = True
-    save_metric_plots: bool = True
-    use_wandb: bool = False
-    wandb_project: str = "transformer-experiments"
-    use_clearml: bool = False
-    clearml_project: str = "Transformer Experiments"
-    mixed_precision: bool = False
-    early_stopping_patience: int | None = None
-    dataset_stage: str = "dataset"
-    data_dir: str = "data"
-    max_examples: int | None = None
-    max_seq_len: int = 96
-    shuffle: bool = True
+    experiment_name: str = "experiment"  # Run name used as the artifact-directory suffix.
+    output_dir: str = "out"  # Parent directory for logs, metrics, plots, and checkpoints.
+    seed: int = 0  # Seed applied to Python, NumPy, and PyTorch random generators.
+    device: str = "auto"  # Execution device; auto selects CUDA when it is available.
+    dtype: str = "float32"  # Requested numeric dtype for model-specific adapters to honor.
+
+    epochs: int = 3  # Maximum complete passes over the training dataloader.
+    max_steps: int | None = None  # Optional cap on optimizer updates across all epochs.
+    batch_size: int = 8  # Number of examples loaded in each logical training batch.
+    grad_accum_steps: int = 1  # Batches accumulated before each optimizer update.
+    learning_rate: float = 3e-4  # Initial AdamW learning rate.
+    weight_decay: float = 0.0  # AdamW decoupled L2 regularization coefficient.
+    warmup_steps: int = 0  # Optimizer updates used to linearly ramp the learning rate.
+    max_grad_norm: float = 1.0  # Global gradient-norm clipping threshold; zero disables it.
+
+    eval_every_steps: int = 50  # Optimizer-update interval for validation.
+    save_every_steps: int = 100  # Optimizer-update interval for latest checkpoints.
+    log_every_steps: int = 10  # Optimizer-update interval for aggregate training logs.
+    resume_from: str | None = None  # Optional checkpoint path restored before training.
+    early_stopping_patience: int | None = None  # Non-improving validations allowed before stop.
+
+    num_workers: int = 0  # Worker processes used by model-specific dataloaders.
+    pin_memory: bool = False  # Ask dataloaders to stage CPU tensors in pinned memory.
+    persistent_workers: bool = False  # Keep dataloader workers alive between epochs.
+    dataset_stage: str = "dataset"  # Dataset split, stage, or generated-data identifier.
+    data_dir: str = "data"  # Root directory from which dataset adapters load artifacts.
+    max_examples: int | None = None  # Optional dataset-size limit applied by adapters.
+    max_seq_len: int = 96  # Maximum token sequence length prepared by data adapters.
+    shuffle: bool = True  # Randomize training-example order in supporting dataloaders.
+
+    mixed_precision: bool = False  # Enable CUDA autocast and gradient scaling when supported.
+    use_tensorboard: bool = True  # Write TensorBoard event records for the run.
+    save_metric_plots: bool = True  # Render local PNG plots when metric history closes.
+    use_wandb: bool = False  # Send scalar metrics to Weights & Biases.
+    wandb_project: str = "transformer-experiments"  # Weights & Biases destination project.
+    use_clearml: bool = False  # Send configuration and scalar metrics to ClearML.
+    clearml_project: str = "Transformer Experiments"  # ClearML destination project.
 
     def __post_init__(self) -> None:
         """Normalize numeric values and reject invalid loop settings early."""

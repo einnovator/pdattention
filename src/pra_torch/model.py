@@ -8,8 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .config import PRAConfig
 from .attention import PRAttention
-from .chunking import partition_reference
-from .gist import GRUGistPooler, compute_routing_gist
+from .chunking import partition_reference_tokens
+from .gists import GRUGistPooler, GistContext, compute_gists, projected_tokens
 from .memory import (
     ChunkRoutingGist,
     LayerReferenceMemory,
@@ -17,6 +17,7 @@ from .memory import (
     PRACacheEntry,
     PRASimpleMemoryCache,
     ReferenceChunkMemory,
+    ReferenceRoutingGists,
 )
 
 
@@ -42,11 +43,12 @@ class VanillaTransformerBlock(nn.Module):
             norm_first=True,
         )
 
-    def forward(self, x, use_pra_memory: bool = True):
+    def forward(self, x, use_pra_memory: bool = True, attention_mask=None):
         """Transform ``[B,T,D]`` states; ``use_pra_memory`` has no effect here."""
         _ = use_pra_memory
         mask = causal_attention_mask(x.shape[1], x.device)
-        return self.layer(x, src_mask=mask)
+        padding_mask = ~attention_mask.bool() if attention_mask is not None else None
+        return self.layer(x, src_mask=mask, src_key_padding_mask=padding_mask)
 
 
 class PRATransformerBlock(nn.Module):
@@ -72,9 +74,13 @@ class PRATransformerBlock(nn.Module):
             nn.Linear(cfg.d_ff, cfg.d_model),
         )
 
-    def forward(self, x, use_pra_memory: bool = True):
+    def forward(self, x, use_pra_memory: bool = True, attention_mask=None):
         """Run pre-norm attention/MLP residuals on ``[B,T,D]`` hidden states."""
-        x = x + self.attn(self.ln1(x), use_pra_memory=use_pra_memory)
+        x = x + self.attn(
+            self.ln1(x),
+            use_pra_memory=use_pra_memory,
+            attention_mask=attention_mask,
+        )
         x = x + self.ff(self.ln2(x))
         return x
 
@@ -123,17 +129,29 @@ class PRASATransformerBlock(nn.Module):
             nn.Linear(cfg.d_ff, cfg.d_model),
         )
 
-    def _apply_self_attention(self, x):
+    def _apply_self_attention(self, x, attention_mask=None):
         """Apply the leading vanilla causal residual to ``[B,T,D]`` states."""
         norm_x = self.ln1(x)
         mask = causal_attention_mask(x.shape[1], x.device)
-        attn_out, _ = self.self_attn(norm_x, norm_x, norm_x, attn_mask=mask, need_weights=False)
+        padding_mask = ~attention_mask.bool() if attention_mask is not None else None
+        attn_out, _ = self.self_attn(
+            norm_x,
+            norm_x,
+            norm_x,
+            attn_mask=mask,
+            key_padding_mask=padding_mask,
+            need_weights=False,
+        )
         return x + attn_out
 
-    def forward(self, x, use_pra_memory: bool = True):
+    def forward(self, x, use_pra_memory: bool = True, attention_mask=None):
         """Run vanilla attention, local-plus-memory PRA attention, then the MLP."""
-        x = self._apply_self_attention(x)
-        x = x + self.pra_attn(self.ln2(x), use_pra_memory=use_pra_memory)
+        x = self._apply_self_attention(x, attention_mask)
+        x = x + self.pra_attn(
+            self.ln2(x),
+            use_pra_memory=use_pra_memory,
+            attention_mask=attention_mask,
+        )
         x = x + self.ff(self.ln3(x))
         return x
 
@@ -165,6 +183,13 @@ class TinyPRAModel(nn.Module):
         )
         self.token_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)  # IDs -> [B,T,D].
         self.pos_emb = nn.Embedding(cfg.max_seq_len, cfg.d_model)  # Absolute local positions.
+        needs_gru_pooler = (
+            "gru" in {cfg.gist_mode, cfg.reference_level_gist_mode}
+            or (
+                "hybrid" in {cfg.gist_mode, cfg.reference_level_gist_mode}
+                and cfg.gist_hybrid_global_mode == "gru"
+            )
+        )
         self.gist_pooler = (
             GRUGistPooler(
                 cfg.d_model,
@@ -173,7 +198,7 @@ class TinyPRAModel(nn.Module):
                 bidirectional=cfg.gist_gru_bidirectional,
                 dropout=cfg.dropout,
             )
-            if cfg.gist_mode == "gru"
+            if needs_gru_pooler
             else None
         )
         self.blocks = nn.ModuleList(self._build_blocks(cfg))  # Ordered decoder depth.
@@ -246,14 +271,16 @@ class TinyPRAModel(nn.Module):
                 }
         return diagnostics
 
-    def forward(self, input_ids, use_pra_memory: bool = True):
+    def forward(self, input_ids, use_pra_memory: bool = True, attention_mask=None):
         """Map ``[B,T]`` token IDs to next-token logits ``[B,T,vocab_size]``."""
         b, t = input_ids.shape
         assert t <= self.cfg.max_seq_len
+        if attention_mask is not None and attention_mask.shape != input_ids.shape:
+            raise ValueError("attention_mask must have the same [batch,tokens] shape as input_ids.")
         pos = torch.arange(t, device=input_ids.device)
         x = self.token_emb(input_ids) + self.pos_emb(pos)[None, :, :]
         for block in self.blocks:
-            x = block(x, use_pra_memory=use_pra_memory)
+            x = block(x, use_pra_memory=use_pra_memory, attention_mask=attention_mask)
         x = self.ln(x)
         return self.head(x)
 
@@ -285,18 +312,57 @@ class TinyPRAModel(nn.Module):
         *,
         use_pra_memory: bool = False,
     ) -> PRACacheEntry:
-        """Encode one resolved URI into layer-specific routing gists and token K/V.
+        """Tokenize a resolved text reference once, then build its PRA cache entry."""
+        return self.encode_reference_tokens_to_cache(
+            uri,
+            tokenizer.encode(text),
+            tokenizer,
+            device,
+            metadata,
+            text=text,
+            use_pra_memory=use_pra_memory,
+        )
 
-        The method first partitions text, then independently runs each retained
+    def encode_reference_tokens_to_cache(
+        self,
+        uri: str,
+        token_ids,
+        tokenizer,
+        device,
+        metadata: dict | None = None,
+        *,
+        text: str | None = None,
+        use_pra_memory: bool = False,
+        max_chunks: int | None = None,
+        use_configured_max_chunks: bool = True,
+        max_chunk_tokens: int | None = None,
+    ) -> PRACacheEntry:
+        """Encode exact reference token IDs into layer-specific routing and K/V.
+
+        The method first partitions the supplied IDs, then independently runs each retained
         chunk through the decoder. For every PRA layer it stores full token K/V
-        ``[1,H,M,Dh]`` plus content/value gists ``[D]``. An optional summary is
+        ``[1,H,M,Dh]`` plus content/value gist sets ``[G_chunk,D]``. Optional
+        per-layer URI gists are cached as ``[G_ref,D]`` for reference-first routing.
+        An optional summary is
         encoded separately and contributes only a routing key. The returned entry
         is not visible to attention until a cache backend publishes it with ``put``.
         """
         metadata = dict(metadata or {})
+        token_ids = [int(token_id) for token_id in token_ids]
+        text = tokenizer.decode(token_ids) if text is None else text
         detach = self.cfg.cache_build_mode == "detached"
         context = torch.no_grad() if detach else nullcontext()
-        chunks = partition_reference(uri, text, tokenizer, self.cfg, metadata)
+        chunks = partition_reference_tokens(
+            uri,
+            token_ids,
+            tokenizer,
+            self.cfg,
+            metadata,
+            text=text,
+            max_chunks=max_chunks,
+            use_configured_max_chunks=use_configured_max_chunks,
+            max_chunk_tokens=max_chunk_tokens,
+        )
         entry = PRACacheEntry(
             uri=uri,
             text=text,
@@ -305,6 +371,9 @@ class TinyPRAModel(nn.Module):
                 **metadata,
                 "chunking_mode": self.cfg.chunking_mode,
                 "gist_mode": self.cfg.gist_mode,
+                "gists_per_chunk": self.cfg.gists_per_chunk,
+                "reference_level_gist_mode": self.cfg.reference_level_gist_mode,
+                "reference_gists_per_reference": self.cfg.reference_gists_per_reference,
                 "cache_build_mode": self.cfg.cache_build_mode,
                 "use_summary": self.cfg.use_summary,
                 "summary_mode": self.cfg.summary_mode,
@@ -324,14 +393,21 @@ class TinyPRAModel(nn.Module):
                         summary_ids, device, detach=detach, use_pra_memory=False
                     )
                     for layer_id, kv in summary_kv.items():
-                        summary_by_layer[layer_id] = compute_routing_gist(
-                            kv.k,
-                            mode="gru" if self.cfg.gist_mode == "gru" else "mean",
-                            token_ids=summary_ids,
-                            tokenizer=tokenizer,
-                            ref_end_token=self.cfg.ref_end_token,
-                            gru_pooler=self.gist_pooler,
-                        )
+                        summary_mode = "gru" if self.cfg.gist_mode == "gru" else "mean"
+                        summary_by_layer[layer_id] = compute_gists(
+                            keys=projected_tokens(kv.k),
+                            values=None,
+                            num_gists=1,
+                            config=self.cfg,
+                            context=GistContext(
+                                level="chunk",
+                                token_ids=summary_ids,
+                                tokenizer=tokenizer,
+                                ref_end_token=self.cfg.ref_end_token,
+                                gru_pooler=self.gist_pooler,
+                            ),
+                            mode=summary_mode,
+                        ).k
 
             # Each chunk receives a fresh positional context starting at zero. Source
             # offsets remain on the chunk for provenance and overlap removal.
@@ -354,25 +430,25 @@ class TinyPRAModel(nn.Module):
                 # Gists are pooled from projected keys/values in the same layer space
                 # later used by routing queries and cross-attention.
                 for layer_id, kv in layer_kv.items():
-                    gist_k = compute_routing_gist(
-                        kv.k,
+                    computed = compute_gists(
+                        keys=projected_tokens(kv.k),
+                        values=projected_tokens(kv.v),
                         mode=self.cfg.gist_mode,
-                        token_ids=token_ids,
-                        tokenizer=tokenizer,
-                        ref_end_token=self.cfg.ref_end_token,
-                        gru_pooler=self.gist_pooler,
+                        num_gists=self.cfg.gists_per_chunk,
+                        config=self.cfg,
+                        context=GistContext(
+                            level="chunk",
+                            token_ids=token_ids,
+                            tokenizer=tokenizer,
+                            ref_end_token=self.cfg.ref_end_token,
+                            gru_pooler=self.gist_pooler,
+                        ),
                     )
-                    gist_v = compute_routing_gist(
-                        kv.v,
-                        mode=self.cfg.gist_mode,
-                        token_ids=token_ids,
-                        tokenizer=tokenizer,
-                        ref_end_token=self.cfg.ref_end_token,
-                        gru_pooler=self.gist_pooler,
-                    )
+                    gist_k = computed.k
+                    gist_v = computed.v
                     if detach:
                         gist_k = gist_k.detach()
-                        gist_v = gist_v.detach()
+                        gist_v = gist_v.detach() if gist_v is not None else None
                     chunk_memory = ReferenceChunkMemory(
                         chunk_id=chunk.chunk_id,
                         source_uri=chunk.source_uri,
@@ -386,10 +462,14 @@ class TinyPRAModel(nn.Module):
                             v=gist_v,
                             method=self.cfg.gist_mode,
                             summary_k=summary_by_layer.get(layer_id),
-                            metadata={"summary_available": layer_id in summary_by_layer},
+                            metadata={
+                                **computed.metadata,
+                                "summary_available": layer_id in summary_by_layer,
+                            },
                         ),
                         metadata={
                             **chunk.metadata,
+                            "source_token_ids": tuple(token_ids),
                             "original_token_count": original_length,
                             "retained_token_count": len(token_ids),
                             "truncated": original_length != len(token_ids),
@@ -398,20 +478,115 @@ class TinyPRAModel(nn.Module):
                     entry.layer_memory.setdefault(layer_id, LayerReferenceMemory()).chunks.append(
                         chunk_memory
                     )
+            # URI gists compress all chunk gists at this layer once during cache build.
+            if self.cfg.reference_level_gist_mode is not None:
+                for layer_id, memory in entry.layer_memory.items():
+                    if not memory.chunks:
+                        continue
+                    keys = torch.cat([chunk.routing_gist.k for chunk in memory.chunks], dim=0)
+                    values = (
+                        torch.cat([chunk.routing_gist.v for chunk in memory.chunks], dim=0)
+                        if all(chunk.routing_gist.v is not None for chunk in memory.chunks)
+                        else None
+                    )
+                    computed = compute_gists(
+                        keys=keys,
+                        values=values,
+                        mode=self.cfg.reference_level_gist_mode,
+                        num_gists=self.cfg.reference_gists_per_reference,
+                        config=self.cfg,
+                        context=GistContext(
+                            level="reference",
+                            gru_pooler=self.gist_pooler,
+                        ),
+                    )
+                    reference_k = computed.k.detach() if detach else computed.k
+                    reference_v = (
+                        computed.v.detach() if detach and computed.v is not None else computed.v
+                    )
+                    entry.reference_gists_by_layer[layer_id] = ReferenceRoutingGists(
+                        k=reference_k,
+                        v=reference_v,
+                        mode=self.cfg.reference_level_gist_mode,
+                        metadata=computed.metadata,
+                    )
         return entry
 
     @torch.no_grad()
-    def generate(self, input_ids, max_new_tokens=64, temperature=1.0, use_pra_memory: bool = True):
-        """Sample continuations, routing memory again at each autoregressive step."""
+    def generate(
+        self,
+        input_ids,
+        max_new_tokens=64,
+        temperature=1.0,
+        use_pra_memory: bool = True,
+        *,
+        tokenizer=None,
+        do_sample: bool = True,
+    ):
+        """Generate from a bounded direct tail and optional initial implicit head.
+
+        Long initial prompts are prepared once. Tokens displaced later by a long
+        generated continuation are not yet migrated into prompt memory.
+        """
         self.eval()
+        output_ids = input_ids
+        direct_ids = input_ids
+        from .memory import PRABatchedMemoryCache
+        from .prompt import IMPLICIT_PROMPT_HEAD_URI
+
+        active_caches = (
+            self.pra_cache.row_caches
+            if isinstance(self.pra_cache, PRABatchedMemoryCache)
+            else [self.pra_cache]
+        )
+        for cache in active_caches:
+            if hasattr(cache, "invalidate"):
+                cache.invalidate(IMPLICIT_PROMPT_HEAD_URI)
+        if input_ids.shape[1] > self.cfg.effective_prompt_direct_tokens:
+            if self.cfg.prompt_overflow_mode == "implicit_reference" and use_pra_memory:
+                if tokenizer is None:
+                    raise ValueError(
+                        "tokenizer is required to build implicit memory for a long prompt."
+                    )
+                from .prompt import prepare_prompt_batch_for_pra
+
+                if isinstance(self.pra_cache, PRABatchedMemoryCache):
+                    caches = self.pra_cache.row_caches
+                elif input_ids.shape[0] == 1:
+                    caches = [self.pra_cache]
+                elif self.pra_cache.is_empty():
+                    caches = [PRASimpleMemoryCache() for _ in range(input_ids.shape[0])]
+                else:
+                    raise ValueError(
+                        "Batched generation with explicit references requires row-local caches."
+                    )
+                prepared = prepare_prompt_batch_for_pra(
+                    self,
+                    tokenizer,
+                    input_ids,
+                    caches=caches,
+                )
+                direct_ids = prepared.input_ids
+                self.set_pra_cache(
+                    caches[0] if len(caches) == 1 else PRABatchedMemoryCache(caches)
+                )
+            else:
+                from .prompt import prepare_prompt_for_pra
+
+                splits = [prepare_prompt_for_pra(row, self.cfg) for row in input_ids]
+                direct_ids = input_ids.new_tensor([split.direct_ids for split in splits])
         for _ in range(max_new_tokens):
-            idx = input_ids[:, -self.cfg.max_seq_len:]
+            idx = direct_ids[:, -self.cfg.effective_prompt_direct_tokens :]
             logits = self(idx, use_pra_memory=use_pra_memory)
             logits = logits[:, -1, :] / max(temperature, 1e-6)
-            probs = F.softmax(logits, dim=-1)
-            next_id = torch.multinomial(probs, num_samples=1)
-            input_ids = torch.cat([input_ids, next_id], dim=1)
-        return input_ids
+            if do_sample:
+                probs = F.softmax(logits, dim=-1)
+                next_id = torch.multinomial(probs, num_samples=1)
+            else:
+                next_id = torch.argmax(logits, dim=-1, keepdim=True)
+            direct_ids = torch.cat([direct_ids, next_id], dim=1)
+            output_ids = torch.cat([output_ids, next_id], dim=1)
+        return output_ids
 
 
 TinyPRALanguageModel = TinyPRAModel

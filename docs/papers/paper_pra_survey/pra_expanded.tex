@@ -25,8 +25,8 @@ The scientific question is whether this combination improves quality per unit of
 context, latency, and memory in regimes with sparse, reusable, naturally named evidence.
 
 At the representation level, the same chain has three easy-to-confuse objects.  A handle
-is a symbolic address.  A gist is a small, layer-specific index entry used to rank one
-chunk.  Detailed token K/V is the material the decoder reads after selection.  The
+is a symbolic address.  A gist set is a small, layer-specific index entry used to rank one
+chunk or URI.  Detailed token K/V is the material the decoder reads after selection.  The
 prototype can compute the latter two ahead of the prompt forward or recover them from a
 cache; this scheduling choice does not erase their different roles.
 
@@ -64,21 +64,32 @@ specialization prevents cross-example leakage but does not demonstrate persisten
 Selection should be cheap enough to avoid materializing every candidate, but it must use
 a representation compatible with the consuming layer. The corrected prototype therefore
 partitions reference $u$ into chunks $c\in\mathcal C_u$. At layer $\ell$, it reconstructs
-the projected key heads for every chunk token and mean-pools them into one routing gist:
+the projected key heads for every chunk token.  In the default single-gist mode it
+mean-pools them into
 \begin{equation}
 g^K_{u,c,\ell}=\frac{1}{|c|}\sum_{j\in c}
 \operatorname{mergeheads}(K_{u,c,\ell,j}).
 \end{equation}
 
+More generally, paired key/value gist sets
+$G^K_{u,c,\ell},G^V_{u,c,\ell}\in\mathbb{R}^{G_c\times d}$ preserve several regions of a
+chunk.  Deterministic k-means, diversity prototypes, a line-topology self-organizing map,
+and a global/local hybrid complement the one-vector mean, last-token, reference-end, and
+GRU modes.  Value gists reuse the key assignments so each routing key remains paired with
+the content region that it names.
+
 The current layer's projected last-token query is
 \begin{equation}
 q_{t,\ell}=\operatorname{mergeheads}(X^{(\ell)}W_Q^{(\ell)})_t,
 \end{equation}
-and its content-routing score for chunk $c$ is
+and its content-routing scores for chunk $c$ are
 \begin{equation}
-a_{u,c,\ell}=\cos(q_{t,\ell},g^K_{u,c,\ell}).
+a_{u,c,\ell,j}=\cos(q_{t,\ell},g^K_{u,c,\ell,j}),\qquad
+a_{u,c,\ell}=\operatorname{Agg}_{j=1}^{G_c}a_{u,c,\ell,j}.
 \end{equation}
-The default hierarchical policy aggregates chunk scores into a reference score, selects
+Maximum is the default gist-set aggregation, with mean and log-sum-exp alternatives.
+Separately constructed URI-level gist sets let reference-first routing select objects
+before inspecting their chunk gists.  The default hierarchical policy selects
 at most $k_r$ references, and independently selects at most $k_c$ chunks within each
 retained reference. Optional summaries can replace, compete with, or augment the content
 score, but they are disabled by default and missing summaries fall back to content.
@@ -100,18 +111,38 @@ ready before the parent module is encoded; the parent can then form its own laye
 with that child memory available.  Cycle markers and shared budgets keep this procedure
 from turning a graph into unbounded recursion. This establishes bounded recursive mechanics, not a learned expansion policy or an empirical recursion benefit. Persistent cross-request reuse also remains unmeasured.
 
+\subsection{Prompt history as a request-local object}
+
+The prototype extends the same access contract to overlong initial prompts.  If exact
+token sequence $x_{1:N}$ exceeds direct budget $D$, it keeps the recent suffix
+$x_{N-D+1:N}$ in local causal attention and registers the older prefix $x_{1:N-D}$ under
+the reserved request-local URI \path{pra://implicit/prompt/head}.  The visible diagnostic
+name \texttt{\#\_\_head} is not inserted as a token.  The implementation passes the
+original prefix IDs directly through ordinary partitioning, per-layer encoding, gist
+routing, and selected-token K/V materialization; this avoids a lossy decode--retokenize
+boundary.
+
+The identical URI remains semantically isolated across batch rows because each row owns a
+private cache.  Variable direct-tail lengths use a validity mask, and routing reads the
+last valid query.  Explicit references can coexist with the head but cannot claim its
+reserved URI.  Configurable \texttt{truncate} and \texttt{error} policies provide controls,
+while a prompt-specific chunk cap bounds or retains all head chunks.  This is a mechanically
+tested initial-prompt adapter, not evidence of better long-context quality or cost; the
+prototype does not yet roll generated history into new implicit references.
+
 \subsection{Layer-specific materialization and PRAttention}
 
 Routing gists identify promising chunks; they are not the evidence supplied to the
-decoder. For URI $u$, the cache entry instead stores full token memory and one gist for
-every chunk and PRA layer:
+decoder. For URI $u$, the cache entry instead stores full token memory and paired gist
+sets for every chunk and PRA layer:
 \begin{equation}
 C_u=\left(u,z_u,m_u,
-\{(c,K_{u,c,\ell},V_{u,c,\ell},g^K_{u,c,\ell},g^V_{u,c,\ell})\}_{c,\ell}\right).
+\{(c,K_{u,c,\ell},V_{u,c,\ell},G^K_{u,c,\ell},G^V_{u,c,\ell})\}_{c,\ell}\right).
 \end{equation}
 Here $K_{u,c,\ell}$ and $V_{u,c,\ell}$ retain all selected chunk tokens, whereas the
-$d$-dimensional gists support routing. Mean, last-token, reference-end, and registered
-GRU pooling are configurable; detached mean pooling is the default. A selected set
+$G_c\times d$ gist sets support routing. Mean, last-token, reference-end, GRU, k-means,
+prototype, self-organizing-map, and hybrid pooling are configurable; detached mean pooling
+with $G_c=1$ is the compatibility default. A selected set
 $\mathcal A_{b,\ell}$ is materialized independently for batch row $b$. Local attention
 remains causal, while reference memory is a separate non-causal cross-attention source:
 \begin{align}
@@ -147,7 +178,7 @@ for sample in batch:                    # private semantic address space
     for handle in sample.references:
         builder.ensure_cached(handle.uri, budget=budget)
         # ensure_cached resolves children first, partitions each object,
-        # and stores per-layer token K/V plus one routing gist per chunk.
+        # and stores per-layer token K/V plus paired gist sets per chunk.
     row_caches.append(cache)
 
 batch_cache = PRABatchedMemoryCache(row_caches)

@@ -23,6 +23,7 @@ from .metrics import (
 )
 from .memory import PRABatchedMemoryCache
 from .model import TinyPRAModel
+from .prompt import IMPLICIT_PROMPT_HEAD_URI, prepare_prompt_batch_for_pra
 
 
 def _expected_reference_uris(item: dict) -> set[str]:
@@ -157,6 +158,36 @@ def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[s
                 )
             )
             selected_scores = [hit.chunk_score for hit in selected]
+            chunk_gist_counts = [
+                int(chunk.routing_gist.k.shape[0])
+                for entry in cache.all_entries()
+                for chunk in (
+                    entry.layer_memory[layer_id].chunks
+                    if layer_id in entry.layer_memory
+                    else []
+                )
+            ]
+            reference_gist_counts = [
+                int(entry.reference_gists_by_layer[layer_id].k.shape[0])
+                for entry in cache.all_entries()
+                if layer_id in entry.reference_gists_by_layer
+            ]
+            winning_chunk_indices = [
+                hit.winning_gist_index for hit in selected if hit.winning_gist_index is not None
+            ]
+            winning_chunk_scores = [
+                hit.winning_gist_score for hit in selected if hit.winning_gist_score is not None
+            ]
+            winning_reference_indices = [
+                hit.winning_reference_gist_index
+                for hit in selected
+                if hit.winning_reference_gist_index is not None
+            ]
+            winning_reference_scores = [
+                hit.winning_reference_gist_score
+                for hit in selected
+                if hit.winning_reference_gist_score is not None
+            ]
             recursive_depth = max(
                 (int(entry.metadata.get("resolution_depth", 0)) for entry in cache.all_entries()),
                 default=0,
@@ -189,6 +220,22 @@ def _retrieval_metrics(caches, selections, metadata, cfg, diagnostics) -> dict[s
                     "retrieval_routing_score_mean": sum(selected_scores) / max(len(selected_scores), 1),
                     "retrieval_routing_score_max": max(selected_scores, default=0.0),
                     "retrieval_zero_chunk_fraction": float(selected_chunks == 0),
+                    "chunk_gists_requested": cfg.gists_per_chunk,
+                    "chunk_gists_actual_mean": sum(chunk_gist_counts)
+                    / max(len(chunk_gist_counts), 1),
+                    "chunk_gists_actual_max": max(chunk_gist_counts, default=0),
+                    "reference_gists_requested": cfg.reference_gists_per_reference,
+                    "reference_gists_actual_mean": sum(reference_gist_counts)
+                    / max(len(reference_gist_counts), 1),
+                    "reference_gists_actual_max": max(reference_gist_counts, default=0),
+                    "winning_chunk_gist_index": sum(winning_chunk_indices)
+                    / max(len(winning_chunk_indices), 1),
+                    "winning_reference_gist_index": sum(winning_reference_indices)
+                    / max(len(winning_reference_indices), 1),
+                    "chunk_best_gist_score": sum(winning_chunk_scores)
+                    / max(len(winning_chunk_scores), 1),
+                    "reference_best_gist_score": sum(winning_reference_scores)
+                    / max(len(winning_reference_scores), 1),
                     "memory_retrieved_chunk_attended_fraction": float(selected_tokens > 0)
                     if selected_chunks
                     else 0.0,
@@ -256,6 +303,30 @@ def _pra_batch_step(
         cache_build_duration += time.perf_counter() - cache_start
         caches.append(cache)
 
+    prepared = None
+    should_prepare_prompt = (
+        model.cfg.prompt_overflow_mode != "truncate"
+        or model.cfg.max_prompt_direct_tokens is not None
+    )
+    if should_prepare_prompt:
+        preparation_start = time.perf_counter()
+        prepared = prepare_prompt_batch_for_pra(
+            model,
+            tokenizer,
+            batch["input_ids"],
+            attention_mask=batch.get("attention_mask"),
+            labels=batch.get("labels"),
+            metadata=batch.get("metadata"),
+            caches=caches,
+        )
+        cache_build_duration += time.perf_counter() - preparation_start
+        batch = {
+            **batch,
+            "input_ids": prepared.input_ids,
+            "attention_mask": prepared.attention_mask,
+            "labels": prepared.labels,
+        }
+
     # URI strings may collide safely because the wrapper routes query row i only
     # through caches[i]. It never creates a flattened cross-row namespace.
     batch_cache = PRABatchedMemoryCache(caches)
@@ -264,7 +335,10 @@ def _pra_batch_step(
     # This is the single expensive prompt Transformer execution for the logical batch.
     _synchronize_for_timing(device)
     prompt_start = time.perf_counter()
-    logits = model(batch["input_ids"])
+    logits = model(
+        batch["input_ids"],
+        attention_mask=prepared.attention_mask if prepared is not None else None,
+    )
     _synchronize_for_timing(device)
     prompt_forward_duration = time.perf_counter() - prompt_start
 
@@ -286,6 +360,24 @@ def _pra_batch_step(
             "prompt_forward_duration_seconds": prompt_forward_duration,
         }
     )
+    if prepared is not None:
+        prompt_metric_names = tuple(prepared.stats[0].as_metrics()) if prepared.stats else ()
+        for metric_name in prompt_metric_names:
+            retrieval_metrics[metric_name] = sum(
+                row.as_metrics()[metric_name] for row in prepared.stats
+            ) / max(len(prepared.stats), 1)
+        selected_head_chunks = [
+            sum(
+                1
+                for layer_hits in row.values()
+                for hit in layer_hits
+                if hit.reference_uri == IMPLICIT_PROMPT_HEAD_URI
+            )
+            for row in selections
+        ]
+        retrieval_metrics["prompt_implicit_chunks_selected"] = sum(
+            selected_head_chunks
+        ) / max(len(selected_head_chunks), 1)
     return loss, {
         "tokens": int(batch["attention_mask"].sum().item()),
         "examples": batch_size,

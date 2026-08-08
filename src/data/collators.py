@@ -25,7 +25,11 @@ class PRACollator:
         for sample in samples:
             prompt_ids = self.tokenizer.encode(sample.question)
             answer_ids = self.tokenizer.encode(" " + sample.answer.strip() + "\n")
-            ids = (prompt_ids + answer_ids)[: self.max_seq_len]
+            full_ids = prompt_ids + answer_ids
+            full_labels = full_ids[1:] + [self.pad_token_id]
+            full_answer_start = max(len(prompt_ids) - 1, 0)
+            full_labels[:full_answer_start] = [self.pad_token_id] * full_answer_start
+            ids = full_ids[: self.max_seq_len]
             labels = ids[1:] + [self.pad_token_id]
             labels = labels[: len(ids)]
             answer_prediction_start = max(min(len(prompt_ids), len(ids)) - 1, 0)
@@ -49,6 +53,10 @@ class PRACollator:
                     "target_chunk_spans": sample.target_chunk_spans
                     or sample.metadata.get("target_chunk_spans", []),
                     "expected_anchors": sample.metadata.get("expected_anchors", []),
+                    # Preserve exact overflow tokens for optional implicit prompt memory.
+                    "full_input_ids": tuple(full_ids),
+                    "full_labels": tuple(full_labels),
+                    "prompt_token_count": len(prompt_ids),
                     "sample": sample,
                     "asdict": asdict(sample),
                 }

@@ -138,8 +138,11 @@ class PRAttention(nn.Module):
         for hit in sorted(selected, key=lambda item: (item.reference_uri, item.token_start, item.chunk_id)):
             if self.config.detail_materialization == "gist_only":
                 gist = hit.chunk.routing_gist
-                key = gist.k.view(1, self.n_heads, 1, self.head_dim)
-                value_vector = gist.v if gist.v is not None else gist.k
+                winner = hit.winning_gist_index if hit.winning_gist_index is not None else 0
+                winner = min(max(int(winner), 0), max(int(gist.k.shape[0]) - 1, 0))
+                key_vector = gist.k[winner]
+                value_vector = gist.v[winner] if gist.v is not None else key_vector
+                key = key_vector.view(1, self.n_heads, 1, self.head_dim)
                 value = value_vector.view(1, self.n_heads, 1, self.head_dim)
             else:
                 key = hit.chunk.token_kv.k
@@ -160,7 +163,7 @@ class PRAttention(nn.Module):
             return empty, empty, selected, duplicate_tokens
         return torch.cat(keys, dim=2), torch.cat(values, dim=2), selected, duplicate_tokens
 
-    def forward(self, x, use_pra_memory: bool = True):
+    def forward(self, x, use_pra_memory: bool = True, attention_mask: torch.Tensor | None = None):
         """Compute local attention and, when enabled, routed reference attention.
 
         ``use_pra_memory=False`` is the causal ablation path: it skips search and
@@ -180,6 +183,15 @@ class PRAttention(nn.Module):
         scores = q @ k.transpose(-2, -1) / math.sqrt(self.head_dim)
         mask = self.causal_mask[:, :, :t, :t]
         scores = scores.masked_fill(mask == 0, float("-inf"))
+        if attention_mask is not None:
+            if attention_mask.shape != (b, t):
+                raise ValueError(
+                    f"Expected attention_mask {(b, t)}, got {tuple(attention_mask.shape)}."
+                )
+            valid_tokens = attention_mask.to(device=x.device, dtype=torch.bool)
+            if not bool(valid_tokens.any(dim=1).all()):
+                raise ValueError("Every prompt row must contain at least one direct token.")
+            scores = scores.masked_fill(~valid_tokens[:, None, None, :], float("-inf"))
         weights = F.softmax(scores, dim=-1)
         local_out = self.o_proj(self.merge_heads(weights @ v))
 
@@ -188,7 +200,14 @@ class PRAttention(nn.Module):
 
         # The newest token decides what memory is relevant for each item/layer.
         # Flattening [B,H,Dh] produces the [B,D] key space used by routing gists.
-        routing_query = q[:, :, -1, :].contiguous().view(b, self.d_model)
+        if attention_mask is None:
+            routing_query = q[:, :, -1, :]
+        else:
+            positions = torch.arange(t, device=x.device).expand(b, -1)
+            last_indices = positions.masked_fill(~attention_mask.bool(), -1).max(dim=1).values
+            gather_index = last_indices.view(b, 1, 1, 1).expand(-1, self.n_heads, 1, self.head_dim)
+            routing_query = q.gather(2, gather_index).squeeze(2)
+        routing_query = routing_query.contiguous().view(b, self.d_model)
         routing_start = time.perf_counter()
         selected_by_batch = self.pra_cache.search(routing_query, self.layer_id, self.config)
         routing_duration = time.perf_counter() - routing_start

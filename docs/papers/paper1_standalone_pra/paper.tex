@@ -34,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific chunk memories, one contextual routing gist per chunk, and a cross-attention branch over selected chunk K/V. The corrected implementation routes every batch item independently with a projected last-token query, separates reference and chunk budgets, supports bounded child-first recursive cache construction, and batches variable memory lengths without violating semantic isolation. Summaries are optional routing evidence rather than the primary memory representation. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and training diagnostics. A corrected-router CUDA study compares SelfAttention, full PRA, hybrid PRA, and parameter-matched controls over five paired seeds. At 1,048,576 ordinary-language tokens, full PRA, hybrid PRA, and same-width SelfAttention reach mean test losses 4.5034, 4.5500, and 4.5704. On a fixed reference corpus, pretrained frozen-path adaptation reaches 4.6720 for full PRA and 4.7296 for hybrid PRA while exactly preserving their plain-language losses; scratch training remains above 6.35 and direct joint tuning both loses more and forgets. Reference top-1 remains near the 0.4202 candidate-count chance rate, however, and shuffled or oracle content changes loss by less than 0.005 on average. The implementation and optimization path are functional, but content-causal retrieval and efficiency superiority are not established.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA). A small decoder-only transformer is augmented with explicit reference handles, an in-memory URI resolver, layer-specific chunk memories, configurable sets of contextual routing gists, and a cross-attention branch over selected chunk K/V. The corrected implementation routes every batch item independently with a projected last-valid-token query, separates reference and chunk budgets, supports bounded child-first recursive cache construction, and batches variable memory lengths without violating semantic isolation. It can also preserve an overlong prompt's recent suffix as direct context while encoding the displaced prefix as a request-local implicit reference. Summaries are optional routing evidence rather than the primary memory representation. We formalize the reference graph, selection and expansion operators, runtime/cache state, lifecycle, complexity, and training diagnostics. A corrected-router CUDA study compares SelfAttention, full PRA, hybrid PRA, and parameter-matched controls over five paired seeds. At 1,048,576 ordinary-language tokens, full PRA, hybrid PRA, and same-width SelfAttention reach mean test losses 4.5034, 4.5500, and 4.5704. On a fixed reference corpus, pretrained frozen-path adaptation reaches 4.6720 for full PRA and 4.7296 for hybrid PRA while exactly preserving their plain-language losses; scratch training remains above 6.35 and direct joint tuning both loses more and forgets. Reference top-1 remains near the 0.4202 candidate-count chance rate, however, and shuffled or oracle content changes loss by less than 0.005 on average. Multi-gist and implicit-prompt mechanics are tested, but their quality and cost effects have not been benchmarked. The implementation and optimization path are functional; content-causal retrieval and efficiency superiority are not established.
 \end{abstract}
 
 \section{Introduction}
@@ -43,7 +43,7 @@ Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-
 
 This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model. The contribution includes an initial empirical pilot, a five-seed corrected-router and parameter-controlled follow-up, and an evaluation design intended to make failure visible rather than merely demonstrate that a memory branch can lower loss.
 
-The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references. Third, a resolver partitions each document into bounded chunks and stores full per-layer token K/V together with exactly one contextual projected-key gist per chunk. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and adds a scaled cross-attention branch over only the selected chunk memories.
+The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references; the prompt adapter can create a reserved implicit reference without adding a visible handle. Third, a resolver partitions each object into bounded chunks and stores full per-layer token K/V together with one or more paired projected-key/value gists. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and adds a scaled cross-attention branch over only the selected chunk memories.
 
 The easiest way to follow the implementation is as a prepare-then-use pipeline.  During
 preparation, each batch row resolves its own handles, encodes the resulting chunks with
@@ -113,20 +113,25 @@ maps URI $u$, authorization policy $p$, and logical time or version $t$ to a res
 
 \subsection{Selection and Expansion Operators}
 
-At layer $\ell$, document $u$ is partitioned into chunks $c\in\mathcal{C}_u$. Encoding produces full token memory $(K_{u,c,\ell},V_{u,c,\ell})$ and exactly one routing gist per chunk. The default mean gist reconstructs the projected key heads into $d$ dimensions and pools over chunk tokens:
+At layer $\ell$, document $u$ is partitioned into chunks $c\in\mathcal{C}_u$. Encoding produces full token memory $(K_{u,c,\ell},V_{u,c,\ell})$ and paired gist sets $G^K_{u,c,\ell},G^V_{u,c,\ell}\in\mathbb{R}^{G_c\times d}$. The default mean mode has $G_c=1$: it reconstructs the projected heads into $d$ dimensions and pools over chunk tokens,
 
 \begin{equation}
 g^K_{u,c,\ell} = \frac{1}{|c|}\sum_{j\in c}
 \operatorname{mergeheads}(K_{u,c,\ell,j}).
 \end{equation}
 
-Alternatives include last-token, explicit reference-end, and a registered GRU pooler. The routing query is the last projected query reconstructed across heads,
+Last-token, explicit reference-end, and a registered GRU pooler also produce one gist. Deterministic k-means, diversity-selected prototypes, a line-topology self-organizing map, and a global/local hybrid may produce several. Multi-gist modes derive value gists from the same assignments as their key gists, preserving the regions that each routing key names. The routing query is the last valid projected query reconstructed across heads,
 
 \begin{equation}
 q_{t,\ell}=\operatorname{mergeheads}\left(X^{(\ell)}W_Q^{(\ell)}\right)_{t}.
 \end{equation}
 
-Content scores are $a_{u,c,\ell}=\cos(q_{t,\ell},g^K_{u,c,\ell})$. Hierarchical search aggregates chunk scores within each reference using maximum, mean, or log-sum-exp, selects at most $k_r$ references, and then selects at most $k_c$ chunks independently inside each retained reference. A threshold is applied without converting the two budgets into one flattened top-$k$. A global-chunk strategy is available for ablation but still enforces both constraints; reference-first routing is accepted only when an explicit reference-level representation is configured. An expansion operator
+For $g^K_{u,c,\ell,j}\in G^K_{u,c,\ell}$, the router computes
+\begin{equation}
+a_{u,c,\ell,j}=\cos(q_{t,\ell},g^K_{u,c,\ell,j}),\qquad
+a_{u,c,\ell}=\operatorname{Agg}_{j=1}^{G_c}a_{u,c,\ell,j},
+\end{equation}
+with maximum aggregation by default and mean or log-sum-exp alternatives. Reference-level gist sets are constructed separately from chunk gist sets, allowing a true URI-first stage before chunk scoring. Hierarchical search selects at most $k_r$ references and then at most $k_c$ chunks independently inside each retained reference. A threshold is applied without converting the two budgets into one flattened top-$k$. A global-chunk strategy is available for ablation but still enforces both constraints. An expansion operator
 
 \begin{equation}
 \mathcal{X}(A,\mathcal{G},b,d) \rightarrow A'
@@ -179,6 +184,37 @@ Given a handle $r$ with URI $u$, the resolver returns
 
 This simple resolver is sufficient for synthetic and local experiments. Future systems can replace it with file, database, vector-index, search, or web resolvers while preserving the same high-level interface.
 
+\subsection{Implicit Prompt-Head Reference}
+
+The same resolver/cache contract can retain prompt history that no longer fits the local
+window.  Let $N$ be the exact input-token count and let
+\begin{equation}
+D=\min(\texttt{max\_prompt\_direct\_tokens},\texttt{max\_seq\_len}),
+\end{equation}
+where an unset direct limit inherits \texttt{max\_seq\_len}.  In
+\texttt{implicit\_reference} mode, an input with $N>D$ is split into head IDs
+$x_{1:N-D}$ and direct-tail IDs $x_{N-D+1:N}$.  The adapter registers the head under the
+reserved URI \path{pra://implicit/prompt/head} and diagnostic handle
+\texttt{\#\_\_head}, then passes its token IDs directly to ordinary chunking, cache
+construction, gist routing, and selected-memory attention.  It does not decode and
+retokenize the head or insert a synthetic marker into the visible tail.
+
+Each batch row owns its implicit object even though all rows reuse the same URI string.
+Mixed tail lengths are padded with a validity mask, and the routing query is taken from
+the last valid position rather than the final rectangular column.  Explicit references
+remain in the same row-private cache.  The prompt head may use a separate chunk cap via
+\texttt{max\_prompt\_gists}; \texttt{None} retains every prompt-head chunk, while chunk
+length itself remains bounded by the model context limit.  The alternative overflow
+policies preserve the prior behavior: \texttt{truncate} keeps only the recent tail and
+\texttt{error} rejects the request.
+
+Preparation reports the total, direct, implicit, chunk, and gist counts together with
+whether overflow occurred.  The reserved object is invalidated between requests, and an
+explicit reference cannot claim its URI.  Generation prepares the initial prompt through
+this path, but the current prototype does not periodically move newly generated tokens
+into an implicit head.  Thus it supports long initial prompts, not unbounded streaming
+generation.
+
 \section{Layer-Specific Memory Cache}
 
 \subsection{Cache Entries}
@@ -187,11 +223,11 @@ The PRA cache stores a reference entry containing layer-specific chunk memory:
 
 \begin{equation}
 C_u = \left(u,z_u,m_u,\left\{
-\left(c,K_{u,c,\ell},V_{u,c,\ell},g^K_{u,c,\ell},g^V_{u,c,\ell}\right)
+\left(c,K_{u,c,\ell},V_{u,c,\ell},G^K_{u,c,\ell},G^V_{u,c,\ell}\right)
 \right\}_{c,\ell}\right).
 \end{equation}
 
-Each chunk records a deterministic identifier, source URI, token interval, metadata, full projected token K/V, and one layer-specific routing gist. K/V and gists are detached by default; a trainable-gist mode preserves the registered GRU gist path. Optional summary evidence, when present, is projected contextually into the same layer space and attached to the chunk gist. The implementation exposes an abstract \texttt{PRAMemoryCache} and a dictionary-backed \texttt{PRASimpleMemoryCache}.
+Each chunk records a deterministic identifier, source URI, token interval, metadata, full projected token K/V, and a layer-specific paired gist set. K/V and gists are detached by default; a trainable-gist mode preserves the registered GRU gist path. Optional summary evidence, when present, is projected contextually into the same layer space and attached to the chunk gist set. The implementation exposes an abstract \texttt{PRAMemoryCache} and a dictionary-backed \texttt{PRASimpleMemoryCache}.
 
 \subsection{Reference Encoding Pass}
 
@@ -202,7 +238,7 @@ Before a batch forward pass, the training code builds isolated caches from batch
 \item Recursively ensure children are ready first when recursive references are enabled, subject to shared depth, reference, and token budgets.
 \item Partition the text with \texttt{none}, bounded fixed windows, explicit markers, or a supplied semantic partitioner. Semantic mode without a plugin fails explicitly.
 \item Run each document through the same model path. Parent encoding may read already-ready child memory; nonrecursive encoding disables PRA memory.
-\item At every PRA layer, project each chunk's token states through that layer's $W_K$ and $W_V$, then derive exactly one routing gist from projected keys.
+\item At every PRA layer, project each chunk's token states through that layer's $W_K$ and $W_V$, then derive paired key/value gist sets under the configured strategy.
 \item Store provenance, fingerprints, truncation details, layer-specific chunk tensors, and dependency events before atomically marking the entry ready.
 \end{enumerate}
 
@@ -210,8 +246,8 @@ The fourth and fifth steps are the important representation boundary.  Reference
 not mapped directly to a single static document vector.  A chunk starts at the embedding
 layer, advances through the model, and exposes the K/V that the corresponding PRA layer
 would consume.  Consequently a lower-layer cache and a higher-layer cache describe the
-same source at different model depths.  The one-vector gist is then pooled from the
-projected keys at that depth.  It is suitable for inexpensive ranking; it does not
+same source at different model depths.  One or more routing gists are then pooled from
+the projected keys at that depth.  They are suitable for inexpensive ranking; they do not
 replace the detailed token memory.
 
 Fixed windows can overlap, but selected materialization deduplicates overlapping source-token spans. Maximum gist counts and overflow policies bound routing state. Cache fingerprints include content, model, tokenizer, and routing identities so a persistent implementation can invalidate stale representations. The current per-example cache remains ephemeral, but the identity rules are explicit.
@@ -220,12 +256,12 @@ Fixed windows can overlap, but selected materialization deduplicates overlapping
 
 \subsection{Hierarchical Content Routing}
 
-At generation or training time, each batch row independently compares its projected last-token query with layer-specific chunk gists. For query $q_{b,t,\ell}$ and chunk gist $g^K_{u,c,\ell}$, the default content score is
+At generation or training time, each batch row independently compares its projected last-valid-token query with layer-specific chunk gists. For query $q_{b,t,\ell}$ and chunk gist set $G^K_{u,c,\ell}$, the default content score is
 
 \begin{equation}
 \mathrm{score}(u,c \mid q) =
-\frac{q^\top g^K_{u,c,\ell}}{\lVert q\rVert_2
-\lVert g^K_{u,c,\ell}\rVert_2}.
+\max_{g\in G^K_{u,c,\ell}}
+\frac{q^\top g}{\lVert q\rVert_2\lVert g\rVert_2}.
 \end{equation}
 
 This score is a coarse admission decision: it asks which chunks are worth opening for
@@ -323,6 +359,14 @@ B_{\rm cache}=2wL_pMd
 \end{equation}
 
 bytes, excluding summaries, object metadata, allocator overhead, and duplicated entries. Each PRA layer adds one $d\times d$ memory output projection plus bias in the current implementation, or $d^2+d$ parameters. Full PRA therefore adds $L_p(d^2+d)$ parameters relative to the corresponding custom local block.
+
+For an overlong prompt with displaced head length $P=N-D$, the direct local term becomes
+$O(LD^2d)$, while cold construction of head memory adds approximately the sum of the
+quadratic costs of its bounded chunks plus their K/V projections.  Routing scores
+$G=\sum_c G_c$ small vectors, and selected-memory attention still depends on transported
+token count $M$.  This decomposition is a measurement plan, not an efficiency claim:
+without reuse or selective materialization, separate head encoding may cost as much as or
+more than a strong long-context baseline.
 
 These costs explain why shorter visible prompts alone are not a sufficient efficiency result. If every reference is encoded once per example and never reused, $\sum_i m_i^2$ can dominate. PRA becomes attractive only when selection keeps $M$ small, encoding is amortized across tokens or requests, summaries avoid unnecessary resolution, or quality improves under a fixed compute budget. A systems evaluation must decompose resolver time, tokenization, reference encoding, selection, memory attention, local model compute, cache transfer, and synchronization.
 
@@ -706,11 +750,11 @@ Recursive expansion can amplify work. The standalone builder now bounds depth, c
 
 The current prototype and follow-up have important limitations. The corrected-router smoke matrix now reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans, and the model can reduce continuation loss without learning candidate selection. The near-chance selector and weak counterfactual deltas leave open how much of the memory gain is a content-independent adapter effect.
 
-The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Mean/last gists and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter now batches the prompt forward, but reference encoding and routing still iterate over row-private caches. The 20-run fixed-split matrix varies model initialization but keeps one generated dataset and split; summary modes, oracle chunks, full-reference transport, recursion, and dynamic bucketing remain unit- and CUDA-smoke-tested rather than evaluated in a controlled training study. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
+The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-valid-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Most gist modes and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter now batches the prompt forward, but reference encoding and routing still iterate over row-private caches. Multi-gist modes and the implicit prompt-head path have focused tests but no controlled quality, routing, or timing study. In particular, prompt-head encoding can relocate rather than remove computation, and generated-token rollover is absent. The 20-run fixed-split matrix varies model initialization but keeps one generated dataset and split; summary modes, oracle chunks, full-reference transport, recursion, and dynamic bucketing remain unit- and CUDA-smoke-tested rather than evaluated in a controlled training study. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype now provides a more faithful testbed for demand-driven, URI-addressed memory expansion: explicit local reference tables, bounded child-first recursion, deterministic chunking, one contextual projected-key gist per chunk and layer, independent reference/chunk routing budgets, selected-chunk K/V materialization, batch isolation, and structured diagnostics. The historical studies establish ordinary-language compatibility and useful optimization controls, but their reference-conditioned conclusions belong to the superseded version-1 router. The corrected architecture has passed focused CPU tests, a multi-row CUDA forward/backward smoke test, and a five-seed end-to-end fixed-split matrix. It has not passed the causal experiment gate: branch use is reproducible, content use is not. The immediate priority is a matched-token rerun with oracle chunks, full-reference and gist-only transport, stronger content controls, explicit chunk labels, and longer training before introducing a learned router or scaling the model.
+The standalone PyTorch PRA prototype now provides a more faithful testbed for demand-driven, URI-addressed memory expansion: explicit local reference tables, bounded child-first recursion, deterministic chunking, configurable paired gist sets at chunk and URI levels, independent reference/chunk routing budgets, selected-chunk K/V materialization, request-local prompt-head virtualization, batch isolation, and structured diagnostics. The historical studies establish ordinary-language compatibility and useful optimization controls. The corrected architecture has passed focused CPU tests, a multi-row CUDA forward/backward smoke test, and a five-seed end-to-end fixed-split matrix. It has not passed the causal experiment gate: branch use is reproducible, content use is not; nor have multi-gist or implicit-prompt quality and cost been measured. The immediate priority is a matched-token rerun with oracle chunks, full-reference and gist-only transport, stronger content controls, explicit chunk labels, and longer training, followed by long-prompt comparisons against truncation, dense extended context, and recurrent/KV-retention baselines.
 
 \appendix
 \section{Reference-Memory Forward Pass Pseudocode}
@@ -732,27 +776,34 @@ for sample in minibatch:
             ensure_cached(child_uri, depth + 1,
                           shared_budget, path + [uri])
 
-        chunks = partition(resolved.text, routing_config)
-        hidden = embed(resolved.text)
+        chunks = partition(resolved.token_ids, routing_config)
+        hidden = embed(resolved.token_ids)
         entry = CacheEntry(uri=uri, chunks=chunks)
         for layer in model.layers:
             if layer.has_pra:
                 for chunk in chunks:
                     K, V = layer.project_reference_kv(hidden[chunk.span])
-                    gist = pool(projected_keys=K)  # exactly one/chunk
-                    entry.add(layer.id, chunk.id, K, V, gist)
+                    gists = compute_gists(K, V, routing_config)
+                    entry.add(layer.id, chunk.id, K, V, gists)
             hidden = layer(hidden, use_ready_child_memory=True)
 
         cache.put_ready(detach_by_policy(entry))
+
+    split = split_exact_ids(sample.input_ids, direct_limit)
+    if split.implicit_ids:
+        register_request_local_head(cache, split.implicit_ids,
+                                    uri="pra://implicit/prompt/head")
 
     for handle in sample.references:
         ensure_cached(handle.uri, 0, shared_budget(), [])
 
     row_caches.append(cache)
+    direct_rows.append(split.direct_ids)
 
 batch_cache = BatchCache(row_caches)  # query row i sees row_caches[i]
 model.set_pra_cache(batch_cache)
-logits = model(input_ids)             # one [B,T] -> [B,T,V] forward
+input_ids, valid_mask = pad(direct_rows)
+logits = model(input_ids, attention_mask=valid_mask)
 loss = cross_entropy(logits, labels, ignore_index=PAD)
 \end{verbatim}
 

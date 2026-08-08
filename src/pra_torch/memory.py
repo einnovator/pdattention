@@ -7,9 +7,15 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn.functional as F
+
+from .gists import score_gist_set
+
+if TYPE_CHECKING:
+    from .config import PRAConfig
 
 
 @dataclass
@@ -29,13 +35,46 @@ ChunkKV = LayerKV
 
 @dataclass
 class ChunkRoutingGist:
-    """Small layer-specific representation used to route before loading token K/V."""
+    """Layer-specific chunk gist sets searched before loading detailed token K/V."""
 
-    k: torch.Tensor  # Content routing key with shape [d_model].
-    v: torch.Tensor | None = None  # Optional gist-only value with shape [d_model].
+    k: torch.Tensor  # Content routing keys shaped [gists, d_model].
+    v: torch.Tensor | None = None  # Paired gist-only values shaped [gists, d_model].
     method: str = "mean"  # Pooling rule that produced k/v.
-    summary_k: torch.Tensor | None = None  # Separately encoded summary key [d_model].
+    summary_k: torch.Tensor | None = None  # Separately encoded summary keys [gists, d_model].
     metadata: dict = field(default_factory=dict)  # Pooling/source diagnostics.
+
+    def __post_init__(self) -> None:
+        """Normalize legacy ``[D]`` constructors into the invariant ``[1,D]`` form."""
+        if self.k.ndim == 1:
+            self.k = self.k.unsqueeze(0)
+        if self.v is not None and self.v.ndim == 1:
+            self.v = self.v.unsqueeze(0)
+        if self.summary_k is not None and self.summary_k.ndim == 1:
+            self.summary_k = self.summary_k.unsqueeze(0)
+        if self.k.ndim != 2:
+            raise ValueError(f"Chunk routing keys must be [gists,model], got {self.k.shape}.")
+        if self.v is not None and self.v.shape != self.k.shape:
+            raise ValueError("Chunk routing value gists must match key-gist shape.")
+
+
+@dataclass
+class ReferenceRoutingGists:
+    """Cached URI-level routing representation for one decoder layer."""
+
+    k: torch.Tensor  # URI routing keys shaped [gists, d_model].
+    v: torch.Tensor | None = None  # Optional paired URI values shaped [gists, d_model].
+    mode: str = "mean"  # Strategy that compressed this URI's chunk gists.
+    metadata: dict = field(default_factory=dict)  # Requested/actual counts and occupancy.
+
+    def __post_init__(self) -> None:
+        if self.k.ndim == 1:
+            self.k = self.k.unsqueeze(0)
+        if self.v is not None and self.v.ndim == 1:
+            self.v = self.v.unsqueeze(0)
+        if self.k.ndim != 2:
+            raise ValueError(f"Reference routing keys must be [gists,model], got {self.k.shape}.")
+        if self.v is not None and self.v.shape != self.k.shape:
+            raise ValueError("Reference routing value gists must match key-gist shape.")
 
 
 @dataclass
@@ -72,6 +111,7 @@ class PRACacheEntry:
     uri: str  # Stable lookup identity used by routing, recursion, and traces.
     text: str  # Resolved source text used to construct this cache entry.
     layer_memory: dict[int, LayerReferenceMemory] = field(default_factory=dict)
+    reference_gists_by_layer: dict[int, ReferenceRoutingGists] = field(default_factory=dict)
     child_uris: list[str] = field(default_factory=list)  # Outgoing recursive references.
     metadata: dict = field(default_factory=dict)  # Fingerprints, version, and build provenance.
 
@@ -87,6 +127,12 @@ class SelectedChunk:
     layer_id: int  # Decoder layer whose K/V and gist were searched.
     reference_rank: int  # One-based URI rank for this query.
     rank_within_reference: int  # One-based chunk rank within the selected URI.
+    winning_gist_index: int | None = None  # Chunk gist that best matched the query.
+    winning_gist_score: float | None = None  # Score of the winning chunk gist.
+    gist_count: int = 1  # Number of chunk gists considered for this hit.
+    winning_reference_gist_index: int | None = None  # Winning cached URI gist when used.
+    winning_reference_gist_score: float | None = None  # Score of that URI gist.
+    reference_gist_count: int = 0  # Number of cached URI gists considered.
     metadata: dict = field(default_factory=dict)  # Routing source/materialization trace.
 
     @property
@@ -132,8 +178,38 @@ class SelectedChunk:
             "selected_token_count": self.selected_token_count,
             "reference_rank": self.reference_rank,
             "rank_within_reference": self.rank_within_reference,
+            "winning_gist_index": self.winning_gist_index,
+            "winning_gist_score": self.winning_gist_score,
+            "gist_count": self.gist_count,
+            "winning_reference_gist_index": self.winning_reference_gist_index,
+            "winning_reference_gist_score": self.winning_reference_gist_score,
+            "reference_gist_count": self.reference_gist_count,
             "metadata": self.metadata,
         }
+
+
+@dataclass(frozen=True)
+class _ChunkHit:
+    """Internal scored chunk record retained until routing assigns stable ranks."""
+
+    entry: PRACacheEntry
+    chunk: ReferenceChunkMemory
+    score: float
+    routing_source: str
+    winning_gist_index: int | None
+    winning_gist_score: float | None
+    gist_count: int
+
+
+@dataclass(frozen=True)
+class _ReferenceHit:
+    """Internal URI score produced before reference-first chunk scoring."""
+
+    entry: PRACacheEntry
+    score: float
+    winning_gist_index: int | None
+    winning_gist_score: float | None
+    gist_count: int
 
 
 class CacheBuildState(str, Enum):
@@ -157,26 +233,6 @@ def _aggregate(scores: list[float], mode: str) -> float:
         maximum = max(scores)
         return maximum + math.log(sum(math.exp(score - maximum) for score in scores))
     raise ValueError(f"Unsupported reference score aggregation: {mode}")
-
-
-def _gist_vectors(gist: ChunkRoutingGist, *, use_summary: bool, summary_mode: str):
-    """Return candidate routing vectors and a label describing their source.
-
-    ``hybrid`` keeps content and summary as separate candidates and uses their
-    best score. ``augment`` combines their normalized directions into one key.
-    """
-    content = gist.k
-    summary = gist.summary_k
-    if not use_summary or summary is None:
-        return [content], "content"
-    if summary_mode == "replace":
-        return [summary], "summary"
-    if summary_mode == "hybrid":
-        return [content, summary], "hybrid"
-    if summary_mode == "augment":
-        combined = F.normalize(content, dim=-1) + F.normalize(summary, dim=-1)
-        return [F.normalize(combined, dim=-1)], "augment"
-    raise ValueError(f"Unsupported summary mode: {summary_mode}")
 
 
 class PRAMemoryCache(ABC):
@@ -217,7 +273,12 @@ class PRAMemoryCache(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def search(self, query: torch.Tensor, layer_id: int, config) -> list[list[SelectedChunk]]:
+    def search(
+        self,
+        query: torch.Tensor,
+        layer_id: int,
+        config: PRAConfig,
+    ) -> list[list[SelectedChunk]]:
         """Route ``[B,d_model]`` queries against gists from one decoder layer."""
         raise NotImplementedError
 
@@ -302,104 +363,201 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         self._failures.pop(uri, None)
 
     def layer_counts(self, layer_id: int) -> dict[str, int]:
-        """Count searchable URIs, chunks, and token positions for one layer."""
+        """Count searchable URIs, chunks, token positions, and routing gists."""
         entries = [entry for entry in self.all_entries() if layer_id in entry.layer_memory]
         chunks = [chunk for entry in entries for chunk in entry.layer_memory[layer_id].chunks]
+        reference_gists = [
+            entry.reference_gists_by_layer[layer_id]
+            for entry in entries
+            if layer_id in entry.reference_gists_by_layer
+        ]
         return {
             "references": len(entries),
             "chunks": len(chunks),
             "tokens": sum(chunk.token_count for chunk in chunks),
+            "chunk_gists": sum(int(chunk.routing_gist.k.shape[0]) for chunk in chunks),
+            "reference_gists": sum(int(gists.k.shape[0]) for gists in reference_gists),
         }
 
-    def _score_chunks(self, query: torch.Tensor, layer_id: int, config):
-        """Cosine-score every layer gist independently for each query row.
+    @staticmethod
+    def _score_chunk(query: torch.Tensor, entry, chunk, config) -> _ChunkHit:
+        """Score one chunk's gist set while retaining its best content-gist index."""
+        gist = chunk.routing_gist
+        content = score_gist_set(query, gist.k, config.gist_score_aggregation)
+        aggregate = content.aggregate_score
+        routing_source = "content"
+        if config.use_summary and gist.summary_k is not None:
+            summary_gists = gist.summary_k
+            if summary_gists.ndim == 1:
+                summary_gists = summary_gists.unsqueeze(0)
+            summary = score_gist_set(query, summary_gists, config.gist_score_aggregation)
+            if config.summary_mode == "replace":
+                aggregate = summary.aggregate_score
+                routing_source = "summary"
+            elif config.summary_mode == "hybrid":
+                aggregate = max(aggregate, summary.aggregate_score)
+                routing_source = "hybrid"
+            elif config.summary_mode == "augment":
+                summary_vector = F.normalize(summary_gists.mean(dim=0), dim=-1)
+                combined = F.normalize(gist.k, dim=-1) + summary_vector.unsqueeze(0)
+                aggregate = score_gist_set(
+                    query,
+                    F.normalize(combined, dim=-1),
+                    config.gist_score_aggregation,
+                ).aggregate_score
+                routing_source = "augment"
+            else:
+                raise ValueError(f"Unsupported summary mode: {config.summary_mode}")
+        return _ChunkHit(
+            entry=entry,
+            chunk=chunk,
+            score=aggregate,
+            routing_source=routing_source,
+            winning_gist_index=content.winning_index,
+            winning_gist_score=(
+                float(content.per_gist_scores[content.winning_index].cpu())
+                if content.per_gist_scores is not None and content.winning_index is not None
+                else None
+            ),
+            gist_count=int(gist.k.shape[0]),
+        )
 
-        ``query`` is ``[B,d_model]``. Each result tuple retains the entry/chunk
-        object so later stages can rank cheaply without moving full token K/V.
-        """
+    def _score_chunks(
+        self,
+        query: torch.Tensor,
+        layer_id: int,
+        config,
+        *,
+        entries: list[PRACacheEntry] | None = None,
+    ) -> list[list[_ChunkHit]]:
+        """Score chunk gist sets for each query, optionally inside selected URIs only."""
         records = []
-        for entry in self.all_entries():
+        for entry in entries if entries is not None else self.all_entries():
             memory = entry.layer_memory.get(layer_id)
             if memory is None:
                 continue
             for chunk in memory.chunks:
-                vectors, routing_source = _gist_vectors(
-                    chunk.routing_gist,
-                    use_summary=config.use_summary,
-                    summary_mode=config.summary_mode,
-                )
-                records.append((entry, chunk, vectors, routing_source))
+                records.append((entry, chunk))
         if not records:
             return [[] for _ in range(query.shape[0])]
+        return [
+            [self._score_chunk(row_query, entry, chunk, config) for entry, chunk in records]
+            for row_query in query
+        ]
 
-        # Normalize once per query; cache gists may live on CPU or another dtype.
-        result = []
-        query_norm = F.normalize(query, dim=-1)
-        for batch_index in range(query.shape[0]):
-            hits = []
-            for entry, chunk, vectors, routing_source in records:
-                scores = [
-                    float(
-                        torch.dot(
-                            query_norm[batch_index],
-                            F.normalize(vector.to(query.device, query.dtype), dim=-1),
-                        )
-                        .detach()
-                        .cpu()
-                    )
-                    for vector in vectors
-                ]
-                hits.append((entry, chunk, max(scores), routing_source))
-            result.append(hits)
-        return result
-
-    def _reference_first_scores(self, query, hits, config):
-        """Build one vector per URI, then score URIs before ranking their chunks."""
-        grouped = defaultdict(list)
-        for entry, chunk, chunk_score, routing_source in hits:
-            grouped[entry.uri].append((entry, chunk, chunk_score, routing_source))
+    @staticmethod
+    def _fallback_reference_gists(entry: PRACacheEntry, layer_id: int, config):
+        """Build and cache simple URI gists for manually assembled legacy entries."""
+        memory = entry.layer_memory.get(layer_id)
+        if memory is None or not memory.chunks:
+            return None
         mode = config.reference_level_gist_mode
         if mode is None:
             raise ValueError(
                 "search_strategy='reference_first' requires reference_level_gist_mode."
             )
-        reference_scores = {}
-        for uri, reference_hits in grouped.items():
-            vectors = [hit[1].routing_gist.k.to(query.device, query.dtype) for hit in reference_hits]
-            if mode == "mean":
-                vector = torch.stack(vectors).mean(dim=0)
-            elif mode == "last":
-                vector = vectors[-1]
-            else:
-                raise NotImplementedError(
-                    "reference_level_gist_mode='gru' requires an explicit registered reference aggregator."
-                )
-            reference_scores[uri] = float(
-                torch.dot(F.normalize(query, dim=-1), F.normalize(vector, dim=-1)).detach().cpu()
+        if mode not in {"mean", "last"}:
+            raise RuntimeError(
+                f"Reference gists for mode {mode!r} must be created during cache construction."
             )
-        return grouped, reference_scores
+        keys = torch.cat([chunk.routing_gist.k for chunk in memory.chunks], dim=0)
+        values = (
+            torch.cat([chunk.routing_gist.v for chunk in memory.chunks], dim=0)
+            if all(chunk.routing_gist.v is not None for chunk in memory.chunks)
+            else None
+        )
+        if mode == "mean":
+            gist_k = keys.mean(dim=0, keepdim=True)
+            gist_v = values.mean(dim=0, keepdim=True) if values is not None else None
+        else:
+            gist_k = keys[-1:].clone()
+            gist_v = values[-1:].clone() if values is not None else None
+        reference_gists = ReferenceRoutingGists(
+            k=gist_k,
+            v=gist_v,
+            mode=mode,
+            metadata={
+                "requested_gists": int(config.reference_gists_per_reference),
+                "actual_gists": 1,
+                "legacy_fallback": True,
+            },
+        )
+        entry.reference_gists_by_layer[layer_id] = reference_gists
+        return reference_gists
+
+    def _score_references(self, query: torch.Tensor, layer_id: int, config) -> list[_ReferenceHit]:
+        """Score cached URI gist sets without touching detailed or chunk routing K/V."""
+        if config.reference_level_gist_mode is None:
+            raise ValueError(
+                "search_strategy='reference_first' requires reference_level_gist_mode."
+            )
+        hits = []
+        for entry in self.all_entries():
+            gists = entry.reference_gists_by_layer.get(layer_id)
+            if gists is None:
+                gists = self._fallback_reference_gists(entry, layer_id, config)
+            if gists is None:
+                continue
+            score = score_gist_set(query, gists.k, config.reference_gist_score_aggregation)
+            winning_score = (
+                float(score.per_gist_scores[score.winning_index].cpu())
+                if score.per_gist_scores is not None and score.winning_index is not None
+                else None
+            )
+            hits.append(
+                _ReferenceHit(
+                    entry=entry,
+                    score=score.aggregate_score,
+                    winning_gist_index=score.winning_index,
+                    winning_gist_score=winning_score,
+                    gist_count=int(gists.k.shape[0]),
+                )
+            )
+        return hits
 
     @staticmethod
-    def _selected(entry, chunk, reference_score, chunk_score, layer_id, ref_rank, chunk_rank, source):
+    def _selected(
+        hit: _ChunkHit,
+        reference_score,
+        layer_id,
+        ref_rank,
+        chunk_rank,
+        reference_hit: _ReferenceHit | None = None,
+    ):
         """Attach stable ranks and routing provenance to a selected payload."""
         return SelectedChunk(
-            entry=entry,
-            chunk=chunk,
+            entry=hit.entry,
+            chunk=hit.chunk,
             reference_score=reference_score,
-            chunk_score=chunk_score,
+            chunk_score=hit.score,
             layer_id=layer_id,
             reference_rank=ref_rank,
             rank_within_reference=chunk_rank,
-            metadata={"routing_source": source},
+            winning_gist_index=hit.winning_gist_index,
+            winning_gist_score=hit.winning_gist_score,
+            gist_count=hit.gist_count,
+            winning_reference_gist_index=(
+                reference_hit.winning_gist_index if reference_hit is not None else None
+            ),
+            winning_reference_gist_score=(
+                reference_hit.winning_gist_score if reference_hit is not None else None
+            ),
+            reference_gist_count=reference_hit.gist_count if reference_hit is not None else 0,
+            metadata={
+                "routing_source": hit.routing_source,
+                "reference_source": hit.entry.metadata.get("source", "reference"),
+                "implicit_reference": bool(hit.entry.metadata.get("implicit", False)),
+                "reference_display_name": hit.entry.metadata.get("display_name", hit.entry.uri),
+            },
         )
 
     def _hierarchical(self, hits, layer_id, config):
         """Aggregate chunk scores per URI, select URIs, then select local chunks."""
         grouped = defaultdict(list)
         for hit in hits:
-            grouped[hit[0].uri].append(hit)
+            grouped[hit.entry.uri].append(hit)
         reference_scores = {
-            uri: _aggregate([hit[2] for hit in grouped_hits], config.reference_score_aggregation)
+            uri: _aggregate([hit.score for hit in grouped_hits], config.reference_score_aggregation)
             for uri, grouped_hits in grouped.items()
         }
         selected_uris = sorted(reference_scores, key=lambda uri: (-reference_scores[uri], uri))[
@@ -407,40 +565,61 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         ]
         selected = []
         for ref_rank, uri in enumerate(selected_uris, start=1):
-            ranked = sorted(grouped[uri], key=lambda hit: (-hit[2], hit[1].chunk_id))[
+            ranked = sorted(grouped[uri], key=lambda hit: (-hit.score, hit.chunk.chunk_id))[
                 : config.top_k_chunks_per_reference
             ]
             selected.extend(
-                self._selected(*hit[:2], reference_scores[uri], hit[2], layer_id, ref_rank, rank, hit[3])
+                self._selected(hit, reference_scores[uri], layer_id, ref_rank, rank)
                 for rank, hit in enumerate(ranked, start=1)
             )
         return selected
 
-    def _reference_first(self, query, hits, layer_id, config):
-        """Select URIs from explicit URI gists, then use chunk scores within them."""
-        grouped, reference_scores = self._reference_first_scores(query, hits, config)
-        selected_uris = sorted(reference_scores, key=lambda uri: (-reference_scores[uri], uri))[
-            : config.top_k_references
-        ]
+    def _reference_first(self, query, layer_id, config):
+        """Select URIs from cached gists before scoring chunks only inside those URIs."""
+        reference_hits = sorted(
+            self._score_references(query, layer_id, config),
+            key=lambda hit: (-hit.score, hit.entry.uri),
+        )[: config.top_k_references]
+        if not reference_hits:
+            return []
+        chunk_hits = self._score_chunks(
+            query.unsqueeze(0),
+            layer_id,
+            config,
+            entries=[hit.entry for hit in reference_hits],
+        )[0]
+        grouped = defaultdict(list)
+        for hit in chunk_hits:
+            grouped[hit.entry.uri].append(hit)
         selected = []
-        for ref_rank, uri in enumerate(selected_uris, start=1):
-            ranked = sorted(grouped[uri], key=lambda hit: (-hit[2], hit[1].chunk_id))[
+        for ref_rank, reference_hit in enumerate(reference_hits, start=1):
+            ranked = sorted(
+                grouped[reference_hit.entry.uri],
+                key=lambda hit: (-hit.score, hit.chunk.chunk_id),
+            )[
                 : config.top_k_chunks_per_reference
             ]
             selected.extend(
-                self._selected(*hit[:2], reference_scores[uri], hit[2], layer_id, ref_rank, rank, hit[3])
+                self._selected(
+                    hit,
+                    reference_hit.score,
+                    layer_id,
+                    ref_rank,
+                    rank,
+                    reference_hit,
+                )
                 for rank, hit in enumerate(ranked, start=1)
             )
         return selected
 
     def _global_chunks(self, hits, layer_id, config):
         """Rank chunks globally while enforcing distinct-URI and per-URI limits."""
-        ranked = sorted(hits, key=lambda hit: (-hit[2], hit[0].uri, hit[1].chunk_id))
+        ranked = sorted(hits, key=lambda hit: (-hit.score, hit.entry.uri, hit.chunk.chunk_id))
         selected = []
         selected_uris = []
         count_by_uri = defaultdict(int)
         for hit in ranked:
-            uri = hit[0].uri
+            uri = hit.entry.uri
             if count_by_uri[uri] >= config.top_k_chunks_per_reference:
                 continue
             if uri not in selected_uris and len(selected_uris) >= config.top_k_references:
@@ -449,24 +628,26 @@ class PRASimpleMemoryCache(PRAMemoryCache):
                 selected_uris.append(uri)
             count_by_uri[uri] += 1
             reference_score = _aggregate(
-                [candidate[2] for candidate in hits if candidate[0].uri == uri],
+                [candidate.score for candidate in hits if candidate.entry.uri == uri],
                 config.reference_score_aggregation,
             )
             selected.append(
                 self._selected(
-                    hit[0],
-                    hit[1],
+                    hit,
                     reference_score,
-                    hit[2],
                     layer_id,
                     selected_uris.index(uri) + 1,
                     count_by_uri[uri],
-                    hit[3],
                 )
             )
         return selected
 
-    def search(self, query: torch.Tensor, layer_id: int, config) -> list[list[SelectedChunk]]:
+    def search(
+        self,
+        query: torch.Tensor,
+        layer_id: int,
+        config: PRAConfig,
+    ) -> list[list[SelectedChunk]]:
         """Route each query row with the configured strategy and independent budgets.
 
         Args:
@@ -484,14 +665,14 @@ class PRASimpleMemoryCache(PRAMemoryCache):
             raise ValueError(f"Expected query [batch,model] or [model], got {tuple(query.shape)}.")
         if config.top_k_references == 0 or config.top_k_chunks_per_reference == 0:
             return [[] for _ in range(query.shape[0])]
-        # Stage 1 scores lightweight gists; stage 2 applies a policy and budgets.
-        hits_by_batch = self._score_chunks(query, layer_id, config)
         selected_by_batch = []
-        for batch_index, hits in enumerate(hits_by_batch):
+        if config.search_strategy == "reference_first":
+            return [self._reference_first(row_query, layer_id, config) for row_query in query]
+        # Hierarchical/global strategies score all cheap chunk gists before policy ranking.
+        hits_by_batch = self._score_chunks(query, layer_id, config)
+        for hits in hits_by_batch:
             if config.search_strategy == "hierarchical":
                 selected = self._hierarchical(hits, layer_id, config)
-            elif config.search_strategy == "reference_first":
-                selected = self._reference_first(query[batch_index], hits, layer_id, config)
             elif config.search_strategy == "global_chunks":
                 selected = self._global_chunks(hits, layer_id, config)
             else:
@@ -514,6 +695,9 @@ class PRASimpleMemoryCache(PRAMemoryCache):
             search_strategy="hierarchical",
             reference_score_aggregation="max",
             reference_level_gist_mode=None,
+            reference_gists_per_reference=1,
+            reference_gist_score_aggregation="max",
+            gist_score_aggregation="max",
             use_summary=False,
             summary_mode="replace",
         )
@@ -576,7 +760,7 @@ class PRABatchedMemoryCache(PRAMemoryCache):
         self,
         query: torch.Tensor,
         layer_id: int,
-        config,
+        config: PRAConfig,
     ) -> list[list[SelectedChunk]]:
         """Route ``query[i]`` only against ``row_caches[i]``.
 

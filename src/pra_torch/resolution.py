@@ -82,14 +82,13 @@ class RecursiveReferenceCacheBuilder:
         routing_config = {
             key: value
             for key, value in asdict(self.config).items()
-            if key
+            if key.startswith(("gist_", "gists_", "reference_gist", "reference_level_gist"))
+            or key
             in {
                 "chunking_mode",
                 "fixed_chunk_tokens",
                 "fixed_chunk_overlap_tokens",
-                "gist_mode",
                 "max_gists_per_reference",
-                "gist_overflow_policy",
                 "use_summary",
                 "summary_mode",
                 "recursive_refs_enabled",

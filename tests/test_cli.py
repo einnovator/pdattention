@@ -1,7 +1,7 @@
 from click.testing import CliRunner
 
 from config.model_size import estimate_model_size
-from pra_torch.cli import apply_named_model, cli, load_config
+from pra_torch.cli import apply_named_model, cli, load_config, model_kwargs
 
 
 def test_config_show_uses_default_yaml():
@@ -97,6 +97,18 @@ def test_standalone_tiny_profile_is_in_central_config():
     assert cfg["standalone"]["experiment_name"] == "standalone_tiny"
     assert cfg["standalone"]["batch_size"] == 4
     assert cfg["standalone"]["max_examples"] == 4
+
+
+def test_multi_gist_defaults_flow_from_yaml_into_model_config():
+    kwargs = model_kwargs(load_config())
+
+    assert kwargs["gists_per_chunk"] == 1
+    assert kwargs["reference_gists_per_reference"] == 1
+    assert kwargs["gist_mode"] == "mean"
+    assert kwargs["gist_kmeans_max_iters"] == 8
+    assert kwargs["max_prompt_direct_tokens"] is None
+    assert kwargs["prompt_overflow_mode"] == "truncate"
+    assert kwargs["max_prompt_gists"] is None
 
 
 def test_named_decoder_variants_are_in_central_config():

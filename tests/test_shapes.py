@@ -24,7 +24,7 @@ def test_reference_cache_shapes():
     chunk = entry.layer_memory[0].chunks[0]
     assert chunk.token_kv.k.ndim == 4
     assert chunk.token_kv.v.ndim == 4
-    assert chunk.routing_gist.k.shape == (cfg.d_model,)
+    assert chunk.routing_gist.k.shape == (1, cfg.d_model)
 
 
 def test_model_forward_with_cache():

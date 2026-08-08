@@ -9,15 +9,49 @@ model:
   model_variant: custom
 
 pra:
+  max_prompt_direct_tokens: null
+  prompt_overflow_mode: truncate
+  max_prompt_gists: null
   pra_layer_ids: [2, 3]
   top_k_references: 2
   top_k_chunks_per_reference: 1
   search_strategy: hierarchical
   reference_score_aggregation: max
   reference_level_gist_mode: null
+  reference_gists_per_reference: 1
+  reference_gist_score_aggregation: max
   gist_mode: mean
+  gists_per_chunk: 1
+  gist_score_aggregation: max
   max_gists_per_reference: 4
   gist_overflow_policy: truncate
+  gist_kmeans_max_iters: 8
+  gist_kmeans_init: kmeans++
+  gist_kmeans_tol: 0.0001
+  gist_kmeans_normalize: true
+  gist_kmeans_seed: 0
+  gist_kmeans_empty_cluster_policy: farthest
+  gist_som_steps: 32
+  gist_som_learning_rate: 0.2
+  gist_som_final_learning_rate: 0.05
+  gist_som_neighborhood_radius: 1.0
+  gist_som_final_neighborhood_radius: 0.0
+  gist_som_distance: cosine
+  gist_som_normalize: true
+  gist_som_init: sample
+  gist_som_seed: 0
+  gist_som_topology: line
+  gist_prototype_method: farthest
+  gist_prototype_init: mean_nearest
+  gist_prototype_refine: true
+  gist_prototype_normalize: true
+  gist_prototype_distance: cosine
+  gist_prototype_seed: 0
+  gist_hybrid_global_mode: mean
+  gist_hybrid_local_mode: kmeans
+  gist_hybrid_global_count: 1
+  gist_hybrid_deduplicate: true
+  gist_hybrid_min_cosine_separation: 0.0
   chunking_mode: none
   fixed_chunk_tokens: 64
   fixed_chunk_overlap_tokens: 0

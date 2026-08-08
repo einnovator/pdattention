@@ -9,7 +9,7 @@ The core idea: instead of placing all long context directly in the prompt, the p
 <REF_2>
 ```
 
-A PRA-enabled transformer treats those references as latent memory handles. At runtime, an explicit local `ReferenceTable` maps each token to a URI. The resolver partitions content into deterministic chunks and caches, for every PRA layer, full token K/V plus exactly one contextual projected-key routing gist per chunk. Each batch row independently uses its projected last-token query to select references and then chunks; only selected chunk K/V is materialized for cross-attention. Textual summaries are optional routing metadata and are disabled by default.
+A PRA-enabled transformer treats those references as latent memory handles. At runtime, an explicit local `ReferenceTable` maps each token to a URI. The resolver partitions content into deterministic chunks and caches, for every PRA layer, full token K/V plus configurable `[G,D]` routing-gist sets for chunks and URIs. The default remains one mean gist per chunk and no URI-level routing stage. Each batch row independently uses its projected last-token query to select references and then chunks; only selected chunk K/V is materialized for cross-attention. Textual summaries are optional routing metadata and are disabled by default.
 
 Recursive construction is child-first and follows only local reference tables. Shared depth/reference/token budgets, cycle and missing-reference policies, build states, and cache fingerprints keep expansion bounded and prevent partial or stale entries from becoming searchable. Variable selected-memory lengths can run independently or in deterministic masked buckets without sharing one example's memory with another.
 
@@ -70,6 +70,28 @@ config/config.yml
 
 Use `-c/--config` to layer another YAML file on top of the default config. Explicit command-line options override both config files. If a config file is missing, the CLI prints a warning and continues with built-in/default values plus any command-line overrides.
 
+## Long prompts
+
+PRA can preserve history beyond the direct self-attention window as a request-local implicit
+reference. Configure the `pra` section as follows:
+
+```yaml
+pra:
+  max_prompt_direct_tokens: 4096
+  prompt_overflow_mode: implicit_reference
+  max_prompt_gists: null
+```
+
+For a prompt longer than 4096 tokens, the latest 4096 remain in direct causal attention.
+Earlier token IDs become `pra://implicit/prompt/head`, displayed as `#__head`, and reuse the
+ordinary chunk, gist, cache, routing, and K/V materialization pipeline. `max_prompt_gists`
+limits only this implicit reference; `null` preserves every displaced chunk regardless of
+the smaller explicit-reference cap. Explicit references remain in the same row-local cache.
+
+`prompt_overflow_mode: truncate` is the backward-compatible default, while `error` rejects
+oversized prompts. Generation supports long initial prompts; generated tokens that later
+roll out of the direct window are not yet migrated into `#__head`.
+
 Installed environments also get the console entry point:
 
 ```bash
@@ -77,6 +99,22 @@ pra train
 pra eval
 pra config show
 pra dataset show
+```
+
+## HTML documentation
+
+The MkDocs site combines architecture guides with API reference generated from Python
+docstrings by `mkdocstrings-python`.
+
+```bash
+python -m pip install -e ".[docs]"
+python -m mkdocs build --strict
+```
+
+The static site is written to `site/`. For local development with automatic reloads:
+
+```bash
+python -m mkdocs serve
 ```
 
 ## Research trainer

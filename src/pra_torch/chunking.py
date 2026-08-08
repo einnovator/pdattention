@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, replace
+from itertools import chain
 from typing import Protocol
 
 
@@ -129,6 +130,8 @@ def _char_chunks(uri, text, tokenizer, spans, metadata) -> list[ReferenceChunk]:
 
 def _apply_overflow(chunks, max_chunks, policy, all_token_ids, text, tokenizer):
     """Apply the configured cap without silently losing overflow provenance."""
+    if max_chunks is None:
+        return chunks, 0
     if len(chunks) <= max_chunks:
         return chunks, 0
     discarded = len(chunks) - max_chunks
@@ -160,18 +163,81 @@ def _apply_overflow(chunks, max_chunks, policy, all_token_ids, text, tokenizer):
     return [*prefix, tail], discarded
 
 
-def partition_reference(uri: str, text: str, tokenizer, config, metadata=None) -> list[ReferenceChunk]:
-    """Partition one resolved URI into the chunks independently routed by PRA.
+def _fixed_chunks(uri, token_ids, tokenizer, metadata, *, size, overlap=0):
+    """Create exact token windows without decoding and re-tokenizing their contents."""
+    chunks = []
+    step = size - overlap
+    for index, start in enumerate(range(0, len(token_ids), step)):
+        end = min(start + size, len(token_ids))
+        ids = tuple(token_ids[start:end])
+        if ids:
+            chunks.append(
+                ReferenceChunk(
+                    chunk_id=_chunk_id(uri, index),
+                    source_uri=uri,
+                    text=tokenizer.decode(ids),
+                    token_ids=ids,
+                    token_start=start,
+                    token_end=end,
+                    metadata={**metadata, "overlap_tokens": overlap},
+                )
+            )
+        if end == len(token_ids):
+            break
+    return chunks
 
-    ``none`` keeps one document chunk, ``fixed`` creates optional overlapping
-    token windows, ``markers`` preserves explicit/Markdown structure, and
-    ``semantic`` delegates to a configured plugin. The returned source offsets
-    let evaluation distinguish retrieval quality from answer quality.
+
+def _split_oversized_chunks(chunks, tokenizer, max_chunk_tokens):
+    """Bound encoded chunk length while preserving every token and source offset."""
+    if max_chunk_tokens is None:
+        return chunks
+    bounded = []
+    for chunk in chunks:
+        if len(chunk.token_ids) <= max_chunk_tokens:
+            bounded.append(replace(chunk, chunk_id=_chunk_id(chunk.source_uri, len(bounded))))
+            continue
+        for local_start in range(0, len(chunk.token_ids), max_chunk_tokens):
+            ids = tuple(chunk.token_ids[local_start : local_start + max_chunk_tokens])
+            bounded.append(
+                replace(
+                    chunk,
+                    chunk_id=_chunk_id(chunk.source_uri, len(bounded)),
+                    text=tokenizer.decode(ids),
+                    token_ids=ids,
+                    token_start=chunk.token_start + local_start,
+                    token_end=chunk.token_start + local_start + len(ids),
+                    char_start=None,
+                    char_end=None,
+                    metadata={**chunk.metadata, "bounded_token_split": True},
+                )
+            )
+    return bounded
+
+
+def partition_reference_tokens(
+    uri: str,
+    token_ids,
+    tokenizer,
+    config,
+    metadata=None,
+    *,
+    text: str | None = None,
+    max_chunks: int | None = None,
+    use_configured_max_chunks: bool = True,
+    max_chunk_tokens: int | None = None,
+) -> list[ReferenceChunk]:
+    """Partition exact source token IDs with optional source-specific limits.
+
+    ``use_configured_max_chunks=False`` makes ``max_chunks=None`` mean unlimited,
+    which is used by implicit prompt history. Text-origin references retain the
+    ordinary ``max_gists_per_reference`` cap through the default arguments.
     """
     metadata = dict(metadata or {})
-    token_ids = list(tokenizer.encode(text))
+    token_ids = list(int(token_id) for token_id in token_ids)
     if not token_ids:
         return []
+    text = tokenizer.decode(token_ids) if text is None else text
+    chunk_limit = config.max_gists_per_reference if use_configured_max_chunks else max_chunks
 
     # Construct candidate chunks according to one mutually exclusive mode.
     if config.chunking_mode == "none":
@@ -189,25 +255,14 @@ def partition_reference(uri: str, text: str, tokenizer, config, metadata=None) -
             )
         ]
     elif config.chunking_mode == "fixed":
-        chunks = []
-        step = config.fixed_chunk_tokens - config.fixed_chunk_overlap_tokens
-        for index, start in enumerate(range(0, len(token_ids), step)):
-            end = min(start + config.fixed_chunk_tokens, len(token_ids))
-            ids = tuple(token_ids[start:end])
-            if ids:
-                chunks.append(
-                    ReferenceChunk(
-                        chunk_id=_chunk_id(uri, index),
-                        source_uri=uri,
-                        text=tokenizer.decode(ids),
-                        token_ids=ids,
-                        token_start=start,
-                        token_end=end,
-                        metadata={**metadata, "overlap_tokens": config.fixed_chunk_overlap_tokens},
-                    )
-                )
-            if end == len(token_ids):
-                break
+        chunks = _fixed_chunks(
+            uri,
+            token_ids,
+            tokenizer,
+            metadata,
+            size=config.fixed_chunk_tokens,
+            overlap=config.fixed_chunk_overlap_tokens,
+        )
     elif config.chunking_mode == "markers":
         partitioner = metadata.get("partitioner")
         if partitioner is None:
@@ -216,24 +271,39 @@ def partition_reference(uri: str, text: str, tokenizer, config, metadata=None) -
                 if metadata.get("format") == "markdown"
                 else ExplicitMarkerPartitioner(config.marker_rules)
             )
-        chunks = _char_chunks(uri, text, tokenizer, partitioner.partition(uri, text, metadata), metadata)
+        chunks = _char_chunks(
+            uri,
+            text,
+            tokenizer,
+            partitioner.partition(uri, text, metadata),
+            metadata,
+        )
+        reconstructed = tuple(chain.from_iterable(chunk.token_ids for chunk in chunks))
+        if reconstructed != tuple(token_ids):
+            fallback_size = max_chunk_tokens or config.fixed_chunk_tokens
+            chunks = _fixed_chunks(
+                uri,
+                token_ids,
+                tokenizer,
+                {**metadata, "token_exact_marker_fallback": True},
+                size=fallback_size,
+            )
     elif config.chunking_mode == "semantic":
         if config.semantic_chunker is None:
             raise NotImplementedError(
                 "chunking_mode='semantic' requires an explicit semantic_chunker implementation."
             )
+        plugin_limit = chunk_limit if chunk_limit is not None else len(token_ids)
         chunks = list(
-            config.semantic_chunker.partition(
-                uri, text, token_ids, metadata, config.max_gists_per_reference
-            )
+            config.semantic_chunker.partition(uri, text, token_ids, metadata, plugin_limit)
         )
     else:
         raise ValueError(f"Unsupported chunking_mode: {config.chunking_mode}")
 
-    # Enforce the routing-gist budget after partitioning so every mode behaves alike.
+    chunks = _split_oversized_chunks(chunks, tokenizer, max_chunk_tokens)
     chunks, discarded = _apply_overflow(
         chunks,
-        config.max_gists_per_reference,
+        chunk_limit,
         config.gist_overflow_policy,
         token_ids,
         text,
@@ -245,3 +315,22 @@ def partition_reference(uri: str, text: str, tokenizer, config, metadata=None) -
             for chunk in chunks
         ]
     return chunks
+
+
+def partition_reference(uri: str, text: str, tokenizer, config, metadata=None) -> list[ReferenceChunk]:
+    """Partition one resolved URI into the chunks independently routed by PRA.
+
+    ``none`` keeps one document chunk, ``fixed`` creates optional overlapping
+    token windows, ``markers`` preserves explicit/Markdown structure, and
+    ``semantic`` delegates to a configured plugin. The returned source offsets
+    let evaluation distinguish retrieval quality from answer quality.
+    """
+    token_ids = list(tokenizer.encode(text))
+    return partition_reference_tokens(
+        uri,
+        token_ids,
+        tokenizer,
+        config,
+        metadata,
+        text=text,
+    )

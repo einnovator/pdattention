@@ -358,6 +358,11 @@ def test_chunk_metrics_are_separate_from_cache_size_and_omitted_without_labels()
     assert metrics["retrieval_chunk_recall_at_k"] == 1.0
     assert metrics["cache_reference_token_count"] == 7.0
     assert metrics["memory_selected_token_count"] == 2.0
+    assert metrics["chunk_gists_requested"] == 1.0
+    assert metrics["chunk_gists_actual_mean"] == 1.0
+    assert metrics["chunk_gists_actual_max"] == 1.0
+    assert metrics["winning_chunk_gist_index"] == 0.0
+    assert metrics["chunk_best_gist_score"] == pytest.approx(1.0)
 
     unlabeled = {**labeled, "target_chunk_ids": []}
     missing = _retrieval_metrics(

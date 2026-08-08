@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from data.tokenizer import PRATokenizer
 from .config import CacheServiceConfig, ResolverServiceConfig
 from .memory import PRAMemoryCache, PRASimpleMemoryCache
+from .prompt import IMPLICIT_PROMPT_HEAD_URI
 from .resolution import RecursiveReferenceCacheBuilder
 from .resolver import InMemoryResolver
 
@@ -42,6 +43,8 @@ def collect_reference_metadata(metadata: Iterable[dict]) -> tuple[dict, dict[str
     handles = []
     for item in metadata:
         for ref in item["references"]:
+            if ref.uri == IMPLICIT_PROMPT_HEAD_URI:
+                raise ValueError(f"Reference URI {IMPLICIT_PROMPT_HEAD_URI!r} is reserved by PRA.")
             ref_metadata = dict(ref.metadata or {})
             text = str(ref_metadata.get("text", ""))
             documents[ref.uri] = {
