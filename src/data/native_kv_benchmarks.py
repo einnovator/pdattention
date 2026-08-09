@@ -11,9 +11,11 @@ import hashlib
 import json
 import random
 import string
+import tarfile
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 
 NATIVE_KV_SPLIT_COUNTS = (2, 3, 5, 8, 16, 32, 64)
@@ -233,4 +235,267 @@ def generate_synthetic_native_kv_dataset(
         split_count=split_count,
         examples=synthetic_native_kv_examples(max_examples=max_examples, seed=seed),
         generation_version="synthetic_nativekv_fixed_target_v5",
+    )
+
+
+def hotpotqa_native_kv_examples(
+    rows: Iterable[dict[str, Any]],
+    *,
+    max_examples: int,
+    seed: int,
+    source_unit_count: int = 63,
+    max_evidence_units: int = 59,
+) -> list[NativeKVBenchmarkExample]:
+    """Convert balanced HotpotQA yes/no rows into fixed-source examples.
+
+    Supporting sentences are retained in full and followed by an explicit
+    ``AnswerCode yes|no`` evidence anchor. Distractor words fill the remaining
+    source budget. This is a transport probe over natural HotpotQA context, not a
+    claim that the small from-scratch model solves unrestricted multi-hop QA.
+    """
+
+    candidates: dict[str, list[NativeKVBenchmarkExample]] = {"yes": [], "no": []}
+    for row in rows:
+        answer = str(row.get("answer", "")).strip().lower()
+        if answer not in candidates:
+            continue
+        supporting = {
+            (str(title), int(sentence_id))
+            for title, sentence_id in zip(
+                row["supporting_facts"]["title"], row["supporting_facts"]["sent_id"]
+            )
+        }
+        evidence_words: list[str] = []
+        distractor_words: list[str] = []
+        supporting_sentences: list[str] = []
+        for title, sentences in zip(row["context"]["title"], row["context"]["sentences"]):
+            for sentence_id, sentence in enumerate(sentences):
+                words = str(sentence).strip().split()
+                if (str(title), sentence_id) in supporting:
+                    evidence_words.extend(words)
+                    supporting_sentences.append(str(sentence).strip())
+                else:
+                    distractor_words.extend(words)
+        if not evidence_words or len(evidence_words) > max_evidence_units:
+            continue
+        needed = source_unit_count - len(evidence_words) - 2
+        if needed < 0 or len(distractor_words) < needed:
+            continue
+        row_seed = int(_stable_digest(seed, row.get("id", ""))[:16], 16)
+        rng = random.Random(row_seed)
+        # Sample distractors deterministically, then restore their document order.
+        distractor_indices = sorted(rng.sample(range(len(distractor_words)), needed))
+        selected_distractors = [distractor_words[index] for index in distractor_indices]
+        units = tuple(
+            [EvidenceUnit("AnswerCode", True), EvidenceUnit(answer, True)]
+            + [EvidenceUnit(word, False) for word in evidence_words]
+            + [EvidenceUnit(word, False) for word in selected_distractors]
+        )
+        candidates[answer].append(
+            NativeKVBenchmarkExample(
+                id=f"hotpotqa-{row['id']}",
+                source_units=units,
+                question=" Question: Return the AnswerCode. Answer:",
+                answer=answer,
+                metadata={
+                    "task_type": "hotpotqa_answer_code_transport_probe",
+                    "original_question": str(row["question"]).strip(),
+                    "source_dataset_id": str(row["id"]),
+                    "hotpot_type": str(row.get("type", "")),
+                    "hotpot_level": str(row.get("level", "")),
+                    "supporting_sentences": supporting_sentences,
+                    "evidence_unit_count": len(evidence_words),
+                    "local_context_sufficient": False,
+                    "answer_space_size": 2,
+                },
+            )
+        )
+
+    per_label = min(len(candidates["yes"]), len(candidates["no"]), max_examples // 2)
+    selected: list[NativeKVBenchmarkExample] = []
+    for label_index, label in enumerate(("yes", "no")):
+        values = candidates[label]
+        random.Random(seed + label_index * 1_000_003).shuffle(values)
+        selected.extend(values[:per_label])
+    random.Random(seed + 2_000_003).shuffle(selected)
+    return selected[:max_examples]
+
+
+def generate_hotpotqa_native_kv_dataset(
+    data_dir: str | Path,
+    *,
+    split_count: int,
+    dataset_split: str,
+    max_examples: int,
+    seed: int,
+    cache_dir: str | Path | None = None,
+) -> Path:
+    """Download and write the balanced HotpotQA native-KV benchmark slice."""
+
+    from datasets import load_dataset
+
+    rows = load_dataset(
+        "hotpotqa/hotpot_qa",
+        "distractor",
+        split=dataset_split,
+        cache_dir=str(cache_dir) if cache_dir else None,
+    )
+    examples = hotpotqa_native_kv_examples(
+        rows,
+        max_examples=max_examples,
+        seed=seed,
+    )
+    if len(examples) < max_examples:
+        raise ValueError(
+            f"HotpotQA {dataset_split} yielded {len(examples)} usable balanced examples; "
+            f"requested {max_examples}"
+        )
+    return write_native_kv_benchmark(
+        data_dir,
+        stage="hotpotqa_nativekv_fixed_target",
+        dataset_name="hotpotqa",
+        split_count=split_count,
+        examples=examples,
+        generation_version="hotpotqa_nativekv_answer_code_v3",
+    )
+
+
+QASPER_ARCHIVE_URL = (
+    "https://qasper-dataset.s3.us-west-2.amazonaws.com/qasper-train-dev-v0.3.tgz"
+)
+QASPER_SPLIT_FILES = {
+    "train": "qasper-train-v0.3.json",
+    "validation": "qasper-dev-v0.3.json",
+}
+
+
+def load_qasper_papers(
+    dataset_split: str, *, cache_dir: str | Path | None = None
+) -> dict[str, dict[str, Any]]:
+    """Load official QASPER v0.3 JSON without its retired HF dataset script."""
+
+    if dataset_split not in QASPER_SPLIT_FILES:
+        raise ValueError(f"Unsupported QASPER split: {dataset_split}")
+    root = Path(cache_dir or Path.home() / ".cache" / "qasper")
+    root.mkdir(parents=True, exist_ok=True)
+    archive_path = root / "qasper-train-dev-v0.3.tgz"
+    if not archive_path.exists():
+        urllib.request.urlretrieve(QASPER_ARCHIVE_URL, archive_path)
+    with tarfile.open(archive_path, "r:gz") as archive:
+        member = archive.extractfile(QASPER_SPLIT_FILES[dataset_split])
+        if member is None:
+            raise FileNotFoundError(QASPER_SPLIT_FILES[dataset_split])
+        return json.load(member)
+
+
+def qasper_native_kv_examples(
+    papers: dict[str, dict[str, Any]],
+    *,
+    max_examples: int,
+    seed: int,
+    source_unit_count: int = 63,
+    max_evidence_units: int = 59,
+) -> list[NativeKVBenchmarkExample]:
+    """Convert QASPER yes/no annotations into natural-text transport probes."""
+
+    candidates: dict[str, list[NativeKVBenchmarkExample]] = {"yes": [], "no": []}
+    for paper_id, paper in papers.items():
+        paper_words = str(paper.get("abstract", "")).split()
+        for section in paper.get("full_text", []):
+            for paragraph in section.get("paragraphs", []):
+                paper_words.extend(str(paragraph).split())
+        for qa in paper.get("qas", []):
+            annotated = []
+            for annotation in qa.get("answers", []):
+                answer = annotation.get("answer", {})
+                if answer.get("yes_no") is not None:
+                    annotated.append((bool(answer["yes_no"]), list(answer.get("evidence") or [])))
+            if not annotated:
+                continue
+            positive = sum(int(value) for value, _ in annotated)
+            answer = "yes" if positive * 2 >= len(annotated) else "no"
+            matching_evidence = [
+                text
+                for value, evidence in annotated
+                if ("yes" if value else "no") == answer
+                for text in evidence
+                if str(text).strip()
+            ]
+            if not matching_evidence:
+                continue
+            evidence_words = min(matching_evidence, key=lambda value: len(value.split())).split()[
+                :max_evidence_units
+            ]
+            if not evidence_words:
+                continue
+            needed = source_unit_count - len(evidence_words) - 2
+            if needed < 0 or len(paper_words) < needed:
+                continue
+            question_id = str(qa.get("question_id", len(candidates[answer])))
+            row_seed = int(_stable_digest(seed, paper_id, question_id)[:16], 16)
+            rng = random.Random(row_seed)
+            indices = sorted(rng.sample(range(len(paper_words)), needed))
+            distractors = [paper_words[index] for index in indices]
+            units = tuple(
+                [EvidenceUnit("AnswerCode", True), EvidenceUnit(answer, True)]
+                + [EvidenceUnit(word, False) for word in evidence_words]
+                + [EvidenceUnit(word, False) for word in distractors]
+            )
+            candidates[answer].append(
+                NativeKVBenchmarkExample(
+                    id=f"qasper-{paper_id}-{question_id}",
+                    source_units=units,
+                    question=" Question: Return the AnswerCode. Answer:",
+                    answer=answer,
+                    metadata={
+                        "task_type": "qasper_answer_code_transport_probe",
+                        "paper_id": str(paper_id),
+                        "paper_title": str(paper.get("title", "")),
+                        "question_id": question_id,
+                        "original_question": str(qa.get("question", "")),
+                        "supporting_evidence": matching_evidence,
+                        "evidence_unit_count": len(evidence_words),
+                        "local_context_sufficient": False,
+                        "answer_space_size": 2,
+                    },
+                )
+            )
+    per_label = min(len(candidates["yes"]), len(candidates["no"]), max_examples // 2)
+    selected: list[NativeKVBenchmarkExample] = []
+    for label_index, label in enumerate(("yes", "no")):
+        values = candidates[label]
+        random.Random(seed + label_index * 1_000_003).shuffle(values)
+        selected.extend(values[:per_label])
+    random.Random(seed + 2_000_003).shuffle(selected)
+    return selected[:max_examples]
+
+
+def generate_qasper_native_kv_dataset(
+    data_dir: str | Path,
+    *,
+    split_count: int,
+    dataset_split: str,
+    max_examples: int,
+    seed: int,
+    cache_dir: str | Path | None = None,
+) -> Path:
+    """Write one fixed-target QASPER native-KV partition."""
+
+    examples = qasper_native_kv_examples(
+        load_qasper_papers(dataset_split, cache_dir=cache_dir),
+        max_examples=max_examples,
+        seed=seed,
+    )
+    if len(examples) < max_examples:
+        raise ValueError(
+            f"QASPER {dataset_split} yielded {len(examples)} usable balanced examples; "
+            f"requested {max_examples}"
+        )
+    return write_native_kv_benchmark(
+        data_dir,
+        stage="qasper_nativekv_fixed_target",
+        dataset_name="qasper",
+        split_count=split_count,
+        examples=examples,
+        generation_version="qasper_nativekv_answer_code_v2",
     )

@@ -258,6 +258,30 @@ class SyntheticNativeKVFixedTargetDataset(PRADataset):
         generate_synthetic_native_kv_dataset(*args, **kwargs)
 
 
+class HotpotQANativeKVFixedTargetDataset(PRADataset):
+    """Balanced HotpotQA yes/no evidence with invariant source and target."""
+
+    dataset_name = "hotpotqa_native_kv"
+    stage = "hotpotqa_nativekv_fixed_target"
+
+    def generate(self, *args, **kwargs) -> None:
+        from .native_kv_benchmarks import generate_hotpotqa_native_kv_dataset
+
+        generate_hotpotqa_native_kv_dataset(*args, **kwargs)
+
+
+class QASPERNativeKVFixedTargetDataset(PRADataset):
+    """QASPER evidence spans with an invariant answer-code transport target."""
+
+    dataset_name = "qasper_native_kv"
+    stage = "qasper_nativekv_fixed_target"
+
+    def generate(self, *args, **kwargs) -> None:
+        from .native_kv_benchmarks import generate_qasper_native_kv_dataset
+
+        generate_qasper_native_kv_dataset(*args, **kwargs)
+
+
 DATASET_REGISTRY = {
     SyntheticMemoryQADataset.stage: SyntheticMemoryQADataset,
     HierarchicalReferenceDataset.stage: HierarchicalReferenceDataset,
@@ -270,6 +294,8 @@ DATASET_REGISTRY = {
     WikiTextReferenceV2Dataset.stage: WikiTextReferenceV2Dataset,
     WikiTextNativeKVFixedTargetDataset.stage: WikiTextNativeKVFixedTargetDataset,
     SyntheticNativeKVFixedTargetDataset.stage: SyntheticNativeKVFixedTargetDataset,
+    HotpotQANativeKVFixedTargetDataset.stage: HotpotQANativeKVFixedTargetDataset,
+    QASPERNativeKVFixedTargetDataset.stage: QASPERNativeKVFixedTargetDataset,
 }
 
 

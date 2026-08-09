@@ -15,6 +15,7 @@ from pra_torch.memory import (
 )
 from pra_torch.model import TinyPRAModel, convert_sa_model_to_pra
 from pra_torch.pra_train import native_kv_gap_metrics
+from pra_torch.native_metrics import recovered_context_benefit
 
 
 def _config(**overrides):
@@ -141,16 +142,25 @@ def test_native_gap_metrics_keep_transport_and_retrieval_effects_separate():
             {"condition": "sa_tail", "loss": 3.0},
             {"condition": "native_all", "loss": 2.1},
             {"condition": "native_oracle", "loss": 2.2},
+            {"condition": "valid", "loss": 2.3},
             {"condition": "native_shuffled", "loss": 2.6},
+            {"condition": "native_disabled", "loss": 3.0},
         ]
     )
 
-    assert metrics == pytest.approx(
-        {
-            "transport_gap": 0.1,
-            "sparse_gap": 0.1,
-            "memory_benefit": 0.8,
-            "content_causality": 0.4,
-            "dependency_gain": 1.0,
-        }
-    )
+    assert metrics["transport_gap"] == pytest.approx(0.1)
+    assert metrics["sparse_gap"] == pytest.approx(0.1)
+    assert metrics["routing_gap"] == pytest.approx(0.1)
+    assert metrics["memory_benefit_oracle"] == pytest.approx(0.8)
+    assert metrics["content_causality_oracle"] == pytest.approx(0.4)
+    assert metrics["dependency_gain"] == pytest.approx(1.0)
+    assert metrics["rcb_oracle"] == pytest.approx(0.8)
+
+
+def test_recovered_context_benefit_marks_low_dependency_targets_undefined():
+    assert recovered_context_benefit(
+        sa_full_loss=1.0, sa_tail_loss=1.0, pra_loss=0.9
+    ) is None
+    assert recovered_context_benefit(
+        sa_full_loss=1.0, sa_tail_loss=2.0, pra_loss=0.5
+    ) == pytest.approx(1.5)

@@ -21,7 +21,7 @@ from .metrics import (
     chunk_is_relevant,
     ranking_metrics,
 )
-from .memory import PRABatchedMemoryCache
+from .memory import PRABatchedMemoryCache, PRASimpleMemoryCache
 from .model import TinyPRAModel
 from .prompt import IMPLICIT_PROMPT_HEAD_URI, prepare_prompt_batch_for_pra
 
@@ -574,6 +574,8 @@ def evaluate_reference_ablation(
     condition: str,
     resolver_config=None,
     cache_config=None,
+    collect_per_example: bool = False,
+    encoded_entry_cache: dict | None = None,
 ) -> dict:
     """Measure answer-token quality under controlled PRA memory interventions.
 
@@ -607,6 +609,7 @@ def evaluate_reference_ablation(
     was_training = model.training
     model.eval()
     loss_sum = correct = token_count = 0
+    per_example = []
     start = time.perf_counter()
     # Build deterministic cross-example pools only for URI-content interventions.
     reference_conditions = {"shuffled", "irrelevant", "native_shuffled"}
@@ -640,6 +643,9 @@ def evaluate_reference_ablation(
             for batch in loader:
                 moved = move_batch(batch, device)
                 for index, item in enumerate(batch["metadata"]):
+                    item_start = time.perf_counter()
+                    if str(device).startswith("cuda"):
+                        torch.cuda.reset_peak_memory_stats(device)
                     # First intervene at URI/cache level, then optionally at chunk payload level.
                     if condition in {"disabled", "empty", "native_disabled"}:
                         model.clear_pra_cache()
@@ -662,14 +668,25 @@ def evaluate_reference_ablation(
                                     reference for reference in item["references"] if reference.id in target_ids
                                 ],
                             }
-                        cache = build_cache_from_metadata(
-                            model,
-                            tokenizer,
-                            [metadata],
-                            device,
-                            resolver_config=resolver_config,
-                            cache_config=cache_config,
-                        )
+                        visible_uris = [reference.uri for reference in metadata["references"]]
+                        if encoded_entry_cache is not None and all(
+                            uri in encoded_entry_cache for uri in visible_uris
+                        ):
+                            cache = PRASimpleMemoryCache()
+                            for uri in visible_uris:
+                                cache.put(encoded_entry_cache[uri])
+                            model.set_pra_cache(cache)
+                        else:
+                            cache = build_cache_from_metadata(
+                                model,
+                                tokenizer,
+                                [metadata],
+                                device,
+                                resolver_config=resolver_config,
+                                cache_config=cache_config,
+                            )
+                            if encoded_entry_cache is not None:
+                                encoded_entry_cache.update(cache.entries)
                         if condition == "oracle_chunks":
                             target_ids = set(item.get("target_chunk_ids") or [])
                             if target_ids:
@@ -700,7 +717,7 @@ def evaluate_reference_ablation(
                     labels = moved["labels"][index : index + 1]
                     valid = labels.ne(0)
                     count = int(valid.sum().item())
-                    loss_sum += float(
+                    item_loss_sum = float(
                         F.cross_entropy(
                             logits.reshape(-1, logits.size(-1)),
                             labels.reshape(-1),
@@ -708,8 +725,122 @@ def evaluate_reference_ablation(
                             reduction="sum",
                         ).detach().cpu()
                     )
-                    correct += int((logits.argmax(dim=-1).eq(labels) & valid).sum().item())
+                    item_correct = int((logits.argmax(dim=-1).eq(labels) & valid).sum().item())
+                    loss_sum += item_loss_sum
+                    correct += item_correct
                     token_count += count
+                    if collect_per_example:
+                        selections = model.selected_chunks_by_layer()
+                        layer_hits = {
+                            int(layer_id): (rows[0] if rows else [])
+                            for layer_id, rows in selections.items()
+                        }
+                        selected_hits = [hit for hits in layer_hits.values() for hit in hits]
+                        retrieved_by_layer = [
+                            sum(hit.selected_token_count for hit in hits)
+                            for hits in layer_hits.values()
+                        ]
+                        retrieved_tokens = (
+                            sum(retrieved_by_layer) / len(retrieved_by_layer)
+                            if retrieved_by_layer
+                            else 0.0
+                        )
+                        local_tokens = int(
+                            moved.get("attention_mask", moved["input_ids"].ne(0))[
+                                index : index + 1
+                            ].sum().item()
+                        )
+                        own_references = item.get("references") or []
+                        displaced_tokens = sum(
+                            len(tokenizer.encode(str(reference.metadata.get("text", ""))))
+                            for reference in own_references
+                        )
+                        accessible_tokens = local_tokens + displaced_tokens
+                        selected_uris = sorted({hit.reference_uri for hit in selected_hits})
+                        target_uris = sorted(_expected_reference_uris(item))
+                        target_uri_set = set(target_uris)
+                        selected_uri_set = set(selected_uris)
+                        routing_scores = [float(hit.chunk_score) for hit in selected_hits]
+                        reference_scores = [float(hit.reference_score) for hit in selected_hits]
+                        diagnostics = model.pra_diagnostics_by_layer()
+                        routing_latency = sum(
+                            float(value.get("routing_duration_seconds", 0.0))
+                            for value in diagnostics.values()
+                        )
+                        materialization_latency = sum(
+                            float(value.get("materialization_duration_seconds", 0.0))
+                            for value in diagnostics.values()
+                        )
+                        attention_latency = sum(
+                            float(value.get("memory_attention_duration_seconds", 0.0))
+                            for value in diagnostics.values()
+                        )
+                        transfer_bytes = sum(
+                            float(value.get("retrieved_kv_transfer_bytes", 0.0))
+                            for value in diagnostics.values()
+                        )
+                        row = item["sample"].metadata.get("row", {})
+                        per_example.append(
+                            {
+                                "example_id": str(item["id"]),
+                                "condition": condition,
+                                "loss": item_loss_sum / max(count, 1),
+                                "perplexity": perplexity(item_loss_sum / max(count, 1)),
+                                "token_accuracy": item_correct / max(count, 1),
+                                "target_tokens": count,
+                                "local_tokens": local_tokens,
+                                "displaced_tokens": displaced_tokens,
+                                "accessible_tokens": accessible_tokens,
+                                "retrieved_tokens": retrieved_tokens,
+                                "active_tokens": local_tokens + retrieved_tokens,
+                                "active_fraction": (local_tokens + retrieved_tokens)
+                                / max(accessible_tokens, 1),
+                                "num_references": len(own_references),
+                                "num_chunks": sum(
+                                    len(entry.layer_memory.get(0).chunks)
+                                    for entry in model.pra_cache.all_entries()
+                                    if entry.layer_memory.get(0) is not None
+                                ),
+                                "num_selected_chunks": len(
+                                    {hit.chunk_id for hit in selected_hits}
+                                ),
+                                "num_selected_references": len(selected_uris),
+                                "selected_reference_uris": selected_uris,
+                                "oracle_selected_reference_uris": target_uris,
+                                "routed_selected_chunk_ids": sorted(
+                                    {hit.chunk_id for hit in selected_hits}
+                                ),
+                                "selection_hit": bool(target_uri_set & selected_uri_set),
+                                "recall_at_k": len(target_uri_set & selected_uri_set)
+                                / max(len(target_uri_set), 1),
+                                "reference_top1": float(
+                                    bool(selected_uris and selected_uris[0] in target_uri_set)
+                                ),
+                                "routing_score_statistics": {
+                                    "count": len(routing_scores),
+                                    "min": min(routing_scores) if routing_scores else None,
+                                    "max": max(routing_scores) if routing_scores else None,
+                                    "mean": sum(routing_scores) / len(routing_scores)
+                                    if routing_scores
+                                    else None,
+                                    "reference_mean": sum(reference_scores) / len(reference_scores)
+                                    if reference_scores
+                                    else None,
+                                },
+                                "attention_latency": attention_latency,
+                                "routing_latency": routing_latency,
+                                "kv_materialization_latency": materialization_latency,
+                                "example_latency": time.perf_counter() - item_start,
+                                "kv_transfer_bytes": transfer_bytes,
+                                "peak_cuda_memory": (
+                                    float(torch.cuda.max_memory_allocated(device))
+                                    if str(device).startswith("cuda")
+                                    and torch.cuda.is_available()
+                                    else 0.0
+                                ),
+                                "fixed_target_id": row.get("fixed_target_id"),
+                            }
+                        )
                     reference_index += 1
     finally:
         model.cfg.detail_materialization = previous_materialization
@@ -722,7 +853,7 @@ def evaluate_reference_ablation(
         model.train()
     elapsed = max(time.perf_counter() - start, 1e-9)
     loss = loss_sum / max(token_count, 1)
-    return {
+    result = {
         "condition": condition,
         "loss": loss,
         "perplexity": perplexity(loss),
@@ -733,22 +864,24 @@ def evaluate_reference_ablation(
         "ablation": condition,
         "memory_transport": model.cfg.memory_transport,
     }
+    if collect_per_example:
+        result["per_example"] = per_example
+    return result
 
 
 def native_kv_gap_metrics(results: list[dict]) -> dict[str, float]:
     """Compute the preregistered native-KV quality gaps from condition results."""
+    from .native_metrics import derive_native_kv_metrics
+
     losses = {str(result["condition"]): float(result["loss"]) for result in results}
-    required = {"sa_full", "sa_tail", "native_all", "native_oracle", "native_shuffled"}
-    missing = sorted(required.difference(losses))
-    if missing:
-        raise ValueError(f"Missing native-KV conditions: {', '.join(missing)}")
-    return {
-        "transport_gap": losses["native_all"] - losses["sa_full"],
-        "sparse_gap": losses["native_oracle"] - losses["native_all"],
-        "memory_benefit": losses["sa_tail"] - losses["native_oracle"],
-        "content_causality": losses["native_shuffled"] - losses["native_oracle"],
-        "dependency_gain": losses["sa_tail"] - losses["sa_full"],
+    aliases = {
+        "valid": "native_routed",
+        "native_disabled": "native_disabled",
     }
+    for source, target in aliases.items():
+        if source in losses:
+            losses[target] = losses[source]
+    return derive_native_kv_metrics(losses)
 
 
 def _pra_checkpoint_extra(

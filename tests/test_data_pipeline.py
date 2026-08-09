@@ -198,6 +198,94 @@ def test_synthetic_native_kv_partitions_preserve_source_tail_target_and_evidence
     assert len(set(snapshots)) == 1
 
 
+def test_hotpotqa_adapter_balances_answers_and_preserves_evidence_partitions(tmp_path):
+    from data.datasets import HotpotQANativeKVFixedTargetDataset
+    from data.native_kv_benchmarks import (
+        hotpotqa_native_kv_examples,
+        write_native_kv_benchmark,
+    )
+
+    distractor = " ".join(f"distractor{index}" for index in range(150))
+    rows = []
+    for index, answer in enumerate(("yes", "yes", "no", "no")):
+        rows.append(
+            {
+                "id": str(index),
+                "question": f"Is statement {index} supported?",
+                "answer": answer,
+                "type": "comparison",
+                "level": "easy",
+                "supporting_facts": {"title": ["Evidence"], "sent_id": [0]},
+                "context": {
+                    "title": ["Evidence", "Distractor"],
+                    "sentences": [
+                        ["The record directly supports the claim."],
+                        [distractor],
+                    ],
+                },
+            }
+        )
+    examples = hotpotqa_native_kv_examples(rows, max_examples=4, seed=7)
+    assert len(examples) == 4
+    assert [example.answer for example in examples].count("yes") == 2
+    assert [example.answer for example in examples].count("no") == 2
+
+    snapshots = []
+    for split_count in (2, 3, 5, 8, 16, 32, 64):
+        root = tmp_path / f"hotpot-{split_count}"
+        write_native_kv_benchmark(
+            root,
+            stage=HotpotQANativeKVFixedTargetDataset.stage,
+            dataset_name="hotpotqa",
+            split_count=split_count,
+            examples=examples,
+            generation_version="test",
+        )
+        sample = HotpotQANativeKVFixedTargetDataset(root)[0]
+        row = sample.metadata["row"]
+        snapshots.append(
+            (row["source_text"], sample.question, sample.answer, row["fixed_target_id"])
+        )
+        assert len(sample.references) == split_count - 1
+        assert sample.target_reference_ids
+        assert " ".join(ref.metadata["text"] for ref in sample.references) == row["source_text"]
+
+    assert len(set(snapshots)) == 1
+
+
+def test_qasper_adapter_uses_yes_no_evidence_and_balances_answers():
+    from data.native_kv_benchmarks import qasper_native_kv_examples
+
+    papers = {}
+    for index, value in enumerate((True, True, False, False)):
+        papers[str(index)] = {
+            "title": f"Paper {index}",
+            "abstract": " ".join(f"abstract{word}" for word in range(90)),
+            "full_text": [],
+            "qas": [
+                {
+                    "question": f"Question {index}?",
+                    "question_id": f"q{index}",
+                    "answers": [
+                        {
+                            "answer": {
+                                "yes_no": value,
+                                "evidence": ["The annotated evidence supports this response."],
+                            }
+                        }
+                    ],
+                }
+            ],
+        }
+    examples = qasper_native_kv_examples(papers, max_examples=4, seed=11)
+    assert len(examples) == 4
+    assert [example.answer for example in examples].count("yes") == 2
+    assert [example.answer for example in examples].count("no") == 2
+    assert all(len(example.source_units) == 63 for example in examples)
+    assert all(sum(unit.is_evidence for unit in example.source_units) == 2 for example in examples)
+    assert all(example.metadata["original_question"].startswith("Question") for example in examples)
+
+
 def test_training_loop_uses_dataloader(tmp_path):
     dm = PRADataModule("stage0_synthetic_memory", "data", max_examples=2, batch_size=1, max_seq_len=64).load()
     cfg = PRAConfig(

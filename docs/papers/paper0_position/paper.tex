@@ -35,7 +35,7 @@
 \maketitle
 
 \begin{abstract}
-Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context in a largely flat and eager form. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse approximation to full long-context self-attention. Lightweight references index historical token K/V produced by the model's native layer projections; routing gists choose which original K/V becomes active; and selected memory is concatenated with local K/V under one shared softmax and the existing output projection. Canonical PRA therefore requires no separate cross-attention branch and no reference-specific trainable transport parameters. References may name external objects, prior conversation, or an implicit displaced prompt head, so PRA is not synonymous with RAG. We distinguish naming from materialization, routing from transport, and historical K/V reuse from independent chunk re-encoding. Exact equivalence tests and a five-seed fixed-source synthetic study provide the first native evidence: oracle memory recovers a causally necessary random value with 100\% accuracy through 32 splits while the tail-only and shuffled controls remain near chance. Performance drops under 64-way fragmentation, all-memory composition, and unsupervised routing. A legacy cross-attention mode remains useful as an adapted transport and supplies ordinary-language compatibility and preservation results, but not causal retrieval. Natural-language native quality and the efficiency frontier remain to be measured. The program is falsifiable by quality per active K/V token, latency, transfer byte, and memory byte relative to full self-attention.
+Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context in a largely flat and eager form. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse approximation to full long-context self-attention. Lightweight references index historical token K/V produced by the model's native layer projections; routing gists choose which original K/V becomes active; and selected memory is concatenated with local K/V under one shared softmax and the existing output projection. Canonical PRA therefore requires no separate cross-attention branch and no reference-specific trainable transport parameters. References may name external objects, prior conversation, or an implicit displaced prompt head, so PRA is not synonymous with RAG. We distinguish naming from materialization, routing from transport, and historical K/V reuse from independent chunk re-encoding. Exact equivalence tests and a five-seed fixed-source synthetic study provide the first native evidence: oracle memory recovers a causally necessary random value with 100\% accuracy through 32 splits while the tail-only and shuffled controls remain near chance. A five-seed HotpotQA-derived natural-text probe then recovers 99.6\% of dense-context benefit at split 32 while activating 9.2\% of token K/V; routed recovery is 63.4\%, localizing the larger error to selection. Both probes degrade under 64-way fragmentation. A legacy cross-attention mode remains useful as an adapted transport and supplies ordinary-language compatibility and preservation results, but not causal retrieval. Unrestricted natural-language QA and production efficiency remain to be measured. The program is falsifiable by recovered context benefit per active K/V token, latency, transfer byte, and memory byte relative to full self-attention.
 \end{abstract}
 
 \section{Introduction}
@@ -361,6 +361,23 @@ but the logical boundaries remain the same.
 Selecting a URI and transporting its representation into a model are different operations. Selection may use lexical retrieval, vector similarity, explicit handle positions, learned gates, uncertainty, or an oracle. Canonical transport uses native layer K/V; prompt concatenation, cross-attention, and adapters are comparison transports. An experiment that changes both at once cannot determine whether a gain comes from finding better evidence or from presenting the same evidence through a better neural interface.
 
 PRA evaluations should first bypass selection: restoring all historical native K/V must match full self-attention when positions and masks are equivalent. Oracle sparse selection then measures the cost of omitting K/V, and only afterward should routed, shuffled, and learned selection be evaluated. Cross-attention remains a separate adapted-transport comparison.
+
+This sequence supports a quantitative error decomposition. The gap from full
+SelfAttention to native all-memory measures transport, partition, and position cost; the
+gap from all-memory to sparse oracle measures sparsification cost; and the gap from oracle
+to routed memory measures selection cost. For condition $c$, Recovered Context Benefit
+is
+\begin{equation}
+\mathrm{RCB}_c =
+\frac{L_{\rm tail}-L_c}{L_{\rm tail}-L_{\rm full}}.
+\end{equation}
+RCB asks how much of the predictive advantage of dense context is recovered over a local
+tail. It is undefined when dense context offers negligible advantage and is not clipped
+when memory is harmful or outperforms the dense baseline. The companion systems quantity
+is active token-K/V fraction,
+$(T_{\rm local}+T_{\rm retrieved})/(T_{\rm local}+T_{\rm displaced})$; routing gists are
+reported separately. The scaling thesis is supported only if RCB remains high while this
+active fraction falls, not merely when a PRA loss is lower than an unrelated baseline.
 
 The same separation applies inside selection. Reference ranking answers which addressable objects remain candidates; chunk ranking answers which portions of those objects are materialized. Independent budgets are necessary to prevent a prolific reference from consuming every chunk slot. Reported cache size, selected gist count, and transported token count are different quantities and should never be used interchangeably.
 
@@ -714,6 +731,31 @@ A subsequent five-seed synthetic experiment isolates native transport from routi
 Oracle native memory remains 100\% accurate from 2 through 32 splits. Its losses at 3, 5, 8, 16, and 32 splits are 0.0624, 0.0653, 0.0711, 0.0900, and 0.1194, compared with shuffled losses 2.7645, 2.6853, 2.5565, 2.4730, and 2.7038. Content-causality gaps therefore remain between 2.38 and 2.70 loss units. This demonstrates that weight-preserving native transport can recover causally required content when given the correct reference, without a learned memory projection or PRA fine-tuning.
 
 The negative controls remain equally important. Oracle accuracy falls to 70.6\% at 64 splits. Native-all accuracy falls to 71.9\% at split 3, 59.1\% at split 5, and approximately chance by split 16; unsupervised routing is also near chance at fine partitions. Independent reference encoding restarts positions and does not reproduce a causally encoded full prefix, so practical native-all need not match the exact historical-K/V reinsertion identity. The result supports sparse oracle transport under moderate fragmentation. It does not yet support partition-invariant cache construction, semantic routing, natural-language QA, or end-to-end efficiency.
+
+\subsection{Natural-Text Transport Gate}
+
+A five-seed HotpotQA-derived probe replaces synthetic distractors with supporting-fact and
+distractor text while retaining a controlled \texttt{AnswerCode yes|no} anchor. This is
+not a HotpotQA benchmark score: the original question and evidence remain in metadata,
+but the local target isolates transport from the language competence of a tiny
+from-scratch decoder. Training and validation examples are disjoint, and the same 63
+source units and target are repartitioned across all split counts.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/native_kv_hotpotqa.pdf}
+\caption{HotpotQA-derived transport probe over five paired seeds. Oracle native K/V preserves nearly all dense-context benefit through split 32 with a falling active fraction, while routed selection leaves a substantial error gap. Split 64 exposes a fragmentation limit.}
+\label{fig:position-native-kv-hotpot}
+\end{figure}
+
+Dense SelfAttention loss is 0.0027 versus 1.7038 for the tail. At split 32, oracle loss
+is 0.0060, oracle RCB is 0.996, and active token-K/V fraction is 0.092. Routed loss is
+0.6812 and routed RCB is 0.634, so selection rather than sparse oracle transport is the
+dominant remaining limitation. Shuffled loss is 2.2251, yielding a 2.219 oracle
+content-causality gap. At split 64, mean oracle RCB falls to 0.546 with large seed
+variance. The result supports the narrower scaling claim that active K/V can fall while
+benefit is retained over a measured range; it rejects an unrestricted fragmentation
+claim and does not establish genuine multi-hop QA.
 
 \section{Evaluation Doctrine}
 
