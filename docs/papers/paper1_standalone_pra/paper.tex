@@ -937,6 +937,35 @@ are 0.196, 0.100, and 0.051. Retrieved physical K/V remains about 11--13 tokens.
 the desired sparsity law for a fixed retrieval budget: accessible context grows roughly
 fourfold while active memory remains nearly constant.
 
+Table~\ref{tab:pra-kv-savings} states the same result as avoided K/V. The uniform estimate
+assumes equal-length chunks and complete token-level materialization of the eight selected
+chunks. The measured reference-only range instead divides retrieved physical K/V by all
+unique source K/V, so it includes variation in BPE chunk length. The total working-set
+range additionally retains the fixed local prompt K/V. Under the experiment's convention,
+a nominal $N$-way split contains $N-1$ addressable references and one local tail. If all
+$N$ chunks were addressable, the corresponding uniform savings would be 75.0\%, 87.5\%,
+93.75\%, and 96.88\% for 32, 64, 128, and 256 chunks.
+
+\begin{table}[htbp]
+\centering
+\caption{K/V materialization savings at routed $k=8$. The 32-way row is an equal-chunk
+estimate; measured ranges come from the five-seed 64/128/256 scale runs across both
+datasets and model tiers. ``Total'' includes local prompt K/V.}
+\label{tab:pra-kv-savings}
+\small
+\begin{tabular}{rrrrr}
+\toprule
+Nominal splits & References & Uniform reference & Measured reference & Measured total \\
+ & & K/V avoided & K/V avoided & K/V avoided \\
+\midrule
+32  & 31  & 74.2\% & ---          & --- \\
+64  & 63  & 87.3\% & 87.4--88.6\% & 80.4--82.1\% \\
+128 & 127 & 93.7\% & 93.9--94.5\% & 90.0--91.1\% \\
+256 & 255 & 96.9\% & 96.9--97.4\% & 94.9--95.6\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=.92\textwidth]{../shared/figures/pra_scale_sparsity.pdf}
@@ -974,6 +1003,14 @@ latency grows approximately linearly with candidate count: at 256 units it is 50
 for tiny and 840--1,026 ms for small. The experiment therefore establishes a favorable
 K/V sparsity curve but not an end-to-end speedup. Batched/vectorized gist search, an
 external index, and cache reuse are necessary systems work.
+
+These percentages are active attention working-set and potential transfer savings, not
+yet reductions in total cache storage. The current in-memory prototype retains native K/V
+for every encoded chunk; if that complete cache remains on the GPU, its resident allocation
+does not shrink merely because attention gathers eight chunks. Real device-memory savings
+require an off-device or tiered backing cache, selective transfer, or eviction. With a fully
+resident cache, the demonstrated savings apply to gathered attention operands, score
+workspace, and memory-attention computation rather than to the complete stored cache.
 
 \begin{figure}[htbp]
 \centering
