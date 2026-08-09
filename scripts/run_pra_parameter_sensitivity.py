@@ -115,12 +115,9 @@ def _load_checkpoint(dataset: str, seed: int) -> dict:
     return torch.load(checkpoint_path, map_location="cpu")
 
 
-def _checkpoint_tokenizer(dataset: str, seeds: list[int]):
-    checkpoints = [_load_checkpoint(dataset, seed) for seed in seeds]
-    tokenizer_jsons = {checkpoint.get("tokenizer_json") for checkpoint in checkpoints}
-    if len(tokenizer_jsons) != 1:
-        raise ValueError(f"{dataset} seed checkpoints do not share one tokenizer")
-    checkpoint = checkpoints[0]
+def _checkpoint_tokenizer(dataset: str, seed: int):
+    """Restore the exact per-seed tokenizer paired with a historical checkpoint."""
+    checkpoint = _load_checkpoint(dataset, seed)
     if checkpoint.get("tokenizer_json"):
         return BPETokenizer.from_json(checkpoint["tokenizer_json"])
     return PRATokenizer.from_vocab(checkpoint["stoi"])
@@ -378,15 +375,15 @@ def run(args: argparse.Namespace) -> Path:
     for dataset in args.datasets:
         settings = dict(DATASET_DEFAULTS[dataset])
         _generated_tokenizer, _training_module, modules = DATASET_PREPARERS[dataset](settings)
-        tokenizer = _checkpoint_tokenizer(dataset, args.seeds)
-        for datamodule in modules.values():
-            datamodule.tokenizer = tokenizer
-            datamodule.collator = AnswerTokenCollator(
-                tokenizer, max_seq_len=int(settings["max_seq_len"])
-            )
         modules = {split: modules[split] for split in args.splits}
         _assert_fixed_target_invariants(modules)
         for seed in args.seeds:
+            tokenizer = _checkpoint_tokenizer(dataset, seed)
+            for datamodule in modules.values():
+                datamodule.tokenizer = tokenizer
+                datamodule.collator = AnswerTokenCollator(
+                    tokenizer, max_seq_len=int(settings["max_seq_len"])
+                )
             source, checkpoint_path = _load_source(dataset, seed, tokenizer, settings, device)
             configs_by_encoding = defaultdict(list)
             for split_count in args.splits:
