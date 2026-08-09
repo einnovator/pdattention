@@ -212,6 +212,26 @@ class _ReferenceHit:
     gist_count: int
 
 
+@dataclass(frozen=True)
+class _TensorizedChunkIndex:
+    """Packed, normalized routing gists and ownership maps for one layer/device.
+
+    ``gists`` is ``[C,G,D]`` for C chunks, at most G gists per chunk, and
+    routing width D. ``chunk_indices_by_reference`` maps ``[R,C_r]`` padded
+    reference slots back to the C chunk rows. The tensors let one query batch
+    score every candidate and apply exact top-k selection without per-candidate
+    Python/CUDA synchronization.
+    """
+
+    records: tuple[tuple[PRACacheEntry, ReferenceChunkMemory], ...]
+    gists: torch.Tensor
+    gist_mask: torch.Tensor
+    reference_entries: tuple[PRACacheEntry, ...]
+    chunk_indices_by_reference: torch.Tensor
+    chunk_mask_by_reference: torch.Tensor
+    chunk_indices_by_reference_cpu: tuple[tuple[int, ...], ...]
+
+
 class CacheBuildState(str, Enum):
     """Visibility state for atomically constructed recursive cache entries."""
 
@@ -305,6 +325,11 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         self._states: dict[str, CacheBuildState] = {}
         self._failures: dict[str, str] = {}
         self._last_rankings_by_layer: dict[int, list[list[dict]]] = {}
+        self._tensorized_indexes: dict[tuple[int, str, torch.dtype], _TensorizedChunkIndex] = {}
+
+    def invalidate_routing_indexes(self) -> None:
+        """Drop packed gist tensors after cache content or pooling state changes."""
+        self._tensorized_indexes.clear()
 
     @property
     def entries(self) -> dict[str, PRACacheEntry]:
@@ -313,11 +338,13 @@ class PRASimpleMemoryCache(PRAMemoryCache):
 
     def begin_build(self, uri: str) -> None:
         """Mark a URI as under construction to detect recursive re-entry."""
+        self.invalidate_routing_indexes()
         self._states[uri] = CacheBuildState.BUILDING
 
     def mark_failed(self, uri: str, error: Exception | str) -> None:
         """Hide a failed payload while retaining a diagnostic message."""
         self._entries.pop(uri, None)
+        self.invalidate_routing_indexes()
         self._states[uri] = CacheBuildState.FAILED
         self._failures[uri] = str(error)
 
@@ -332,6 +359,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
     def put(self, entry: PRACacheEntry) -> None:
         """Atomically publish a completed entry as routable memory."""
         self._entries[entry.uri] = entry
+        self.invalidate_routing_indexes()
         self._states[entry.uri] = CacheBuildState.READY
         self._failures.pop(entry.uri, None)
 
@@ -353,6 +381,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         self._states.clear()
         self._failures.clear()
         self._last_rankings_by_layer.clear()
+        self.invalidate_routing_indexes()
 
     def is_empty(self) -> bool:
         """Return whether this row-local namespace has no ready entries."""
@@ -361,6 +390,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
     def invalidate(self, uri: str) -> None:
         """Remove a stale URI before rebuilding it with new fingerprints."""
         self._entries.pop(uri, None)
+        self.invalidate_routing_indexes()
         self._states.pop(uri, None)
         self._failures.pop(uri, None)
 
@@ -384,6 +414,245 @@ class PRASimpleMemoryCache(PRAMemoryCache):
     def last_rankings(self, layer_id: int) -> list[list[dict]]:
         """Return complete candidate rankings from the latest search at one layer."""
         return self._last_rankings_by_layer.get(layer_id, [])
+
+    def _tensorized_chunk_index(
+        self,
+        layer_id: int,
+        query: torch.Tensor,
+        *,
+        reuse: bool,
+    ) -> _TensorizedChunkIndex | None:
+        """Pack one layer's variable gist sets for exact batched cosine search."""
+        key = (layer_id, str(query.device), query.dtype)
+        if reuse and key in self._tensorized_indexes:
+            return self._tensorized_indexes[key]
+
+        records: list[tuple[PRACacheEntry, ReferenceChunkMemory]] = []
+        for entry in self.all_entries():
+            memory = entry.layer_memory.get(layer_id)
+            if memory is not None:
+                records.extend((entry, chunk) for chunk in memory.chunks)
+        if not records:
+            return None
+
+        max_gists = max(int(chunk.routing_gist.k.shape[0]) for _, chunk in records)
+        gist_sets = [
+            chunk.routing_gist.k.to(query.device, query.dtype) for _, chunk in records
+        ]
+        counts = [int(gists.shape[0]) for gists in gist_sets]
+        if max_gists == 1:
+            # The common path needs one stack, rather than one padding kernel per chunk.
+            packed_gists = torch.stack([gists[0] for gists in gist_sets]).unsqueeze(1)
+            gist_mask = torch.ones(
+                (len(records), 1), dtype=torch.bool, device=query.device
+            )
+        else:
+            # Pack variable gist sets with one concatenation and one indexed copy.
+            flat = torch.cat(gist_sets, dim=0)
+            owner = torch.repeat_interleave(
+                torch.arange(len(records), device=query.device),
+                torch.tensor(counts, device=query.device),
+            )
+            slot = torch.cat(
+                [torch.arange(count, device=query.device) for count in counts]
+            )
+            packed_gists = flat.new_zeros((len(records), max_gists, flat.shape[-1]))
+            packed_gists[owner, slot] = flat
+            gist_mask = (
+                torch.arange(max_gists, device=query.device).unsqueeze(0)
+                < torch.tensor(counts, device=query.device).unsqueeze(1)
+            )
+        packed_gists = F.normalize(packed_gists, dim=-1, eps=1e-12)
+
+        entry_by_uri = {entry.uri: entry for entry, _ in records}
+        reference_entries = tuple(entry_by_uri[uri] for uri in sorted(entry_by_uri))
+        indices_by_uri: dict[str, list[int]] = defaultdict(list)
+        for chunk_index, (entry, _) in enumerate(records):
+            indices_by_uri[entry.uri].append(chunk_index)
+        max_chunks = max(len(indices_by_uri[entry.uri]) for entry in reference_entries)
+        chunk_rows = []
+        chunk_masks = []
+        for entry in reference_entries:
+            indices = indices_by_uri[entry.uri]
+            padding = max_chunks - len(indices)
+            chunk_rows.append(indices + [0] * padding)
+            chunk_masks.append([True] * len(indices) + [False] * padding)
+
+        index = _TensorizedChunkIndex(
+            records=tuple(records),
+            gists=packed_gists,
+            gist_mask=gist_mask,
+            reference_entries=reference_entries,
+            chunk_indices_by_reference=torch.tensor(
+                chunk_rows, dtype=torch.long, device=query.device
+            ),
+            chunk_mask_by_reference=torch.tensor(
+                chunk_masks, dtype=torch.bool, device=query.device
+            ),
+            chunk_indices_by_reference_cpu=tuple(
+                tuple(indices_by_uri[entry.uri]) for entry in reference_entries
+            ),
+        )
+        if reuse:
+            self._tensorized_indexes[key] = index
+        return index
+
+    @staticmethod
+    def _reduce_gist_scores(
+        query: torch.Tensor,
+        index: _TensorizedChunkIndex,
+        aggregation: str,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return aggregate, winning-index, and winning-score tensors for all chunks."""
+        normalized_query = F.normalize(query, dim=-1, eps=1e-12)
+        if index.gists.shape[1] == 1:
+            scores = (normalized_query @ index.gists[:, 0, :].transpose(0, 1)).unsqueeze(-1)
+        else:
+            scores = torch.einsum("bd,cgd->bcg", normalized_query, index.gists)
+        valid = index.gist_mask.unsqueeze(0)
+        masked = scores.masked_fill(~valid, float("-inf"))
+        winning_scores, winning_indices = masked.max(dim=-1)
+        if aggregation == "max":
+            aggregate = winning_scores
+        elif aggregation == "mean":
+            aggregate = scores.masked_fill(~valid, 0.0).sum(dim=-1)
+            aggregate = aggregate / valid.sum(dim=-1).clamp_min(1)
+        elif aggregation == "logsumexp":
+            aggregate = torch.logsumexp(masked, dim=-1)
+        else:
+            raise ValueError(f"Unsupported gist score aggregation: {aggregation}")
+        return aggregate, winning_indices, winning_scores
+
+    @staticmethod
+    def _reference_score_tensor(
+        chunk_scores: torch.Tensor,
+        index: _TensorizedChunkIndex,
+        aggregation: str,
+    ) -> torch.Tensor:
+        """Aggregate ``[B,C]`` chunk scores into URI scores ``[B,R]``."""
+        grouped = chunk_scores[:, index.chunk_indices_by_reference]
+        valid = index.chunk_mask_by_reference.unsqueeze(0)
+        if aggregation == "max":
+            return grouped.masked_fill(~valid, float("-inf")).max(dim=-1).values
+        if aggregation == "mean":
+            total = grouped.masked_fill(~valid, 0.0).sum(dim=-1)
+            return total / valid.sum(dim=-1).clamp_min(1)
+        if aggregation == "logsumexp":
+            return torch.logsumexp(grouped.masked_fill(~valid, float("-inf")), dim=-1)
+        raise ValueError(f"Unsupported reference score aggregation: {aggregation}")
+
+    def _score_chunks_tensorized(
+        self,
+        query: torch.Tensor,
+        layer_id: int,
+        config,
+    ) -> tuple[
+        list[list[_ChunkHit]],
+        _TensorizedChunkIndex | None,
+        torch.Tensor | None,
+        torch.Tensor | None,
+    ]:
+        """Score all chunk gists in a few kernels and synchronize diagnostics once."""
+        index = self._tensorized_chunk_index(
+            layer_id,
+            query,
+            reuse=config.cache_build_mode == "detached",
+        )
+        if index is None:
+            return ([[] for _ in range(query.shape[0])], None, None, None)
+        aggregate, winners, winning_scores = self._reduce_gist_scores(
+            query, index, config.gist_score_aggregation
+        )
+        diagnostics = torch.stack(
+            (aggregate, winning_scores, winners.to(aggregate.dtype)), dim=-1
+        ).detach().cpu()
+        rows = []
+        for row in diagnostics:
+            hits = []
+            for chunk_index, (entry, chunk) in enumerate(index.records):
+                hits.append(
+                    _ChunkHit(
+                        entry=entry,
+                        chunk=chunk,
+                        score=float(row[chunk_index, 0]),
+                        routing_source="content",
+                        winning_gist_index=int(row[chunk_index, 2]),
+                        winning_gist_score=float(row[chunk_index, 1]),
+                        gist_count=int(chunk.routing_gist.k.shape[0]),
+                    )
+                )
+            rows.append(hits)
+        return rows, index, aggregate, self._reference_score_tensor(
+            aggregate, index, config.reference_score_aggregation
+        )
+
+    def _hierarchical_tensorized(
+        self,
+        hits_by_batch: list[list[_ChunkHit]],
+        index: _TensorizedChunkIndex,
+        chunk_scores: torch.Tensor,
+        reference_scores: torch.Tensor,
+        layer_id: int,
+        config,
+    ) -> list[list[SelectedChunk]]:
+        """Apply exact GPU top-k URI and per-URI chunk selection to packed scores."""
+        reference_k = min(config.top_k_references, len(index.reference_entries))
+        if reference_k == 0:
+            return [[] for _ in hits_by_batch]
+        _, reference_indices = torch.topk(
+            reference_scores, k=reference_k, dim=-1, largest=True, sorted=True
+        )
+
+        grouped_scores = chunk_scores[:, index.chunk_indices_by_reference]
+        grouped_scores = grouped_scores.masked_fill(
+            ~index.chunk_mask_by_reference.unsqueeze(0), float("-inf")
+        )
+        chunk_k = min(
+            config.top_k_chunks_per_reference,
+            int(index.chunk_indices_by_reference.shape[1]),
+        )
+        _, chunk_slots = torch.topk(
+            grouped_scores, k=chunk_k, dim=-1, largest=True, sorted=True
+        )
+
+        reference_indices_cpu = reference_indices.detach().cpu().tolist()
+        chunk_slots_cpu = chunk_slots.detach().cpu().tolist()
+        reference_scores_cpu = reference_scores.detach().cpu().tolist()
+        selected_by_batch = []
+        for batch_index, selected_reference_indices in enumerate(reference_indices_cpu):
+            selected_reference_indices.sort(
+                key=lambda ref_index: (
+                    -reference_scores_cpu[batch_index][ref_index],
+                    index.reference_entries[ref_index].uri,
+                )
+            )
+            selected = []
+            for reference_rank, ref_index in enumerate(selected_reference_indices, start=1):
+                source_indices = index.chunk_indices_by_reference_cpu[ref_index]
+                valid_count = len(source_indices)
+                selected_slots = chunk_slots_cpu[batch_index][ref_index][: min(chunk_k, valid_count)]
+                selected_chunk_indices = [
+                    source_indices[slot]
+                    for slot in selected_slots
+                ]
+                selected_chunk_indices.sort(
+                    key=lambda chunk_index: (
+                        -hits_by_batch[batch_index][chunk_index].score,
+                        hits_by_batch[batch_index][chunk_index].chunk.chunk_id,
+                    )
+                )
+                for chunk_rank, chunk_index in enumerate(selected_chunk_indices, start=1):
+                    selected.append(
+                        self._selected(
+                            hits_by_batch[batch_index][chunk_index],
+                            reference_scores_cpu[batch_index][ref_index],
+                            layer_id,
+                            reference_rank,
+                            chunk_rank,
+                        )
+                    )
+            selected_by_batch.append(selected)
+        return selected_by_batch
 
     @staticmethod
     def _serialize_rankings(
@@ -720,27 +989,72 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         if config.top_k_references == 0 or config.top_k_chunks_per_reference == 0:
             self._last_rankings_by_layer[layer_id] = [[] for _ in range(query.shape[0])]
             return [[] for _ in range(query.shape[0])]
+        retain_rankings = bool(
+            config.collect_routing_metrics or config.collect_rank_diagnostics
+        )
         selected_by_batch = []
         if config.search_strategy == "reference_first":
             rankings_by_batch = []
             for row_query in query:
                 selected_by_batch.append(self._reference_first(row_query, layer_id, config))
-                hits = self._score_chunks(row_query.unsqueeze(0), layer_id, config)[0]
-                reference_hits = self._score_references(row_query, layer_id, config)
-                rankings_by_batch.append(
-                    self._serialize_rankings(
-                        hits,
-                        config,
-                        reference_scores={hit.entry.uri: hit.score for hit in reference_hits},
+                if retain_rankings:
+                    hits = self._score_chunks(row_query.unsqueeze(0), layer_id, config)[0]
+                    reference_hits = self._score_references(row_query, layer_id, config)
+                    rankings_by_batch.append(
+                        self._serialize_rankings(
+                            hits,
+                            config,
+                            reference_scores={
+                                hit.entry.uri: hit.score for hit in reference_hits
+                            },
+                        )
                     )
-                )
+                else:
+                    rankings_by_batch.append([])
             self._last_rankings_by_layer[layer_id] = rankings_by_batch
             return selected_by_batch
-        # Hierarchical/global strategies score all cheap chunk gists before policy ranking.
-        hits_by_batch = self._score_chunks(query, layer_id, config)
+
+        # Summary-combination modes retain the scalar compatibility path for now;
+        # ordinary and multi-gist content routing uses the exact packed implementation.
+        use_tensorized = config.routing_backend == "tensorized" and not config.use_summary
+        tensorized_index = None
+        chunk_scores = None
+        reference_scores = None
+        if use_tensorized:
+            (
+                hits_by_batch,
+                tensorized_index,
+                chunk_scores,
+                reference_scores,
+            ) = self._score_chunks_tensorized(query, layer_id, config)
+        else:
+            hits_by_batch = self._score_chunks(query, layer_id, config)
+
+        if (
+            config.search_strategy == "hierarchical"
+            and tensorized_index is not None
+            and chunk_scores is not None
+            and reference_scores is not None
+        ):
+            selected_by_batch = self._hierarchical_tensorized(
+                hits_by_batch,
+                tensorized_index,
+                chunk_scores,
+                reference_scores,
+                layer_id,
+                config,
+            )
+            self._last_rankings_by_layer[layer_id] = (
+                [self._serialize_rankings(hits, config) for hits in hits_by_batch]
+                if retain_rankings
+                else [[] for _ in hits_by_batch]
+            )
+            return selected_by_batch
+
+        # Global routing shares vectorized scores but keeps its constrained policy loop.
         rankings_by_batch = []
         for hits in hits_by_batch:
-            rankings = self._serialize_rankings(hits, config)
+            rankings = self._serialize_rankings(hits, config) if retain_rankings else []
             if config.search_strategy == "hierarchical":
                 selected = self._hierarchical(hits, layer_id, config)
             elif config.search_strategy == "global_chunks":
@@ -823,6 +1137,13 @@ class PRABatchedMemoryCache(PRAMemoryCache):
         """Clear every owned row namespace."""
         for cache in self.row_caches:
             cache.clear()
+
+    def invalidate_routing_indexes(self) -> None:
+        """Invalidate packed routing tensors in every row-local namespace."""
+        for cache in self.row_caches:
+            invalidate = getattr(cache, "invalidate_routing_indexes", None)
+            if invalidate is not None:
+                invalidate()
 
     def is_empty(self) -> bool:
         """Return true only when every row-local namespace is empty."""

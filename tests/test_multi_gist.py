@@ -144,6 +144,37 @@ def test_chunk_routing_reports_the_winning_gist():
     assert hit.gist_count == 2
 
 
+@pytest.mark.parametrize("aggregation", ["max", "mean", "logsumexp"])
+def test_tensorized_multi_gist_routing_matches_legacy(aggregation):
+    cache = PRASimpleMemoryCache()
+    cache.put(_entry("A", _chunk("A", "A0", [[1, 0], [0, 1]], [[1, 0], [0, 1]])))
+    cache.put(
+        _entry(
+            "B",
+            _chunk("B", "B0", [[0.8, 0.6], [0.6, 0.8]], [[0, 1], [0, 1]]),
+        )
+    )
+    query = torch.tensor([[0.9, 0.1], [0.1, 0.9]])
+
+    legacy = cache.search(
+        query,
+        0,
+        _config(routing_backend="legacy", gist_score_aggregation=aggregation),
+    )
+    tensorized = cache.search(
+        query,
+        0,
+        _config(routing_backend="tensorized", gist_score_aggregation=aggregation),
+    )
+
+    assert [[hit.reference_uri for hit in row] for row in tensorized] == [
+        [hit.reference_uri for hit in row] for row in legacy
+    ]
+    assert [[hit.winning_gist_index for hit in row] for row in tensorized] == [
+        [hit.winning_gist_index for hit in row] for row in legacy
+    ]
+
+
 def test_reference_first_uses_cached_multi_gists_before_scoring_chunks(monkeypatch):
     cache = PRASimpleMemoryCache()
     entry_a = _entry(

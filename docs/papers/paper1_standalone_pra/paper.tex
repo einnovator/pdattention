@@ -35,7 +35,7 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA), recast as an inference-time sparse approximation to full native self-attention. A trained SelfAttention checkpoint can be converted by splitting its existing Q/K/V projection, with no newly trained transport module. Selected historical token K/V is concatenated with local K/V under one shared softmax and the existing output projection; routing gists act only as an index. Exact tests show that historical source K/V plus continued tail positions reproduce full causal-model tail logits, and that converted PRA logits match the source model when memory is disabled. Earlier five-seed synthetic, HotpotQA-derived, and QASPER-derived probes establish content-causal sparse transport through 32 independently encoded partitions but degrade at 64. Controlled sensitivity experiments identify that decline as contextual fragmentation: encoding the history once and slicing its native K/V restores native-all RCB to 1.000 and annotated-oracle RCB to 0.998--0.999 at 256 addressable units. With eight selected references, a 2.2--2.4M-parameter backbone obtains routed RCB 1.000 on the HotpotQA-derived probe and 0.908 on QASPER-derived text at 256 units while activating 4.7--5.1\% of accessible K/V; a 6.6--6.9M-parameter backbone raises both to 1.000 at 4.4--4.9\%. These are controlled answer-code transport probes, not unrestricted QA. The unoptimized router costs 0.5--1.0 seconds per example at 256 units, so end-to-end production efficiency remains unclaimed.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA), recast as an inference-time sparse approximation to full native self-attention. A trained SelfAttention checkpoint can be converted by splitting its existing Q/K/V projection, with no newly trained transport module. Selected historical token K/V is concatenated with local K/V under one shared softmax and the existing output projection; routing gists act only as an index. Exact tests show that historical source K/V plus continued tail positions reproduce full causal-model tail logits, and that converted PRA logits match the source model when memory is disabled. Earlier five-seed synthetic, HotpotQA-derived, and QASPER-derived probes establish content-causal sparse transport through 32 independently encoded partitions but degrade at 64. Controlled sensitivity experiments identify that decline as contextual fragmentation: encoding the history once and slicing its native K/V restores native-all RCB to 1.000 and annotated-oracle RCB to 0.998--0.999 at 256 addressable units. With eight selected references, a 2.2--2.4M-parameter backbone obtains routed RCB 1.000 on the HotpotQA-derived probe and 0.908 on QASPER-derived text at 256 units while activating 4.7--5.1\% of accessible K/V; a 6.6--6.9M-parameter backbone raises both to 1.000 at 4.4--4.9\%. These are controlled answer-code transport probes, not unrestricted QA. An exact packed router replaces candidate-wise Python/CUDA synchronization with batched scoring and \texttt{torch.topk}; over five seeds it reduces 256-way routing from 0.52--0.98 seconds to 27.7--55.5 milliseconds, a 16.47--19.38$\times$ speedup with zero loss delta. End-to-end production efficiency remains unclaimed because cache construction, residency, transfer, and fused attention are separate systems costs.
 \end{abstract}
 
 \section{Introduction}
@@ -1019,6 +1019,65 @@ workspace, and memory-attention computation rather than to the complete stored c
 \label{fig:pra-scale-cost}
 \end{figure}
 
+\subsection{Exact Tensorized Routing Speed}
+
+The exhaustive result above isolates a software bottleneck rather than a required PRA
+operation.  The legacy path invokes one small cosine operation per chunk, converts each
+CUDA result to a Python scalar, and serializes every ranking before applying top-$k$.  The
+new exact path packs normalized layer gists as $[C,G,D]$, scores the query batch in one
+matrix operation (a matrix multiply when $G=1$ and an einsum otherwise), aggregates URI
+scores on device, and applies \texttt{torch.topk} independently to references and chunks.
+It retains the legacy implementation as a parity control.  Cache mutation invalidates the
+packed index; detached persistent caches can reuse it.  Summary-combination and
+reference-first policies currently retain the scalar fallback.
+
+We reran both backends on the same trained checkpoints, examples, native K/V, queries, and
+$k=8$ selection policy.  The benchmark covers 32 examples at every combination of two
+datasets, two model tiers, four split counts, and five seeds: 2,560 routed examples per
+backend.  Both kernels are warmed on the same example, backend order alternates by seed,
+and CUDA is synchronized at phase boundaries only in timing mode.  Reported routing time
+includes per-example packed-index construction but excludes resolver, reference encoding,
+materialization, and memory attention.  Complete-rank serialization is disabled; selected
+hits and candidate counts remain available.
+
+\begin{table}[htbp]
+\centering
+\caption{Legacy scalar versus exact tensorized routing latency in ms/example. Values are
+five-seed means over 32 examples per seed. Speedup is computed within seed before averaging;
+every paired backend loss is identical to recorded precision.}
+\label{tab:pra-routing-speed}
+\small
+\begin{tabular}{llrrr|rrr}
+\toprule
+& & \multicolumn{3}{c|}{32 splits} & \multicolumn{3}{c}{256 splits} \\
+Dataset & Tier & Legacy & Tensor & Speedup & Legacy & Tensor & Speedup \\
+\midrule
+HotpotQA-derived & tiny  & 65.0  & 9.5  & 6.86$\times$ & 542.1 & 28.0 & 19.38$\times$ \\
+HotpotQA-derived & small & 142.0 & 21.7 & 6.56$\times$ & 907.9 & 55.5 & 16.47$\times$ \\
+QASPER-derived   & tiny  & 68.4  & 10.4 & 6.63$\times$ & 522.3 & 27.7 & 18.97$\times$ \\
+QASPER-derived   & small & 138.9 & 20.1 & 6.95$\times$ & 980.6 & 53.2 & 18.51$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/pra_routing_speed.pdf}
+\caption{Exact routing latency and paired speedup at 32/64/128/256 nominal splits. The
+tensorized path still scores every candidate, but replaces hundreds of scalar launches and
+synchronizations with packed kernels; its advantage therefore grows with addressability.}
+\label{fig:pra-routing-speed}
+\end{figure}
+
+At 256 splits, tensorized routing takes 27.7--28.0 ms for tiny and 53.2--55.5 ms for small,
+versus 522--542 ms and 908--981 ms for legacy routing.  The speedup grows from
+6.56--6.95$\times$ at 32 splits to 16.47--19.38$\times$ at 256.  This removes the dominant
+prototype artifact identified in Figure~\ref{fig:pra-scale-cost}, but it is not an
+end-to-end serving result.  The benchmark constructs an index for each example; a shared
+cache can amortize that work, whereas much larger collections may require an approximate
+index.  Conversely, resolver and encoding time, a fully resident K/V cache, Python
+materialization, and unfused variable-length attention remain outside this routing claim.
+
 \section{Historical Version-1 Results}
 
 Every result from this section through the corrected five-seed reference adaptation
@@ -1192,118 +1251,321 @@ Recursive expansion can amplify work. The standalone builder now bounds depth, c
 
 \section{Limitations}
 
-The current prototype and follow-up have important limitations. Native-KV transport now has controlled quality, active-K/V, transfer-byte, and prototype-timing sweeps, but it does not yet have optimized-kernel or production-hardware evaluation. Historical slicing has been compared with independent and block encoding under learned absolute positions, not with pretrained RoPE, grouped-query attention, or persistent generation caches. The HotpotQA- and QASPER-derived tasks inject a fixed answer code and therefore test transport over natural text rather than unrestricted multi-hop or scientific-document QA. Their anchor makes one contextualized answer URI sufficient even when annotated evidence coverage is incomplete, so near-perfect loss does not establish complete semantic retrieval. The corrected-router cross-attention smoke matrix reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans. The weak historical counterfactual deltas leave open how much of the adapted cross-attention gain is content independent.
+The current prototype and follow-up have important limitations. Native-KV transport now has controlled quality, active-K/V, transfer-byte, and exact tensorized-routing sweeps, but it does not yet have an end-to-end production-runtime evaluation or a fused variable-length attention kernel. Historical slicing has been compared with independent and block encoding under learned absolute positions, not with pretrained RoPE, grouped-query attention, or persistent generation caches. The HotpotQA- and QASPER-derived tasks inject a fixed answer code and therefore test transport over natural text rather than unrestricted multi-hop or scientific-document QA. Their anchor makes one contextualized answer URI sufficient even when annotated evidence coverage is incomplete, so near-perfect loss does not establish complete semantic retrieval. The corrected-router cross-attention smoke matrix reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans. The weak historical counterfactual deltas leave open how much of the adapted cross-attention gain is content independent.
 
-The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-valid-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Most gist modes and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter now batches the prompt forward, but cache construction and routing still iterate over row-private entries. Multi-gist modes have a staged sensitivity screen but no learned-router comparison; the implicit prompt-head path has focused tests but no controlled quality or timing study. In particular, prompt-head encoding can relocate rather than remove computation, and generated-token rollover is absent. Summary modes, oracle chunks, recursion, persistent reuse, and dynamic bucketing remain unit- or smoke-tested rather than evaluated in a controlled training study. Two small from-scratch capacity tiers and answer-code probes cannot establish foundation-model scaling or efficiency behavior. No broad experimental superiority is claimed.
+The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-valid-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Most gist modes and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter batches the prompt forward and ordinary content routing scores candidates tensorially, but cache construction, selected-record assembly, summary routing, and reference-first routing still iterate over row-private entries. Multi-gist modes have a staged sensitivity screen but no learned-router comparison; the implicit prompt-head path has focused tests but no controlled quality or timing study. In particular, prompt-head encoding can relocate rather than remove computation, and generated-token rollover is absent. Summary modes, oracle chunks, recursion, persistent reuse, and dynamic bucketing remain unit- or smoke-tested rather than evaluated in a controlled training study. Two small from-scratch capacity tiers and answer-code probes cannot establish foundation-model scaling or efficiency behavior. No broad experimental superiority is claimed.
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Exact whole-model tests now cover historical source K/V and continued tail positions. The original synthetic and natural-text probes establish sparse causal transport through 32 independently encoded partitions; controlled fragmentation experiments show that their 64-way decline is primarily lost encoding context, not a hard addressability limit. Native historical slicing preserves dense transport through 256 units. At fixed $k=8$, active K/V falls to roughly 5\%; the tiny QASPER-derived router loses quality at 256, while a larger SA backbone restores it without PRA training. This establishes a mechanism and measured sparsity law, not unrestricted QA or production efficiency: annotated target coverage remains incomplete, the answer-code anchor simplifies selection, and exhaustive Python routing takes up to about one second per example. The immediate priorities are genuine QA targets with a capable pretrained backbone, indexed or trained routing, cache reuse, and end-to-end comparisons. Hugging Face integration must additionally preserve rotary positions, grouped-query caches, and layer-specific cache layouts.
+The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Exact whole-model tests cover historical source K/V and continued tail positions. The original synthetic and natural-text probes establish sparse causal transport through 32 independently encoded partitions; controlled fragmentation experiments show that their 64-way decline is primarily lost encoding context, not a hard addressability limit. Native historical slicing preserves dense transport through 256 units. At fixed $k=8$, active K/V falls to roughly 5\%; the tiny QASPER-derived router loses quality at 256, while a larger SA backbone restores it without PRA training. An exact tensorized router preserves every measured prediction while reducing 256-way selection from 0.52--0.98 seconds to 27.7--55.5 milliseconds. This establishes a mechanism, a measured sparsity law, and removal of a major prototype routing bottleneck, not unrestricted QA or production efficiency. The immediate priorities are genuine QA targets with a capable pretrained backbone, persistent indexed cache reuse, off-device K/V paging, fused attention, and end-to-end comparisons. Hugging Face integration must additionally preserve rotary positions, grouped-query caches, and layer-specific cache layouts.
 
 \appendix
-\section{Reference-Memory Forward Pass Pseudocode}
+\section{Line-Numbered Reimplementation Guide}
+
+This appendix is a compact implementation specification rather than a copy of the
+repository.  Its numbered listings preserve the invariants needed to reproduce native-K/V
+PRA in another decoder: cache entries are layer specific; routing gists and detailed token
+K/V are different objects; every batch row owns its cache; historical positions are not
+reset at URI boundaries; and selected memory joins local K/V before a single softmax.  The
+notation is PyTorch-like and omits error messages, fingerprints, tracing fields, and
+legacy cross-attention.
+
+\subsection{Moving Part 1: Cache Records and Shape Contract}
+
+The cache has two levels of identity.  A reference entry owns a stable URI and one or more
+chunks.  Each chunk then owns a separate representation at every PRA layer.  The token K/V
+payload is what attention eventually consumes; the much smaller gist set is what routing
+searches.
 
 \begin{verbatim}
-row_caches = []
-for sample in minibatch:
-    cache = empty_row_cache()
-
-    def ensure_cached(uri, depth, shared_budget, path):
-        if uri in path: apply_cycle_policy(); return
-        if cache.state(uri) == READY: return
-        resolved = resolver.resolve(uri)
-        cache.mark_building(uri)
-        shared_budget.consume_reference(uri)
-
-        # Explicit local table only; children become searchable first.
-        for child_uri in resolved.reference_table.values():
-            ensure_cached(child_uri, depth + 1,
-                          shared_budget, path + [uri])
-
-        chunks = partition(resolved.token_ids, routing_config)
-        hidden = embed(resolved.token_ids)
-        entry = CacheEntry(uri=uri, chunks=chunks)
-        for layer in model.layers:
-            if layer.has_pra:
-                for chunk in chunks:
-                    K, V = layer.project_reference_kv(hidden[chunk.span])
-                    gists = compute_gists(K, V, routing_config)
-                    entry.add(layer.id, chunk.id, K, V, gists)
-            hidden = layer(hidden, use_ready_child_memory=True)
-
-        cache.put_ready(detach_by_policy(entry))
-
-    split = split_exact_ids(sample.input_ids, direct_limit)
-    if split.implicit_ids:
-        register_request_local_head(cache, split.implicit_ids,
-                                    uri="pra://implicit/prompt/head")
-
-    for handle in sample.references:
-        ensure_cached(handle.uri, 0, shared_budget(), [])
-
-    row_caches.append(cache)
-    direct_rows.append(split.direct_ids)
-
-batch_cache = BatchCache(row_caches)  # query row i sees row_caches[i]
-model.set_pra_cache(batch_cache)
-input_ids, valid_mask = pad(direct_rows)
-logits = model(input_ids, attention_mask=valid_mask)
-loss = cross_entropy(logits, labels, ignore_index=PAD)
+001 | @dataclass
+002 | class LayerKV:
+003 |     k: Tensor  # [1, H, M, Dh]
+004 |     v: Tensor  # [1, H, M, Dh]
+005 |
+006 | @dataclass
+007 | class RoutingGists:
+008 |     k: Tensor  # [G, D], where D = H * Dh
+009 |     v: Tensor | None  # [G, D], used only by gist-only materialization
+010 |
+011 | @dataclass
+012 | class ChunkMemory:
+013 |     chunk_id: str
+014 |     source_uri: str
+015 |     token_start: int
+016 |     token_end: int
+017 |     token_kv: LayerKV
+018 |     routing_gists: RoutingGists
+019 |
+020 | @dataclass
+021 | class CacheEntry:
+022 |     uri: str
+023 |     layer_chunks: dict[int, list[ChunkMemory]]
+024 |     state: Literal["BUILDING", "READY", "FAILED"]
 \end{verbatim}
 
-The preparation loop is intentional: cache identity is part of the example.  It no
-longer implies one Transformer prompt forward per sample.  The batch wrapper preserves
-row ownership during routing, and the attention implementation executes unequal selected
-memory lengths in masked buckets.  A future vectorized cache builder must preserve the
-same example-to-cache mapping.
+Here $H$ is head count, $D_h$ head width, $D=HD_h$ model width, $M$ detailed tokens in
+one chunk, and $G$ gists for that chunk.  Line 3 deliberately retains the same projected
+head layout as ordinary decoder K/V.  Line 8 merges heads only for cosine routing; it does
+not replace line 3.  An entry becomes searchable only in \texttt{READY} state, preventing
+recursive construction from exposing partial layer memory.
 
-\section{Simplified PyTorch PRAttention}
+\subsection{Moving Part 2: Resolution, Recursion, and Publication}
 
-The following excerpt omits thresholds, score aggregation, summary modes, recursion, dropout, and shape utilities while retaining the corrected separation between routing gists and materialized token memory.
+Resolution converts a handle into text plus an explicit local reference table.  The same
+budget object follows the recursive traversal, and the current URI path detects cycles.
+Children are completed before a parent is published, so a parent encoding may route only
+to complete descendants.
 
 \begin{verbatim}
-class PRAttention(nn.Module):
-    def __init__(self, d_model, n_heads):
-        super().__init__()
-        self.n_heads = n_heads
-        self.head_dim = d_model // n_heads
-        self.q_proj = nn.Linear(d_model, d_model)
-        self.k_proj = nn.Linear(d_model, d_model)
-        self.v_proj = nn.Linear(d_model, d_model)
-        self.o_proj = nn.Linear(d_model, d_model)
-
-    def forward(self, x, cache, layer_id):
-        q = split_heads(self.q_proj(x), self.n_heads)
-        k = split_heads(self.k_proj(x), self.n_heads)
-        v = split_heads(self.v_proj(x), self.n_heads)
-
-        # Each row routes independently using the projected last query.
-        routing_q = merge_heads(q[:, :, -1:, :]).squeeze(1)
-        selected_by_row = cache.hierarchical_search(
-            routing_q, layer_id,
-            top_k_references=kr,
-            top_k_chunks_per_reference=kc,
-        )
-        memory_k, memory_v = materialize_selected_chunks(
-            selected_by_row, layer_id
-        )
-        rows = []
-        for i, (mem_k, mem_v) in enumerate(zip(memory_k, memory_v)):
-            # Memory is historical, so every local query can see it.
-            all_k = cat([mem_k, k[i:i+1]], dim=2)
-            all_v = cat([mem_v, v[i:i+1]], dim=2)
-            scores = q[i:i+1] @ all_k.transpose(-2, -1)
-            scores = scores / sqrt(self.head_dim)
-            mask = native_causal_mask(x, mem_k.shape[2])
-            scores = scores.masked_fill(mask, -inf)
-            rows.append(softmax(scores, dim=-1) @ all_v)
-        return self.o_proj(merge_heads(cat(rows, dim=0)))
+025 | def ensure_cached(uri, cache, budget, path):
+026 |     if uri in path: return apply_cycle_policy(uri, path)
+027 |     if cache.state(uri) == "READY": return
+028 |     budget.consume_reference(uri)
+029 |     cache.mark_building(uri)
+030 |     resolved = resolver.resolve(uri)
+031 |     for child in resolved.local_reference_table.values():
+032 |         ensure_cached(child.uri, cache, budget, path + [uri])
+033 |     entry = encode_reference(uri, resolved.token_ids)
+034 |     cache.put_ready(entry)  # atomic visibility boundary
 \end{verbatim}
 
-The actual implementation takes the original local-attention fast path when every
-selected memory is empty, preserving exact disabled-memory behavior. The optional
-cross-attention class path retains \texttt{memory\_out} and \texttt{memory\_alpha}
-only for legacy checkpoints and adapted-transport experiments.
+Line 31 is intentionally restricted to the resolved object's local table; a global token
+registry would create accidental edges.  Production cache identity must extend the URI
+with content version, tokenizer, model/adapter, layer format, and policy domain.  Otherwise
+line 27 can return stale or unauthorized K/V.
+
+\subsection{Moving Part 3: Historical Native-K/V Encoding and URI Slicing}
+
+Independent encoding resets context and positions for every URI.  That is useful as an
+ablation but is not equivalent to a long causal history.  Canonical \texttt{native\_slice}
+instead concatenates ordered source IDs, performs one causal decoder pass, captures each
+PRA layer's projected K/V, and slices those tensors back into addressable URI records.
+
+\begin{verbatim}
+035 | def encode_ordered_references(rows):
+036 |     ids, spans = concatenate_ids_and_record_spans(rows)
+037 |     x = token_embedding(ids) + position_embedding(arange(len(ids)))
+038 |     captured = {}
+039 |     for layer_id, layer in enumerate(model.layers):
+040 |         q, k, v = layer.project_qkv(x)       # [1,H,S,Dh]
+041 |         if layer.has_pra: captured[layer_id] = (k, v)
+042 |         x = layer.causal_forward_from_qkv(x, q, k, v)
+043 |
+044 |     entries = {}
+045 |     for uri, (start, end) in spans.items():
+046 |         entry = CacheEntry(uri=uri, layer_chunks={}, state="BUILDING")
+047 |         for layer_id, (k, v) in captured.items():
+048 |             native = LayerKV(k[:, :, start:end, :],
+049 |                              v[:, :, start:end, :])
+050 |             gists = make_gists(native)       # [G,D], not token K/V
+051 |             entry.add(layer_id, ChunkMemory(uri, start, end,
+052 |                                                    native, gists))
+053 |         entries[uri] = entry
+054 |     return entries, len(ids)  # tail position offset
+\end{verbatim}
+
+$S$ in line 40 is the complete historical source length.  Each slice in lines 48--49
+remains contextualized by all causally preceding source tokens even though routing can
+address it independently.  No memory output projection is introduced.  For learned
+absolute positions, the direct tail begins at the returned offset; with RoPE, an integration
+must preserve equivalent cache positions and rotation conventions.  Exact dense parity is
+expected when all slices are restored in source order and the same tail positions are used.
+
+\subsection{Moving Part 4: Long Prompts and the Request-Local \texttt{\#\_\_head}}
+
+The implicit head is not a globally named document.  It is an internal URI scoped to one
+request row.  The recent tail remains ordinary local context, while displaced leading IDs
+are encoded through the same cache path as references.
+
+\begin{verbatim}
+055 | def prepare_long_prompt(ids, direct_limit, row_cache):
+056 |     if len(ids) <= direct_limit: return ids, None
+057 |     direct_ids = ids[-direct_limit:]
+058 |     head_ids = ids[:-direct_limit]
+059 |     head = encode_reference_tokens(
+060 |         uri="pra://implicit/prompt/head",
+061 |         token_ids=head_ids,
+062 |         max_chunks=config.max_prompt_gists,
+063 |         metadata={"implicit": True, "display_name": "#__head"})
+064 |     row_cache.put_ready(head)
+065 |     return direct_ids, head
+\end{verbatim}
+
+Splitting occurs on exact token IDs, not decoded and re-tokenized text.  Line 62 bounds
+addressable head chunks independently from external-reference limits.  A batched wrapper
+holds one \texttt{row\_cache} per sample, so the identical internal URI on line 60 cannot
+cross batch rows.  Evaluation should report direct tokens, displaced tokens, head chunks,
+and head gists separately.
+
+\subsection{Moving Part 5: Gist Construction and Packed Exact Search}
+
+For mean routing, each chunk gist is the mean of its projected token keys after heads are
+merged.  Multi-gist modes replace that one vector with $G$ paired prototypes.  The router
+normalizes and packs all layer-local gist sets once; padding exists only in the routing
+index and is masked before aggregation.
+
+\begin{verbatim}
+066 | def mean_gist(k, v):                 # k,v: [1,H,M,Dh]
+067 |     keys = merge_token_heads(k)      # [M,D]
+068 |     vals = merge_token_heads(v)      # [M,D]
+069 |     return keys.mean(0)[None, :], vals.mean(0)[None, :]
+070 |
+071 | def pack_index(chunks):
+072 |     sets = [c.routing_gists.k for c in chunks]  # each [Gi,D]
+073 |     counts = tensor([len(g) for g in sets])
+074 |     flat = cat(sets, dim=0)                     # [sum(Gi),D]
+075 |     owner = repeat_interleave(arange(len(sets)), counts)
+076 |     slot = cat([arange(n) for n in counts])
+077 |     packed = zeros(len(sets), max(counts), D)   # [C,Gmax,D]
+078 |     packed[owner, slot] = flat
+079 |     mask = arange(max(counts))[None, :] < counts[:, None]
+080 |     return normalize(packed, dim=-1), mask
+081 |
+082 | def score_all(query, packed, mask, reduction="max"):
+083 |     query = normalize(query, dim=-1)            # [B,D]
+084 |     score = einsum("bd,cgd->bcg", query, packed)
+085 |     score = score.masked_fill(~mask[None, :, :], -inf)
+086 |     winner_score, winner_gist = score.max(-1)   # both [B,C]
+087 |     chunk_score = reduce_gists(score, mask, reduction)
+088 |     return chunk_score, winner_gist, winner_score
+\end{verbatim}
+
+The single-gist implementation specializes line 84 to
+\texttt{query @ packed[:,0,:].T}.  Crucially, no candidate score is converted to a Python
+scalar inside lines 82--88.  One CPU transfer after selection is sufficient for traces.
+Detached caches may reuse the packed index; cache insertion, invalidation, or gist rebuilding
+must invalidate it.  Trainable-gist mode must either rebuild per forward or preserve the
+autograd graph.
+
+\subsection{Moving Part 6: Hierarchical Exact \texttt{torch.topk} Routing}
+
+Chunk scores are first reduced within each URI, then two independent budgets are applied:
+$k_r$ references and $k_c$ chunks per selected reference.  Confusing these budgets changes
+both semantics and cost.
+
+\begin{verbatim}
+089 | def hierarchical_route(chunk_score, chunks_by_ref, kr, kc):
+090 |     # chunks_by_ref: padded [R,Cr], values are global chunk rows
+091 |     grouped = chunk_score[:, chunks_by_ref.clamp_min(0)]  # [B,R,Cr]
+092 |     valid = chunks_by_ref[None, :, :] >= 0
+093 |     grouped = grouped.masked_fill(~valid, -inf)
+094 |     ref_score = grouped.max(-1).values        # or mean/logsumexp
+095 |     _, ref_idx = torch.topk(ref_score, min(kr, R), dim=-1)
+096 |     _, local_idx = torch.topk(grouped, min(kc, Cr), dim=-1)
+097 |     selected = gather_chunks(ref_idx, local_idx, chunks_by_ref)
+098 |     return selected                           # list per batch row
+\end{verbatim}
+
+Lines 95--96 are exact, not approximate-nearest-neighbor search.  They remove the previous
+per-candidate CUDA synchronization while preserving cosine scores and policy.  Stable URI
+and chunk identifiers should resolve exact score ties.  \texttt{reference\_first} routing
+uses URI-level gists before detailed chunk scoring; global-chunk routing ranks chunks first
+while enforcing distinct-URI limits.  These are alternative policies, not synonyms for
+the hierarchy above.
+
+\subsection{Moving Part 7: Full-Chunk Materialization}
+
+Routing returns lightweight records.  Default materialization then gathers complete native
+token K/V for the selected chunks.  Thus $G$ routing gists do not imply $G$ attended memory
+positions.
+
+\begin{verbatim}
+099 | def materialize(selected, layer_id, device, dtype):
+100 |     keys, values, seen = [], [], set()
+101 |     for hit in sort_by_source_span(selected):
+102 |         identity = (hit.uri, hit.chunk_id)
+103 |         if identity in seen: continue
+104 |         seen.add(identity)
+105 |         kv = hit.chunk.token_kv              # [1,H,Mi,Dh]
+106 |         k, v = remove_repeated_overlap(kv, hit.source_span)
+107 |         keys.append(k.to(device, dtype))
+108 |         values.append(v.to(device, dtype))
+109 |     return cat(keys, dim=2), cat(values, dim=2)  # [1,H,Msel,Dh]
+\end{verbatim}
+
+The default path therefore has selected length
+$M_{\mathrm{sel}}=\sum_{c\in A}|c|$ after overlap deduplication.  Optional
+\texttt{gist\_only} materializes only the winning paired gist K/V; optional
+\texttt{full\_reference} expands a selected URI to all its chunks.  Those alternatives
+must be reported separately because they alter the attended information, not merely an
+implementation detail.
+
+\subsection{Moving Part 8: One-Softmax Native Attention}
+
+Each row may select a different memory length $M_i$.  The simplest correct implementation
+loops over rows; a production kernel may bucket or fuse rows, but it must preserve row
+ownership and masks.
+
+\begin{verbatim}
+110 | def native_attention(q, local_k, local_v, memory_by_row, valid_mask):
+111 |     # q,local_k,local_v: [B,H,T,Dh]
+112 |     rows = []
+113 |     causal = tril(ones(T, T, dtype=bool))
+114 |     for b, (mem_k, mem_v) in enumerate(memory_by_row):
+115 |         # mem_k,mem_v: [1,H,Mb,Dh], already historical
+116 |         all_k = cat([mem_k, local_k[b:b+1]], dim=2)
+117 |         all_v = cat([mem_v, local_v[b:b+1]], dim=2)
+118 |         score = q[b:b+1] @ all_k.transpose(-2, -1) / sqrt(Dh)
+119 |         memory_visible = ones(T, mem_k.shape[2], dtype=bool)
+120 |         visible = cat([memory_visible, causal], dim=1)
+121 |         visible[:, mem_k.shape[2]:] &= valid_mask[b][None, :]
+122 |         weight = softmax(score.masked_fill(~visible, -inf), dim=-1)
+123 |         rows.append(weight @ all_v)
+124 |     return cat(rows, dim=0)                   # [B,H,T,Dh]
+\end{verbatim}
+
+Memory precedes local K/V in lines 116--117 and is visible to every tail query in line 119.
+The local suffix remains causal in line 120.  There is exactly one softmax in line 122, so
+memory competes directly with local context.  The enclosing attention module applies the
+original output projection after merging heads.  If every row has empty memory, it returns
+the ordinary local-attention result exactly.
+
+\subsection{Moving Part 9: Batch Isolation and End-to-End Assembly}
+
+The orchestration layer prepares one namespace per row, wraps those namespaces without
+flattening duplicate URI strings, and routes \texttt{query[b]} only against
+\texttt{row\_cache[b]}.
+
+\begin{verbatim}
+125 | row_caches, direct_rows = [], []
+126 | for sample in minibatch:
+127 |     cache = SimpleCache()
+128 |     direct, _head = prepare_long_prompt(sample.ids, limit, cache)
+129 |     for handle in sample.references:
+130 |         ensure_cached(handle.uri, cache, shared_budget(), [])
+131 |     row_caches.append(cache)
+132 |     direct_rows.append(direct)
+133 |
+134 | batch_cache = BatchCache(row_caches)
+135 | ids, mask = right_pad(direct_rows)
+136 | model.set_cache(batch_cache)
+137 | logits = model(ids, attention_mask=mask,
+138 |                position_offset=historical_offset_if_contiguous)
+139 | loss = cross_entropy(logits, labels, ignore_index=PAD)
+\end{verbatim}
+
+Line 134 must not merge entries by URI: two samples may use the same URI string for
+different authorized content, and every implicit head uses the same internal URI.  The
+preparation loop does not require one model forward per sample; direct tails remain a
+rectangular batch.  A vectorized cache builder is valid only if it preserves this ownership.
+
+\subsection{Moving Part 10: Diagnostics and Replication Checks}
+
+A replication should test the mechanism in layers rather than relying on final loss alone.
+First, converted SelfAttention and PRA must match exactly with memory disabled.  Second,
+historical native-all must match dense full-context tail logits.  Third, oracle selection
+tests transport independently of routing.  Fourth, valid, shuffled, irrelevant, and disabled
+conditions test content dependence.  Finally, routing reports candidate count, MRR,
+recall/coverage at $k$, selected chunks, physical and unique K/V tokens, overlap, transfer
+bytes, and separately synchronized routing, materialization, and memory-attention time.
+
+The configuration fields belong to different moving parts: encoding strategy and position
+mode determine K/V semantics; chunk size and overlap determine addressable units; gist mode
+and count determine routing representations; search strategy and $k_r/k_c$ determine
+selection; materialization mode determines exposed detail; and memory transport determines
+how selected K/V enters attention.  Reporting only ``PRA enabled'' is therefore insufficient
+for replication.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

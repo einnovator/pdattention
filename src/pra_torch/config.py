@@ -44,6 +44,7 @@ class PRAConfig:
 
     # Search modes and the independent chunk/reference gist representations.
     search_strategy: str = "hierarchical"
+    routing_backend: str = "tensorized"  # tensorized exact search or legacy scalar reference path.
     reference_score_aggregation: str = "max"  # max, mean, or logsumexp over chunk scores.
     reference_level_gist_mode: str | None = None  # URI gist strategy for reference_first.
     reference_gists_per_reference: int = 1  # Requested URI-level gists per layer.
@@ -125,6 +126,7 @@ class PRAConfig:
     collect_detailed_timing: bool = False  # Record routing/materialization/attention durations.
     collect_attention_metrics: bool = True  # Compatibility flag; aggregates are always retained.
     collect_per_head_metrics: bool = False  # Reserved for per-head diagnostics.
+    collect_routing_metrics: bool = False  # Keep complete rankings for aggregate MRR/recall.
     collect_rank_diagnostics: bool = False  # Retain complete pre-top-k candidate score lists.
     chunk_match_mode: str = "exact_id"  # Ground-truth match by ID, overlap, or IoU threshold.
     chunk_iou_threshold: float = 0.5  # Minimum span IoU when chunk_match_mode uses IoU.
@@ -197,6 +199,8 @@ class PRAConfig:
                 raise ValueError("max_prompt_gists must be positive or None.")
         if self.search_strategy not in {"hierarchical", "reference_first", "global_chunks"}:
             raise ValueError(f"Unsupported search_strategy: {self.search_strategy}")
+        if self.routing_backend not in {"tensorized", "legacy"}:
+            raise ValueError(f"Unsupported routing_backend: {self.routing_backend}")
         if self.reference_score_aggregation not in {"max", "mean", "logsumexp"}:
             raise ValueError(
                 f"Unsupported reference_score_aggregation: {self.reference_score_aggregation}"

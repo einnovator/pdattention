@@ -110,13 +110,100 @@ def test_search_retains_complete_deterministic_rankings_before_top_k():
     cache.put(_entry("A", {0: [_chunk("A", "A0", [1, 0], [1, 0])]}))
     cache.put(_entry("B", {0: [_chunk("B", "B0", [0.8, 0.6], [0, 1])]}))
 
-    selected = cache.search(torch.tensor([[1.0, 0.0]]), 0, _routing_config())[0]
+    selected = cache.search(
+        torch.tensor([[1.0, 0.0]]),
+        0,
+        _routing_config(collect_routing_metrics=True),
+    )[0]
     rankings = cache.last_rankings(0)[0]
 
     assert [hit.reference_uri for hit in selected] == ["A"]
     assert [row["reference_uri"] for row in rankings] == ["A", "B"]
     assert [row["reference_rank"] for row in rankings] == [1, 2]
     assert rankings[0]["chunks"][0]["gist_count"] == 1
+
+
+@pytest.mark.parametrize("aggregation", ["max", "mean", "logsumexp"])
+def test_tensorized_hierarchical_routing_matches_legacy_scores_and_selection(aggregation):
+    cache = PRASimpleMemoryCache()
+    cache.put(
+        _entry(
+            "A",
+            {0: [
+                _chunk("A", "A0", [1.0, 0.0], [1, 0]),
+                _chunk("A", "A1", [0.6, 0.8], [1, 0], start=1),
+            ]},
+        )
+    )
+    cache.put(
+        _entry(
+            "B",
+            {0: [
+                _chunk("B", "B0", [0.0, 1.0], [0, 1]),
+                _chunk("B", "B1", [0.8, 0.6], [0, 1], start=1),
+            ]},
+        )
+    )
+    queries = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    common = dict(
+        top_k_references=2,
+        top_k_chunks_per_reference=1,
+        reference_score_aggregation=aggregation,
+        collect_routing_metrics=True,
+    )
+
+    legacy = cache.search(queries, 0, _routing_config(routing_backend="legacy", **common))
+    legacy_rankings = cache.last_rankings(0)
+    tensorized = cache.search(
+        queries, 0, _routing_config(routing_backend="tensorized", **common)
+    )
+    tensorized_rankings = cache.last_rankings(0)
+
+    assert [[hit.chunk_id for hit in row] for row in tensorized] == [
+        [hit.chunk_id for hit in row] for row in legacy
+    ]
+    for expected_rows, actual_rows in zip(legacy_rankings, tensorized_rankings):
+        assert [row["reference_uri"] for row in actual_rows] == [
+            row["reference_uri"] for row in expected_rows
+        ]
+        for expected, actual in zip(expected_rows, actual_rows):
+            assert actual["reference_score"] == pytest.approx(expected["reference_score"])
+
+
+def test_tensorized_routing_uses_torch_topk(monkeypatch):
+    cache = PRASimpleMemoryCache()
+    for index, gist in enumerate(([1, 0], [0.8, 0.6], [0, 1])):
+        uri = f"R{index}"
+        cache.put(_entry(uri, {0: [_chunk(uri, f"{uri}0", gist, gist)]}))
+    calls = []
+    original = torch.topk
+
+    def record_topk(*args, **kwargs):
+        calls.append((args[0].shape, kwargs.get("dim")))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(torch, "topk", record_topk)
+    cache.search(
+        torch.tensor([[1.0, 0.0]]),
+        0,
+        _routing_config(routing_backend="tensorized", top_k_references=2),
+    )
+
+    assert len(calls) == 2  # URI top-k and per-URI chunk top-k.
+
+
+def test_tensorized_routing_index_is_invalidated_when_cache_changes():
+    cache = PRASimpleMemoryCache()
+    cache.put(_entry("A", {0: [_chunk("A", "A0", [0, 1], [0, 1])]}))
+    cfg = _routing_config(routing_backend="tensorized")
+    query = torch.tensor([[1.0, 0.0]])
+
+    assert cache.search(query, 0, cfg)[0][0].reference_uri == "A"
+    assert cache._tensorized_indexes
+    cache.put(_entry("B", {0: [_chunk("B", "B0", [1, 0], [1, 0])]}))
+
+    assert not cache._tensorized_indexes
+    assert cache.search(query, 0, cfg)[0][0].reference_uri == "B"
 
 
 def test_hierarchical_search_keeps_reference_and_chunk_budgets_distinct():

@@ -337,6 +337,9 @@ class TinyPRAModel(nn.Module):
                         ),
                     }
                 )
+        invalidate = getattr(cache, "invalidate_routing_indexes", None)
+        if invalidate is not None:
+            invalidate()
 
     def selected_references_by_layer(self) -> dict[int, list[list[tuple[str, float]]]]:
         """Deprecated compatibility view derived from chunk-aware selections."""

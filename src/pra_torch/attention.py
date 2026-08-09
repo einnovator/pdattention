@@ -18,6 +18,12 @@ from .memory_batching import (
 )
 
 
+def _synchronize_detailed_timing(tensor: torch.Tensor, enabled: bool) -> None:
+    """Fence CUDA only for research phase timing; normal inference stays asynchronous."""
+    if enabled and tensor.is_cuda:
+        torch.cuda.synchronize(tensor.device)
+
+
 class PRAttention(nn.Module):
     """Causal attention with routed native-K/V or adapted cross-attention memory.
 
@@ -250,13 +256,17 @@ class PRAttention(nn.Module):
             gather_index = last_indices.view(b, 1, 1, 1).expand(-1, self.n_heads, 1, self.head_dim)
             routing_query = q.gather(2, gather_index).squeeze(2)
         routing_query = routing_query.contiguous().view(b, self.d_model)
+        collect_timing = self.config.collect_detailed_timing
+        _synchronize_detailed_timing(q, collect_timing)
         routing_start = time.perf_counter()
         selected_by_batch = self.pra_cache.search(routing_query, self.layer_id, self.config)
         if hasattr(self.pra_cache, "last_rankings"):
             self.last_routing_rankings = self.pra_cache.last_rankings(self.layer_id)
+        _synchronize_detailed_timing(q, collect_timing)
         routing_duration = time.perf_counter() - routing_start
 
         # Materialize variable-length K/V independently to prevent cross-item leakage.
+        _synchronize_detailed_timing(q, collect_timing)
         materialization_start = time.perf_counter()
         memory_k = []
         memory_v = []
@@ -267,12 +277,14 @@ class PRAttention(nn.Module):
             memory_v.append(value)
             self.last_selected_chunks[batch_index] = retained
             duplicate_tokens += duplicates
+        _synchronize_detailed_timing(q, collect_timing)
         materialization_duration = time.perf_counter() - materialization_start
 
         if self.memory_transport == "native_kv":
             selected_lengths = [int(key.shape[2]) for key in memory_k]
             if not any(selected_lengths):
                 return local_out
+            _synchronize_detailed_timing(q, collect_timing)
             memory_start = time.perf_counter()
             native_heads, stats = native_kv_attention(
                 q,
@@ -282,6 +294,7 @@ class PRAttention(nn.Module):
                 memory_v,
                 attention_mask=attention_mask,
             )
+            _synchronize_detailed_timing(q, collect_timing)
             memory_attention_duration = time.perf_counter() - memory_start
             self.last_memory_batching_stats = stats
             output = self.o_proj(self.merge_heads(native_heads))
@@ -339,6 +352,7 @@ class PRAttention(nn.Module):
 
         # Legacy adapted transport: normalize memory separately, then add its projection.
         # Bucket only compatible batch rows, pad within each bucket, and restore order.
+        _synchronize_detailed_timing(q, collect_timing)
         memory_start = time.perf_counter()
         memory_heads, stats = dynamic_memory_attention(
             q,
@@ -347,6 +361,7 @@ class PRAttention(nn.Module):
             bucket_count=self.config.memory_bucket_count,
             bucket_strategy=self.config.memory_bucket_strategy,
         )
+        _synchronize_detailed_timing(q, collect_timing)
         memory_attention_duration = time.perf_counter() - memory_start
         self.last_memory_batching_stats = stats
         assert self.mem_o_proj is not None

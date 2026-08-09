@@ -55,7 +55,7 @@ from run_native_kv_benchmark import (  # noqa: E402
 )
 
 
-SCALE_SPLITS = (64, 128, 256)
+SCALE_SPLITS = (32, 64, 128, 256)
 RANK_CUTOFFS = (1, 2, 4, 8, 16, 32)
 DATASET_SETTINGS = {
     "hotpotqa": {
@@ -423,6 +423,7 @@ def evaluate_scale(
             # in-memory ranking. Persisting every candidate again for every k
             # makes a single seed hundreds of megabytes without adding evidence.
             "collect_rank_diagnostics": False,
+            "collect_routing_metrics": True,
             "recursive_max_total_references": 512,
             "recursive_max_total_tokens": 65_536,
             "top_k_references": max(top_k_values),
