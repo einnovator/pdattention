@@ -58,6 +58,7 @@ class PreparedPromptBatch:
     input_ids: torch.Tensor
     attention_mask: torch.Tensor
     labels: torch.Tensor | None
+    position_offsets: torch.Tensor
     caches: list[PRAMemoryCache]
     splits: list[PreparedPrompt]
     stats: list[PromptPreparationStats]
@@ -192,6 +193,7 @@ def prepare_prompt_batch_for_pra(
                 max_chunks=model.cfg.max_prompt_gists,
                 use_configured_max_chunks=False,
                 max_chunk_tokens=model.cfg.max_seq_len,
+                historical_encoding=(model.cfg.prompt_position_mode == "historical"),
             )
             cache.put(entry)
             implicit_chunks = int(entry.metadata.get("chunk_count", 0))
@@ -213,6 +215,16 @@ def prepare_prompt_batch_for_pra(
         input_ids=direct_ids,
         attention_mask=direct_mask,
         labels=padded_labels,
+        position_offsets=torch.tensor(
+            [
+                len(split.implicit_ids)
+                if model.cfg.prompt_position_mode == "historical"
+                else 0
+                for split in splits
+            ],
+            dtype=torch.long,
+            device=input_ids.device,
+        ),
         caches=caches,
         splits=splits,
         stats=stats,

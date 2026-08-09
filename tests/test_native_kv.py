@@ -131,9 +131,7 @@ def test_native_attention_reports_active_kv_and_transfer_volume():
     assert diagnostics["accessible_kv_tokens"] == 8.0
     assert diagnostics["active_memory_fraction"] == pytest.approx(3 / 8)
     assert diagnostics["retrieved_kv_storage_bytes"] == 2 * 3 * 16 * 4
-    assert diagnostics["retrieved_kv_transfer_bytes"] == diagnostics[
-        "retrieved_kv_storage_bytes"
-    ]
+    assert diagnostics["retrieved_kv_transfer_bytes"] == 0.0
 
 
 def test_native_gap_metrics_keep_transport_and_retrieval_effects_separate():
@@ -272,6 +270,71 @@ def test_native_historical_prompt_positions_match_full_model_tail_logits():
         native_tail = converted(tail_ids, position_offset=6)
 
     assert torch.allclose(native_tail, full_tail, atol=2e-6, rtol=2e-6)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA residency parity test")
+def test_cpu_resident_native_kv_matches_gpu_and_transfers_only_selected_chunks():
+    torch.manual_seed(43)
+    tokenizer = CharTokenizer(["abcdefghijklmnop", "ijkl"])
+    source_cfg = PRAConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=16,
+        n_heads=4,
+        n_layers=2,
+        d_ff=32,
+        max_seq_len=32,
+        model_variant="td_sa",
+    )
+    source = TinyPRAModel(source_cfg).to("cuda").eval()
+    base = {
+        **source_cfg.__dict__,
+        "model_variant": "td_pra",
+        "chunking_mode": "fixed",
+        "fixed_chunk_tokens": 4,
+        "top_k_references": 1,
+        "top_k_chunks_per_reference": 1,
+        "trigger_threshold": float("-inf"),
+        "collect_detailed_timing": True,
+    }
+    gpu_model = convert_sa_model_to_pra(source, PRAConfig(**base)).to("cuda").eval()
+    cpu_model = convert_sa_model_to_pra(
+        source, PRAConfig(**{**base, "kv_cache_residency": "cpu", "kv_cache_pin_memory": True})
+    ).to("cuda").eval()
+
+    for model in (gpu_model, cpu_model):
+        entry = model.encode_reference_to_cache(
+            "mem://history", "abcdefghijklmnop", tokenizer, "cuda"
+        )
+        cache = PRASimpleMemoryCache()
+        cache.put(entry)
+        model.set_pra_cache(cache)
+
+    query_ids = torch.tensor([tokenizer.encode("ijkl")], device="cuda")
+    with torch.no_grad():
+        gpu_logits = gpu_model(query_ids)
+        cpu_logits = cpu_model(query_ids)
+
+    assert torch.allclose(cpu_logits, gpu_logits, atol=2e-6, rtol=2e-6)
+    gpu_selected = gpu_model.selected_chunks_by_layer()
+    cpu_selected = cpu_model.selected_chunks_by_layer()
+    assert {
+        layer: [[hit.chunk_id for hit in row] for row in rows]
+        for layer, rows in cpu_selected.items()
+    } == {
+        layer: [[hit.chunk_id for hit in row] for row in rows]
+        for layer, rows in gpu_selected.items()
+    }
+    for entry in cpu_model.pra_cache.all_entries():
+        for memory in entry.layer_memory.values():
+            assert all(chunk.token_kv.k.device.type == "cpu" for chunk in memory.chunks)
+            selected_ids = {
+                hit.chunk_id for rows in cpu_selected.values() for row in rows for hit in row
+            }
+            assert any(chunk.chunk_id not in selected_ids for chunk in memory.chunks)
+    cpu_diagnostics = cpu_model.pra_diagnostics_by_layer()
+    gpu_diagnostics = gpu_model.pra_diagnostics_by_layer()
+    assert all(row["retrieved_kv_transfer_bytes"] > 0 for row in cpu_diagnostics.values())
+    assert all(row["retrieved_kv_transfer_bytes"] == 0 for row in gpu_diagnostics.values())
 
 
 def test_block_slicing_accounts_for_encoding_overlap_without_storing_duplicates():

@@ -417,6 +417,7 @@ def _pra_batch_step(
     logits = model(
         batch["input_ids"],
         attention_mask=prepared.attention_mask if prepared is not None else None,
+        position_offset=(prepared.position_offsets if prepared is not None else 0),
     )
     _synchronize_for_timing(device)
     prompt_forward_duration = time.perf_counter() - prompt_start
@@ -897,6 +898,14 @@ def evaluate_reference_ablation(
                             float(value.get("retrieved_kv_transfer_bytes", 0.0))
                             for value in diagnostics.values()
                         )
+                        transfer_latency = sum(
+                            float(
+                                value.get(
+                                    "selected_kv_transfer_duration_seconds", 0.0
+                                )
+                            )
+                            for value in diagnostics.values()
+                        )
                         retrieved_physical = sum(
                             float(value.get("retrieved_physical_kv_tokens", 0.0))
                             for value in diagnostic_values
@@ -906,6 +915,21 @@ def evaluate_reference_ablation(
                             for value in diagnostic_values
                         ) / max(len(diagnostic_values), 1)
                         visible_entries = model.pra_cache.all_entries()
+                        cached_kv_bytes = 0
+                        gpu_cached_kv_bytes = 0
+                        for entry in visible_entries:
+                            for memory in entry.layer_memory.values():
+                                for chunk in memory.chunks:
+                                    payload_bytes = sum(
+                                        tensor.numel() * tensor.element_size()
+                                        for tensor in (
+                                            chunk.token_kv.k,
+                                            chunk.token_kv.v,
+                                        )
+                                    )
+                                    cached_kv_bytes += payload_bytes
+                                    if chunk.token_kv.k.device.type == "cuda":
+                                        gpu_cached_kv_bytes += payload_bytes
                         unique_source_tokens = encoded_tokens = stored_tokens = 0
                         seen_encoding_runs = set()
                         for entry in visible_entries:
@@ -1018,8 +1042,17 @@ def evaluate_reference_ablation(
                                 "kv_materialization_latency": materialization_latency,
                                 "example_latency": time.perf_counter() - item_start,
                                 "kv_transfer_bytes": transfer_bytes,
+                                "kv_transfer_latency": transfer_latency,
+                                "cached_kv_bytes": float(cached_kv_bytes),
+                                "gpu_cached_kv_bytes": float(gpu_cached_kv_bytes),
                                 "peak_cuda_memory": (
                                     float(torch.cuda.max_memory_allocated(device))
+                                    if str(device).startswith("cuda")
+                                    and torch.cuda.is_available()
+                                    else 0.0
+                                ),
+                                "peak_cuda_memory_reserved": (
+                                    float(torch.cuda.max_memory_reserved(device))
                                     if str(device).startswith("cuda")
                                     and torch.cuda.is_available()
                                     else 0.0

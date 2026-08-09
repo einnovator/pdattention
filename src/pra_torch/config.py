@@ -100,6 +100,9 @@ class PRAConfig:
     reference_position_mode: str = "local"  # Reset each block or preserve global offsets.
     prompt_position_mode: str = "local"  # local or continue after historical source K/V.
     reference_overflow_policy: str = "truncate"  # Handling for a chunk over max_seq_len.
+    kv_cache_residency: str = "gpu"  # Store full native token K/V on gpu or cpu.
+    kv_cache_pin_memory: bool = False  # Page-lock CPU K/V for faster host-to-device copies.
+    kv_cache_non_blocking: bool = False  # Request asynchronous selected-K/V transfers.
     marker_rules: tuple[str, ...] = ("<PRA_CHUNK>",)  # Explicit text split markers.
     semantic_chunker: object | None = None  # Plugin implementing SemanticChunker.
     detail_materialization: str = "selected_chunks"  # selected_chunks, full_reference, gist_only.
@@ -324,6 +327,10 @@ class PRAConfig:
             raise ValueError(
                 f"Unsupported reference_overflow_policy: {self.reference_overflow_policy}"
             )
+        if self.kv_cache_residency not in {"gpu", "cpu"}:
+            raise ValueError("kv_cache_residency must be 'gpu' or 'cpu'.")
+        if self.kv_cache_residency == "cpu" and self.cache_build_mode != "detached":
+            raise ValueError("CPU-resident K/V requires cache_build_mode='detached'.")
         self.marker_rules = tuple(str(value) for value in self.marker_rules)
         if self.chunking_mode == "semantic" and self.semantic_chunker is None:
             raise NotImplementedError(

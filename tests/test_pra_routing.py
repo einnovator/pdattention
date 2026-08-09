@@ -206,6 +206,59 @@ def test_tensorized_routing_index_is_invalidated_when_cache_changes():
     assert cache.search(query, 0, cfg)[0][0].reference_uri == "B"
 
 
+def test_explicit_index_warmup_reuses_identical_packed_tensors():
+    cache = PRASimpleMemoryCache()
+    cache.put(_entry("A", {0: [_chunk("A", "A0", [1, 0], [1, 0])]}))
+    cache.put(_entry("B", {0: [_chunk("B", "B0", [0, 1], [0, 1])]}))
+    query = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+
+    cold = cache.prepare_routing_index(0, query)
+    index = next(iter(cache._tensorized_indexes.values()))
+    warm = cache.prepare_routing_index(0, query)
+
+    assert cold["reused"] is False
+    assert warm["reused"] is True
+    assert next(iter(cache._tensorized_indexes.values())) is index
+    assert cold["candidate_chunks"] == cold["candidate_gists"] == 2
+    assert cold["index_bytes"] > 0
+
+
+def test_warm_and_cold_indexes_return_identical_selected_traces_for_batches():
+    cache = PRASimpleMemoryCache()
+    cache.put(
+        _entry(
+            "A",
+            {0: [
+                _chunk("A", "A0", [1.0, 0.0], [1, 0]),
+                _chunk("A", "A1", [0.6, 0.8], [1, 0], start=1),
+            ]},
+        )
+    )
+    cache.put(
+        _entry(
+            "B",
+            {0: [
+                _chunk("B", "B0", [0.0, 1.0], [0, 1]),
+                _chunk("B", "B1", [0.8, 0.6], [0, 1], start=1),
+            ]},
+        )
+    )
+    cfg = _routing_config(
+        routing_backend="tensorized",
+        top_k_references=2,
+        top_k_chunks_per_reference=1,
+    )
+    query = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+
+    cache.invalidate_routing_indexes()
+    cold = cache.search(query, 0, cfg)
+    warm = cache.search(query, 0, cfg)
+
+    assert [[hit.as_trace_dict() for hit in row] for row in warm] == [
+        [hit.as_trace_dict() for hit in row] for row in cold
+    ]
+
+
 def test_hierarchical_search_keeps_reference_and_chunk_budgets_distinct():
     cache = PRASimpleMemoryCache()
     cache.put(
@@ -258,7 +311,7 @@ def test_overlap_materialization_policy_controls_physical_kv(policy, expected_to
     selected = cache.search(torch.tensor([[1.0, 0.0]]), 0, cfg)[0]
     attention = PRAttention(2, 1, 8, 0, cache, config=cfg)
 
-    keys, values, _retained, duplicate_tokens = attention._materialize(
+    keys, values, _retained, duplicate_tokens, _transfer_bytes, _transfer_duration = attention._materialize(
         selected, torch.zeros(1, 1, 1, 2)
     )
 

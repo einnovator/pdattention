@@ -331,6 +331,45 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         """Drop packed gist tensors after cache content or pooling state changes."""
         self._tensorized_indexes.clear()
 
+    def prepare_routing_index(
+        self,
+        layer_id: int,
+        query: torch.Tensor,
+        *,
+        force_rebuild: bool = False,
+    ) -> dict[str, int | bool]:
+        """Build or reuse the exact packed index and report its physical size.
+
+        This narrow public hook exists for cache warmup and systems benchmarks.
+        It does not score a query or change routing semantics.
+        """
+        if query.ndim == 1:
+            query = query.unsqueeze(0)
+        key = (int(layer_id), str(query.device), query.dtype)
+        reused = key in self._tensorized_indexes and not force_rebuild
+        if force_rebuild:
+            self._tensorized_indexes.pop(key, None)
+        index = self._tensorized_chunk_index(layer_id, query, reuse=True)
+        if index is None:
+            return {
+                "reused": reused,
+                "candidate_chunks": 0,
+                "candidate_gists": 0,
+                "index_bytes": 0,
+            }
+        tensors = (
+            index.gists,
+            index.gist_mask,
+            index.chunk_indices_by_reference,
+            index.chunk_mask_by_reference,
+        )
+        return {
+            "reused": reused,
+            "candidate_chunks": len(index.records),
+            "candidate_gists": int(index.gist_mask.sum().item()),
+            "index_bytes": sum(t.numel() * t.element_size() for t in tensors),
+        }
+
     @property
     def entries(self) -> dict[str, PRACacheEntry]:
         """Return the internal URI map; published entries are normally ``READY``."""
@@ -546,60 +585,75 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         query: torch.Tensor,
         layer_id: int,
         config,
+        *,
+        retain_full_hits: bool,
     ) -> tuple[
-        list[list[_ChunkHit]],
+        list[list[_ChunkHit]] | None,
         _TensorizedChunkIndex | None,
         torch.Tensor | None,
         torch.Tensor | None,
+        torch.Tensor | None,
+        torch.Tensor | None,
     ]:
-        """Score all chunk gists in a few kernels and synchronize diagnostics once."""
+        """Score all gists while copying every candidate only for full diagnostics."""
         index = self._tensorized_chunk_index(
             layer_id,
             query,
             reuse=config.cache_build_mode == "detached",
         )
         if index is None:
-            return ([[] for _ in range(query.shape[0])], None, None, None)
+            return ([[] for _ in range(query.shape[0])], None, None, None, None, None)
         aggregate, winners, winning_scores = self._reduce_gist_scores(
             query, index, config.gist_score_aggregation
         )
-        diagnostics = torch.stack(
-            (aggregate, winning_scores, winners.to(aggregate.dtype)), dim=-1
-        ).detach().cpu()
-        rows = []
-        for row in diagnostics:
-            hits = []
-            for chunk_index, (entry, chunk) in enumerate(index.records):
-                hits.append(
-                    _ChunkHit(
-                        entry=entry,
-                        chunk=chunk,
-                        score=float(row[chunk_index, 0]),
-                        routing_source="content",
-                        winning_gist_index=int(row[chunk_index, 2]),
-                        winning_gist_score=float(row[chunk_index, 1]),
-                        gist_count=int(chunk.routing_gist.k.shape[0]),
+        rows = None
+        if retain_full_hits:
+            diagnostics = torch.stack(
+                (aggregate, winning_scores, winners.to(aggregate.dtype)), dim=-1
+            ).detach().cpu()
+            rows = []
+            for row in diagnostics:
+                hits = []
+                for chunk_index, (entry, chunk) in enumerate(index.records):
+                    hits.append(
+                        _ChunkHit(
+                            entry=entry,
+                            chunk=chunk,
+                            score=float(row[chunk_index, 0]),
+                            routing_source="content",
+                            winning_gist_index=int(row[chunk_index, 2]),
+                            winning_gist_score=float(row[chunk_index, 1]),
+                            gist_count=int(chunk.routing_gist.k.shape[0]),
+                        )
                     )
-                )
-            rows.append(hits)
-        return rows, index, aggregate, self._reference_score_tensor(
-            aggregate, index, config.reference_score_aggregation
+                rows.append(hits)
+        return (
+            rows,
+            index,
+            aggregate,
+            self._reference_score_tensor(
+                aggregate, index, config.reference_score_aggregation
+            ),
+            winners,
+            winning_scores,
         )
 
     def _hierarchical_tensorized(
         self,
-        hits_by_batch: list[list[_ChunkHit]],
+        hits_by_batch: list[list[_ChunkHit]] | None,
         index: _TensorizedChunkIndex,
         chunk_scores: torch.Tensor,
         reference_scores: torch.Tensor,
+        winning_indices: torch.Tensor,
+        winning_scores: torch.Tensor,
         layer_id: int,
         config,
     ) -> list[list[SelectedChunk]]:
-        """Apply exact GPU top-k URI and per-URI chunk selection to packed scores."""
+        """Apply exact top-k and serialize only selected records in normal inference."""
         reference_k = min(config.top_k_references, len(index.reference_entries))
         if reference_k == 0:
-            return [[] for _ in hits_by_batch]
-        _, reference_indices = torch.topk(
+            return [[] for _ in range(chunk_scores.shape[0])]
+        reference_values, reference_indices = torch.topk(
             reference_scores, k=reference_k, dim=-1, largest=True, sorted=True
         )
 
@@ -607,45 +661,96 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         grouped_scores = grouped_scores.masked_fill(
             ~index.chunk_mask_by_reference.unsqueeze(0), float("-inf")
         )
+        selected_grouped_scores = torch.gather(
+            grouped_scores,
+            1,
+            reference_indices.unsqueeze(-1).expand(-1, -1, grouped_scores.shape[-1]),
+        )
         chunk_k = min(
             config.top_k_chunks_per_reference,
             int(index.chunk_indices_by_reference.shape[1]),
         )
         _, chunk_slots = torch.topk(
-            grouped_scores, k=chunk_k, dim=-1, largest=True, sorted=True
+            selected_grouped_scores, k=chunk_k, dim=-1, largest=True, sorted=True
         )
 
+        selected_index_rows = index.chunk_indices_by_reference[reference_indices]
+        selected_chunk_indices = torch.gather(selected_index_rows, 2, chunk_slots)
+        flat_chunk_indices = selected_chunk_indices.flatten(1)
+        selected_chunk_scores = torch.gather(
+            chunk_scores, 1, flat_chunk_indices
+        ).reshape_as(selected_chunk_indices)
+        selected_winning_indices = torch.gather(
+            winning_indices, 1, flat_chunk_indices
+        ).reshape_as(selected_chunk_indices)
+        selected_winning_scores = torch.gather(
+            winning_scores, 1, flat_chunk_indices
+        ).reshape_as(selected_chunk_indices)
+
         reference_indices_cpu = reference_indices.detach().cpu().tolist()
-        chunk_slots_cpu = chunk_slots.detach().cpu().tolist()
-        reference_scores_cpu = reference_scores.detach().cpu().tolist()
+        reference_values_cpu = reference_values.detach().cpu().tolist()
+        selected_chunk_indices_cpu = selected_chunk_indices.detach().cpu().tolist()
+        selected_chunk_scores_cpu = selected_chunk_scores.detach().cpu().tolist()
+        selected_winning_indices_cpu = selected_winning_indices.detach().cpu().tolist()
+        selected_winning_scores_cpu = selected_winning_scores.detach().cpu().tolist()
         selected_by_batch = []
         for batch_index, selected_reference_indices in enumerate(reference_indices_cpu):
-            selected_reference_indices.sort(
-                key=lambda ref_index: (
-                    -reference_scores_cpu[batch_index][ref_index],
-                    index.reference_entries[ref_index].uri,
+            reference_rows = list(
+                zip(
+                    selected_reference_indices,
+                    reference_values_cpu[batch_index],
+                    range(len(selected_reference_indices)),
                 )
             )
+            reference_rows.sort(
+                key=lambda item: (-item[1], index.reference_entries[item[0]].uri)
+            )
             selected = []
-            for reference_rank, ref_index in enumerate(selected_reference_indices, start=1):
+            for reference_rank, (ref_index, reference_score, ref_slot) in enumerate(
+                reference_rows, start=1
+            ):
                 source_indices = index.chunk_indices_by_reference_cpu[ref_index]
                 valid_count = len(source_indices)
-                selected_slots = chunk_slots_cpu[batch_index][ref_index][: min(chunk_k, valid_count)]
-                selected_chunk_indices = [
-                    source_indices[slot]
-                    for slot in selected_slots
-                ]
-                selected_chunk_indices.sort(
-                    key=lambda chunk_index: (
-                        -hits_by_batch[batch_index][chunk_index].score,
-                        hits_by_batch[batch_index][chunk_index].chunk.chunk_id,
+                chunk_rows = []
+                for chunk_slot_index in range(min(chunk_k, valid_count)):
+                    source_index = selected_chunk_indices_cpu[batch_index][ref_slot][
+                        chunk_slot_index
+                    ]
+                    chunk_rows.append(
+                        (
+                            source_index,
+                            selected_chunk_scores_cpu[batch_index][ref_slot][chunk_slot_index],
+                            selected_winning_indices_cpu[batch_index][ref_slot][chunk_slot_index],
+                            selected_winning_scores_cpu[batch_index][ref_slot][chunk_slot_index],
+                        )
                     )
+                chunk_rows.sort(
+                    key=lambda item: (-item[1], index.records[item[0]][1].chunk_id)
                 )
-                for chunk_rank, chunk_index in enumerate(selected_chunk_indices, start=1):
+                for chunk_rank, (
+                    chunk_index,
+                    chunk_score,
+                    winning_index,
+                    winning_score,
+                ) in enumerate(chunk_rows, start=1):
+                    entry, chunk = index.records[chunk_index]
+                    hit = (
+                        hits_by_batch[batch_index][chunk_index]
+                        if hits_by_batch is not None
+                        else _ChunkHit(
+                            entry=entry,
+                            chunk=chunk,
+                            score=float(chunk_score),
+                            routing_source="content",
+                            winning_gist_index=int(winning_index),
+                            winning_gist_score=float(winning_score),
+                            gist_count=int(chunk.routing_gist.k.shape[0]),
+                        )
+                    )
                     selected.append(
                         self._selected(
-                            hits_by_batch[batch_index][chunk_index],
-                            reference_scores_cpu[batch_index][ref_index],
+                            hit,
+                            float(reference_score),
                             layer_id,
                             reference_rank,
                             chunk_rank,
@@ -1020,13 +1125,24 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         tensorized_index = None
         chunk_scores = None
         reference_scores = None
+        winning_indices = None
+        winning_scores = None
         if use_tensorized:
             (
                 hits_by_batch,
                 tensorized_index,
                 chunk_scores,
                 reference_scores,
-            ) = self._score_chunks_tensorized(query, layer_id, config)
+                winning_indices,
+                winning_scores,
+            ) = self._score_chunks_tensorized(
+                query,
+                layer_id,
+                config,
+                retain_full_hits=(
+                    retain_rankings or config.search_strategy != "hierarchical"
+                ),
+            )
         else:
             hits_by_batch = self._score_chunks(query, layer_id, config)
 
@@ -1035,19 +1151,23 @@ class PRASimpleMemoryCache(PRAMemoryCache):
             and tensorized_index is not None
             and chunk_scores is not None
             and reference_scores is not None
+            and winning_indices is not None
+            and winning_scores is not None
         ):
             selected_by_batch = self._hierarchical_tensorized(
                 hits_by_batch,
                 tensorized_index,
                 chunk_scores,
                 reference_scores,
+                winning_indices,
+                winning_scores,
                 layer_id,
                 config,
             )
             self._last_rankings_by_layer[layer_id] = (
                 [self._serialize_rankings(hits, config) for hits in hits_by_batch]
-                if retain_rankings
-                else [[] for _ in hits_by_batch]
+                if retain_rankings and hits_by_batch is not None
+                else [[] for _ in range(query.shape[0])]
             )
             return selected_by_batch
 

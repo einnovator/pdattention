@@ -174,7 +174,7 @@ class PRAttention(nn.Module):
         selected = deduplicated
         if not selected:
             empty = q.new_empty((1, self.n_heads, 0, self.head_dim))
-            return empty, empty, selected, 0
+            return empty, empty, selected, 0, 0, 0.0
 
         keys = []
         values = []
@@ -203,12 +203,46 @@ class PRAttention(nn.Module):
                         value = value[:, :, overlap:, :]
                 covered_end_by_uri[hit.reference_uri] = max(covered_end, hit.token_end)
             if key.shape[2]:
-                keys.append(key.to(q.device, q.dtype))
-                values.append(value.to(q.device, q.dtype))
+                keys.append(key)
+                values.append(value)
         if not keys:
             empty = q.new_empty((1, self.n_heads, 0, self.head_dim))
-            return empty, empty, selected, duplicate_tokens
-        return torch.cat(keys, dim=2), torch.cat(values, dim=2), selected, duplicate_tokens
+            return empty, empty, selected, duplicate_tokens, 0, 0.0
+
+        transfer_bytes = sum(
+            (key.numel() * key.element_size()) + (value.numel() * value.element_size())
+            for key, value in zip(keys, values)
+            if key.device != q.device or value.device != q.device
+        )
+        collect_timing = self.config.collect_detailed_timing
+        _synchronize_detailed_timing(q, collect_timing and transfer_bytes > 0)
+        transfer_start = time.perf_counter()
+        keys = [
+            key.to(
+                q.device,
+                q.dtype,
+                non_blocking=self.config.kv_cache_non_blocking,
+            )
+            for key in keys
+        ]
+        values = [
+            value.to(
+                q.device,
+                q.dtype,
+                non_blocking=self.config.kv_cache_non_blocking,
+            )
+            for value in values
+        ]
+        _synchronize_detailed_timing(q, collect_timing and transfer_bytes > 0)
+        transfer_duration = time.perf_counter() - transfer_start if transfer_bytes else 0.0
+        return (
+            torch.cat(keys, dim=2),
+            torch.cat(values, dim=2),
+            selected,
+            duplicate_tokens,
+            transfer_bytes,
+            transfer_duration,
+        )
 
     def forward(self, x, use_pra_memory: bool = True, attention_mask: torch.Tensor | None = None):
         """Compute local attention and, when enabled, routed reference attention.
@@ -271,12 +305,18 @@ class PRAttention(nn.Module):
         memory_k = []
         memory_v = []
         duplicate_tokens = 0
+        transferred_kv_bytes = 0
+        transfer_duration = 0.0
         for batch_index, selected in enumerate(selected_by_batch):
-            key, value, retained, duplicates = self._materialize(selected, q[batch_index : batch_index + 1])
+            key, value, retained, duplicates, row_transfer_bytes, row_transfer_duration = (
+                self._materialize(selected, q[batch_index : batch_index + 1])
+            )
             memory_k.append(key)
             memory_v.append(value)
             self.last_selected_chunks[batch_index] = retained
             duplicate_tokens += duplicates
+            transferred_kv_bytes += row_transfer_bytes
+            transfer_duration += row_transfer_duration
         _synchronize_detailed_timing(q, collect_timing)
         materialization_duration = time.perf_counter() - materialization_start
 
@@ -335,7 +375,7 @@ class PRAttention(nn.Module):
                 "accessible_kv_tokens": float(accessible_tokens),
                 "active_memory_fraction": retrieved_tokens / max(accessible_tokens, 1),
                 "retrieved_kv_storage_bytes": float(kv_bytes),
-                "retrieved_kv_transfer_bytes": float(kv_bytes),
+                "retrieved_kv_transfer_bytes": float(transferred_kv_bytes),
                 "attention_output_norm": output_norm,
                 "local_output_norm": local_norm,
                 "attention_to_local_output_norm_ratio": output_norm / max(local_norm, 1e-12),
@@ -345,6 +385,7 @@ class PRAttention(nn.Module):
                     {
                         "routing_duration_seconds": routing_duration,
                         "materialization_duration_seconds": materialization_duration,
+                        "selected_kv_transfer_duration_seconds": transfer_duration,
                         "memory_attention_duration_seconds": memory_attention_duration,
                     }
                 )

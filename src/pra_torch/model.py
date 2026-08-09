@@ -380,21 +380,41 @@ class TinyPRAModel(nn.Module):
         input_ids,
         use_pra_memory: bool = True,
         attention_mask=None,
-        position_offset: int = 0,
+        position_offset: int | torch.Tensor = 0,
     ):
         """Map ``[B,T]`` IDs to logits, optionally continuing historical positions."""
         b, t = input_ids.shape
-        position_offset = int(position_offset)
-        if position_offset < 0 or position_offset + t > self.cfg.max_seq_len:
-            raise ValueError(
-                "Prompt position range exceeds the model positional table: "
-                f"[{position_offset}, {position_offset + t}) vs "
-                f"max_seq_len={self.cfg.max_seq_len}."
-            )
         if attention_mask is not None and attention_mask.shape != input_ids.shape:
             raise ValueError("attention_mask must have the same [batch,tokens] shape as input_ids.")
-        pos = torch.arange(position_offset, position_offset + t, device=input_ids.device)
-        x = self.token_emb(input_ids) + self.pos_emb(pos)[None, :, :]
+        if torch.is_tensor(position_offset):
+            offsets = position_offset.to(device=input_ids.device, dtype=torch.long).reshape(-1)
+            if offsets.numel() != b:
+                raise ValueError("Per-row position offsets must have shape [batch].")
+            pos = offsets[:, None] + torch.arange(t, device=input_ids.device)[None, :]
+            valid = (
+                attention_mask.bool()
+                if attention_mask is not None
+                else torch.ones_like(pos, dtype=torch.bool)
+            )
+            valid_positions = pos[valid]
+            if (
+                valid_positions.numel()
+                and (int(valid_positions.min()) < 0 or int(valid_positions.max()) >= self.cfg.max_seq_len)
+            ):
+                raise ValueError("Prompt positions exceed the model positional table.")
+            pos = pos.masked_fill(~valid, 0)
+            positional = self.pos_emb(pos)
+        else:
+            scalar_offset = int(position_offset)
+            if scalar_offset < 0 or scalar_offset + t > self.cfg.max_seq_len:
+                raise ValueError(
+                    "Prompt position range exceeds the model positional table: "
+                    f"[{scalar_offset}, {scalar_offset + t}) vs "
+                    f"max_seq_len={self.cfg.max_seq_len}."
+                )
+            pos = torch.arange(scalar_offset, scalar_offset + t, device=input_ids.device)
+            positional = self.pos_emb(pos)[None, :, :]
+        x = self.token_emb(input_ids) + positional
         for block in self.blocks:
             x = block(x, use_pra_memory=use_pra_memory, attention_mask=attention_mask)
         x = self.ln(x)
@@ -436,6 +456,17 @@ class TinyPRAModel(nn.Module):
                 layer_kv[block.layer_id] = block.project_reference_kv(x, detach=detach)
             x = block(x, use_pra_memory=use_pra_memory)
         return layer_kv
+
+    def _cache_resident_kv(self, kv: LayerKV) -> LayerKV:
+        """Place full token K/V in the configured backing tier after gist creation."""
+        if self.cfg.kv_cache_residency == "gpu":
+            return kv
+        key = kv.k.detach().to("cpu")
+        value = kv.v.detach().to("cpu")
+        if self.cfg.kv_cache_pin_memory and torch.cuda.is_available():
+            key = key.pin_memory()
+            value = value.pin_memory()
+        return LayerKV(k=key, v=value)
 
     def encode_reference_to_cache(
         self,
@@ -609,7 +640,7 @@ class TinyPRAModel(nn.Module):
                             source_uri=str(row["uri"]),
                             token_start=0,
                             token_end=len(row["token_ids"]),
-                            token_kv=sliced,
+                            token_kv=self._cache_resident_kv(sliced),
                             routing_gist=ChunkRoutingGist(
                                 k=computed.k.detach() if detach else computed.k,
                                 v=(
@@ -654,11 +685,13 @@ class TinyPRAModel(nn.Module):
         max_chunks: int | None = None,
         use_configured_max_chunks: bool = True,
         max_chunk_tokens: int | None = None,
+        historical_encoding: bool = False,
     ) -> PRACacheEntry:
         """Encode exact reference token IDs into layer-specific routing and K/V.
 
-        The method first partitions the supplied IDs, then independently runs each retained
-        chunk through the decoder. For every PRA layer it stores full token K/V
+        The method first partitions the supplied IDs. It either runs each retained
+        chunk independently or encodes the complete source once and slices historical
+        K/V by chunk boundary. For every PRA layer it stores full token K/V
         ``[1,H,M,Dh]`` plus content/value gist sets ``[G_chunk,D]``. Optional
         per-layer URI gists are cached as ``[G_ref,D]`` for reference-first routing.
         An optional summary is
@@ -699,6 +732,10 @@ class TinyPRAModel(nn.Module):
                 "chunk_overlap_fraction": self.cfg.chunk_overlap_fraction,
                 "chunk_overlap_tokens": self.cfg.resolved_chunk_overlap_tokens,
                 "overlap_materialization": self.cfg.overlap_materialization,
+                "historical_encoding": bool(historical_encoding),
+                "reference_encoding_strategy": (
+                    "native_slice" if historical_encoding else "independent"
+                ),
                 "unique_source_tokens": len(token_ids),
                 "encoded_tokens_including_overlap": sum(
                     len(chunk.token_ids) for chunk in chunks
@@ -711,6 +748,21 @@ class TinyPRAModel(nn.Module):
         summary_by_layer = {}
         summary = metadata.get("summary")
         with context:
+            historical_layer_kv = None
+            if historical_encoding:
+                if use_pra_memory:
+                    raise ValueError("Historical source encoding cannot consume its own PRA memory.")
+                if len(token_ids) > self.cfg.max_seq_len:
+                    raise ValueError(
+                        f"Historical source has {len(token_ids)} tokens, exceeding "
+                        f"max_seq_len={self.cfg.max_seq_len}."
+                    )
+                historical_layer_kv = self._encode_reference_tokens(
+                    token_ids,
+                    device,
+                    detach=detach,
+                    use_pra_memory=False,
+                )
             if self.cfg.use_summary and summary:
                 summary_ids = list(tokenizer.encode(str(summary)))
                 if len(summary_ids) > self.cfg.max_seq_len:
@@ -748,12 +800,22 @@ class TinyPRAModel(nn.Module):
                             f"max_seq_len={self.cfg.max_seq_len}."
                         )
                     token_ids = token_ids[: self.cfg.max_seq_len]
-                layer_kv = self._encode_reference_tokens(
-                    token_ids,
-                    device,
-                    detach=detach,
-                    use_pra_memory=use_pra_memory,
-                )
+                if historical_layer_kv is None:
+                    layer_kv = self._encode_reference_tokens(
+                        token_ids,
+                        device,
+                        detach=detach,
+                        use_pra_memory=use_pra_memory,
+                    )
+                else:
+                    retained_end = min(chunk.token_start + len(token_ids), chunk.token_end)
+                    layer_kv = {
+                        layer_id: LayerKV(
+                            k=kv.k[:, :, chunk.token_start:retained_end, :],
+                            v=kv.v[:, :, chunk.token_start:retained_end, :],
+                        )
+                        for layer_id, kv in historical_layer_kv.items()
+                    }
                 # Gists are pooled from projected keys/values in the same layer space
                 # later used by routing queries and cross-attention.
                 for layer_id, kv in layer_kv.items():
@@ -783,7 +845,7 @@ class TinyPRAModel(nn.Module):
                         token_end=min(chunk.token_start + len(token_ids), chunk.token_end),
                         char_start=chunk.char_start,
                         char_end=chunk.char_end,
-                        token_kv=kv,
+                        token_kv=self._cache_resident_kv(kv),
                         routing_gist=ChunkRoutingGist(
                             k=gist_k,
                             v=gist_v,
@@ -904,7 +966,16 @@ class TinyPRAModel(nn.Module):
                 direct_ids = input_ids.new_tensor([split.direct_ids for split in splits])
         for _ in range(max_new_tokens):
             idx = direct_ids[:, -self.cfg.effective_prompt_direct_tokens :]
-            logits = self(idx, use_pra_memory=use_pra_memory)
+            position_offset = (
+                output_ids.shape[1] - idx.shape[1]
+                if self.cfg.prompt_position_mode == "historical"
+                else 0
+            )
+            logits = self(
+                idx,
+                use_pra_memory=use_pra_memory,
+                position_offset=position_offset,
+            )
             logits = logits[:, -1, :] / max(temperature, 1e-6)
             if do_sample:
                 probs = F.softmax(logits, dim=-1)

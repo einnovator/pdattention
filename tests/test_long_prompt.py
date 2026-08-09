@@ -11,7 +11,7 @@ from pra_torch.cache_services import collect_reference_metadata
 from pra_torch.config import CacheServiceConfig, PRAConfig, ResolverServiceConfig
 from pra_torch.data import CharTokenizer
 from pra_torch.memory import PRABatchedMemoryCache, PRASimpleMemoryCache
-from pra_torch.model import TinyPRAModel
+from pra_torch.model import TinyPRAModel, convert_sa_model_to_pra
 from pra_torch.pra_train import _pra_batch_step
 from pra_torch.prompt import (
     IMPLICIT_PROMPT_HEAD_NAME,
@@ -266,3 +266,115 @@ def test_generation_builds_head_before_forwarding_bounded_tail():
     short_ids = torch.tensor([tokenizer.encode("abc")])
     model.generate(short_ids, max_new_tokens=0, tokenizer=tokenizer, do_sample=False)
     assert model.pra_cache.get(IMPLICIT_PROMPT_HEAD_URI) is None
+
+
+def test_historical_head_encodes_once_then_slices_exact_native_kv():
+    tokenizer = CharTokenizer(["abcdefghijkl"])
+    cfg = _config(
+        tokenizer,
+        max_seq_len=16,
+        max_prompt_direct_tokens=4,
+        prompt_position_mode="historical",
+        chunking_mode="fixed",
+        fixed_chunk_tokens=2,
+        max_prompt_gists=None,
+    )
+    model = TinyPRAModel(cfg).eval()
+    ids = torch.tensor([tokenizer.encode("abcdefghijkl")])
+
+    prepared = prepare_prompt_batch_for_pra(model, tokenizer, ids)
+    head = prepared.caches[0].get(IMPLICIT_PROMPT_HEAD_URI)
+    expected = model._encode_reference_tokens(
+        ids[0, :-4].tolist(),
+        "cpu",
+        detach=True,
+        use_pra_memory=False,
+    )
+
+    assert head.metadata["historical_encoding"] is True
+    assert prepared.position_offsets.tolist() == [8]
+    for layer_id, layer_kv in expected.items():
+        actual_k = torch.cat(
+            [chunk.token_kv.k for chunk in head.layer_memory[layer_id].chunks], dim=2
+        )
+        actual_v = torch.cat(
+            [chunk.token_kv.v for chunk in head.layer_memory[layer_id].chunks], dim=2
+        )
+        assert torch.equal(actual_k, layer_kv.k)
+        assert torch.equal(actual_v, layer_kv.v)
+
+
+def test_historical_head_plus_tail_matches_dense_full_forward():
+    torch.manual_seed(41)
+    tokenizer = CharTokenizer(["abcdefghijkl"])
+    source_cfg = PRAConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=16,
+        n_heads=4,
+        n_layers=2,
+        d_ff=32,
+        max_seq_len=16,
+        model_variant="td_sa",
+        dropout=0.0,
+    )
+    source = TinyPRAModel(source_cfg).eval()
+    target_cfg = PRAConfig(
+        **{
+            **source_cfg.__dict__,
+            "model_variant": "td_pra",
+            "max_prompt_direct_tokens": 4,
+            "prompt_overflow_mode": "implicit_reference",
+            "prompt_position_mode": "historical",
+            "chunking_mode": "fixed",
+            "fixed_chunk_tokens": 2,
+            "max_prompt_gists": None,
+            "top_k_references": 1,
+            "top_k_chunks_per_reference": 8,
+            "trigger_threshold": float("-inf"),
+        }
+    )
+    converted = convert_sa_model_to_pra(source, target_cfg).eval()
+    ids = torch.tensor([tokenizer.encode("abcdefghijkl")])
+    prepared = prepare_prompt_batch_for_pra(converted, tokenizer, ids)
+    converted.set_pra_cache(prepared.caches[0])
+
+    with torch.no_grad():
+        expected = source(ids)[:, -4:]
+        actual = converted(
+            prepared.input_ids,
+            attention_mask=prepared.attention_mask,
+            position_offset=prepared.position_offsets,
+        )
+
+    assert torch.allclose(actual, expected, atol=2e-6, rtol=2e-6)
+
+
+def test_mixed_historical_rows_conserve_tokens_and_continue_positions():
+    tokenizer = CharTokenizer(["abcdefghijklmnop"])
+    cfg = _config(
+        tokenizer,
+        max_seq_len=20,
+        prompt_position_mode="historical",
+    )
+    model = TinyPRAModel(cfg).eval()
+    rows = [list(range(3)), list(range(10)), list(range(16))]
+    input_ids = torch.zeros((3, 16), dtype=torch.long)
+    mask = torch.zeros_like(input_ids)
+    for row_index, row in enumerate(rows):
+        input_ids[row_index, : len(row)] = torch.tensor(row)
+        mask[row_index, : len(row)] = 1
+
+    prepared = prepare_prompt_batch_for_pra(
+        model, tokenizer, input_ids, attention_mask=mask
+    )
+
+    assert prepared.position_offsets.tolist() == [0, 6, 12]
+    for original, split in zip(rows, prepared.splits):
+        assert [*split.implicit_ids, *split.direct_ids] == original
+    model.set_pra_cache(PRABatchedMemoryCache(prepared.caches))
+    logits = model(
+        prepared.input_ids,
+        attention_mask=prepared.attention_mask,
+        position_offset=prepared.position_offsets,
+    )
+    assert torch.isfinite(logits).all()

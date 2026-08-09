@@ -31,12 +31,17 @@ Relevant modules: `src/pra_torch/model.py`, `src/pra_torch/attention.py`,
 
 - Prompts longer than the direct window can use `prompt_overflow_mode=implicit_reference`.
 - The recent tail remains in ordinary causal SelfAttention. Displaced leading tokens are
-  encoded into a request-local cache entry with URI `pra://implicit/prompt/head` and display
-  name `#__head`.
+  encoded once as causal history, and native layer K/V is sliced into a request-local cache
+  entry with URI `pra://implicit/prompt/head` and display name `#__head`.
 - Each batch row owns a separate cache namespace. Identical implicit URIs therefore cannot
   leak K/V between examples.
+- Mixed-length batches carry one historical tail-position offset per row. Exact tests show
+  that restoring all head slices reproduces dense full-sequence tail logits.
 - `max_prompt_gists` independently bounds how many head chunks remain routable. Metrics
   report total, direct, implicit, chunk, and gist counts.
+- A five-seed fixed-target probe now covers 1x/2x/4x/8x the direct window. Historical
+  routing matches dense loss through 4x and beats truncation at 8x; wrong-memory and
+  independent-chunk controls confirm content dependence and the cost of context resets.
 
 Relevant module: `src/pra_torch/prompt.py` with integration in `src/pra_torch/pra_train.py`.
 
@@ -50,27 +55,48 @@ Relevant module: `src/pra_torch/prompt.py` with integration in `src/pra_torch/pr
 - URI aggregation remains exact for max, mean, and log-sum-exp policies. `torch.topk`
   selects references and per-reference chunks without changing materialization semantics.
 - Packed indexes are invalidated whenever entries or gist representations change. Detached
-  caches reuse indexes; trainable-gist mode preserves its computation graph.
+  caches reuse indexes across queries; trainable-gist mode preserves its computation graph.
+- After reference top-k, the normal path gathers only selected reference rows for chunk
+  top-k and transfers only selected identifiers/scores to the host. Full rankings remain
+  available in diagnostic mode.
 - Summary-combination and reference-first modes currently retain the exact scalar fallback;
   tensorizing those optional paths is Phase-9 runtime work.
 - Detailed timing now fences CUDA only in measurement mode, preventing asynchronous kernels
   from being charged to the wrong phase. Normal inference remains asynchronous.
-- A five-seed CUDA comparison over HotpotQA-derived and QASPER-derived workloads, tiny and
-  small backbones, 32 examples per condition, and 32/64/128/256 splits records exact loss
-  parity. At 256 splits, routing falls from 522--542 ms to 27.7--28.0 ms for tiny and from
-  908--981 ms to 53.2--55.5 ms for small, a 16.47--19.38x speedup. Packed-index construction
-  is included; resolver, encoding, materialization, and memory attention are excluded.
+- The original five-seed cold benchmark reduced 256-way scalar routing from 522--981 ms to
+  27.7--55.5 ms. A serving-oriented follow-up on real encoded caches reduces cold routing
+  further to 14.8--33.7 ms and persistent-index warm routing to 5.5--11.6 ms, a 94--103x
+  improvement over scalar selection with exact URI/chunk/score/loss parity. At 256 units,
+  index construction is 45--54% of cold exact routing.
 
 Relevant modules: `src/pra_torch/memory.py`, `src/pra_torch/config.py`, and
 `scripts/run_pra_routing_speed.py`.
 
 ### Runtime interpretation
 
-At fixed top-k, PRA has demonstrated reductions in active attention K/V and potential
-transfer, not yet reductions in the complete resident cache. The prototype still retains
-all encoded K/V in memory. Actual GPU-capacity savings require CPU/remote/tiered backing
-storage, selective transfer, paging, or eviction. End-to-end claims must include resolver,
-encoding, indexing, transfer, materialization, attention, and synchronization time.
+At fixed top-k, PRA now demonstrates both reduced active attention K/V and a prototype
+reduction in complete GPU-resident source K/V. `kv_cache_residency=cpu` keeps gists/indexes
+on GPU, leaves detached token K/V in pinned CPU memory, and transfers selected chunks only.
+At 256 units it removes 0.73--3.42 MiB from the measured GPU cache with zero loss or
+selection delta. Warm transfer costs 4--9 ms; cold cache construction is 3--4x slower
+because offload is currently per chunk and synchronous. End-to-end claims must still include
+resolver, encoding, indexing, transfer, materialization, attention, and synchronization.
+
+### Overnight checkpoint (August 2026)
+
+Completed:
+- exact reusable packed indexes and selected-only ranking serialization
+- historical encode-once/slice behavior for implicit prompt heads
+- per-row historical offsets for mixed batches
+- CPU-resident native K/V with actual transfer-byte and peak-CUDA metrics
+- five-seed CUDA routing, long-prompt, sensitivity, and residency experiments
+
+Next systems work:
+- batch CPU offload during cache construction instead of issuing one transfer per chunk
+- overlap selected K/V transfer with routing and local projection
+- fuse or bucket variable-length memory attention
+- roll generated history into the request-local head cache
+- benchmark pretrained RoPE/GQA models and genuine QA targets
 
 ## Phase 1
 Finish WikiText-2:
@@ -114,6 +140,10 @@ Engineering prerequisites:
 - vary direct-tail length, head chunk size/overlap, top-k, and gist count
 - measure selection quality separately from materialization and language-model quality
 
+Status: controlled implicit-head transport, exact dense parity, and 1x--8x sensitivity are
+complete on the tiny fixed-target probe. Public long-context suites and pretrained models
+remain pending.
+
 ## Phase 5
 Software engineering:
 - SWE-bench
@@ -155,14 +185,15 @@ using PEFT/LoRA before full finetuning.
 ## Phase 9
 Runtime:
 - tensorize summary and reference-first routing paths
-- benchmark packed-index reuse separately from per-request index construction
+- [done] benchmark packed-index reuse separately from per-request index construction
 - add exact dense and approximate-nearest-neighbor index backends
 - shared caches
 - paging
 - admission/eviction
 - distributed cache
 - persistent memory
-- off-GPU K/V storage and selective asynchronous transfer
+- [prototype] off-GPU K/V storage and selective transfer
+- batch and asynchronously overlap cache offload/selected transfer
 - fused variable-length native-KV attention kernels
 - end-to-end latency, throughput, peak-memory, and energy accounting
 
