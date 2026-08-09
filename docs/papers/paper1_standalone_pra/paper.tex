@@ -35,7 +35,7 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA), recast as an inference-time sparse approximation to full native self-attention. A trained SelfAttention checkpoint can be converted by splitting its existing Q/K/V projection, with no newly trained transport module. Selected historical token K/V is concatenated with local K/V under one shared softmax and the existing output projection; routing gists act only as an index. Exact tests show that reinserting all historical K/V reproduces the corresponding full causal-attention tail and that converted PRA logits match the source SelfAttention model when memory is disabled. A five-seed fixed-source synthetic study establishes a first content-causal native result: full-context SelfAttention reaches 100\% answer-token accuracy versus 50.6\% from the tail alone, and oracle native memory retains 100\% through 32 splits while shuffled memory remains near chance. A five-seed HotpotQA-derived natural-text transport probe then recovers 99.6\% of dense context benefit at split 32 while activating 9.2\% of token K/V; routed recovery is 63.4\%, isolating selection as the larger remaining error. Both probes degrade under 64-way fragmentation. The prototype also retains an optional cross-attention transport used by earlier experiments. Those historical results support ordinary-language compatibility and frozen-path preservation but not causal retrieval. We add fixed-target controls, active-K/V diagnostics, Recovered Context Benefit, and explicit transport, sparsity, routing, causality, and dependency gaps. End-to-end production efficiency and unrestricted natural-language QA remain unclaimed.
+This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA), recast as an inference-time sparse approximation to full native self-attention. A trained SelfAttention checkpoint can be converted by splitting its existing Q/K/V projection, with no newly trained transport module. Selected historical token K/V is concatenated with local K/V under one shared softmax and the existing output projection; routing gists act only as an index. Exact tests show that reinserting all historical K/V reproduces the corresponding full causal-attention tail and that converted PRA logits match the source SelfAttention model when memory is disabled. A five-seed fixed-source synthetic study establishes a first content-causal native result: full-context SelfAttention reaches 100\% answer-token accuracy versus 50.6\% from the tail alone, and oracle native memory retains 100\% through 32 splits while shuffled memory remains near chance. Five-seed HotpotQA- and QASPER-derived natural-text transport probes then recover 99.6\% and 99.9\% of dense context benefit at split 32 while activating 9.2\% and 8.8\% of token K/V; routed recovery is 63.4\% and 60.2\%, isolating selection as the larger remaining error. All three probes degrade under 64-way fragmentation. The prototype also retains an optional cross-attention transport used by earlier experiments. Those historical results support ordinary-language compatibility and frozen-path preservation but not causal retrieval. We add fixed-target controls, active-K/V diagnostics, Recovered Context Benefit, and explicit transport, sparsity, routing, causality, and dependency gaps. End-to-end production efficiency and unrestricted natural-language QA remain unclaimed.
 \end{abstract}
 
 \section{Introduction}
@@ -626,7 +626,7 @@ Reference causality & valid, disabled, shuffled, irrelevant, empty, oracle chunk
 Cache budget & entries/tokens/bytes; reuse on/off; eviction policies & pending \\
 Memory strength & $\alpha$ sweep including zero and learned gate & $\alpha=1$ only \\
 Selection & reference/chunk top-$k$, threshold, oracle chunks, learned router & fixed-$k$ smoke complete; controlled sweep pending \\
-Transport & native all/oracle/routed versus adapted cross-attention & synthetic and HotpotQA-derived native sweeps complete; QASPER pending \\
+Transport & native all/oracle/routed versus adapted cross-attention & synthetic, HotpotQA-derived, and QASPER-derived native sweeps complete \\
 Adaptation & scratch, frozen branch, LoRA, adapters, joint fine-tuning & scratch/frozen/joint complete \\
 Placement & full PRA, upper-layer hybrid, layer-count sweep & full and 2+2 hybrid complete \\
 Difficulty & distance, candidate count, local sufficiency, recursion depth & recursive runtime present; experiments pending \\
@@ -654,7 +654,7 @@ The result also identifies two limits. At 64 splits, oracle loss rises to 0.6490
 \section{Evidence-Anchored Natural-Text Native-KV Probes}
 
 The next gate retains the controlled target while replacing character-level distractors
-with natural documents from HotpotQA and QASPER. These are deliberately transport probes,
+with natural documents from HotpotQA and QASPER \cite{yang2018hotpotqa,dasigi2021qasper}. These are deliberately transport probes,
 not benchmark QA scores. For HotpotQA we use balanced yes/no questions, the supplied
 supporting-fact sentences, and distractor context. For QASPER we use balanced yes/no
 annotations and their human evidence spans from the official v0.3 corpus. Each example
@@ -746,6 +746,65 @@ and 853 ms for all-memory; at split 64 it is 12.5 ms versus 1.70 s. These number
 prototype overhead and do not establish production speedup, but they verify that the
 quality-active-context frontier corresponds to measured materialization and transfer
 reductions rather than a label-only budget.
+
+\subsection{QASPER-Derived Result}
+
+The QASPER-derived probe repeats the protocol on scientific papers and human-annotated
+evidence spans. It uses 200 balanced training probes and 64 probes from the disjoint
+development split, the same two-layer width-128 architecture and 150-step schedule, and a
+BPE vocabulary learned only from the training corpus. Table~\ref{tab:qasper-native}
+reports five-seed means.
+
+\begin{table}[htbp]
+\centering
+\caption{QASPER-derived answer-code transport probe, five-seed means. Active is the oracle active token-K/V fraction.}
+\label{tab:qasper-native}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{rrrrrrrrrr}
+\toprule
+Split & SA full & SA tail & Native all & Oracle & Routed & Shuffled & Oracle RCB & Routed RCB & Active \\
+\midrule
+2  & .0026 & 1.8545 & .0035 & .0035 & .0035 & 4.8820 & .999 & .999 & 1.000 \\
+3  & .0026 & 1.8545 & .0610 & .0036 & .2977 & 3.4029 & .999 & .790 & .525 \\
+5  & .0026 & 1.8545 & .0925 & .0037 & .4924 & 2.6978 & .999 & .661 & .281 \\
+8  & .0026 & 1.8545 & .1267 & .0037 & .6078 & 2.6359 & .999 & .572 & .192 \\
+16 & .0026 & 1.8545 & .1769 & .0037 & .6640 & 2.2348 & .999 & .542 & .117 \\
+32 & .0026 & 1.8545 & .1612 & .0039 & .5550 & 2.7351 & .999 & .602 & .088 \\
+64 & .0026 & 1.8545 & .8835 & .5047 & 1.0982 & 1.1819 & .748 & .338 & .088 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/native_kv_qasper.pdf}
+\caption{QASPER-derived quality and error decomposition over five paired seeds. Oracle native K/V preserves dense-context quality through split 32, while all-memory composition and routed selection accumulate distinct errors.}
+\label{fig:native-kv-qasper}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/native_kv_qasper_efficiency.pdf}
+\caption{QASPER-derived active-K/V diagnostics. Oracle RCB remains 0.999 as active fraction falls to 0.088 through split 32; the 64-way point again marks a fragmentation limit.}
+\label{fig:native-kv-qasper-efficiency}
+\end{figure}
+
+QASPER reproduces the HotpotQA-derived pattern with a different source distribution. At
+split 32, the transport gap is 0.159, sparse gap is $-0.157$, and routing gap is 0.551.
+The oracle content-causality gap is 2.731. High-dependency examples have mean oracle,
+routed, and shuffled RCB of 0.968, 0.823, and 0.391, respectively. At split 64, oracle
+loss rises to 0.5047 and oracle RCB falls to 0.748, while routed RCB falls to 0.338.
+The failure is milder than HotpotQA's mean oracle degradation but remains strongly
+seed-dependent.
+
+At split 32, oracle activates about 10 tokens and transfers 4,096 K/V bytes per example,
+versus 114 tokens and 217,920 bytes for all-memory. Mean prototype times are 22.1 ms and
+604 ms, respectively; at split 64 they are 25.2 ms and 1.26 s. Because all quality runs
+use CPU and a Python reference runtime, these values validate accounting and direction,
+not optimized systems performance. Together, the two natural-text probes support sparse
+native transport and expose a repeatable routing gap. They still do not establish
+unrestricted HotpotQA or QASPER question answering, because the answer-code anchor makes
+the causal dependency controlled and explicit.
 
 \section{Historical Version-1 Results}
 
@@ -920,13 +979,13 @@ Recursive expansion can amplify work. The standalone builder now bounds depth, c
 
 \section{Limitations}
 
-The current prototype and follow-up have important limitations. Native-KV transport now has controlled quality, active-K/V, transfer-byte, and prototype-timing sweeps, but it does not yet have optimized-kernel or production-hardware evaluation; historical K/V reuse has not yet been compared exhaustively with independent chunk re-encoding across position policies. The HotpotQA-derived task injects a fixed answer code and therefore tests transport over natural text rather than unrestricted multi-hop QA. Its fixed anchor favors an oracle and does not establish semantic routing. The corrected-router cross-attention smoke matrix reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans, and the model can reduce continuation loss without learning candidate selection. The near-chance selector and weak counterfactual deltas leave open how much of the historical adapted-memory gain is content independent.
+The current prototype and follow-up have important limitations. Native-KV transport now has controlled quality, active-K/V, transfer-byte, and prototype-timing sweeps, but it does not yet have optimized-kernel or production-hardware evaluation; historical K/V reuse has not yet been compared exhaustively with independent chunk re-encoding across position policies. The HotpotQA- and QASPER-derived tasks inject a fixed answer code and therefore test transport over natural text rather than unrestricted multi-hop or scientific-document QA. Their fixed anchor favors an oracle and does not establish semantic routing. The corrected-router cross-attention smoke matrix reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans, and the model can reduce continuation loss without learning candidate selection. The near-chance selector and weak counterfactual deltas leave open how much of the historical adapted-memory gain is content independent.
 
 The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-valid-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Most gist modes and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter now batches the prompt forward, but reference encoding and routing still iterate over row-private caches. Multi-gist modes and the implicit prompt-head path have focused tests but no controlled quality, routing, or timing study. In particular, prompt-head encoding can relocate rather than remove computation, and generated-token rollover is absent. The 20-run fixed-split matrix varies model initialization but keeps one generated dataset and split; summary modes, oracle chunks, full-reference transport, recursion, and dynamic bucketing remain unit- and CUDA-smoke-tested rather than evaluated in a controlled training study. Finally, one tiny model scale cannot establish scaling or efficiency behavior. No broad experimental superiority is claimed.
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Layer-level historical-K/V reinsertion and whole-model disabled-memory conversion pass numerical equivalence tests. The fixed-source synthetic gate adds content-causal quality evidence, and the HotpotQA-derived probe shows the desired scaling relation through 32 partitions: oracle RCB remains 0.996 while active token K/V falls to 0.092. Its routed RCB of 0.634 leaves a measurable selector gap. The 64-way degradation and native-all fragmentation curve rule out a broad partition-invariance claim. The earlier cross-attention studies establish useful adaptation controls but fail their content-causality gate. The immediate priorities are to repeat the controlled native sequence on QASPER, replace answer-code anchors with genuine QA targets using a capable pretrained backbone, and train routing against the demonstrated oracle ceiling. End-to-end production efficiency remains unclaimed. Pretrained Hugging Face integration will additionally need to preserve rotary positions, grouped-query caches, and layer-specific cache layouts.
+The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Layer-level historical-K/V reinsertion and whole-model disabled-memory conversion pass numerical equivalence tests. The fixed-source synthetic gate adds content-causal quality evidence. The HotpotQA- and QASPER-derived probes show the desired scaling relation through 32 partitions: oracle RCB remains 0.996 and 0.999 while active token K/V falls to 0.092 and 0.088. Routed RCB of 0.634 and 0.602 leaves a measurable selector gap in both domains. Their 64-way degradation and native-all fragmentation curves rule out a broad partition-invariance claim. The earlier cross-attention studies establish useful adaptation controls but fail their content-causality gate. The immediate priorities are to replace answer-code anchors with genuine QA targets using a capable pretrained backbone, train routing against the demonstrated oracle ceiling, and compare native cache semantics across positional schemes. End-to-end production efficiency remains unclaimed. Pretrained Hugging Face integration will additionally need to preserve rotary positions, grouped-query caches, and layer-specific cache layouts.
 
 \appendix
 \section{Reference-Memory Forward Pass Pseudocode}
