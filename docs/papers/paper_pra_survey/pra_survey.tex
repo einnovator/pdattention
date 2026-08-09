@@ -196,6 +196,18 @@ The reference phase uses one fixed 512-example corpus and compares scratch, pret
 
 Optimization success does not imply retrieval success. After frozen adaptation, disabling memory raises loss by 0.0175 for full PRA and 0.0117 for hybrid PRA, but shuffling raises it by only 0.0048 and 0.0008. Irrelevant penalties are below 0.001 and oracle gains below 0.002. Test top-1 is $0.4221\pm0.0156$ and $0.3981\pm0.0397$ against a candidate-count-weighted chance rate of 0.4202. The branch is active, but correct content is not causally established. A separate five-seed, eight-step split-count smoke matrix reaches the same qualitative conclusion while verifying the batched pipeline at two and five total text splits.
 
+Later native-KV probes isolate transport from that adapted cross-attention failure. Their
+first 64-way degradation is largely repaired by encoding historical context once and
+slicing native K/V into separately routable regions. A staged five-seed scale study grows
+both source length and addressability from 64 to 256 units. At routed $k=8$, active K/V
+falls to 4.4--5.1\%. A 2.2--2.4M-parameter backbone retains RCB 1.000 on
+HotpotQA-derived answer-code text but falls to 0.908 on QASPER-derived text at 256; a
+6.6--6.9M-parameter backbone reaches 1.000 on both without PRA training. This is evidence
+for native transport, contextual slicing, and capacity-sensitive routing, not benchmark
+QA. It also exposes a systems bottleneck: exhaustive Python routing costs 0.5--1.0 seconds
+per example at 256 units while transferred K/V remains nearly constant. PRA therefore
+needs indexed/vectorized selection and cache reuse before its sparsity can imply speed.
+
 \subsection{Evaluation doctrine}
 PRA's strongest methodological contribution may be its insistence on counterfactual reference evaluation. A task score alone does not establish retrieval use. Required conditions include valid, disabled, shuffled, irrelevant, empty, random-ID, content-only, position-only, oracle, and all-content-local controls. The principal causal quantities are
 \begin{equation}
@@ -651,13 +663,16 @@ mechanical feasibility for configurable chunk- and URI-level gist sets, selected
 K/V, variable-length batches, optional summaries, bounded child-first cache construction,
 and request-local virtualization of an overlong initial-prompt prefix.
 A five-seed corrected-router study establishes tiny-scale ordinary-language compatibility,
-large benefits from pretraining, and exact local-path preservation under frozen adaptation.
-It does not show content-selective reference use: top-1 remains near chance, shuffled
-penalties are at most 0.0048, and oracle gains stay below 0.002.  The next decisive step is
-therefore a learned-routing comparison with chunk/span supervision, followed by recursive
-tasks and end-to-end cold, warm, and reused-cache costs against strong long-context and
-retrieval baselines.  The implicit-head extension additionally requires matched long-prompt
-quality and cost comparisons; no such result is implied by its mechanical tests.
+large benefits from pretraining, and exact local-path preservation under frozen
+cross-attention adaptation, but not content-selective use. Native-KV follow-ups establish
+content-causal transport and show that historical slicing can support 256 addressable
+regions with about 5\% active K/V on controlled answer-code probes. They also show that
+routing depends on backbone capacity and that the current exhaustive selector dominates
+latency. The next decisive steps are genuine QA without injected anchors, learned or
+indexed routing, recursive tasks, and end-to-end cold, warm, and reused-cache costs against
+strong long-context and retrieval baselines. The implicit-head extension additionally
+requires matched long-prompt quality and cost comparisons; no such result is implied by
+its mechanical tests.
 
 If those experiments show that correct chunks cause reproducible gains at a favorable
 quality--cost point, PRA would merit study as a model-native interface for repeated

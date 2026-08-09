@@ -148,7 +148,14 @@ def _dataset_spec(dataset: str):
     return train_rows, eval_rows, converter, dataset_class, train_seed, eval_seed
 
 
-def _dataset_matches(root: Path, dataset_class, *, split_count: int, count: int) -> bool:
+def _dataset_matches(
+    root: Path,
+    dataset_class,
+    *,
+    split_count: int,
+    count: int,
+    source_unit_count: int,
+) -> bool:
     manifest_path = root / dataset_class.stage / "manifest.json"
     questions_path = root / dataset_class.stage / "questions.jsonl"
     if not manifest_path.exists() or not questions_path.exists():
@@ -161,8 +168,9 @@ def _dataset_matches(root: Path, dataset_class, *, split_count: int, count: int)
         "generation_version": GENERATION_VERSION,
     }:
         return False
-    first = json.loads(questions_path.read_text(encoding="utf-8").splitlines()[0])
-    return int(first["source_unit_count"]) >= split_count - 1
+    with questions_path.open(encoding="utf-8") as stream:
+        first = json.loads(stream.readline())
+    return int(first["source_unit_count"]) == source_unit_count
 
 
 def _write_dataset(
@@ -173,7 +181,13 @@ def _write_dataset(
     split_count: int,
     examples: list[NativeKVBenchmarkExample],
 ) -> None:
-    if _dataset_matches(root, dataset_class, split_count=split_count, count=len(examples)):
+    if _dataset_matches(
+        root,
+        dataset_class,
+        split_count=split_count,
+        count=len(examples),
+        source_unit_count=len(examples[0].source_units),
+    ):
         return
     write_native_kv_benchmark(
         root,
@@ -188,42 +202,77 @@ def _write_dataset(
 def prepare_scale_data(dataset: str):
     """Build one 255-unit training set and nested 63/127/255-unit evaluations."""
     settings = DATASET_SETTINGS[dataset]
-    train_rows, eval_rows, converter, dataset_class, train_seed, eval_seed = _dataset_spec(
-        dataset
-    )
     max_units = max(SCALE_SPLITS) - 1
-    training_examples = converter(
-        train_rows,
-        max_examples=int(settings["train_examples"]),
-        seed=train_seed,
-        source_unit_count=max_units,
+    dataset_class = (
+        HotpotQANativeKVFixedTargetDataset
+        if dataset == "hotpotqa"
+        else QASPERNativeKVFixedTargetDataset
     )
-    evaluation_examples = converter(
-        eval_rows,
-        max_examples=int(settings["max_examples"]),
-        seed=eval_seed,
-        source_unit_count=max_units,
+    train_seed, eval_seed = (
+        (31_337, 72_991) if dataset == "hotpotqa" else (44_321, 82_811)
     )
-    if len(training_examples) < int(settings["train_examples"]):
-        raise ValueError(
-            f"{dataset} produced {len(training_examples)} scale training examples; "
-            f"{settings['train_examples']} requested."
-        )
-    if len(evaluation_examples) < int(settings["max_examples"]):
-        raise ValueError(
-            f"{dataset} produced {len(evaluation_examples)} scale examples; "
-            f"{settings['max_examples']} requested."
-        )
-
     root = REPO / "out" / "pra_scale_data" / dataset
     training_root = root / "training-source-255"
-    _write_dataset(
+    cached = _dataset_matches(
         training_root,
-        dataset=dataset,
-        dataset_class=dataset_class,
+        dataset_class,
         split_count=2,
-        examples=training_examples,
+        count=int(settings["train_examples"]),
+        source_unit_count=max_units,
     )
+    cached = cached and all(
+        _dataset_matches(
+            root / f"source-{split_count - 1}-split-{split_count}",
+            dataset_class,
+            split_count=split_count,
+            count=int(settings["max_examples"]),
+            source_unit_count=split_count - 1,
+        )
+        for split_count in SCALE_SPLITS
+    )
+    if not cached:
+        train_rows, eval_rows, converter, _, _, _ = _dataset_spec(dataset)
+        training_examples = converter(
+            train_rows,
+            max_examples=int(settings["train_examples"]),
+            seed=train_seed,
+            source_unit_count=max_units,
+        )
+        evaluation_examples = converter(
+            eval_rows,
+            max_examples=int(settings["max_examples"]),
+            seed=eval_seed,
+            source_unit_count=max_units,
+        )
+        if len(training_examples) < int(settings["train_examples"]):
+            raise ValueError(
+                f"{dataset} produced {len(training_examples)} scale training examples; "
+                f"{settings['train_examples']} requested."
+            )
+        if len(evaluation_examples) < int(settings["max_examples"]):
+            raise ValueError(
+                f"{dataset} produced {len(evaluation_examples)} scale examples; "
+                f"{settings['max_examples']} requested."
+            )
+        _write_dataset(
+            training_root,
+            dataset=dataset,
+            dataset_class=dataset_class,
+            split_count=2,
+            examples=training_examples,
+        )
+        for split_count in SCALE_SPLITS:
+            source_units = split_count - 1
+            _write_dataset(
+                root / f"source-{source_units}-split-{split_count}",
+                dataset=dataset,
+                dataset_class=dataset_class,
+                split_count=split_count,
+                examples=[
+                    _truncate_example(example, source_units)
+                    for example in evaluation_examples
+                ],
+            )
     training_dataset = dataset_class(training_root)
     tokenizer_path = root / "tokenizer.json"
     if tokenizer_path.exists():
@@ -245,21 +294,15 @@ def prepare_scale_data(dataset: str):
         tokenizer=tokenizer,
         split_seed=train_seed,
     ).load()
+    # The scale probe needs a stable quality signal, not a validation pass over
+    # hundreds of near-identical answer-code examples at every checkpoint.
+    validation_indices = _subset_indices(training_module, "val")[:64]
+    training_module.val_dataset = Subset(training_module.dataset, validation_indices)
     modules = {}
     fixed_ids = None
     for split_count in SCALE_SPLITS:
         source_units = split_count - 1
-        split_examples = [
-            _truncate_example(example, source_units) for example in evaluation_examples
-        ]
         split_root = root / f"source-{source_units}-split-{split_count}"
-        _write_dataset(
-            split_root,
-            dataset=dataset,
-            dataset_class=dataset_class,
-            split_count=split_count,
-            examples=split_examples,
-        )
         datamodule = PRADataModule(
             dataset_stage=dataset_class.stage,
             data_dir=str(split_root),
@@ -292,7 +335,8 @@ def prepare_scale_data(dataset: str):
             f"{dataset} scale prompt needs {max(lengths)} tokens; limit is {MAX_SEQ_LEN}."
         )
     print(
-        f"prepared {dataset}: train={len(training_dataset)} eval={len(evaluation_examples)} "
+        f"prepared {dataset}: train={len(training_dataset)} "
+        f"eval={len(modules[min(modules)].dataset)} "
         f"max_tokens={max(lengths)}",
         flush=True,
     )
@@ -301,15 +345,16 @@ def prepare_scale_data(dataset: str):
 
 def _baseline_results(model, tokenizer, datamodule, device: str) -> tuple[dict, dict]:
     collator = AnswerTokenCollator(tokenizer, max_seq_len=MAX_SEQ_LEN)
+    evaluation_dataset = datamodule.test_dataset
     full_loader = _loader(
-        FullContextDataset(datamodule.dataset),
+        FullContextDataset(evaluation_dataset),
         collator,
         batch_size=1,
         shuffle=False,
         seed=0,
     )
     tail_loader = _loader(
-        datamodule.dataset,
+        evaluation_dataset,
         collator,
         batch_size=1,
         shuffle=False,
@@ -374,7 +419,10 @@ def evaluate_scale(
             "reference_encoding_strategy": "native_slice",
             "reference_position_mode": "global",
             "prompt_position_mode": "historical",
-            "collect_rank_diagnostics": True,
+            # Aggregate rank/coverage metrics are computed from the complete
+            # in-memory ranking. Persisting every candidate again for every k
+            # makes a single seed hundreds of megabytes without adding evidence.
+            "collect_rank_diagnostics": False,
             "recursive_max_total_references": 512,
             "recursive_max_total_tokens": 65_536,
             "top_k_references": max(top_k_values),
@@ -460,14 +508,22 @@ def evaluate_scale(
             **_summary_metrics(routed["per_example"]),
         }
         rows.append(row)
-        for condition_result in (native_all, native_oracle, routed):
+        condition_results = [routed]
+        if top_k == top_k_values[0]:
+            condition_results = [native_all, native_oracle, routed]
+        for condition_result in condition_results:
             for value in condition_result["per_example"]:
+                compact_value = {
+                    key: item
+                    for key, item in value.items()
+                    if key not in {"rank_diagnostics_by_layer", "candidate_rankings_by_layer"}
+                }
                 raw.append(
                     {
                         "split_count": split_count,
                         "source_unit_count": split_count - 1,
                         "top_k_references": top_k,
-                        **value,
+                        **compact_value,
                     }
                 )
     del model
@@ -543,11 +599,12 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 def _plot_scale(report_dir: Path, aggregate: list[dict]) -> None:
     datasets = sorted({row["dataset"] for row in aggregate})
     colors = {"tiny": "#2878B5", "small": "#C85A3E"}
+    tiers = [tier for tier in ("tiny", "small") if any(row["model_tier"] == tier for row in aggregate)]
 
     figure, axes = plt.subplots(1, len(datasets), figsize=(6 * len(datasets), 4), squeeze=False)
     for index, dataset in enumerate(datasets):
         axis = axes[0][index]
-        for tier in sorted({row["model_tier"] for row in aggregate}):
+        for tier in tiers:
             rows = [
                 row
                 for row in aggregate
@@ -585,7 +642,7 @@ def _plot_scale(report_dir: Path, aggregate: list[dict]) -> None:
     figure, axes = plt.subplots(1, len(datasets), figsize=(6 * len(datasets), 4), squeeze=False)
     for index, dataset in enumerate(datasets):
         axis = axes[0][index]
-        for tier in sorted({row["model_tier"] for row in aggregate}):
+        for tier in tiers:
             rows = [
                 row
                 for row in aggregate
@@ -657,7 +714,7 @@ def _plot_scale(report_dir: Path, aggregate: list[dict]) -> None:
             and int(row["split_count"]) == 64
             and int(row["top_k_references"]) == 8
         ]
-        rows.sort(key=lambda row: row["model_tier"])
+        rows.sort(key=lambda row: tiers.index(row["model_tier"]))
         positions = range(len(rows))
         axis.bar(
             [value - 0.18 for value in positions],
@@ -683,6 +740,44 @@ def _plot_scale(report_dir: Path, aggregate: list[dict]) -> None:
     figure.savefig(report_dir / "pra_model_capacity.pdf", bbox_inches="tight")
     plt.close(figure)
 
+    figure, axes = plt.subplots(2, len(datasets), figsize=(6 * len(datasets), 7), squeeze=False)
+    for index, dataset in enumerate(datasets):
+        for tier in tiers:
+            rows = [
+                row
+                for row in aggregate
+                if row["dataset"] == dataset
+                and row["model_tier"] == tier
+                and int(row["top_k_references"]) == 8
+            ]
+            rows.sort(key=lambda row: int(row["split_count"]))
+            accessible = [row["accessible_tokens_mean"] for row in rows]
+            axes[0][index].plot(
+                accessible,
+                [1_000 * row["routing_latency_mean"] for row in rows],
+                marker="o",
+                color=colors[tier],
+                label=tier,
+            )
+            axes[1][index].plot(
+                accessible,
+                [row["kv_transfer_bytes_mean"] / 1_024 for row in rows],
+                marker="o",
+                color=colors[tier],
+                label=tier,
+            )
+        axes[0][index].set_title(dataset)
+        axes[0][index].set_ylabel("Routing latency (ms/example)")
+        axes[1][index].set_ylabel("Retrieved K/V transfer (KiB/example)")
+        axes[1][index].set_xlabel("Accessible tokens")
+        for axis in (axes[0][index], axes[1][index]):
+            axis.grid(alpha=0.25)
+            axis.legend(fontsize=8)
+    figure.suptitle("Prototype routing and transfer cost, routed k=8 (five seeds)")
+    figure.tight_layout()
+    figure.savefig(report_dir / "pra_scale_cost.pdf", bbox_inches="tight")
+    plt.close(figure)
+
 
 def run(args: argparse.Namespace) -> Path:
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -691,11 +786,14 @@ def run(args: argparse.Namespace) -> Path:
     report_dir = REPO / "out" / "reports" / "pra_scale_sensitivity"
     result_root = REPO / "out" / "pra_scale_sensitivity"
     report_dir.mkdir(parents=True, exist_ok=True)
-    all_seed_rows = []
-    all_raw_rows = []
     training_runs = []
     for dataset in args.datasets:
         tokenizer, training_module, modules = prepare_scale_data(dataset)
+        for datamodule in modules.values():
+            datamodule.test_dataset = Subset(
+                datamodule.dataset,
+                range(min(args.eval_examples, len(datamodule.dataset))),
+            )
         for tier in args.model_tiers:
             settings = {
                 **DATASET_SETTINGS[dataset],
@@ -743,7 +841,11 @@ def run(args: argparse.Namespace) -> Path:
                     (int(row["split_count"]), int(row["top_k_references"]))
                     for row in (existing_payload or {}).get("results", [])
                 }
-                if existing_payload is not None and requested_pairs.issubset(existing_pairs):
+                if (
+                    existing_payload is not None
+                    and int(existing_payload.get("eval_examples", -1)) == args.eval_examples
+                    and requested_pairs.issubset(existing_pairs)
+                ):
                     payload = existing_payload
                     print(f"reuse {seed_path.relative_to(REPO)}", flush=True)
                 else:
@@ -781,11 +883,28 @@ def run(args: argparse.Namespace) -> Path:
                         "model_tier": tier,
                         "seed": seed,
                         "parameter_count": parameter_count,
+                        "eval_examples": args.eval_examples,
                         "settings": settings,
                         "results": rows,
                         "raw": raw_rows,
                     }
                     seed_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                del source
+                if device == "cuda":
+                    torch.cuda.empty_cache()
+
+    # Separate staged invocations (full tiny frontier, selected small setting)
+    # contribute to one report without forcing a Cartesian rerun.
+    all_seed_rows = []
+    all_raw_rows = []
+    for dataset in args.datasets:
+        for tier in args.model_tiers:
+            for seed in args.seeds:
+                seed_path = result_root / dataset / tier / f"seed-{seed}" / "scale_result.json"
+                if not seed_path.exists():
+                    continue
+                payload = json.loads(seed_path.read_text(encoding="utf-8"))
+                parameter_count = int(payload["parameter_count"])
                 all_seed_rows.extend(
                     {
                         "dataset": dataset,
@@ -805,18 +924,26 @@ def run(args: argparse.Namespace) -> Path:
                     }
                     for row in payload["raw"]
                 )
-                del source
-                if device == "cuda":
-                    torch.cuda.empty_cache()
-
     aggregate = _aggregate(all_seed_rows)
+    observed_top_k = {
+        tier: sorted(
+            {
+                int(row["top_k_references"])
+                for row in aggregate
+                if row["model_tier"] == tier
+            }
+        )
+        for tier in sorted({row["model_tier"] for row in aggregate})
+    }
     manifest = {
         "protocol": "SA-only training followed by inference-only native historical K/V slicing",
         "datasets": args.datasets,
         "model_tiers": args.model_tiers,
         "seeds": args.seeds,
         "splits": args.splits,
-        "top_k_references": args.top_k,
+        "requested_top_k_this_invocation": args.top_k,
+        "evaluated_top_k_by_model_tier": observed_top_k,
+        "search_protocol": "full top-k frontier on tiny; selected k=8 capacity confirmation on small",
         "source_units_by_split": {str(value): value - 1 for value in args.splits},
         "reference_encoding_strategy": "native_slice",
         "reference_position_mode": "global",
@@ -824,6 +951,7 @@ def run(args: argparse.Namespace) -> Path:
         "device": device,
         "generation_version": GENERATION_VERSION,
         "oracle_scale_up_threshold": args.oracle_threshold,
+        "evaluation_examples_per_seed": args.eval_examples,
     }
     (report_dir / "scale_manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
@@ -854,6 +982,7 @@ def run(args: argparse.Namespace) -> Path:
             "pra_scale_sparsity.pdf",
             "pra_scale_frontier.pdf",
             "pra_model_capacity.pdf",
+            "pra_scale_cost.pdf",
         ):
             shutil.copy2(report_dir / name, figures_dir / name)
     return report_dir
@@ -871,6 +1000,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--splits", nargs="+", type=int, choices=SCALE_SPLITS, default=list(SCALE_SPLITS))
     parser.add_argument("--top-k", nargs="+", type=int, default=[2, 4, 8, 16, 32])
     parser.add_argument("--oracle-threshold", type=float, default=0.9)
+    parser.add_argument("--eval-examples", type=int, default=32)
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--force-train", action="store_true")
     parser.add_argument("--force-eval", action="store_true")

@@ -771,6 +771,59 @@ reproduce both the useful sparse-oracle frontier and the routing/fragmentation l
 \label{fig:position-native-kv-qasper}
 \end{figure}
 
+\subsection{Sensitivity, Contextual Slicing, and Scale}
+
+A subsequent staged sensitivity study changes the interpretation of the 64-way failure.
+Increasing top-$k$ helps the 32-way router but does not repair independently encoded
+64-way microchunks, and multi-gist modes do not produce a robust cross-domain winner.
+The decisive intervention is to separate encoding context from routing granularity.
+Encoding eight consecutive regions together restores five-seed annotated-oracle RCB to
+0.996 on HotpotQA-derived text and 0.999 on QASPER-derived text; preserving global
+positions raises routed RCB to 0.865 and 0.993. Encoding the complete historical source
+once and slicing its native K/V yields 0.876 and 0.994 at approximately 10\% active K/V.
+Thus the earlier 64-way result diagnoses contextual fragmentation rather than a hard
+limit on the number of named regions.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.86\textwidth]{../shared/figures/pra_parameter_sensitivity_fragmentation.pdf}
+\caption{Fragmentation decomposition at 64 units. Larger causal encoding context and global positions restore the transport ceiling while retaining independently addressable regions.}
+\label{fig:position-pra-fragmentation}
+\end{figure}
+
+The scale follow-up then grows source length with addressability: nested sources contain
+63, 127, and 255 units rather than repeatedly splitting the same short source. An ordinary
+SelfAttention model is trained on full 255-unit context and converted without PRA
+training. Historical source K/V is computed once, global positions are retained, and the
+tail continues after the displaced prefix. Native-all RCB remains 1.000 through 256.
+At $k=8$, a 2.2--2.4M-parameter backbone retains routed RCB 1.000 on HotpotQA-derived
+text and 0.908 on QASPER-derived text at 256 units; a 6.6--6.9M-parameter backbone
+obtains 1.000 on both. Active K/V is only 4.4--5.1\%. QASPER-derived MRR at 256 rises
+from 0.240 to 0.443 with capacity, showing that base-model representation quality affects
+inference-only routing geometry.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/pra_scale_quality.pdf}
+\caption{Five-seed context/addressability scaling at routed $k=8$. Historical slicing preserves the transport ceiling; capacity repairs the tiny QASPER-derived routing decline. These are answer-code transport probes, not unrestricted QA.}
+\label{fig:position-pra-scale-quality}
+\end{figure}
+
+The resource result remains conditional. Retrieved K/V stays nearly constant at about
+11--13 tokens, so active fraction approximately halves as source size doubles. Yet the
+current exhaustive Python router grows linearly to 0.51 seconds per tiny example and
+0.84--1.03 seconds per small example at 256 units, compared with 4--8 ms for the
+memory-attention kernel. The measured K/V sparsity law is favorable; the prototype
+runtime is not. Indexed/vectorized routing and cache reuse are therefore requirements,
+not implementation polish.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../shared/figures/pra_scale_cost.pdf}
+\caption{Prototype routing and transfer cost. Fixed-$k$ K/V transfer remains nearly constant, while exhaustive candidate scoring dominates end-to-end execution.}
+\label{fig:position-pra-scale-cost}
+\end{figure}
+
 \section{Evaluation Doctrine}
 
 PRA requires counterfactual evaluation because a single task score cannot reveal how memory was used. At minimum, a promising checkpoint should be evaluated with valid references, a disabled reference path, shuffled references, irrelevant references, empty references, oracle references, and all evidence visible in local context. Targets and prompt structure must remain fixed across these conditions. Shuffling must occur across examples while preserving reference count and approximate length, and batched caches must prevent cross-example leakage.
@@ -847,7 +900,7 @@ Progressive Retrieval Attention proposes a shift in how foundation models intera
 
 The long-term vision is a foundation-model memory stack with explicit boundaries among parametric knowledge, working context, episodic history, semantic resources, procedures and tools, and changing world state. URI identity, provenance, freshness, hierarchy, permissions, and cache lifetime become architectural concerns rather than application-side annotations. Protocols such as MCP can expose resources and actions, agents can manage high-level plans, and PRA-like runtimes can test whether repeated read-oriented access can move closer to attention without losing governance.
 
-The five-seed corrected cross-attention follow-up supports backbone compatibility, demonstrates useful preservation controls, and shows that pretraining is essential under the tested adaptation budget, but its routing remains near chance and its content counterfactuals fail. The native synthetic study supplies the first causal transport result. HotpotQA- and QASPER-derived transport probes then reproduce the sparse-oracle frontier over natural text: through 32 partitions, nearly all dense-context benefit is retained while roughly 9\% of token K/V is active. Both domains also expose substantial routing gaps, harmful all-memory composition, and degradation at 64 partitions. The implementation therefore makes the proposal sharper without settling the efficiency thesis: configurable per-layer gist sets route independently to references and chunks; only selected full-token K/V is transported; recursion is explicit, bounded, and child-first; long prompt prefixes can enter the same machinery as request-local implicit objects; and physical batching preserves logical memory isolation. The program should proceed only if genuine language-task evidence without injected anchors reproduces the oracle causality gap, learned selectors close the oracle-to-routed gap, local capabilities remain preserved, and end-to-end quality improves per unit of latency, encoded tokens, and active memory against strong long-context, recurrent-memory, RAG, RETRO, and agentic baselines. If those conditions fail, the virtual-context proposal should be revised or rejected. If they hold across scales and domains, foundation models may evolve from systems with larger prompts into systems with principled memory architectures.
+The five-seed corrected cross-attention follow-up supports backbone compatibility and preservation controls but fails its content-causality gate. Native-KV experiments provide stronger mechanism evidence. The original synthetic and natural-text probes establish sparse causal transport through 32 independently encoded partitions; the sensitivity study shows that their 64-way decline is primarily contextual fragmentation. Historical K/V slicing preserves dense transport through 256 addressable units, and fixed-$k$ active fraction falls to roughly 5\%. Capacity improves inference-only routing, but the answer-code anchor, incomplete annotated-target coverage, and linear-cost Python selector prevent a claim of general retrieval or end-to-end efficiency. The program should now test genuine language tasks without injected anchors, trained or indexed selectors, reusable caches, and matched long-context/RAG systems. If those comparisons fail, the virtual-context proposal should be revised or rejected; if they hold, PRA would support the narrower claim that named logical context can grow faster than the active latent working set.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
