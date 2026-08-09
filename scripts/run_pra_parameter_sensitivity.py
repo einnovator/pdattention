@@ -105,6 +105,7 @@ def _sweep_configs(
     selected_top_k: int,
     gist_modes: list[str],
     gist_counts: list[int],
+    fragmentation_variants: list[str],
 ) -> list[SweepConfig]:
     if stage == "topk":
         values = (1, 2, 4, 8) if split_count == 32 else (1, 2, 4, 8, 16)
@@ -129,37 +130,54 @@ def _sweep_configs(
         return configs
     if stage == "fragmentation":
         common = {"stage": stage, "top_k_references": selected_top_k}
-        return [
-            SweepConfig(**common),
-            *[
-                SweepConfig(
-                    **common,
-                    reference_encoding_strategy="block_slice",
-                    encoding_block_references=block_size,
-                )
-                for block_size in (4, 8, 16)
-            ],
-            SweepConfig(
+        variants = {
+            "independent": SweepConfig(**common),
+            "block4": SweepConfig(
+                **common,
+                reference_encoding_strategy="block_slice",
+                encoding_block_references=4,
+            ),
+            "block8": SweepConfig(
+                **common,
+                reference_encoding_strategy="block_slice",
+                encoding_block_references=8,
+            ),
+            "block16": SweepConfig(
+                **common,
+                reference_encoding_strategy="block_slice",
+                encoding_block_references=16,
+            ),
+            "native": SweepConfig(
                 **common,
                 reference_encoding_strategy="native_slice",
                 encoding_block_references=256,
             ),
-            *[
-                SweepConfig(
-                    **common,
-                    reference_encoding_strategy="block_slice",
-                    encoding_block_references=8,
-                    encoding_overlap_fraction=fraction,
-                )
-                for fraction in (0.05, 0.10, 0.20)
-            ],
-            SweepConfig(
+            "overlap005": SweepConfig(
+                **common,
+                reference_encoding_strategy="block_slice",
+                encoding_block_references=8,
+                encoding_overlap_fraction=0.05,
+            ),
+            "overlap010": SweepConfig(
+                **common,
+                reference_encoding_strategy="block_slice",
+                encoding_block_references=8,
+                encoding_overlap_fraction=0.10,
+            ),
+            "overlap020": SweepConfig(
+                **common,
+                reference_encoding_strategy="block_slice",
+                encoding_block_references=8,
+                encoding_overlap_fraction=0.20,
+            ),
+            "block8_global": SweepConfig(
                 **common,
                 reference_encoding_strategy="block_slice",
                 encoding_block_references=8,
                 reference_position_mode="global",
             ),
-        ]
+        }
+        return [variants[name] for name in fragmentation_variants]
     raise ValueError(f"Unsupported stage: {stage}")
 
 
@@ -340,6 +358,19 @@ def _flatten_results(root: Path, stage: str, datasets: list[str], seeds: list[in
             and payload["dataset"] in datasets
             and payload["seed"] in seeds
         ):
+            routed_rows = [
+                row for row in payload.get("per_example", []) if row.get("condition") == "valid"
+            ]
+            for key in (
+                "unique_source_tokens",
+                "encoded_tokens_including_overlap",
+                "stored_kv_tokens_including_overlap",
+                "duplication_factor",
+                "chunk_overlap_fraction",
+                "chunk_overlap_tokens",
+            ):
+                if payload["summary"].get(key) is None:
+                    payload["summary"][key] = _mean(routed_rows, key)
             payloads.append(payload)
     return payloads
 
@@ -482,7 +513,7 @@ def _plot(report_dir: Path, rows: list[dict], stage: str) -> None:
                         f"{row['reference_encoding_strategy']}"
                         f"\nb={row['encoding_block_references']}"
                         f", o={float(row['encoding_overlap_fraction']):.2f}"
-                        f"\n{row['reference_position_mode']}"
+                        f"\n{row['reference_position_mode']}, n={row['seeds']}"
                     )
                     for row in selected
                 ]
@@ -508,8 +539,8 @@ def _plot(report_dir: Path, rows: list[dict], stage: str) -> None:
             axis.set_title(f"{dataset}, split {split_count}")
             axis.grid(alpha=0.25)
     title = (
-        "PRA gist sensitivity, successive halving (seed count shown)"
-        if stage == "gist"
+        f"PRA {stage} sensitivity, successive halving (seed count shown)"
+        if stage in {"gist", "fragmentation"}
         else f"PRA {stage} sensitivity, five paired seeds"
     )
     figure.suptitle(title, fontsize=12)
@@ -543,6 +574,7 @@ def run(args: argparse.Namespace) -> Path:
                     args.selected_top_k,
                     args.gist_modes,
                     args.gist_counts,
+                    args.fragmentation_variants,
                 ):
                     configs_by_encoding[(split_count, config.encoding_key)].append(config)
             for (split_count, _encoding_key), configs in configs_by_encoding.items():
@@ -604,6 +636,7 @@ def run(args: argparse.Namespace) -> Path:
         "selected_top_k": args.selected_top_k,
         "requested_gist_modes": args.gist_modes,
         "requested_gist_counts": args.gist_counts,
+        "requested_fragmentation_variants": args.fragmentation_variants,
         "evaluated_config_ids": sorted({row["config_id"] for row in aggregate}),
         "protocol": "inference-only selector sweep over frozen five-seed SA checkpoints",
     }
@@ -649,6 +682,32 @@ def parse_args() -> argparse.Namespace:
         default=["mean", "last", "prototype", "kmeans", "som", "hybrid"],
     )
     parser.add_argument("--gist-counts", nargs="+", type=int, default=[1, 2, 4])
+    parser.add_argument(
+        "--fragmentation-variants",
+        nargs="+",
+        choices=(
+            "independent",
+            "block4",
+            "block8",
+            "block16",
+            "native",
+            "overlap005",
+            "overlap010",
+            "overlap020",
+            "block8_global",
+        ),
+        default=[
+            "independent",
+            "block4",
+            "block8",
+            "block16",
+            "native",
+            "overlap005",
+            "overlap010",
+            "overlap020",
+            "block8_global",
+        ],
+    )
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--publish", action="store_true")
