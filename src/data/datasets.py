@@ -120,13 +120,14 @@ class PRADataset(Dataset, ABC):
 
     def _build_samples(self) -> list[QuestionSample]:
         refs = self._reference_samples()
+        refs_by_uri = {ref.uri: ref for ref in refs}
         samples = []
         for row in self.question_rows:
-            row_ref_uris = set(row.get("reference_uris") or [])
+            row_ref_uris = [str(value) for value in row.get("reference_uris") or []]
             row_ref_ids = {int(value) for value in row.get("reference_ids") or []}
             sample_refs = refs
             if row_ref_uris:
-                sample_refs = [ref for ref in refs if ref.uri in row_ref_uris]
+                sample_refs = [refs_by_uri[uri] for uri in row_ref_uris if uri in refs_by_uri]
             elif row_ref_ids:
                 sample_refs = [ref for ref in refs if ref.id in row_ref_ids]
             samples.append(
@@ -245,6 +246,18 @@ class WikiTextNativeKVFixedTargetDataset(PRADataset):
         generate_wikitext_nativekv_fixed_target_dataset(*args, **kwargs)
 
 
+class SyntheticNativeKVFixedTargetDataset(PRADataset):
+    """Controlled key/value retrieval with invariant source, tail, and target."""
+
+    dataset_name = "synthetic_native_kv"
+    stage = "synthetic_nativekv_fixed_target"
+
+    def generate(self, *args, **kwargs) -> None:
+        from .native_kv_benchmarks import generate_synthetic_native_kv_dataset
+
+        generate_synthetic_native_kv_dataset(*args, **kwargs)
+
+
 DATASET_REGISTRY = {
     SyntheticMemoryQADataset.stage: SyntheticMemoryQADataset,
     HierarchicalReferenceDataset.stage: HierarchicalReferenceDataset,
@@ -256,6 +269,7 @@ DATASET_REGISTRY = {
     WikiTextReferenceDataset.stage: WikiTextReferenceDataset,
     WikiTextReferenceV2Dataset.stage: WikiTextReferenceV2Dataset,
     WikiTextNativeKVFixedTargetDataset.stage: WikiTextNativeKVFixedTargetDataset,
+    SyntheticNativeKVFixedTargetDataset.stage: SyntheticNativeKVFixedTargetDataset,
 }
 
 

@@ -168,6 +168,36 @@ def test_native_kv_split_counts_preserve_the_exact_local_target(tmp_path, monkey
     assert len(set(snapshots)) == 1
 
 
+def test_synthetic_native_kv_partitions_preserve_source_tail_target_and_evidence(tmp_path):
+    from data.datasets import SyntheticNativeKVFixedTargetDataset
+    from data.native_kv_benchmarks import generate_synthetic_native_kv_dataset
+
+    snapshots = []
+    for split_count in (2, 3, 5, 8, 16, 32, 64):
+        root = tmp_path / f"split-{split_count}"
+        generate_synthetic_native_kv_dataset(
+            root, split_count=split_count, max_examples=4, seed=1729
+        )
+        dataset = SyntheticNativeKVFixedTargetDataset(root)
+        sample = dataset[0]
+        row = sample.metadata["row"]
+        snapshots.append(
+            (row["source_text"], sample.question, sample.answer, row["fixed_target_id"])
+        )
+        assert len(sample.references) == split_count - 1
+        assert sample.target_reference_ids
+        assert all(
+            reference.metadata["is_evidence"]
+            for reference in sample.references
+            if reference.id in sample.target_reference_ids
+        )
+        assert " ".join(reference.metadata["text"] for reference in sample.references) == row[
+            "source_text"
+        ]
+
+    assert len(set(snapshots)) == 1
+
+
 def test_training_loop_uses_dataloader(tmp_path):
     dm = PRADataModule("stage0_synthetic_memory", "data", max_examples=2, batch_size=1, max_seq_len=64).load()
     cfg = PRAConfig(
