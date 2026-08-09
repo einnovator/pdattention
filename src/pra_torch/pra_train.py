@@ -741,12 +741,15 @@ def evaluate_reference_ablation(
                             metadata = {**item, "references": irrelevant[: len(item["references"])]}
                         elif condition in {"oracle", "native_oracle"}:
                             target_ids = set(item["target_reference_ids"])
-                            metadata = {
-                                **item,
-                                "references": [
-                                    reference for reference in item["references"] if reference.id in target_ids
-                                ],
-                            }
+                            if model.cfg.reference_encoding_strategy == "independent":
+                                metadata = {
+                                    **item,
+                                    "references": [
+                                        reference
+                                        for reference in item["references"]
+                                        if reference.id in target_ids
+                                    ],
+                                }
                         visible_uris = [reference.uri for reference in metadata["references"]]
                         if encoded_entry_cache is not None and all(
                             uri in encoded_entry_cache for uri in visible_uris
@@ -766,6 +769,18 @@ def evaluate_reference_ablation(
                             )
                             if encoded_entry_cache is not None:
                                 encoded_entry_cache.update(cache.entries)
+                        if (
+                            condition in {"oracle", "native_oracle"}
+                            and model.cfg.reference_encoding_strategy != "independent"
+                        ):
+                            target_uris = _expected_reference_uris(item)
+                            filtered_cache = PRASimpleMemoryCache()
+                            for uri in target_uris:
+                                entry = cache.get(uri)
+                                if entry is not None:
+                                    filtered_cache.put(entry)
+                            cache = filtered_cache
+                            model.set_pra_cache(cache)
                         if condition == "oracle_chunks":
                             target_ids = set(item.get("target_chunk_ids") or [])
                             if target_ids:
@@ -881,14 +896,42 @@ def evaluate_reference_ablation(
                             for value in diagnostic_values
                         ) / max(len(diagnostic_values), 1)
                         visible_entries = model.pra_cache.all_entries()
-                        unique_source_tokens = sum(
-                            int(entry.metadata.get("unique_source_tokens", 0))
-                            for entry in visible_entries
-                        )
-                        encoded_tokens = sum(
-                            int(entry.metadata.get("encoded_tokens_including_overlap", 0))
-                            for entry in visible_entries
-                        )
+                        unique_source_tokens = encoded_tokens = stored_tokens = 0
+                        seen_encoding_runs = set()
+                        for entry in visible_entries:
+                            run_id = entry.metadata.get("encoding_run_id")
+                            if run_id is not None:
+                                if run_id in seen_encoding_runs:
+                                    continue
+                                seen_encoding_runs.add(run_id)
+                                unique_source_tokens += int(
+                                    entry.metadata["encoding_run_unique_source_tokens"]
+                                )
+                                encoded_tokens += int(
+                                    entry.metadata[
+                                        "encoding_run_encoded_tokens_including_overlap"
+                                    ]
+                                )
+                                stored_tokens += int(
+                                    entry.metadata["encoding_run_stored_kv_tokens"]
+                                )
+                            else:
+                                unique_source_tokens += int(
+                                    entry.metadata.get("unique_source_tokens", 0)
+                                )
+                                encoded_tokens += int(
+                                    entry.metadata.get(
+                                        "encoded_tokens_including_overlap", 0
+                                    )
+                                )
+                                stored_tokens += int(
+                                    entry.metadata.get(
+                                        "stored_kv_tokens_including_overlap",
+                                        entry.metadata.get(
+                                            "encoded_tokens_including_overlap", 0
+                                        ),
+                                    )
+                                )
                         row = item["sample"].metadata.get("row", {})
                         per_example.append(
                             {
@@ -911,12 +954,22 @@ def evaluate_reference_ablation(
                                 / max(local_tokens + unique_source_tokens, 1),
                                 "unique_source_tokens": unique_source_tokens,
                                 "encoded_tokens_including_overlap": encoded_tokens,
-                                "stored_kv_tokens_including_overlap": encoded_tokens,
+                                "stored_kv_tokens_including_overlap": stored_tokens,
                                 "duplication_factor": encoded_tokens
                                 / max(unique_source_tokens, 1),
                                 "chunk_overlap_fraction": model.cfg.chunk_overlap_fraction,
                                 "chunk_overlap_tokens": model.cfg.resolved_chunk_overlap_tokens,
                                 "overlap_materialization": model.cfg.overlap_materialization,
+                                "reference_encoding_strategy": (
+                                    model.cfg.reference_encoding_strategy
+                                ),
+                                "encoding_block_references": (
+                                    model.cfg.encoding_block_references
+                                ),
+                                "encoding_overlap_fraction": (
+                                    model.cfg.encoding_overlap_fraction
+                                ),
+                                "reference_position_mode": model.cfg.reference_position_mode,
                                 "num_references": len(own_references),
                                 "num_chunks": sum(
                                     len(entry.layer_memory.get(0).chunks)

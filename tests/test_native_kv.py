@@ -14,6 +14,7 @@ from pra_torch.memory import (
     ReferenceChunkMemory,
 )
 from pra_torch.model import TinyPRAModel, convert_sa_model_to_pra
+from pra_torch.data import CharTokenizer
 from pra_torch.pra_train import _complete_reference_rank_metrics, native_kv_gap_metrics
 from pra_torch.native_metrics import recovered_context_benefit
 
@@ -187,3 +188,73 @@ def test_complete_rank_metrics_capture_multi_target_coverage():
     assert metrics["all_targets_hit_at_1"] == 0.0
     assert metrics["all_targets_hit_at_2"] == 1.0
     assert metrics["fraction_targets_covered_at_2"] == 1.0
+
+
+def test_native_reference_slicing_matches_one_full_historical_encode():
+    tokenizer = CharTokenizer(["abcdefgh"])
+    cfg = PRAConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=16,
+        n_heads=4,
+        n_layers=2,
+        d_ff=32,
+        max_seq_len=16,
+        model_variant="td_pra",
+        reference_encoding_strategy="native_slice",
+    )
+    model = TinyPRAModel(cfg).eval()
+    references = [
+        {"uri": "mem://a", "text": "abcd", "metadata": {}},
+        {"uri": "mem://b", "text": "efgh", "metadata": {}},
+    ]
+
+    entries = model.encode_reference_group_to_cache(references, tokenizer, "cpu")
+    full = model._encode_reference_tokens(
+        tokenizer.encode("abcdefgh"),
+        "cpu",
+        detach=True,
+        use_pra_memory=False,
+    )
+
+    for layer_id, expected in full.items():
+        actual_k = torch.cat(
+            [entry.layer_memory[layer_id].chunks[0].token_kv.k for entry in entries],
+            dim=2,
+        )
+        actual_v = torch.cat(
+            [entry.layer_memory[layer_id].chunks[0].token_kv.v for entry in entries],
+            dim=2,
+        )
+        assert torch.equal(actual_k, expected.k)
+        assert torch.equal(actual_v, expected.v)
+
+
+def test_block_slicing_accounts_for_encoding_overlap_without_storing_duplicates():
+    tokenizer = CharTokenizer(["abcdefgh"])
+    cfg = PRAConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=8,
+        n_heads=2,
+        n_layers=1,
+        max_seq_len=16,
+        model_variant="td_pra",
+        reference_encoding_strategy="block_slice",
+        encoding_block_references=2,
+        encoding_overlap_fraction=0.25,
+    )
+    model = TinyPRAModel(cfg).eval()
+    references = [
+        {"uri": f"mem://{index}", "text": text, "metadata": {}}
+        for index, text in enumerate(("ab", "cd", "ef", "gh"))
+    ]
+
+    entries = model.encode_reference_group_to_cache(references, tokenizer, "cpu")
+    metadata = entries[0].metadata
+
+    assert metadata["encoding_run_unique_source_tokens"] == 8
+    assert metadata["encoding_run_encoded_tokens_including_overlap"] == 9
+    assert metadata["encoding_run_stored_kv_tokens"] == 8
+    assert metadata["encoding_run_duplication_factor"] == pytest.approx(9 / 8)
+    assert sum(
+        entry.layer_memory[0].chunks[0].token_count for entry in entries
+    ) == 8

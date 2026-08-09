@@ -259,3 +259,30 @@ def test_duplicate_uri_multi_gists_remain_isolated_by_batch_row():
     assert selected[0][0].chunk_id == "left"
     assert selected[1][0].chunk_id == "right"
     assert selected[0][0].entry is not selected[1][0].entry
+
+
+def test_cache_gists_can_be_rebuilt_without_reencoding_native_kv():
+    tokenizer = CharTokenizer(["abcdefgh"])
+    cfg = PRAConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=8,
+        n_heads=2,
+        n_layers=1,
+        max_seq_len=8,
+        gist_mode="mean",
+    )
+    model = TinyPRAModel(cfg)
+    entry = model.encode_reference_to_cache("mem://x", "abcdefgh", tokenizer, "cpu")
+    cache = PRASimpleMemoryCache()
+    cache.put(entry)
+    original_k = entry.layer_memory[0].chunks[0].token_kv.k
+
+    model.cfg.gist_mode = "prototype"
+    model.cfg.gists_per_chunk = 2
+    model.rebuild_cache_routing_gists(cache, tokenizer=tokenizer)
+
+    chunk = entry.layer_memory[0].chunks[0]
+    assert chunk.token_kv.k is original_k
+    assert chunk.routing_gist.method == "prototype"
+    assert chunk.routing_gist.k.shape == (2, cfg.d_model)
+    assert entry.metadata["gists_per_chunk"] == 2

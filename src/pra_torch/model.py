@@ -12,6 +12,7 @@ from .chunking import partition_reference_tokens
 from .gists import GRUGistPooler, GistContext, compute_gists, projected_tokens
 from .memory import (
     ChunkRoutingGist,
+    LayerKV,
     LayerReferenceMemory,
     PRAMemoryCache,
     PRACacheEntry,
@@ -248,6 +249,95 @@ class TinyPRAModel(nn.Module):
                 ]
         return rankings
 
+    def rebuild_cache_routing_gists(
+        self,
+        cache: PRAMemoryCache | None = None,
+        *,
+        tokenizer=None,
+    ) -> None:
+        """Re-index stored native K/V under the current gist configuration.
+
+        Token K/V depends on model weights and encoding context, not on the
+        selector's pooling strategy. Sensitivity sweeps can therefore reuse the
+        expensive encoded payload while rebuilding only its cheap routing index.
+        """
+        cache = cache or self.pra_cache
+        detach = self.cfg.cache_build_mode == "detached"
+        with torch.no_grad() if detach else nullcontext():
+            for entry in cache.all_entries():
+                for layer_id, memory in entry.layer_memory.items():
+                    for chunk in memory.chunks:
+                        token_ids = tuple(chunk.metadata.get("source_token_ids") or ())
+                        computed = compute_gists(
+                            keys=projected_tokens(chunk.token_kv.k),
+                            values=projected_tokens(chunk.token_kv.v),
+                            mode=self.cfg.gist_mode,
+                            num_gists=self.cfg.gists_per_chunk,
+                            config=self.cfg,
+                            context=GistContext(
+                                level="chunk",
+                                token_ids=token_ids,
+                                tokenizer=tokenizer,
+                                ref_end_token=self.cfg.ref_end_token,
+                                gru_pooler=self.gist_pooler,
+                            ),
+                        )
+                        chunk.routing_gist = ChunkRoutingGist(
+                            k=computed.k.detach() if detach else computed.k,
+                            v=(
+                                computed.v.detach()
+                                if detach and computed.v is not None
+                                else computed.v
+                            ),
+                            method=self.cfg.gist_mode,
+                            summary_k=chunk.routing_gist.summary_k,
+                            metadata={
+                                **computed.metadata,
+                                "summary_available": chunk.routing_gist.summary_k is not None,
+                            },
+                        )
+                    if self.cfg.reference_level_gist_mode is None or not memory.chunks:
+                        entry.reference_gists_by_layer.pop(layer_id, None)
+                        continue
+                    keys = torch.cat(
+                        [chunk.routing_gist.k for chunk in memory.chunks], dim=0
+                    )
+                    values = (
+                        torch.cat(
+                            [chunk.routing_gist.v for chunk in memory.chunks], dim=0
+                        )
+                        if all(chunk.routing_gist.v is not None for chunk in memory.chunks)
+                        else None
+                    )
+                    computed = compute_gists(
+                        keys=keys,
+                        values=values,
+                        mode=self.cfg.reference_level_gist_mode,
+                        num_gists=self.cfg.reference_gists_per_reference,
+                        config=self.cfg,
+                        context=GistContext(level="reference", gru_pooler=self.gist_pooler),
+                    )
+                    entry.reference_gists_by_layer[layer_id] = ReferenceRoutingGists(
+                        k=computed.k.detach() if detach else computed.k,
+                        v=(
+                            computed.v.detach()
+                            if detach and computed.v is not None
+                            else computed.v
+                        ),
+                        mode=self.cfg.reference_level_gist_mode,
+                        metadata=computed.metadata,
+                    )
+                entry.metadata.update(
+                    {
+                        "gist_mode": self.cfg.gist_mode,
+                        "gists_per_chunk": self.cfg.gists_per_chunk,
+                        "reference_level_gist_mode": self.cfg.reference_level_gist_mode,
+                        "reference_gists_per_reference": (
+                            self.cfg.reference_gists_per_reference
+                        ),
+                    }
+                )
+
     def selected_references_by_layer(self) -> dict[int, list[list[tuple[str, float]]]]:
         """Deprecated compatibility view derived from chunk-aware selections."""
         warnings.warn(
@@ -295,7 +385,15 @@ class TinyPRAModel(nn.Module):
         x = self.ln(x)
         return self.head(x)
 
-    def _encode_reference_tokens(self, token_ids, device, *, detach: bool, use_pra_memory: bool):
+    def _encode_reference_tokens(
+        self,
+        token_ids,
+        device,
+        *,
+        detach: bool,
+        use_pra_memory: bool,
+        position_offset: int = 0,
+    ):
         """Run one chunk independently and capture K/V before each PRA sublayer.
 
         ``token_ids`` has length ``M``. Each captured value is ``LayerKV`` with
@@ -303,7 +401,18 @@ class TinyPRAModel(nn.Module):
         self-dependence; recursive parent builds may read already-ready children.
         """
         ids = torch.tensor([token_ids], dtype=torch.long, device=device)
-        pos = torch.arange(ids.shape[1], device=device)
+        position_offset = int(position_offset)
+        if position_offset < 0 or position_offset + ids.shape[1] > self.cfg.max_seq_len:
+            raise ValueError(
+                "Reference position range exceeds the model positional table: "
+                f"[{position_offset}, {position_offset + ids.shape[1]}) vs "
+                f"max_seq_len={self.cfg.max_seq_len}."
+            )
+        pos = torch.arange(
+            position_offset,
+            position_offset + ids.shape[1],
+            device=device,
+        )
         x = self.token_emb(ids) + self.pos_emb(pos)[None, :, :]
         layer_kv = {}
         for block in self.blocks:
@@ -333,6 +442,189 @@ class TinyPRAModel(nn.Module):
             text=text,
             use_pra_memory=use_pra_memory,
         )
+
+    def encode_reference_group_to_cache(
+        self,
+        references: list[dict],
+        tokenizer,
+        device,
+    ) -> list[PRACacheEntry]:
+        """Contextualize ordered URIs jointly, then slice K/V back by URI.
+
+        ``block_slice`` encodes consecutive URI groups with optional left
+        overlap; ``native_slice`` encodes the complete historical source once.
+        Stored K/V remains non-overlapping and independently addressable even
+        when its hidden states were produced with a larger causal context.
+        """
+        if self.cfg.reference_encoding_strategy == "independent":
+            raise ValueError("Grouped encoding requires block_slice or native_slice.")
+        if self.cfg.use_summary:
+            raise NotImplementedError("Grouped reference encoding does not yet support summaries.")
+        if not references:
+            return []
+        rows = []
+        flat_ids = []
+        starts = []
+        for reference in references:
+            token_ids = tuple(int(value) for value in tokenizer.encode(str(reference["text"])))
+            if not token_ids:
+                continue
+            starts.append(len(flat_ids))
+            flat_ids.extend(token_ids)
+            rows.append({**reference, "token_ids": token_ids})
+        if not rows:
+            return []
+        starts.append(len(flat_ids))
+        block_size = (
+            len(rows)
+            if self.cfg.reference_encoding_strategy == "native_slice"
+            else self.cfg.encoding_block_references
+        )
+        block_ranges = [
+            (start, min(start + block_size, len(rows)))
+            for start in range(0, len(rows), block_size)
+        ]
+        block_specs = []
+        encoded_token_total = 0
+        for block_id, (row_start, row_end) in enumerate(block_ranges):
+            core_start = starts[row_start]
+            core_end = starts[row_end]
+            core_tokens = core_end - core_start
+            requested_overlap = (
+                max(1, int(core_tokens * self.cfg.encoding_overlap_fraction))
+                if self.cfg.encoding_overlap_fraction > 0.0
+                else 0
+            )
+            overlap = min(core_start, requested_overlap)
+            encode_start = core_start - overlap
+            encode_ids = flat_ids[encode_start:core_end]
+            if len(encode_ids) > self.cfg.max_seq_len:
+                raise ValueError(
+                    f"Encoding block {block_id} has {len(encode_ids)} tokens, exceeding "
+                    f"max_seq_len={self.cfg.max_seq_len}."
+                )
+            encoded_token_total += len(encode_ids)
+            block_specs.append(
+                {
+                    "block_id": block_id,
+                    "row_start": row_start,
+                    "row_end": row_end,
+                    "encode_start": encode_start,
+                    "core_start": core_start,
+                    "core_end": core_end,
+                    "overlap_tokens": overlap,
+                    "encode_ids": encode_ids,
+                }
+            )
+        run_id = (
+            f"{rows[0]['uri']}|{self.cfg.reference_encoding_strategy}|"
+            f"{self.cfg.encoding_block_references}|{self.cfg.encoding_overlap_fraction}|"
+            f"{self.cfg.reference_position_mode}"
+        )
+        common_metadata = {
+            "encoding_run_id": run_id,
+            "reference_encoding_strategy": self.cfg.reference_encoding_strategy,
+            "encoding_block_references": self.cfg.encoding_block_references,
+            "encoding_overlap_fraction": self.cfg.encoding_overlap_fraction,
+            "reference_position_mode": self.cfg.reference_position_mode,
+            "encoding_run_unique_source_tokens": len(flat_ids),
+            "encoding_run_encoded_tokens_including_overlap": encoded_token_total,
+            "encoding_run_stored_kv_tokens": len(flat_ids),
+            "encoding_run_duplication_factor": encoded_token_total / max(len(flat_ids), 1),
+        }
+        entries = {
+            str(row["uri"]): PRACacheEntry(
+                uri=str(row["uri"]),
+                text=str(row["text"]),
+                metadata={
+                    **dict(row.get("metadata") or {}),
+                    **common_metadata,
+                    "chunking_mode": "grouped_uri_slice",
+                    "gist_mode": self.cfg.gist_mode,
+                    "gists_per_chunk": self.cfg.gists_per_chunk,
+                    "unique_source_tokens": len(row["token_ids"]),
+                    "encoded_tokens_including_overlap": len(row["token_ids"]),
+                    "stored_kv_tokens_including_overlap": len(row["token_ids"]),
+                },
+            )
+            for row in rows
+        }
+        detach = self.cfg.cache_build_mode == "detached"
+        context = torch.no_grad() if detach else nullcontext()
+        with context:
+            for block in block_specs:
+                position_offset = (
+                    block["encode_start"]
+                    if self.cfg.reference_position_mode == "global"
+                    else 0
+                )
+                layer_kv = self._encode_reference_tokens(
+                    block["encode_ids"],
+                    device,
+                    detach=detach,
+                    use_pra_memory=False,
+                    position_offset=position_offset,
+                )
+                for row_index in range(block["row_start"], block["row_end"]):
+                    row = rows[row_index]
+                    local_start = starts[row_index] - block["encode_start"]
+                    local_end = starts[row_index + 1] - block["encode_start"]
+                    entry = entries[str(row["uri"])]
+                    for layer_id, kv in layer_kv.items():
+                        sliced = LayerKV(
+                            k=kv.k[:, :, local_start:local_end, :],
+                            v=kv.v[:, :, local_start:local_end, :],
+                        )
+                        computed = compute_gists(
+                            keys=projected_tokens(sliced.k),
+                            values=projected_tokens(sliced.v),
+                            mode=self.cfg.gist_mode,
+                            num_gists=self.cfg.gists_per_chunk,
+                            config=self.cfg,
+                            context=GistContext(
+                                level="chunk",
+                                token_ids=row["token_ids"],
+                                tokenizer=tokenizer,
+                                ref_end_token=self.cfg.ref_end_token,
+                                gru_pooler=self.gist_pooler,
+                            ),
+                        )
+                        chunk = ReferenceChunkMemory(
+                            chunk_id=f"{row['uri']}#chunk=0",
+                            source_uri=str(row["uri"]),
+                            token_start=0,
+                            token_end=len(row["token_ids"]),
+                            token_kv=sliced,
+                            routing_gist=ChunkRoutingGist(
+                                k=computed.k.detach() if detach else computed.k,
+                                v=(
+                                    computed.v.detach()
+                                    if detach and computed.v is not None
+                                    else computed.v
+                                ),
+                                method=self.cfg.gist_mode,
+                                metadata=computed.metadata,
+                            ),
+                            metadata={
+                                "source_token_ids": row["token_ids"],
+                                "encoding_block_id": block["block_id"],
+                                "encoding_block_core_tokens": (
+                                    block["core_end"] - block["core_start"]
+                                ),
+                                "encoding_overlap_tokens": block["overlap_tokens"],
+                                "global_token_start": starts[row_index],
+                                "global_token_end": starts[row_index + 1],
+                            },
+                        )
+                        entry.layer_memory.setdefault(
+                            layer_id, LayerReferenceMemory()
+                        ).chunks.append(chunk)
+        if self.cfg.reference_level_gist_mode is not None:
+            temporary = PRASimpleMemoryCache()
+            for entry in entries.values():
+                temporary.put(entry)
+            self.rebuild_cache_routing_gists(temporary, tokenizer=tokenizer)
+        return [entries[str(row["uri"])] for row in rows]
 
     def encode_reference_tokens_to_cache(
         self,

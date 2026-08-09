@@ -93,6 +93,10 @@ class PRAConfig:
     fixed_chunk_overlap_tokens: int = 0  # Repeated tokens between adjacent fixed windows.
     chunk_overlap_fraction: float = 0.0  # Alternative fractional fixed-window overlap.
     overlap_materialization: str = "deduplicate"  # deduplicate or keep_duplicates.
+    reference_encoding_strategy: str = "independent"  # independent, block_slice, native_slice.
+    encoding_block_references: int = 8  # Consecutive URIs contextualized per block_slice.
+    encoding_overlap_fraction: float = 0.0  # Left-context duplication during block encoding.
+    reference_position_mode: str = "local"  # Reset each block or preserve global offsets.
     reference_overflow_policy: str = "truncate"  # Handling for a chunk over max_seq_len.
     marker_rules: tuple[str, ...] = ("<PRA_CHUNK>",)  # Explicit text split markers.
     semantic_chunker: object | None = None  # Plugin implementing SemanticChunker.
@@ -293,6 +297,22 @@ class PRAConfig:
             raise ValueError(
                 "overlap_materialization must be 'deduplicate' or 'keep_duplicates'."
             )
+        if self.reference_encoding_strategy not in {
+            "independent",
+            "block_slice",
+            "native_slice",
+        }:
+            raise ValueError(
+                f"Unsupported reference_encoding_strategy: {self.reference_encoding_strategy}"
+            )
+        self.encoding_block_references = int(self.encoding_block_references)
+        if self.encoding_block_references <= 0:
+            raise ValueError("encoding_block_references must be positive.")
+        self.encoding_overlap_fraction = float(self.encoding_overlap_fraction)
+        if not 0.0 <= self.encoding_overlap_fraction < 1.0:
+            raise ValueError("encoding_overlap_fraction must satisfy 0 <= value < 1.")
+        if self.reference_position_mode not in {"local", "global"}:
+            raise ValueError("reference_position_mode must be 'local' or 'global'.")
         if self.reference_overflow_policy not in {"truncate", "error"}:
             raise ValueError(
                 f"Unsupported reference_overflow_policy: {self.reference_overflow_policy}"

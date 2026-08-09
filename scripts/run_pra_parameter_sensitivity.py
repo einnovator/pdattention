@@ -7,6 +7,7 @@ import csv
 import json
 import statistics
 import sys
+import shutil
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,22 +51,35 @@ class SweepConfig:
     top_k_chunks_per_reference: int = 1
     search_strategy: str = "hierarchical"
     trigger_threshold: float = float("-inf")
+    reference_encoding_strategy: str = "independent"
+    encoding_block_references: int = 1
+    encoding_overlap_fraction: float = 0.0
+    reference_position_mode: str = "local"
 
     @property
     def config_id(self) -> str:
-        return (
+        base = (
             f"{self.stage}-k{self.top_k_references}-{self.gist_mode}"
             f"-g{self.gists_per_chunk}-{self.gist_score_aggregation}"
+        )
+        if self.stage != "fragmentation":
+            return base
+        overlap = str(self.encoding_overlap_fraction).replace(".", "p")
+        return (
+            f"{base}-{self.reference_encoding_strategy}"
+            f"-b{self.encoding_block_references}-o{overlap}-{self.reference_position_mode}"
         )
 
     @property
     def encoding_key(self) -> tuple:
         """Group settings that can safely share already encoded cache entries."""
+        if self.stage in {"topk", "gist"}:
+            return ("native-token-kv",)
         return (
-            self.gist_mode,
-            self.gists_per_chunk,
-            self.gist_score_aggregation,
-            self.search_strategy,
+            self.reference_encoding_strategy,
+            self.encoding_block_references,
+            self.encoding_overlap_fraction,
+            self.reference_position_mode,
         )
 
     def pra_overrides(self) -> dict[str, Any]:
@@ -78,10 +92,20 @@ class SweepConfig:
             "gists_per_chunk": self.gists_per_chunk,
             "gist_score_aggregation": self.gist_score_aggregation,
             "collect_rank_diagnostics": True,
+            "reference_encoding_strategy": self.reference_encoding_strategy,
+            "encoding_block_references": self.encoding_block_references,
+            "encoding_overlap_fraction": self.encoding_overlap_fraction,
+            "reference_position_mode": self.reference_position_mode,
         }
 
 
-def _sweep_configs(stage: str, split_count: int, selected_top_k: int) -> list[SweepConfig]:
+def _sweep_configs(
+    stage: str,
+    split_count: int,
+    selected_top_k: int,
+    gist_modes: list[str],
+    gist_counts: list[int],
+) -> list[SweepConfig]:
     if stage == "topk":
         values = (1, 2, 4, 8) if split_count == 32 else (1, 2, 4, 8, 16)
         return [SweepConfig(stage=stage, top_k_references=value) for value in values]
@@ -89,6 +113,7 @@ def _sweep_configs(stage: str, split_count: int, selected_top_k: int) -> list[Sw
         configs = [
             SweepConfig(stage=stage, top_k_references=selected_top_k, gist_mode=mode)
             for mode in ("mean", "last")
+            if mode in gist_modes
         ]
         configs.extend(
             SweepConfig(
@@ -98,9 +123,43 @@ def _sweep_configs(stage: str, split_count: int, selected_top_k: int) -> list[Sw
                 gists_per_chunk=count,
             )
             for mode in ("prototype", "kmeans", "som", "hybrid")
-            for count in (1, 2, 4)
+            if mode in gist_modes
+            for count in gist_counts
         )
         return configs
+    if stage == "fragmentation":
+        common = {"stage": stage, "top_k_references": selected_top_k}
+        return [
+            SweepConfig(**common),
+            *[
+                SweepConfig(
+                    **common,
+                    reference_encoding_strategy="block_slice",
+                    encoding_block_references=block_size,
+                )
+                for block_size in (4, 8, 16)
+            ],
+            SweepConfig(
+                **common,
+                reference_encoding_strategy="native_slice",
+                encoding_block_references=256,
+            ),
+            *[
+                SweepConfig(
+                    **common,
+                    reference_encoding_strategy="block_slice",
+                    encoding_block_references=8,
+                    encoding_overlap_fraction=fraction,
+                )
+                for fraction in (0.05, 0.10, 0.20)
+            ],
+            SweepConfig(
+                **common,
+                reference_encoding_strategy="block_slice",
+                encoding_block_references=8,
+                reference_position_mode="global",
+            ),
+        ]
     raise ValueError(f"Unsupported stage: {stage}")
 
 
@@ -173,6 +232,37 @@ def _evaluate_config(
 ) -> dict:
     model.cfg.top_k_references = config.top_k_references
     model.cfg.top_k_chunks_per_reference = config.top_k_chunks_per_reference
+    changed_gists = (
+        model.cfg.gist_mode != config.gist_mode
+        or model.cfg.gists_per_chunk != config.gists_per_chunk
+    )
+    model.cfg.gist_mode = config.gist_mode
+    model.cfg.gists_per_chunk = config.gists_per_chunk
+    model.cfg.gist_score_aggregation = config.gist_score_aggregation
+    model.cfg.search_strategy = config.search_strategy
+    model.cfg.trigger_threshold = config.trigger_threshold
+    model.cfg.reference_encoding_strategy = config.reference_encoding_strategy
+    model.cfg.encoding_block_references = config.encoding_block_references
+    model.cfg.encoding_overlap_fraction = config.encoding_overlap_fraction
+    model.cfg.reference_position_mode = config.reference_position_mode
+    if changed_gists and encoded_entry_cache:
+        from pra_torch.memory import PRASimpleMemoryCache
+
+        cache = PRASimpleMemoryCache()
+        for entry in encoded_entry_cache.values():
+            cache.put(entry)
+        model.rebuild_cache_routing_gists(cache, tokenizer=tokenizer)
+    oracle_result = None
+    if config.stage == "fragmentation":
+        oracle_result = evaluate_reference_ablation(
+            model=model,
+            loader=datamodule.test_loader(),
+            tokenizer=tokenizer,
+            device=device,
+            condition="native_oracle",
+            collect_per_example=True,
+            encoded_entry_cache=encoded_entry_cache,
+        )
     result = evaluate_reference_ablation(
         model=model,
         loader=datamodule.test_loader(),
@@ -195,6 +285,15 @@ def _evaluate_config(
         "routed_rcb": routed_rcb,
         "duration_seconds": float(result["duration_seconds"]),
     }
+    if oracle_result is not None:
+        summary["native_oracle_loss"] = float(oracle_result["loss"])
+        summary["native_oracle_accuracy"] = float(oracle_result["token_accuracy"])
+        summary["native_oracle_rcb"] = recovered_context_benefit(
+            sa_full_loss=baseline["sa_full_loss"],
+            sa_tail_loss=baseline["sa_tail_loss"],
+            pra_loss=float(oracle_result["loss"]),
+        )
+        summary["oracle_duration_seconds"] = float(oracle_result["duration_seconds"])
     for key in (
         "active_fraction",
         "active_unique_fraction",
@@ -218,7 +317,13 @@ def _evaluate_config(
         ):
             key = f"{prefix}_{cutoff}"
             summary[key] = _mean(rows, key)
-    return {"summary": summary, "per_example": rows}
+    return {
+        "summary": summary,
+        "per_example": [
+            *(oracle_result["per_example"] if oracle_result is not None else []),
+            *rows,
+        ],
+    }
 
 
 def _write_seed_result(path: Path, payload: dict) -> None:
@@ -315,7 +420,10 @@ def _write_artifacts(report_dir: Path, payloads: list[dict], aggregate: list[dic
     _write_csv(report_dir / "aggregate_pareto.csv", aggregate)
     stage = manifest["stage"]
     _write_csv(report_dir / f"aggregate_by_{stage}.csv", aggregate)
-    (report_dir / "aggregate.json").write_text(json.dumps(aggregate, indent=2), encoding="utf-8")
+    report_payload = {"manifest": manifest, "aggregate": aggregate}
+    (report_dir / "aggregate.json").write_text(
+        json.dumps(report_payload, indent=2), encoding="utf-8"
+    )
     _plot(report_dir, aggregate, stage)
 
 
@@ -355,14 +463,56 @@ def _plot(report_dir: Path, rows: list[dict], stage: str) -> None:
                     )
                 axis.set_xlabel("Active physical K/V fraction")
                 axis.set_ylabel("Routed RCB")
-            else:
-                labels = [f"{row['gist_mode']}:{row['gists_per_chunk']}" for row in selected]
-                axis.bar(range(len(selected)), [row["routing_mrr_mean"] for row in selected])
+            elif stage == "gist":
+                labels = [
+                    f"{row['gist_mode']}:{row['gists_per_chunk']}\n(n={row['seeds']})"
+                    for row in selected
+                ]
+                colors = ["#2878B5" if int(row["seeds"]) > 1 else "#A8B0B8" for row in selected]
+                axis.bar(
+                    range(len(selected)),
+                    [row["routing_mrr_mean"] for row in selected],
+                    color=colors,
+                )
                 axis.set_xticks(range(len(selected)), labels, rotation=70, ha="right", fontsize=7)
                 axis.set_ylabel("Routing MRR")
+            else:
+                labels = [
+                    (
+                        f"{row['reference_encoding_strategy']}"
+                        f"\nb={row['encoding_block_references']}"
+                        f", o={float(row['encoding_overlap_fraction']):.2f}"
+                        f"\n{row['reference_position_mode']}"
+                    )
+                    for row in selected
+                ]
+                positions = list(range(len(selected)))
+                width = 0.38
+                axis.bar(
+                    [value - width / 2 for value in positions],
+                    [row["native_oracle_rcb_mean"] for row in selected],
+                    width=width,
+                    label="Oracle",
+                    color="#2A7F62",
+                )
+                axis.bar(
+                    [value + width / 2 for value in positions],
+                    [row["routed_rcb_mean"] for row in selected],
+                    width=width,
+                    label="Routed",
+                    color="#C85A3E",
+                )
+                axis.set_xticks(positions, labels, rotation=65, ha="right", fontsize=7)
+                axis.set_ylabel("Recovered Context Benefit")
+                axis.legend(fontsize=8)
             axis.set_title(f"{dataset}, split {split_count}")
             axis.grid(alpha=0.25)
-    figure.suptitle(f"PRA {stage} sensitivity, five paired seeds", fontsize=12)
+    title = (
+        "PRA gist sensitivity, successive halving (seed count shown)"
+        if stage == "gist"
+        else f"PRA {stage} sensitivity, five paired seeds"
+    )
+    figure.suptitle(title, fontsize=12)
     figure.tight_layout()
     figure.savefig(report_dir / f"{stage}_sensitivity.pdf", bbox_inches="tight")
     plt.close(figure)
@@ -387,7 +537,13 @@ def run(args: argparse.Namespace) -> Path:
             source, checkpoint_path = _load_source(dataset, seed, tokenizer, settings, device)
             configs_by_encoding = defaultdict(list)
             for split_count in args.splits:
-                for config in _sweep_configs(args.stage, split_count, args.selected_top_k):
+                for config in _sweep_configs(
+                    args.stage,
+                    split_count,
+                    args.selected_top_k,
+                    args.gist_modes,
+                    args.gist_counts,
+                ):
                     configs_by_encoding[(split_count, config.encoding_key)].append(config)
             for (split_count, _encoding_key), configs in configs_by_encoding.items():
                 first = configs[0]
@@ -446,15 +602,37 @@ def run(args: argparse.Namespace) -> Path:
         "seeds": args.seeds,
         "device": device,
         "selected_top_k": args.selected_top_k,
+        "requested_gist_modes": args.gist_modes,
+        "requested_gist_counts": args.gist_counts,
+        "evaluated_config_ids": sorted({row["config_id"] for row in aggregate}),
         "protocol": "inference-only selector sweep over frozen five-seed SA checkpoints",
     }
     _write_artifacts(report_dir, payloads, aggregate, manifest)
+    if args.publish:
+        result_dir = REPO / "docs" / "papers" / "shared" / "results"
+        figure_dir = REPO / "docs" / "papers" / "shared" / "figures"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        figure_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            report_dir / "aggregate.json",
+            result_dir / f"pra_parameter_sensitivity_{args.stage}.json",
+        )
+        shutil.copy2(
+            report_dir / f"aggregate_by_{args.stage}.csv",
+            result_dir / f"pra_parameter_sensitivity_{args.stage}.csv",
+        )
+        shutil.copy2(
+            report_dir / f"{args.stage}_sensitivity.pdf",
+            figure_dir / f"pra_parameter_sensitivity_{args.stage}.pdf",
+        )
     return report_dir
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", choices=("topk", "gist"), required=True)
+    parser.add_argument(
+        "--stage", choices=("topk", "gist", "fragmentation"), required=True
+    )
     parser.add_argument(
         "--datasets",
         nargs="+",
@@ -464,8 +642,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--splits", nargs="+", type=int, choices=(32, 64), default=[32, 64])
     parser.add_argument("--seeds", nargs="+", type=int, default=list(SEEDS))
     parser.add_argument("--selected-top-k", type=int, default=2)
+    parser.add_argument(
+        "--gist-modes",
+        nargs="+",
+        choices=("mean", "last", "prototype", "kmeans", "som", "hybrid"),
+        default=["mean", "last", "prototype", "kmeans", "som", "hybrid"],
+    )
+    parser.add_argument("--gist-counts", nargs="+", type=int, default=[1, 2, 4])
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--publish", action="store_true")
     return parser.parse_args()
 
 

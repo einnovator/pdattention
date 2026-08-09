@@ -91,6 +91,28 @@ def build_cache_from_metadata(
     resolver = resolver if resolver is not None else create_resolver(resolver_config, documents, summaries)
     cache = cache if cache is not None else create_cache(cache_config)
 
+    if model.cfg.reference_encoding_strategy != "independent":
+        if model.cfg.recursive_refs_enabled:
+            raise NotImplementedError(
+                "Grouped reference encoding is not yet compatible with recursive cache builds."
+            )
+        ordered_uris = list(dict.fromkeys(ref.uri for ref in handles))
+        grouped = [
+            {
+                "uri": uri,
+                "text": str(documents[uri].get("text", "")),
+                "metadata": dict(documents[uri].get("metadata") or {}),
+            }
+            for uri in ordered_uris
+        ]
+        for entry in model.encode_reference_group_to_cache(grouped, tokenizer, device):
+            cache.put(entry)
+        cache.resolution_events = []
+        cache.dependencies = []
+        if attach_to_model:
+            model.set_pra_cache(cache)
+        return cache
+
     previous_cache = model.pra_cache
     builder = RecursiveReferenceCacheBuilder(model, resolver, tokenizer, cache, model.cfg)
     try:
