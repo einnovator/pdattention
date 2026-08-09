@@ -229,6 +229,51 @@ def test_native_reference_slicing_matches_one_full_historical_encode():
         assert torch.equal(actual_v, expected.v)
 
 
+def test_native_historical_prompt_positions_match_full_model_tail_logits():
+    torch.manual_seed(29)
+    tokenizer = CharTokenizer(["abcdefgh"])
+    source_cfg = PRAConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=16,
+        n_heads=4,
+        n_layers=2,
+        d_ff=32,
+        max_seq_len=16,
+        model_variant="td_sa",
+    )
+    source = TinyPRAModel(source_cfg).eval()
+    target_cfg = PRAConfig(
+        **{
+            **source_cfg.__dict__,
+            "model_variant": "td_pra",
+            "reference_encoding_strategy": "native_slice",
+            "reference_position_mode": "global",
+            "prompt_position_mode": "historical",
+            "top_k_references": 8,
+            "top_k_chunks_per_reference": 1,
+            "trigger_threshold": float("-inf"),
+            "detail_materialization": "full_reference",
+        }
+    )
+    converted = convert_sa_model_to_pra(source, target_cfg).eval()
+    references = [
+        {"uri": "mem://a", "text": "abcd", "metadata": {}},
+        {"uri": "mem://b", "text": "ef", "metadata": {}},
+    ]
+    cache = PRASimpleMemoryCache()
+    for entry in converted.encode_reference_group_to_cache(references, tokenizer, "cpu"):
+        cache.put(entry)
+    converted.set_pra_cache(cache)
+
+    full_ids = torch.tensor([tokenizer.encode("abcdefgh")])
+    tail_ids = torch.tensor([tokenizer.encode("gh")])
+    with torch.no_grad():
+        full_tail = source(full_ids)[:, -tail_ids.shape[1] :]
+        native_tail = converted(tail_ids, position_offset=6)
+
+    assert torch.allclose(native_tail, full_tail, atol=2e-6, rtol=2e-6)
+
+
 def test_block_slicing_accounts_for_encoding_overlap_without_storing_duplicates():
     tokenizer = CharTokenizer(["abcdefgh"])
     cfg = PRAConfig(

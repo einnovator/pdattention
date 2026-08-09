@@ -253,6 +253,45 @@ def test_hotpotqa_adapter_balances_answers_and_preserves_evidence_partitions(tmp
     assert len(set(snapshots)) == 1
 
 
+def test_native_kv_scale_partitions_preserve_all_255_source_units(tmp_path):
+    from data.datasets import HotpotQANativeKVFixedTargetDataset
+    from data.native_kv_benchmarks import (
+        EvidenceUnit,
+        NativeKVBenchmarkExample,
+        write_native_kv_benchmark,
+    )
+
+    example = NativeKVBenchmarkExample(
+        id="scale-example",
+        source_units=tuple(
+            EvidenceUnit(f"unit-{index}", is_evidence=index in {0, 127})
+            for index in range(255)
+        ),
+        question=" Question: Return the code. Answer:",
+        answer="yes",
+        metadata={"task_type": "scale_invariant"},
+    )
+
+    for split_count in (128, 256):
+        root = tmp_path / f"scale-{split_count}"
+        write_native_kv_benchmark(
+            root,
+            stage=HotpotQANativeKVFixedTargetDataset.stage,
+            dataset_name="scale",
+            split_count=split_count,
+            examples=[example],
+            generation_version="test-scale",
+        )
+        sample = HotpotQANativeKVFixedTargetDataset(root)[0]
+
+        assert len(sample.references) == split_count - 1
+        assert sum(len(ref.metadata["text"].split()) for ref in sample.references) == 255
+        assert " ".join(ref.metadata["text"] for ref in sample.references) == sample.metadata[
+            "row"
+        ]["source_text"]
+        assert sample.target_reference_ids
+
+
 def test_qasper_adapter_uses_yes_no_evidence_and_balances_answers():
     from data.native_kv_benchmarks import qasper_native_kv_examples
 

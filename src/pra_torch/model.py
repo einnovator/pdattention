@@ -372,13 +372,25 @@ class TinyPRAModel(nn.Module):
                 }
         return diagnostics
 
-    def forward(self, input_ids, use_pra_memory: bool = True, attention_mask=None):
-        """Map ``[B,T]`` token IDs to next-token logits ``[B,T,vocab_size]``."""
+    def forward(
+        self,
+        input_ids,
+        use_pra_memory: bool = True,
+        attention_mask=None,
+        position_offset: int = 0,
+    ):
+        """Map ``[B,T]`` IDs to logits, optionally continuing historical positions."""
         b, t = input_ids.shape
-        assert t <= self.cfg.max_seq_len
+        position_offset = int(position_offset)
+        if position_offset < 0 or position_offset + t > self.cfg.max_seq_len:
+            raise ValueError(
+                "Prompt position range exceeds the model positional table: "
+                f"[{position_offset}, {position_offset + t}) vs "
+                f"max_seq_len={self.cfg.max_seq_len}."
+            )
         if attention_mask is not None and attention_mask.shape != input_ids.shape:
             raise ValueError("attention_mask must have the same [batch,tokens] shape as input_ids.")
-        pos = torch.arange(t, device=input_ids.device)
+        pos = torch.arange(position_offset, position_offset + t, device=input_ids.device)
         x = self.token_emb(input_ids) + self.pos_emb(pos)[None, :, :]
         for block in self.blocks:
             x = block(x, use_pra_memory=use_pra_memory, attention_mask=attention_mask)

@@ -97,6 +97,7 @@ class PRAConfig:
     encoding_block_references: int = 8  # Consecutive URIs contextualized per block_slice.
     encoding_overlap_fraction: float = 0.0  # Left-context duplication during block encoding.
     reference_position_mode: str = "local"  # Reset each block or preserve global offsets.
+    prompt_position_mode: str = "local"  # local or continue after historical source K/V.
     reference_overflow_policy: str = "truncate"  # Handling for a chunk over max_seq_len.
     marker_rules: tuple[str, ...] = ("<PRA_CHUNK>",)  # Explicit text split markers.
     semantic_chunker: object | None = None  # Plugin implementing SemanticChunker.
@@ -313,6 +314,8 @@ class PRAConfig:
             raise ValueError("encoding_overlap_fraction must satisfy 0 <= value < 1.")
         if self.reference_position_mode not in {"local", "global"}:
             raise ValueError("reference_position_mode must be 'local' or 'global'.")
+        if self.prompt_position_mode not in {"local", "historical"}:
+            raise ValueError("prompt_position_mode must be 'local' or 'historical'.")
         if self.reference_overflow_policy not in {"truncate", "error"}:
             raise ValueError(
                 f"Unsupported reference_overflow_policy: {self.reference_overflow_policy}"

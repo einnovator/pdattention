@@ -804,9 +804,19 @@ def evaluate_reference_ablation(
                                     rotated = payloads[1:] + payloads[:1]
                                     for chunk, payload in zip(chunks, rotated):
                                         chunk.token_kv = payload
+                    position_offset = 0
+                    if (
+                        model.cfg.prompt_position_mode == "historical"
+                        and condition not in {"disabled", "native_disabled"}
+                    ):
+                        position_offset = sum(
+                            len(tokenizer.encode(str(reference.metadata.get("text", ""))))
+                            for reference in item.get("references") or []
+                        )
                     logits = model(
                         moved["input_ids"][index : index + 1],
                         use_pra_memory=condition not in {"disabled", "native_disabled"},
+                        position_offset=position_offset,
                     )
                     labels = moved["labels"][index : index + 1]
                     valid = labels.ne(0)
@@ -970,6 +980,7 @@ def evaluate_reference_ablation(
                                     model.cfg.encoding_overlap_fraction
                                 ),
                                 "reference_position_mode": model.cfg.reference_position_mode,
+                                "prompt_position_mode": model.cfg.prompt_position_mode,
                                 "num_references": len(own_references),
                                 "num_chunks": sum(
                                     len(entry.layer_memory.get(0).chunks)

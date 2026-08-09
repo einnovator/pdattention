@@ -19,6 +19,7 @@ from typing import Any, Iterable, Sequence
 
 
 NATIVE_KV_SPLIT_COUNTS = (2, 3, 5, 8, 16, 32, 64)
+NATIVE_KV_SCALE_SPLIT_COUNTS = (*NATIVE_KV_SPLIT_COUNTS, 128, 256)
 
 
 @dataclass(frozen=True)
@@ -73,8 +74,8 @@ def write_native_kv_benchmark(
 ) -> Path:
     """Write one invariant-target partition as project-native JSONL files."""
 
-    if split_count not in NATIVE_KV_SPLIT_COUNTS:
-        allowed = ", ".join(str(value) for value in NATIVE_KV_SPLIT_COUNTS)
+    if split_count not in NATIVE_KV_SCALE_SPLIT_COUNTS:
+        allowed = ", ".join(str(value) for value in NATIVE_KV_SCALE_SPLIT_COUNTS)
         raise ValueError(f"split_count must be one of {allowed}")
     stage_dir = Path(data_dir) / stage
     stage_dir.mkdir(parents=True, exist_ok=True)
@@ -328,6 +329,7 @@ def generate_hotpotqa_native_kv_dataset(
     dataset_split: str,
     max_examples: int,
     seed: int,
+    source_unit_count: int = 63,
     cache_dir: str | Path | None = None,
 ) -> Path:
     """Download and write the balanced HotpotQA native-KV benchmark slice."""
@@ -344,6 +346,7 @@ def generate_hotpotqa_native_kv_dataset(
         rows,
         max_examples=max_examples,
         seed=seed,
+        source_unit_count=source_unit_count,
     )
     if len(examples) < max_examples:
         raise ValueError(
@@ -477,6 +480,7 @@ def generate_qasper_native_kv_dataset(
     dataset_split: str,
     max_examples: int,
     seed: int,
+    source_unit_count: int = 63,
     cache_dir: str | Path | None = None,
 ) -> Path:
     """Write one fixed-target QASPER native-KV partition."""
@@ -485,6 +489,7 @@ def generate_qasper_native_kv_dataset(
         load_qasper_papers(dataset_split, cache_dir=cache_dir),
         max_examples=max_examples,
         seed=seed,
+        source_unit_count=source_unit_count,
     )
     if len(examples) < max_examples:
         raise ValueError(
