@@ -179,7 +179,11 @@ def _fixed_chunks(uri, token_ids, tokenizer, metadata, *, size, overlap=0):
                     token_ids=ids,
                     token_start=start,
                     token_end=end,
-                    metadata={**metadata, "overlap_tokens": overlap},
+                    metadata={
+                        **metadata,
+                        "overlap_tokens": overlap,
+                        "unique_source_tokens": len(token_ids),
+                    },
                 )
             )
         if end == len(token_ids):
@@ -261,7 +265,7 @@ def partition_reference_tokens(
             tokenizer,
             metadata,
             size=config.fixed_chunk_tokens,
-            overlap=config.fixed_chunk_overlap_tokens,
+            overlap=config.resolved_chunk_overlap_tokens,
         )
     elif config.chunking_mode == "markers":
         partitioner = metadata.get("partitioner")
@@ -314,6 +318,29 @@ def partition_reference_tokens(
             replace(chunk, metadata={**chunk.metadata, "discarded_chunk_count": discarded})
             for chunk in chunks
         ]
+    encoded_tokens = sum(len(chunk.token_ids) for chunk in chunks)
+    unique_tokens = len(
+        {
+            position
+            for chunk in chunks
+            for position in range(chunk.token_start, chunk.token_end)
+        }
+    )
+    chunks = [
+        replace(
+            chunk,
+            metadata={
+                **chunk.metadata,
+                "chunk_overlap_fraction": config.chunk_overlap_fraction,
+                "resolved_chunk_overlap_tokens": config.resolved_chunk_overlap_tokens,
+                "encoded_tokens_including_overlap": encoded_tokens,
+                "stored_kv_tokens_including_overlap": encoded_tokens,
+                "covered_unique_source_tokens": unique_tokens,
+                "duplication_factor": encoded_tokens / max(unique_tokens, 1),
+            },
+        )
+        for chunk in chunks
+    ]
     return chunks
 
 

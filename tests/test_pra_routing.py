@@ -105,6 +105,20 @@ def test_search_is_layer_specific_and_batch_specific():
     assert [hits[0].reference_uri for hits in layer_one] == ["B", "A"]
 
 
+def test_search_retains_complete_deterministic_rankings_before_top_k():
+    cache = PRASimpleMemoryCache()
+    cache.put(_entry("A", {0: [_chunk("A", "A0", [1, 0], [1, 0])]}))
+    cache.put(_entry("B", {0: [_chunk("B", "B0", [0.8, 0.6], [0, 1])]}))
+
+    selected = cache.search(torch.tensor([[1.0, 0.0]]), 0, _routing_config())[0]
+    rankings = cache.last_rankings(0)[0]
+
+    assert [hit.reference_uri for hit in selected] == ["A"]
+    assert [row["reference_uri"] for row in rankings] == ["A", "B"]
+    assert [row["reference_rank"] for row in rankings] == [1, 2]
+    assert rankings[0]["chunks"][0]["gist_count"] == 1
+
+
 def test_hierarchical_search_keeps_reference_and_chunk_budgets_distinct():
     cache = PRASimpleMemoryCache()
     cache.put(
@@ -131,6 +145,38 @@ def test_hierarchical_search_keeps_reference_and_chunk_budgets_distinct():
     selected = cache.search(torch.tensor([[1.0, 0.0]]), 0, cfg)[0]
     assert [hit.reference_uri for hit in selected] == ["A", "A"]
     assert [hit.chunk_id for hit in selected] == ["A0", "A1"]
+
+
+@pytest.mark.parametrize(
+    ("policy", "expected_tokens"),
+    (("deduplicate", 6), ("keep_duplicates", 8)),
+)
+def test_overlap_materialization_policy_controls_physical_kv(policy, expected_tokens):
+    cache = PRASimpleMemoryCache()
+    cache.put(
+        _entry(
+            "A",
+            {
+                0: [
+                    _chunk("A", "A0", [1, 0], [1, 0], start=0, length=4),
+                    _chunk("A", "A1", [1, 0], [1, 0], start=2, length=4),
+                ]
+            },
+        )
+    )
+    cfg = _routing_config(
+        top_k_chunks_per_reference=2,
+        overlap_materialization=policy,
+    )
+    selected = cache.search(torch.tensor([[1.0, 0.0]]), 0, cfg)[0]
+    attention = PRAttention(2, 1, 8, 0, cache, config=cfg)
+
+    keys, values, _retained, duplicate_tokens = attention._materialize(
+        selected, torch.zeros(1, 1, 1, 2)
+    )
+
+    assert keys.shape == values.shape == (1, 1, expected_tokens, 2)
+    assert duplicate_tokens == 2
 
 
 def test_logsumexp_can_prefer_multiple_moderate_chunks():
@@ -262,6 +308,41 @@ def test_fixed_chunking_is_bounded_and_provenance_preserving():
     assert [chunk.chunk_id for chunk in chunks] == ["mem://x#chunk=0", "mem://x#chunk=1"]
     assert [(chunk.token_start, chunk.token_end) for chunk in chunks] == [(0, 4), (4, 8)]
     assert all(chunk.metadata["discarded_chunk_count"] == 1 for chunk in chunks)
+
+
+def test_fractional_chunk_overlap_has_exact_deterministic_accounting():
+    tokenizer = CharTokenizer(["abcdefghij"])
+    cfg = PRAConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=8,
+        n_heads=2,
+        n_layers=1,
+        chunking_mode="fixed",
+        fixed_chunk_tokens=4,
+        chunk_overlap_fraction=0.25,
+        max_gists_per_reference=8,
+    )
+
+    chunks = partition_reference("mem://overlap", "abcdefghij", tokenizer, cfg)
+
+    assert cfg.resolved_chunk_overlap_tokens == 1
+    assert [(chunk.token_start, chunk.token_end) for chunk in chunks] == [
+        (0, 4),
+        (3, 7),
+        (6, 10),
+    ]
+    assert chunks[0].metadata["encoded_tokens_including_overlap"] == 12
+    assert chunks[0].metadata["covered_unique_source_tokens"] == 10
+    assert chunks[0].metadata["duplication_factor"] == pytest.approx(1.2)
+
+
+def test_chunk_overlap_forms_are_mutually_exclusive():
+    with pytest.raises(ValueError, match="only one"):
+        PRAConfig(
+            fixed_chunk_tokens=8,
+            fixed_chunk_overlap_tokens=1,
+            chunk_overlap_fraction=0.25,
+        )
 
 
 def test_marker_chunking_is_deterministic_and_semantic_mode_requires_a_plugin():

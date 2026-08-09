@@ -304,6 +304,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         self._entries: dict[str, PRACacheEntry] = {}
         self._states: dict[str, CacheBuildState] = {}
         self._failures: dict[str, str] = {}
+        self._last_rankings_by_layer: dict[int, list[list[dict]]] = {}
 
     @property
     def entries(self) -> dict[str, PRACacheEntry]:
@@ -351,6 +352,7 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         self._entries.clear()
         self._states.clear()
         self._failures.clear()
+        self._last_rankings_by_layer.clear()
 
     def is_empty(self) -> bool:
         """Return whether this row-local namespace has no ready entries."""
@@ -378,6 +380,58 @@ class PRASimpleMemoryCache(PRAMemoryCache):
             "chunk_gists": sum(int(chunk.routing_gist.k.shape[0]) for chunk in chunks),
             "reference_gists": sum(int(gists.k.shape[0]) for gists in reference_gists),
         }
+
+    def last_rankings(self, layer_id: int) -> list[list[dict]]:
+        """Return complete candidate rankings from the latest search at one layer."""
+        return self._last_rankings_by_layer.get(layer_id, [])
+
+    @staticmethod
+    def _serialize_rankings(
+        hits: list[_ChunkHit],
+        config,
+        *,
+        reference_scores: dict[str, float] | None = None,
+    ) -> list[dict]:
+        """Preserve every reference/chunk score before top-k truncation."""
+        grouped = defaultdict(list)
+        for hit in hits:
+            grouped[hit.entry.uri].append(hit)
+        if reference_scores is None:
+            reference_scores = {
+                uri: _aggregate(
+                    [candidate.score for candidate in candidates],
+                    config.reference_score_aggregation,
+                )
+                for uri, candidates in grouped.items()
+            }
+        ranked_uris = sorted(reference_scores, key=lambda uri: (-reference_scores[uri], uri))
+        rankings = []
+        for reference_rank, uri in enumerate(ranked_uris, start=1):
+            ranked_chunks = sorted(
+                grouped.get(uri, []),
+                key=lambda hit: (-hit.score, hit.chunk.chunk_id),
+            )
+            rankings.append(
+                {
+                    "reference_uri": uri,
+                    "reference_rank": reference_rank,
+                    "reference_score": float(reference_scores[uri]),
+                    "chunks": [
+                        {
+                            "chunk_id": hit.chunk.chunk_id,
+                            "chunk_rank": chunk_rank,
+                            "chunk_score": float(hit.score),
+                            "token_start": hit.chunk.token_start,
+                            "token_end": hit.chunk.token_end,
+                            "gist_count": hit.gist_count,
+                            "winning_gist_index": hit.winning_gist_index,
+                            "winning_gist_score": hit.winning_gist_score,
+                        }
+                        for chunk_rank, hit in enumerate(ranked_chunks, start=1)
+                    ],
+                }
+            )
+        return rankings
 
     @staticmethod
     def _score_chunk(query: torch.Tensor, entry, chunk, config) -> _ChunkHit:
@@ -664,13 +718,29 @@ class PRASimpleMemoryCache(PRAMemoryCache):
         if query.ndim != 2:
             raise ValueError(f"Expected query [batch,model] or [model], got {tuple(query.shape)}.")
         if config.top_k_references == 0 or config.top_k_chunks_per_reference == 0:
+            self._last_rankings_by_layer[layer_id] = [[] for _ in range(query.shape[0])]
             return [[] for _ in range(query.shape[0])]
         selected_by_batch = []
         if config.search_strategy == "reference_first":
-            return [self._reference_first(row_query, layer_id, config) for row_query in query]
+            rankings_by_batch = []
+            for row_query in query:
+                selected_by_batch.append(self._reference_first(row_query, layer_id, config))
+                hits = self._score_chunks(row_query.unsqueeze(0), layer_id, config)[0]
+                reference_hits = self._score_references(row_query, layer_id, config)
+                rankings_by_batch.append(
+                    self._serialize_rankings(
+                        hits,
+                        config,
+                        reference_scores={hit.entry.uri: hit.score for hit in reference_hits},
+                    )
+                )
+            self._last_rankings_by_layer[layer_id] = rankings_by_batch
+            return selected_by_batch
         # Hierarchical/global strategies score all cheap chunk gists before policy ranking.
         hits_by_batch = self._score_chunks(query, layer_id, config)
+        rankings_by_batch = []
         for hits in hits_by_batch:
+            rankings = self._serialize_rankings(hits, config)
             if config.search_strategy == "hierarchical":
                 selected = self._hierarchical(hits, layer_id, config)
             elif config.search_strategy == "global_chunks":
@@ -678,6 +748,8 @@ class PRASimpleMemoryCache(PRAMemoryCache):
             else:
                 raise ValueError(f"Unsupported search_strategy: {config.search_strategy}")
             selected_by_batch.append(selected)
+            rankings_by_batch.append(rankings)
+        self._last_rankings_by_layer[layer_id] = rankings_by_batch
         return selected_by_batch
 
     def search_by_routing_key(
@@ -782,6 +854,14 @@ class PRABatchedMemoryCache(PRAMemoryCache):
             cache.search(query[row_index : row_index + 1], layer_id, config)[0]
             for row_index, cache in enumerate(self.row_caches)
         ]
+
+    def last_rankings(self, layer_id: int) -> list[list[dict]]:
+        """Return one latest candidate ranking from each row-local cache."""
+        rankings = []
+        for cache in self.row_caches:
+            rows = cache.last_rankings(layer_id) if hasattr(cache, "last_rankings") else []
+            rankings.append(rows[0] if rows else [])
+        return rankings
 
     def __len__(self) -> int:
         """Count ready entries without collapsing duplicate URI strings."""

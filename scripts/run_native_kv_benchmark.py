@@ -652,26 +652,33 @@ def _assert_fixed_target_invariants(modules: dict[int, PRADataModule]) -> None:
             raise AssertionError(f"Fixed-target invariant failed for split {split_count}")
 
 
-def _native_config(source: TinyPRAModel, device: str) -> PRAConfig:
-    return PRAConfig(
-        vocab_size=source.cfg.vocab_size,
-        d_model=source.cfg.d_model,
-        n_heads=source.cfg.n_heads,
-        n_layers=source.cfg.n_layers,
-        d_ff=source.cfg.d_ff,
-        max_seq_len=source.cfg.max_seq_len,
-        dropout=0.0,
-        model_variant="td_pra",
-        memory_transport="native_kv",
-        top_k_references=1,
-        top_k_chunks_per_reference=1,
-        trigger_threshold=float("-inf"),
-        detail_materialization="selected_chunks",
-        recursive_max_total_references=128,
-        recursive_max_total_tokens=8_192,
-        collect_detailed_timing=True,
-        device=device,
-    )
+def _native_config(
+    source: TinyPRAModel,
+    device: str,
+    overrides: dict[str, Any] | None = None,
+) -> PRAConfig:
+    """Build an explicit native routing configuration for reproducible sweeps."""
+    values = {
+        "vocab_size": source.cfg.vocab_size,
+        "d_model": source.cfg.d_model,
+        "n_heads": source.cfg.n_heads,
+        "n_layers": source.cfg.n_layers,
+        "d_ff": source.cfg.d_ff,
+        "max_seq_len": source.cfg.max_seq_len,
+        "dropout": 0.0,
+        "model_variant": "td_pra",
+        "memory_transport": "native_kv",
+        "top_k_references": 1,
+        "top_k_chunks_per_reference": 1,
+        "trigger_threshold": float("-inf"),
+        "detail_materialization": "selected_chunks",
+        "recursive_max_total_references": 128,
+        "recursive_max_total_tokens": 8_192,
+        "collect_detailed_timing": True,
+        "device": device,
+    }
+    values.update(overrides or {})
+    return PRAConfig(**values)
 
 
 def evaluate_seed(

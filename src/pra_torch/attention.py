@@ -53,6 +53,7 @@ class PRAttention(nn.Module):
         self.memory_alpha = config.memory_alpha  # Legacy cross-attention contribution scale.
         self.pra_cache = pra_cache  # Shared URI cache; selection remains batch-isolated.
         self.last_selected_chunks: list[list[SelectedChunk]] = []  # Latest trace by batch row.
+        self.last_routing_rankings: list[list[dict]] = []  # Complete candidate ranks by row.
         self.last_memory_batching_stats: MemoryBatchingStats | None = None
         self.last_diagnostics: dict[str, float] = {}  # Latest aggregate attention metrics.
 
@@ -191,8 +192,9 @@ class PRAttention(nn.Module):
                 if overlap:
                     overlap = min(overlap, int(key.shape[2]))
                     duplicate_tokens += overlap
-                    key = key[:, :, overlap:, :]
-                    value = value[:, :, overlap:, :]
+                    if self.config.overlap_materialization == "deduplicate":
+                        key = key[:, :, overlap:, :]
+                        value = value[:, :, overlap:, :]
                 covered_end_by_uri[hit.reference_uri] = max(covered_end, hit.token_end)
             if key.shape[2]:
                 keys.append(key.to(q.device, q.dtype))
@@ -211,6 +213,7 @@ class PRAttention(nn.Module):
         """
         # Reset observable state so traces always describe this forward call.
         self.last_selected_chunks = [[] for _ in range(x.shape[0])]
+        self.last_routing_rankings = [[] for _ in range(x.shape[0])]
         self.last_memory_batching_stats = None
         self.last_diagnostics = {}
         b, t, _ = x.shape
@@ -249,6 +252,8 @@ class PRAttention(nn.Module):
         routing_query = routing_query.contiguous().view(b, self.d_model)
         routing_start = time.perf_counter()
         selected_by_batch = self.pra_cache.search(routing_query, self.layer_id, self.config)
+        if hasattr(self.pra_cache, "last_rankings"):
+            self.last_routing_rankings = self.pra_cache.last_rankings(self.layer_id)
         routing_duration = time.perf_counter() - routing_start
 
         # Materialize variable-length K/V independently to prevent cross-item leakage.
@@ -284,6 +289,16 @@ class PRAttention(nn.Module):
                 int(attention_mask.sum().item()) if attention_mask is not None else b * t
             )
             retrieved_tokens = int(stats.valid_positions)
+            retrieved_unique_tokens = (
+                retrieved_tokens
+                if self.config.overlap_materialization == "deduplicate"
+                else max(retrieved_tokens - duplicate_tokens, 0)
+            )
+            selected_stored_tokens = (
+                retrieved_tokens + duplicate_tokens
+                if self.config.overlap_materialization == "deduplicate"
+                else retrieved_tokens
+            )
             accessible_tokens = local_tokens + retrieved_tokens
             element_size = q.element_size()
             kv_bytes = 2 * retrieved_tokens * self.n_heads * self.head_dim * element_size
@@ -295,6 +310,15 @@ class PRAttention(nn.Module):
                 "memory_transport_native_kv": 1.0,
                 "active_local_tokens": float(local_tokens),
                 "retrieved_token_kv": float(retrieved_tokens),
+                "retrieved_physical_kv_tokens": float(retrieved_tokens),
+                "retrieved_unique_source_tokens": float(retrieved_unique_tokens),
+                "selected_stored_kv_tokens": float(selected_stored_tokens),
+                "memory_overlap_tokens_detected": float(duplicate_tokens),
+                "memory_overlap_tokens_removed": float(
+                    duplicate_tokens
+                    if self.config.overlap_materialization == "deduplicate"
+                    else 0
+                ),
                 "accessible_kv_tokens": float(accessible_tokens),
                 "active_memory_fraction": retrieved_tokens / max(accessible_tokens, 1),
                 "retrieved_kv_storage_bytes": float(kv_bytes),

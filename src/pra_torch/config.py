@@ -91,6 +91,8 @@ class PRAConfig:
     chunking_mode: str = "none"  # none, fixed token windows, markers, or plugin semantic.
     fixed_chunk_tokens: int = 64  # Window length used by fixed chunking.
     fixed_chunk_overlap_tokens: int = 0  # Repeated tokens between adjacent fixed windows.
+    chunk_overlap_fraction: float = 0.0  # Alternative fractional fixed-window overlap.
+    overlap_materialization: str = "deduplicate"  # deduplicate or keep_duplicates.
     reference_overflow_policy: str = "truncate"  # Handling for a chunk over max_seq_len.
     marker_rules: tuple[str, ...] = ("<PRA_CHUNK>",)  # Explicit text split markers.
     semantic_chunker: object | None = None  # Plugin implementing SemanticChunker.
@@ -118,6 +120,7 @@ class PRAConfig:
     collect_detailed_timing: bool = False  # Record routing/materialization/attention durations.
     collect_attention_metrics: bool = True  # Compatibility flag; aggregates are always retained.
     collect_per_head_metrics: bool = False  # Reserved for per-head diagnostics.
+    collect_rank_diagnostics: bool = False  # Retain complete pre-top-k candidate score lists.
     chunk_match_mode: str = "exact_id"  # Ground-truth match by ID, overlap, or IoU threshold.
     chunk_iou_threshold: float = 0.5  # Minimum span IoU when chunk_match_mode uses IoU.
 
@@ -132,6 +135,15 @@ class PRAConfig:
         """Return the direct prompt budget clamped to positional capacity."""
         requested = self.max_prompt_direct_tokens or self.max_seq_len
         return min(int(requested), int(self.max_seq_len))
+
+    @property
+    def resolved_chunk_overlap_tokens(self) -> int:
+        """Resolve the mutually exclusive token/fraction overlap configuration."""
+        if self.fixed_chunk_overlap_tokens:
+            return int(self.fixed_chunk_overlap_tokens)
+        if self.chunk_overlap_fraction <= 0.0:
+            return 0
+        return max(1, int(self.fixed_chunk_tokens * self.chunk_overlap_fraction))
 
     def __post_init__(self) -> None:
         """Normalize aliases/variants and reject incompatible mode settings early."""
@@ -262,11 +274,24 @@ class PRAConfig:
             raise ValueError(f"Unsupported chunking_mode: {self.chunking_mode}")
         self.fixed_chunk_tokens = int(self.fixed_chunk_tokens)
         self.fixed_chunk_overlap_tokens = int(self.fixed_chunk_overlap_tokens)
+        self.chunk_overlap_fraction = float(self.chunk_overlap_fraction)
         if self.fixed_chunk_tokens <= 0:
             raise ValueError("fixed_chunk_tokens must be positive.")
-        if not 0 <= self.fixed_chunk_overlap_tokens < self.fixed_chunk_tokens:
+        if self.fixed_chunk_overlap_tokens < 0:
+            raise ValueError("fixed_chunk_overlap_tokens must be non-negative.")
+        if not 0.0 <= self.chunk_overlap_fraction < 1.0:
+            raise ValueError("chunk_overlap_fraction must satisfy 0 <= value < 1.")
+        if self.fixed_chunk_overlap_tokens and self.chunk_overlap_fraction:
             raise ValueError(
-                "fixed_chunk_overlap_tokens must be non-negative and smaller than fixed_chunk_tokens."
+                "Set only one of fixed_chunk_overlap_tokens and chunk_overlap_fraction."
+            )
+        if self.resolved_chunk_overlap_tokens >= self.fixed_chunk_tokens:
+            raise ValueError(
+                "Resolved fixed chunk overlap must be smaller than fixed_chunk_tokens."
+            )
+        if self.overlap_materialization not in {"deduplicate", "keep_duplicates"}:
+            raise ValueError(
+                "overlap_materialization must be 'deduplicate' or 'keep_duplicates'."
             )
         if self.reference_overflow_policy not in {"truncate", "error"}:
             raise ValueError(

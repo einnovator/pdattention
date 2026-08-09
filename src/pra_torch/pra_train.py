@@ -90,6 +90,85 @@ def _selections_by_row(by_layer: dict[int, list[list]], batch_size: int) -> list
     return selections
 
 
+_RANK_CUTOFFS = (1, 2, 4, 8, 16, 32)
+
+
+def _complete_reference_rank_metrics(rankings_by_layer, target_uris: set[str]) -> dict:
+    """Summarize pre-top-k target ranks while retaining layer-level evidence."""
+    layer_rows = {}
+    reciprocal_ranks = []
+    score_margins = []
+    gist_comparisons = 0
+    union_by_k = {cutoff: set() for cutoff in _RANK_CUTOFFS}
+    recall_by_k = {cutoff: [] for cutoff in _RANK_CUTOFFS}
+    for layer_id, rankings in sorted(rankings_by_layer.items()):
+        ranked_uris = [str(candidate["reference_uri"]) for candidate in rankings]
+        rank_by_uri = {uri: rank for rank, uri in enumerate(ranked_uris, start=1)}
+        target_ranks = sorted(rank_by_uri[uri] for uri in target_uris if uri in rank_by_uri)
+        reciprocal_ranks.append(1.0 / target_ranks[0] if target_ranks else 0.0)
+        target_scores = [
+            float(candidate["reference_score"])
+            for candidate in rankings
+            if candidate["reference_uri"] in target_uris
+        ]
+        non_target_scores = [
+            float(candidate["reference_score"])
+            for candidate in rankings
+            if candidate["reference_uri"] not in target_uris
+        ]
+        best_target = max(target_scores) if target_scores else None
+        best_non_target = max(non_target_scores) if non_target_scores else None
+        margin = (
+            best_target - best_non_target
+            if best_target is not None and best_non_target is not None
+            else None
+        )
+        if margin is not None:
+            score_margins.append(margin)
+        for candidate in rankings:
+            gist_comparisons += sum(
+                int(chunk.get("gist_count", 1)) for chunk in candidate.get("chunks", [])
+            )
+        layer_row = {
+            "ranked_reference_uris": ranked_uris,
+            "target_reference_ranks": target_ranks,
+            "mrr": reciprocal_ranks[-1],
+            "best_target_score": best_target,
+            "best_non_target_score": best_non_target,
+            "score_margin": margin,
+        }
+        for cutoff in _RANK_CUTOFFS:
+            selected = set(ranked_uris[:cutoff])
+            union_by_k[cutoff].update(selected)
+            recall = len(selected & target_uris) / max(len(target_uris), 1)
+            recall_by_k[cutoff].append(recall)
+            layer_row[f"recall_at_{cutoff}"] = recall
+        layer_rows[str(layer_id)] = layer_row
+
+    metrics = {
+        "routing_mrr": sum(reciprocal_ranks) / max(len(reciprocal_ranks), 1),
+        "routing_score_margin": sum(score_margins) / max(len(score_margins), 1)
+        if score_margins
+        else None,
+        "gist_comparisons": gist_comparisons,
+        "target_reference_count": len(target_uris),
+        "rank_diagnostics_by_layer": layer_rows,
+    }
+    for cutoff in _RANK_CUTOFFS:
+        covered = union_by_k[cutoff] & target_uris
+        metrics[f"reference_recall_at_{cutoff}"] = sum(recall_by_k[cutoff]) / max(
+            len(recall_by_k[cutoff]), 1
+        )
+        metrics[f"any_target_hit_at_{cutoff}"] = float(bool(covered))
+        metrics[f"all_targets_hit_at_{cutoff}"] = float(
+            bool(target_uris) and target_uris <= union_by_k[cutoff]
+        )
+        metrics[f"fraction_targets_covered_at_{cutoff}"] = len(covered) / max(
+            len(target_uris), 1
+        )
+    return metrics
+
+
 def _row_batching_metrics(layer_diagnostics: dict, row_index: int) -> dict[str, float]:
     """Extract genuine row-local memory packing values from layer diagnostics."""
     batching = layer_diagnostics.get("batching")
@@ -735,6 +814,11 @@ def evaluate_reference_ablation(
                             int(layer_id): (rows[0] if rows else [])
                             for layer_id, rows in selections.items()
                         }
+                        rankings = model.routing_rankings_by_layer()
+                        layer_rankings = {
+                            int(layer_id): (rows[0] if rows else [])
+                            for layer_id, rows in rankings.items()
+                        }
                         selected_hits = [hit for hits in layer_hits.values() for hit in hits]
                         retrieved_by_layer = [
                             sum(hit.selected_token_count for hit in hits)
@@ -760,9 +844,18 @@ def evaluate_reference_ablation(
                         target_uris = sorted(_expected_reference_uris(item))
                         target_uri_set = set(target_uris)
                         selected_uri_set = set(selected_uris)
+                        complete_rank_metrics = _complete_reference_rank_metrics(
+                            layer_rankings, target_uri_set
+                        )
+                        if model.cfg.collect_rank_diagnostics:
+                            complete_rank_metrics["candidate_rankings_by_layer"] = {
+                                str(layer_id): candidates
+                                for layer_id, candidates in layer_rankings.items()
+                            }
                         routing_scores = [float(hit.chunk_score) for hit in selected_hits]
                         reference_scores = [float(hit.reference_score) for hit in selected_hits]
                         diagnostics = model.pra_diagnostics_by_layer()
+                        diagnostic_values = list(diagnostics.values())
                         routing_latency = sum(
                             float(value.get("routing_duration_seconds", 0.0))
                             for value in diagnostics.values()
@@ -779,6 +872,23 @@ def evaluate_reference_ablation(
                             float(value.get("retrieved_kv_transfer_bytes", 0.0))
                             for value in diagnostics.values()
                         )
+                        retrieved_physical = sum(
+                            float(value.get("retrieved_physical_kv_tokens", 0.0))
+                            for value in diagnostic_values
+                        ) / max(len(diagnostic_values), 1)
+                        retrieved_unique = sum(
+                            float(value.get("retrieved_unique_source_tokens", 0.0))
+                            for value in diagnostic_values
+                        ) / max(len(diagnostic_values), 1)
+                        visible_entries = model.pra_cache.all_entries()
+                        unique_source_tokens = sum(
+                            int(entry.metadata.get("unique_source_tokens", 0))
+                            for entry in visible_entries
+                        )
+                        encoded_tokens = sum(
+                            int(entry.metadata.get("encoded_tokens_including_overlap", 0))
+                            for entry in visible_entries
+                        )
                         row = item["sample"].metadata.get("row", {})
                         per_example.append(
                             {
@@ -792,9 +902,21 @@ def evaluate_reference_ablation(
                                 "displaced_tokens": displaced_tokens,
                                 "accessible_tokens": accessible_tokens,
                                 "retrieved_tokens": retrieved_tokens,
+                                "retrieved_physical_kv_tokens": retrieved_physical,
+                                "retrieved_unique_source_tokens": retrieved_unique,
                                 "active_tokens": local_tokens + retrieved_tokens,
                                 "active_fraction": (local_tokens + retrieved_tokens)
                                 / max(accessible_tokens, 1),
+                                "active_unique_fraction": (local_tokens + retrieved_unique)
+                                / max(local_tokens + unique_source_tokens, 1),
+                                "unique_source_tokens": unique_source_tokens,
+                                "encoded_tokens_including_overlap": encoded_tokens,
+                                "stored_kv_tokens_including_overlap": encoded_tokens,
+                                "duplication_factor": encoded_tokens
+                                / max(unique_source_tokens, 1),
+                                "chunk_overlap_fraction": model.cfg.chunk_overlap_fraction,
+                                "chunk_overlap_tokens": model.cfg.resolved_chunk_overlap_tokens,
+                                "overlap_materialization": model.cfg.overlap_materialization,
                                 "num_references": len(own_references),
                                 "num_chunks": sum(
                                     len(entry.layer_memory.get(0).chunks)
@@ -839,6 +961,21 @@ def evaluate_reference_ablation(
                                     else 0.0
                                 ),
                                 "fixed_target_id": row.get("fixed_target_id"),
+                                "search_strategy": model.cfg.search_strategy,
+                                "top_k_references": model.cfg.top_k_references,
+                                "top_k_chunks_per_reference": model.cfg.top_k_chunks_per_reference,
+                                "trigger_threshold": model.cfg.trigger_threshold,
+                                "gist_mode": model.cfg.gist_mode,
+                                "gists_per_chunk": model.cfg.gists_per_chunk,
+                                "gist_score_aggregation": model.cfg.gist_score_aggregation,
+                                "reference_level_gist_mode": model.cfg.reference_level_gist_mode,
+                                "reference_gists_per_reference": (
+                                    model.cfg.reference_gists_per_reference
+                                ),
+                                "reference_score_aggregation": (
+                                    model.cfg.reference_score_aggregation
+                                ),
+                                **complete_rank_metrics,
                             }
                         )
                     reference_index += 1

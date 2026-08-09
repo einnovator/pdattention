@@ -14,7 +14,7 @@ from pra_torch.memory import (
     ReferenceChunkMemory,
 )
 from pra_torch.model import TinyPRAModel, convert_sa_model_to_pra
-from pra_torch.pra_train import native_kv_gap_metrics
+from pra_torch.pra_train import _complete_reference_rank_metrics, native_kv_gap_metrics
 from pra_torch.native_metrics import recovered_context_benefit
 
 
@@ -164,3 +164,26 @@ def test_recovered_context_benefit_marks_low_dependency_targets_undefined():
     assert recovered_context_benefit(
         sa_full_loss=1.0, sa_tail_loss=2.0, pra_loss=0.5
     ) == pytest.approx(1.5)
+
+
+def test_complete_rank_metrics_capture_multi_target_coverage():
+    rankings = {
+        0: [
+            {"reference_uri": "noise", "reference_score": 0.9, "chunks": []},
+            {"reference_uri": "target-a", "reference_score": 0.8, "chunks": []},
+            {"reference_uri": "target-b", "reference_score": 0.7, "chunks": []},
+        ],
+        1: [
+            {"reference_uri": "target-b", "reference_score": 0.95, "chunks": []},
+            {"reference_uri": "noise", "reference_score": 0.6, "chunks": []},
+            {"reference_uri": "target-a", "reference_score": 0.5, "chunks": []},
+        ],
+    }
+
+    metrics = _complete_reference_rank_metrics(rankings, {"target-a", "target-b"})
+
+    assert metrics["routing_mrr"] == pytest.approx(0.75)
+    assert metrics["any_target_hit_at_1"] == 1.0
+    assert metrics["all_targets_hit_at_1"] == 0.0
+    assert metrics["all_targets_hit_at_2"] == 1.0
+    assert metrics["fraction_targets_covered_at_2"] == 1.0

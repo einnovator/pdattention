@@ -237,6 +237,17 @@ class TinyPRAModel(nn.Module):
                 selections[block.layer_id] = [list(items) for items in attention.last_selected_chunks]
         return selections
 
+    def routing_rankings_by_layer(self) -> dict[int, list[list[dict]]]:
+        """Return complete pre-top-k candidate rankings from the latest forward."""
+        rankings = {}
+        for block in self.blocks:
+            attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
+            if attention is not None:
+                rankings[block.layer_id] = [
+                    list(items) for items in attention.last_routing_rankings
+                ]
+        return rankings
+
     def selected_references_by_layer(self) -> dict[int, list[list[tuple[str, float]]]]:
         """Deprecated compatibility view derived from chunk-aware selections."""
         warnings.warn(
@@ -378,6 +389,15 @@ class TinyPRAModel(nn.Module):
                 "use_summary": self.cfg.use_summary,
                 "summary_mode": self.cfg.summary_mode,
                 "chunk_count": len(chunks),
+                "chunk_overlap_fraction": self.cfg.chunk_overlap_fraction,
+                "chunk_overlap_tokens": self.cfg.resolved_chunk_overlap_tokens,
+                "overlap_materialization": self.cfg.overlap_materialization,
+                "unique_source_tokens": len(token_ids),
+                "encoded_tokens_including_overlap": sum(
+                    len(chunk.token_ids) for chunk in chunks
+                ),
+                "duplication_factor": sum(len(chunk.token_ids) for chunk in chunks)
+                / max(len(token_ids), 1),
             },
         )
         # Summary routing is computed once per layer and shared by all URI chunks.
