@@ -92,6 +92,21 @@ class ReferenceChunkMemory:
     char_start: int | None = None  # Optional inclusive source-character offset.
     char_end: int | None = None  # Optional exclusive source-character offset.
     metadata: dict = field(default_factory=dict)  # Chunking and truncation provenance.
+    logical_start: int = -1  # Inclusive coordinate in the owning continuous source.
+    logical_end: int | None = None  # Exclusive coordinate reconstructed from start + length.
+
+    def __post_init__(self) -> None:
+        """Normalize compact logical provenance without storing per-token coordinates."""
+        logical_start = self.token_start if self.logical_start < 0 else int(self.logical_start)
+        logical_end = (
+            logical_start + self.token_count
+            if self.logical_end is None
+            else int(self.logical_end)
+        )
+        if logical_start < 0 or logical_end - logical_start != self.token_count:
+            raise ValueError("Logical memory offsets must match the contiguous K/V token count.")
+        self.logical_start = logical_start
+        self.logical_end = logical_end
 
     @property
     def token_count(self) -> int:
@@ -163,6 +178,17 @@ class SelectedChunk:
         return self.chunk.token_end
 
     @property
+    def logical_start(self) -> int:
+        """Return the source-relative coordinate used to reconstruct token positions."""
+        return self.chunk.logical_start
+
+    @property
+    def logical_end(self) -> int:
+        """Return the exclusive source-relative coordinate."""
+        assert self.chunk.logical_end is not None
+        return self.chunk.logical_end
+
+    @property
     def selected_token_count(self) -> int:
         """Return how many token K/V positions this selection can materialize."""
         return self.chunk.token_count
@@ -177,6 +203,8 @@ class SelectedChunk:
             "layer_id": self.layer_id,
             "token_start": self.token_start,
             "token_end": self.token_end,
+            "logical_start": self.logical_start,
+            "logical_end": self.logical_end,
             "selected_token_count": self.selected_token_count,
             "reference_rank": self.reference_rank,
             "rank_within_reference": self.rank_within_reference,

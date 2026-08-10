@@ -85,6 +85,25 @@ def test_absolute_model_still_rejects_offsets_beyond_position_table():
         TinyPRAModel(cfg)(torch.tensor([[1, 2, 3, 4]]), position_offset=8)
 
 
+def test_absolute_position_capacity_is_independent_of_native_operation_limit():
+    cfg = PRAConfig(
+        vocab_size=31,
+        d_model=16,
+        n_heads=2,
+        n_layers=1,
+        max_seq_len=16,
+        model_max_context_tokens=4,
+        model_variant="td_sa",
+    )
+    model = TinyPRAModel(cfg).eval()
+
+    logits = model(torch.tensor([[1, 2, 3, 4]]), position_offset=12)
+
+    assert logits.shape == (1, 4, 31)
+    with pytest.raises(ValueError, match="positional table"):
+        model(torch.tensor([[1, 2, 3, 4]]), position_offset=13)
+
+
 def test_rope_sa_to_pra_conversion_preserves_no_memory_logits():
     torch.manual_seed(11)
     source_cfg = PRAConfig(

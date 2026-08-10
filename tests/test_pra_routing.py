@@ -480,6 +480,11 @@ def test_fractional_chunk_overlap_has_exact_deterministic_accounting():
         (3, 7),
         (6, 10),
     ]
+    assert [(chunk.logical_start, chunk.logical_end) for chunk in chunks] == [
+        (0, 4),
+        (3, 7),
+        (6, 10),
+    ]
     assert chunks[0].metadata["encoded_tokens_including_overlap"] == 12
     assert chunks[0].metadata["covered_unique_source_tokens"] == 10
     assert chunks[0].metadata["duplication_factor"] == pytest.approx(1.2)

@@ -162,6 +162,11 @@ class PRAConfig:
         return int(self.model_max_context_tokens or self.max_seq_len)
 
     @property
+    def position_capacity(self) -> int | None:
+        """Return the finite position-ID range, or None for mechanically unbounded modes."""
+        return self.max_seq_len if self.position_encoding == "absolute" else None
+
+    @property
     def routing_chunking_config(self) -> ChunkingConfig:
         """Return explicit routing policy or migrate legacy chunking fields."""
         if self.routing_chunking is not None:
@@ -194,13 +199,13 @@ class PRAConfig:
         )
 
     def prompt_tail_position_offset(self, head_tokens: int, direct_tokens: int) -> int:
-        """Continue positions only while the complete history is natively legal."""
+        """Continue source coordinates while IDs fit the positional mechanism."""
         if (
             self.prompt_position_mode == "historical"
             and (
                 self.position_encoding in {"rope", "sinusoidal"}
                 or int(head_tokens) + int(direct_tokens)
-                <= self.effective_model_max_context_tokens
+                <= self.max_seq_len
             )
         ):
             return int(head_tokens)

@@ -521,6 +521,7 @@ class TinyPRAModel(nn.Module):
         """Map ``[B,T]`` IDs to logits, optionally continuing historical positions."""
         b, t = input_ids.shape
         native_limit = self.cfg.effective_model_max_context_tokens
+        position_limit = self.cfg.position_capacity
         if t > native_limit:
             raise ValueError(
                 f"Native forward has {t} tokens, exceeding "
@@ -539,22 +540,25 @@ class TinyPRAModel(nn.Module):
                 else torch.ones_like(pos, dtype=torch.bool)
             )
             valid_positions = pos[valid]
-            if self.position_encoding.has_bounded_positions and (
+            if position_limit is not None and (
                 valid_positions.numel()
-                and (int(valid_positions.min()) < 0 or int(valid_positions.max()) >= native_limit)
+                and (
+                    int(valid_positions.min()) < 0
+                    or int(valid_positions.max()) >= position_limit
+                )
             ):
                 raise ValueError("Prompt positions exceed the model positional table.")
             pos = pos.masked_fill(~valid, 0)
         else:
             scalar_offset = int(position_offset)
             if scalar_offset < 0 or (
-                self.position_encoding.has_bounded_positions
-                and scalar_offset + t > native_limit
+                position_limit is not None
+                and scalar_offset + t > position_limit
             ):
                 raise ValueError(
                     "Prompt position range exceeds the model positional table: "
                     f"[{scalar_offset}, {scalar_offset + t}) vs "
-                    f"model_max_context_tokens={native_limit}."
+                    f"position_capacity={position_limit}."
                 )
             pos = torch.arange(scalar_offset, scalar_offset + t, device=input_ids.device)
         x = self.position_encoding.apply_embeddings(
@@ -590,19 +594,20 @@ class TinyPRAModel(nn.Module):
         ids = torch.tensor([token_ids], dtype=torch.long, device=device)
         position_offset = int(position_offset)
         native_limit = self.cfg.effective_model_max_context_tokens
+        position_limit = self.cfg.position_capacity
         if ids.shape[1] > native_limit:
             raise ValueError(
                 f"Reference encoding call has {ids.shape[1]} tokens, exceeding "
                 f"model_max_context_tokens={native_limit}."
             )
         if position_offset < 0 or (
-            self.position_encoding.has_bounded_positions
-            and position_offset + ids.shape[1] > native_limit
+            position_limit is not None
+            and position_offset + ids.shape[1] > position_limit
         ):
             raise ValueError(
                 "Reference position range exceeds the model positional table: "
                 f"[{position_offset}, {position_offset + ids.shape[1]}) vs "
-                f"model_max_context_tokens={native_limit}."
+                f"position_capacity={position_limit}."
             )
         pos = torch.arange(
             position_offset,
@@ -705,7 +710,7 @@ class TinyPRAModel(nn.Module):
                 if self.cfg.reference_position_mode == "global"
                 and (
                     not self.position_encoding.has_bounded_positions
-                    or encode_start + len(encode_ids) <= native_limit
+                    or encode_start + len(encode_ids) <= self.cfg.max_seq_len
                 )
                 else 0
             )
@@ -747,6 +752,8 @@ class TinyPRAModel(nn.Module):
                     chunk_id=f"{uri}#chunk={len(payloads)}",
                     token_start=global_start,
                     token_end=global_end,
+                    logical_start=global_start,
+                    logical_end=global_end,
                     metadata={
                         **local.metadata,
                         "encoding_block_id": encoding_index,
@@ -754,8 +761,8 @@ class TinyPRAModel(nn.Module):
                         "encoding_input_end": core.token_end,
                         "encoding_input_tokens": len(encode_ids),
                         "encoding_context_tokens": left_context,
-                        "logical_start_token": global_start,
-                        "logical_end_token": global_end,
+                        "logical_start": global_start,
+                        "logical_end": global_end,
                         "base_model_position_offset": position_offset,
                     },
                 )
@@ -947,7 +954,7 @@ class TinyPRAModel(nn.Module):
                     and (
                         not self.position_encoding.has_bounded_positions
                         or block["encode_start"] + len(block["encode_ids"])
-                        <= self.cfg.effective_model_max_context_tokens
+                        <= self.cfg.max_seq_len
                     )
                     else 0
                 )
@@ -1220,6 +1227,8 @@ class TinyPRAModel(nn.Module):
                         source_uri=chunk.source_uri,
                         token_start=chunk.token_start,
                         token_end=min(chunk.token_start + len(token_ids), chunk.token_end),
+                        logical_start=chunk.logical_start,
+                        logical_end=chunk.logical_start + len(token_ids),
                         char_start=chunk.char_start,
                         char_end=chunk.char_end,
                         token_kv=self._cache_resident_kv(kv),

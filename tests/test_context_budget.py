@@ -103,6 +103,11 @@ def test_shared_chunking_supports_fixed_overlap_and_markers():
         (3, 7),
         (6, 8),
     ]
+    assert [(chunk.logical_start, chunk.logical_end) for chunk in fixed] == [
+        (0, 4),
+        (3, 7),
+        (6, 8),
+    ]
     marked_ids = tokenizer.encode("ab<SEP>cd")
     marked = partition_source(
         "mem://marked",
@@ -137,6 +142,8 @@ def test_encoding_blocks_are_bounded_and_feed_multiple_routing_chunks():
     assert len(chunks) == 10
     assert len(chunks) > len(lengths)
     assert [chunk.token_start for chunk in chunks] == list(range(0, 40, 4))
+    assert [chunk.logical_start for chunk in chunks] == list(range(0, 40, 4))
+    assert [chunk.logical_end for chunk in chunks] == list(range(4, 41, 4))
     assert entry.metadata["logical_to_native_context_ratio"] == pytest.approx(2.5)
 
 
@@ -266,3 +273,6 @@ def test_streaming_generation_rolls_history_beyond_native_horizon(position_encod
     assert stats["max_materialized_memory_tokens_observed"] <= 8
     assert head.metadata["max_encoding_input_tokens"] <= 16
     assert sum(chunk.token_count for chunk in head.layer_memory[0].chunks) == 20
+    chunks = head.layer_memory[0].chunks
+    assert [chunk.logical_start for chunk in chunks] == [0, 4, 8, 12, 16]
+    assert [chunk.logical_end for chunk in chunks] == [4, 8, 12, 16, 20]

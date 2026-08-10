@@ -133,13 +133,28 @@ def evaluate_performance(device: str, iterations: int) -> list[dict]:
             query = rope.apply_rotary(raw_query, query_positions)
             for memory_tokens in (32, 64, 128, 160):
                 indices = torch.arange(memory_tokens, device=device)
+                relative_positions = torch.arange(memory_tokens, device=device)
+                logical_start = torch.tensor(0, dtype=torch.long, device=device)
 
                 def post_materialize():
                     return post_cache.index_select(2, indices)
 
+                def pre_gather():
+                    return raw_cache.index_select(2, indices)
+
+                def reconstruct_positions():
+                    return logical_start + relative_positions
+
+                selected_raw = pre_gather()
+                reconstructed_positions = reconstruct_positions()
+
+                def rotate_selected():
+                    return rope.apply_rotary(selected_raw, reconstructed_positions)
+
                 def pre_materialize():
-                    selected = raw_cache.index_select(2, indices)
-                    return rope.apply_rotary(selected, all_positions.index_select(0, indices))
+                    selected = pre_gather()
+                    positions = reconstruct_positions()
+                    return rope.apply_rotary(selected, positions)
 
                 post_key = post_materialize()
                 pre_key = pre_materialize()
@@ -168,8 +183,17 @@ def evaluate_performance(device: str, iterations: int) -> list[dict]:
                     "direct_tokens": 32,
                     "stored_tokens": 192,
                     "selected_tokens": memory_tokens,
+                    "position_mode": "rope",
+                    "logical_offset_policy": "source_relative",
+                    "native_context": NATIVE_CONTEXT,
+                    "logical_context": 4 * NATIVE_CONTEXT + 32,
+                    "overlap_fraction": 0.0,
+                    "routing_chunk_size": memory_tokens,
+                    "materialization_budget": memory_tokens,
+                    "maximum_native_operation": memory_tokens + 32,
                     "stored_kv_bytes": int(2 * raw_cache.numel() * raw_cache.element_size()),
                     "position_metadata_bytes": int(all_positions.numel() * all_positions.element_size()),
+                    "compact_logical_start_bytes": int(logical_start.element_size()),
                     "selected_materialized_kv_bytes": int(
                         2 * pre_key.numel() * pre_key.element_size()
                     ),
@@ -177,11 +201,25 @@ def evaluate_performance(device: str, iterations: int) -> list[dict]:
                         2 * (pre_key.numel() + query.numel()) * pre_key.element_size()
                     ),
                     "attention_ms": attention_ms,
+                    "post_pre_output_max_abs": float(
+                        (_attention(query, post_key, selected_value)[1]
+                        - _attention(query, pre_key, selected_value)[1])
+                        .abs()
+                        .max()
+                    ),
                 }
                 rows.append(
                     {
                         **common,
                         "storage_mode": "post_position",
+                        "gather_ms": _time_cuda(
+                            post_materialize,
+                            warmup=warmup,
+                            iterations=iterations,
+                            device=device,
+                        ),
+                        "position_reconstruction_ms": 0.0,
+                        "rope_transform_ms": 0.0,
                         "rotation_materialization_ms": _time_cuda(
                             post_materialize,
                             warmup=warmup,
@@ -200,6 +238,24 @@ def evaluate_performance(device: str, iterations: int) -> list[dict]:
                     {
                         **common,
                         "storage_mode": "pre_position_deferred",
+                        "gather_ms": _time_cuda(
+                            pre_gather,
+                            warmup=warmup,
+                            iterations=iterations,
+                            device=device,
+                        ),
+                        "position_reconstruction_ms": _time_cuda(
+                            reconstruct_positions,
+                            warmup=warmup,
+                            iterations=iterations,
+                            device=device,
+                        ),
+                        "rope_transform_ms": _time_cuda(
+                            rotate_selected,
+                            warmup=warmup,
+                            iterations=iterations,
+                            device=device,
+                        ),
                         "rotation_materialization_ms": _time_cuda(
                             pre_materialize,
                             warmup=warmup,
@@ -281,6 +337,8 @@ def run(device: str, iterations: int) -> Path:
     metadata = environment_metadata()
     semantic_rows = evaluate_semantics(device)
     performance_rows = evaluate_performance(device, iterations)
+    for row in (*semantic_rows, *performance_rows):
+        row["git_sha"] = metadata["git_sha"]
     semantic_aggregate = aggregate(
         semantic_rows,
         ("model_tier", "policy", "logical_native_ratio"),
@@ -289,7 +347,14 @@ def run(device: str, iterations: int) -> Path:
     performance_aggregate = aggregate(
         performance_rows,
         ("model_tier", "storage_mode", "selected_tokens"),
-        ("rotation_materialization_ms", "attention_ms", "warm_query_ms"),
+        (
+            "gather_ms",
+            "position_reconstruction_ms",
+            "rope_transform_ms",
+            "rotation_materialization_ms",
+            "attention_ms",
+            "warm_query_ms",
+        ),
     )
     payload = {
         "metadata": metadata,
