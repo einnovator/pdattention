@@ -340,12 +340,16 @@ def _plot_progression(rows: list[dict], path: Path) -> None:
     )
     stages = ("reset", "offset", "offset_overlap_25", "offset_overlap_50")
     labels = ("reset", "offset", "+25% overlap", "+50% overlap")
-    colors = {"absolute": "#245A8D", "rope": "#A34832"}
+    colors = {
+        "absolute": "#245A8D",
+        "sinusoidal": "#327A5A",
+        "rope": "#A34832",
+    }
     for axis, tier in zip(axes[0], present_tiers):
         final_layer = TIERS[tier]["n_layers"] - 1
         present_modes = [
             mode
-            for mode in ("absolute", "rope")
+            for mode in ("absolute", "sinusoidal", "rope")
             if any(row["model_tier"] == tier and row["position_mode"] == mode for row in rows)
         ]
         for mode in present_modes:
@@ -452,10 +456,12 @@ def _plot_storage(rows: list[dict], path: Path) -> None:
 
 def run(args) -> Path:
     metadata = environment_metadata()
+    output_dir = Path(args.output_dir) if args.output_dir else RESULTS
+    output_dir.mkdir(parents=True, exist_ok=True)
     representation_rows = []
     storage_rows = []
     for tier in args.tiers:
-        for mode in ("absolute", "rope"):
+        for mode in args.position_modes:
             for seed in args.seeds:
                 model = _load_converted(tier, mode, seed, args.device)
                 representation_rows.extend(
@@ -506,6 +512,11 @@ def run(args) -> Path:
             "reason": "restores the source-relative rotary phase",
         },
         {
+            "comparison": "sinusoidal reset -> sinusoidal offset",
+            "expected": "strong layer-0 positional repair",
+            "reason": "restores the source-relative absolute sinusoidal representation",
+        },
+        {
             "comparison": "offset -> overlap",
             "expected": "deeper-layer improvement for both mechanisms",
             "reason": "restores part of the missing left context",
@@ -521,8 +532,9 @@ def run(args) -> Path:
             "reason": "the memory-query relative displacement changes",
         },
     ]
+    result_name = args.result_name
     write_json(
-        RESULTS / "logical_offset_decomposition.json",
+        output_dir / f"{result_name}.json",
         {
             "metadata": metadata,
             "expectations_recorded_before_analysis": expectations,
@@ -532,18 +544,29 @@ def run(args) -> Path:
             "storage_aggregate": storage_aggregate,
         },
     )
-    write_csv(RESULTS / "logical_offset_decomposition.csv", representation_rows)
-    write_csv(RESULTS / "rope_storage_matrix.csv", storage_rows)
-    _plot_progression(representation_rows, RESULTS / "logical_offset_progression.png")
-    _plot_storage(storage_rows, RESULTS / "rope_storage_matrix.png")
-    return refresh_manifest(metadata=metadata)
+    write_csv(output_dir / f"{result_name}.csv", representation_rows)
+    write_csv(output_dir / "pre_post_rope_sanity.csv", storage_rows)
+    _plot_progression(representation_rows, output_dir / f"{result_name}.png")
+    if storage_rows:
+        _plot_storage(storage_rows, output_dir / "pre_post_rope_sanity.png")
+    if output_dir.resolve() == RESULTS.resolve():
+        return refresh_manifest(metadata=metadata)
+    return output_dir / f"{result_name}.json"
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--tiers", nargs="+", choices=tuple(TIERS), default=list(TIERS))
+    parser.add_argument(
+        "--position-modes",
+        nargs="+",
+        choices=("absolute", "sinusoidal", "rope"),
+        default=["absolute", "sinusoidal", "rope"],
+    )
     parser.add_argument("--seeds", nargs="+", type=int, default=list(SEEDS))
+    parser.add_argument("--output-dir")
+    parser.add_argument("--result-name", default="logical_offset_decomposition")
     return parser.parse_args()
 
 

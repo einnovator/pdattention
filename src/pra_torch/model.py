@@ -926,6 +926,10 @@ class TinyPRAModel(nn.Module):
             "encoding_run_encoded_tokens_including_overlap": encoded_token_total,
             "encoding_run_stored_kv_tokens": len(flat_ids),
             "encoding_run_duplication_factor": encoded_token_total / max(len(flat_ids), 1),
+            "max_encoding_input_tokens": max(
+                (len(block["encode_ids"]) for block in block_specs),
+                default=0,
+            ),
         }
         entries = {
             str(row["uri"]): PRACacheEntry(
@@ -1000,6 +1004,8 @@ class TinyPRAModel(nn.Module):
                             source_uri=str(row["uri"]),
                             token_start=0,
                             token_end=len(row["token_ids"]),
+                            logical_start=starts[row_index],
+                            logical_end=starts[row_index + 1],
                             token_kv=self._cache_resident_kv(sliced),
                             routing_gist=ChunkRoutingGist(
                                 k=computed.k.detach() if detach else computed.k,
@@ -1020,6 +1026,9 @@ class TinyPRAModel(nn.Module):
                                 "encoding_overlap_tokens": block["overlap_tokens"],
                                 "global_token_start": starts[row_index],
                                 "global_token_end": starts[row_index + 1],
+                                "logical_start": starts[row_index],
+                                "logical_end": starts[row_index + 1],
+                                "base_model_position_offset": position_offset,
                             },
                         )
                         entry.layer_memory.setdefault(

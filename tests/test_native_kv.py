@@ -207,6 +207,13 @@ def test_native_reference_slicing_matches_one_full_historical_encode():
     ]
 
     entries = model.encode_reference_group_to_cache(references, tokenizer, "cpu")
+    assert [
+        (
+            entry.layer_memory[0].chunks[0].logical_start,
+            entry.layer_memory[0].chunks[0].logical_end,
+        )
+        for entry in entries
+    ] == [(0, 4), (4, 8)]
     full = model._encode_reference_tokens(
         tokenizer.encode("abcdefgh"),
         "cpu",
@@ -363,6 +370,14 @@ def test_block_slicing_accounts_for_encoding_overlap_without_storing_duplicates(
     assert metadata["encoding_run_encoded_tokens_including_overlap"] == 9
     assert metadata["encoding_run_stored_kv_tokens"] == 8
     assert metadata["encoding_run_duplication_factor"] == pytest.approx(9 / 8)
+    assert metadata["max_encoding_input_tokens"] == 5
     assert sum(
         entry.layer_memory[0].chunks[0].token_count for entry in entries
     ) == 8
+    assert [
+        (
+            entry.layer_memory[0].chunks[0].logical_start,
+            entry.layer_memory[0].chunks[0].logical_end,
+        )
+        for entry in entries
+    ] == [(0, 2), (2, 4), (4, 6), (6, 8)]
