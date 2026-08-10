@@ -1,0 +1,381 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage[hidelinks]{hyperref}
+\input{../shared/macros.tex}
+\setlength{\emergencystretch}{3em}
+
+\title{Positional Semantics for Retrieved Native-KV Memory:\\RoPE, Fragmentation, and Bounded Relocation in Progressive Retrieval Attention}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{\today}
+\hypersetup{pdftitle={Positional Semantics for Retrieved Native-KV Memory},pdfauthor={Jorge Simao}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Retrieved native-key/value (K/V) memory reuses attention states encoded at another time or
+place. Which positions should cached keys represent when a bounded model encodes blocks
+independently and later attends to selected states at a different logical distance? We add a
+minimal position strategy to Progressive Retrieval Attention (PRA), preserving learned
+absolute positions as the default and supporting rotary position embedding (RoPE) in ordinary
+and retrieved-memory attention. Five-seed controlled tiny and small models learn a fixed-target
+synthetic task to 100\% held-out answer-token accuracy before parameter-preserving conversion
+to native-KV PRA. RoPE common-translation invariance holds numerically through an 8,192-token
+shift (maximum attention-logit RMSE $5.8\times10^{-5}$). Logical global positions eliminate
+layer-0 K fragmentation for both mechanisms; deeper error remains contextual and falls with
+overlap. At 64 source splits, oracle K/V recovers 0.949 of dense-context benefit for tiny RoPE,
+versus 0.483 for tiny absolute positions, but this direction reaches only the minimum
+five-seed two-sided sign result, $p=0.0625$. Small-model oracle results are strong for both
+mechanisms. Routing and all-memory conditions remain unstable, and bounded-head means are
+influenced by seed outliers. RoPE makes native-KV relocation mathematically clean, but does not
+remove contextualization or selection failure. The results provide a reproducible basis for
+pretrained-model integration rather than evidence of production long-context quality.
+\end{abstract}
+
+\section{Introduction}
+
+A transformer key is not only a content representation. Depending on the architecture, it
+also carries or interacts with position. This is easy to ignore while all keys are produced
+in one dense forward pass. It becomes operational when a system encodes a long source in
+bounded blocks, stores native per-layer K/V, retrieves a sparse subset, and combines it with a
+later query. The source key may have a local block position, a logical document position, or a
+position assigned at materialization time. These choices are not equivalent.
+
+PRA provides a controlled setting for studying the problem. It stores full layer-native K/V
+behind inexpensive routing gists and inserts selected states before direct K/V under one
+softmax. Paper 1 established native transport, exact routing, model-bounded encoding, and an
+implicit prompt-head reference. The present paper holds those mechanisms fixed and changes
+the positional semantics.
+
+Our contributions are:
+\begin{itemize}[leftmargin=*]
+\item a reusable position strategy supporting learned absolute, sinusoidal, and RoPE
+semantics without changing the default absolute checkpoint layout;
+\item a weight-preserving RoPE SelfAttention-to-PRA conversion whose no-memory logits match
+the source model;
+\item explicit position metadata and post-position state labels on cached native K/V;
+\item probes separating pure translation, positional reset, contextual block fragmentation,
+overlap, pre- versus post-RoPE K, and bounded implicit-head behavior; and
+\item five-seed tiny/small evidence, including negative routing and variance results that
+constrain the claims.
+\end{itemize}
+
+\section{Background and Related Work}
+
+Learned absolute embeddings add a position-dependent vector before the decoder stack and
+therefore entangle content and position in later hidden states. Transformer-XL introduced
+relative positional treatment for recurrent segment memory \cite{dai2019transformerxl}.
+Shortformer moved absolute position information to queries and keys to improve cached-state
+reuse across subsequences \cite{press2021shortformer}. ALiBi adds distance-dependent attention
+biases for train-short, test-long extrapolation \cite{press2022alibi}.
+
+RoPE rotates query and key feature pairs by position-dependent phases, making their dot
+product depend on relative displacement while each vector retains an absolute phase
+\cite{su2021roformer}. Position Interpolation rescales indices into a trained range
+\cite{chen2023positioninterpolation}; LongRoPE uses nonuniform interpolation and progressive
+extension \cite{ding2024longrope}. Those methods enlarge dense model context. Our question is
+different: how should positions behave when only selected externally stored native K/V is
+returned? StreamingLLM preserves selected chronological cache states and attention sinks
+\cite{xiao2023streamingllm}; PRA retrieves URI- or request-addressed chunks, so it must also
+specify source positions, relocation, and routing semantics.
+
+\section{Positional Semantics for Native K/V}
+
+\subsection{RoPE and common translation}
+
+For one head of width $d_h$, let $R_p$ be the block-diagonal rotation at position $p$:
+\begin{equation}
+  \widetilde q_i = R_i q_i, \qquad \widetilde k_j = R_j k_j.
+\end{equation}
+Orthogonality and the group property give
+\begin{equation}
+  \widetilde q_i^\top \widetilde k_j
+  = q_i^\top R_i^\top R_j k_j
+  = q_i^\top R_{j-i} k_j.
+\end{equation}
+Thus translating both positions by $c$ leaves the score unchanged:
+$(R_{i+c}q_i)^\top(R_{j+c}k_j)=q_i^\top R_{j-i}k_j$. This supports relocation of a complete
+query--memory relation. It does not imply that moving only a cached key leaves attention
+unchanged; a fixed query should observe the changed relative distance.
+
+\subsection{Three independent choices}
+
+Three choices are often collapsed into "RoPE support":
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Encoding positions}: local block indices or logical source indices.
+\item \textbf{Storage state}: pre-positional $K_{\rm raw}$ plus metadata, or published
+post-RoPE $K_{\rm rope}$.
+\item \textbf{Materialization policy}: preserve source distance, reset locally, relocate as a
+block, compress distance, or retain order only.
+\end{enumerate}
+The canonical implementation publishes post-position K. Pre-position storage remains
+experimental because deferred rotation changes the cache representation and runtime work.
+
+\subsection{Position and contextualization fragmentation}
+
+If a dense source is split into bounded blocks, local position reset changes absolute
+embeddings and post-RoPE key phases. Independently, later blocks lose causal left context,
+which changes hidden states even with perfect position IDs. We call these \emph{positional
+fragmentation} and \emph{contextualization fragmentation}. Logical global positions can
+remove the first at layer 0. Encoding overlap can only approximate the second.
+
+\section{Implementation}
+
+The shared code adds a registry-backed \texttt{PositionEncoding} interface. Its first method
+positions token embeddings; its second transforms per-head Q/K with shape $[B,H,T,d_h]$.
+Absolute mode adds the existing learned table and leaves projected Q/K unchanged. RoPE mode
+leaves token embeddings unchanged and rotates Q/K. A position-aware SelfAttention block is
+instantiated only for non-absolute modes, so old absolute models retain their original
+\texttt{TransformerEncoderLayer} state names and behavior.
+
+PRA attention applies the same strategy in direct and cache-publication paths:
+\begin{verbatim}
+q = split_heads(q_proj(hidden))       # [B,H,T,Dh]
+k = split_heads(k_proj(hidden))       # [B,H,T,Dh]
+q, k = position.transform_qk(q, k, position_ids)
+
+k_ref = split_heads(k_proj(reference_hidden))
+_, k_ref = position.transform_qk(k_ref, k_ref, reference_positions)
+cache.publish(k_ref, v_ref, position_ids, state="post_position")
+\end{verbatim}
+Values are not rotated. Each \texttt{LayerKV} records positions used to publish K and a
+\texttt{position\_state}. Slicing encoding blocks into routing chunks preserves this metadata,
+as does CPU residency. RoPE IDs may exceed the model's native token count; the token count in
+any one base-model operation remains bounded.
+
+Conversion copies Q/K/V projections, output projection, norms, feed-forward layers,
+embeddings, and language-model head from trained RoPE SelfAttention into PRA. With memory
+disabled, source and converted logits match to unit-test tolerance. No memory adapter or
+additional transport projection is introduced.
+
+For a long prompt, the adapter keeps a direct tail and registers displaced tokens under
+\texttt{\#\_\_head}. Bounded encoding produces native K/V, smaller chunks produce routing
+gists, and whole chunks are selected under
+\begin{equation}
+ T_{\rm direct}+T_{\rm memory}+T_{\rm reserve}\leq T_{\rm native}.
+\end{equation}
+RoPE continues logical IDs past $T_{\rm native}$ without enlarging an operation.
+
+\section{Experimental Design}
+
+\subsection{Models and training}
+
+Controlled tiers are smaller than repository deployment profiles so all paired seeds fit one
+NVIDIA GTX 950M. Both modes retain the learned position table, unused by RoPE, to match
+parameter count exactly.
+\begin{table}[H]
+\centering
+\caption{Controlled matched model tiers.}
+\begin{tabular}{lrrrrrr}
+\toprule
+Tier & Layers & Heads & $d$ & $d_{ff}$ & Parameters & Steps \\
+\midrule
+Tiny & 2 & 4 & 64 & 128 & 92,288 & 100 \\
+Small & 4 & 4 & 128 & 256 & 580,608 & 150 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Seeds are $\{1,7,21,42,87\}$. Each absolute/RoPE pair uses the same 2,048 fixed-target
+synthetic training examples, optimizer, batches, vocabulary, 192-token native context, and
+training tokens. Every run reaches 100\% held-out answer-token accuracy. The downstream set
+has 12 invariant source/query/answer examples; only source boundaries change. We evaluate
+2, 5, 16, 32, and 64 splits.
+
+PRA uses post-position K, local positions per independent reference, a 160-token whole-chunk
+budget, and a four-token reserve in the split experiment. Conditions include dense full
+context, tail only, native all, evidence oracle, gist-routed, shuffled, and memory-disabled.
+Recovered context benefit is
+\begin{equation}
+ \mathrm{RCB}=\frac{\mathcal L_{\rm tail}-\mathcal L_{\rm PRA}}
+ {\mathcal L_{\rm tail}-\mathcal L_{\rm full}},
+\end{equation}
+reported without clipping.
+
+\subsection{Additional probes}
+
+The pure probe fixes Q/K/V across shifts up to 8,192 and measures logit RMSE, Jensen--Shannon
+divergence, top-token agreement, and output RMSE. The pre/post probe compares stored
+post-RoPE K with deferred rotation at identical positions, K-only relocation against a fixed
+query, and common Q/K translation.
+
+The decomposition compares dense 128-token encoding with 32-token blocks under local reset,
+logical global IDs, and 5--50\% left overlap. The bounded-head probe inserts neutral tokens
+between source evidence and query, evaluates 1L, 2L, 4L, and 8L logical lengths, keeps 32
+tokens direct, permits 160 memory tokens, and records the largest native call.
+
+\section{Results}
+
+\subsection{Pure translation and storage}
+
+Across head dimensions 8--64, common translation preserves the top-attended token exactly.
+Maximum logit RMSE is $5.79\times10^{-5}$, maximum JS divergence is $3.00\times10^{-7}$,
+and maximum output RMSE is $1.80\times10^{-5}$ (Figure~\ref{fig:translation}).
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{../shared/results/paper1_5_rope/rope_translation.png}
+\caption{Numerical RoPE common-translation invariance. The logarithmic vertical axis exposes
+floating-point error, not a quality effect.}
+\label{fig:translation}
+\end{figure}
+
+Publishing post-RoPE K and rotating raw K later at the same positions matches exactly. Moving
+K alone by 128--8,192 positions changes fixed-query scores (mean RMSE 7.14--8.11), as relative
+distance should. Translating Q and K together remains near invariant (maximum RMSE
+$4.91\times10^{-4}$ at 8,192). Int64 position metadata costs 0.91\% of fp32 K/V bytes in
+these shapes. Pre-position storage is plausible, but this does not establish its end-to-end
+latency or quality advantage.
+
+\subsection{Split scaling}
+
+Figure~\ref{fig:fragmentation} reports the trained experiment. Split 2 often creates a chunk
+too large for the 160-token whole-chunk budget, so native-all becomes tail-only. This is a
+materialization outcome, not a positional failure.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper1_5_rope/rope_fragmentation.png}
+\caption{Five-seed native-all loss and recovered context benefit. Negative RCB means that
+unfiltered memory hurts relative to tail-only inference.}
+\label{fig:fragmentation}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Mean native-all loss by split count. Lower is better.}
+\begin{tabular}{llrrrr}
+\toprule
+Tier & Position & 5 & 16 & 32 & 64 \\
+\midrule
+Tiny & Absolute & 1.264 & 1.845 & 1.964 & 1.752 \\
+Tiny & RoPE & 0.601 & 0.837 & 0.860 & 0.693 \\
+Small & Absolute & 2.069 & 3.321 & 3.481 & 3.677 \\
+Small & RoPE & 1.163 & 3.787 & 4.570 & 4.669 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tiny RoPE is lower in all five paired seeds at 16 and 32 splits. With five seeds, however,
+the smallest exact two-sided sign probability is $0.0625$. At 64 splits it is lower in four
+of five. The small tier reverses in mean at 16--64 and has high seed variance. There is no
+scale-independent RoPE advantage.
+
+Oracle selection isolates transport and sparsity from routing. At 64 splits, tiny
+absolute/RoPE oracle losses are 0.581/0.070, corresponding to RCB 0.483/0.949; RoPE is lower
+in all five seeds. Small oracle losses are both low, 0.126/0.046, with RCB 0.967/0.929.
+Routed losses remain much larger (tiny 1.994/1.301; small 4.434/4.721). Strong oracle outcomes
+beside weak routed outcomes locate much of the remaining failure in selection, not transport.
+
+\subsection{Position reset, context loss, and overlap}
+
+Logical global IDs make layer-0 K exactly match dense encoding for both mechanisms. Averaged
+over layers and seeds, local-reset versus logical-global K RMSE falls from 0.671 to 0.070 for
+tiny absolute and 0.653 to 0.062 for tiny RoPE. Small reductions are 0.683 to 0.166 and 0.625
+to 0.171. The deeper-layer remainder is contextualization loss.
+
+Fifty-percent overlap processes 1.375 times as many tokens and reduces mean K RMSE to
+0.046/0.031 for tiny absolute/RoPE and 0.119/0.107 for small absolute/RoPE. The trend is not
+perfectly monotonic in every deep layer, so overlap is a cost-quality control, not a repair.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper1_5_rope/rope_overlap.png}
+\caption{Dense-K deviation under position reset and overlap. Layer 0 becomes exact with
+logical positions; deeper layers retain context-boundary error.}
+\label{fig:overlap}
+\end{figure}
+
+\subsection{Bounded implicit-head scaling}
+
+All 1L--8L runs obey the 192-token native-operation limit; violations are zero. The largest
+call is 160 tokens at 1L and 192 thereafter. Table~\ref{tab:head} gives mean and median over
+five seed means, each computed from four examples.
+\begin{table}[H]
+\centering
+\caption{Implicit-head answer loss. Each cell is mean / median over five seed means.}
+\label{tab:head}
+\begin{tabular}{llrrrr}
+\toprule
+Tier & Position & 1L & 2L & 4L & 8L \\
+\midrule
+Tiny & Absolute & .143/.104 & .805/.920 & 1.338/1.382 & 1.206/1.403 \\
+Tiny & RoPE & 1.043/.734 & .543/.017 & .830/.032 & 1.023/.565 \\
+Small & Absolute & .002/.002 & 1.520/.002 & 1.524/.004 & 1.618/.005 \\
+Small & RoPE & .001/.001 & .062/.013 & .129/.011 & .282/.042 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Small absolute means are dominated by one catastrophic seed; four of five seeds remain near
+zero. RoPE avoids that catastrophe but is lower in only two of five paired seeds at 2L--8L.
+Tiny results also change direction by seed and distance. This is reduced catastrophic variance
+in this sample, not a robust quality win. RoPE memory benefit over its own disabled condition
+is positive at 2L and 4L but negative at 8L: positional stability can coexist with unhelpful
+retrieval.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper1_5_rope/rope_head_scaling.png}
+\caption{Bounded-head quality and benefit over disabled memory. Mean curves must be read with
+Table~\ref{tab:head} because seed outliers are large.}
+\label{fig:head}
+\end{figure}
+
+\section{Discussion}
+
+\paragraph{What RoPE solves.} It applies positions directly to Q/K, admits logical indices
+beyond a native token limit, and provides exact common-translation semantics in real
+arithmetic. Raw K plus positions can be rotated later without changing same-position results.
+
+\paragraph{What RoPE does not solve.} It does not restore left context lost by independent
+encoding, choose the relevant chunk, prevent harmful attention to irrelevant K/V, or guarantee
+extrapolation from short training contexts. The small native-all reversal and weak routed
+conditions are counterexamples to a blanket "RoPE fixes PRA" claim.
+
+\paragraph{Post- versus pre-position K.} Post-position K is immediately compatible with
+attention but binds the cache to source positions. Pre-position K is portable and metadata is
+small, but deferred rotation adds materialization work and requires a distance policy. A
+future systems experiment must measure synchronized warm latency, cache compatibility, and
+accuracy under fixed, compressed, bucketed, and order-only policies.
+
+\paragraph{Engineering implication.} Position IDs belong in cache provenance even when K is
+post-position. Without them, a consumer cannot audit local versus logical coordinates,
+reproduce a score, or safely introduce deferred rotation.
+
+\section{Limitations and Threats to Validity}
+
+These are educational controlled models, not pretrained LLMs. The character tokenizer,
+binary task, 12 split examples, four head examples, and GTX 950M limit external validity.
+Five seeds permit paired direction checks but weak exact significance; an all-same-direction
+effect still has two-sided $p=0.0625$. Mean loss is sensitive to rare catastrophes. The split
+benchmark uses independent references with effective local positions; logical-global results
+come from the decomposition. Pre-position storage is not the canonical runtime path. We do
+not report production throughput, large-model memory savings, natural-language QA, or
+unrestricted streaming.
+
+\section{Reproducibility}
+
+The pre-change baseline is tagged \texttt{paper1-pre-rope-baseline}; development occurs on
+\texttt{research/paper1-5-rope}. The measured code checkpoint is
+\texttt{2b50f34cbf9f42f5dec596f26493f8d67cfaf43d}. Raw JSON/CSV, plots, environment metadata, training histories,
+and manifests live under \texttt{docs/papers/shared/results/paper1\_5\_rope/}. Checkpoints are
+under \texttt{out/paper1\_5\_rope/}. Tests cover translation, norm preservation, large logical
+offsets, absolute bounds, cache metadata, and exact no-memory SA-to-PRA conversion. Existing
+Paper 1 tests remain the absolute-mode guardrail.
+
+\section{Conclusion}
+
+Retrieved native-KV memory needs an explicit positional contract. RoPE supplies clean relative
+geometry and portable logical indices, but model-bounded retrieval still has separate
+positional, contextual, and selection problems. Logical positions remove first-layer
+positional fragmentation; overlap reduces deeper contextual fragmentation; oracle K/V often
+restores dense benefit; and routing remains limiting. Pretrained integration is justified only
+with larger tasks, stronger routing, and pre/post-K runtime measurements.
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+\end{document}

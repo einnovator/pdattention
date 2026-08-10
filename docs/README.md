@@ -4,6 +4,8 @@ This repository is organized as a multi-paper research program around Progressiv
 
 ## Papers
 
+- docs/papers/paper1_5_rope/ -- Paper 1.5 on positional semantics for retrieved native-KV.
+
 - `docs/papers/paper0_position/` — Vision and position paper.
 - `docs/papers/paper1_standalone_pra/` — *Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory*.
 - `docs/papers/paper2_hf_integration/` — Hugging Face integration with pretrained models.

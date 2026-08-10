@@ -1,7 +1,8 @@
 param(
     [string[]]$Papers = @(
         "paper0_position",
-        "paper1_standalone_pra"
+        "paper1_standalone_pra",
+        "paper1_5_rope"
     ),
     [switch]$Clean
 )

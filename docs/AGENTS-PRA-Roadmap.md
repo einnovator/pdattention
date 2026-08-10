@@ -178,6 +178,13 @@ Status: controlled implicit-head transport, exact dense parity, and 1x--8x sensi
 complete on the tiny fixed-target probe. Public long-context suites and pretrained models
 remain pending.
 
+Paper 1.5 adds matched learned-absolute/RoPE tiny and small controls, post-position cache
+metadata, five-seed split scaling, positional/contextual fragmentation decomposition, overlap,
+and bounded implicit-head evaluation. RoPE common-translation and no-memory conversion parity
+are verified. Oracle memory is often strong, but routing remains unstable and model-level
+advantages are not consistent across tiers or seeds. Pretrained RoPE/GQA, natural QA, deferred
+pre-position K latency, and distance-policy ablations remain Phase 4/8 work.
+
 ## Phase 5
 Software engineering:
 - SWE-bench
@@ -242,6 +249,7 @@ Theory:
 ## Publication roadmap
 Paper 0 -> Position
 Paper 1 -> Standalone prototype
+Paper 1.5 -> Positional semantics for retrieved native-KV
 Paper 2 -> Pretrained integration
 Paper 3 -> Runtime systems
 Paper 4 -> Theory

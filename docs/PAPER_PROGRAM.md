@@ -8,6 +8,11 @@ Vision paper: why context should be hierarchical, reference-addressed, and deman
 URI-Addressed Memory*. Architecture, implementation, and controlled experiments for the
 standalone PyTorch PRA prototype.
 
+## Paper 1.5 -- Positional Semantics for Retrieved Native-KV Memory
+
+Matched absolute/RoPE models, cached-key positional state, bounded block fragmentation,
+overlap, relocation, and implicit-head logical-distance experiments.
+
 ## Paper 2 — Hugging Face Integration
 Adapters/wrappers for pretrained open models.
 
