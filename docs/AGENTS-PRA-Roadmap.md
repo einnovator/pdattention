@@ -27,12 +27,39 @@ tail-section ablations.
 Relevant modules: `src/pra_torch/model.py`, `src/pra_torch/attention.py`,
 `src/pra_torch/memory_batching.py`, and `src/pra_torch/memory.py`.
 
+### Model-bounded logical context
+
+- `model_max_context_tokens` is the hard per-operation native limit. It defaults to the
+  tiny model's `max_seq_len` and may be lowered for a deployment constraint.
+- `encoding_chunking` and `routing_chunking` are independent instances of the shared
+  `ChunkingConfig`. One bounded encoding block can produce multiple smaller routing
+  chunks while retaining global logical offsets.
+- Encoding overlap is context-only: left context enters the base-model call, but only the
+  new core span is retained as K/V. Fixed, marker, and semantic-plugin partitioning reuse
+  the same source partitioner at both levels.
+- All routed candidates, including `#__head` and explicit references, share one
+  score-ordered whole-chunk allocator. The enforced invariant is
+  `direct + materialized + reserve <= model_max_context_tokens`.
+- Budgeting runs before K/V transfer. Oversized chunks are skipped rather than ending the
+  scan, allowing smaller lower-ranked chunks to fill remaining capacity.
+- Diagnostics now distinguish routing candidates, requested/materialized tokens,
+  budget-rejected chunks, utilization, score boundaries, encoding calls, and maximum
+  encoding input.
+- A five-seed CUDA probe uses a 32-token native limit with 16-token encoding cores and
+  four-token routing chunks. A 184-token head requires 12 calls whose largest input is 20
+  tokens. No encoded or attended operation violates the limit.
+
+Relevant modules: `src/pra_torch/chunking.py`, `src/pra_torch/config.py`,
+`src/pra_torch/model.py`, `src/pra_torch/attention.py`, and
+`scripts/run_pra_bounded_context.py`.
+
 ### Long-context implicit `#__head`
 
 - Prompts longer than the direct window can use `prompt_overflow_mode=implicit_reference`.
 - The recent tail remains in ordinary causal SelfAttention. Displaced leading tokens are
-  encoded once as causal history, and native layer K/V is sliced into a request-local cache
-  entry with URI `pra://implicit/prompt/head` and display name `#__head`.
+  encoded once when they fit or in bounded overlap-aware blocks when they exceed the
+  native limit. Native layer K/V is sliced into a request-local cache entry with URI
+  `pra://implicit/prompt/head` and display name `#__head`.
 - Each batch row owns a separate cache namespace. Identical implicit URIs therefore cannot
   leak K/V between examples.
 - Mixed-length batches carry one historical tail-position offset per row. Exact tests show
@@ -42,6 +69,10 @@ Relevant modules: `src/pra_torch/model.py`, `src/pra_torch/attention.py`,
 - A five-seed fixed-target probe now covers 1x/2x/4x/8x the direct window. Historical
   routing matches dense loss through 4x and beats truncation at 8x; wrong-memory and
   independent-chunk controls confirm content dependence and the cost of context resets.
+- Streaming generation migrates expired routing-sized prefixes into `#__head`, invalidates
+  stale packed indexes, and rebuilds bounded history. A 48-token smoke continuation uses
+  11 rollovers and 40 routed steps while keeping direct history at eight tokens or fewer.
+  The current rebuild is correct but intentionally not an incremental K/V append.
 
 Relevant module: `src/pra_torch/prompt.py` with integration in `src/pra_torch/pra_train.py`.
 
@@ -90,12 +121,15 @@ Completed:
 - per-row historical offsets for mixed batches
 - CPU-resident native K/V with actual transfer-byte and peak-CUDA metrics
 - five-seed CUDA routing, long-prompt, sensitivity, and residency experiments
+- hard native-context checks, shared encoding/routing chunking, global materialization
+  budgeting, streaming rollover, and five-seed bounded-context artifacts
 
 Next systems work:
 - batch CPU offload during cache construction instead of issuing one transfer per chunk
 - overlap selected K/V transfer with routing and local projection
 - fuse or bucket variable-length memory attention
-- roll generated history into the request-local head cache
+- append generated-history K/V and packed-index rows incrementally instead of rebuilding
+  the request-local head cache
 - benchmark pretrained RoPE/GQA models and genuine QA targets
 
 ## Phase 1

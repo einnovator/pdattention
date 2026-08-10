@@ -35,7 +35,7 @@
 \maketitle
 
 \begin{abstract}
-Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context in a largely flat and eager form. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse approximation to full long-context self-attention. Lightweight references index historical token K/V produced by the model's native layer projections; routing gists choose which original K/V becomes active; and selected memory is concatenated with local K/V under one shared softmax and the existing output projection. Canonical PRA therefore requires no separate cross-attention branch and no reference-specific trainable transport parameters. References may name external objects, prior conversation, or an implicit displaced prompt head, so PRA is not synonymous with RAG. We distinguish naming from materialization, routing from transport, and historical K/V reuse from independent chunk re-encoding. Exact equivalence tests and five-seed controlled studies establish native transport through 256 addressable units. An exact packed router preserves selection and loss while reducing 256-way cold routing to 14.8--33.7 ms and persistent-index routing to 5.5--11.6 ms, approximately 94--103$\times$ faster than the scalar baseline. A trained implicit-head probe recovers displaced evidence through 8$\times$ the direct budget, while wrong-memory and independent-encoding controls expose content and fragmentation failures. CPU-resident source K/V removes 0.73--3.42 MiB from the measured 256-way GPU cache with zero loss delta, at a 4--9 ms warm transfer cost. These remain small answer-code transport and prototype systems results, not unrestricted QA or production efficiency. The program is falsifiable by recovered context benefit per active K/V token, latency, transfer byte, and memory byte relative to full self-attention.
+Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context in a largely flat and eager form. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse approximation to full long-context self-attention. Lightweight references index historical token K/V produced by the model's native layer projections; routing gists choose which original K/V becomes active; and selected memory is concatenated with local K/V under one shared softmax and the existing output projection. Canonical PRA therefore requires no separate cross-attention branch and no reference-specific trainable transport parameters. References may name external objects, prior conversation, or an implicit displaced prompt head, so PRA is not synonymous with RAG. We distinguish naming from materialization, routing from transport, and historical K/V reuse from independent chunk re-encoding. Exact equivalence tests and five-seed controlled studies establish native transport through 256 addressable units. An exact packed router preserves selection and loss while reducing 256-way cold routing to 14.8--33.7 ms and persistent-index routing to 5.5--11.6 ms, approximately 94--103$\times$ faster than the scalar baseline. A model-bounded extension addresses a 184-token prompt head using base-model calls of at most 20 tokens under a 32-token native limit; score-ordered admission keeps direct plus materialized K/V within that limit, and streaming rollover carries generation beyond it. At 192 logical tokens, routed answer-code loss is 1.057 versus 1.229 under truncation. CPU-resident source K/V removes 0.73--3.42 MiB from the measured 256-way GPU cache with zero loss delta, at a 4--9 ms warm transfer cost. These remain small answer-code transport and prototype systems results, not unrestricted QA or production efficiency. The program is falsifiable by recovered context benefit per active K/V token, latency, transfer byte, and memory byte relative to full self-attention.
 \end{abstract}
 
 \section{Introduction}
@@ -170,9 +170,29 @@ This mechanism turns chronological displacement into the same named-object inter
 for external documents.  It is not equivalent to keeping the entire prefix in dense
 self-attention: the head becomes non-causal memory after it has been observed, and only
 selected chunks are transported.  The implementation also retains \texttt{truncate} and
-\texttt{error} overflow policies.  It currently virtualizes the initial prompt only;
-rolling generated tokens into new implicit references during streaming remains future
-work.
+\texttt{error} overflow policies. During generation, expired routing-sized prefixes of
+the direct suffix are appended to the same implicit object and re-encoded through the
+bounded source path. This correctness-first rollover rebuilds the head cache;
+incremental append remains future systems work.
+
+\subsection{Logical Context Under a Native Bound}
+
+PRA separates the size of its logical address space from the maximum context processed by
+the underlying model in any one operation:
+\begin{equation}
+L_{\mathrm{logical}} \gg L_{\mathrm{model,max}}
+\ge L_{\mathrm{encode}} > L_{\mathrm{route}}.
+\end{equation}
+Long sources are encoded in bounded, optionally overlapping blocks. Context-only overlap
+is discarded before each block's native K/V is sliced into smaller routing chunks. After
+routing, all candidate sources share one score-ordered whole-chunk admission budget:
+\begin{equation}
+L_{\mathrm{direct}}+L_{\mathrm{materialized}}+L_{\mathrm{reserve}}
+\le L_{\mathrm{model,max}}.
+\end{equation}
+This does not make the base model natively support arbitrary context. It exposes a larger
+logical context while keeping each encoding and attention operation within a configured
+native limit.
 
 \subsection{Recursive Anchors}
 
@@ -863,6 +883,43 @@ access, content causality, and contextual fragmentation.}
 \label{fig:position-long-head}
 \end{figure}
 
+\subsection{Bounded Logical Context and Rollover}
+
+A five-seed model-scaled follow-up constrains every native operation to 32 tokens while
+retaining an 8-token direct tail and four reserve tokens. Sixteen-token encoding cores
+with four context-only overlap tokens produce four-token routing chunks. Heads of
+24/56/120/184 tokens require 2/4/8/12 encoding calls; the maximum observed call is 20
+tokens, with no limit violation. At 192 total prompt tokens, historical routed loss is
+1.057 versus 1.229 for truncation and 1.709 for independent encoding blocks. Routed target
+recall is 0.525; an approximate oracle obtains 0.874 loss, while wrong chunks obtain
+1.120. The remaining wrong-memory benefit makes this supporting evidence, not a complete
+content-causality result.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.92\textwidth]{../shared/figures/pra_head_beyond_native_context.pdf}
+\caption{Five-seed implicit-head execution under a 32-token native bound. Logical prompt
+length reaches 192 while encoding and selected attention remain bounded.}
+\label{fig:position-head-beyond-native}
+\end{figure}
+
+Score-ordered whole-chunk admission exposes a quality--active-memory curve. Increasing
+the memory budget from 4 to 20 tokens raises target recall from 0.325 to 0.525 and lowers
+loss from 1.242 to 1.057. Mean forward latency remains 18.4--18.8 ms on this tiny GPU,
+so the sweep supports bounded allocation but no speed claim. In a separate 48-token
+generation smoke test, 44 expired tokens enter \texttt{\#\_\_head} through 11 rollovers;
+40 subsequent steps route memory, the direct suffix never exceeds eight tokens, and the
+largest native operation is 20 tokens. Rebuilding the complete head after each rollover
+is correct but not yet efficient.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.82\textwidth]{../shared/figures/pra_materialization_budget.pdf}
+\caption{Whole-chunk admission at 192 logical tokens. More active K/V improves recall and
+loss on the controlled probe; production latency remains unestablished.}
+\label{fig:position-materialization-budget}
+\end{figure}
+
 \subsection{Prototype GPU Capacity Reduction}
 
 An experimental residency policy keeps routing gists and their packed index on GPU while
@@ -950,7 +1007,7 @@ These criteria make PRA a testable systems-and-model hypothesis rather than a la
 
 PRA introduces several risks. First, reference selection can fail silently: if the system does not expand the right anchor, the model may answer from incomplete context. Second, URI-addressed memory creates provenance and security questions. A reference table is a powerful interface; poisoning or misaddressing entries can mislead the model. Third, cache construction may move cost rather than eliminate it. Encoding references separately is only beneficial when cache reuse, selective expansion, or reduced prompt length outweighs encoding overhead. Fourth, pretrained integration is technically difficult because external K/V must respect layer semantics, position encodings, attention variants, and batching constraints.
 
-Fifth, content-independent branch effects can be mistaken for retrieval. A memory residual may improve a domain simply because it contributes additional activations, even when references are shuffled. Sixth, batching can violate semantic isolation: a physically shared cache must not expose one sequence's references to another, and empty rows must not inherit projection bias. Seventh, preservation claims can be artifacts of freezing rather than architecture. Eighth, hierarchical expansion can amplify latency variance and create denial-of-service surfaces when references recursively fan out. Ninth, raw summaries can introduce a representation mismatch when compared with projected layer queries; optional summary evidence must inhabit the same contextual layer space. Tenth, implicit prompt heads still move historical encoding into a separate cold pass even though encode-once slicing avoids microchunk resets, and the implementation does not roll generated history into memory. Eleventh, CPU residency reduces measured GPU capacity but the current per-chunk offload makes cold construction slower. Finally, stale cache entries create a consistency problem: URI, content version, model/tokenizer/routing fingerprints, and encoded layer memory must remain aligned.
+Fifth, content-independent branch effects can be mistaken for retrieval. A memory residual may improve a domain simply because it contributes additional activations, even when references are shuffled. Sixth, batching can violate semantic isolation: a physically shared cache must not expose one sequence's references to another, and empty rows must not inherit projection bias. Seventh, preservation claims can be artifacts of freezing rather than architecture. Eighth, hierarchical expansion can amplify latency variance and create denial-of-service surfaces when references recursively fan out. Ninth, raw summaries can introduce a representation mismatch when compared with projected layer queries; optional summary evidence must inhabit the same contextual layer space. Tenth, implicit prompt heads move historical encoding into a separate cold pass; bounded blocks approximate full historical context, and streaming currently rebuilds the complete head after rollover rather than appending K/V incrementally. Eleventh, CPU residency reduces measured GPU capacity but the current per-chunk offload makes cold construction slower. Finally, stale cache entries create a consistency problem: URI, content version, model/tokenizer/routing fingerprints, and encoded layer memory must remain aligned.
 
 These limitations motivate careful experimental design. PRA should not be judged by a single accuracy number. It should be evaluated through controlled ablations that measure answer accuracy, reference and chunk ranking, expansion depth and budget exhaustion, available and materialized token counts, full-context token count, timing decomposition, padding allocation, cache hit ratio, content-specific counterfactual deltas, plain-task retention, and cache isolation. The five-seed studies now address tiny-scale capacity, training order, preservation, first-order counterfactuals, exact routing reuse, long-prompt displacement, selective transfer, and measured GPU residency. Learned routing, recursive benefit, pretrained integration, batched CPU offload, and end-to-end efficiency against strong baselines remain untested.
 
@@ -960,7 +1017,7 @@ Progressive Retrieval Attention proposes a shift in how foundation models intera
 
 The long-term vision is a foundation-model memory stack with explicit boundaries among parametric knowledge, working context, episodic history, semantic resources, procedures and tools, and changing world state. URI identity, provenance, freshness, hierarchy, permissions, and cache lifetime become architectural concerns rather than application-side annotations. Protocols such as MCP can expose resources and actions, agents can manage high-level plans, and PRA-like runtimes can test whether repeated read-oriented access can move closer to attention without losing governance.
 
-The five-seed corrected cross-attention follow-up supports backbone compatibility and preservation controls but fails its content-causality gate. Native-KV experiments provide stronger mechanism evidence. Historical K/V slicing preserves dense transport through 256 addressable units, fixed-$k$ active fraction falls to roughly 5\%, and exact persistent routing reduces 256-way selection to 5.5--11.6 ms without semantic change. Controlled implicit-head probes recover facts wholly outside a fixed direct window and show that historical slicing matters; CPU backing converts active sparsity into a measured 0.73--3.42 MiB GPU-capacity reduction while exposing cold-build and transfer penalties. The answer-code targets, tiny backbones, and unfused prototype still prevent claims of general retrieval or production efficiency. The program should now test genuine language tasks without injected anchors, pretrained representations, batched cache construction, and matched long-context/RAG systems. If those comparisons fail, the virtual-context proposal should be revised or rejected; if they hold, PRA would support the narrower claim that named logical context can grow faster than the active latent working set.
+The five-seed corrected cross-attention follow-up supports backbone compatibility and preservation controls but fails its content-causality gate. Native-KV experiments provide stronger mechanism evidence. Historical K/V slicing preserves dense transport through 256 addressable units, fixed-$k$ active fraction falls to roughly 5\%, and exact persistent routing reduces 256-way selection to 5.5--11.6 ms without semantic change. Model-bounded encoding now demonstrates a logical head 5.75 times the native limit, one global materialization budget, and generated-history rollover without a native-limit violation. Controlled implicit-head probes recover facts wholly outside a fixed direct window and show that encoding context matters; CPU backing converts active sparsity into a measured 0.73--3.42 MiB GPU-capacity reduction while exposing cold-build and transfer penalties. The answer-code targets, tiny backbones, rebuilt streaming cache, and unfused prototype still prevent claims of general retrieval or production efficiency. The program should now test genuine language tasks without injected anchors, pretrained representations, incremental cache append, batched cache construction, and matched long-context/RAG systems. If those comparisons fail, the virtual-context proposal should be revised or rejected; if they hold, PRA would support the narrower claim that named logical context can grow faster than the active latent working set.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
