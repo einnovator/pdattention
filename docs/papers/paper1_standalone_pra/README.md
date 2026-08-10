@@ -1,8 +1,9 @@
-# Standalone Progressive Retrieval Attention: A PyTorch Architecture for URI-Addressed Memory Expansion
+# Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory
 
 ## Focus
 
-Formal model, PyTorch architecture, datasets, training loop, synthetic/hierarchical experiments.
+Formal model, PyTorch architecture, native-KV routing, bounded long context, datasets,
+and controlled synthetic and natural-text experiments.
 
 ## Main files
 
@@ -12,7 +13,6 @@ Formal model, PyTorch architecture, datasets, training loop, synthetic/hierarchi
 
 ## Status
 
-Implementation-backed draft with preliminary two-seed WikiText-2 results,
-reference ablations, timing metrics, and pseudocode/PyTorch appendices. The
-generated `paper.pdf` is a local build artifact and is intentionally ignored by
-Git.
+Implementation-backed draft with five-seed native-KV, routing, fragmentation,
+model-bounded context, residency, and historical adaptation studies. The built
+`paper.pdf` is tracked with the project paper sources.

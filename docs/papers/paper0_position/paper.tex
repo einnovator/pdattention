@@ -30,6 +30,10 @@
 \title{Progressive Retrieval Attention: A Position Paper on Demand-Driven Context Expansion}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
+\hypersetup{
+  pdftitle={Progressive Retrieval Attention: A Position Paper on Demand-Driven Context Expansion},
+  pdfauthor={Jorge Simao}
+}
 
 \begin{document}
 \maketitle
@@ -59,6 +63,14 @@ retrieval baselines.
 \section{Introduction}
 
 The transformer attention mechanism made it possible for models to condition every token on every earlier token in a sequence \cite{vaswani2017attention}. The same mechanism also created a central systems problem: when a model needs access to many documents, code files, logs, prior decisions, or external knowledge fragments, the simplest interface is to concatenate more text into a longer sequence. Modern long-context systems have stretched this interface dramatically, but a larger window does not by itself solve the problem of \emph{selective use}. If only a small fraction of the context is relevant at any generation step, eager inclusion wastes computation and forces the model to perform implicit search inside an expensive dense attention substrate.
+
+PRA proposes a different working-set rule: \textbf{recent context remains directly visible
+at high resolution; older or external context is retained as addressable memory and
+disclosed in native-KV detail only when routing predicts it is useful.} Here,
+\emph{URI-addressed memory} is external source state identified by a stable URI-like
+reference, summarized by compact routing state, and selectively materialized as
+layer-native K/V. Explicit handles provide external addresses; displaced prompt history
+and streaming rollover are implicit addressable-memory forms that use the same machinery.
 
 Retrieval-augmented generation (RAG) addresses part of this issue by selecting external passages before generation \cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. However, standard RAG often makes a single retrieval decision at the boundary of the model call. The retrieved passages are still inserted as flat prompt text, and the model must consume them whether or not each passage becomes useful later. Agentic systems take the opposite approach: they inspect tool descriptions, issue searches, open files, follow references, and progressively disclose detail only when needed \cite{yao2023react,schick2023toolformer}. This behavior is effective but expensive because the loop is mediated by external actions, repeated model invocations, and hand-designed orchestration.
 
@@ -160,7 +172,9 @@ source without pretending that the source has already been read.
 
 \subsection{URI-Addressed Memory}
 
-PRA assumes that external memory can be addressed by URIs. The scheme may denote local memory, files, repository objects, search results, database rows, or runtime objects:
+PRA assumes that external memory can be addressed by URIs. The URI is the stable identity
+of source state, not its routing gist or transported K/V. The scheme may denote local
+memory, files, repository objects, search results, database rows, or runtime objects:
 
 \begin{center}
 \texttt{mem://manual\#installation.cuda.vllm}
@@ -801,13 +815,21 @@ A subsequent five-seed synthetic experiment isolates native transport from routi
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{../shared/figures/native_kv_synthetic.pdf}
-\caption{Controlled native-KV split scaling over five paired seeds. Oracle memory remains content-causal and accurate through 32 splits, but all-memory composition and the untrained router degrade under fragmentation. The 64-split oracle drop bounds the present implementation rather than supporting an unrestricted scaling claim.}
+\caption{Historical independently encoded split scaling over five paired seeds. Oracle memory remains content-causal and accurate through 32 splits, but all-memory composition and the untrained router degrade under fragmentation. Later contextual/native slicing removes the 64-split failure; this figure is a diagnostic, not the corrected PRA scaling limit.}
 \label{fig:position-native-kv-synthetic}
 \end{figure}
 
 Oracle native memory remains 100\% accurate from 2 through 32 splits. Its losses at 3, 5, 8, 16, and 32 splits are 0.0624, 0.0653, 0.0711, 0.0900, and 0.1194, compared with shuffled losses 2.7645, 2.6853, 2.5565, 2.4730, and 2.7038. Content-causality gaps therefore remain between 2.38 and 2.70 loss units. This demonstrates that weight-preserving native transport can recover causally required content when given the correct reference, without a learned memory projection or PRA fine-tuning.
 
-The negative controls remain equally important. Oracle accuracy falls to 70.6\% at 64 splits. Native-all accuracy falls to 71.9\% at split 3, 59.1\% at split 5, and approximately chance by split 16; unsupervised routing is also near chance at fine partitions. Independent reference encoding restarts positions and does not reproduce a causally encoded full prefix, so practical native-all need not match the exact historical-K/V reinsertion identity. The result supports sparse oracle transport under moderate fragmentation. It does not yet support partition-invariant cache construction, semantic routing, natural-language QA, or end-to-end efficiency.
+The negative controls remain equally important. In this historical diagnostic, oracle
+accuracy falls to 70.6\% at 64 splits. Native-all accuracy falls to 71.9\% at split 3,
+59.1\% at split 5, and approximately chance by split 16; unsupervised routing is also near
+chance at fine partitions. Independent reference encoding restarts positions and does not
+reproduce a causally encoded full prefix, so practical native-all need not match the exact
+historical-K/V reinsertion identity. The result supports sparse oracle transport under
+moderate independent fragmentation. The later contextual-slicing study changes its
+interpretation: it is evidence for separating encoding and routing granularity, not a
+64-way limit of corrected PRA.
 
 \subsection{Natural-Text Transport Gate}
 
@@ -821,7 +843,7 @@ source units and target are repartitioned across all split counts.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{../shared/figures/native_kv_hotpotqa.pdf}
-\caption{HotpotQA-derived transport probe over five paired seeds. Oracle native K/V preserves nearly all dense-context benefit through split 32 with a falling active fraction, while routed selection leaves a substantial error gap. Split 64 exposes a fragmentation limit.}
+\caption{HotpotQA-derived transport probe over five paired seeds. Oracle native K/V preserves nearly all dense-context benefit through split 32 with a falling active fraction, while routed selection leaves a substantial error gap. The historical independently encoded split-64 condition exposes contextual fragmentation later repaired by native-K/V slicing.}
 \label{fig:position-native-kv-hotpot}
 \end{figure}
 
@@ -844,7 +866,7 @@ reproduce both the useful sparse-oracle frontier and the routing/fragmentation l
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{../shared/figures/native_kv_qasper.pdf}
-\caption{QASPER-derived replication over five paired seeds. Sparse oracle K/V preserves dense-context benefit through split 32, while all-memory composition, routed selection, and 64-way fragmentation remain limiting.}
+\caption{QASPER-derived replication over five paired seeds. Sparse oracle K/V preserves dense-context benefit through split 32, while all-memory composition and routed selection remain limiting; the historical 64-way result uses independent fragment encoding.}
 \label{fig:position-native-kv-qasper}
 \end{figure}
 
@@ -944,7 +966,9 @@ A five-seed model-scaled follow-up constrains every native operation to 32 token
 retaining an 8-token direct tail and four reserve tokens. Sixteen-token encoding cores
 with four context-only overlap tokens produce four-token routing chunks. Heads of
 24/56/120/184 tokens require 2/4/8/12 encoding calls; the maximum observed call is 20
-tokens, with no limit violation. At 192 total prompt tokens, historical routed loss is
+tokens, with no limit violation. Thus 192 logical tokens are six times the native limit,
+the 184-token head is 5.75 times that limit, and the largest observed bounded encoding
+call uses only 62.5\% of the ceiling. At 192 total prompt tokens, historical routed loss is
 1.057 versus 1.229 for truncation and 1.709 for independent encoding blocks. Routed target
 recall is 0.525; an approximate oracle obtains 0.874 loss, while wrong chunks obtain
 1.120. The remaining wrong-memory benefit makes this supporting evidence, not a complete

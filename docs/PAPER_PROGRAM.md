@@ -3,8 +3,10 @@
 ## Paper 0 — Position
 Vision paper: why context should be hierarchical, reference-addressed, and demand-driven.
 
-## Paper 1 — Standalone PRA
-Architecture and experiments for tiny PyTorch PRA.
+## Paper 1 — Model-Bounded Sparse Native-KV
+*Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and
+URI-Addressed Memory*. Architecture, implementation, and controlled experiments for the
+standalone PyTorch PRA prototype.
 
 ## Paper 2 — Hugging Face Integration
 Adapters/wrappers for pretrained open models.

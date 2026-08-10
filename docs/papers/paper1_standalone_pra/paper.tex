@@ -27,20 +27,44 @@
   sysflow/.style={-{Stealth[length=2mm]}, thick, draw=pragray}
 }
 
-\title{Standalone Progressive Retrieval Attention: A PyTorch Architecture for URI-Addressed Memory Expansion}
+\title{Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
+\hypersetup{
+  pdftitle={Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory},
+  pdfauthor={Jorge Simao}
+}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (PRA) is an inference-time sparse approximation to long-context self-attention: compact routing gists index historical token keys and values (K/V), and only selected native K/V joins the recent context under the decoder's existing attention softmax and output projection. A trained SelfAttention checkpoint can therefore be converted without a new transport module. Controlled failures reveal a central design constraint: independently encoding small routing chunks destroys context at fine partitions, whereas encoding a larger causal region and slicing its native K/V restores recovered context benefit to 0.998--1.000 through 256 addressable units. At that scale, selecting eight references activates 4.4--5.1\% of accessible K/V; a packed exact router reduces warm 256-way selection to 5.5--11.6 ms, 94--103$\times$ faster than the original scalar implementation. PRA also separates logical context from the largest operation accepted by the base model. Under a hard 32-token native-operation limit, a five-seed probe addresses a 184-token displaced prompt head without violations; at 192 logical tokens, routed loss is 1.0567 versus 1.2287 for truncation and 1.7089 for independent block encoding. Increasing the materialization budget from 4 to 20 tokens improves target recall from 0.325 to 0.525, and streaming rollover moves 44 expired tokens into routable history while the direct window remains bounded. These results establish native-K/V transport, exact sparse routing, and model-bounded execution in small controlled answer-code probes. They do not establish unrestricted question answering or end-to-end production efficiency.
+Progressive Retrieval Attention (PRA) gives a decoder sparse access to long logical context
+stored as URI-addressed memory. Compact gists index historical layer-native keys and values
+(K/V), and only selected full token K/V joins recent context under the decoder's existing
+attention softmax and output projection. Model-bounded encoding divides long sources into
+safe causal blocks before exposing smaller routing chunks. This distinction repairs an
+early fragmentation failure: contextual/native-KV slicing recovers 0.998--1.000 of dense
+context benefit through 256 addressable units while activating 4.4--5.1\% of accessible
+K/V at fixed selection breadth. A packed exact router reduces warm 256-way selection to
+5.5--11.6 ms. Under a hard 32-token native-operation limit, a five-seed probe addresses a
+184-token displaced prompt head; at 192 logical tokens, routed loss is 1.0567 versus
+1.2287 for truncation and 1.7089 for independent block encoding. These controlled results
+establish sparse native-KV transport, exact routing, and model-bounded long-context
+execution. They do not establish unrestricted question answering or end-to-end production
+efficiency.
 \end{abstract}
 
 \section{Introduction}
 
 Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-context language modeling. Many tasks require access to large context, but the relevant evidence is sparse, hierarchical, and often discovered only after partial reasoning. A conventional decoder-only transformer receives a flat token sequence. PRA instead treats references as an index over model-native historical K/V and activates only selected positions. References may denote prior tokens, external objects, or an implicit prompt head; retrieval-augmented generation is therefore one possible source of memory, not the definition of PRA \cite{lewis2020rag}.
+
+Here, \emph{URI-addressed memory} means external source state identified by a stable
+URI-like reference, represented compactly for routing, and selectively materialized as
+layer-native K/V. Explicit URI references name external objects. The reserved
+\texttt{\#\_\_head} and streaming history are implicit addressable-memory forms that reuse
+the same chunk, gist, routing, and materialization machinery without adding visible
+reference tokens.
 
 Suppose a 32K-token diagnostic record contains a fact needed near the end, but the base
 model can directly process only 4K tokens. PRA keeps the recent 4K tokens local, registers
@@ -64,6 +88,30 @@ and rolls generated history into routable memory; and
 \item five-seed controlled probes and counterfactual metrics that distinguish transport,
 routing, content causality, active attention K/V, resident K/V, and transfer cost.
 \end{itemize}
+
+\subsection*{PRA in 60 Seconds}
+
+Consider the exact bounded-context setting used later in the paper. A 192-token logical
+prompt is six times a hard 32-token native limit. PRA keeps the last eight tokens direct
+and registers the preceding 184 tokens---5.75 times the native limit---as the request-local
+\texttt{\#\_\_head}. It encodes that head in 16-token causal cores with up to four tokens
+of left context, so the largest observed encoding call is 20 tokens, or 62.5\% of the hard
+ceiling. Context-only overlap is discarded, and each core's native K/V is sliced into
+four-token routing chunks. One mean gist per chunk enters the packed index. Exact routing
+ranks eight candidates, and a 20-token whole-chunk budget admits at most five of them.
+The resulting allocation obeys
+\(8_{\rm direct}+20_{\rm memory}+4_{\rm reserve}=32_{\rm max}\).
+
+In one line, the data path is:
+\begin{center}
+\small
+logical 192 $\rightarrow$ bounded encoding calls $\leq20$
+$\rightarrow$ 4-token routing chunks $\rightarrow$ mean gists/index
+$\rightarrow$ exact top-$k$ $\rightarrow$ budgeted native K/V
+$\rightarrow$ direct + memory attention.
+\end{center}
+The 32-token ceiling constrains every base-model operation; it does not imply that all 192
+tokens are attended to simultaneously.
 
 The implementation consists of four main components. First, a tiny GPT-style language
 model provides causal decoder blocks. Second, a reference system maps handles through an
@@ -108,8 +156,9 @@ cross-attention results are retained later as a separate transport comparison.
 \node[cachenode, text width=1.4cm, right=of blocks] (kv) {native token K/V};
 \node[cachenode, text width=1.45cm, right=of kv] (chunks) {smaller routing chunks};
 \node[cachenode, text width=1.35cm, below=8mm of chunks] (index) {gists + packed index};
-\node[sysnode, text width=1.25cm, left=of index] (route) {exact hierarchical route};
-\node[sysnode, text width=1.45cm, left=of route] (budget) {whole-chunk budget};
+\node[sysnode, text width=1.25cm, left=of index] (route) {exact routing};
+\node[sysnode, font=\scriptsize, text width=2.0cm, left=of route]
+  (budget) {materialization\\budgeter};
 \node[cachenode, text width=1.5cm, left=of budget] (selected) {selected native K/V};
 \node[sysnode, text width=1.75cm, left=of selected] (attention) {direct + memory attention};
 \draw[sysflow] (source) -- (blocks);
@@ -164,6 +213,55 @@ O_{\mathrm{local}} &= W_O \,
 \end{align}
 
 The implementation stores a lower-triangular causal mask with maximum sequence length configured by \texttt{PRAConfig.max\_seq\_len}.
+
+\subsection{Minimal PRA Implementation}
+
+A minimal reproduction needs no recursive graph, multi-gist pooler, CPU offload, or
+streaming policy. It needs one historical or external source, fixed routing chunks, one
+mean key gist per chunk and layer, exact normalized-dot-product top-$k$, complete native
+K/V for selected chunks, and one shared attention softmax. The source is encoded causally;
+for an exact displaced-prefix comparison, its positions are historical and the direct
+tail continues at the displaced-source offset. The following single-row pseudocode keeps
+layer specificity and tensor shapes explicit:
+
+\begin{verbatim}
+01 | # Preparation: one causal source pass, captured separately at every layer l.
+02 | Ksrc[l], Vsrc[l] = capture_native_kv(source_ids, layer=l)  # [1,H,S,Dh]
+03 | for c, (a, b) in enumerate(fixed_slices(S, route_tokens)):
+04 |     Kc[l,c], Vc[l,c] = Ksrc[l][:,:,a:b,:], Vsrc[l][:,:,a:b,:]
+05 |     G[l,c] = normalize(merge_heads(Kc[l,c]).mean(dim=1))[0] # [D]
+06 |
+07 | # Use: q/k/v are the layer's ordinary projections of the direct sequence.
+08 | q, kd, vd = project_qkv(x, layer=l)                        # [1,H,T,Dh]
+09 | qr = normalize(merge_heads(q[:,:,-1:,:])).squeeze(1)       # [1,D]
+10 | score = qr @ stack(G[l]).T                                 # [1,C]
+11 | chosen = torch.topk(score, k=min(k, C), dim=-1).indices
+12 | km = cat([Kc[l,c] for c in chosen[0]], dim=2)              # [1,H,M,Dh]
+13 | vm = cat([Vc[l,c] for c in chosen[0]], dim=2)              # [1,H,M,Dh]
+14 | keys, values = cat([km, kd], 2), cat([vm, vd], 2)
+15 | visible = cat([ones(T,M), tril(ones(T,T))], dim=-1)
+16 | logits = (q @ keys.transpose(-2,-1)) / sqrt(Dh)            # [1,H,T,M+T]
+17 | heads = softmax(mask(logits, visible), dim=-1) @ values
+18 | y = W_o(merge_heads(heads))                                # existing W_o
+\end{verbatim}
+
+Lines 2--5 build a layer-specific index whose gists are selectors, not transported
+memory. Lines 10--11 compute cosine scores as normalized dot products and use exact
+\texttt{topk}; no approximate index is involved. Lines 12--18 materialize complete
+token-level K/V for selected chunks. Historical memory precedes the direct sequence and
+is visible to every direct query, while the direct portion retains its causal triangle.
+Both sources share one normalization and the existing $W_O$.
+
+The full prototype grows from this minimal core in an explicit sequence:
+\begin{center}
+\small
+minimal PRA $\rightarrow$ URI-addressed multiple references $\rightarrow$
+encoding/routing separation $\rightarrow$ packed exact routing $\rightarrow$
+bounded \texttt{\#\_\_head} $\rightarrow$ materialization budget $\rightarrow$
+CPU residency $\rightarrow$ streaming rollover.
+\end{center}
+Each extension changes source management or systems policy; none changes the canonical
+contract that selected layer-native K/V and direct K/V meet under one softmax.
 
 \section{Reference Graph and Runtime State}
 
@@ -808,7 +906,25 @@ The first native quality gate uses 2,048 training examples and a disjoint 64-exa
 
 Full-context SelfAttention obtains mean loss 0.0105 and 100\% accuracy, whereas tail-only evaluation obtains loss 1.6999 and 50.6\% accuracy. At split counts 3, 5, 8, 16, and 32, oracle native loss is respectively 0.0624, 0.0653, 0.0711, 0.0900, and 0.1194, with 100\% accuracy in every case. Shuffled losses over the same range are 2.7645, 2.6853, 2.5565, 2.4730, and 2.7038; the resulting content-causality gaps are 2.7021, 2.6200, 2.4854, 2.3831, and 2.5844. This is direct evidence that the oracle result depends on the supplied value rather than generic memory activation.
 
-The result also identifies two limits. At 64 splits, oracle loss rises to 0.6490 and accuracy falls to 70.6\%. Native-all accuracy declines from 100\% at split 2 to 71.9\% at split 3, 59.1\% at split 5, and approximately chance by split 16. The routed condition follows the same failure pattern and is 48.4\% at split 32. Because references are independently encoded with positions restarting at zero and selected all-memory payloads are not a causally encoded prefix, practical native-all is not equivalent to the exact historical-K/V reinsertion test. The experiment therefore validates sparse oracle transport under moderate fragmentation, not arbitrary partition invariance or learned routing.
+\begin{center}
+\fbox{\begin{minipage}{0.92\linewidth}
+\textbf{Historical diagnostic result, not the final PRA scaling limit.} The split-64
+condition below independently encoded every small reference fragment and restarted its
+positions. Later experiments encode a larger causal region and slice its native K/V into
+smaller routing chunks; that contextual/native-KV path removes this failure through 256
+addressable units. The old result is retained because it revealed why
+\textbf{encoding granularity and routing granularity must differ}.
+\end{minipage}}
+\end{center}
+
+Under the historical independent-encoding condition, at 64 splits oracle loss rises to
+0.6490 and accuracy falls to 70.6\%. Native-all accuracy declines from 100\% at split 2 to
+71.9\% at split 3, 59.1\% at split 5, and approximately chance by split 16. The routed
+condition follows the same failure pattern and is 48.4\% at split 32. Because positions
+restart at every fragment and selected all-memory payloads are not a causally encoded
+prefix, practical native-all is not equivalent to exact historical-K/V reinsertion. This
+experiment validates sparse oracle transport under moderate independent fragmentation;
+it does not establish a 64-way limit for the corrected architecture or learned routing.
 
 \section{Evidence-Anchored Natural-Text Native-KV Probes}
 
@@ -1353,9 +1469,11 @@ materialization budget control recovery?
 We next impose a hard 32-token native limit on the same five trained seeds while retaining
 an 8-token direct tail and a 4-token safety reserve. Sixteen-token encoding cores receive
 up to four left-context tokens; their stored core K/V is sliced into four-token routing
-chunks. The displaced head grows from 24 to 184 tokens, or 0.75 to 5.75 times the native
-limit. This requires 2, 4, 8, and 12 encoding calls. The largest observed encoding input
-is 20 tokens, and no encoding or attention operation exceeds 32.
+chunks. At the largest condition, 192 logical tokens are $6\times$ the native limit and
+the displaced 184-token head alone is $5.75\times$ that limit. This requires 2, 4, 8, and
+12 encoding calls as the head grows from 24 to 184 tokens. The largest observed bounded
+encoding call is 20 tokens---only 62.5\% of the 32-token ceiling---and no encoding or
+attention operation violates the hard limit.
 
 \begin{figure}[htbp]
 \centering
@@ -1399,6 +1517,16 @@ Independent encoding blocks & 1.7089 & 0.6375 & 0.2625 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+The labels in Table~\ref{tab:pra-bounded-head} require care. \textbf{Dense full is a
+control, not automatically an oracle}: this tiny model sees a longer sequence and a
+different distractor/softmax regime than in its fixed-target training distribution.
+The approximate-oracle condition more directly tests whether known displaced evidence
+remains useful after bounded encoding and native-K/V transport. Its 0.8738 loss shows
+that the selected evidence is useful; the routed-oracle gap then measures imperfect
+selection and admission in this probe. Historical routed loss below dense loss must not
+be generalized into a claim that sparse attention is intrinsically better than dense
+attention.
 
 \begin{figure}[htbp]
 \centering
@@ -1739,8 +1867,11 @@ do not establish learned reference use. No foundation-model or broad superiority
 made.
 
 \paragraph{Model integration and selection.}
-Historical slicing has been compared under learned absolute positions, not pretrained
-RoPE, grouped-query attention, or production cache layouts. The selector is heuristic,
+The backbone uses learned absolute positions; relative positional schemes such as RoPE
+may change the positional component of forced block fragmentation and stored-K portability.
+A separate controlled Paper 1.5 study is deferred before pretrained-model integration.
+Historical slicing has not been validated with grouped-query attention or production
+cache layouts. The selector is heuristic,
 uses the last valid projected query, receives no auxiliary relevance loss, and applies a
 nondifferentiable hard top-$k$. Multi-gist modes have a staged screen but no learned-router
 comparison. Recursive construction is bounded and deterministic rather than a learned
@@ -1762,7 +1893,7 @@ or a favorable comparison with strong long-context, cache-compression, and RAG b
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Exact whole-model tests cover historical source K/V and continued tail positions. Native historical slicing preserves dense transport through 256 units, and controlled implicit-head studies recover causally relevant tokens outside the direct window. The model-bounded path now separates logical, native, encoding, and routing scales; enforces one whole-chunk budget across all memory sources; and rolls generated history into routable memory. At fixed $k=8$, active K/V falls to roughly 5\%. Reusable exact indexes reduce 256-way warm routing to 5.5--11.6 ms, while CPU-resident source K/V demonstrates a 0.73--3.42 MiB GPU-capacity reduction at a 4--9 ms warm transfer cost. This establishes mechanisms and concrete prototype tradeoffs, not unrestricted QA or production efficiency. The immediate priorities are genuine QA with a capable pretrained backbone, incremental streaming-cache append, batched asynchronous cache movement, fused attention, and end-to-end comparisons. Hugging Face integration must additionally preserve rotary positions, grouped-query caches, and layer-specific cache layouts.
+The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Exact whole-model tests cover historical source K/V and continued tail positions. Native historical slicing preserves dense transport through 256 units, and controlled implicit-head studies recover causally relevant tokens outside the direct window. The model-bounded path now separates logical, native, encoding, and routing scales; enforces one whole-chunk budget across all memory sources; and rolls generated history into routable memory. At fixed $k=8$, active K/V falls to roughly 5\%. Reusable exact indexes reduce 256-way warm routing to 5.5--11.6 ms, while CPU-resident source K/V demonstrates a 0.73--3.42 MiB GPU-capacity reduction at a 4--9 ms warm transfer cost. This establishes mechanisms and concrete prototype tradeoffs, not unrestricted QA or production efficiency. The immediate priorities are genuine QA with a capable pretrained backbone, incremental streaming-cache append, batched asynchronous cache movement, fused attention, and end-to-end comparisons.
 
 \appendix
 \section{Line-Numbered Reimplementation Guide}
@@ -1801,12 +1932,14 @@ chunks in score order under the single materialization budget.
 \texttt{\#\_\_head}, invalidate its index, and rebuild or incrementally append its cache.
 \end{enumerate}
 
-\subsection{Implementation Map at Revision \texttt{dfdcffb}}
+\subsection{Implementation Map at Source Revision \texttt{5b1d992}}
 
-Table~\ref{tab:source-map} anchors the pseudocode to the repository revision audited for
-this editorial pass. Function names are the stable identifiers; line ranges were verified
-against that revision and should be treated as navigation aids rather than API contracts.
-Each result artifact separately records the earlier \texttt{git\_sha} that produced it.
+Table~\ref{tab:source-map} anchors the pseudocode to the code revision audited immediately
+before this documentation-only refinement. Function and class identifiers are the stable
+anchors; supplemental line ranges were verified against that revision and should be
+treated as navigation aids rather than API contracts. No implementation file changed in
+this pass. Each result artifact separately records the earlier \texttt{git\_sha} that
+produced it.
 
 \begin{table}[H]
 \centering
@@ -1832,14 +1965,18 @@ J. streaming rollover & \texttt{model.py::generate} & 1092--1311 \\
 \end{tabularx}
 \end{table}
 
-The principal experiment entry points are
-\texttt{scripts/run\_native\_kv\_benchmark.py::run} (line 1244),
-\texttt{run\_pra\_scale\_sensitivity.py::run} (line 783),
-\texttt{run\_pra\_routing\_speed.py::run} (line 251),
-\texttt{run\_pra\_routing\_index\_reuse.py::run} (line 348),
-\texttt{run\_pra\_kv\_residency.py::run} (line 188), and
-\texttt{run\_pra\_bounded\_context.py::run} (line 340). Their JSON manifests record
-seeds, checkpoints, conditions, and output figures.
+The principal experiment entry points, with supplemental source lines at revision
+\texttt{5b1d992}, are:
+\begin{itemize}[leftmargin=*]
+\item \path{scripts/run_native_kv_benchmark.py::run} (1244),
+      \path{run_pra_scale_sensitivity.py::run} (783), and
+      \path{run_pra_parameter_sensitivity.py::run} (552);
+\item \path{run_pra_routing_speed.py::run} (251),
+      \path{run_pra_routing_index_reuse.py::run} (348), and
+      \path{run_pra_kv_residency.py::run} (188);
+\item \path{run_pra_bounded_context.py::run} (340).
+\end{itemize}
+Their JSON manifests record seeds, checkpoints, conditions, and output figures.
 
 \begin{table}[H]
 \centering
@@ -1959,8 +2096,8 @@ Line 41 may contain context that is absent from stored K/V: lines 44--45 discard
 before lines 47--53 expose smaller routing chunks. Logical offsets survive this slicing.
 When the complete history fits $L_{\max}$, one core with historical positions recovers the
 exact dense path. Beyond it, bounded local positions and finite overlap are explicitly an
-approximation; RoPE/GQA integrations must additionally preserve their native rotation and
-cache-layout conventions.
+approximation; pretrained integrations must preserve model-native position and cache-layout
+conventions.
 
 \subsection{J. Long Prompts and Streaming Rollover through \texttt{\#\_\_head}}
 
