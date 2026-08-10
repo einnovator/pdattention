@@ -16,6 +16,7 @@ from .memory_batching import (
     dynamic_memory_attention,
     native_kv_attention,
 )
+from .positions import build_position_encoding
 
 
 def _synchronize_detailed_timing(tensor: torch.Tensor, enabled: bool) -> None:
@@ -58,6 +59,11 @@ class PRAttention(nn.Module):
         self.memory_transport = config.memory_transport  # Native or adapted transport policy.
         self.memory_alpha = config.memory_alpha  # Legacy cross-attention contribution scale.
         self.pra_cache = pra_cache  # Shared URI cache; selection remains batch-isolated.
+        self.position_encoding = build_position_encoding(
+            config.position_encoding,
+            head_dim=self.head_dim,
+            rope_theta=config.rope_theta,
+        )  # Applies the same positional semantics to direct and cached native keys.
         self.last_selected_chunks: list[list[SelectedChunk]] = []  # Latest trace by batch row.
         self.last_routing_rankings: list[list[dict]] = []  # Complete candidate ranks by row.
         self.last_memory_batching_stats: MemoryBatchingStats | None = None
@@ -86,7 +92,13 @@ class PRAttention(nn.Module):
         b, h, t, d = x.shape
         return x.transpose(1, 2).contiguous().view(b, t, h * d)
 
-    def project_kv(self, hidden_states, *, detach: bool = True) -> LayerKV:
+    def project_kv(
+        self,
+        hidden_states,
+        *,
+        detach: bool = True,
+        position_ids: torch.Tensor | None = None,
+    ) -> LayerKV:
         """Project an independently encoded chunk into this layer's cache space.
 
         ``hidden_states`` is ``[1,M,D]`` and returned K/V is ``[1,H,M,Dh]``.
@@ -95,10 +107,20 @@ class PRAttention(nn.Module):
         """
         k = self.split_heads(self.k_proj(hidden_states))
         v = self.split_heads(self.v_proj(hidden_states))
+        if position_ids is None:
+            position_ids = torch.arange(hidden_states.shape[1], device=hidden_states.device)
+        # RoPE positions K at publication time; V is position-independent and remains native.
+        _, k = self.position_encoding.transform_qk(k, k, position_ids)
         if detach:
             k = k.detach()
             v = v.detach()
-        return LayerKV(k=k, v=v)
+        cached_positions = position_ids.detach().clone()
+        return LayerKV(
+            k=k,
+            v=v,
+            position_ids=cached_positions,
+            position_state="post_position",
+        )
 
     def forward_native_kv(
         self,
@@ -107,6 +129,7 @@ class PRAttention(nn.Module):
         memory_v: list[torch.Tensor],
         *,
         attention_mask: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Apply native attention with caller-supplied historical K/V.
 
@@ -119,6 +142,9 @@ class PRAttention(nn.Module):
         q = self.split_heads(self.q_proj(x))
         k = self.split_heads(self.k_proj(x))
         v = self.split_heads(self.v_proj(x))
+        if position_ids is None:
+            position_ids = torch.arange(x.shape[1], device=x.device)
+        q, k = self.position_encoding.transform_qk(q, k, position_ids)
         heads, _stats = native_kv_attention(
             q,
             k,
@@ -328,7 +354,13 @@ class PRAttention(nn.Module):
             budget_stats,
         )
 
-    def forward(self, x, use_pra_memory: bool = True, attention_mask: torch.Tensor | None = None):
+    def forward(
+        self,
+        x,
+        use_pra_memory: bool = True,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+    ):
         """Compute local attention and, when enabled, routed reference attention.
 
         ``use_pra_memory=False`` is the causal ablation path: it skips search and
@@ -344,6 +376,9 @@ class PRAttention(nn.Module):
         q = self.split_heads(self.q_proj(x))
         k = self.split_heads(self.k_proj(x))
         v = self.split_heads(self.v_proj(x))
+        if position_ids is None:
+            position_ids = torch.arange(t, device=x.device)
+        q, k = self.position_encoding.transform_qk(q, k, position_ids)
 
         # Local causal self-attention: [B,H,T,Dh] x [B,H,Dh,T] -> [B,H,T,T].
         scores = q @ k.transpose(-2, -1) / math.sqrt(self.head_dim)

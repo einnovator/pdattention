@@ -25,6 +25,8 @@ class PRAConfig:
     d_ff: int | None = None  # MLP width; defaults to 4 * d_model.
     max_seq_len: int = 128  # Largest prompt or independently encoded reference chunk.
     model_max_context_tokens: int | None = None  # Hard native-operation context ceiling.
+    position_encoding: str = "absolute"  # absolute (default), rope, or sinusoidal.
+    rope_theta: float = 10_000.0  # RoPE base controlling angular frequency by head feature.
     dropout: float = 0.0  # Dropout used by vanilla/mixed blocks and the GRU pooler.
     model_variant: str = "custom"  # custom, td_sa, td_pra, or last-two-layer tdx_pra.
 
@@ -195,14 +197,25 @@ class PRAConfig:
         """Continue positions only while the complete history is natively legal."""
         if (
             self.prompt_position_mode == "historical"
-            and int(head_tokens) + int(direct_tokens)
-            <= self.effective_model_max_context_tokens
+            and (
+                self.position_encoding in {"rope", "sinusoidal"}
+                or int(head_tokens) + int(direct_tokens)
+                <= self.effective_model_max_context_tokens
+            )
         ):
             return int(head_tokens)
         return 0
 
     def __post_init__(self) -> None:
         """Normalize aliases/variants and reject incompatible mode settings early."""
+        self.position_encoding = str(self.position_encoding).lower()
+        if self.position_encoding not in {"absolute", "rope", "sinusoidal"}:
+            raise ValueError(f"Unsupported position_encoding: {self.position_encoding}")
+        self.rope_theta = float(self.rope_theta)
+        if self.rope_theta <= 0:
+            raise ValueError("rope_theta must be positive.")
+        if self.position_encoding == "rope" and (self.d_model // self.n_heads) % 2:
+            raise ValueError("RoPE requires an even d_model / n_heads head dimension.")
         self.max_seq_len = int(self.max_seq_len)
         if self.max_seq_len <= 0:
             raise ValueError("max_seq_len must be positive.")

@@ -168,6 +168,9 @@ models:
   td_sa_tiny:
     model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, d_ff: 1024, max_seq_len: 256, dropout: 0.1, model_variant: td_sa}
     pra: {pra_layer_ids: []}
+  td_sa_tiny_rope:
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, d_ff: 1024, max_seq_len: 256, dropout: 0.1, model_variant: td_sa, position_encoding: rope, rope_theta: 10000.0}
+    pra: {pra_layer_ids: []}
   td_sa_tiny_match_full_pra:
     model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 4, n_mixed_layers: 0, d_ff: 1152, max_seq_len: 256, dropout: 0.1, model_variant: td_sa}
     pra: {pra_layer_ids: []}
@@ -177,6 +180,9 @@ models:
   td_pra_tiny:
     model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: td_pra}
     pra: {pra_layer_ids: [0, 1, 2, 3], top_k_references: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
+  td_pra_tiny_rope:
+    model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: td_pra, position_encoding: rope, rope_theta: 10000.0}
+    pra: {pra_layer_ids: [0, 1, 2, 3], top_k_references: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
   tdx_pra_tiny:
     model: {d_model: 256, n_heads: 4, n_layers: 4, n_vanilla_layers: 2, n_mixed_layers: 0, max_seq_len: 256, dropout: 0.1, model_variant: tdx_pra}
     pra: {pra_layer_ids: [2, 3], top_k_references: 5, trigger_threshold: -1.0, memory_alpha: 1.0}
@@ -184,8 +190,14 @@ models:
   td_sa_small:
     model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 6, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: td_sa}
     pra: {pra_layer_ids: []}
+  td_sa_small_rope:
+    model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 6, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: td_sa, position_encoding: rope, rope_theta: 10000.0}
+    pra: {pra_layer_ids: []}
   td_pra_small:
     model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: td_pra}
+    pra: {pra_layer_ids: [0, 1, 2, 3, 4, 5]}
+  td_pra_small_rope:
+    model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 0, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: td_pra, position_encoding: rope, rope_theta: 10000.0}
     pra: {pra_layer_ids: [0, 1, 2, 3, 4, 5]}
   tdx_pra_small:
     model: {d_model: 384, n_heads: 6, n_layers: 6, n_vanilla_layers: 4, n_mixed_layers: 0, max_seq_len: 384, dropout: 0.1, model_variant: tdx_pra}

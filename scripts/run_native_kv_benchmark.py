@@ -262,6 +262,8 @@ def train_full_context_sa(
         max_seq_len=int(settings["max_seq_len"]),
         dropout=0.0,
         model_variant="td_sa",
+        position_encoding=str(settings.get("position_encoding", "absolute")),
+        rope_theta=float(settings.get("rope_theta", 10_000.0)),
         device=device,
     )
     model = TinyPRAModel(cfg).to(device)
@@ -280,7 +282,11 @@ def train_full_context_sa(
     full_dataset = FullContextDataset(datamodule.dataset)
     collator = AnswerTokenCollator(tokenizer, max_seq_len=int(settings["max_seq_len"]))
     train_subset = Subset(full_dataset, _subset_indices(datamodule, "train"))
-    val_subset = Subset(full_dataset, _subset_indices(datamodule, "val"))
+    validation_indices = _subset_indices(datamodule, "val")
+    validation_examples = settings.get("validation_examples")
+    if validation_examples is not None:
+        validation_indices = validation_indices[: int(validation_examples)]
+    val_subset = Subset(full_dataset, validation_indices)
     train_loader = _loader(
         train_subset,
         collator,
@@ -665,6 +671,8 @@ def _native_config(
         "n_layers": source.cfg.n_layers,
         "d_ff": source.cfg.d_ff,
         "max_seq_len": source.cfg.max_seq_len,
+        "position_encoding": source.cfg.position_encoding,
+        "rope_theta": source.cfg.rope_theta,
         "dropout": 0.0,
         "model_variant": "td_pra",
         "memory_transport": "native_kv",
@@ -705,7 +713,10 @@ def evaluate_seed(
     sa_tail = _evaluate_model(
         source, tail_loader, device, condition="sa_tail", tokenizer=tokenizer
     )
-    converted = convert_sa_model_to_pra(source, _native_config(source, device)).to(device).eval()
+    converted = convert_sa_model_to_pra(
+        source,
+        _native_config(source, device, settings.get("pra_overrides")),
+    ).to(device).eval()
 
     rows = []
     raw_rows = []

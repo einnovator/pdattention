@@ -28,6 +28,8 @@ class LayerKV:
 
     k: torch.Tensor  # Keys used for routing-gist construction and cross-attention.
     v: torch.Tensor  # Values returned when a query attends to this memory.
+    position_ids: torch.Tensor | None = None  # [M] or [1,M] positions used to publish K.
+    position_state: str = "post_position"  # post_position or experimental pre_position.
 
 
 ChunkKV = LayerKV
