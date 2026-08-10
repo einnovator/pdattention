@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "git_sha": "052ae05730b3bfff24f6bcdf529f55e5500197fc",
+    "branch": "research/paper1-5-rope",
+    "timestamp": "2026-08-10T23:01:03.174492+00:00",
+    "pytorch": "2.12.1+cu126",
+    "cuda_available": true,
+    "cuda_version": "12.6",
+    "device_name": "NVIDIA GeForce GTX 950M"
+  },
+  "rows": [
+    {
+      "finding": "Logical offsets repair positional fragmentation",
+      "synthetic_tiny": "confirmed (5/5 each mechanism)",
+      "synthetic_small": "confirmed (5/5 each mechanism)",
+      "wikitext": "representation confirmed; loss mixed",
+      "hotpotqa": "absolute/sinusoidal improve; RoPE worsens",
+      "qasper": "absolute/sinusoidal improve; RoPE worsens",
+      "status": "confirmed mechanistically; mixed end to end"
+    },
+    {
+      "finding": "Offsets improve deeper representation",
+      "synthetic_tiny": "confirmed",
+      "synthetic_small": "confirmed",
+      "wikitext": "confirmed at 8L",
+      "hotpotqa": "not directly measured",
+      "qasper": "not directly measured",
+      "status": "confirmed where measured"
+    },
+    {
+      "finding": "Offsets improve task loss",
+      "synthetic_tiny": "capacity probe improves",
+      "synthetic_small": "capacity probe improves",
+      "wikitext": "unsupported at 8L",
+      "hotpotqa": "mechanism-dependent",
+      "qasper": "mechanism-dependent",
+      "status": "mixed"
+    },
+    {
+      "finding": "Overlap reduces residual contextualization error",
+      "synthetic_tiny": "task effect mostly improves",
+      "synthetic_small": "task effect improves",
+      "wikitext": "representation improves; loss mostly improves",
+      "hotpotqa": "mixed",
+      "qasper": "mixed; larger RoPE recovery",
+      "status": "partly confirmed"
+    },
+    {
+      "finding": "Selection remains independent after positional repair",
+      "synthetic_tiny": "confirmed",
+      "synthetic_small": "confirmed",
+      "wikitext": "not applicable",
+      "hotpotqa": "confirmed",
+      "qasper": "confirmed",
+      "status": "confirmed"
+    },
+    {
+      "finding": "Useful composition differs from evidence selection",
+      "synthetic_tiny": "suggested",
+      "synthetic_small": "suggested",
+      "wikitext": "not applicable",
+      "hotpotqa": "confirmed by oracle/all/routed differences",
+      "qasper": "confirmed by oracle/all/routed differences",
+      "status": "confirmed in controlled probes"
+    }
+  ]
+}

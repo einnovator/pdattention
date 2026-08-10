@@ -24,9 +24,14 @@ python experiments/paper1_5_rope/eval_logical_offsets.py --device cuda `
   --position-modes absolute sinusoidal rope `
   --output-dir docs/papers/shared/results/paper1_5_rope/validation `
   --result-name positional_mechanism_offset_validation
+python experiments/paper1_5_rope/eval_head_offset_progression.py --device cuda `
+  --position-modes absolute sinusoidal rope `
+  --output-dir docs/papers/shared/results/paper1_5_rope/validation `
+  --result-name capacity_validation
 python experiments/paper1_5_rope/run_wikitext_validation.py --device cuda
 python experiments/paper1_5_rope/run_qa_validation.py --dataset hotpotqa --device cuda
 python experiments/paper1_5_rope/run_qa_validation.py --dataset qasper --device cuda
+python experiments/paper1_5_rope/summarize_night_validation.py
 ```
 
 Use `--smoke --tiers tiny --position-modes sinusoidal --seeds 1` to reproduce one
@@ -45,6 +50,18 @@ two-step path before a full run. Full defaults use five matched seeds and both t
 These expectations are directional hypotheses, not acceptance criteria. Dense access is a
 control rather than an assumed oracle, and the evidence-only condition may be worse than a
 router-selected combination.
+
+Observed outcomes are generated rather than hand-maintained. Read
+`validation/expected_vs_observed.json`, `validation/cross_domain_summary.json`, and
+`validation/night_validation_summary.json`. The final run confirmed exact layer-0 repair and
+five-seed final-layer improvement for every tier/mechanism, but WikiText task loss did not
+follow representation error and RoPE routed-loss effects reversed in the two controlled QA
+probes. These counter-results are part of the reported outcome.
+
+Full defaults train or reuse 30 checkpoints per dataset family. On the recorded NVIDIA GTX
+950M, the post-checkpoint WikiText run took about three minutes, HotpotQA about ten, and QASPER
+about nine. Checkpoints live under `out/paper1_5_rope/validation/`; structured full-run artifacts
+and a recursive manifest live under `docs/papers/shared/results/paper1_5_rope/validation/`.
 
 Use `--smoke` for one two-step seed. Canonical JSON, CSV, and plots are written under
 `docs/papers/shared/results/paper1_5_rope/`; resumable checkpoints remain under `out/`.

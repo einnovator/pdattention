@@ -1,0 +1,53 @@
+{
+  "metadata": {
+    "git_sha": "052ae05730b3bfff24f6bcdf529f55e5500197fc",
+    "branch": "research/paper1-5-rope",
+    "timestamp": "2026-08-10T23:01:03.174492+00:00",
+    "pytorch": "2.12.1+cu126",
+    "cuda_available": true,
+    "cuda_version": "12.6",
+    "device_name": "NVIDIA GeForce GTX 950M"
+  },
+  "rows": [
+    {
+      "family": "Sinusoidal control",
+      "expected": "Logical offsets strongly reduce position-reset error.",
+      "observed": "Layer-0 RMSE became exactly zero and final-layer RMSE fell in 10/10 paired runs.",
+      "matches_expectation": "yes",
+      "interpretation": "Source-relative continuity is not a RoPE-only effect.",
+      "thesis_effect": "strengthens the general positional-continuity claim"
+    },
+    {
+      "family": "Capacity validation",
+      "expected": "The offset-effect direction survives the small-model increase.",
+      "observed": "All small-model mechanisms reached zero layer-0 RMSE and improved final-layer RMSE in 15/15 pairs.",
+      "matches_expectation": "yes",
+      "interpretation": "The representation result is not confined to the tiny mechanism microscope.",
+      "thesis_effect": "strengthens capacity robustness"
+    },
+    {
+      "family": "WikiText",
+      "expected": "Offsets often improve 8L natural-text loss, but contextualization may dominate.",
+      "observed": "Offsets improved final-layer K RMSE in 30/30 pairs, but improved loss in only 5/30 pairs.",
+      "matches_expectation": "partly",
+      "interpretation": "Representation fidelity does not guarantee lower next-token loss.",
+      "thesis_effect": "strengthens factor separation but weakens a direct quality claim"
+    },
+    {
+      "family": "HotpotQA/QASPER",
+      "expected": "Offsets improve fidelity while routing and composition remain limiting.",
+      "observed": "Routed loss improved in 35/60 pairs; learned-absolute and sinusoidal improved on average, whereas RoPE worsened in both datasets and tiers.",
+      "matches_expectation": "partly",
+      "interpretation": "Position repair is necessary mechanistically but routing/composition and training distribution control utility.",
+      "thesis_effect": "qualifies the end-to-end generalization claim"
+    },
+    {
+      "family": "Overlap",
+      "expected": "Overlap can recover context, but need not improve every mechanism or seed.",
+      "observed": "Overlap consistently reduced representation error, while task effects were small or mixed across domains.",
+      "matches_expectation": "yes",
+      "interpretation": "Contextualization and task utility remain distinct from coordinate repair.",
+      "thesis_effect": "supports the multi-factor decomposition"
+    }
+  ]
+}

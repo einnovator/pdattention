@@ -180,15 +180,19 @@ overlap, overflow splitting, routing, and materialization. With a 192-token logi
 all continuous-head model operations remained at or below 24 tokens under a 32-token native
 limit. Public long-context suites and pretrained models remain pending.
 
-Paper 1.5 adds matched learned-absolute/RoPE tiny and small controls, pre/post-position cache
-metadata, five-seed split scaling, positional/contextual fragmentation decomposition, overlap,
-and bounded implicit-head evaluation. Source-relative offsets remove layer-0 reset error for
-both positional families. A four-cell storage matrix verifies exact pre/post-RoPE parity at
-matched effective positions; intentional K-only rebinding changes attention. The unfused
-deferred path is about 3.6x slower in the small GTX 950M microbenchmark and does not reduce K/V
-bytes. Overlap and the constructed evidence oracle are not uniformly beneficial, so routing
-and context composition remain separate targets. Pretrained RoPE/GQA, natural QA, selective
-recomputation, and fused deferred-position kernels remain Phase 4/8 work.
+Paper 1.5 adds matched learned-absolute, sinusoidal, and RoPE tiny/small controls, pre/post-
+position cache metadata, five-seed split scaling, positional/contextual fragmentation
+decomposition, overlap, and bounded implicit-head evaluation. Source-relative offsets remove
+layer-0 reset error exactly and improve final-layer K fidelity in all 30 paired validation runs.
+That representation result survives WikiText-2, but 8L next-token loss improves in only 5/30
+pairs. Controlled HotpotQA/QASPER answer-code probes are also mechanism-dependent: absolute and
+sinusoidal routed means improve, whereas RoPE routed means worsen in both tiers and datasets.
+Position continuity is therefore an auditable transport requirement, not a sufficient quality
+intervention. A four-cell storage matrix verifies exact pre/post-RoPE parity at matched effective
+positions; intentional K-only rebinding changes attention. The unfused deferred path is about
+3.6x slower in the small GTX 950M microbenchmark and does not reduce K/V bytes. Overlap,
+routing, and memory composition remain separate targets. Pretrained RoPE/GQA, unrestricted
+natural QA, selective recomputation, and fused deferred-position kernels remain Phase 4/8 work.
 
 ## Phase 5
 Software engineering:

@@ -24,21 +24,21 @@ Retrieved native-key/value (K/V) memory reuses attention states that were encode
 current forward pass. This raises two questions that ordinary prefix caching can avoid: which
 source position does each cached key represent, and which causal context shaped it? We give
 Progressive Retrieval Attention (PRA) an explicit positional contract while preserving learned
-absolute position embeddings as the default and adding rotary position embedding (RoPE) to
-direct and retrieved-memory attention. In five-seed controlled tiny and small models, a compact
-logical start offset per contiguous chunk removes first-layer position-reset error exactly for
-both positional families. It does not remove deeper contextualization error; 50\% overlap helps
-three of four tier--position combinations but slightly worsens the small absolute mean. A
-four-cell pre/post-RoPE storage matrix establishes exact output parity when effective positions
-match and shows that K-only rebinding intentionally changes attention. Deferred rotation is
-therefore a flexibility mechanism, not an accuracy improvement, and raises the unfused warm
-CUDA path from 0.179 to 0.649 ms in the measured small configuration. A continuously advancing
-implicit-head experiment keeps every model operation at or below 24 tokens while the logical
-source spans 192 tokens. Logical offsets and overlap often lower answer loss, but a constructed
-single-chunk oracle is not uniformly better for tiny models, exposing a separate selection and
-context-composition problem. These results separate positional identity, contextual continuity,
-and retrieval quality. They validate the transport contract, not production long-context
-quality.
+absolute position embeddings as the default and adding sinusoidal absolute and rotary position
+embedding (RoPE) modes. Across five matched seeds, two model capacities, and all three
+mechanisms, a compact logical start offset per contiguous chunk removes layer-0 position-reset
+error exactly and lowers final-layer K error in all 30 paired comparisons. This result survives
+a continuously advancing 192-token prompt whose model operations never exceed 24 tokens.
+Natural-language and retrieved-memory validation qualify the result. On 8L WikiText-2 windows,
+offsets lower final-layer K error in 30/30 pairs but lower next-token loss in only 5/30. On
+controlled HotpotQA- and QASPER-derived answer-code probes, routed loss improves in 35/60 pairs:
+learned-absolute and sinusoidal means improve, whereas RoPE means worsen in both datasets and
+capacities. Thus coordinate fidelity does not by itself guarantee useful prediction. Overlap,
+routing, and memory composition remain independent factors. A four-cell pre/post-RoPE matrix
+also establishes exact parity at matched effective positions; deferred rotation permits
+rebinding but raises the measured unfused warm CUDA path from 0.179 to 0.649 ms. The evidence
+supports source-relative positional continuity as a transport requirement and RoPE as an
+explicit rebinding algebra, not a universal long-context quality advantage.
 \end{abstract}
 
 \section{Introduction}
@@ -67,9 +67,11 @@ the source model;
 \item compact source-relative offsets, explicit position metadata, and pre/post-position state
 labels on cached native K/V;
 \item probes separating position reset, contextual block fragmentation, overlap, pre- versus
-post-RoPE K, retrieved-distance policies, and continuously advancing implicit-head behavior; and
-\item five-seed tiny/small evidence, including negative routing and variance results that
-constrain the claims.
+post-RoPE K, retrieved-distance policies, and continuously advancing implicit-head behavior;
+\item a four-phase validation across controlled synthetic probes, WikiText-2, and
+HotpotQA/QASPER-derived retrieved-memory tasks; and
+\item five-seed tiny/small evidence in all three position modes, including negative task-loss,
+routing, composition, and variance results that constrain the claims.
 \end{itemize}
 
 \section{Progressive Retrieval Attention in Brief}
@@ -294,11 +296,19 @@ absolute mode can do the same only while IDs remain below $L_{\rm position}$.
 
 \section{Experimental Design}
 
+The study proceeds in four phases. Phase I uses tiny controlled models as a mechanism
+microscope for translation, storage state, rebinding, distance policy, and split scaling.
+Phase II asks whether the headline reset-versus-offset effect survives the small tier and the
+sinusoidal control. Phase III tests bounded next-token prediction on contiguous WikiText-2.
+Phase IV tests PRA in controlled reference-conditioned tasks derived from HotpotQA and QASPER.
+This ordering separates discovery from validation and prevents a successful geometric probe
+from being presented as end-to-end retrieval evidence.
+
 \subsection{Models and training}
 
 Controlled tiers are smaller than repository deployment profiles so all paired seeds fit one
-NVIDIA GTX 950M. Both modes retain the learned position table, unused by RoPE, to match
-parameter count exactly.
+NVIDIA GTX 950M. All modes retain the learned position table, unused by sinusoidal and RoPE,
+to match parameter count exactly within a dataset and tier.
 \begin{table}[H]
 \centering
 \caption{Controlled matched model tiers.}
@@ -312,11 +322,13 @@ Small & 4 & 4 & 128 & 256 & 580,608 & 150 \\
 \end{tabular}
 \end{table}
 
-Seeds are $\{1,7,21,42,87\}$. Each absolute/RoPE pair uses the same 2,048 fixed-target
-synthetic training examples, optimizer, batches, vocabulary, 192-token native context, and
-training tokens. Every run reaches 100\% held-out answer-token accuracy. The downstream set
-has 12 invariant source/query/answer examples; only source boundaries change. We evaluate
-2, 5, 16, 32, and 64 splits.
+Seeds are $\{1,7,21,42,87\}$. Each learned-absolute/sinusoidal/RoPE triple uses the same
+examples, optimizer, batches, vocabulary, native training context, and training-token budget
+within its validation family. Position mechanism is the intended difference. The synthetic
+matrix uses 2,048 fixed-target examples and a 192-token native context. Every run reaches
+100\% held-out answer-token accuracy. The original split-scaling set has 12 invariant
+source/query/answer examples; only source boundaries change. We evaluate 2, 5, 16, 32, and 64
+splits.
 
 PRA uses post-position K, local positions per independent reference, a 160-token whole-chunk
 budget, and a four-token reserve in the split experiment. Conditions include dense full
@@ -328,7 +340,7 @@ Recovered context benefit is
 \end{equation}
 reported without clipping.
 
-\subsection{Additional probes}
+\subsection{Phase I---mechanistic discovery}
 
 The pure probe fixes Q/K/V across shifts up to 8,192 and measures logit RMSE, Jensen--Shannon
 divergence, top-token agreement, and output RMSE. The pre/post probe compares stored
@@ -367,9 +379,57 @@ should agree; intentional K-only rebinding should change attention; and the cons
 should be no worse than routed selection. We report failed and partial expectations rather than
 discarding them.
 
+\subsection{Phase II---capacity and sinusoidal validation}
+
+The headline positional experiment crosses three mechanisms, two tiers, and five seeds. It
+compares 32-token independent blocks with reset coordinates, source-relative coordinates, and
+25\% or 50\% left overlap against a dense 128-token comparator. The learned-absolute table has
+192 entries, so this phase includes $L_{\rm logical}>L_{\rm model\_op}$ while remaining within
+$L_{\rm position}$. We report layer-0 and final-layer K RMSE, paired per-seed changes, and token
+processing cost.
+
+The capacity head probe extends the earlier continuous-head experiment to sinusoidal positions.
+It uses $L_{\rm logical}=192$ and $L_{\rm model\_op}=32$, keeps 8 direct tokens, encodes
+16-token blocks, routes 8-token chunks, and materializes at most 24 memory tokens. The staged
+comparison is reset, logical offset, offset plus 50\% overlap, and a constructed first-evidence-
+chunk oracle. Every native operation and every violation count is recorded.
+
+\subsection{Phase III---natural-language validation}
+
+We train from-scratch next-token models on WikiText-2 raw text \cite{merity2016pointer} with a
+shared 2,000-token BPE vocabulary. Training uses 128-token sequences; evaluation uses contiguous
+32-, 64-, 128-, and 256-token windows, denoted 1L, 2L, 4L, and 8L for the 32-token operation
+limit. Each window is evaluated as reset blocks, source-relative blocks, and source-relative
+blocks with 16-token left overlap. The dense window is a representation comparator. Metrics are
+loss, perplexity, token accuracy, layer-0 and final-layer K RMSE, logical/native ratio, largest
+native operation, and overlap cost. Formula-defined sinusoidal and RoPE positions can represent
+all tested IDs; learned-absolute IDs remain within its 256-entry table.
+
+\subsection{Phase IV---retrieved-memory validation}
+
+HotpotQA \cite{yang2018hotpotqa} and QASPER \cite{dasigi2021qasper} supply natural source text
+and annotated evidence, but the evaluation is deliberately a controlled transport probe rather
+than unrestricted QA. For balanced yes/no examples, the source contains an explicit
+\texttt{AnswerCode yes|no} anchor, dataset evidence, and sampled in-document distractors. The
+visible tail asks for the answer code. The five-part condition places the source into grouped,
+one-reference encoding blocks and compares reset, source-relative, and source-relative plus
+25\% overlap. Each tier/mechanism/seed is tested with routed, evidence-only, all-memory,
+shuffled, disabled-memory, full-context, and tail-only conditions.
+
+Recovered context benefit (RCB) normalizes the loss reduction from tail-only toward full
+context. Answer-code accuracy measures exact prediction in the two-token answer space. Routing
+recall asks whether a selected set contains the annotated target; mean reciprocal rank (MRR)
+records its rank, and target coverage reports whether the top-two selection covers it. We also
+record selected chunks, physical K/V tokens, logical/native ratio, maximum native operation,
+and overlap duplication. Dense/full access is a control, not an assumed oracle: distractor
+competition and the training distribution can make an evidence-only or all-memory set worse
+than a router-selected combination.
+
 \section{Results}
 
-\subsection{Pure translation and storage}
+\subsection{Phase I---mechanistic discovery}
+
+\subsubsection{Pure translation and storage}
 
 Across head dimensions 8--64, common translation preserves the top-attended token exactly.
 Maximum logit RMSE is $5.79\times10^{-5}$, maximum JS divergence is $3.00\times10^{-7}$,
@@ -404,7 +464,7 @@ scores, while translating Q and K together remains near invariant (maximum RMSE
 $4.91\times10^{-4}$ at 8,192). Storage state therefore controls when positions can be bound,
 not whether the same binding is accurate.
 
-\subsection{Deferred rotation and distance precision}
+\subsubsection{Deferred rotation and distance precision}
 
 Exact logical assignment reproduces post-position K, scores, and outputs. The approximate
 policies are not numerically neutral. At 32L in the small tensor tier, their mean output RMSE
@@ -446,7 +506,7 @@ elements are retained. Position reconstruction is small; the unfused RoPE transf
 prototype overhead. The nearly flat token-count timing reflects kernel-launch dominance on a
 GTX 950M, so this experiment supports no production throughput claim.
 
-\subsection{Split scaling}
+\subsubsection{Split scaling}
 
 Figure~\ref{fig:fragmentation} reports the trained experiment. Split 2 often creates a chunk
 too large for the 160-token whole-chunk budget, so native-all becomes tail-only. This is a
@@ -485,54 +545,59 @@ in all five seeds. Small oracle losses are both low, 0.126/0.046, with RCB 0.967
 Routed losses remain much larger (tiny 1.994/1.301; small 4.434/4.721). Strong oracle outcomes
 beside weak routed outcomes locate much of the remaining failure in selection, not transport.
 
-\subsection{Source-relative continuity and overlap}
+\subsection{Phase II---capacity and sinusoidal validation}
+
+\subsubsection{Source-relative continuity and overlap}
 
 Source-relative offsets make layer-0 K exactly match the dense 128-token comparator in every
-tier, positional family, and seed. Reset layer-0 K RMSE ranges from 0.559 to 0.667 by
-tier--position mean. The exact repair under both learned absolute embeddings and RoPE shows
-that source coordinate identity, rather than RoPE specifically, is the necessary first step.
+tier, mechanism, and seed: 30/30 paired runs reach zero RMSE. Reset layer-0 means range from
+0.3345 to 0.6673 (Table~\ref{tab:three-way-offset}). Sinusoidal positions show the same exact
+repair as learned absolute positions and RoPE, falsifying the narrower explanation that the
+effect is a special consequence of rotary algebra.
 
-Deeper layers retain contextualization fragmentation (Table~\ref{tab:offset-decomposition}).
-Offsets lower final-layer RMSE in all five seeds for all four model conditions. Fifty-percent
-overlap then lowers every tiny seed, lowers four of five small RoPE seeds, but lowers only two
-of five small absolute seeds and slightly worsens that mean. It processes 1.375 times as many
-tokens. Overlap is therefore a tunable historical-context approximation, not a guaranteed or
-monotonic repair.
+Deeper layers retain contextualization fragmentation. Offsets lower final-layer RMSE in all
+30 pairs, but the residual is larger in the small tier for every mechanism. The intervention
+therefore survives the sixfold parameter increase without becoming a complete dense-state
+reconstruction. Twenty-five-percent overlap lowers the final-layer mean in all six conditions.
+Fifty-percent overlap lowers all three tiny means and the small sinusoidal/RoPE means, but
+slightly raises small learned-absolute RMSE from 0.3066 to 0.3103. Overlap is a historical-
+context approximation with additional encoding cost, not a monotonic coordinate repair.
 
 \begin{table}[H]
 \centering
-\caption{Final-layer K RMSE from dense encoding. Cells are mean / median / standard deviation
-over five seeds. Lower is better.}
-\label{tab:offset-decomposition}
-\begin{tabular}{lllll}
+\caption{Three-way reset-versus-offset validation. Values are means over five seeds; every
+final-layer paired difference favors source-relative offsets.}
+\label{tab:three-way-offset}
+\begin{tabular}{llrrrrr}
 \toprule
-Tier & Position & Reset & Offset & Offset + 50\% \\
+Tier & Position & Reset L0 & Offset L0 & Reset final & Offset final & Seeds improved \\
 \midrule
-Tiny & Absolute & .6769/.6860/.0339 & .1129/.1064/.0214 & .0670/.0625/.0150 \\
-Tiny & RoPE & .6745/.6649/.0393 & .1373/.1397/.0362 & .0690/.0615/.0213 \\
-Small & Absolute & .7193/.6694/.0953 & .3066/.2870/.0930 & .3103/.2959/.1634 \\
-Small & RoPE & .7498/.7234/.0899 & .4235/.4198/.1512 & .2990/.2378/.1212 \\
+Tiny & Learned absolute & .6673 & .0000 & .6769 & .1129 & 5/5 \\
+Tiny & Sinusoidal & .3640 & .0000 & .4722 & .1436 & 5/5 \\
+Tiny & RoPE & .6463 & .0000 & .6745 & .1373 & 5/5 \\
+Small & Learned absolute & .6626 & .0000 & .7193 & .3066 & 5/5 \\
+Small & Sinusoidal & .3345 & .0000 & .5507 & .2746 & 5/5 \\
+Small & RoPE & .5586 & .0000 & .7498 & .4235 & 5/5 \\
 \bottomrule
 \end{tabular}
 \end{table}
-The 25\% overlap means, shown in Figure~\ref{fig:offset-progression}, are 0.0849, 0.0966,
-0.2918, and 0.2806 in table order.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.92\linewidth]{../shared/results/paper1_5_rope/logical_offset_progression.png}
-\caption{Position-reset decomposition across all paired seeds. Offsets remove layer-0 error;
-the plotted final-layer progression shows the remaining context dependence and the nonuniform
-effect of overlap.}
-\label{fig:offset-progression}
+\includegraphics[width=0.94\linewidth]{../shared/results/paper1_5_rope/validation/paired_offset_representation.png}
+\caption{Final-layer reset-to-offset changes for every seed. Direction agreement is complete
+across two capacities and three positional mechanisms; residual error reflects missing block
+context rather than coordinate reset.}
+\label{fig:paired-offset-validation}
 \end{figure}
 
-\subsection{Continuous implicit-head progression}
+\subsubsection{Continuous implicit-head progression}
 
-The new head probe advances one logical coordinate system through rollover. Every model call
-contains at most 24 tokens, below $L_{\rm model\_op}=32$, while source positions span
-$L_{\rm logical}=192$; native-limit violations are zero. Table~\ref{tab:head-progression}
-shows that representation repair does not imply uniform end-task behavior.
+The capacity head probe advances one logical coordinate system through rollover. Every model
+call contains at most 24 tokens, below $L_{\rm model\_op}=32$, while source positions span
+$L_{\rm logical}=192$; native-limit violations are zero. Learned-absolute IDs remain within
+$L_{\rm position}=192$. Table~\ref{tab:head-progression} shows that representation repair does
+not imply uniform end-task behavior.
 
 \begin{table}[H]
 \centering
@@ -544,53 +609,34 @@ seeds.}
 Tier & Position & Reset routed & Offset routed & Offset + overlap & Constructed oracle \\
 \midrule
 Tiny & Absolute & 2.3837/2.0986 & .7304/.4736 & .6474/.2631 & .1384/.1136 \\
+Tiny & Sinusoidal & 2.9691/2.5416 & .9388/.0206 & .8021/.0207 & .0157/.0159 \\
 Tiny & RoPE & 2.5910/1.5186 & 1.5547/.9828 & .8763/.1163 & 1.0124/.6812 \\
 Small & Absolute & 3.8306/2.2442 & .6681/.0587 & .0030/.0027 & .0022/.0020 \\
+Small & Sinusoidal & 5.0421/6.1229 & 3.3860/4.0264 & .9110/.4171 & .0011/.0011 \\
 Small & RoPE & 6.7887/9.2938 & 6.2249/8.5253 & 3.0396/1.7279 & .0012/.0011 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Offsets lower seed-mean loss in 5/5 tiny absolute, small absolute, and small RoPE seeds, but
-only 3/5 tiny RoPE seeds. Overlap lowers all tiny RoPE and small RoPE seeds, 4/5 small absolute
-seeds, and 2/5 tiny absolute seeds. Evidence-chunk recall rises from reset to offset/overlap for
-all four conditions, but remains only 0.312 for small RoPE before the oracle. The oracle sets
-recall to one and nearly eliminates small-model loss. It is not universally superior: tiny
-RoPE mean loss worsens from 0.8763 to 1.0124 and only two seeds improve. A single selected
-evidence chunk can remove useful surrounding context, so this is a failed preregistered
-expectation rather than evidence against the position contract.
-Across reset, offset, overlap, and oracle, the corresponding loss standard deviations are
-1.9282/.7839/.8139/.0979 for tiny absolute, 2.3486/1.1528/1.1969/1.1443 for tiny RoPE,
-3.7387/1.1183/.0012/.0009 for small absolute, and 3.7760/3.7089/2.6464/.0002 for small RoPE.
+Offsets lower seed-mean loss in 5/5 tiny absolute, 4/5 tiny sinusoidal, 3/5 tiny RoPE, and all
+15 small-model pairs. Overlap lowers 2/5, 3/5, and 5/5 tiny seeds and 4/5, 4/5, and 5/5 small
+seeds in absolute/sinusoidal/RoPE order. Evidence-chunk recall generally rises after offsets,
+but remains mechanism- and seed-dependent before the oracle. The constructed oracle sets
+recall to one and nearly eliminates all small-model loss. It is not universally superior:
+tiny-RoPE mean loss worsens from 0.8763 to 1.0124. A single selected evidence chunk can omit
+useful surrounding context, so this failed preregistered expectation identifies composition as
+a separate factor rather than refuting the position contract. The large mean/median gaps in
+Table~\ref{tab:head-progression} also make clear why paired traces matter at five seeds.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.92\linewidth]{../shared/results/paper1_5_rope/head_offset_progression.png}
+\includegraphics[width=0.92\linewidth]{../shared/results/paper1_5_rope/validation/capacity_validation.png}
 \caption{Continuous-head loss and evidence-chunk recall. Paired seed traces expose variation
 hidden by means; the separately recorded operation bound is independent of logical span.}
 \label{fig:head-offset-progression}
 \end{figure}
 
-\begin{table}[H]
-\centering
-\caption{Recorded expectation versus observation. ``Partial'' means the mean or most seeds
-move as expected, but not all paired seeds.}
-\label{tab:expectations}
-\begin{tabularx}{\linewidth}{Xlll}
-\toprule
-Expectation & Tiny absolute/RoPE & Small absolute/RoPE & Outcome \\
-\midrule
-Offsets reduce representation error & Yes / Yes & Yes / Yes & Supported \\
-50\% overlap further reduces representation error & Yes / Yes & No / Partial & Mixed \\
-Matched pre/post RoPE storage agrees & \multicolumn{2}{l}{Exact for every tier/layer/seed} & Supported \\
-K-only rebinding changes attention & \multicolumn{2}{l}{Mean output RMSE .0931} & Supported \\
-Offsets lower continuous-head loss & Yes / Partial & Yes / Yes & Mostly supported \\
-Constructed oracle is no worse than routing & Partial / No & Partial / Partial & Mixed \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Earlier distance-scaled implicit-head probe}
+\subsubsection{Earlier distance-scaled implicit-head probe}
 
 All 1L--8L runs obey the 192-token native-operation limit; violations are zero. The largest
 call is 160 tokens at 1L and 192 thereafter. Table~\ref{tab:head} gives mean and median over
@@ -625,20 +671,202 @@ Table~\ref{tab:head} because seed outliers are large.}
 \label{fig:head}
 \end{figure}
 
+\subsection{Phase III---natural-language validation}
+
+At 8L, source-relative offsets reduce final-layer K RMSE in all 30 WikiText pairs, including
+all ten sinusoidal pairs. They do not produce a corresponding loss improvement
+(Table~\ref{tab:wikitext-validation}). Learned-absolute loss rises by 0.0200 in the tiny tier
+and 0.0292 in the small tier; sinusoidal loss rises by 0.0040 and 0.0707. RoPE loss is unchanged
+to the shown precision. Only 5/30 paired loss differences favor offsets, even though all 30
+representation differences do. The preregistered expectation that offsets would often improve
+natural-text loss is therefore not supported at 8L.
+
+Overlap offers a more specific result. It lowers final-layer K error further in every
+tier--mechanism condition and lowers loss in 29/30 paired runs relative to offset-only encoding.
+At 8L it processes 1.9375 times the unique source tokens. The loss reductions are modest,
+from 0.0007 to 0.0173 in the tiny tier and 0.0102 to 0.0148 in the small tier. Coordinate repair
+and contextualization repair are measurable, but neither should be equated with a large
+next-token quality change in these short-trained models.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{WikiText-2 at 8L. Deltas are intervention minus baseline, so negative is better.
+Each row contains five paired seeds.}
+\label{tab:wikitext-validation}
+\begin{tabular}{llrrrrr}
+\toprule
+Tier & Position & $\Delta$ final-K RMSE & $\Delta$ offset loss & Seeds better & $\Delta$ overlap loss & Seeds better \\
+\midrule
+Tiny & Learned absolute & -.4281 & +.0200 & 0/5 & -.0173 & 5/5 \\
+Tiny & Sinusoidal & -.1897 & +.0040 & 1/5 & -.0007 & 4/5 \\
+Tiny & RoPE & -.6292 & -.0000 & 2/5 & -.0048 & 5/5 \\
+Small & Learned absolute & -.4044 & +.0292 & 0/5 & -.0140 & 5/5 \\
+Small & Sinusoidal & -.1810 & +.0707 & 0/5 & -.0102 & 5/5 \\
+Small & RoPE & -.6314 & -.0000 & 2/5 & -.0148 & 5/5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper1_5_rope/validation/wikitext_loss_scaling.png}
+\caption{Bounded WikiText-2 next-token loss from 1L to 8L. Source offsets sharply improve
+representation fidelity but are neutral or adverse for loss; overlap gives small, more
+consistent improvements at the cost of duplicated encoding.}
+\label{fig:wikitext-validation}
+\end{figure}
+
+\subsection{Phase IV---retrieved-memory validation}
+
+The controlled HotpotQA- and QASPER-derived probes produce a mechanism-dependent result
+(Table~\ref{tab:qa-offset-effects}). Learned-absolute and sinusoidal routed loss improve on
+average in both tiers and datasets. RoPE routed loss instead worsens in all four
+dataset--tier cells. Across the full matrix, 35/60 paired seed effects favor offsets. This does
+not contradict the mechanistic K result: routing scores, relative source--query distances,
+distractor composition, and short-context training can change task utility even when the
+stored key has a more faithful source coordinate.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Split-5 routed answer-token loss. ``Better'' counts paired seeds for offset versus
+reset; lower loss is better.}
+\label{tab:qa-offset-effects}
+\begin{tabular}{lllrrrr}
+\toprule
+Dataset & Tier & Position & Reset & Offset & Offset + overlap & Better \\
+\midrule
+HotpotQA & Tiny & Learned absolute & .559 & .482 & .482 & 4/5 \\
+HotpotQA & Tiny & Sinusoidal & .359 & .304 & .358 & 3/5 \\
+HotpotQA & Tiny & RoPE & .948 & 1.056 & 1.080 & 2/5 \\
+HotpotQA & Small & Learned absolute & .245 & .043 & .068 & 3/5 \\
+HotpotQA & Small & Sinusoidal & .061 & .017 & .012 & 4/5 \\
+HotpotQA & Small & RoPE & .129 & .170 & .196 & 1/5 \\
+QASPER & Tiny & Learned absolute & .629 & .309 & .301 & 4/5 \\
+QASPER & Tiny & Sinusoidal & .375 & .244 & .244 & 4/5 \\
+QASPER & Tiny & RoPE & .683 & .869 & .871 & 0/5 \\
+QASPER & Small & Learned absolute & .460 & .299 & .298 & 4/5 \\
+QASPER & Small & Sinusoidal & .403 & .003 & .007 & 5/5 \\
+QASPER & Small & RoPE & .169 & .324 & .184 & 1/5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Under offset plus overlap, answer-code accuracy ranges from 0.517 to 1.000 and target-chunk
+recall from 0.700 to 1.000 (Table~\ref{tab:qa-routing}). Median RCB is used because the mean is
+unstable when tail and full losses nearly coincide. MRR remains below recall, as expected when
+the correct chunk is selected but not ranked first. The physical materialization is about
+50--54 token K/V states despite selecting roughly 2.8--3.6 routing chunks. The largest native
+operation in any HotpotQA/QASPER row is 53/52 tokens, respectively, below the configured
+256-token limit; violations are zero.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Split-5 routed metrics after offset plus overlap. RCB is the median; other values are
+means over examples and five seeds. KV is the number of materialized physical token states.}
+\label{tab:qa-routing}
+\begin{tabular}{lllrrrrrr}
+\toprule
+Dataset & Tier & Position & Loss & Accuracy & RCB & Recall & MRR & KV \\
+\midrule
+HotpotQA & Tiny & Abs. & .482 & .917 & .975 & .900 & .696 & 51.6 \\
+HotpotQA & Tiny & Sin. & .358 & .850 & .924 & .850 & .588 & 51.5 \\
+HotpotQA & Tiny & RoPE & 1.080 & .517 & .350 & .700 & .494 & 51.7 \\
+HotpotQA & Small & Abs. & .068 & .967 & 1.000 & 1.000 & .752 & 51.0 \\
+HotpotQA & Small & Sin. & .012 & 1.000 & .998 & 1.000 & .850 & 50.1 \\
+HotpotQA & Small & RoPE & .196 & .917 & .996 & .950 & .642 & 51.4 \\
+QASPER & Tiny & Abs. & .301 & .900 & .993 & .983 & .693 & 53.3 \\
+QASPER & Tiny & Sin. & .244 & .933 & .974 & 1.000 & .776 & 53.1 \\
+QASPER & Tiny & RoPE & .871 & .617 & .295 & .750 & .501 & 54.4 \\
+QASPER & Small & Abs. & .298 & .917 & .999 & 1.000 & .722 & 53.1 \\
+QASPER & Small & Sin. & .007 & 1.000 & .999 & 1.000 & .870 & 52.9 \\
+QASPER & Small & RoPE & .184 & .933 & .978 & .983 & .609 & 53.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper1_5_rope/validation/qa_cross_domain_validation.png}
+\caption{Routed loss under reset, source-relative offsets, and offsets plus overlap. Faint
+lines are individual seed means. Absolute and sinusoidal offsets improve on average; the RoPE
+direction reverses, and overlap is not monotonic.}
+\label{fig:qa-validation}
+\end{figure}
+
+Selection and composition remain visible after coordinate repair. The evidence-only condition
+is position-insensitive here because the explicit answer-code anchor occupies the first source
+chunk. All-memory loss improves under offsets for learned absolute and sinusoidal models but
+worsens for RoPE on average. At the example level, the nominal evidence oracle is worse than
+the router-selected set in 3.3\%--78.3\% of cells, depending on dataset, tier, and mechanism;
+conversely, mean routed loss usually exceeds evidence-only loss. Evidence identity therefore
+does not define a universally optimal memory composition. The inexpensive composition probe
+compares evidence-only, all-memory, routed, and shuffled sets; evidence plus exactly one
+irrelevant chunk and exhaustive best-subset search remain untested.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\linewidth]{../shared/results/paper1_5_rope/validation/representation_vs_task_loss.png}
+\caption{Mechanistic final-layer K improvement versus task-loss change. Every point lies left
+of zero because offsets reduce representation error, but task effects cross zero. Marker shape
+identifies domain, color position mechanism, and size model tier.}
+\label{fig:representation-task}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Cross-domain status of the factorized claims. ``Mixed'' is retained when task effects
+change direction by mechanism or seed.}
+\label{tab:cross-domain}
+\begin{tabularx}{\linewidth}{>{\hsize=1.4\hsize}X*{4}{>{\hsize=.9\hsize}X}}
+\toprule
+Finding & Synthetic & WikiText-2 & HotpotQA & QASPER \\
+\midrule
+Offsets repair positional fragmentation & Confirmed & Representation confirmed & Abs./sin. yes; RoPE no & Abs./sin. yes; RoPE no \\
+Offsets improve deeper representation & Confirmed & Confirmed & Not directly measured & Not directly measured \\
+Offsets improve task loss & Head probe yes & Unsupported at 8L & Mixed & Mixed \\
+Overlap reduces residual context error & Mostly & K error yes; loss small & Mixed & Mixed \\
+Selection remains independent & Confirmed & N/A & Confirmed & Confirmed \\
+Composition differs from evidence identity & Suggested & N/A & Confirmed & Confirmed \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The preregistered sinusoidal and capacity expectations are supported. The WikiText expectation
+is only partly supported because representation improves without loss, and the retrieved-memory
+expectation is only partly supported because RoPE task effects reverse. The overlap expectation
+is supported in its deliberately qualified form: it reduces representation error but is not a
+monotonic task intervention. These observations strengthen the factorization of position,
+context, selection, and composition while weakening any claim that positional repair alone
+delivers end-to-end quality.
+
 \section{Discussion}
 
 \paragraph{What the position contract solves.} Source-relative offsets, not RoPE alone, restore
 first-layer coordinate identity. Learned absolute positions do so within their table capacity;
-RoPE decouples formula-defined coordinates from that table and provides common-translation
-semantics. The continuous-head experiment confirms that a logical span can advance while every
-native operation remains bounded.
+sinusoidal positions show that formula-defined absolute coordinates provide the same mechanical
+repair; RoPE additionally provides common-translation and explicit Q/K rebinding semantics.
+The paired direction survives the small tier. The continuous-head experiment confirms that a
+logical span can advance while every native operation remains bounded.
 
 \paragraph{What the contract does not solve.} It does not restore left context lost by
 independent encoding, choose the relevant chunk, prevent harmful attention to irrelevant K/V,
-or guarantee extrapolation from short training contexts. The small-absolute overlap reversal,
-tiny-RoPE oracle reversal, small native-all reversal, and weak routed conditions are useful
-counterexamples: position correctness is necessary for continuity but insufficient for useful
-retrieval.
+or guarantee extrapolation from short training contexts. WikiText offsets improve K fidelity
+without improving loss, and RoPE offsets worsen mean routed loss in both retrieved-memory
+datasets and tiers. The small-absolute overlap reversal, tiny-RoPE oracle reversal, and weak
+routed conditions are further counterexamples. Position correctness is necessary for an
+auditable continuity contract but insufficient for useful retrieval.
+
+\paragraph{What is general and what is RoPE-specific.} The evidence supports a narrower thesis
+than an across-domain quality claim. Preserving source-relative coordinates is a general
+requirement for faithful chunked native-KV representation across learned-absolute, sinusoidal,
+and RoPE models. RoPE's distinctive contribution is not the offset itself; it is an explicit
+relative Q/K algebra that permits retrieval-time rebinding when raw K is retained. Once reset
+error is removed, residual task behavior can be attributed more cleanly---though not uniquely---
+to missing causal context, learned distance distribution, selection, and composition.
 
 \paragraph{Post- versus pre-position K.} Post-position K is immediately compatible with
 attention but binds the cache to source positions. Pre-position K is portable and compact
@@ -656,29 +884,34 @@ can be reconstructed for traces.
 
 \section{Limitations and Threats to Validity}
 
-These are educational controlled models, not pretrained LLMs. The character tokenizer,
-binary task, 12 split examples, four head examples, and GTX 950M limit external validity.
+These are small from-scratch controlled models, not pretrained LLMs. The synthetic character
+tokenizer, binary answer-code task, 12 reference examples, four head examples, limited WikiText
+training, and GTX 950M limit external validity.
 Five seeds permit paired direction checks but weak exact significance; an all-same-direction
 effect still has two-sided $p=0.0625$. Mean loss is sensitive to rare catastrophes. The older
 split benchmark uses independent references with effective local positions and should not be
 read as the continuous-head source-offset result. The constructed oracle assumes the first
 evidence chunk and can omit useful context; it is a diagnostic intervention, not known optimal
 selection. Pre-position storage is not the canonical runtime path. We do not report production
-throughput, large-model memory savings, natural-language QA, or
-unrestricted streaming quality. Streaming tests establish bounded rollover mechanics for
-absolute and RoPE modes, not useful generation beyond the native horizon. The distance-policy
-probe uses random content and must not be read as a language-model accuracy comparison.
+throughput, large-model memory savings, unrestricted natural-language QA, or streaming quality.
+The HotpotQA/QASPER sources are natural, but explicit answer-code supervision simplifies the
+target and changes the original task. The compact composition probe does not test every small
+subset. Streaming tests establish bounded rollover mechanics for all three modes, not useful
+generation beyond the native horizon. Formula-defined positions beyond the training range are
+mechanically valid but their quality is empirical. The distance-policy probe uses random
+content and must not be read as a language-model accuracy comparison.
 
 \section{Reproducibility}
 
 The pre-change baseline is tagged \texttt{paper1-pre-rope-baseline}; development occurs on
-\texttt{research/paper1-5-rope}. The source-offset decomposition, storage matrix,
-continuous-head progression, and component timings use code revision \texttt{d36f67752701};
-the structured artifacts record the full SHA. Earlier model training and split-quality
-measurements use \texttt{2b50f34cbf9f}. Raw JSON/CSV, plots, environment metadata, expectations,
-training histories,
-and manifests live under \texttt{docs/papers/shared/results/paper1\_5\_rope/}. Checkpoints are
-under \texttt{out/paper1\_5\_rope/}. Tests cover translation, norm preservation, large logical
+\texttt{research/paper1-5-rope}. Earlier model training and split-quality measurements use
+\texttt{2b50f34cbf9f}; the original decomposition and storage matrix use
+\texttt{d36f67752701}. The final validation evaluators use \texttt{64f7cdf89b55}, and the
+generated cross-domain summaries use \texttt{052ae05}. Each JSON/CSV records its full source
+SHA, CUDA/PyTorch environment, seeds, and protocol metadata. Raw JSON/CSV, plots, expectations,
+training histories, and the validation manifest live under
+\texttt{docs/papers/shared/results/paper1\_5\_rope/}; resumable checkpoints are under
+\texttt{out/paper1\_5\_rope/}. Tests cover translation, norm preservation, large logical
 offsets through overlap and splitting, independent absolute operation/position bounds, cache
 metadata, exact no-memory SA-to-PRA conversion, policy order, causality, deferred rotation,
 streaming rollover, and CPU/GPU parity. Existing Paper 1 tests remain the absolute-mode
@@ -687,13 +920,15 @@ guardrail.
 \section{Conclusion}
 
 Retrieved native-KV memory needs an explicit positional contract. A compact source offset
-removes first-layer reset error for learned absolute positions and RoPE alike. RoPE additionally
-supports deferred binding and clean common translation, but the unfused raw-K path is slower
-and K-only displacement deliberately changes attention. Deeper representations still depend on
-causal encoding context, and end-task quality still depends on selection and the composition of
-retrieved chunks. The next test is therefore not merely a longer coordinate range: it is
-pretrained-model evaluation that measures position identity, contextual recomputation, routing
-recall, and answer quality separately.
+removes first-layer reset error for learned absolute, sinusoidal, and RoPE models, and the
+final-layer direction survives a small-model capacity increase. RoPE additionally supports
+deferred binding and common translation, but the unfused raw-K path is slower and K-only
+displacement deliberately changes attention. WikiText and retrieved-memory results show why
+the claim must stop there: representation fidelity can improve while task loss is unchanged or
+worse. Deeper states still depend on causal encoding context, and useful prediction still
+depends on training distances, selection, and memory composition. This completes the paper's
+planned controlled scope. Pretrained RoPE/GQA evaluation is the smallest next external-validity
+test, not another expansion of the present benchmark matrix.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
