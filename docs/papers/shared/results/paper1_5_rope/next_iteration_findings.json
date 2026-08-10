@@ -1,0 +1,259 @@
+{
+  "source_result_shas": {
+    "logical_offset_decomposition.json": "d36f6775270125cd198543b77dc114e6018ee67a",
+    "head_offset_progression.json": "d36f6775270125cd198543b77dc114e6018ee67a",
+    "rope_distance_policy.json": "d36f6775270125cd198543b77dc114e6018ee67a"
+  },
+  "findings": [
+    {
+      "experiment": "source_position_repair",
+      "model_tier": "tiny",
+      "position_mode": "absolute",
+      "expected": "logical offsets reduce positional fragmentation",
+      "observed": "final-layer RMSE 0.6769 -> 0.1129; lower in 5/5 seeds; layer-0 offset RMSE is exactly zero",
+      "matches_expectation": "yes",
+      "interpretation": "Source-relative continuity repairs position reset independently of positional family.",
+      "follow_up": "Validate on pretrained models with representable source coordinates."
+    },
+    {
+      "experiment": "context_overlap_after_offset",
+      "model_tier": "tiny",
+      "position_mode": "absolute",
+      "expected": "overlap reduces deeper contextualization error",
+      "observed": "final-layer RMSE 0.1129 -> 0.0670; lower in 5/5 seeds; encoding cost 1.000x -> 1.375x",
+      "matches_expectation": "yes",
+      "interpretation": "Overlap is a cost-quality control, not a monotonic repair at every scale.",
+      "follow_up": "Test historical windows and boundary-aware encoding on larger models."
+    },
+    {
+      "experiment": "source_position_repair",
+      "model_tier": "tiny",
+      "position_mode": "rope",
+      "expected": "logical offsets reduce positional fragmentation",
+      "observed": "final-layer RMSE 0.6745 -> 0.1373; lower in 5/5 seeds; layer-0 offset RMSE is exactly zero",
+      "matches_expectation": "yes",
+      "interpretation": "Source-relative continuity repairs position reset independently of positional family.",
+      "follow_up": "Validate on pretrained models with representable source coordinates."
+    },
+    {
+      "experiment": "context_overlap_after_offset",
+      "model_tier": "tiny",
+      "position_mode": "rope",
+      "expected": "overlap reduces deeper contextualization error",
+      "observed": "final-layer RMSE 0.1373 -> 0.0690; lower in 5/5 seeds; encoding cost 1.000x -> 1.375x",
+      "matches_expectation": "yes",
+      "interpretation": "Overlap is a cost-quality control, not a monotonic repair at every scale.",
+      "follow_up": "Test historical windows and boundary-aware encoding on larger models."
+    },
+    {
+      "experiment": "source_position_repair",
+      "model_tier": "small",
+      "position_mode": "absolute",
+      "expected": "logical offsets reduce positional fragmentation",
+      "observed": "final-layer RMSE 0.7193 -> 0.3066; lower in 5/5 seeds; layer-0 offset RMSE is exactly zero",
+      "matches_expectation": "yes",
+      "interpretation": "Source-relative continuity repairs position reset independently of positional family.",
+      "follow_up": "Validate on pretrained models with representable source coordinates."
+    },
+    {
+      "experiment": "context_overlap_after_offset",
+      "model_tier": "small",
+      "position_mode": "absolute",
+      "expected": "overlap reduces deeper contextualization error",
+      "observed": "final-layer RMSE 0.3066 -> 0.3103; lower in 2/5 seeds; encoding cost 1.000x -> 1.375x",
+      "matches_expectation": "no",
+      "interpretation": "Overlap is a cost-quality control, not a monotonic repair at every scale.",
+      "follow_up": "Test historical windows and boundary-aware encoding on larger models."
+    },
+    {
+      "experiment": "source_position_repair",
+      "model_tier": "small",
+      "position_mode": "rope",
+      "expected": "logical offsets reduce positional fragmentation",
+      "observed": "final-layer RMSE 0.7498 -> 0.4235; lower in 5/5 seeds; layer-0 offset RMSE is exactly zero",
+      "matches_expectation": "yes",
+      "interpretation": "Source-relative continuity repairs position reset independently of positional family.",
+      "follow_up": "Validate on pretrained models with representable source coordinates."
+    },
+    {
+      "experiment": "context_overlap_after_offset",
+      "model_tier": "small",
+      "position_mode": "rope",
+      "expected": "overlap reduces deeper contextualization error",
+      "observed": "final-layer RMSE 0.4235 -> 0.2990; lower in 4/5 seeds; encoding cost 1.000x -> 1.375x",
+      "matches_expectation": "partly",
+      "interpretation": "Overlap is a cost-quality control, not a monotonic repair at every scale.",
+      "follow_up": "Test historical windows and boundary-aware encoding on larger models."
+    },
+    {
+      "experiment": "pre_post_reset_parity",
+      "model_tier": "all",
+      "position_mode": "rope",
+      "expected": "pre- and post-RoPE K match at identical effective positions",
+      "observed": "maximum paired output-metric discrepancy 0.000e+00",
+      "matches_expectation": "yes",
+      "interpretation": "Deferred binding has no semantic advantage when effective positions are unchanged.",
+      "follow_up": "Use pre-positional K only when retrieval-time rebinding is required."
+    },
+    {
+      "experiment": "pre_post_offset_parity",
+      "model_tier": "all",
+      "position_mode": "rope",
+      "expected": "pre- and post-RoPE K match at identical effective positions",
+      "observed": "maximum paired output-metric discrepancy 0.000e+00",
+      "matches_expectation": "yes",
+      "interpretation": "Deferred binding has no semantic advantage when effective positions are unchanged.",
+      "follow_up": "Use pre-positional K only when retrieval-time rebinding is required."
+    },
+    {
+      "experiment": "intentional_rope_rebinding",
+      "model_tier": "all",
+      "position_mode": "rope",
+      "expected": "K-only rebinding changes attention",
+      "observed": "mean output RMSE 0.0931; mean top-token agreement 0.050",
+      "matches_expectation": "yes",
+      "interpretation": "Pre-positional K permits a new relative displacement; it does not make relocation invariant.",
+      "follow_up": "Evaluate task-trained rebinding policies for independent URI memory."
+    },
+    {
+      "experiment": "deferred_rotation_runtime",
+      "model_tier": "small",
+      "position_mode": "rope",
+      "expected": "deferred rotation is slower in the unfused prototype",
+      "observed": "warm path 0.1791 -> 0.6487 ms; position reconstruction 0.0145 ms; RoPE transform 0.3838 ms",
+      "matches_expectation": "yes",
+      "interpretation": "The transform, not compact offset reconstruction, dominates prototype overhead.",
+      "follow_up": "Measure a fused attention kernel before making systems claims."
+    },
+    {
+      "experiment": "head_offset",
+      "model_tier": "tiny",
+      "position_mode": "absolute",
+      "expected": "logical offsets lower continuous-head loss",
+      "observed": "seed-mean loss 2.3837 -> 0.7304; lower in 5/5 seeds",
+      "matches_expectation": "yes",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_overlap",
+      "model_tier": "tiny",
+      "position_mode": "absolute",
+      "expected": "overlap lowers loss after positions are fixed",
+      "observed": "seed-mean loss 0.7304 -> 0.6474; lower in 2/5 seeds",
+      "matches_expectation": "partly",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_oracle",
+      "model_tier": "tiny",
+      "position_mode": "absolute",
+      "expected": "constructed-evidence oracle is no worse than routed selection",
+      "observed": "seed-mean loss 0.6474 -> 0.1384; lower in 3/5 seeds",
+      "matches_expectation": "partly",
+      "interpretation": "Selection and attention utilization can dominate a positionally correct representation.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_offset",
+      "model_tier": "tiny",
+      "position_mode": "rope",
+      "expected": "logical offsets lower continuous-head loss",
+      "observed": "seed-mean loss 2.5910 -> 1.5547; lower in 3/5 seeds",
+      "matches_expectation": "partly",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_overlap",
+      "model_tier": "tiny",
+      "position_mode": "rope",
+      "expected": "overlap lowers loss after positions are fixed",
+      "observed": "seed-mean loss 1.5547 -> 0.8763; lower in 5/5 seeds",
+      "matches_expectation": "yes",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_oracle",
+      "model_tier": "tiny",
+      "position_mode": "rope",
+      "expected": "constructed-evidence oracle is no worse than routed selection",
+      "observed": "seed-mean loss 0.8763 -> 1.0124; lower in 2/5 seeds",
+      "matches_expectation": "no",
+      "interpretation": "Selection and attention utilization can dominate a positionally correct representation.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_offset",
+      "model_tier": "small",
+      "position_mode": "absolute",
+      "expected": "logical offsets lower continuous-head loss",
+      "observed": "seed-mean loss 3.8306 -> 0.6681; lower in 5/5 seeds",
+      "matches_expectation": "yes",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_overlap",
+      "model_tier": "small",
+      "position_mode": "absolute",
+      "expected": "overlap lowers loss after positions are fixed",
+      "observed": "seed-mean loss 0.6681 -> 0.0030; lower in 4/5 seeds",
+      "matches_expectation": "partly",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_oracle",
+      "model_tier": "small",
+      "position_mode": "absolute",
+      "expected": "constructed-evidence oracle is no worse than routed selection",
+      "observed": "seed-mean loss 0.0030 -> 0.0022; lower in 3/5 seeds",
+      "matches_expectation": "partly",
+      "interpretation": "Selection and attention utilization can dominate a positionally correct representation.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_offset",
+      "model_tier": "small",
+      "position_mode": "rope",
+      "expected": "logical offsets lower continuous-head loss",
+      "observed": "seed-mean loss 6.7887 -> 6.2249; lower in 5/5 seeds",
+      "matches_expectation": "yes",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_overlap",
+      "model_tier": "small",
+      "position_mode": "rope",
+      "expected": "overlap lowers loss after positions are fixed",
+      "observed": "seed-mean loss 6.2249 -> 3.0396; lower in 5/5 seeds",
+      "matches_expectation": "yes",
+      "interpretation": "End-task effects combine representation, routing, and attention utilization.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "head_oracle",
+      "model_tier": "small",
+      "position_mode": "rope",
+      "expected": "constructed-evidence oracle is no worse than routed selection",
+      "observed": "seed-mean loss 3.0396 -> 0.0012; lower in 4/5 seeds",
+      "matches_expectation": "partly",
+      "interpretation": "Selection and attention utilization can dominate a positionally correct representation.",
+      "follow_up": "Use more examples and a task-specific evidence oracle on pretrained models."
+    },
+    {
+      "experiment": "native_operation_bound",
+      "model_tier": "all",
+      "position_mode": "absolute_and_rope",
+      "expected": "all continuous-head operations stay within 32 tokens",
+      "observed": "maximum operation 24; violations 0",
+      "matches_expectation": "yes",
+      "interpretation": "Logical continuity does not require a dense logical-length model call.",
+      "follow_up": "Repeat with pretrained models whose position range exceeds the operation budget."
+    }
+  ]
+}

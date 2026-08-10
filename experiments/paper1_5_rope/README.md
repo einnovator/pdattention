@@ -8,6 +8,9 @@ parameter-preserving native-KV PRA, and evaluates fixed-target synthetic example
 ```powershell
 python experiments/paper1_5_rope/run_core_experiments.py --device cuda
 python experiments/paper1_5_rope/eval_distance_policy.py --device cuda --iterations 500
+python experiments/paper1_5_rope/eval_logical_offsets.py --device cuda
+python experiments/paper1_5_rope/eval_head_offset_progression.py --device cuda --max-examples 4
+python experiments/paper1_5_rope/summarize_next_iteration.py
 ```
 
 Use `--smoke` for one two-step seed. Canonical JSON, CSV, and plots are written under

@@ -175,15 +175,20 @@ Engineering prerequisites:
 - measure selection quality separately from materialization and language-model quality
 
 Status: controlled implicit-head transport, exact dense parity, and 1x--8x sensitivity are
-complete on the tiny fixed-target probe. Public long-context suites and pretrained models
-remain pending.
+complete on the tiny fixed-target probe. Source-relative offsets now survive rollover,
+overlap, overflow splitting, routing, and materialization. With a 192-token logical source,
+all continuous-head model operations remained at or below 24 tokens under a 32-token native
+limit. Public long-context suites and pretrained models remain pending.
 
-Paper 1.5 adds matched learned-absolute/RoPE tiny and small controls, post-position cache
+Paper 1.5 adds matched learned-absolute/RoPE tiny and small controls, pre/post-position cache
 metadata, five-seed split scaling, positional/contextual fragmentation decomposition, overlap,
-and bounded implicit-head evaluation. RoPE common-translation and no-memory conversion parity
-are verified. Oracle memory is often strong, but routing remains unstable and model-level
-advantages are not consistent across tiers or seeds. Pretrained RoPE/GQA, natural QA, deferred
-pre-position K latency, and distance-policy ablations remain Phase 4/8 work.
+and bounded implicit-head evaluation. Source-relative offsets remove layer-0 reset error for
+both positional families. A four-cell storage matrix verifies exact pre/post-RoPE parity at
+matched effective positions; intentional K-only rebinding changes attention. The unfused
+deferred path is about 3.6x slower in the small GTX 950M microbenchmark and does not reduce K/V
+bytes. Overlap and the constructed evidence oracle are not uniformly beneficial, so routing
+and context composition remain separate targets. Pretrained RoPE/GQA, natural QA, selective
+recomputation, and fused deferred-position kernels remain Phase 4/8 work.
 
 ## Phase 5
 Software engineering:

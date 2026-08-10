@@ -20,36 +20,35 @@
 \maketitle
 
 \begin{abstract}
-Retrieved native-key/value (K/V) memory reuses attention states encoded at another time or
-place. Which positions should cached keys represent when a bounded model encodes blocks
-independently and later attends to selected states at a different logical distance? We add a
-minimal position strategy to Progressive Retrieval Attention (PRA), preserving learned
-absolute positions as the default and supporting rotary position embedding (RoPE) in ordinary
-and retrieved-memory attention. Five-seed controlled tiny and small models learn a fixed-target
-synthetic task to 100\% held-out answer-token accuracy before parameter-preserving conversion
-to native-KV PRA. RoPE common-translation invariance holds numerically through an 8,192-token
-shift (maximum attention-logit RMSE $5.8\times10^{-5}$). Logical global positions eliminate
-layer-0 K fragmentation for both mechanisms; deeper error remains contextual and falls with
-overlap. At 64 source splits, oracle K/V recovers 0.949 of dense-context benefit for tiny RoPE,
-versus 0.483 for tiny absolute positions, but this direction reaches only the minimum
-five-seed two-sided sign result, $p=0.0625$. Small-model oracle results are strong for both
-mechanisms. Routing and all-memory conditions remain unstable, and bounded-head means are
-influenced by seed outliers. RoPE makes native-KV relocation mathematically clean, but does not
-remove contextualization or selection failure. An experimental raw-K path confirms exact
-deferred rotation but finds that compressed distance policies substantially perturb attention;
-on the test GPU, deferred rotation raises the warm microbenchmark path from about 0.19--0.20 ms
-to 0.70 ms without reducing stored K/V bytes. The results provide a reproducible basis for
-pretrained-model integration rather than evidence of production long-context quality.
+Retrieved native-key/value (K/V) memory reuses attention states that were encoded outside the
+current forward pass. This raises two questions that ordinary prefix caching can avoid: which
+source position does each cached key represent, and which causal context shaped it? We give
+Progressive Retrieval Attention (PRA) an explicit positional contract while preserving learned
+absolute position embeddings as the default and adding rotary position embedding (RoPE) to
+direct and retrieved-memory attention. In five-seed controlled tiny and small models, a compact
+logical start offset per contiguous chunk removes first-layer position-reset error exactly for
+both positional families. It does not remove deeper contextualization error; 50\% overlap helps
+three of four tier--position combinations but slightly worsens the small absolute mean. A
+four-cell pre/post-RoPE storage matrix establishes exact output parity when effective positions
+match and shows that K-only rebinding intentionally changes attention. Deferred rotation is
+therefore a flexibility mechanism, not an accuracy improvement, and raises the unfused warm
+CUDA path from 0.179 to 0.649 ms in the measured small configuration. A continuously advancing
+implicit-head experiment keeps every model operation at or below 24 tokens while the logical
+source spans 192 tokens. Logical offsets and overlap often lower answer loss, but a constructed
+single-chunk oracle is not uniformly better for tiny models, exposing a separate selection and
+context-composition problem. These results separate positional identity, contextual continuity,
+and retrieval quality. They validate the transport contract, not production long-context
+quality.
 \end{abstract}
 
 \section{Introduction}
 
-A transformer key is not only a content representation. Depending on the architecture, it
-also carries or interacts with position. This is easy to ignore while all keys are produced
+A transformer key is not only a content representation. Depending on the positional mechanism,
+it carries or interacts with a coordinate. This is easy to ignore while every key is produced
 in one dense forward pass. It becomes operational when a system encodes a long source in
 bounded blocks, stores native per-layer K/V, retrieves a sparse subset, and combines it with a
-later query. The source key may have a local block position, a logical document position, or a
-position assigned at materialization time. These choices are not equivalent.
+later query. A source key may retain its document coordinate, restart at zero in each block, or
+receive a new coordinate when retrieved. These choices are not equivalent.
 
 PRA provides a controlled setting for studying the problem. It stores full layer-native K/V
 behind inexpensive routing gists and inserts selected states before direct K/V under one
@@ -57,19 +56,94 @@ softmax. Paper 1 established native transport, exact routing, model-bounded enco
 implicit prompt-head reference. The present paper holds those mechanisms fixed and changes
 the positional semantics.
 
-Our contributions are:
+This paper asks a narrower question than whether a model can extrapolate to a longer dense
+context: can independently produced native K/V retain an auditable position identity, and what
+errors remain after that identity is repaired? Our contributions are:
 \begin{itemize}[leftmargin=*]
 \item a reusable position strategy supporting learned absolute, sinusoidal, and RoPE
 semantics without changing the default absolute checkpoint layout;
 \item a weight-preserving RoPE SelfAttention-to-PRA conversion whose no-memory logits match
 the source model;
-\item explicit position metadata and post-position state labels on cached native K/V;
-\item probes separating pure translation, positional reset, contextual block fragmentation,
-overlap, pre- versus post-RoPE K, retrieved-distance policies, and bounded implicit-head
-behavior; and
+\item compact source-relative offsets, explicit position metadata, and pre/post-position state
+labels on cached native K/V;
+\item probes separating position reset, contextual block fragmentation, overlap, pre- versus
+post-RoPE K, retrieved-distance policies, and continuously advancing implicit-head behavior; and
 \item five-seed tiny/small evidence, including negative routing and variance results that
 constrain the claims.
 \end{itemize}
+
+\section{Progressive Retrieval Attention in Brief}
+
+PRA keeps a recent direct tail continuously visible and makes older or external material
+addressable. A long source is first encoded in model-safe blocks. Each layer publishes its
+native K/V, and those states are sliced into smaller routing chunks. A gist is a compact routing
+summary of a chunk; it is \emph{not} the chunk's K/V and is never used as a substitute attention
+value. At query time, gist scores select chunks, the selected chunks' full token-level native
+K/V are materialized, and memory K/V attend beside direct K/V under one softmax.
+
+\begin{figure}[H]
+\centering
+\setlength{\fboxsep}{6pt}
+\begin{tabular}{c}
+\fbox{logical source or long \texttt{\#\_\_head} prompt} \\
+$\downarrow$ \\
+\fbox{model-safe encoding blocks + source position offsets} \\
+$\downarrow$ \\
+\fbox{layer-native K/V} \\
+$\downarrow$ \\
+\fbox{smaller routing chunks $\rightarrow$ gists $\rightarrow$ exact chunk selection} \\
+$\downarrow$ \\
+\fbox{materialization budgeter $\rightarrow$ selected full-token native K/V} \\
+$\downarrow$ \\
+\fbox{direct K/V + memory K/V attention}
+\end{tabular}
+\caption{PRA data path. Gists choose chunks; attention consumes the selected chunks' native
+token-level K/V. Position continuity is established during bounded encoding and audited again
+at materialization.}
+\label{fig:pra-path}
+\end{figure}
+
+Four lengths describe different constraints:
+\begin{equation}
+ L_{\rm logical} \gg L_{\rm model\_op} \ge L_{\rm encode} > L_{\rm route},
+ \qquad
+ L_{\rm direct}+L_{\rm materialized}+L_{\rm reserve}\le L_{\rm model\_op}.
+ \label{eq:lengths}
+\end{equation}
+$L_{\rm logical}$ is the source coordinate span. $L_{\rm model\_op}$ is the maximum number of
+tokens in one model invocation. $L_{\rm position}$, introduced below, is the largest
+representable coordinate and need not equal the operation limit. $L_{\rm encode}$ bounds
+contextual cache construction, while $L_{\rm route}$ controls retrieval granularity. A long
+logical source therefore does not imply a long dense model call.
+
+\subsection{A concrete position-reset failure}
+
+Consider tokens A--H at logical positions 0--7, encoded as A--D and E--H. If the second block
+restarts at zero, E receives the coordinate formerly assigned to A. Source-relative encoding
+instead uses
+\begin{equation}
+ p_{\rm logical}(j)=p_{\rm chunk,start}+j.
+ \label{eq:logical-position}
+\end{equation}
+\begin{center}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Source token & A & B & C & D & E & F & G & H \\
+Source position & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+Reset chunk position & 0 & 1 & 2 & 3 & 0 & 1 & 2 & 3 \\
+Offset chunk position & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Thus token 37 within a block beginning at 4096 receives position 4133. A contiguous routing
+chunk needs one integer start offset, not a position tensor per token; explicit tensors remain
+useful for irregular layouts and audit output.
+
+For a continuously advancing prompt head, rollover preserves one coordinate system as direct
+tokens become historical memory. Independent URI references are different: each source owns
+its own coordinate system unless an application defines a shared layout. The implementation
+therefore treats source identity and source-relative offset as cache provenance rather than
+silently concatenating unrelated documents into one global axis.
 
 \section{Background and Related Work}
 
@@ -90,9 +164,18 @@ returned? StreamingLLM preserves selected chronological cache states and attenti
 \cite{xiao2023streamingllm}; PRA retrieves URI- or request-addressed chunks, so it must also
 specify source positions, relocation, and routing semantics.
 
+Cache reuse systems expose adjacent parts of the same problem. Prompt Cache reuses modular
+attention states while preserving a position-aware prompt schema \cite{gim2023promptcache}.
+CacheBlend observes that independently cached non-prefix chunks miss preceding context and
+selectively recomputes states \cite{yao2024cacheblend}. MiniPIC stores unrotated keys and binds
+RoPE positions inside attention \cite{ordonez2026minipic}; SemPIC instead learns a cache writer
+to reduce residual context dependence \cite{xie2026sempic}. These approaches motivate the
+same distinction tested here: correcting coordinates does not reconstruct absent causal
+context, and flexible position binding does not by itself select useful memory.
+
 \section{Positional Semantics for Native K/V}
 
-\subsection{RoPE and common translation}
+\subsection{What RoPE invariance does and does not say}
 
 For one head of width $d_h$, let $R_p$ be the block-diagonal rotation at position $p$:
 \begin{equation}
@@ -130,6 +213,23 @@ which changes hidden states even with perfect position IDs. We call these \emph{
 fragmentation} and \emph{contextualization fragmentation}. Logical global positions can
 remove the first at layer 0. Encoding overlap can only approximate the second.
 
+\begin{table}[H]
+\centering
+\caption{Failure modes that must be measured separately.}
+\label{tab:failure-modes}
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+Failure & Cause & Diagnostic & Mitigation/control \\
+\midrule
+Positional fragmentation & Chunk coordinates reset & Layer-0 K mismatch & Source-relative offsets \\
+Contextualization fragmentation & Earlier causal context is absent & Deeper mismatch after offset repair & Overlap or recomputation \\
+Selection failure & Router misses useful chunks & Routed--oracle gap and gist recall & Better routing \\
+Positional rigidity & Phase is baked into K & Deliberate rebinding probe & Raw K plus deferred RoPE \\
+Remote approximation & Relative phase is compressed & Exact-distance output deviation & Policy-specific adaptation \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \section{Implementation}
 
 The shared code adds a registry-backed \texttt{PositionEncoding} interface. Its first method
@@ -138,6 +238,28 @@ Absolute mode adds the existing learned table and leaves projected Q/K unchanged
 leaves token embeddings unchanged and rotates Q/K. A position-aware SelfAttention block is
 instantiated only for non-absolute modes, so old absolute models retain their original
 \texttt{TransformerEncoderLayer} state names and behavior.
+
+\begin{table}[H]
+\centering
+\caption{Position mechanisms under retrieved native-K/V reuse.}
+\label{tab:position-mechanisms}
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+Mechanism & Source offsets & Coordinate range & Retrieval-time rebinding \\
+\midrule
+Learned absolute & Added before layer 0 & Limited by learned table $L_{\rm position}$ & Not separable from hidden state \\
+Sinusoidal absolute & Added before layer 0 & Formula-defined; extrapolation unverified & Not separable from hidden state \\
+RoPE, post-position K & Applied to Q/K & Formula-defined; extrapolation unverified & No, without inverse rotation \\
+RoPE, pre-position K & Applied when consumed & Formula-defined; extrapolation unverified & Yes, by choosing effective IDs \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The configuration separates \texttt{model\_max\_context\_tokens}, the native operation limit,
+from \texttt{position\_capacity}. Learned absolute IDs are checked against the latter. This
+allows, for example, a 32-token bounded operation to use positions 160--191 in a model with a
+192-entry position table. RoPE accepts larger integer IDs, but acceptance by the formula is not
+evidence that a model trained only on short distances will use them well.
 
 PRA attention applies the same strategy in direct and cache-publication paths:
 \begin{verbatim}
@@ -149,10 +271,12 @@ k_ref = split_heads(k_proj(reference_hidden))
 _, k_ref = position.transform_qk(k_ref, k_ref, reference_positions)
 cache.publish(k_ref, v_ref, position_ids, state="post_position")
 \end{verbatim}
-Values are not rotated. Each \texttt{LayerKV} records positions used to publish K and a
-\texttt{position\_state}. Slicing encoding blocks into routing chunks preserves this metadata,
-as does CPU residency. RoPE IDs may exceed the model's native token count; the token count in
-any one base-model operation remains bounded.
+Values are not rotated. Each \texttt{LayerKV} records the positions used to publish K and a
+\texttt{position\_state}. \texttt{ReferenceChunk} and \texttt{ReferenceChunkMemory} carry
+\texttt{logical\_start} and \texttt{logical\_end}; validation, overlap, overflow splitting,
+routing selection, CPU residency, and materialization preserve them. A contiguous chunk can
+reconstruct token IDs as \texttt{logical\_start + arange(length)}. The result trace exposes the
+same range so a consumer can audit which native states entered attention.
 
 Conversion copies Q/K/V projections, output projection, norms, feed-forward layers,
 embeddings, and language-model head from trained RoPE SelfAttention into PRA. With memory
@@ -163,9 +287,10 @@ For a long prompt, the adapter keeps a direct tail and registers displaced token
 \texttt{\#\_\_head}. Bounded encoding produces native K/V, smaller chunks produce routing
 gists, and whole chunks are selected under
 \begin{equation}
- T_{\rm direct}+T_{\rm memory}+T_{\rm reserve}\leq T_{\rm native}.
+ T_{\rm direct}+T_{\rm memory}+T_{\rm reserve}\leq L_{\rm model\_op}.
 \end{equation}
-RoPE continues logical IDs past $T_{\rm native}$ without enlarging an operation.
+RoPE can continue logical IDs past $L_{\rm model\_op}$ without enlarging an operation. Learned
+absolute mode can do the same only while IDs remain below $L_{\rm position}$.
 
 \section{Experimental Design}
 
@@ -218,10 +343,29 @@ For systems cost, synchronized warm CUDA measurements separately time selected-k
 gather-plus-rotation, attention, and their combined path over 500 iterations for each of five
 seeds.
 
-The decomposition compares dense 128-token encoding with 32-token blocks under local reset,
-logical global IDs, and 5--50\% left overlap. The bounded-head probe inserts neutral tokens
-between source evidence and query, evaluates 1L, 2L, 4L, and 8L logical lengths, keeps 32
-tokens direct, permits 160 memory tokens, and records the largest native call.
+The source-continuity decomposition compares dense 128-token encoding with 32-token blocks
+under local reset, source-relative offsets, and 25\% or 50\% left overlap. It reports K RMSE by
+layer and paired seed. The absolute table has 192 entries, so all logical IDs are representable
+even though each encoding operation is bounded to 32 tokens.
+
+The RoPE storage matrix crosses post- versus pre-position K with reset versus source-relative
+coordinates: A is post/reset, B post/offset, C pre/reset, and D pre/offset. B is the reference.
+A separate raw-K condition rebinds the source by $+512$. Runtime records gather, compact
+position reconstruction, RoPE transform, materialization, attention, and the warm combined
+path. All timings synchronize CUDA around 500 iterations and use five seeds.
+
+The continuous-head probe uses $L_{\rm logical}=L_{\rm position}=192$ and
+$L_{\rm model\_op}=32$. It keeps 8 direct tokens, encodes 16-token blocks, routes 8-token
+chunks, and materializes at most 24 memory tokens. Four examples and five seeds progress from
+reset routing to offset routing, offset plus 50\% overlap, and a constructed oracle containing
+the first evidence chunk. This oracle tests one selection hypothesis; it is not ground-truth
+proof that no other chunk helps. The earlier distance-scaling head probe is retained separately.
+
+Before result inspection we recorded the following expected directions: offsets should reduce
+reset error; overlap should reduce the remaining contextual error; matched pre/post storage
+should agree; intentional K-only rebinding should change attention; and the constructed oracle
+should be no worse than routed selection. We report failed and partial expectations rather than
+discarding them.
 
 \section{Results}
 
@@ -238,12 +382,27 @@ floating-point error, not a quality effect.}
 \label{fig:translation}
 \end{figure}
 
-Publishing post-RoPE K and rotating raw K later at the same positions matches exactly. Moving
-K alone by 128--8,192 positions changes fixed-query scores (mean RMSE 7.14--8.11), as relative
-distance should. Translating Q and K together remains near invariant (maximum RMSE
-$4.91\times10^{-4}$ at 8,192). Int64 position metadata costs 0.91\% of fp32 K/V bytes in
-these shapes. The end-to-end probe below measures the previously unresolved materialization
-cost.
+The trained-model storage matrix gives the same result at the model output
+(Figure~\ref{fig:storage-matrix}). Post/reset A equals pre/reset C exactly; post/offset B equals
+pre/offset D exactly. B and D reproduce the offset reference with zero output RMSE and top-token
+agreement 1. Reset A/C instead have mean K RMSE 0.648, output RMSE 0.063, and top-token
+agreement 0.225. Rebinding raw K by $+512$ gives output RMSE 0.093 and agreement 0.05. The
+matrix rejects two possible misconceptions: raw K is not intrinsically more accurate when
+effective IDs match, and changing K coordinates alone is not an invariant operation.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\linewidth]{../shared/results/paper1_5_rope/rope_storage_matrix.png}
+\caption{Four-cell RoPE storage matrix over both tiers, all layers, and five seeds. Deferred
+rotation is exact at matched effective positions; reset coordinates and intentional rebinding
+produce the expected attention changes.}
+\label{fig:storage-matrix}
+\end{figure}
+
+The earlier tensor probe agrees: moving K alone by 128--8,192 positions changes fixed-query
+scores, while translating Q and K together remains near invariant (maximum RMSE
+$4.91\times10^{-4}$ at 8,192). Storage state therefore controls when positions can be bound,
+not whether the same binding is accurate.
 
 \subsection{Deferred rotation and distance precision}
 
@@ -267,24 +426,25 @@ deferred rotation adds a launch-dominated operation on this GPU.}
 \centering
 \caption{Small-tier CUDA timing in ms, mean over five seeded runs of 500 warm iterations.}
 \label{tab:storage-timing}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrrrrr}
 \toprule
-Storage & Selected K/V & Materialize & Attention & Combined warm query \\
+Storage & K/V & Gather & Reconstruct & RoPE & Attention & Warm \\
 \midrule
-Post-position & 32 & 0.039 & 0.161 & 0.199 \\
-Pre-position + deferred & 32 & 0.529 & 0.161 & 0.696 \\
-Post-position & 160 & 0.035 & 0.140 & 0.189 \\
-Pre-position + deferred & 160 & 0.505 & 0.140 & 0.702 \\
+Post-position & 32 & .0312 & .0000 & .0000 & .1343 & .1842 \\
+Pre-position + deferred & 32 & .0337 & .0191 & .4021 & .1343 & .6511 \\
+Post-position & 160 & .0327 & .0000 & .0000 & .1342 & .1791 \\
+Pre-position + deferred & 160 & .0329 & .0145 & .3838 & .1342 & .6487 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 For 192 stored small-tier tokens, both modes use 196,608 bytes of fp32 K/V. The auditable
-cache contract stores 1,536 bytes of int64 positions (0.781\%) in either mode. Selecting 160
-tokens materializes 163,840 K/V bytes; adding 32 direct K/V tokens yields 196,608 active bytes.
-Raw K changes when phase can be assigned, not how many K/V elements are retained. The nearly
-flat token-count timing reflects kernel-launch dominance on a GTX 950M, so this experiment
-supports no production throughput claim.
+cache can reconstruct a contiguous position range from an 8-byte start offset per chunk; a
+full 192-token int64 audit tensor would cost 1,536 bytes (0.781\%). Selecting 160 tokens
+materializes 163,840 K/V bytes. Raw K changes when phase can be assigned, not how many K/V
+elements are retained. Position reconstruction is small; the unfused RoPE transform dominates
+prototype overhead. The nearly flat token-count timing reflects kernel-launch dominance on a
+GTX 950M, so this experiment supports no production throughput claim.
 
 \subsection{Split scaling}
 
@@ -325,25 +485,112 @@ in all five seeds. Small oracle losses are both low, 0.126/0.046, with RCB 0.967
 Routed losses remain much larger (tiny 1.994/1.301; small 4.434/4.721). Strong oracle outcomes
 beside weak routed outcomes locate much of the remaining failure in selection, not transport.
 
-\subsection{Position reset, context loss, and overlap}
+\subsection{Source-relative continuity and overlap}
 
-Logical global IDs make layer-0 K exactly match dense encoding for both mechanisms. Averaged
-over layers and seeds, local-reset versus logical-global K RMSE falls from 0.671 to 0.070 for
-tiny absolute and 0.653 to 0.062 for tiny RoPE. Small reductions are 0.683 to 0.166 and 0.625
-to 0.171. The deeper-layer remainder is contextualization loss.
+Source-relative offsets make layer-0 K exactly match the dense 128-token comparator in every
+tier, positional family, and seed. Reset layer-0 K RMSE ranges from 0.559 to 0.667 by
+tier--position mean. The exact repair under both learned absolute embeddings and RoPE shows
+that source coordinate identity, rather than RoPE specifically, is the necessary first step.
 
-Fifty-percent overlap processes 1.375 times as many tokens and reduces mean K RMSE to
-0.046/0.031 for tiny absolute/RoPE and 0.119/0.107 for small absolute/RoPE. The trend is not
-perfectly monotonic in every deep layer, so overlap is a cost-quality control, not a repair.
+Deeper layers retain contextualization fragmentation (Table~\ref{tab:offset-decomposition}).
+Offsets lower final-layer RMSE in all five seeds for all four model conditions. Fifty-percent
+overlap then lowers every tiny seed, lowers four of five small RoPE seeds, but lowers only two
+of five small absolute seeds and slightly worsens that mean. It processes 1.375 times as many
+tokens. Overlap is therefore a tunable historical-context approximation, not a guaranteed or
+monotonic repair.
+
+\begin{table}[H]
+\centering
+\caption{Final-layer K RMSE from dense encoding. Cells are mean / median / standard deviation
+over five seeds. Lower is better.}
+\label{tab:offset-decomposition}
+\begin{tabular}{lllll}
+\toprule
+Tier & Position & Reset & Offset & Offset + 50\% \\
+\midrule
+Tiny & Absolute & .6769/.6860/.0339 & .1129/.1064/.0214 & .0670/.0625/.0150 \\
+Tiny & RoPE & .6745/.6649/.0393 & .1373/.1397/.0362 & .0690/.0615/.0213 \\
+Small & Absolute & .7193/.6694/.0953 & .3066/.2870/.0930 & .3103/.2959/.1634 \\
+Small & RoPE & .7498/.7234/.0899 & .4235/.4198/.1512 & .2990/.2378/.1212 \\
+\bottomrule
+\end{tabular}
+\end{table}
+The 25\% overlap means, shown in Figure~\ref{fig:offset-progression}, are 0.0849, 0.0966,
+0.2918, and 0.2806 in table order.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.90\linewidth]{../shared/results/paper1_5_rope/rope_overlap.png}
-\caption{Dense-K deviation under position reset and overlap. Layer 0 becomes exact with
-logical positions; deeper layers retain context-boundary error.}
-\label{fig:overlap}
+\includegraphics[width=0.92\linewidth]{../shared/results/paper1_5_rope/logical_offset_progression.png}
+\caption{Position-reset decomposition across all paired seeds. Offsets remove layer-0 error;
+the plotted final-layer progression shows the remaining context dependence and the nonuniform
+effect of overlap.}
+\label{fig:offset-progression}
 \end{figure}
 
-\subsection{Bounded implicit-head scaling}
+\subsection{Continuous implicit-head progression}
+
+The new head probe advances one logical coordinate system through rollover. Every model call
+contains at most 24 tokens, below $L_{\rm model\_op}=32$, while source positions span
+$L_{\rm logical}=192$; native-limit violations are zero. Table~\ref{tab:head-progression}
+shows that representation repair does not imply uniform end-task behavior.
+
+\begin{table}[H]
+\centering
+\caption{Continuous-head answer loss. Cells are mean / median over four examples and five
+seeds.}
+\label{tab:head-progression}
+\begin{tabular}{llrrrr}
+\toprule
+Tier & Position & Reset routed & Offset routed & Offset + overlap & Constructed oracle \\
+\midrule
+Tiny & Absolute & 2.3837/2.0986 & .7304/.4736 & .6474/.2631 & .1384/.1136 \\
+Tiny & RoPE & 2.5910/1.5186 & 1.5547/.9828 & .8763/.1163 & 1.0124/.6812 \\
+Small & Absolute & 3.8306/2.2442 & .6681/.0587 & .0030/.0027 & .0022/.0020 \\
+Small & RoPE & 6.7887/9.2938 & 6.2249/8.5253 & 3.0396/1.7279 & .0012/.0011 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Offsets lower seed-mean loss in 5/5 tiny absolute, small absolute, and small RoPE seeds, but
+only 3/5 tiny RoPE seeds. Overlap lowers all tiny RoPE and small RoPE seeds, 4/5 small absolute
+seeds, and 2/5 tiny absolute seeds. Evidence-chunk recall rises from reset to offset/overlap for
+all four conditions, but remains only 0.312 for small RoPE before the oracle. The oracle sets
+recall to one and nearly eliminates small-model loss. It is not universally superior: tiny
+RoPE mean loss worsens from 0.8763 to 1.0124 and only two seeds improve. A single selected
+evidence chunk can remove useful surrounding context, so this is a failed preregistered
+expectation rather than evidence against the position contract.
+Across reset, offset, overlap, and oracle, the corresponding loss standard deviations are
+1.9282/.7839/.8139/.0979 for tiny absolute, 2.3486/1.1528/1.1969/1.1443 for tiny RoPE,
+3.7387/1.1183/.0012/.0009 for small absolute, and 3.7760/3.7089/2.6464/.0002 for small RoPE.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper1_5_rope/head_offset_progression.png}
+\caption{Continuous-head loss and evidence-chunk recall. Paired seed traces expose variation
+hidden by means; the separately recorded operation bound is independent of logical span.}
+\label{fig:head-offset-progression}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Recorded expectation versus observation. ``Partial'' means the mean or most seeds
+move as expected, but not all paired seeds.}
+\label{tab:expectations}
+\begin{tabularx}{\linewidth}{Xlll}
+\toprule
+Expectation & Tiny absolute/RoPE & Small absolute/RoPE & Outcome \\
+\midrule
+Offsets reduce representation error & Yes / Yes & Yes / Yes & Supported \\
+50\% overlap further reduces representation error & Yes / Yes & No / Partial & Mixed \\
+Matched pre/post RoPE storage agrees & \multicolumn{2}{l}{Exact for every tier/layer/seed} & Supported \\
+K-only rebinding changes attention & \multicolumn{2}{l}{Mean output RMSE .0931} & Supported \\
+Offsets lower continuous-head loss & Yes / Partial & Yes / Yes & Mostly supported \\
+Constructed oracle is no worse than routing & Partial / No & Partial / Partial & Mixed \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Earlier distance-scaled implicit-head probe}
 
 All 1L--8L runs obey the 192-token native-operation limit; violations are zero. The largest
 call is 160 tokens at 1L and 192 thereafter. Table~\ref{tab:head} gives mean and median over
@@ -380,35 +627,44 @@ Table~\ref{tab:head} because seed outliers are large.}
 
 \section{Discussion}
 
-\paragraph{What RoPE solves.} It applies positions directly to Q/K, admits logical indices
-beyond a native token limit, and provides exact common-translation semantics in real
-arithmetic. Raw K plus positions can be rotated later without changing same-position results.
+\paragraph{What the position contract solves.} Source-relative offsets, not RoPE alone, restore
+first-layer coordinate identity. Learned absolute positions do so within their table capacity;
+RoPE decouples formula-defined coordinates from that table and provides common-translation
+semantics. The continuous-head experiment confirms that a logical span can advance while every
+native operation remains bounded.
 
-\paragraph{What RoPE does not solve.} It does not restore left context lost by independent
-encoding, choose the relevant chunk, prevent harmful attention to irrelevant K/V, or guarantee
-extrapolation from short training contexts. The small native-all reversal and weak routed
-conditions are counterexamples to a blanket "RoPE fixes PRA" claim.
+\paragraph{What the contract does not solve.} It does not restore left context lost by
+independent encoding, choose the relevant chunk, prevent harmful attention to irrelevant K/V,
+or guarantee extrapolation from short training contexts. The small-absolute overlap reversal,
+tiny-RoPE oracle reversal, small native-all reversal, and weak routed conditions are useful
+counterexamples: position correctness is necessary for continuity but insufficient for useful
+retrieval.
 
 \paragraph{Post- versus pre-position K.} Post-position K is immediately compatible with
-attention but binds the cache to source positions. Pre-position K is portable and metadata is
-small, but deferred rotation adds materialization work and requires a distance policy. Here it
-is about 3.5--3.7 times the combined warm microbenchmark and does not reduce cache bytes.
+attention but binds the cache to source positions. Pre-position K is portable and compact
+offset metadata is small, but deferred rotation adds materialization work and requires a
+distance policy. Here it is 3.62 times the 160-token combined warm microbenchmark and does not
+reduce cache bytes.
 Exact logical assignment is faithful; compressed, bucketed, and order-preserving relocation
 change attention enough that their task quality remains an empirical question.
 
-\paragraph{Engineering implication.} Position IDs belong in cache provenance even when K is
-post-position. Without them, a consumer cannot audit local versus logical coordinates,
-reproduce a score, or safely introduce deferred rotation.
+\paragraph{Engineering implication.} Source identity, logical range, position state, and
+positional mechanism belong in cache provenance even when K is post-position. Without them, a
+consumer cannot audit local versus logical coordinates, reproduce a score, or safely introduce
+deferred rotation. For contiguous chunks, one logical start is enough for execution; full IDs
+can be reconstructed for traces.
 
 \section{Limitations and Threats to Validity}
 
 These are educational controlled models, not pretrained LLMs. The character tokenizer,
 binary task, 12 split examples, four head examples, and GTX 950M limit external validity.
 Five seeds permit paired direction checks but weak exact significance; an all-same-direction
-effect still has two-sided $p=0.0625$. Mean loss is sensitive to rare catastrophes. The split
-benchmark uses independent references with effective local positions; logical-global results
-come from the decomposition. Pre-position storage is not the canonical runtime path. We do
-not report production throughput, large-model memory savings, natural-language QA, or
+effect still has two-sided $p=0.0625$. Mean loss is sensitive to rare catastrophes. The older
+split benchmark uses independent references with effective local positions and should not be
+read as the continuous-head source-offset result. The constructed oracle assumes the first
+evidence chunk and can omit useful context; it is a diagnostic intervention, not known optimal
+selection. Pre-position storage is not the canonical runtime path. We do not report production
+throughput, large-model memory savings, natural-language QA, or
 unrestricted streaming quality. Streaming tests establish bounded rollover mechanics for
 absolute and RoPE modes, not useful generation beyond the native horizon. The distance-policy
 probe uses random content and must not be read as a language-model accuracy comparison.
@@ -416,23 +672,28 @@ probe uses random content and must not be read as a language-model accuracy comp
 \section{Reproducibility}
 
 The pre-change baseline is tagged \texttt{paper1-pre-rope-baseline}; development occurs on
-\texttt{research/paper1-5-rope}. Model training and quality measurements use
-\texttt{2b50f34cbf9f}; distance-policy and timing measurements use
-\texttt{516ad5194045}. Raw JSON/CSV, plots, environment metadata, training histories,
+\texttt{research/paper1-5-rope}. The source-offset decomposition, storage matrix,
+continuous-head progression, and component timings use code revision \texttt{d36f67752701};
+the structured artifacts record the full SHA. Earlier model training and split-quality
+measurements use \texttt{2b50f34cbf9f}. Raw JSON/CSV, plots, environment metadata, expectations,
+training histories,
 and manifests live under \texttt{docs/papers/shared/results/paper1\_5\_rope/}. Checkpoints are
 under \texttt{out/paper1\_5\_rope/}. Tests cover translation, norm preservation, large logical
-offsets, absolute bounds, cache metadata, exact no-memory SA-to-PRA conversion, policy order,
-causality, deferred rotation, streaming rollover, and CPU/GPU parity. Existing Paper 1 tests
-remain the absolute-mode guardrail.
+offsets through overlap and splitting, independent absolute operation/position bounds, cache
+metadata, exact no-memory SA-to-PRA conversion, policy order, causality, deferred rotation,
+streaming rollover, and CPU/GPU parity. Existing Paper 1 tests remain the absolute-mode
+guardrail.
 
 \section{Conclusion}
 
-Retrieved native-KV memory needs an explicit positional contract. RoPE supplies clean relative
-geometry and portable logical indices, but model-bounded retrieval still has separate
-positional, contextual, and selection problems. Logical positions remove first-layer
-positional fragmentation; overlap reduces deeper contextual fragmentation; oracle K/V often
-restores dense benefit; and routing remains limiting. Pretrained integration is justified only
-with larger tasks, stronger routing, and pre/post-K runtime measurements.
+Retrieved native-KV memory needs an explicit positional contract. A compact source offset
+removes first-layer reset error for learned absolute positions and RoPE alike. RoPE additionally
+supports deferred binding and clean common translation, but the unfused raw-K path is slower
+and K-only displacement deliberately changes attention. Deeper representations still depend on
+causal encoding context, and end-task quality still depends on selection and the composition of
+retrieved chunks. The next test is therefore not merely a longer coordinate range: it is
+pretrained-model evaluation that measures position identity, contextual recomputation, routing
+recall, and answer quality separately.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
