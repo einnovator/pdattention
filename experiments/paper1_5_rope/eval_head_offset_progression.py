@@ -290,7 +290,7 @@ def _aggregate(rows: list[dict]) -> list[dict]:
     return seed_rows, aggregate
 
 
-def _plot(seed_rows: list[dict], path: Path) -> None:
+def _plot(seed_rows: list[dict], path: Path, position_modes: list[str]) -> None:
     stages = (
         "reset_routed",
         "offset_routed",
@@ -310,13 +310,17 @@ def _plot(seed_rows: list[dict], path: Path) -> None:
         sharex=True,
         squeeze=False,
     )
-    colors = {"absolute": "#245A8D", "rope": "#A34832"}
+    colors = {
+        "absolute": "#245A8D",
+        "sinusoidal": "#6A7F39",
+        "rope": "#A34832",
+    }
     for row_index, tier in enumerate(present_tiers):
         for column, metric in enumerate(("loss_mean", "evidence_chunk_recall_mean")):
             axis = axes[row_index, column]
             present_modes = [
                 mode
-                for mode in ("absolute", "rope")
+                for mode in position_modes
                 if any(
                     row["model_tier"] == tier and row["position_mode"] == mode
                     for row in seed_rows
@@ -368,9 +372,11 @@ def _plot(seed_rows: list[dict], path: Path) -> None:
 
 def run(args) -> Path:
     metadata = environment_metadata()
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for tier in args.tiers:
-        for mode in ("absolute", "rope"):
+        for mode in args.position_modes:
             for seed in args.seeds:
                 rows.extend(
                     evaluate_seed(
@@ -403,7 +409,7 @@ def run(args) -> Path:
         },
     ]
     write_json(
-        RESULTS / "head_offset_progression.json",
+        output_dir / f"{args.result_name}.json",
         {
             "metadata": metadata,
             "expectations_recorded_before_analysis": expectations,
@@ -412,9 +418,11 @@ def run(args) -> Path:
             "aggregate": aggregate,
         },
     )
-    write_csv(RESULTS / "head_offset_progression.csv", rows)
-    _plot(seed_rows, RESULTS / "head_offset_progression.png")
-    return refresh_manifest(metadata=metadata)
+    write_csv(output_dir / f"{args.result_name}.csv", rows)
+    _plot(seed_rows, output_dir / f"{args.result_name}.png", args.position_modes)
+    if output_dir.resolve() == RESULTS.resolve():
+        return refresh_manifest(metadata=metadata)
+    return output_dir / f"{args.result_name}.json"
 
 
 def parse_args():
@@ -422,7 +430,15 @@ def parse_args():
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--tiers", nargs="+", choices=tuple(TIERS), default=list(TIERS))
     parser.add_argument("--seeds", nargs="+", type=int, default=list(SEEDS))
+    parser.add_argument(
+        "--position-modes",
+        nargs="+",
+        choices=("absolute", "sinusoidal", "rope"),
+        default=["absolute", "sinusoidal", "rope"],
+    )
     parser.add_argument("--max-examples", type=int, default=4)
+    parser.add_argument("--output-dir", type=Path, default=RESULTS)
+    parser.add_argument("--result-name", default="head_offset_progression")
     return parser.parse_args()
 
 
