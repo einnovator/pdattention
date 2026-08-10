@@ -35,7 +35,10 @@ versus 0.483 for tiny absolute positions, but this direction reaches only the mi
 five-seed two-sided sign result, $p=0.0625$. Small-model oracle results are strong for both
 mechanisms. Routing and all-memory conditions remain unstable, and bounded-head means are
 influenced by seed outliers. RoPE makes native-KV relocation mathematically clean, but does not
-remove contextualization or selection failure. The results provide a reproducible basis for
+remove contextualization or selection failure. An experimental raw-K path confirms exact
+deferred rotation but finds that compressed distance policies substantially perturb attention;
+on the test GPU, deferred rotation raises the warm microbenchmark path from about 0.19--0.20 ms
+to 0.70 ms without reducing stored K/V bytes. The results provide a reproducible basis for
 pretrained-model integration rather than evidence of production long-context quality.
 \end{abstract}
 
@@ -62,7 +65,8 @@ semantics without changing the default absolute checkpoint layout;
 the source model;
 \item explicit position metadata and post-position state labels on cached native K/V;
 \item probes separating pure translation, positional reset, contextual block fragmentation,
-overlap, pre- versus post-RoPE K, and bounded implicit-head behavior; and
+overlap, pre- versus post-RoPE K, retrieved-distance policies, and bounded implicit-head
+behavior; and
 \item five-seed tiny/small evidence, including negative routing and variance results that
 constrain the claims.
 \end{itemize}
@@ -206,6 +210,14 @@ divergence, top-token agreement, and output RMSE. The pre/post probe compares st
 post-RoPE K with deferred rotation at identical positions, K-only relocation against a fixed
 query, and common Q/K translation.
 
+The raw-K policy probe holds Q/K/V content fixed while source--query distance grows from 1L to
+32L, where $L=192$. Exact logical, immediately preceding local, 192-token clipped,
+log-compressed, four-level bucketed, and remote-past assignments move each 32-token chunk as a
+unit, preserving local order. This is a positional sensitivity probe, not downstream quality.
+For systems cost, synchronized warm CUDA measurements separately time selected-key gather or
+gather-plus-rotation, attention, and their combined path over 500 iterations for each of five
+seeds.
+
 The decomposition compares dense 128-token encoding with 32-token blocks under local reset,
 logical global IDs, and 5--50\% left overlap. The bounded-head probe inserts neutral tokens
 between source evidence and query, evaluates 1L, 2L, 4L, and 8L logical lengths, keeps 32
@@ -230,8 +242,49 @@ Publishing post-RoPE K and rotating raw K later at the same positions matches ex
 K alone by 128--8,192 positions changes fixed-query scores (mean RMSE 7.14--8.11), as relative
 distance should. Translating Q and K together remains near invariant (maximum RMSE
 $4.91\times10^{-4}$ at 8,192). Int64 position metadata costs 0.91\% of fp32 K/V bytes in
-these shapes. Pre-position storage is plausible, but this does not establish its end-to-end
-latency or quality advantage.
+these shapes. The end-to-end probe below measures the previously unresolved materialization
+cost.
+
+\subsection{Deferred rotation and distance precision}
+
+Exact logical assignment reproduces post-position K, scores, and outputs. The approximate
+policies are not numerically neutral. At 32L in the small tensor tier, their mean output RMSE
+against exact assignment spans 0.289--0.326 and top-token agreement is 0--0.05. Tiny-tier
+output RMSE spans 0.259--0.290 and agreement is 0.05--0.15. These are five-seed random-content
+attention probes: they show geometric sensitivity, not task-loss degradation. A compressed
+policy therefore requires training or adaptation evidence before deployment.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper1_5_rope/rope_distance_policy.png}
+\caption{Left: positional-policy deviation from exact logical assignment for the small tensor
+tier. Right: synchronized warm CUDA microbenchmark. Approximate distance is not a no-op, and
+deferred rotation adds a launch-dominated operation on this GPU.}
+\label{fig:distance-policy}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Small-tier CUDA timing in ms, mean over five seeded runs of 500 warm iterations.}
+\label{tab:storage-timing}
+\begin{tabular}{lrrrr}
+\toprule
+Storage & Selected K/V & Materialize & Attention & Combined warm query \\
+\midrule
+Post-position & 32 & 0.039 & 0.161 & 0.199 \\
+Pre-position + deferred & 32 & 0.529 & 0.161 & 0.696 \\
+Post-position & 160 & 0.035 & 0.140 & 0.189 \\
+Pre-position + deferred & 160 & 0.505 & 0.140 & 0.702 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For 192 stored small-tier tokens, both modes use 196,608 bytes of fp32 K/V. The auditable
+cache contract stores 1,536 bytes of int64 positions (0.781\%) in either mode. Selecting 160
+tokens materializes 163,840 K/V bytes; adding 32 direct K/V tokens yields 196,608 active bytes.
+Raw K changes when phase can be assigned, not how many K/V elements are retained. The nearly
+flat token-count timing reflects kernel-launch dominance on a GTX 950M, so this experiment
+supports no production throughput claim.
 
 \subsection{Split scaling}
 
@@ -338,9 +391,10 @@ conditions are counterexamples to a blanket "RoPE fixes PRA" claim.
 
 \paragraph{Post- versus pre-position K.} Post-position K is immediately compatible with
 attention but binds the cache to source positions. Pre-position K is portable and metadata is
-small, but deferred rotation adds materialization work and requires a distance policy. A
-future systems experiment must measure synchronized warm latency, cache compatibility, and
-accuracy under fixed, compressed, bucketed, and order-only policies.
+small, but deferred rotation adds materialization work and requires a distance policy. Here it
+is about 3.5--3.7 times the combined warm microbenchmark and does not reduce cache bytes.
+Exact logical assignment is faithful; compressed, bucketed, and order-preserving relocation
+change attention enough that their task quality remains an empirical question.
 
 \paragraph{Engineering implication.} Position IDs belong in cache provenance even when K is
 post-position. Without them, a consumer cannot audit local versus logical coordinates,
@@ -355,17 +409,21 @@ effect still has two-sided $p=0.0625$. Mean loss is sensitive to rare catastroph
 benchmark uses independent references with effective local positions; logical-global results
 come from the decomposition. Pre-position storage is not the canonical runtime path. We do
 not report production throughput, large-model memory savings, natural-language QA, or
-unrestricted streaming.
+unrestricted streaming quality. Streaming tests establish bounded rollover mechanics for
+absolute and RoPE modes, not useful generation beyond the native horizon. The distance-policy
+probe uses random content and must not be read as a language-model accuracy comparison.
 
 \section{Reproducibility}
 
 The pre-change baseline is tagged \texttt{paper1-pre-rope-baseline}; development occurs on
-\texttt{research/paper1-5-rope}. The measured code checkpoint is
-\texttt{2b50f34cbf9f42f5dec596f26493f8d67cfaf43d}. Raw JSON/CSV, plots, environment metadata, training histories,
+\texttt{research/paper1-5-rope}. Model training and quality measurements use
+\texttt{2b50f34cbf9f}; distance-policy and timing measurements use
+\texttt{516ad5194045}. Raw JSON/CSV, plots, environment metadata, training histories,
 and manifests live under \texttt{docs/papers/shared/results/paper1\_5\_rope/}. Checkpoints are
 under \texttt{out/paper1\_5\_rope/}. Tests cover translation, norm preservation, large logical
-offsets, absolute bounds, cache metadata, and exact no-memory SA-to-PRA conversion. Existing
-Paper 1 tests remain the absolute-mode guardrail.
+offsets, absolute bounds, cache metadata, exact no-memory SA-to-PRA conversion, policy order,
+causality, deferred rotation, streaming rollover, and CPU/GPU parity. Existing Paper 1 tests
+remain the absolute-mode guardrail.
 
 \section{Conclusion}
 
