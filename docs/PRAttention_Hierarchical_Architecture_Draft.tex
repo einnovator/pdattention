@@ -1,0 +1,94 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\title{Progressive Retrieval Attention with Hierarchical Chunk Routing:\\
+A Draft Architecture for Selective Neural Memory}
+\author{Draft}
+\date{\today}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper presents a draft description of Progressive Retrieval Attention (PRA),
+a hierarchical neural-memory architecture in which layer-specific queries
+select references, chunks, and cached neural memory progressively rather than
+attending to all available context. The paper is intentionally a near-final
+draft. Experimental sections contain placeholders pending implementation.
+\end{abstract}
+
+\section{Introduction}
+Current long-context systems scale computation primarily with available context.
+PRA instead aims to scale computation with selected neural memory.
+
+\section{Architecture}
+Hierarchy:
+\begin{enumerate}
+\item Reference selection
+\item Chunk selection
+\item One routing gist per chunk
+\item Materialization of selected chunk token K/V
+\item Multi-head memory attention
+\end{enumerate}
+
+Routing gists are derived from contextual projected keys by default. Optional
+summary metadata may be used through configuration but is never required.
+
+\section{Chunking}
+Support:
+\begin{itemize}
+\item Whole reference
+\item Fixed token chunking
+\item Marker-based chunking
+\item Semantic chunking (future work)
+\end{itemize}
+
+\section{Recursive References}
+References may recursively resolve other references under bounded depth,
+cycle detection and resource budgets.
+
+\section{Dynamic Memory Batching}
+Support three modes:
+\begin{itemize}
+\item Per-example execution
+\item Single padded rectangle
+\item Dynamic bucketed rectangles grouped by similar memory sizes
+\end{itemize}
+
+\section{Training and Retrieval Metrics}
+Evaluate language modelling, routing quality, memory utilization,
+latency, bucket efficiency and cache reuse independently.
+
+\section{Experimental Plan}
+Skeleton:
+\begin{itemize}
+\item Full-context baseline
+\item PRA with full-reference materialization
+\item Selected chunk materialization
+\item Mean vs last vs GRU routing gists
+\item Search strategy comparison
+\item Bucket count comparison
+\item Recursive reference experiments
+\end{itemize}
+
+Results tables and figures intentionally omitted until implementation.
+
+\section{Discussion}
+The central hypothesis is that performance can remain close to a
+full-context baseline while only a small fraction of available neural memory
+is materialized.
+
+\section{Tentative Conclusions}
+The proposed architecture unifies hierarchical retrieval, reusable neural
+memory, chunk-level routing, recursive references and dynamic execution.
+At present this remains a research hypothesis. Whether PRA delivers substantial
+quality/computation improvements depends on future empirical evaluation.
+The implementation roadmap has been designed to make these questions directly
+measurable.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+\bibitem{transformer} Vaswani et al. Attention Is All You Need.
+\bibitem{retro} RETRO.
+\bibitem{rag} Retrieval-Augmented Generation.
+\end{thebibliography}
+\end{document}
