@@ -221,6 +221,7 @@ def native_kv_attention(
     memory_v_by_item: Sequence[torch.Tensor],
     *,
     attention_mask: torch.Tensor | None = None,
+    max_context_tokens: int | None = None,
 ) -> tuple[torch.Tensor, MemoryBatchingStats]:
     """Attend jointly over selected historical K/V and causal local K/V.
 
@@ -260,6 +261,14 @@ def native_kv_attention(
         memory_k = memory_k.to(q.device, q.dtype)
         memory_v = memory_v.to(q.device, q.dtype)
         memory_length = int(memory_k.shape[2])
+        if (
+            max_context_tokens is not None
+            and memory_length + token_count > int(max_context_tokens)
+        ):
+            raise ValueError(
+                "Native attention context exceeds model_max_context_tokens: "
+                f"{memory_length} memory + {token_count} local > {max_context_tokens}."
+            )
         lengths.append(memory_length)
 
         keys = torch.cat((memory_k, local_k[row_index : row_index + 1]), dim=2)

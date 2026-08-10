@@ -9,9 +9,13 @@ model:
   model_variant: custom
 
 pra:
+  # Logical PRA memory may exceed this limit; no native model operation may.
+  model_max_context_tokens: null
   max_prompt_direct_tokens: null
   prompt_overflow_mode: truncate
   max_prompt_gists: null
+  max_materialized_memory_tokens: null
+  context_safety_reserve_tokens: 0
   pra_layer_ids: [2, 3]
   top_k_references: 2
   top_k_chunks_per_reference: 1
@@ -57,6 +61,10 @@ pra:
   chunking_mode: none
   fixed_chunk_tokens: 64
   fixed_chunk_overlap_tokens: 0
+  # Legacy chunking fields above map to routing_chunking when this is null.
+  encoding_chunking: null
+  routing_chunking: null
+  encoding_context_mode: independent
   reference_overflow_policy: truncate
   detail_materialization: selected_chunks
   memory_bucket_count: 1

@@ -192,7 +192,7 @@ def prepare_prompt_batch_for_pra(
                 },
                 max_chunks=model.cfg.max_prompt_gists,
                 use_configured_max_chunks=False,
-                max_chunk_tokens=model.cfg.max_seq_len,
+                max_chunk_tokens=model.cfg.effective_model_max_context_tokens,
                 historical_encoding=(model.cfg.prompt_position_mode == "historical"),
             )
             cache.put(entry)
@@ -217,9 +217,9 @@ def prepare_prompt_batch_for_pra(
         labels=padded_labels,
         position_offsets=torch.tensor(
             [
-                len(split.implicit_ids)
-                if model.cfg.prompt_position_mode == "historical"
-                else 0
+                model.cfg.prompt_tail_position_offset(
+                    len(split.implicit_ids), len(split.direct_ids)
+                )
                 for split in splits
             ],
             dtype=torch.long,

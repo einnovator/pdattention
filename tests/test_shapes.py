@@ -115,7 +115,7 @@ def test_model_records_actual_reference_selections():
     tok = CharTokenizer(["question <REF_1> answer", "secret code red"])
     cfg = PRAConfig(
         vocab_size=tok.vocab_size,
-        max_seq_len=24,
+        max_seq_len=48,
         d_model=32,
         n_heads=4,
         n_layers=2,

@@ -261,7 +261,9 @@ def test_generation_builds_head_before_forwarding_bounded_tail():
     head = model.pra_cache.get(IMPLICIT_PROMPT_HEAD_URI)
     assert head is not None
     cached_tokens = sum(chunk.token_count for chunk in head.layer_memory[0].chunks)
-    assert cached_tokens == input_ids.shape[1] - cfg.effective_prompt_direct_tokens
+    assert cached_tokens == model.last_generation_stats["head_tokens"]
+    assert cached_tokens > input_ids.shape[1] - cfg.effective_prompt_direct_tokens
+    assert model.last_generation_stats["rollover_events"] == 1
 
     short_ids = torch.tensor([tokenizer.encode("abc")])
     model.generate(short_ids, max_new_tokens=0, tokenizer=tokenizer, do_sample=False)

@@ -126,6 +126,7 @@ class PRAttention(nn.Module):
             memory_k,
             memory_v,
             attention_mask=attention_mask,
+            max_context_tokens=self.config.effective_model_max_context_tokens,
         )
         return self.o_proj(self.merge_heads(heads))
 
@@ -151,7 +152,83 @@ class PRAttention(nn.Module):
                 )
         return expanded
 
-    def _materialize(self, selected: list[SelectedChunk], q: torch.Tensor):
+    def _budget_selection(
+        self,
+        selected: list[SelectedChunk],
+        *,
+        direct_tokens: int,
+        routing_candidates: int,
+    ) -> tuple[list[SelectedChunk], dict[str, float]]:
+        """Choose highest-scoring whole chunks under one native-context budget."""
+        hard_remaining = (
+            self.config.effective_model_max_context_tokens
+            - int(direct_tokens)
+            - self.config.context_safety_reserve_tokens
+        )
+        if hard_remaining < 0:
+            raise ValueError(
+                "Direct context and safety reserve exceed model_max_context_tokens."
+            )
+        memory_budget = hard_remaining
+        if self.config.max_materialized_memory_tokens is not None:
+            memory_budget = min(
+                memory_budget, self.config.max_materialized_memory_tokens
+            )
+        ranked = sorted(
+            selected,
+            key=lambda hit: (-hit.chunk_score, hit.reference_uri, hit.chunk_id),
+        )
+        requested = sum(
+            1
+            if self.config.detail_materialization == "gist_only"
+            else hit.selected_token_count
+            for hit in ranked
+        )
+        retained = []
+        rejected = []
+        remaining = memory_budget
+        materialized = 0
+        for hit in ranked:
+            cost = (
+                1
+                if self.config.detail_materialization == "gist_only"
+                else hit.selected_token_count
+            )
+            if cost <= remaining:
+                retained.append(hit)
+                remaining -= cost
+                materialized += cost
+            else:
+                rejected.append(hit)
+        return retained, {
+            "model_max_context_tokens": float(
+                self.config.effective_model_max_context_tokens
+            ),
+            "direct_context_tokens": float(direct_tokens),
+            "memory_budget_tokens": float(memory_budget),
+            "routing_candidates": float(routing_candidates),
+            "routing_topk_candidates": float(len(selected)),
+            "chunks_materialized": float(len(retained)),
+            "chunks_budget_rejected": float(len(rejected)),
+            "memory_tokens_requested": float(requested),
+            "memory_tokens_materialized": float(materialized),
+            "materialization_budget_utilization": materialized
+            / max(memory_budget, 1),
+            "lowest_materialized_score": (
+                min(hit.chunk_score for hit in retained) if retained else float("nan")
+            ),
+            "highest_budget_rejected_score": (
+                max(hit.chunk_score for hit in rejected) if rejected else float("nan")
+            ),
+        }
+
+    def _materialize(
+        self,
+        selected: list[SelectedChunk],
+        q: torch.Tensor,
+        *,
+        direct_tokens: int,
+    ):
         """Turn routed hits into one item's rectangular memory K/V.
 
         Returns K/V shaped ``[1,H,M,Dh]``, retained trace records, and the number
@@ -159,6 +236,7 @@ class PRAttention(nn.Module):
         one per chunk in ``gist_only`` mode, selected detail in the default mode,
         or all chunks of each routed URI in ``full_reference`` mode.
         """
+        routing_candidates = len(selected)
         # Full-reference mode preserves URI routing but widens detail after selection.
         if self.config.detail_materialization == "full_reference":
             selected = self._expand_full_references(selected)
@@ -172,9 +250,14 @@ class PRAttention(nn.Module):
                 seen.add(identity)
                 deduplicated.append(hit)
         selected = deduplicated
+        selected, budget_stats = self._budget_selection(
+            selected,
+            direct_tokens=direct_tokens,
+            routing_candidates=routing_candidates,
+        )
         if not selected:
             empty = q.new_empty((1, self.n_heads, 0, self.head_dim))
-            return empty, empty, selected, 0, 0, 0.0
+            return empty, empty, selected, 0, 0, 0.0, budget_stats
 
         keys = []
         values = []
@@ -207,7 +290,7 @@ class PRAttention(nn.Module):
                 values.append(value)
         if not keys:
             empty = q.new_empty((1, self.n_heads, 0, self.head_dim))
-            return empty, empty, selected, duplicate_tokens, 0, 0.0
+            return empty, empty, selected, duplicate_tokens, 0, 0.0, budget_stats
 
         transfer_bytes = sum(
             (key.numel() * key.element_size()) + (value.numel() * value.element_size())
@@ -242,6 +325,7 @@ class PRAttention(nn.Module):
             duplicate_tokens,
             transfer_bytes,
             transfer_duration,
+            budget_stats,
         )
 
     def forward(self, x, use_pra_memory: bool = True, attention_mask: torch.Tensor | None = None):
@@ -307,9 +391,22 @@ class PRAttention(nn.Module):
         duplicate_tokens = 0
         transferred_kv_bytes = 0
         transfer_duration = 0.0
+        budget_stats_by_row = []
         for batch_index, selected in enumerate(selected_by_batch):
-            key, value, retained, duplicates, row_transfer_bytes, row_transfer_duration = (
-                self._materialize(selected, q[batch_index : batch_index + 1])
+            (
+                key,
+                value,
+                retained,
+                duplicates,
+                row_transfer_bytes,
+                row_transfer_duration,
+                row_budget_stats,
+            ) = (
+                self._materialize(
+                    selected,
+                    q[batch_index : batch_index + 1],
+                    direct_tokens=t,
+                )
             )
             memory_k.append(key)
             memory_v.append(value)
@@ -317,12 +414,29 @@ class PRAttention(nn.Module):
             duplicate_tokens += duplicates
             transferred_kv_bytes += row_transfer_bytes
             transfer_duration += row_transfer_duration
+            budget_stats_by_row.append(row_budget_stats)
         _synchronize_detailed_timing(q, collect_timing)
         materialization_duration = time.perf_counter() - materialization_start
 
         if self.memory_transport == "native_kv":
             selected_lengths = [int(key.shape[2]) for key in memory_k]
             if not any(selected_lengths):
+                self.last_diagnostics = {
+                    key: sum(float(row[key]) for row in budget_stats_by_row)
+                    for key in (
+                        "direct_context_tokens",
+                        "memory_budget_tokens",
+                        "routing_candidates",
+                        "routing_topk_candidates",
+                        "chunks_materialized",
+                        "chunks_budget_rejected",
+                        "memory_tokens_requested",
+                        "memory_tokens_materialized",
+                    )
+                }
+                self.last_diagnostics["model_max_context_tokens"] = float(
+                    self.config.effective_model_max_context_tokens
+                )
                 return local_out
             _synchronize_detailed_timing(q, collect_timing)
             memory_start = time.perf_counter()
@@ -333,6 +447,7 @@ class PRAttention(nn.Module):
                 memory_k,
                 memory_v,
                 attention_mask=attention_mask,
+                max_context_tokens=self.config.effective_model_max_context_tokens,
             )
             _synchronize_detailed_timing(q, collect_timing)
             memory_attention_duration = time.perf_counter() - memory_start
@@ -359,6 +474,52 @@ class PRAttention(nn.Module):
             local_norm = float(local_out.detach().norm().cpu())
             self.last_diagnostics = {
                 **stats.as_metrics(),
+                "model_max_context_tokens": float(
+                    self.config.effective_model_max_context_tokens
+                ),
+                "direct_context_tokens": float(t * b),
+                "memory_budget_tokens": sum(
+                    row["memory_budget_tokens"] for row in budget_stats_by_row
+                ),
+                "routing_candidates": sum(
+                    row["routing_candidates"] for row in budget_stats_by_row
+                ),
+                "routing_topk_candidates": sum(
+                    row["routing_topk_candidates"] for row in budget_stats_by_row
+                ),
+                "chunks_materialized": sum(
+                    row["chunks_materialized"] for row in budget_stats_by_row
+                ),
+                "chunks_budget_rejected": sum(
+                    row["chunks_budget_rejected"] for row in budget_stats_by_row
+                ),
+                "memory_tokens_requested": sum(
+                    row["memory_tokens_requested"] for row in budget_stats_by_row
+                ),
+                "memory_tokens_materialized": sum(
+                    row["memory_tokens_materialized"] for row in budget_stats_by_row
+                ),
+                "materialization_budget_utilization": sum(
+                    row["materialization_budget_utilization"]
+                    for row in budget_stats_by_row
+                )
+                / max(len(budget_stats_by_row), 1),
+                "lowest_materialized_score": min(
+                    (
+                        row["lowest_materialized_score"]
+                        for row in budget_stats_by_row
+                        if math.isfinite(row["lowest_materialized_score"])
+                    ),
+                    default=float("nan"),
+                ),
+                "highest_budget_rejected_score": max(
+                    (
+                        row["highest_budget_rejected_score"]
+                        for row in budget_stats_by_row
+                        if math.isfinite(row["highest_budget_rejected_score"])
+                    ),
+                    default=float("nan"),
+                ),
                 "memory_duplicate_chunk_tokens": float(duplicate_tokens),
                 "memory_transport_native_kv": 1.0,
                 "active_local_tokens": float(local_tokens),
@@ -418,7 +579,38 @@ class PRAttention(nn.Module):
         local_norm = float(local_out.detach().norm().cpu())
         self.last_diagnostics = {
             **stats.as_metrics(),
+            "model_max_context_tokens": float(
+                self.config.effective_model_max_context_tokens
+            ),
+            "direct_context_tokens": float(t * b),
+            "memory_budget_tokens": sum(
+                row["memory_budget_tokens"] for row in budget_stats_by_row
+            ),
+            "routing_candidates": sum(
+                row["routing_candidates"] for row in budget_stats_by_row
+            ),
+            "routing_topk_candidates": sum(
+                row["routing_topk_candidates"] for row in budget_stats_by_row
+            ),
+            "chunks_materialized": sum(
+                row["chunks_materialized"] for row in budget_stats_by_row
+            ),
+            "chunks_budget_rejected": sum(
+                row["chunks_budget_rejected"] for row in budget_stats_by_row
+            ),
+            "memory_tokens_requested": sum(
+                row["memory_tokens_requested"] for row in budget_stats_by_row
+            ),
+            "memory_tokens_materialized": sum(
+                row["memory_tokens_materialized"] for row in budget_stats_by_row
+            ),
+            "materialization_budget_utilization": sum(
+                row["materialization_budget_utilization"]
+                for row in budget_stats_by_row
+            )
+            / max(len(budget_stats_by_row), 1),
             "memory_duplicate_chunk_tokens": float(duplicate_tokens),
+            "retrieved_kv_transfer_bytes": float(transferred_kv_bytes),
             "memory_output_norm": memory_norm,
             "local_output_norm": local_norm,
             "memory_to_local_output_norm_ratio": memory_norm / max(local_norm, 1e-12),
@@ -428,6 +620,7 @@ class PRAttention(nn.Module):
                 {
                     "routing_duration_seconds": routing_duration,
                     "materialization_duration_seconds": materialization_duration,
+                    "selected_kv_transfer_duration_seconds": transfer_duration,
                     "memory_attention_duration_seconds": memory_attention_duration,
                 }
             )

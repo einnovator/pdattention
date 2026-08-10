@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import warnings
 
 from common.config import TrainConfig as CommonTrainConfig
+from .chunking import ChunkingConfig
 
 
 @dataclass
@@ -23,6 +24,7 @@ class PRAConfig:
     n_mixed_layers: int = 0  # Following blocks with self-attention then PRA.
     d_ff: int | None = None  # MLP width; defaults to 4 * d_model.
     max_seq_len: int = 128  # Largest prompt or independently encoded reference chunk.
+    model_max_context_tokens: int | None = None  # Hard native-operation context ceiling.
     dropout: float = 0.0  # Dropout used by vanilla/mixed blocks and the GRU pooler.
     model_variant: str = "custom"  # custom, td_sa, td_pra, or last-two-layer tdx_pra.
 
@@ -41,6 +43,8 @@ class PRAConfig:
     max_prompt_direct_tokens: int | None = None  # None inherits max_seq_len.
     prompt_overflow_mode: str = "truncate"  # truncate, implicit_reference, or error.
     max_prompt_gists: int | None = None  # Prompt-head chunk cap; None keeps every chunk.
+    max_materialized_memory_tokens: int | None = None  # Deployment cap after routing.
+    context_safety_reserve_tokens: int = 0  # Native positions reserved beyond direct+memory.
 
     # Search modes and the independent chunk/reference gist representations.
     search_strategy: str = "hierarchical"
@@ -105,6 +109,9 @@ class PRAConfig:
     kv_cache_non_blocking: bool = False  # Request asynchronous selected-K/V transfers.
     marker_rules: tuple[str, ...] = ("<PRA_CHUNK>",)  # Explicit text split markers.
     semantic_chunker: object | None = None  # Plugin implementing SemanticChunker.
+    encoding_chunking: ChunkingConfig | dict | None = None  # Model-safe contextual blocks.
+    routing_chunking: ChunkingConfig | dict | None = None  # Smaller addressable K/V slices.
+    encoding_context_mode: str = "independent"  # independent or overlap/historical_window.
     detail_materialization: str = "selected_chunks"  # selected_chunks, full_reference, gist_only.
 
     # Variable memory lengths are padded per bucket before batched cross-attention.
@@ -142,21 +149,78 @@ class PRAConfig:
 
     @property
     def effective_prompt_direct_tokens(self) -> int:
-        """Return the direct prompt budget clamped to positional capacity."""
-        requested = self.max_prompt_direct_tokens or self.max_seq_len
-        return min(int(requested), int(self.max_seq_len))
+        """Return direct-token capacity after the hard model reserve."""
+        requested = self.max_prompt_direct_tokens or self.effective_model_max_context_tokens
+        available = self.effective_model_max_context_tokens - self.context_safety_reserve_tokens
+        return min(int(requested), int(self.max_seq_len), int(available))
+
+    @property
+    def effective_model_max_context_tokens(self) -> int:
+        """Return the hard native-operation limit, defaulting to model capacity."""
+        return int(self.model_max_context_tokens or self.max_seq_len)
+
+    @property
+    def routing_chunking_config(self) -> ChunkingConfig:
+        """Return explicit routing policy or migrate legacy chunking fields."""
+        if self.routing_chunking is not None:
+            return ChunkingConfig.from_value(self.routing_chunking)
+        return ChunkingConfig(
+            mode=self.chunking_mode,
+            chunk_tokens=self.fixed_chunk_tokens,
+            overlap_fraction=self.chunk_overlap_fraction,
+            overlap_tokens=self.fixed_chunk_overlap_tokens,
+            markers=tuple(self.marker_rules),
+            semantic_chunker=self.semantic_chunker,
+        )
+
+    @property
+    def encoding_chunking_config(self) -> ChunkingConfig:
+        """Return the model-call partition policy; ``none`` means auto-bound only."""
+        if self.encoding_chunking is not None:
+            return ChunkingConfig.from_value(self.encoding_chunking)
+        return ChunkingConfig(
+            mode="none",
+            chunk_tokens=None,
+            overlap_fraction=self.encoding_overlap_fraction,
+        )
 
     @property
     def resolved_chunk_overlap_tokens(self) -> int:
         """Resolve the mutually exclusive token/fraction overlap configuration."""
-        if self.fixed_chunk_overlap_tokens:
-            return int(self.fixed_chunk_overlap_tokens)
-        if self.chunk_overlap_fraction <= 0.0:
-            return 0
-        return max(1, int(self.fixed_chunk_tokens * self.chunk_overlap_fraction))
+        return self.routing_chunking_config.resolved_overlap_tokens(
+            self.routing_chunking_config.chunk_tokens
+        )
+
+    def prompt_tail_position_offset(self, head_tokens: int, direct_tokens: int) -> int:
+        """Continue positions only while the complete history is natively legal."""
+        if (
+            self.prompt_position_mode == "historical"
+            and int(head_tokens) + int(direct_tokens)
+            <= self.effective_model_max_context_tokens
+        ):
+            return int(head_tokens)
+        return 0
 
     def __post_init__(self) -> None:
         """Normalize aliases/variants and reject incompatible mode settings early."""
+        self.max_seq_len = int(self.max_seq_len)
+        if self.max_seq_len <= 0:
+            raise ValueError("max_seq_len must be positive.")
+        if self.model_max_context_tokens is not None:
+            self.model_max_context_tokens = int(self.model_max_context_tokens)
+            if self.model_max_context_tokens <= 0:
+                raise ValueError("model_max_context_tokens must be positive or None.")
+            if self.model_max_context_tokens > self.max_seq_len:
+                raise ValueError(
+                    "model_max_context_tokens cannot exceed this model's max_seq_len."
+                )
+        self.context_safety_reserve_tokens = int(self.context_safety_reserve_tokens)
+        if not 0 <= self.context_safety_reserve_tokens < self.effective_model_max_context_tokens:
+            raise ValueError("context_safety_reserve_tokens must fit inside the model limit.")
+        if self.max_materialized_memory_tokens is not None:
+            self.max_materialized_memory_tokens = int(self.max_materialized_memory_tokens)
+            if self.max_materialized_memory_tokens <= 0:
+                raise ValueError("max_materialized_memory_tokens must be positive or None.")
         # Normalize routing choices before validating dependent fields.
         if self.use_cross_attention_memory is not None:
             warnings.warn(
@@ -200,6 +264,8 @@ class PRAConfig:
             self.max_prompt_gists = int(self.max_prompt_gists)
             if self.max_prompt_gists <= 0:
                 raise ValueError("max_prompt_gists must be positive or None.")
+        if self.effective_prompt_direct_tokens <= 0:
+            raise ValueError("The model context reserve leaves no direct prompt capacity.")
         if self.search_strategy not in {"hierarchical", "reference_first", "global_chunks"}:
             raise ValueError(f"Unsupported search_strategy: {self.search_strategy}")
         if self.routing_backend not in {"tensorized", "legacy"}:
@@ -323,6 +389,29 @@ class PRAConfig:
             raise ValueError("reference_position_mode must be 'local' or 'global'.")
         if self.prompt_position_mode not in {"local", "historical"}:
             raise ValueError("prompt_position_mode must be 'local' or 'historical'.")
+        if self.encoding_context_mode not in {
+            "independent",
+            "overlap",
+            "historical_window",
+        }:
+            raise ValueError(
+                "encoding_context_mode must be independent, overlap, or historical_window."
+            )
+        self.encoding_chunking = (
+            ChunkingConfig.from_value(self.encoding_chunking)
+            if self.encoding_chunking is not None
+            else None
+        )
+        self.routing_chunking = (
+            ChunkingConfig.from_value(self.routing_chunking)
+            if self.routing_chunking is not None
+            else None
+        )
+        encoding_size = self.encoding_chunking_config.chunk_tokens
+        if encoding_size is not None and encoding_size > self.effective_model_max_context_tokens:
+            raise ValueError(
+                "encoding_chunking.chunk_tokens cannot exceed model_max_context_tokens."
+            )
         if self.reference_overflow_policy not in {"truncate", "error"}:
             raise ValueError(
                 f"Unsupported reference_overflow_policy: {self.reference_overflow_policy}"

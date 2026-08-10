@@ -9,6 +9,55 @@ from typing import Protocol
 
 
 @dataclass(frozen=True)
+class ChunkingConfig:
+    """Reusable source-partition policy for encoding blocks or routing chunks."""
+
+    mode: str = "fixed"
+    chunk_tokens: int | None = None
+    overlap_fraction: float = 0.0
+    overlap_tokens: int = 0
+    markers: tuple[str, ...] = ("<PRA_CHUNK>",)
+    semantic_chunker: object | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"none", "fixed", "markers", "semantic"}:
+            raise ValueError(f"Unsupported chunking mode: {self.mode}")
+        if self.chunk_tokens is not None and int(self.chunk_tokens) <= 0:
+            raise ValueError("chunk_tokens must be positive or None.")
+        if int(self.overlap_tokens) < 0:
+            raise ValueError("overlap_tokens must be non-negative.")
+        if not 0.0 <= float(self.overlap_fraction) < 1.0:
+            raise ValueError("overlap_fraction must satisfy 0 <= value < 1.")
+        if self.overlap_tokens and self.overlap_fraction:
+            raise ValueError("Configure overlap_tokens or overlap_fraction, not both.")
+        if self.mode == "semantic" and self.semantic_chunker is None:
+            raise NotImplementedError(
+                "mode='semantic' requires an explicit semantic_chunker implementation."
+            )
+
+    @classmethod
+    def from_value(cls, value) -> "ChunkingConfig":
+        """Normalize YAML dictionaries and already-constructed policies."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, dict):
+            normalized = dict(value)
+            if "markers" in normalized:
+                normalized["markers"] = tuple(normalized["markers"] or ())
+            return cls(**normalized)
+        raise TypeError("Chunking configuration must be a mapping or ChunkingConfig.")
+
+    def resolved_overlap_tokens(self, chunk_tokens: int | None = None) -> int:
+        """Resolve token/fraction overlap for a concrete partition size."""
+        if self.overlap_tokens:
+            return int(self.overlap_tokens)
+        size = int(chunk_tokens or self.chunk_tokens or 0)
+        if self.overlap_fraction <= 0.0 or size <= 0:
+            return 0
+        return max(1, int(size * self.overlap_fraction))
+
+
+@dataclass(frozen=True)
 class ReferenceChunk:
     """Tokenizer-ready source span from which every PRA layer builds memory."""
 
@@ -236,15 +285,55 @@ def partition_reference_tokens(
     which is used by implicit prompt history. Text-origin references retain the
     ordinary ``max_gists_per_reference`` cap through the default arguments.
     """
+    routing = getattr(config, "routing_chunking_config", None)
+    if routing is None:
+        routing = ChunkingConfig(
+            mode=config.chunking_mode,
+            chunk_tokens=config.fixed_chunk_tokens,
+            overlap_fraction=config.chunk_overlap_fraction,
+            overlap_tokens=config.fixed_chunk_overlap_tokens,
+            markers=tuple(config.marker_rules),
+            semantic_chunker=config.semantic_chunker,
+        )
+    return partition_source(
+        uri,
+        token_ids,
+        tokenizer,
+        routing,
+        metadata,
+        text=text,
+        max_chunks=(
+            config.max_gists_per_reference
+            if use_configured_max_chunks
+            else max_chunks
+        ),
+        overflow_policy=config.gist_overflow_policy,
+        max_chunk_tokens=max_chunk_tokens,
+    )
+
+
+def partition_source(
+    uri: str,
+    token_ids,
+    tokenizer,
+    chunking: ChunkingConfig | dict,
+    metadata=None,
+    *,
+    text: str | None = None,
+    max_chunks: int | None = None,
+    overflow_policy: str = "truncate",
+    max_chunk_tokens: int | None = None,
+) -> list[ReferenceChunk]:
+    """Partition exact IDs with one policy shared by encoding and routing stages."""
+    chunking = ChunkingConfig.from_value(chunking)
     metadata = dict(metadata or {})
     token_ids = list(int(token_id) for token_id in token_ids)
     if not token_ids:
         return []
     text = tokenizer.decode(token_ids) if text is None else text
-    chunk_limit = config.max_gists_per_reference if use_configured_max_chunks else max_chunks
 
     # Construct candidate chunks according to one mutually exclusive mode.
-    if config.chunking_mode == "none":
+    if chunking.mode == "none":
         chunks = [
             ReferenceChunk(
                 chunk_id=_chunk_id(uri, 0),
@@ -258,22 +347,23 @@ def partition_reference_tokens(
                 metadata=metadata,
             )
         ]
-    elif config.chunking_mode == "fixed":
+    elif chunking.mode == "fixed":
+        size = int(chunking.chunk_tokens or max_chunk_tokens or len(token_ids))
         chunks = _fixed_chunks(
             uri,
             token_ids,
             tokenizer,
             metadata,
-            size=config.fixed_chunk_tokens,
-            overlap=config.resolved_chunk_overlap_tokens,
+            size=size,
+            overlap=chunking.resolved_overlap_tokens(size),
         )
-    elif config.chunking_mode == "markers":
+    elif chunking.mode == "markers":
         partitioner = metadata.get("partitioner")
         if partitioner is None:
             partitioner = (
                 MarkdownHeadingPartitioner()
                 if metadata.get("format") == "markdown"
-                else ExplicitMarkerPartitioner(config.marker_rules)
+                else ExplicitMarkerPartitioner(chunking.markers)
             )
         chunks = _char_chunks(
             uri,
@@ -284,7 +374,7 @@ def partition_reference_tokens(
         )
         reconstructed = tuple(chain.from_iterable(chunk.token_ids for chunk in chunks))
         if reconstructed != tuple(token_ids):
-            fallback_size = max_chunk_tokens or config.fixed_chunk_tokens
+            fallback_size = max_chunk_tokens or chunking.chunk_tokens or len(token_ids)
             chunks = _fixed_chunks(
                 uri,
                 token_ids,
@@ -292,23 +382,19 @@ def partition_reference_tokens(
                 {**metadata, "token_exact_marker_fallback": True},
                 size=fallback_size,
             )
-    elif config.chunking_mode == "semantic":
-        if config.semantic_chunker is None:
-            raise NotImplementedError(
-                "chunking_mode='semantic' requires an explicit semantic_chunker implementation."
-            )
-        plugin_limit = chunk_limit if chunk_limit is not None else len(token_ids)
+    elif chunking.mode == "semantic":
+        plugin_limit = max_chunks if max_chunks is not None else len(token_ids)
         chunks = list(
-            config.semantic_chunker.partition(uri, text, token_ids, metadata, plugin_limit)
+            chunking.semantic_chunker.partition(uri, text, token_ids, metadata, plugin_limit)
         )
     else:
-        raise ValueError(f"Unsupported chunking_mode: {config.chunking_mode}")
+        raise ValueError(f"Unsupported chunking mode: {chunking.mode}")
 
     chunks = _split_oversized_chunks(chunks, tokenizer, max_chunk_tokens)
     chunks, discarded = _apply_overflow(
         chunks,
-        chunk_limit,
-        config.gist_overflow_policy,
+        max_chunks,
+        overflow_policy,
         token_ids,
         text,
         tokenizer,
@@ -331,8 +417,10 @@ def partition_reference_tokens(
             chunk,
             metadata={
                 **chunk.metadata,
-                "chunk_overlap_fraction": config.chunk_overlap_fraction,
-                "resolved_chunk_overlap_tokens": config.resolved_chunk_overlap_tokens,
+                "chunk_overlap_fraction": chunking.overlap_fraction,
+                "resolved_chunk_overlap_tokens": chunking.resolved_overlap_tokens(
+                    chunking.chunk_tokens
+                ),
                 "encoded_tokens_including_overlap": encoded_tokens,
                 "stored_kv_tokens_including_overlap": encoded_tokens,
                 "covered_unique_source_tokens": unique_tokens,

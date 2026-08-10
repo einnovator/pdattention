@@ -1,6 +1,7 @@
 """Tiny standalone transformer used to study Progressive Retrieval Attention."""
 
 from contextlib import nullcontext
+from dataclasses import replace
 import warnings
 
 import torch
@@ -8,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .config import PRAConfig
 from .attention import PRAttention
-from .chunking import partition_reference_tokens
+from .chunking import partition_reference_tokens, partition_source
 from .gists import GRUGistPooler, GistContext, compute_gists, projected_tokens
 from .memory import (
     ChunkRoutingGist,
@@ -384,6 +385,12 @@ class TinyPRAModel(nn.Module):
     ):
         """Map ``[B,T]`` IDs to logits, optionally continuing historical positions."""
         b, t = input_ids.shape
+        native_limit = self.cfg.effective_model_max_context_tokens
+        if t > native_limit:
+            raise ValueError(
+                f"Native forward has {t} tokens, exceeding "
+                f"model_max_context_tokens={native_limit}."
+            )
         if attention_mask is not None and attention_mask.shape != input_ids.shape:
             raise ValueError("attention_mask must have the same [batch,tokens] shape as input_ids.")
         if torch.is_tensor(position_offset):
@@ -399,18 +406,18 @@ class TinyPRAModel(nn.Module):
             valid_positions = pos[valid]
             if (
                 valid_positions.numel()
-                and (int(valid_positions.min()) < 0 or int(valid_positions.max()) >= self.cfg.max_seq_len)
+                and (int(valid_positions.min()) < 0 or int(valid_positions.max()) >= native_limit)
             ):
                 raise ValueError("Prompt positions exceed the model positional table.")
             pos = pos.masked_fill(~valid, 0)
             positional = self.pos_emb(pos)
         else:
             scalar_offset = int(position_offset)
-            if scalar_offset < 0 or scalar_offset + t > self.cfg.max_seq_len:
+            if scalar_offset < 0 or scalar_offset + t > native_limit:
                 raise ValueError(
                     "Prompt position range exceeds the model positional table: "
                     f"[{scalar_offset}, {scalar_offset + t}) vs "
-                    f"max_seq_len={self.cfg.max_seq_len}."
+                    f"model_max_context_tokens={native_limit}."
                 )
             pos = torch.arange(scalar_offset, scalar_offset + t, device=input_ids.device)
             positional = self.pos_emb(pos)[None, :, :]
@@ -437,11 +444,17 @@ class TinyPRAModel(nn.Module):
         """
         ids = torch.tensor([token_ids], dtype=torch.long, device=device)
         position_offset = int(position_offset)
-        if position_offset < 0 or position_offset + ids.shape[1] > self.cfg.max_seq_len:
+        native_limit = self.cfg.effective_model_max_context_tokens
+        if ids.shape[1] > native_limit:
+            raise ValueError(
+                f"Reference encoding call has {ids.shape[1]} tokens, exceeding "
+                f"model_max_context_tokens={native_limit}."
+            )
+        if position_offset < 0 or position_offset + ids.shape[1] > native_limit:
             raise ValueError(
                 "Reference position range exceeds the model positional table: "
                 f"[{position_offset}, {position_offset + ids.shape[1]}) vs "
-                f"max_seq_len={self.cfg.max_seq_len}."
+                f"model_max_context_tokens={native_limit}."
             )
         pos = torch.arange(
             position_offset,
@@ -467,6 +480,153 @@ class TinyPRAModel(nn.Module):
             key = key.pin_memory()
             value = value.pin_memory()
         return LayerKV(k=key, v=value)
+
+    def _bounded_reference_payloads(
+        self,
+        uri,
+        token_ids,
+        tokenizer,
+        device,
+        metadata,
+        *,
+        detach,
+        use_pra_memory,
+        historical_encoding,
+        max_chunks,
+        use_configured_max_chunks,
+    ):
+        """Encode model-safe source blocks and slice their K/V into routing chunks."""
+        native_limit = self.cfg.effective_model_max_context_tokens
+        encoding = self.cfg.encoding_chunking_config
+        # Encoding overlap is context-only. Core spans remain non-overlapping in storage.
+        core_policy = replace(encoding, overlap_fraction=0.0, overlap_tokens=0)
+        cores = partition_source(
+            uri,
+            token_ids,
+            tokenizer,
+            core_policy,
+            {**metadata, "partition_level": "encoding"},
+            max_chunks=None,
+            overflow_policy="error",
+            max_chunk_tokens=native_limit,
+        )
+        payloads = []
+        max_encoding_tokens = 0
+        encoded_tokens = 0
+        context_mode = (
+            "historical_window"
+            if historical_encoding and self.cfg.encoding_context_mode == "independent"
+            else self.cfg.encoding_context_mode
+        )
+        for encoding_index, core in enumerate(cores):
+            core_ids = list(core.token_ids)
+            requested_overlap = (
+                encoding.resolved_overlap_tokens(len(core_ids))
+                if context_mode in {"overlap", "historical_window"}
+                else 0
+            )
+            left_context = min(
+                core.token_start,
+                requested_overlap,
+                max(native_limit - len(core_ids), 0),
+            )
+            encode_start = core.token_start - left_context
+            encode_ids = list(token_ids[encode_start : core.token_end])
+            max_encoding_tokens = max(max_encoding_tokens, len(encode_ids))
+            encoded_tokens += len(encode_ids)
+            position_offset = (
+                encode_start
+                if self.cfg.reference_position_mode == "global"
+                and encode_start + len(encode_ids) <= native_limit
+                else 0
+            )
+            encoded = self._encode_reference_tokens(
+                encode_ids,
+                device,
+                detach=detach,
+                use_pra_memory=use_pra_memory and not historical_encoding,
+                position_offset=position_offset,
+            )
+            core_kv = {
+                layer_id: LayerKV(
+                    k=kv.k[:, :, left_context : left_context + len(core_ids), :],
+                    v=kv.v[:, :, left_context : left_context + len(core_ids), :],
+                )
+                for layer_id, kv in encoded.items()
+            }
+            local_chunks = partition_source(
+                uri,
+                core_ids,
+                tokenizer,
+                self.cfg.routing_chunking_config,
+                {**metadata, "partition_level": "routing"},
+                max_chunks=None,
+                overflow_policy="error",
+                max_chunk_tokens=native_limit,
+            )
+            for local in local_chunks:
+                global_start = core.token_start + local.token_start
+                global_end = core.token_start + local.token_end
+                routed = replace(
+                    local,
+                    chunk_id=f"{uri}#chunk={len(payloads)}",
+                    token_start=global_start,
+                    token_end=global_end,
+                    metadata={
+                        **local.metadata,
+                        "encoding_block_id": encoding_index,
+                        "encoding_input_start": encode_start,
+                        "encoding_input_end": core.token_end,
+                        "encoding_input_tokens": len(encode_ids),
+                        "encoding_context_tokens": left_context,
+                        "logical_start_token": global_start,
+                        "logical_end_token": global_end,
+                        "base_model_position_offset": position_offset,
+                    },
+                )
+                payloads.append(
+                    (
+                        routed,
+                        {
+                            layer_id: LayerKV(
+                                k=kv.k[:, :, local.token_start : local.token_end, :],
+                                v=kv.v[:, :, local.token_start : local.token_end, :],
+                            )
+                            for layer_id, kv in core_kv.items()
+                        },
+                    )
+                )
+        chunk_limit = (
+            self.cfg.max_gists_per_reference
+            if use_configured_max_chunks
+            else max_chunks
+        )
+        discarded = max(len(payloads) - chunk_limit, 0) if chunk_limit is not None else 0
+        if discarded:
+            if self.cfg.gist_overflow_policy == "error":
+                raise ValueError(
+                    f"Reference produced {len(payloads)} routing chunks, exceeding {chunk_limit}."
+                )
+            payloads = payloads[:chunk_limit]
+        return payloads, {
+            "encoding_call_count": len(cores),
+            "max_encoding_input_tokens": max_encoding_tokens,
+            "encoding_input_tokens_total": encoded_tokens,
+            "encoding_context_mode": context_mode,
+            "encoding_chunking": {
+                "mode": encoding.mode,
+                "chunk_tokens": encoding.chunk_tokens,
+                "overlap_tokens": encoding.overlap_tokens,
+                "overlap_fraction": encoding.overlap_fraction,
+            },
+            "routing_chunking": {
+                "mode": self.cfg.routing_chunking_config.mode,
+                "chunk_tokens": self.cfg.routing_chunking_config.chunk_tokens,
+                "overlap_tokens": self.cfg.routing_chunking_config.overlap_tokens,
+                "overlap_fraction": self.cfg.routing_chunking_config.overlap_fraction,
+            },
+            "discarded_chunk_count": discarded,
+        }
 
     def encode_reference_to_cache(
         self,
@@ -544,10 +704,11 @@ class TinyPRAModel(nn.Module):
             overlap = min(core_start, requested_overlap)
             encode_start = core_start - overlap
             encode_ids = flat_ids[encode_start:core_end]
-            if len(encode_ids) > self.cfg.max_seq_len:
+            if len(encode_ids) > self.cfg.effective_model_max_context_tokens:
                 raise ValueError(
                     f"Encoding block {block_id} has {len(encode_ids)} tokens, exceeding "
-                    f"max_seq_len={self.cfg.max_seq_len}."
+                    "model_max_context_tokens="
+                    f"{self.cfg.effective_model_max_context_tokens}."
                 )
             encoded_token_total += len(encode_ids)
             block_specs.append(
@@ -602,6 +763,8 @@ class TinyPRAModel(nn.Module):
                 position_offset = (
                     block["encode_start"]
                     if self.cfg.reference_position_mode == "global"
+                    and block["encode_start"] + len(block["encode_ids"])
+                    <= self.cfg.effective_model_max_context_tokens
                     else 0
                 )
                 layer_kv = self._encode_reference_tokens(
@@ -703,24 +866,64 @@ class TinyPRAModel(nn.Module):
         text = tokenizer.decode(token_ids) if text is None else text
         detach = self.cfg.cache_build_mode == "detached"
         context = torch.no_grad() if detach else nullcontext()
-        chunks = partition_reference_tokens(
-            uri,
-            token_ids,
-            tokenizer,
-            self.cfg,
-            metadata,
-            text=text,
-            max_chunks=max_chunks,
-            use_configured_max_chunks=use_configured_max_chunks,
-            max_chunk_tokens=max_chunk_tokens,
+        bounded_encoding = (
+            historical_encoding
+            or self.cfg.encoding_chunking is not None
+            or len(token_ids) > self.cfg.effective_model_max_context_tokens
         )
+        preencoded_by_chunk = {}
+        encoding_stats = {}
+        if bounded_encoding:
+            if use_pra_memory and historical_encoding:
+                raise ValueError("Historical source encoding cannot consume its own PRA memory.")
+            with context:
+                payloads, encoding_stats = self._bounded_reference_payloads(
+                    uri,
+                    token_ids,
+                    tokenizer,
+                    device,
+                    metadata,
+                    detach=detach,
+                    use_pra_memory=use_pra_memory,
+                    historical_encoding=historical_encoding,
+                    max_chunks=max_chunks,
+                    use_configured_max_chunks=use_configured_max_chunks,
+                )
+            chunks = [chunk for chunk, _layer_kv in payloads]
+            preencoded_by_chunk = {
+                chunk.chunk_id: layer_kv for chunk, layer_kv in payloads
+            }
+        else:
+            chunks = partition_reference_tokens(
+                uri,
+                token_ids,
+                tokenizer,
+                self.cfg,
+                metadata,
+                text=text,
+                max_chunks=max_chunks,
+                use_configured_max_chunks=use_configured_max_chunks,
+                max_chunk_tokens=(
+                    max_chunk_tokens or self.cfg.effective_model_max_context_tokens
+                ),
+            )
+            encoding_stats = {
+                "encoding_call_count": len(chunks),
+                "max_encoding_input_tokens": max(
+                    (len(chunk.token_ids) for chunk in chunks), default=0
+                ),
+                "encoding_input_tokens_total": sum(
+                    len(chunk.token_ids) for chunk in chunks
+                ),
+                "encoding_context_mode": "independent",
+            }
         entry = PRACacheEntry(
             uri=uri,
             text=text,
             child_uris=list(metadata.get("child_uris") or []),
             metadata={
                 **metadata,
-                "chunking_mode": self.cfg.chunking_mode,
+                "chunking_mode": self.cfg.routing_chunking_config.mode,
                 "gist_mode": self.cfg.gist_mode,
                 "gists_per_chunk": self.cfg.gists_per_chunk,
                 "reference_level_gist_mode": self.cfg.reference_level_gist_mode,
@@ -734,8 +937,13 @@ class TinyPRAModel(nn.Module):
                 "overlap_materialization": self.cfg.overlap_materialization,
                 "historical_encoding": bool(historical_encoding),
                 "reference_encoding_strategy": (
-                    "native_slice" if historical_encoding else "independent"
+                    "bounded_native_slice" if bounded_encoding else "independent"
                 ),
+                "model_max_context_tokens": self.cfg.effective_model_max_context_tokens,
+                "logical_context_tokens": len(token_ids),
+                "logical_to_native_context_ratio": len(token_ids)
+                / max(self.cfg.effective_model_max_context_tokens, 1),
+                **encoding_stats,
                 "unique_source_tokens": len(token_ids),
                 "encoded_tokens_including_overlap": sum(
                     len(chunk.token_ids) for chunk in chunks
@@ -748,25 +956,10 @@ class TinyPRAModel(nn.Module):
         summary_by_layer = {}
         summary = metadata.get("summary")
         with context:
-            historical_layer_kv = None
-            if historical_encoding:
-                if use_pra_memory:
-                    raise ValueError("Historical source encoding cannot consume its own PRA memory.")
-                if len(token_ids) > self.cfg.max_seq_len:
-                    raise ValueError(
-                        f"Historical source has {len(token_ids)} tokens, exceeding "
-                        f"max_seq_len={self.cfg.max_seq_len}."
-                    )
-                historical_layer_kv = self._encode_reference_tokens(
-                    token_ids,
-                    device,
-                    detach=detach,
-                    use_pra_memory=False,
-                )
             if self.cfg.use_summary and summary:
                 summary_ids = list(tokenizer.encode(str(summary)))
-                if len(summary_ids) > self.cfg.max_seq_len:
-                    summary_ids = summary_ids[: self.cfg.max_seq_len]
+                if len(summary_ids) > self.cfg.effective_model_max_context_tokens:
+                    summary_ids = summary_ids[: self.cfg.effective_model_max_context_tokens]
                 if summary_ids:
                     summary_kv = self._encode_reference_tokens(
                         summary_ids, device, detach=detach, use_pra_memory=False
@@ -793,14 +986,15 @@ class TinyPRAModel(nn.Module):
             for chunk in chunks:
                 token_ids = list(chunk.token_ids)
                 original_length = len(token_ids)
-                if original_length > self.cfg.max_seq_len:
+                if original_length > self.cfg.effective_model_max_context_tokens:
                     if self.cfg.reference_overflow_policy == "error":
                         raise ValueError(
                             f"Chunk {chunk.chunk_id} has {original_length} tokens, exceeding "
-                            f"max_seq_len={self.cfg.max_seq_len}."
+                            "model_max_context_tokens="
+                            f"{self.cfg.effective_model_max_context_tokens}."
                         )
-                    token_ids = token_ids[: self.cfg.max_seq_len]
-                if historical_layer_kv is None:
+                    token_ids = token_ids[: self.cfg.effective_model_max_context_tokens]
+                if chunk.chunk_id not in preencoded_by_chunk:
                     layer_kv = self._encode_reference_tokens(
                         token_ids,
                         device,
@@ -808,14 +1002,7 @@ class TinyPRAModel(nn.Module):
                         use_pra_memory=use_pra_memory,
                     )
                 else:
-                    retained_end = min(chunk.token_start + len(token_ids), chunk.token_end)
-                    layer_kv = {
-                        layer_id: LayerKV(
-                            k=kv.k[:, :, chunk.token_start:retained_end, :],
-                            v=kv.v[:, :, chunk.token_start:retained_end, :],
-                        )
-                        for layer_id, kv in historical_layer_kv.items()
-                    }
+                    layer_kv = preencoded_by_chunk[chunk.chunk_id]
                 # Gists are pooled from projected keys/values in the same layer space
                 # later used by routing queries and cross-attention.
                 for layer_id, kv in layer_kv.items():
@@ -912,17 +1099,34 @@ class TinyPRAModel(nn.Module):
         tokenizer=None,
         do_sample: bool = True,
     ):
-        """Generate from a bounded direct tail and optional initial implicit head.
-
-        Long initial prompts are prepared once. Tokens displaced later by a long
-        generated continuation are not yet migrated into prompt memory.
-        """
+        """Generate indefinitely while rolling expired direct tokens into ``#__head``."""
         self.eval()
         output_ids = input_ids
         direct_ids = input_ids
         from .memory import PRABatchedMemoryCache
-        from .prompt import IMPLICIT_PROMPT_HEAD_URI
+        from .prompt import IMPLICIT_PROMPT_HEAD_NAME, IMPLICIT_PROMPT_HEAD_URI
 
+        if (
+            self.cfg.prompt_overflow_mode == "implicit_reference"
+            and use_pra_memory
+            and input_ids.shape[1] + max_new_tokens
+            > self.cfg.effective_prompt_direct_tokens
+            and tokenizer is None
+        ):
+            raise ValueError("tokenizer is required for streaming prompt-history rollover.")
+        if (
+            input_ids.shape[0] > 1
+            and not isinstance(self.pra_cache, PRABatchedMemoryCache)
+        ):
+            if not self.pra_cache.is_empty():
+                raise ValueError(
+                    "Batched generation with explicit references requires row-local caches."
+                )
+            self.set_pra_cache(
+                PRABatchedMemoryCache(
+                    [PRASimpleMemoryCache() for _ in range(input_ids.shape[0])]
+                )
+            )
         active_caches = (
             self.pra_cache.row_caches
             if isinstance(self.pra_cache, PRABatchedMemoryCache)
@@ -931,6 +1135,7 @@ class TinyPRAModel(nn.Module):
         for cache in active_caches:
             if hasattr(cache, "invalidate"):
                 cache.invalidate(IMPLICIT_PROMPT_HEAD_URI)
+        head_rows = [[] for _ in range(input_ids.shape[0])]
         if input_ids.shape[1] > self.cfg.effective_prompt_direct_tokens:
             if self.cfg.prompt_overflow_mode == "implicit_reference" and use_pra_memory:
                 if tokenizer is None:
@@ -956,25 +1161,63 @@ class TinyPRAModel(nn.Module):
                     caches=caches,
                 )
                 direct_ids = prepared.input_ids
+                head_rows = [list(split.implicit_ids) for split in prepared.splits]
                 self.set_pra_cache(
                     caches[0] if len(caches) == 1 else PRABatchedMemoryCache(caches)
                 )
+                active_caches = caches
             else:
                 from .prompt import prepare_prompt_for_pra
 
                 splits = [prepare_prompt_for_pra(row, self.cfg) for row in input_ids]
                 direct_ids = input_ids.new_tensor([split.direct_ids for split in splits])
+        direct_limit = self.cfg.effective_prompt_direct_tokens
+        routing_size = self.cfg.routing_chunking_config.chunk_tokens
+        rollover_unit = max(
+            1,
+            min(int(routing_size or max(direct_limit // 2, 1)), direct_limit),
+        )
+        rollover_events = 0
+        tokens_migrated = 0
+        max_direct_tokens_observed = int(direct_ids.shape[1])
+        max_native_operation_tokens = int(direct_ids.shape[1])
+        routing_steps = 0
+        routing_duration_seconds_total = 0.0
+        materialized_memory_tokens_total = 0.0
+        max_materialized_memory_tokens_observed = 0.0
         for _ in range(max_new_tokens):
-            idx = direct_ids[:, -self.cfg.effective_prompt_direct_tokens :]
-            position_offset = (
-                output_ids.shape[1] - idx.shape[1]
-                if self.cfg.prompt_position_mode == "historical"
-                else 0
+            idx = direct_ids[:, -direct_limit:]
+            position_offset = torch.tensor(
+                [
+                    self.cfg.prompt_tail_position_offset(len(head), idx.shape[1])
+                    for head in head_rows
+                ],
+                dtype=torch.long,
+                device=idx.device,
             )
             logits = self(
                 idx,
                 use_pra_memory=use_pra_memory,
                 position_offset=position_offset,
+            )
+            step_diagnostics = list(self.pra_diagnostics_by_layer().values())
+            step_materialized_by_layer = [
+                float(row.get("memory_tokens_materialized", 0.0))
+                for row in step_diagnostics
+            ]
+            step_materialized = sum(step_materialized_by_layer) / max(
+                len(step_materialized_by_layer), 1
+            )
+            if any(row.get("routing_candidates", 0.0) for row in step_diagnostics):
+                routing_steps += 1
+            routing_duration_seconds_total += sum(
+                float(row.get("routing_duration_seconds", 0.0))
+                for row in step_diagnostics
+            )
+            materialized_memory_tokens_total += step_materialized
+            max_materialized_memory_tokens_observed = max(
+                max_materialized_memory_tokens_observed,
+                max(step_materialized_by_layer, default=0.0),
             )
             logits = logits[:, -1, :] / max(temperature, 1e-6)
             if do_sample:
@@ -984,6 +1227,81 @@ class TinyPRAModel(nn.Module):
                 next_id = torch.argmax(logits, dim=-1, keepdim=True)
             direct_ids = torch.cat([direct_ids, next_id], dim=1)
             output_ids = torch.cat([output_ids, next_id], dim=1)
+            if direct_ids.shape[1] > direct_limit:
+                if self.cfg.prompt_overflow_mode == "error":
+                    raise ValueError("Generated direct history exceeded its configured limit.")
+                if self.cfg.prompt_overflow_mode == "implicit_reference" and use_pra_memory:
+                    migrate = min(rollover_unit, int(direct_ids.shape[1]) - 1)
+                    migrated = direct_ids[:, :migrate]
+                    direct_ids = direct_ids[:, migrate:]
+                    for row_index, cache in enumerate(active_caches):
+                        head_rows[row_index].extend(
+                            int(value) for value in migrated[row_index]
+                        )
+                        if hasattr(cache, "invalidate"):
+                            cache.invalidate(IMPLICIT_PROMPT_HEAD_URI)
+                        entry = self.encode_reference_tokens_to_cache(
+                            IMPLICIT_PROMPT_HEAD_URI,
+                            head_rows[row_index],
+                            tokenizer,
+                            input_ids.device,
+                            metadata={
+                                "implicit": True,
+                                "source": "prompt",
+                                "kind": "streaming_head",
+                                "display_name": IMPLICIT_PROMPT_HEAD_NAME,
+                                "prompt_row": row_index,
+                                "streaming": True,
+                                "rollover_events": rollover_events + 1,
+                                "tokens_migrated": len(head_rows[row_index]),
+                            },
+                            max_chunks=self.cfg.max_prompt_gists,
+                            use_configured_max_chunks=False,
+                            max_chunk_tokens=self.cfg.effective_model_max_context_tokens,
+                            historical_encoding=(
+                                self.cfg.prompt_position_mode == "historical"
+                            ),
+                        )
+                        cache.put(entry)
+                    rollover_events += 1
+                    tokens_migrated += migrate * int(input_ids.shape[0])
+                else:
+                    direct_ids = direct_ids[:, -direct_limit:]
+            max_direct_tokens_observed = max(
+                max_direct_tokens_observed, int(direct_ids.shape[1])
+            )
+            max_native_operation_tokens = max(
+                max_native_operation_tokens,
+                int(idx.shape[1]),
+                max(
+                    (
+                        int(
+                            cache.get(IMPLICIT_PROMPT_HEAD_URI).metadata.get(
+                                "max_encoding_input_tokens", 0
+                            )
+                        )
+                        for cache in active_caches
+                        if cache.get(IMPLICIT_PROMPT_HEAD_URI) is not None
+                    ),
+                    default=0,
+                ),
+            )
+        self.last_generation_stats = {
+            "generated_tokens": int(max_new_tokens),
+            "direct_tokens": int(direct_ids.shape[1]),
+            "head_tokens": sum(len(head) for head in head_rows),
+            "rollover_events": rollover_events,
+            "tokens_migrated": tokens_migrated,
+            "max_direct_tokens_observed": max_direct_tokens_observed,
+            "max_native_operation_tokens": max_native_operation_tokens,
+            "model_max_context_tokens": self.cfg.effective_model_max_context_tokens,
+            "routing_steps": routing_steps,
+            "routing_duration_seconds_total": routing_duration_seconds_total,
+            "materialized_memory_tokens_total": materialized_memory_tokens_total,
+            "max_materialized_memory_tokens_observed": (
+                max_materialized_memory_tokens_observed
+            ),
+        }
         return output_ids
 
 

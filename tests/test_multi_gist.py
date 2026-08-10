@@ -218,9 +218,18 @@ def test_gist_only_materializes_only_the_winning_key_value_pair():
     selected = cache.search(torch.tensor([[0.0, 1.0]]), 0, cfg)[0]
     attention = PRAttention(2, 1, 8, 0, cache, config=cfg)
 
-    keys, values, retained, _, _transfer_bytes, _transfer_duration = attention._materialize(
+    (
+        keys,
+        values,
+        retained,
+        _,
+        _transfer_bytes,
+        _transfer_duration,
+        _budget_stats,
+    ) = attention._materialize(
         selected,
         torch.zeros(1, 1, 1, 2),
+        direct_tokens=1,
     )
 
     assert retained[0].winning_gist_index == 1

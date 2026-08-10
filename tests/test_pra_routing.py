@@ -307,12 +307,21 @@ def test_overlap_materialization_policy_controls_physical_kv(policy, expected_to
     cfg = _routing_config(
         top_k_chunks_per_reference=2,
         overlap_materialization=policy,
+        max_seq_len=16,
     )
     selected = cache.search(torch.tensor([[1.0, 0.0]]), 0, cfg)[0]
     attention = PRAttention(2, 1, 8, 0, cache, config=cfg)
 
-    keys, values, _retained, duplicate_tokens, _transfer_bytes, _transfer_duration = attention._materialize(
-        selected, torch.zeros(1, 1, 1, 2)
+    (
+        keys,
+        values,
+        _retained,
+        duplicate_tokens,
+        _transfer_bytes,
+        _transfer_duration,
+        _budget_stats,
+    ) = attention._materialize(
+        selected, torch.zeros(1, 1, 1, 2), direct_tokens=1
     )
 
     assert keys.shape == values.shape == (1, 1, expected_tokens, 2)

@@ -168,17 +168,23 @@ def _evaluate_pra(
     model.clear_pra_cache()
     if head_ids:
         historical = condition != "head_independent"
-        entry = model.encode_reference_tokens_to_cache(
-            IMPLICIT_PROMPT_HEAD_URI,
-            head_ids,
-            tokenizer,
-            device,
-            metadata={"implicit": True, "display_name": "#__head", "source": "prompt"},
-            max_chunks=None,
-            use_configured_max_chunks=False,
-            max_chunk_tokens=model.cfg.max_seq_len,
-            historical_encoding=historical,
-        )
+        original_context_mode = model.cfg.encoding_context_mode
+        try:
+            if condition == "head_independent":
+                model.cfg.encoding_context_mode = "independent"
+            entry = model.encode_reference_tokens_to_cache(
+                IMPLICIT_PROMPT_HEAD_URI,
+                head_ids,
+                tokenizer,
+                device,
+                metadata={"implicit": True, "display_name": "#__head", "source": "prompt"},
+                max_chunks=None,
+                use_configured_max_chunks=False,
+                max_chunk_tokens=model.cfg.effective_model_max_context_tokens,
+                historical_encoding=historical,
+            )
+        finally:
+            model.cfg.encoding_context_mode = original_context_mode
         if condition == "head_oracle":
             _filter_entry(entry, target_span=target_span, mode="oracle")
         elif condition == "head_shuffled":
@@ -198,7 +204,9 @@ def _evaluate_pra(
     with torch.no_grad():
         logits = model(
             input_ids,
-            position_offset=len(head_ids),
+            position_offset=model.cfg.prompt_tail_position_offset(
+                len(head_ids), len(direct_ids)
+            ),
             use_pra_memory=bool(head_ids),
         )
     _sync(device)
@@ -212,6 +220,7 @@ def _evaluate_pra(
         for hit in selected
     )
     diagnostics = list(model.pra_diagnostics_by_layer().values())
+    entry = model.pra_cache.get(IMPLICIT_PROMPT_HEAD_URI) if head_ids else None
     retrieved = statistics.fmean(
         float(row.get("retrieved_token_kv", 0.0)) for row in diagnostics
     ) if diagnostics else 0.0
@@ -227,12 +236,41 @@ def _evaluate_pra(
         "materialization_ms": 1_000.0 * sum(
             float(row.get("materialization_duration_seconds", 0.0)) for row in diagnostics
         ),
+        "memory_attention_ms": 1_000.0 * sum(
+            float(row.get("memory_attention_duration_seconds", 0.0))
+            for row in diagnostics
+        ),
+        "transfer_ms": 1_000.0 * sum(
+            float(row.get("selected_kv_transfer_duration_seconds", 0.0))
+            for row in diagnostics
+        ),
+        "transfer_bytes": sum(
+            float(row.get("retrieved_kv_transfer_bytes", 0.0))
+            for row in diagnostics
+        ),
         "request_forward_ms": 1_000.0 * latency,
         "peak_cuda_allocated": (
             float(torch.cuda.max_memory_allocated(device))
             if str(device).startswith("cuda") else 0.0
         ),
         "selected_chunk_count": len({hit.chunk_id for hit in selected}),
+        "encoding_calls": float(entry.metadata.get("encoding_call_count", 0)) if entry else 0.0,
+        "max_encoding_input_tokens": float(
+            entry.metadata.get("max_encoding_input_tokens", 0)
+        ) if entry else 0.0,
+        "memory_budget_tokens": statistics.fmean(
+            float(row.get("memory_budget_tokens", 0.0)) for row in diagnostics
+        ) if diagnostics else 0.0,
+        "memory_tokens_materialized": statistics.fmean(
+            float(row.get("memory_tokens_materialized", 0.0)) for row in diagnostics
+        ) if diagnostics else 0.0,
+        "chunks_budget_rejected": statistics.fmean(
+            float(row.get("chunks_budget_rejected", 0.0)) for row in diagnostics
+        ) if diagnostics else 0.0,
+        "materialization_budget_utilization": statistics.fmean(
+            float(row.get("materialization_budget_utilization", 0.0))
+            for row in diagnostics
+        ) if diagnostics else 0.0,
     }
 
 
