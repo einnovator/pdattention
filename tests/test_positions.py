@@ -10,6 +10,11 @@ from pra_torch.model import (
     convert_sa_model_to_pra,
 )
 from pra_torch.positions import RotaryPositionEncoding
+from experiments.paper1_5_rope.instrumented_model import (
+    capture_self_attention,
+    materialize_raw_rope_key,
+)
+from experiments.paper1_5_rope.position_policies import materialization_positions
 
 
 def test_rope_position_zero_is_identity():
@@ -150,3 +155,124 @@ def test_rope_cache_keys_record_post_position_state_and_positions():
     torch.testing.assert_close(cached.position_ids, positions)
     torch.testing.assert_close(cached.k, expected)
     assert cached.k.shape == (1, cfg.n_heads, 4, cfg.d_model // cfg.n_heads)
+
+
+def test_experimental_position_policies_preserve_chunk_order_and_spacing():
+    source = torch.tensor([100, 101, 102, 103])
+    expected_spacing = source[1:] - source[:-1]
+
+    for policy in (
+        "exact_logical",
+        "local_chunk",
+        "clipped",
+        "log_compressed",
+        "bucketed",
+        "remote_past",
+    ):
+        assigned = materialization_positions(
+            source,
+            query_position=10_000,
+            policy=policy,
+            distance_limit=192,
+        )
+        torch.testing.assert_close(assigned[1:] - assigned[:-1], expected_spacing)
+        assert int(assigned[-1]) < 10_000
+
+    torch.testing.assert_close(
+        materialization_positions(
+            source,
+            query_position=10_000,
+            policy="exact_logical",
+            distance_limit=192,
+        ),
+        source,
+    )
+    assert int(
+        materialization_positions(
+            source,
+            query_position=10_000,
+            policy="local_chunk",
+            distance_limit=192,
+        )[-1]
+    ) == 9_999
+    assert int(
+        materialization_positions(
+            source,
+            query_position=10_000,
+            policy="clipped",
+            distance_limit=192,
+        )[-1]
+    ) == 10_000 - 192
+
+
+def test_deferred_rope_materialization_matches_post_position_key():
+    torch.manual_seed(13)
+    raw_key = torch.randn(1, 2, 7, 8)
+    positions = torch.arange(7) + 300
+    rope = RotaryPositionEncoding(8)
+
+    post_key = rope.apply_rotary(raw_key, positions)
+    deferred_key, assigned = materialize_raw_rope_key(
+        raw_key,
+        positions,
+        query_position=1_000,
+        policy="exact_logical",
+        distance_limit=192,
+        rope=rope,
+    )
+
+    torch.testing.assert_close(deferred_key, post_key)
+    torch.testing.assert_close(assigned, positions)
+
+
+def test_instrumented_attention_exposes_shapes_and_preserves_causality():
+    cfg = PRAConfig(
+        vocab_size=31,
+        d_model=16,
+        n_heads=2,
+        n_layers=1,
+        max_seq_len=8,
+        model_variant="td_sa",
+        position_encoding="rope",
+        dropout=0.0,
+    )
+    attention = PositionAwareTransformerBlock(cfg, 0).attn.eval()
+    hidden = torch.randn(2, 5, cfg.d_model)
+    capture = capture_self_attention(attention, hidden, torch.arange(5) + 100)
+
+    assert capture.q_raw.shape == (2, 2, 5, 8)
+    assert capture.k_positioned.shape == (2, 2, 5, 8)
+    assert capture.value.shape == (2, 2, 5, 8)
+    assert capture.attention_logits.shape == (2, 2, 5, 5)
+    assert capture.output.shape == hidden.shape
+    assert torch.isneginf(capture.attention_logits[..., 0, 1:]).all()
+    assert torch.count_nonzero(capture.attention_probabilities[..., 0, 1:]) == 0
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+def test_deferred_rope_cpu_gpu_residency_parity():
+    torch.manual_seed(17)
+    raw_key = torch.randn(1, 2, 11, 8)
+    positions = torch.arange(11) + 20_000
+    cpu_rope = RotaryPositionEncoding(8)
+    gpu_rope = RotaryPositionEncoding(8).cuda()
+
+    for policy in ("exact_logical", "clipped", "bucketed"):
+        cpu_key, cpu_positions = materialize_raw_rope_key(
+            raw_key,
+            positions,
+            query_position=30_000,
+            policy=policy,
+            distance_limit=192,
+            rope=cpu_rope,
+        )
+        gpu_key, gpu_positions = materialize_raw_rope_key(
+            raw_key.cuda(),
+            positions.cuda(),
+            query_position=30_000,
+            policy=policy,
+            distance_limit=192,
+            rope=gpu_rope,
+        )
+        torch.testing.assert_close(gpu_key.cpu(), cpu_key, rtol=2e-5, atol=2e-5)
+        torch.testing.assert_close(gpu_positions.cpu(), cpu_positions)

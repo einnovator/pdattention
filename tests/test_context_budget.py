@@ -243,9 +243,10 @@ def test_cpu_budget_rejection_transfers_only_final_selected_chunk():
     assert stats["chunks_budget_rejected"] == 1
 
 
-def test_streaming_generation_rolls_history_beyond_native_horizon():
+@pytest.mark.parametrize("position_encoding", ["absolute", "rope"])
+def test_streaming_generation_rolls_history_beyond_native_horizon(position_encoding):
     tokenizer = CharTokenizer(["abcdefghijklmnopqrstuvwxyz0123456789"])
-    cfg = _cfg(tokenizer)
+    cfg = _cfg(tokenizer, position_encoding=position_encoding)
     model = TinyPRAModel(cfg).eval()
     initial = torch.tensor([tokenizer.encode("abcdefgh")])
     generated = model.generate(
