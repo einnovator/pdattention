@@ -35,7 +35,25 @@
 \maketitle
 
 \begin{abstract}
-Large language models increasingly rely on longer context windows, retrieval-augmented prompts, and agentic search loops to access information beyond their parametric memory. These mechanisms are powerful, but they expose context in a largely flat and eager form. This paper argues for a complementary direction: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse approximation to full long-context self-attention. Lightweight references index historical token K/V produced by the model's native layer projections; routing gists choose which original K/V becomes active; and selected memory is concatenated with local K/V under one shared softmax and the existing output projection. Canonical PRA therefore requires no separate cross-attention branch and no reference-specific trainable transport parameters. References may name external objects, prior conversation, or an implicit displaced prompt head, so PRA is not synonymous with RAG. We distinguish naming from materialization, routing from transport, and historical K/V reuse from independent chunk re-encoding. Exact equivalence tests and five-seed controlled studies establish native transport through 256 addressable units. An exact packed router preserves selection and loss while reducing 256-way cold routing to 14.8--33.7 ms and persistent-index routing to 5.5--11.6 ms, approximately 94--103$\times$ faster than the scalar baseline. A model-bounded extension addresses a 184-token prompt head using base-model calls of at most 20 tokens under a 32-token native limit; score-ordered admission keeps direct plus materialized K/V within that limit, and streaming rollover carries generation beyond it. At 192 logical tokens, routed answer-code loss is 1.057 versus 1.229 under truncation. CPU-resident source K/V removes 0.73--3.42 MiB from the measured 256-way GPU cache with zero loss delta, at a 4--9 ms warm transfer cost. These remain small answer-code transport and prototype systems results, not unrestricted QA or production efficiency. The program is falsifiable by recovered context benefit per active K/V token, latency, transfer byte, and memory byte relative to full self-attention.
+Large language models commonly expose non-parametric information as a flat prompt, even
+when only a small and changing subset is useful. This paper argues for a complementary
+interface: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse
+approximation to long-context self-attention. References name prior history or external
+objects; compact gists route among those objects; and selected historical token K/V joins
+recent K/V under the decoder's existing softmax and output projection. Canonical PRA thus
+separates naming from materialization and routing from transport, without requiring a
+reference-specific cross-attention module. It also separates logical context from native
+model context: long sources can be encoded in bounded contextual blocks, sliced into
+smaller routing chunks, and admitted under one active-memory budget. Controlled five-seed
+evidence supports native transport and routing through 256 addressable units and shows why
+encoding granularity must differ from routing granularity. Under a hard 32-token native
+limit, the prototype addresses a 184-token displaced prompt head; at 192 logical tokens,
+routed loss is 1.0567 versus 1.2287 for truncation and 1.7089 for independent block
+encoding. Exact packed routing and CPU-backed K/V demonstrate plausible systems paths, but
+the evidence remains small answer-code probes rather than unrestricted QA or production
+efficiency. The proposal is falsifiable by quality per active K/V token, latency, transfer,
+resident memory, and content-causal counterfactuals against strong long-context and
+retrieval baselines.
 \end{abstract}
 
 \section{Introduction}
@@ -194,6 +212,10 @@ This does not make the base model natively support arbitrary context. It exposes
 logical context while keeping each encoding and attention operation within a configured
 native limit.
 
+\textbf{Logical context may exceed native model context, but no underlying model operation
+may exceed the configured native limit.} This is a runtime contract, not a claim that the
+base model's positional or attention machinery has been enlarged.
+
 \subsection{Recursive Anchors}
 
 Many references are best exposed recursively.  A root object may advertise child
@@ -333,6 +355,10 @@ receives that chunk's token-level keys and values and can assign different atten
 weights to its individual tokens.  Routing representations are therefore cheap
 selectors, not compressed substitutes for transported evidence.
 
+\textbf{Routing gists are selectors; selected chunks materialize full native token-level
+K/V.} Consequently gist count, stored source K/V, transferred K/V, and active attention
+K/V are different accounting quantities.
+
 The central research problem is selection: how should $\mathcal{A}_{t,\ell}$ be chosen? Possible triggers include contextual gist similarity, attention to explicit reference-token positions, uncertainty in the next-token distribution, learned gates, or runtime policies that trade accuracy against latency. Reference ranking, chunk ranking, and materialization must remain separately measurable.
 
 \subsection{PRA as Architecture, Runtime, and Research Program}
@@ -402,6 +428,10 @@ reported separately. The scaling thesis is supported only if RCB remains high wh
 active fraction falls, not merely when a PRA loss is lower than an unrelated baseline.
 
 The same separation applies inside selection. Reference ranking answers which addressable objects remain candidates; chunk ranking answers which portions of those objects are materialized. Independent budgets are necessary to prevent a prolific reference from consuming every chunk slot. Reported cache size, selected gist count, and transported token count are different quantities and should never be used interchangeably.
+
+\textbf{Active K/V is not total resident K/V.} Sparse attention becomes a GPU-capacity
+benefit only when unselected payload can remain off device, be evicted, or be shared without
+materialization.
 
 \subsection{Logical Isolation Must Survive Physical Batching}
 
@@ -547,9 +577,34 @@ component.
 
 Longformer, BigBird, Reformer, Routing Transformer, and related models reduce the cost of attending over long sequences by imposing locality, sparsity, hashing, routing, or structured global tokens \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. PRA is complementary. It does not primarily ask how to attend over a single long sequence more cheaply; it asks whether all candidate context should become part of that sequence in the first place.
 
+\subsection{KV Selection and Compression}
+
+H$_2$O, SnapKV, and ClusterKV reduce decoding-time cache cost by retaining, selecting, or
+merging token K/V \cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}. PRA acts at a
+different boundary: it first selects provenance-bearing reference chunks from an
+addressable context graph, then materializes their native token K/V. Token-level cache
+policies can operate inside the selected working set, so the approaches are complementary
+rather than mutually exclusive.
+
 \subsection{Memory-Augmented Transformers}
 
 Compressive Transformers store compressed memories of past activations \cite{rae2020compressive}. Memorizing Transformers retrieve nearest-neighbor memories from previous tokens \cite{wu2022memorizing}. RETRO retrieves chunks from a large text database and conditions generation on them \cite{borgeaud2022retro}. PRA shares the ambition of memory-augmented generation but emphasizes explicit reference handles, URI addressing, recursive anchors, and layer-specific cache entries.
+
+Transformer-XL, Infini-attention, TransformerFAM, and Titans provide recurrent,
+compressive, feedback, or learned long-term state
+\cite{dai2019transformerxl,munkhdalai2024infini,hwang2024fam,behrouz2025titans}. PRA's
+implicit prompt head serves a related purpose but preserves a named, selectively
+materialized history. Beyond the native horizon, its bounded-block representation is an
+explicit approximation rather than exact recurrence.
+
+\subsection{Landmarks, Gists, and Streaming Windows}
+
+Landmark Attention organizes random access through landmark tokens, while StreamingLLM
+maintains stable streaming behavior through attention sinks
+\cite{mohtashami2023landmark,xiao2023streamingllm}. PRA gists also provide a coarse index,
+but they normally remain routing state: selected chunks materialize their full token-level
+K/V. This distinction lets routing quality and transported evidence be evaluated
+separately.
 
 \subsection{Hierarchical Attention and Adaptive Computation}
 
@@ -674,7 +729,7 @@ Legal and medical domains make the risks clearest. Jurisdiction, effective date,
 
 Table~\ref{tab:conceptual} gives a conceptual comparison. The entries are hypotheses and design claims, not measured results.
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Conceptual comparison of context-access strategies. This table is illustrative and does not report experimental measurements.}
 \label{tab:conceptual}
@@ -700,7 +755,7 @@ A standalone PyTorch pilot first provided limited implementation evidence for pa
 
 A corrected controlled follow-up uses paired seeds $\{1,7,21,42,87\}$; a 1,048,576-token budget; a fixed tokenizer; a fixed 512-example reference corpus and split; and SelfAttention controls parameter matched through FFN width. Table~\ref{tab:position-followup} summarizes ordinary-language results. Because external memory is absent in this phase, the comparison tests backbone compatibility. Both PRA variants finish below their matched controls in every paired seed, but five pairs permit only a minimum two-sided exact sign-flip $p$-value of 0.0625. This is encouraging directional evidence, not proof of superiority or equivalence.
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Five-seed corrected-router ordinary-language follow-up. Mean $\pm$ population standard deviation; lower is better.}
 \label{tab:position-followup}
@@ -905,7 +960,7 @@ length reaches 192 while encoding and selected attention remain bounded.}
 
 Score-ordered whole-chunk admission exposes a quality--active-memory curve. Increasing
 the memory budget from 4 to 20 tokens raises target recall from 0.325 to 0.525 and lowers
-loss from 1.242 to 1.057. Mean forward latency remains 18.4--18.8 ms on this tiny GPU,
+loss from 1.242 to 1.057. Mean forward latency remains 18.5--19.3 ms on this tiny GPU,
 so the sweep supports bounded allocation but no speed claim. In a separate 48-token
 generation smoke test, 44 expired tokens enter \texttt{\#\_\_head} through 11 rollovers;
 40 subsequent steps route memory, the direct suffix never exceeds eight tokens, and the

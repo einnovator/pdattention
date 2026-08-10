@@ -35,16 +35,44 @@
 \maketitle
 
 \begin{abstract}
-This paper describes a standalone PyTorch research prototype for Progressive Retrieval Attention (PRA), recast as an inference-time sparse approximation to full native self-attention. A trained SelfAttention checkpoint can be converted by splitting its existing Q/K/V projection, with no newly trained transport module. Selected historical token K/V is concatenated with local K/V under one shared softmax and the existing output projection; routing gists act only as an index. Exact tests show that historical source K/V plus continued tail positions reproduce full causal-model tail logits, and that converted PRA logits match the source model when memory is disabled. Earlier five-seed synthetic, HotpotQA-derived, and QASPER-derived probes establish content-causal sparse transport through 32 independently encoded partitions but degrade at 64. Controlled sensitivity experiments identify that decline as contextual fragmentation: encoding the history once and slicing its native K/V restores native-all RCB to 1.000 and annotated-oracle RCB to 0.998--0.999 at 256 addressable units. With eight selected references, a 2.2--2.4M-parameter backbone obtains routed RCB 1.000 on the HotpotQA-derived probe and 0.908 on QASPER-derived text at 256 units while activating 4.7--5.1\% of accessible K/V; a 6.6--6.9M-parameter backbone raises both to 1.000 at 4.4--4.9\%. These are controlled answer-code transport probes, not unrestricted QA. The current exact router preserves selection while reducing 256-way cold routing to 14.8--33.7 ms and persistent-index routing to 5.5--11.6 ms, 94--103$\times$ faster than the scalar baseline. A model-bounded extension separates logical length, native limit, encoding blocks, and routing chunks; a five-seed probe addresses 184 head tokens with a 32-token native limit, and a 48-token continuation rolls 44 tokens into routed history without a limit violation. At 192 logical tokens, routed loss is 1.057 versus 1.229 under truncation, while a 4-to-20-token materialization sweep improves target recall from 0.325 to 0.525. CPU-resident source K/V removes 0.73--3.42 MiB from the measured GPU cache at a 4--9 ms warm transfer cost. End-to-end production efficiency remains unclaimed because cache construction, transfer overlap, and fused attention are separate systems costs.
+Progressive Retrieval Attention (PRA) is an inference-time sparse approximation to long-context self-attention: compact routing gists index historical token keys and values (K/V), and only selected native K/V joins the recent context under the decoder's existing attention softmax and output projection. A trained SelfAttention checkpoint can therefore be converted without a new transport module. Controlled failures reveal a central design constraint: independently encoding small routing chunks destroys context at fine partitions, whereas encoding a larger causal region and slicing its native K/V restores recovered context benefit to 0.998--1.000 through 256 addressable units. At that scale, selecting eight references activates 4.4--5.1\% of accessible K/V; a packed exact router reduces warm 256-way selection to 5.5--11.6 ms, 94--103$\times$ faster than the original scalar implementation. PRA also separates logical context from the largest operation accepted by the base model. Under a hard 32-token native-operation limit, a five-seed probe addresses a 184-token displaced prompt head without violations; at 192 logical tokens, routed loss is 1.0567 versus 1.2287 for truncation and 1.7089 for independent block encoding. Increasing the materialization budget from 4 to 20 tokens improves target recall from 0.325 to 0.525, and streaming rollover moves 44 expired tokens into routable history while the direct window remains bounded. These results establish native-K/V transport, exact sparse routing, and model-bounded execution in small controlled answer-code probes. They do not establish unrestricted question answering or end-to-end production efficiency.
 \end{abstract}
 
 \section{Introduction}
 
-Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-context language modeling. Many tasks require access to large context, but the relevant evidence is sparse, hierarchical, and often discovered only after partial reasoning. A conventional decoder-only transformer receives a flat token sequence. PRA treats references as an index over model-native historical K/V and activates only selected positions. References may denote prior tokens, external objects, or an implicit prompt head; retrieval-augmented generation is therefore one possible source of memory, not the definition of PRA \cite{lewis2020rag}.
+Progressive Retrieval Attention (PRA) is motivated by a common mismatch in long-context language modeling. Many tasks require access to large context, but the relevant evidence is sparse, hierarchical, and often discovered only after partial reasoning. A conventional decoder-only transformer receives a flat token sequence. PRA instead treats references as an index over model-native historical K/V and activates only selected positions. References may denote prior tokens, external objects, or an implicit prompt head; retrieval-augmented generation is therefore one possible source of memory, not the definition of PRA \cite{lewis2020rag}.
 
-This paper documents the first standalone PyTorch prototype in the PRA program. The prototype is not a production long-context model. It is a controlled experimental instrument. Its goals are to make the model definition inspectable, expose reference use through explicit metadata, and support ablations that would be difficult to interpret in a large pretrained model. The contribution includes an initial empirical pilot, a five-seed corrected-router and parameter-controlled follow-up, and an evaluation design intended to make failure visible rather than merely demonstrate that a memory branch can lower loss.
+Suppose a 32K-token diagnostic record contains a fact needed near the end, but the base
+model can directly process only 4K tokens. PRA keeps the recent 4K tokens local, registers
+the displaced 28K as a request-local object named \texttt{\#\_\_head}, encodes that object
+in model-safe blocks, and exposes smaller chunks through a routing index. The query ranks
+gists, but attention reads the selected chunks' original token-level K/V. The base model is
+never asked to process the entire 32K logical context in one operation.
 
-The implementation consists of four main components. First, a tiny GPT-style language model provides causal decoder blocks. Second, a reference system parses tokens such as \texttt{<REF\_1>} and maps them through an explicit local table to URI-addressed references; the prompt adapter can create a reserved implicit reference without adding a visible handle. Third, a resolver partitions each object into bounded chunks and stores full per-layer token K/V together with one or more paired projected-key/value gists. Fourth, a PRA attention layer performs hierarchical reference-then-chunk routing and inserts selected native token K/V into ordinary causal attention. An optional scaled cross-attention branch preserves earlier experiments.
+This paper documents a standalone PyTorch prototype designed as a controlled experimental
+instrument, not a production long-context model. Its main contributions are:
+
+\begin{itemize}[leftmargin=*]
+\item a weight-preserving native-K/V transport in which selected memory and direct context
+share one attention normalization;
+\item a diagnosis of high-fragmentation failure that separates contextual \emph{encoding
+blocks} from smaller addressable \emph{routing chunks};
+\item an exact packed router, persistent routing indexes, whole-chunk materialization
+budgets, row-private batching, and optional CPU-resident source K/V;
+\item a model-bounded implicit-head path that enforces a hard per-operation context limit
+and rolls generated history into routable memory; and
+\item five-seed controlled probes and counterfactual metrics that distinguish transport,
+routing, content causality, active attention K/V, resident K/V, and transfer cost.
+\end{itemize}
+
+The implementation consists of four main components. First, a tiny GPT-style language
+model provides causal decoder blocks. Second, a reference system maps handles through an
+explicit local table to URI-addressed objects; the prompt adapter can also create a reserved
+implicit reference without adding visible tokens. Third, a resolver encodes each object in
+bounded blocks and stores full per-layer token K/V in smaller routing chunks, together with
+one or more gists. Fourth, a PRA attention layer performs hierarchical reference-then-chunk
+routing and inserts selected native token K/V into ordinary causal attention. An optional
+scaled cross-attention branch preserves earlier experiments.
 
 The easiest way to follow the implementation is as a prepare-then-use pipeline.  During
 preparation, each batch row resolves its own handles, encodes the resulting chunks with
@@ -55,6 +83,50 @@ only that row's gists; selected chunks are materialized as variable-length memor
 their original token K/V is prepended to local K/V under one softmax. Local causal
 attention never disappears. The optional legacy mode instead reads the same memory
 through a separately normalized cross-attention residual.
+
+\begin{center}
+\fbox{\begin{minipage}{0.92\linewidth}
+\textbf{PRA in six distinctions.} PRA is not RAG preprocessing. A reference names
+available context; it does not materialize it. A gist is a routing key, not the memory
+read by attention. Top-$k$ selects chunks, not individual tokens. A selected chunk
+materializes full native token K/V by default. Logical context may exceed native model
+context, but no base-model operation may exceed the configured native limit.
+\end{minipage}}
+\end{center}
+
+Figure~\ref{fig:architecture-pipeline} gives the complete data path. The remainder of the
+paper follows the discovery sequence: exact transport and first probes; the unexpected
+fragmentation failure; its correction through contextual slicing; scaling and routing
+optimization; then residency, bounded logical context, and streaming rollover. Historical
+cross-attention results are retained later as a separate transport comparison.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=3.5mm, every node/.style={font=\scriptsize}]
+\node[datanode, text width=2.0cm] (source) {logical source or long prompt};
+\node[sysnode, text width=1.75cm, right=of source] (blocks) {model-safe encoding blocks};
+\node[cachenode, text width=1.4cm, right=of blocks] (kv) {native token K/V};
+\node[cachenode, text width=1.45cm, right=of kv] (chunks) {smaller routing chunks};
+\node[cachenode, text width=1.35cm, below=8mm of chunks] (index) {gists + packed index};
+\node[sysnode, text width=1.25cm, left=of index] (route) {exact hierarchical route};
+\node[sysnode, text width=1.45cm, left=of route] (budget) {whole-chunk budget};
+\node[cachenode, text width=1.5cm, left=of budget] (selected) {selected native K/V};
+\node[sysnode, text width=1.75cm, left=of selected] (attention) {direct + memory attention};
+\draw[sysflow] (source) -- (blocks);
+\draw[sysflow] (blocks) -- (kv);
+\draw[sysflow] (kv) -- (chunks);
+\draw[sysflow] (chunks) -- (index);
+\draw[sysflow] (index) -- (route);
+\draw[sysflow] (route) -- (budget);
+\draw[sysflow] (budget) -- (selected);
+\draw[sysflow] (selected) -- (attention);
+\end{tikzpicture}
+\caption{End-to-end PRA pipeline. Large logical sources are contextualized in bounded
+encoding blocks, then sliced into smaller addressable routing chunks. Gists select chunks;
+the budgeter admits complete native token K/V; and selected memory joins direct context in
+ordinary attention.}
+\label{fig:architecture-pipeline}
+\end{figure}
 
 \section{Model Definition}
 
@@ -283,6 +355,14 @@ addressable units. Consequently one base-model call can produce several routing 
 Fixed, marker, and supplied semantic partitioners share one implementation rather than
 maintaining separate reference and prompt splitters.
 
+Here $L_{\mathrm{logical}}$ is everything the request can name, $L_{\mathrm{model,max}}$
+is the largest sequence accepted by any one base-model operation, $L_{\mathrm{encode}}$ is
+one contextual encoding block, and $L_{\mathrm{route}}$ is one addressable K/V slice. For
+example, the bounded experiment uses a 192-token logical prompt, a 32-token model limit,
+16-token encoding cores with up to four context tokens, and four-token routing chunks.
+\textbf{Encoding granularity and routing granularity are distinct: a routing chunk is an
+addressable retrieval unit, not necessarily an appropriate independent encoding unit.}
+
 Encoding overlap is context-only. For core interval $[a,b)$ and left context $h$, the
 model receives $x_{a-h:b}$ but stores only the K/V slice corresponding to $x_{a:b}$.
 Logical source offsets remain global in cache metadata; learned absolute position offsets
@@ -318,6 +398,14 @@ K_{b,\ell}^{\rm mem} = \mathrm{concat}_{(u,c) \in \mathcal{A}_{b,\ell}} K_{u,c,\
 V_{b,\ell}^{\rm mem} = \mathrm{concat}_{(u,c) \in \mathcal{A}_{b,\ell}} V_{u,c,\ell}.
 \end{equation}
 
+With batch size $B$, $H$ heads, head width $D_h$, direct length $T$, and selected memory
+length $M_b$, the query and local K/V have shape $[B,H,T,D_h]$. Each cached chunk stores
+$[1,H,M_c,D_h]$ K/V; concatenation produces row-specific memory
+$[1,H,M_b,D_h]$ and attention logits $[1,H,T,M_b+T]$. The routing query has shape
+$[B,D]$, the packed gist index $[C,G,D]$, chunk scores $[B,C]$, and selected chunk
+indices $[B,k]$, where $D=HD_h$. These routing tensors decide what to open; they do not
+replace the token dimension $M_b$ consumed by attention.
+
 It then prepends memory K/V to local K/V and computes one causal normalization:
 
 \begin{equation}
@@ -334,6 +422,12 @@ causal and padding masks. There is no $W_{O,\mathrm{mem}}$, separate softmax, or
 scale. If memory is disabled or selection is empty, the implementation takes the exact
 local path. Routing gists index token K/V and are not themselves transported, except in
 the explicit \texttt{gist\_only} diagnostic.
+
+\textbf{Routing gists are selectors, not transported memory; selected chunks materialize
+full native token-level K/V.} Four resource quantities must therefore remain separate:
+the gist/index footprint, all stored source K/V, K/V transferred for a request, and K/V
+active in that request's attention. A lower active fraction is not automatically a lower
+total cache footprint.
 
 The normal \texttt{selected\_chunks} mode transports exactly the token K/V belonging to
 the routed chunks.  Two diagnostic modes make the boundary testable:
@@ -699,6 +793,10 @@ The five-seed comparison uses a fixed tokenizer and split, equal processed-token
 
 \section{Fixed-Source Native-KV Synthetic Result}
 
+This first experiment asks whether native K/V can carry a causally necessary value when
+the correct memory is supplied, before semantic routing or natural-language competence is
+allowed to confound the answer.
+
 The first native quality gate uses 2,048 training examples and a disjoint 64-example evaluation set. Every example contains the same 63 source-unit structure, a fixed historical marker whose random binary value is the target, and a one-token local query with no answer information. The seven conditions partition the identical source into 1, 2, 4, 7, 15, 31, or 63 references. Thus source text, target, model weights, and local prompt are invariant; only reference boundaries change. Five paired seeds train a two-layer, width-64 SelfAttention model for 100 optimizer steps on full context. Each checkpoint is then converted weight-for-weight to native PRA. No PRA transport or selector parameter is trained. The fixed marker position deliberately isolates transport from semantic search; random-position and learned-routing tasks are harder follow-ups.
 
 \begin{figure}[htbp]
@@ -713,6 +811,9 @@ Full-context SelfAttention obtains mean loss 0.0105 and 100\% accuracy, whereas 
 The result also identifies two limits. At 64 splits, oracle loss rises to 0.6490 and accuracy falls to 70.6\%. Native-all accuracy declines from 100\% at split 2 to 71.9\% at split 3, 59.1\% at split 5, and approximately chance by split 16. The routed condition follows the same failure pattern and is 48.4\% at split 32. Because references are independently encoded with positions restarting at zero and selected all-memory payloads are not a causally encoded prefix, practical native-all is not equivalent to the exact historical-K/V reinsertion test. The experiment therefore validates sparse oracle transport under moderate fragmentation, not arbitrary partition invariance or learned routing.
 
 \section{Evidence-Anchored Natural-Text Native-KV Probes}
+
+The next experiment asks whether the same transport result survives natural-document
+context and distractors, while retaining a controlled target whose dependency is known.
 
 The next gate retains the controlled target while replacing character-level distractors
 with natural documents from HotpotQA and QASPER \cite{yang2018hotpotqa,dasigi2021qasper}. These are deliberately transport probes,
@@ -906,6 +1007,9 @@ quality improvement; they increase comparisons and remain representation-sensiti
 
 \subsection{Fragmentation Decomposition}
 
+This experiment tests whether the high-split failure is primarily insufficient routing
+breadth or a contextualization failure caused by independently encoding tiny fragments.
+
 The split-64 oracle decline is primarily an encoding-context failure. Independent
 microchunks reset both left context and positions. Encoding eight consecutive references
 together restores five-seed annotated-oracle RCB from 0.546 to 0.996 on HotpotQA-derived
@@ -928,7 +1032,15 @@ regions remain nonoverlapping. We therefore retain overlap as a boundary diagnos
 as the selected scale strategy. The stronger conclusion is that addressable granularity
 need not equal encoding granularity.
 
+\textbf{Takeaway.} The high-split failure was primarily an encoding-context artifact, not
+evidence that PRA could not route among many named units. Larger contextual encoding blocks
+can produce many smaller routable native-K/V slices.
+
 \subsection{Meaningful 64--256 Unit Scaling}
+
+Having repaired fragmentation, this experiment asks whether selected K/V can remain useful
+as both source length and the number of addressable units grow, rather than merely slicing
+the same fixed source more finely.
 
 The scale study grows source length with addressability instead of repartitioning 63
 fixed units. The nested evaluation sources contain 63, 127, and 255 units; mean accessible
@@ -1071,6 +1183,9 @@ workspace, and memory-attention computation rather than to the complete stored c
 
 \subsection{Exact Tensorized Routing Speed}
 
+The quality study exposed a systems question: is exhaustive exact routing intrinsically
+slow, or was the measured cost caused by candidate-wise Python/CUDA orchestration?
+
 The exhaustive result above isolates a software bottleneck rather than a required PRA
 operation.  The legacy path invokes one small cosine operation per chunk, converts each
 CUDA result to a Python scalar, and serializes every ranking before applying top-$k$.  The
@@ -1080,6 +1195,11 @@ scores on device, and applies \texttt{torch.topk} independently to references an
 It retains the legacy implementation as a parity control.  Cache mutation invalidates the
 packed index; detached persistent caches can reuse it.  Summary-combination and
 reference-first policies currently retain the scalar fallback.
+
+\textbf{The optimization changes how the same exact scores are computed and selected; it
+does not introduce approximate retrieval.} The removed work is the Python candidate loop,
+many tiny CUDA launches, device-to-host scalar synchronization, and full-ranking
+serialization.
 
 We reran both backends on the same trained checkpoints, examples, native K/V, queries, and
 $k=8$ selection policy.  The benchmark covers 32 examples at every combination of two
@@ -1130,6 +1250,10 @@ materialization, and unfused variable-length attention remain outside this routi
 
 \subsection{Persistent Index Reuse and Selected-Only Serialization}
 
+The next question is how much of exact routing remains when the same source cache serves
+repeated autoregressive queries. We call index construction plus one query \emph{cold}
+routing and a query against an already packed index \emph{warm} routing.
+
 The first tensorized benchmark above retained the complete ranking for diagnostics and
 built the packed index inside every timed request.  The serving-oriented path now keeps a
 detached cache's packed index across queries, gathers only rows belonging to selected
@@ -1175,6 +1299,10 @@ serialization preserve the full selection semantics while flattening warm latenc
 
 \subsection{Long-Prompt Implicit-Head Probe}
 
+This experiment asks whether a fact wholly outside a fixed direct window remains usable
+when the displaced prefix is represented as ordinary PRA memory rather than silently
+truncated.
+
 For \texttt{prompt\_overflow\_mode=implicit\_reference}, the implementation now encodes
 the displaced head once as causal history, captures native layer K/V, and slices those
 tensors into routable chunks.  It does not reset position or contextual state at each
@@ -1217,6 +1345,11 @@ recall but can reduce language-model quality by admitting irrelevant K/V.}
 
 \subsection{Model-Bounded Context and Streaming Probe}
 
+The preceding probe encoded its whole head in one pass. The model-bounded experiment asks
+three separate questions: can every base-model operation obey a hard limit, can bounded
+encoding preserve enough context across block boundaries, and how does an independent
+materialization budget control recovery?
+
 We next impose a hard 32-token native limit on the same five trained seeds while retaining
 an 8-token direct tail and a 4-token safety reserve. Sixteen-token encoding cores receive
 up to four left-context tokens; their stored core K/V is sliced into four-token routing
@@ -1239,6 +1372,13 @@ memory is worse than routed memory but remains better than truncation, so this s
 supports useful displaced access without proving that all improvement is content-causal.
 The dense result is not an upper bound: this model was trained on shorter fixed-target
 patterns and degrades when every distractor remains active in one softmax.
+
+The observation is that routed loss remains 1.0567 under the hard bound, while independent
+blocks reach 1.7089. The interpretation is that overlap-aware contextual encoding matters
+more here than the 32-token operation limit itself. The justified claim is narrower:
+\textbf{logical context can exceed the base model's native context while every underlying
+operation remains bounded}, provided that routing and materialization recover useful
+history. Dense access is a control in this regime, not a guaranteed loss oracle.
 
 \begin{table}[htbp]
 \centering
@@ -1272,11 +1412,17 @@ The whole-chunk budget sweep uses eight routing candidates at 192 logical tokens
 four-token increase admits one additional routing chunk. Recall rises monotonically from
 0.325 to 0.525, and loss falls from 1.242 to 1.057. Utilization is exactly 1.0 at every
 setting because four-token chunks divide all tested budgets. Mean forward latency remains
-18.4--18.8 ms and native-memory attention 3.6--3.8 ms on the GTX 950M; these small
+18.5--19.3 ms and native-memory attention 3.7--4.0 ms on the GTX 950M; these small
 differences are not a speed trend. Peak allocation rises only from 9.573 to 9.598 MiB.
 Selected K/V is GPU-resident in this sweep, so measured host-transfer bytes are correctly
 zero; a CUDA regression separately verifies that budget-rejected CPU chunks are not
 transferred.
+
+\textbf{Materialization budget is an independent quality/compute control.} Routing can
+rank the right chunk while admission still rejects it; conversely, increasing the budget
+may admit useful K/V without changing candidate scores. The four-token safety reserve is
+withheld from memory admission so generation or task-specific direct tokens can be appended
+without immediately violating the native limit.
 
 \begin{table}[htbp]
 \centering
@@ -1321,6 +1467,11 @@ violation.}
 \end{figure}
 
 \subsection{CPU-Resident Native K/V Prototype}
+
+Active K/V sparsity reduces attention work, but it does not reduce GPU cache residency when
+all source K/V remains on device. This experiment asks whether selected-only transfer can
+turn sparse activity into measured GPU-capacity reduction without changing selection or
+loss.
 
 The prototype can now retain routing gists and their packed index on GPU while placing
 complete detached token K/V in pinned CPU memory.  Materialization transfers only selected
@@ -1514,11 +1665,56 @@ Resolved per-seed HTML and JSON reports, plots, timing counters, checkpoints, an
 
 \section{Relationship to Prior Work}
 
-The prototype builds on the transformer attention architecture \cite{vaswani2017attention}. It is related to sparse and long-context attention models such as Longformer, BigBird, Reformer, and Routing Transformer \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}, but the central question differs: PRA studies whether external context can remain addressable until needed rather than being placed in a single long sequence.
+PRA combines mechanisms that also appear in several mature research lines. The comparison
+below is organized by what each line makes sparse or persistent; no single component is
+claimed as unique.
 
-It also relates to memory-augmented and retrieval-conditioned models. Compressive Transformers maintain compressed memories over earlier activations \cite{rae2020compressive}. Memorizing Transformers retrieve nearest-neighbor memories \cite{wu2022memorizing}. RETRO conditions generation on retrieved chunks from a large database \cite{borgeaud2022retro}. RAG and REALM connect generation to non-parametric retrieval \cite{lewis2020rag,guu2020realm}. PRA differs in its emphasis on explicit handles, URI-addressed references, recursive anchors, and per-layer cache construction.
+\paragraph{Sparse attention.}
+Longformer and BigBird impose local/global sparsity, Reformer hashes token queries, and
+Routing Transformer clusters content within a sequence
+\cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. These
+methods primarily change the interaction pattern among tokens already admitted to a long
+sequence. PRA instead keeps candidate context in an address space and materializes selected
+historical K/V, so admission and attention sparsity are separately measurable.
 
-Finally, the implementation anticipates runtime concerns raised by serving systems such as vLLM's PagedAttention \cite{kwon2023vllm}. A mature PRA system would require cache admission, sharing, eviction, batching, and memory safety policies.
+\paragraph{KV selection and compression.}
+H$_2$O retains heavy-hitter cache entries, while SnapKV and ClusterKV select or merge
+prompt K/V to reduce decoding-time cache cost
+\cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}. PRA shares the goal of reducing active
+K/V, but its default selection unit is a provenance-bearing chunk named by a reference,
+and selected chunks retain their full native token K/V. These approaches are complementary:
+PRA can choose objects or chunks before a token-level eviction or compression policy acts.
+
+\paragraph{External and retrieved memory.}
+Memorizing Transformers retrieve previous activations, RETRO conditions on database
+chunks, and RAG/REALM retrieve non-parametric evidence
+\cite{wu2022memorizing,borgeaud2022retro,lewis2020rag,guu2020realm}. PRA differs in the
+runtime contract: explicit local handles bind URIs, references may form a bounded graph,
+and the canonical transport reuses layer-native K/V rather than appending retrieved text or
+using a separately trained cross-attention encoder.
+
+\paragraph{Recurrent and long-term memory.}
+Transformer-XL recurs over segment states, Compressive Transformer compresses older
+activations, Infini-attention combines local attention with compressive memory, and
+TransformerFAM and Titans introduce persistent or learned long-term memory
+\cite{dai2019transformerxl,rae2020compressive,munkhdalai2024infini,hwang2024fam,behrouz2025titans}.
+PRA's implicit head is related in purpose but remains an addressable, selectively
+materialized history. Its current bounded-block encoding is an approximation rather than a
+claim of exact recurrence beyond the base model's native horizon.
+
+\paragraph{Landmarks and routing summaries.}
+Landmark Attention uses landmark tokens to organize random access to blocks, and
+StreamingLLM identifies stable attention sinks for streaming windows
+\cite{mohtashami2023landmark,xiao2023streamingllm}. PRA gists likewise support coarse
+selection, but they are an index over URI/chunk records and are not normally transported as
+the final memory representation. The present router is exact over its packed candidate set;
+approximate search remains an optional systems choice at larger scales.
+
+\paragraph{Serving systems.}
+vLLM's PagedAttention demonstrates the importance of paging and sharing K/V during serving
+\cite{kwon2023vllm}. PRA adds a semantic selection layer but inherits the same need for
+admission, batching, eviction, cache identity, and isolation. The CPU-residency experiment
+is therefore a prototype accounting result, not a substitute for a production pager.
 
 \section{Safety and Systems Correctness}
 
@@ -1532,9 +1728,37 @@ Recursive expansion can amplify work. The standalone builder now bounds depth, c
 
 \section{Limitations}
 
-The current prototype and follow-up have important limitations. Native-KV transport now has controlled quality, active-K/V, transfer-byte, and exact tensorized-routing sweeps, but it does not yet have an end-to-end production-runtime evaluation or a fused variable-length attention kernel. Historical slicing has been compared with independent and block encoding under learned absolute positions, not with pretrained RoPE, grouped-query attention, or persistent generation caches. The HotpotQA- and QASPER-derived tasks inject a fixed answer code and therefore test transport over natural text rather than unrestricted multi-hop or scientific-document QA. Their anchor makes one contextualized answer URI sufficient even when annotated evidence coverage is incomplete, so near-perfect loss does not establish complete semantic retrieval. The corrected-router cross-attention smoke matrix reaches the planned minimum of five paired model seeds, but eight optimizer steps and 32 source entries make it an engineering pilot rather than a benchmark. Parameter matching controls ordinary-language capacity in the historical study, while the smoke matrix does not match trainable parameters across architectures. The fixed version-2 reference dataset marks an adjacent source part as relevant; it does not provide human-verified causal evidence spans. The weak historical counterfactual deltas leave open how much of the adapted cross-attention gain is content independent.
+\paragraph{Task and scale.}
+The HotpotQA- and QASPER-derived tasks inject a fixed answer code and therefore test
+transport over natural text, not unrestricted multi-hop or scientific-document QA. One
+contextualized answer URI can be sufficient even when annotated evidence coverage is
+incomplete, so near-perfect loss does not establish complete semantic retrieval. The
+backbones are small and trained from scratch. The historical corrected-router smoke matrix
+uses only 32 source entries and eight optimizer steps, and its weak content counterfactuals
+do not establish learned reference use. No foundation-model or broad superiority claim is
+made.
 
-The corrected selector is still heuristic and receives no auxiliary relevance loss. It uses a projected last-valid-token query rather than explicit reference-token positions, and hard top-$k$ selection remains nondifferentiable. Most gist modes and full token K/V are detached by default; only the optional GRU gist mode supplies a trainable cache-summary path. Recursive construction is deterministic and child-first, not a learned iterative policy. The training adapter batches the prompt forward and ordinary content routing scores candidates tensorially, but cache construction, selected-record assembly, summary routing, and reference-first routing still iterate over row-private entries. Multi-gist modes have a staged sensitivity screen but no learned-router comparison. The implicit-head probe is controlled and distribution specific; it still pays one cold historical encoding pass, and generated-token rollover is absent. Persistent exact-index reuse is measured only through 256 units, while summary modes, oracle chunks, recursion, and dynamic bucketing remain unit- or smoke-tested rather than evaluated in a controlled training study. CPU residency uses many small synchronous offloads, so its cold path is substantially slower despite measured GPU-capacity reduction. Two small from-scratch capacity tiers and answer-code probes cannot establish foundation-model scaling or efficiency behavior. No broad experimental superiority is claimed.
+\paragraph{Model integration and selection.}
+Historical slicing has been compared under learned absolute positions, not pretrained
+RoPE, grouped-query attention, or production cache layouts. The selector is heuristic,
+uses the last valid projected query, receives no auxiliary relevance loss, and applies a
+nondifferentiable hard top-$k$. Multi-gist modes have a staged screen but no learned-router
+comparison. Recursive construction is bounded and deterministic rather than a learned
+iterative policy.
+
+\paragraph{Runtime.}
+Packed exact routing is measured only through 256 units. Cache construction, selected-record
+assembly, summary and reference-first routing, and materialization still contain row-wise
+Python work; variable-length attention is unfused. CPU residency issues many small
+synchronous offloads, making cold construction substantially slower. Streaming rollover is
+implemented and preserves the native bound, but it rebuilds the complete implicit-head
+cache and packed index after each rollover rather than appending K/V incrementally.
+
+\paragraph{Evidence boundary.}
+The controlled studies establish implementation invariants, sparse native transport,
+fragmentation diagnosis, exact routing parity, and bounded execution. They do not yet show
+semantic selection on unrestricted tasks, recursive benefit, end-to-end serving speedup,
+or a favorable comparison with strong long-context, cache-compression, and RAG baselines.
 
 \section{Conclusion}
 
@@ -1551,7 +1775,92 @@ reset at URI boundaries; and selected memory joins local K/V before a single sof
 notation is PyTorch-like and omits error messages, fingerprints, tracing fields, and
 legacy cross-attention.
 
-\subsection{Moving Part 1: Cache Records and Shape Contract}
+\subsection{Minimal End-to-End Algorithm}
+
+For one request row and decoder layer, a minimal implementation performs the following
+steps. The same row-private cache is visible at every layer, but its K/V and routing gists
+are layer specific.
+
+\begin{enumerate}[leftmargin=*]
+\item Keep the recent prompt suffix as direct context and move overflow token IDs into the
+request-local \texttt{\#\_\_head} object.
+\item Resolve explicit handles through the current object's local reference table.
+\item Partition every long source into encoding blocks no larger than
+$L_{\mathrm{model,max}}$, optionally adding left context that is not stored.
+\item Run the ordinary decoder over each block and capture every layer's native K/V.
+\item Discard context-only overlap and slice each encoding core into smaller routing chunks.
+\item Pool one or more key gists per chunk and build a packed, normalized layer index.
+\item Score the live query against all gists and apply exact hierarchical reference/chunk
+top-$k$.
+\item Merge candidates from implicit history and explicit references, then admit complete
+chunks in score order under the single materialization budget.
+\item Gather or transfer only admitted K/V; concatenate it before direct K/V.
+\item Apply one masked attention softmax and the decoder's existing output projection.
+\item Record content, routing, active-K/V, transfer, residency, and timing diagnostics.
+\item During generation, move expired routing-sized prefixes from the direct suffix into
+\texttt{\#\_\_head}, invalidate its index, and rebuild or incrementally append its cache.
+\end{enumerate}
+
+\subsection{Implementation Map at Revision \texttt{dfdcffb}}
+
+Table~\ref{tab:source-map} anchors the pseudocode to the repository revision audited for
+this editorial pass. Function names are the stable identifiers; line ranges were verified
+against that revision and should be treated as navigation aids rather than API contracts.
+Each result artifact separately records the earlier \texttt{git\_sha} that produced it.
+
+\begin{table}[H]
+\centering
+\caption{Artifact-to-source map for independent reimplementation and replication.}
+\label{tab:source-map}
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+Moving part & Source symbol & Lines \\
+\midrule
+A. source preparation & \texttt{prompt.py::prepare\_prompt\_batch\_for\_pra} & 125--242 \\
+A. source partitioning & \texttt{chunking.py::partition\_source} & 315--434 \\
+B--C. bounded encode/slice & \texttt{model.py::\_bounded\_reference\_payloads} & 484--630 \\
+C. cache publication & \texttt{model.py::encode\_reference\_tokens\_to\_cache} & 838--1091 \\
+D--E. gists/index & \texttt{memory.py::\_tensorized\_chunk\_index} & 457--539 \\
+F. exact scoring & \texttt{memory.py::\_score\_chunks\_tensorized} & 583--640 \\
+F. hierarchical top-$k$ & \texttt{memory.py::\_hierarchical\_tensorized} & 641--762 \\
+G. budgeted selection & \texttt{attention.py::\_budget\_selection} & 155--224 \\
+H. K/V materialization & \texttt{attention.py::\_materialize} & 225--330 \\
+I. one-softmax attention & \texttt{memory\_batching.py::native\_kv\_attention} & 216--307 \\
+J. streaming rollover & \texttt{model.py::generate} & 1092--1311 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The principal experiment entry points are
+\texttt{scripts/run\_native\_kv\_benchmark.py::run} (line 1244),
+\texttt{run\_pra\_scale\_sensitivity.py::run} (line 783),
+\texttt{run\_pra\_routing\_speed.py::run} (line 251),
+\texttt{run\_pra\_routing\_index\_reuse.py::run} (line 348),
+\texttt{run\_pra\_kv\_residency.py::run} (line 188), and
+\texttt{run\_pra\_bounded\_context.py::run} (line 340). Their JSON manifests record
+seeds, checkpoints, conditions, and output figures.
+
+\begin{table}[H]
+\centering
+\caption{Reproducibility map from reported result families to committed artifacts.}
+\label{tab:artifact-map}
+\scriptsize
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+Result family & Machine-readable artifact in \texttt{docs/papers/shared/results} & Runner \\
+\midrule
+Native quality & \texttt{native\_kv\_synthetic.json}, \texttt{native\_kv\_hotpotqa.json}, \texttt{native\_kv\_qasper.json} & \texttt{run\_native\_kv\_benchmark.py} \\
+Parameter/scale & \texttt{pra\_parameter\_sensitivity\_topk.json}, \texttt{...\_gist.json}, \texttt{...\_fragmentation.json}, \texttt{pra\_scale\_sensitivity.json} & \texttt{run\_pra\_parameter\_sensitivity.py}, \texttt{run\_pra\_scale\_sensitivity.py} \\
+Exact routing & \texttt{pra\_routing\_speed.json}, \texttt{pra\_routing\_index\_reuse.json} & \texttt{run\_pra\_routing\_speed.py}, \texttt{run\_pra\_routing\_index\_reuse.py} \\
+Implicit head & \texttt{pra\_long\_prompt\_head.json}, \texttt{pra\_long\_prompt\_head\_sensitivity.json} & \texttt{run\_pra\_long\_prompt\_head.py}, \texttt{run\_pra\_long\_prompt\_sensitivity.py} \\
+Bounded context & \texttt{pra\_head\_beyond\_native\_context.json}, \texttt{pra\_context\_budget.json}, \texttt{pra\_materialization\_budget.json}, \texttt{pra\_streaming\_rollover.json} & \texttt{run\_pra\_bounded\_context.py} \\
+K/V residency & \texttt{pra\_kv\_residency.json} & \texttt{run\_pra\_kv\_residency.py} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{A. Source Preparation: Cache Records and Resolution}
 
 The cache has two levels of identity.  A reference entry owns a stable URI and one or more
 chunks.  Each chunk then owns a separate representation at every PRA layer.  The token K/V
@@ -1591,7 +1900,7 @@ head layout as ordinary decoder K/V.  Line 8 merges heads only for cosine routin
 not replace line 3.  An entry becomes searchable only in \texttt{READY} state, preventing
 recursive construction from exposing partial layer memory.
 
-\subsection{Moving Part 2: Resolution, Recursion, and Publication}
+\subsubsection{Resolution, Recursion, and Publication}
 
 Resolution converts a handle into text plus an explicit local reference table.  The same
 budget object follows the recursive traversal, and the current URI path detects cycles.
@@ -1616,7 +1925,7 @@ registry would create accidental edges.  Production cache identity must extend t
 with content version, tokenizer, model/adapter, layer format, and policy domain.  Otherwise
 line 27 can return stale or unauthorized K/V.
 
-\subsection{Moving Part 3: Historical Native-K/V Encoding and URI Slicing}
+\subsection{B--C. Bounded Encoding and Native-K/V Slicing}
 
 Independent encoding resets context and positions for every URI. That is useful as an
 ablation but is not equivalent to causal history. When the complete source fits,
@@ -1653,7 +1962,7 @@ exact dense path. Beyond it, bounded local positions and finite overlap are expl
 approximation; RoPE/GQA integrations must additionally preserve their native rotation and
 cache-layout conventions.
 
-\subsection{Moving Part 4: Long Prompts and the Request-Local \texttt{\#\_\_head}}
+\subsection{J. Long Prompts and Streaming Rollover through \texttt{\#\_\_head}}
 
 The implicit head is not a globally named document.  It is an internal URI scoped to one
 request row.  The recent tail remains ordinary local context, while displaced leading IDs
@@ -1671,7 +1980,7 @@ are encoded through the same cache path as references.
 063 |     direct_ids.append(token)
 064 |     if len(direct_ids) > direct_limit:
 065 |         head_ids += pop_prefix(direct_ids, route_tokens)
-    |         rebuild_head(head_ids)
+ 065a|         rebuild_head(head_ids)
 \end{verbatim}
 
 Splitting occurs on exact token IDs, not decoded and re-tokenized text. Lines 58--59 reuse
@@ -1681,7 +1990,7 @@ prototype rebuilds the head and exact packed index after invalidation; an increm
 append implementation may replace line 65 without changing semantics. A batched wrapper
 holds one \texttt{row\_cache} per sample, so the identical internal URI cannot cross rows.
 
-\subsection{Moving Part 5: Gist Construction and Packed Exact Search}
+\subsection{D--E. Gist Construction and Packed Exact Index}
 
 For mean routing, each chunk gist is the mean of its projected token keys after heads are
 merged.  Multi-gist modes replace that one vector with $G$ paired prototypes.  The router
@@ -1722,7 +2031,7 @@ transfers only selected identifiers and scores for record assembly, while a diag
 mode may request the complete ranking.  Trainable-gist mode must either rebuild per
 forward or preserve the autograd graph.
 
-\subsection{Moving Part 6: Hierarchical Exact \texttt{torch.topk} Routing}
+\subsection{F. Hierarchical Exact \texttt{torch.topk} Routing}
 
 Chunk scores are first reduced within each URI, then two independent budgets are applied:
 $k_r$ references and $k_c$ chunks per selected reference.  Confusing these budgets changes
@@ -1752,7 +2061,7 @@ uses URI-level gists before detailed chunk scoring; global-chunk routing ranks c
 while enforcing distinct-URI limits.  These are alternative policies, not synonyms for
 the hierarchy above.
 
-\subsection{Moving Part 7: Budgeted Full-Chunk Materialization}
+\subsection{G--H. Budgeted Selection and Full-Chunk Materialization}
 
 Routing returns lightweight records.  Default materialization then gathers complete native
 token K/V for the selected chunks.  Thus $G$ routing gists do not imply $G$ attended memory
@@ -1785,7 +2094,7 @@ implementation detail. With CPU residency, line 110 leaves unselected payload on
 host. Transfer bytes count actual device moves, not logical K/V size; GPU-resident
 selected K/V therefore reports zero transfer.
 
-\subsection{Moving Part 8: One-Softmax Native Attention}
+\subsection{I. One-Softmax Native Attention}
 
 Each row may select a different memory length $M_i$.  The simplest correct implementation
 loops over rows; a production kernel may bucket or fuse rows, but it must preserve row
@@ -1815,7 +2124,7 @@ memory competes directly with local context.  The enclosing attention module app
 original output projection after merging heads.  If every row has empty memory, it returns
 the ordinary local-attention result exactly.
 
-\subsection{Moving Part 9: Batch Isolation and End-to-End Assembly}
+\subsection{Batch Isolation and End-to-End Assembly}
 
 The orchestration layer prepares one namespace per row, wraps those namespaces without
 flattening duplicate URI strings, and routes \texttt{query[b]} only against
@@ -1846,7 +2155,7 @@ preparation loop does not require one model forward per sample; direct tails rem
 rectangular batch.  Line 141 preserves each row's historical position independently.  A
 vectorized cache builder is valid only if it preserves this ownership.
 
-\subsection{Moving Part 10: Diagnostics and Replication Checks}
+\subsection{Diagnostics and Replication Checks}
 
 A replication should test the mechanism in layers rather than relying on final loss alone.
 First, converted SelfAttention and PRA must match exactly with memory disabled.  Second,
