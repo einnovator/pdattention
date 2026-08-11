@@ -259,7 +259,7 @@ Theory:
 Paper 0 -> Position
 Paper 1 -> Standalone prototype
 Paper 1.5 -> Positional semantics for retrieved native-KV
-Paper 2 -> Pretrained integration [Qwen correctness milestone active]
+Paper 2 -> Pretrained integration [routing representation complete; learned router next]
 Paper 3 -> Runtime systems
 Paper 4 -> Theory
 Paper 5 -> Enterprise and analytics applications
@@ -283,15 +283,28 @@ Completed first Qwen gate:
   source-relative offsets and zero native-limit violations
 - structured JSON/CSV artifacts and unrestricted HotpotQA/QASPER pipeline smokes
 
+Completed routing-representation gate:
+- routing and transport are now independent: post-RoPE key means, normalized pre-RoPE key means,
+  and attention-input hidden-state means all materialize the same post-RoPE native K/V
+- on 16 matched HotpotQA/QASPER examples with 32-token chunks, post-RoPE routing has score-position
+  correlation 0.652 and recall@3/8/16 of 0.125/0.250/0.313
+- pre-RoPE routing removes the late-position correlation (0.009) and reaches
+  0.313/0.563/0.750; hidden-state routing is also position-neutral (-0.021) and gives the best
+  sparse recall@3, 0.438
+- 64 hidden-state confirmation evaluations across two seeds yield recall@3/8/16 of
+  0.391/0.578/0.797, MRR 0.326, and score-position correlation -0.077
+- recall@16 requires selecting 23.8% of chunks; QASPER recall@3 remains 0.156
+- one hidden-state gist adds 1.57% over 32-token detail K/V; mean packed-index build is 3.50 ms
+  and warm exact routing plus selection is 1.90--2.74 ms on the GTX 950M
+
 Current scientific blocker:
-- one HotpotQA and one QASPER probe both routed to irrelevant late-source chunks, with zero
-  annotated-evidence recall; the output therefore does not demonstrate content-causal use
-- QASPER dense and PRA generations contain the expected `no`, but PRA did not retrieve the
-  evidence; HotpotQA and even oracle evidence text-RAG failed at this checkpoint/decoding setup
+- RoPE phase contamination is confirmed as one cause of the original routing failure, but
+  zero-parameter semantic ranking remains below the predeclared Qwen-to-Llama promotion gate
+- the gate fails combined recall@3, per-dataset recall@3, and MRR while passing sparsity and
+  position-bias conditions
 
 Next:
-- separate routing representation from materialized post-RoPE K/V and compare content-only,
-  pre-RoPE, and post-RoPE gists
-- evaluate span-level evidence recall before scaling model families or context lengths
-- train only a small router/gist adapter if frozen routing remains near zero
-- move to Llama only after Qwen evidence routing is stable; Gemma remains later
+- keep Qwen frozen and train a small evidence-supervised router/gist adapter
+- retain pre-RoPE and hidden-state zero-parameter baselines and test cross-dataset generalization
+- defer broad multi-gist and overlap sweeps unless the learned-router diagnostic needs them
+- do not move to Llama until Qwen passes the documented routing gate; Gemma remains later

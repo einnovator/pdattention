@@ -33,15 +33,17 @@ original module and obtains bit-exact logits, hidden states, greedy generation, 
 generation-cache shapes. When memory is enabled, it reuses Qwen's pretrained projections,
 Q/K normalization, rotary embedding, grouped-query layout, causal mask, cache update, eager
 attention function, and output projection. Stored memory retains eight native K/V heads rather
-than expanding to 16 query heads. A CUDA smoke run materializes 22 reference tokens from CPU,
-generates finite text, and executes a 408-token logical prompt as a 280-token implicit head plus
-a 128-token direct tail with zero configured native-limit violations. These are transport and
-compatibility results, not retrieval-quality results. In one HotpotQA and one QASPER example,
-mean-gist routing selected no annotated evidence; HotpotQA failed under every tested baseline,
-and the QASPER answer appeared under dense context and PRA without establishing causation.
-The first milestone therefore supports the adapter boundary and native-KV transport, while
-identifying frozen zero-shot routing as the next blocking scientific problem before Llama or
-Gemma integration.
+than expanding to 16 query heads. A CUDA smoke run materializes reference K/V from CPU and
+executes a 408-token logical prompt under a 256-token native-operation bound. A subsequent
+evidence-ranking study separates routing from materialization: post-RoPE key means, pre-RoPE
+key means, and attention-input hidden-state means all retain the same post-RoPE detail K/V. On
+16 matched HotpotQA/QASPER examples with 32-token chunks, post-RoPE routing has a strong late-
+position correlation ($r=0.652$) and recall@3 of 0.125. Pre-RoPE routing removes that correlation
+($r=0.009$), while hidden-state routing gives the best sparse recall@3, 0.438. Two confirmation
+subsets totaling 64 evaluations give hidden-state recall@3/8/16 of 0.391/0.578/0.797, but QASPER
+recall@3 is only 0.156 and recall@16 selects 23.8\% of chunks. Thus semantic selection and
+positional K/V transport should be separated, but zero-parameter Qwen routing does not pass the
+predeclared gate for Llama integration.
 \end{abstract}
 
 \section{Introduction}
@@ -131,7 +133,7 @@ encoding, normalize tensor layout, combine the native mask, invoke PRA attention
 the output. Disabled memory takes an even narrower path: call the original attention object
 unchanged. This design preserves pretrained parameters and avoids checkpoint conversion.
 
-The initial Qwen file has 227 physical lines (204 nonblank, non-comment lines). It introduces
+The Qwen adapter has 272 physical lines (248 nonblank, non-comment lines). It introduces
 no learned parameter. Its family-specific branches distinguish Qwen2-style projections from
 Qwen3's Q/K normalization; routing, budgeting, materialization, residency, and metrics remain
 outside the file. This is a portability measurement, not a code-minimization target.
@@ -280,6 +282,159 @@ The selections expose a concrete failure mode. For HotpotQA, evidence lies at to
 0--317, while selected chunks lie near 4032--4192. Post-RoPE mean-key gists and an unadapted
 top-layer query systematically prefer irrelevant late-source chunks in these two probes.
 
+\section{Routing Representation Study}
+
+The smoke failure motivates a narrower test: is the post-RoPE representation appropriate for
+semantic routing? For token $j$ at position $p_j$, the baseline pools
+\begin{equation}
+ g_{\mathrm{post}}=\frac{1}{m}\sum_{j=1}^{m}R(p_j)K_{\mathrm{pre},j},
+\end{equation}
+which mixes content with different rotary phases. The position-neutral alternative pools
+$g_{\mathrm{pre}}=m^{-1}\sum_jK_{\mathrm{pre},j}$. A third representation pools the
+attention-input hidden states. These are hypotheses about ranking only; selected detail memory
+remains Qwen's post-RoPE $K$ and native $V$ in every condition.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.90\linewidth}
+\centering
+\textbf{attention-input hidden states}\\[2pt]
+$\swarrow$ hidden-state mean gist \hfill native Q/K/V projection and Q/K norm $\searrow$\\[3pt]
+semantic routing $\leftarrow$ pre-RoPE Q/K $\xrightarrow{\mathrm{RoPE}}$ post-RoPE Q/K\\[3pt]
+$\hspace{1.5em}\uparrow$ pre-RoPE key gist \hfill $\downarrow$ post-RoPE detail K + native V\\[3pt]
+exact selection $\longrightarrow$ selected native K/V $\longrightarrow$ Qwen attention
+\end{minipage}}
+\caption{Routing and transport are separate. Pre-RoPE or hidden-state features rank chunks;
+the attention path always materializes post-RoPE native K/V.}
+\label{fig:routing-separation}
+\end{figure}
+
+\subsection{Protocol}
+
+Stage~1 uses eight HotpotQA and eight QASPER validation examples, matched across representations.
+The frozen checkpoint, last-layer placement, one mean gist per chunk, 128-token encoding blocks,
+zero routing overlap, and exact tensorized search remain fixed. We compare post-RoPE keys,
+normalized pre-RoPE keys, and attention-input hidden states with 32-token routing chunks and
+$k\in\{3,8,16\}$. Evidence text is mapped to exact tokenizer spans. The final-token question
+query is captured at the same layer: GQA query groups are averaged into native K/V width for
+both key representations, while hidden-state routing uses the matched final hidden vector.
+
+The experiment scores all chunks and does not generate answers. This keeps evidence ranking
+separate from decoding and from the hard materialization budget. Stage~2 carries the best two
+representations to 64- and 128-token chunks. Stage~3 confirms the best sparse configuration on
+two deterministic 32-example subsets with different seeds: 64 evaluations covering 61 unique
+examples. No model or router parameter is trained.
+
+\subsection{Representation and position bias}
+
+Table~\ref{tab:routing-representations} reports Stage~1 means over both datasets. The selected
+fractions at $k=3,8,16$ are 0.040, 0.107, and 0.213 for every representation. Post-RoPE scores
+are strongly correlated with later source position. Both position-neutral alternatives remove
+that correlation and improve evidence ranking.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Stage~1 routing representation comparison, 16 matched examples and 32-token chunks.}
+\label{tab:routing-representations}
+\begin{tabular}{lccccc}
+\toprule
+Routing representation & Recall@3 & Recall@8 & Recall@16 & MRR & Score-position $r$ \\
+\midrule
+Post-RoPE key mean & 0.125 & 0.250 & 0.313 & 0.131 & 0.652 \\
+Pre-RoPE key mean & 0.313 & \textbf{0.563} & \textbf{0.750} & \textbf{0.301} & 0.009 \\
+Hidden-state mean & \textbf{0.438} & 0.500 & \textbf{0.750} & 0.276 & -0.021 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\linewidth]{../shared/results/paper2_hf/routing/qwen_routing_recall_vs_selected_fraction.pdf}
+\caption{Any-evidence recall against routed chunk fraction in Stage~1. Pre-RoPE and hidden-state
+routing dominate the post-RoPE baseline, but high recall still requires broader selection.}
+\label{fig:routing-recall}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.68\linewidth]{../shared/results/paper2_hf/routing/qwen_routing_position_bias.pdf}
+\caption{Mean chunk-score correlation with normalized source position. The late-source effect
+is specific to post-RoPE mean-key routing in this comparison.}
+\label{fig:routing-position}
+\end{figure}
+
+The result supports the RoPE-contamination hypothesis: the post-RoPE representation is a poor
+mean-pooled semantic index. It does not establish that pre-RoPE keys are the best router.
+Hidden-state means provide the best low-$k$ recall, while pre-RoPE keys provide the best MRR and
+recall@8. Native key space and semantic retrieval space need not coincide even before rotation.
+
+\subsection{Chunk size and breadth}
+
+Table~\ref{tab:routing-chunks} shows that larger chunks sometimes raise recall, but they also
+make a fixed $k$ cover much more of the source. At 128 tokens and $k=8$, both representations
+reach 0.688 recall while selecting 41.3\% of chunks. At $k=16$, the selected fraction is 71.5\%.
+These are useful boundary measurements, not sparse-routing wins.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Stage~2 chunk-size sweep over the 16 matched examples. Fraction is reported at $k=8$.}
+\label{tab:routing-chunks}
+\begin{tabular}{lccccc}
+\toprule
+Representation & Chunk tokens & Recall@3 & Recall@8 & Recall@16 & Selected fraction@8 \\
+\midrule
+Pre-RoPE key & 32 & 0.313 & 0.563 & 0.750 & 0.107 \\
+Pre-RoPE key & 64 & 0.250 & 0.438 & 0.813 & 0.211 \\
+Pre-RoPE key & 128 & 0.375 & 0.688 & 0.875 & 0.413 \\
+Hidden state & 32 & 0.438 & 0.500 & 0.750 & 0.107 \\
+Hidden state & 64 & 0.313 & 0.625 & 0.813 & 0.211 \\
+Hidden state & 128 & 0.438 & 0.688 & 0.813 & 0.413 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The expected larger-$k$ recall/cost tradeoff is confirmed. The predicted degradation of
+post-RoPE pooling with larger chunks is not tested after that representation failed Stage~1;
+the two finalists do not degrade monotonically. Their larger-chunk gains are inseparable from
+coarser evidence coverage and a larger selected source fraction.
+
+\subsection{Independent confirmation and gate}
+
+Hidden-state routing with 32-token chunks is selected for confirmation because it gives the
+best recall at $k=3$. Table~\ref{tab:routing-confirmation} combines both seeds. Materialization
+is capped at 128 tokens, so routed breadth continues to grow at $k=8$ and 16 while the physically
+materialized fraction stays near 0.059.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Hidden-state confirmation over 64 evaluations. Intervals are 95\% Wilson intervals.}
+\label{tab:routing-confirmation}
+\begin{tabular}{lccccc}
+\toprule
+$k$ & Any recall & 95\% interval & All recall & Selected fraction & Materialized fraction \\
+\midrule
+3 & 0.391 & [0.281, 0.513] & 0.063 & 0.045 & 0.045 \\
+8 & 0.578 & [0.456, 0.691] & 0.203 & 0.119 & 0.059 \\
+16 & 0.797 & [0.683, 0.877] & 0.500 & 0.238 & 0.059 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At $k=3$, HotpotQA recall is 0.625 but QASPER recall is 0.156; combined MRR is 0.326. The
+combined score-position correlation is $-0.077$, so the original late-position failure is not
+the remaining blocker. The predeclared promotion gate requires combined recall@3 $\geq0.70$,
+each dataset $\geq0.60$, MRR $\geq0.50$, selected fraction $\leq0.10$, and absolute position
+correlation $\leq0.15$. Only the last two conditions pass. Qwen therefore does not advance to
+Llama.
+
+One hidden-state gist adds 1.57\% over detail K/V bytes at 32-token chunks. On the GTX~950M,
+mean packed-index construction is 3.50~ms, warm exact routing plus selection is 1.90--2.74~ms,
+and the isolated \texttt{torch.topk} primitive is about 0.05~ms. These are single-request Python
+measurements, not serving-throughput claims.
+
 \section{Systems Observations}
 
 The first run reaches 1,345,618,432 allocated GPU bytes, including the complete FP16 model and
@@ -294,28 +449,20 @@ routing, asynchronous overlap, and serving concurrency remain outside this corre
 
 \section{Limitations and Next Experiments}
 
-The study has one family, one checkpoint size, one PRA layer placement, one seed for systems
-smoke, and two QA examples. It does not compare full dense context where the complete 1,318- or
-4,207-token source fits Qwen's advertised window, because the first experiment deliberately
-holds the deployment-native limit at 256. It has no matched RAG retriever, no statistical QA
-sample, no LoRA adaptation, and no throughput or cost study.
+The study has one family, one 596M-parameter checkpoint, one PRA layer placement, and one-gist
+zero-parameter routing. The representation/chunk sweeps use 16 matched examples; confirmation
+uses two deterministic subsets rather than a full validation corpus, and three examples overlap
+between seeds. The evaluation measures annotated-span ranking, not answer EM/F1, because a model
+cannot receive credit for an answer when selected K/V excludes the evidence. There is no matched
+learned text retriever, multi-layer placement study, LoRA adaptation, serving-throughput study,
+or full dense-context quality comparison.
 
-The next experiment should address routing before family breadth. Candidate corrections are:
-\begin{enumerate}[leftmargin=*]
-\item compare pre-RoPE/content-only and post-RoPE routing gists while keeping stored detail K
-post-RoPE;
-\item pool hidden-state or normalized pre-position keys for routing without changing native
-K/V materialization;
-\item increase gist count and PRA layer placement only after evidence recall is measurable;
-\item train a small router/gist adapter with span-level evidence supervision while freezing the
-pretrained language model;
-\item run enough HotpotQA and QASPER examples to estimate retrieval recall, EM, and F1 with
-confidence intervals, and include full dense and a real text retriever.
-\end{enumerate}
-
-Only after a Qwen configuration retrieves evidence above simple controls should the same adapter
-contract be tested on Llama. Llama should be next in the family order; Gemma follows only after
-Qwen and Llama no longer require shared-core changes.
+The next intervention should be a small evidence-supervised routing or gist adapter with the
+base Qwen checkpoint frozen. It should preserve hidden-state and pre-RoPE baselines, report
+parameter count and training cost, and test cross-dataset generalization. Multi-gist subchunk
+means are a reasonable zero-parameter diagnostic, but the present result does not justify a
+broad gist-count sweep: the dominant sparse failure is semantic ranking on QASPER. Llama remains
+blocked until Qwen passes the declared recall/MRR/sparsity/position gate. Gemma remains later.
 
 \section{Related Work}
 
@@ -334,12 +481,16 @@ inserted beneath an existing pretrained family without changing its disabled beh
 One shared PRA core now serves both the controlled model and a thin Qwen adapter. The frozen
 Qwen3-0.6B checkpoint passes bit-exact disabled parity, preserves native RoPE and GQA cache
 layout, replays selected native K/V through generation, and executes an implicit long-prompt
-head under a hard native-operation bound. These are meaningful integration results. They do
-not establish useful retrieval. The first unrestricted-QA probes select no annotated evidence,
-and even oracle text-RAG is unreliable at this model scale. The Qwen integration is generic and
-stable enough to continue routing work, but not yet strong enough to justify multiplying family
-adapters. The next milestone is content-causal evidence retrieval on Qwen; Llama follows that
-gate.
+head under a hard native-operation bound. The routing study adds a second architectural result:
+the representation appropriate for native positional attention is not necessarily appropriate
+for semantic selection. Pre-RoPE and hidden-state gists remove the strong late-position effect
+without changing transported post-RoPE K/V.
+
+That correction is necessary but insufficient. Hidden-state routing reproduces useful evidence
+ranking above the post-RoPE baseline, yet sparse recall and MRR remain below the declared gate,
+especially on QASPER. Selecting nearly one quarter of chunks raises recall@16 to 0.797, but does
+not constitute a sparse-routing solution. The correct next step is a small frozen-Qwen learned
+router, not Llama integration and not a claim of solved long-context retrieval.
 
 \appendix
 \section{Code-Level Adapter Reimplementation Guide}
@@ -347,9 +498,9 @@ gate.
 
 This appendix gives the minimum code structure needed to reproduce the integration without
 copying the Qwen implementation. Source references use physical line numbers at repository
-\href{https://github.com/einnovator/pdattention/tree/9139ca28acdddf90f0bfe35be7cc0ceae0aa3145}{commit
-\texttt{9139ca2}}; the adapter source is unchanged by the manuscript-only revision containing
-this appendix. The line references are deliberately revision-pinned because upstream
+\href{https://github.com/einnovator/pdattention/tree/9732da1bcd0d14e066cd1c82fa653282c332be6e}{commit
+\texttt{9732da1}}. This checkpoint implements the three routing representations used above.
+The line references are deliberately revision-pinned because upstream
 Transformers APIs and local diagnostics will move over time.
 
 \subsection{Tensor and ownership contract}
@@ -377,37 +528,42 @@ reimplementing its mathematics.
 \begin{verbatim}
 01  forward(hidden, native_positions, native_mask, past):
 02      if capture_is_armed:
-03          q, k, v = native_project_norm_and_position(hidden)
-04          save_detached_post_position_k_and_native_v(k, v)
-05
-06      if memory_is_disabled or reference_cache_is_empty:
-07          return original_attention(hidden, native_positions,
-08                                    native_mask, past)
-09
-10      q, k, v = native_project_norm_and_position(hidden)
-11      if past is not None:
-12          k, v = past.update(k, v, layer_id, native_cache_kwargs)
-13      memory = shared_core.prepare_memory(q, direct_tokens=k.shape[2])
-14
-15      if memory.is_empty:
-16          return native_attention_and_output(q, k, v, native_mask)
-17      k, v, mask = shared_core.combine_local_and_memory_kv(
-18          k, v, memory, native_mask, query_tokens=q.shape[2])
-19      return native_attention_and_output(q, k, v, mask)
+03          q_pre, k_pre, v = native_project_and_norm(hidden)
+04          q_post, k_post = native_position(q_pre, k_pre)
+05          save_transient_routing_features(hidden, q_pre, q_post, k_pre)
+06          save_post_position_detail_kv(k_post, v)
+07
+08      if memory_is_disabled or reference_cache_is_empty:
+09          return original_attention(hidden, native_positions,
+10                                    native_mask, past)
+11
+12      q_pre, k_pre, v = native_project_and_norm(hidden)
+13      q_post, k_post = native_position(q_pre, k_pre)
+14      if past is not None:
+15          k_post, v = past.update(k_post, v, layer_id, native_kwargs)
+16      route_q = matched_query(hidden, q_pre, q_post)
+17      memory = shared_core.prepare_memory(q_post, route_q,
+18                                          direct_tokens=k_post.shape[2])
+19      if memory.is_empty:
+20          return native_attention_and_output(q_post, k_post, v, native_mask)
+21      k, v, mask = shared_core.combine_local_and_memory_kv(
+22          k_post, v, memory, native_mask, query_tokens=q_post.shape[2])
+23      return native_attention_and_output(q_post, k, v, mask)
 \end{verbatim}
 
-Lines 6--8 are a correctness boundary, not an optimization. The Qwen implementation delegates
-to the untouched module at \texttt{hf/qwen.py}, lines 147--158, which makes disabled behavior
-auditable and bit-exact. In the active path, projection and RoPE occur at lines 160--163 and
-\texttt{Cache.update} occurs once at lines 164--171. If routing then returns no materialized
-memory, lines 175--185 call the native kernel directly. Delegating at that point would execute a
+Lines 8--10 are a correctness boundary, not an optimization. The Qwen implementation delegates
+to the untouched module at \texttt{hf/qwen.py}, lines 187--198, which makes disabled behavior
+auditable and bit-exact. In the active path, projection and RoPE occur at lines 200--203 and
+\texttt{Cache.update} occurs once at lines 204--211. Lines 212--217 choose the matched routing
+query without altering the post-RoPE attention query. If routing returns no materialized memory,
+lines 220--230 call the native kernel directly. Delegating at that point would execute a
 second cache update and duplicate generation history.
 
 Memory is composed only after the native cache update. The shared operation at
-\texttt{core.py}, lines 347--389, pads variable memory rows, prepends memory K/V, creates an
+\texttt{core.py}, lines 362--404, pads variable memory rows, prepends memory K/V, creates an
 all-visible additive mask for valid memory positions, masks padding, and concatenates the
 unchanged local mask. The adapter then invokes Qwen's eager function and one pretrained
-\texttt{o\_proj} at \texttt{hf/qwen.py}, lines 82--100 and 197--209. Thus local and memory
+\texttt{o\_proj} at \texttt{hf/qwen.py}, lines 89--107 and 242--254. Thus local and memory
 positions share one softmax and one output projection.
 
 \subsection{Publishing a reference}
@@ -428,15 +584,16 @@ implementation follows this recipe:
 10  restore_previous_memory_state()
 \end{verbatim}
 
-The concrete loop is \texttt{hf/injection.py}, lines 104--167. Encoding block size limits one
+The concrete loop is \texttt{hf/injection.py}, lines 127--204. Encoding block size limits one
 native model invocation; routing chunk size and overlap independently determine index
-granularity (lines 121--128). Each chunk slices the captured post-RoPE K/V, computes one or more
-small routing gists, and records logical source offsets (lines 129--160). Keeping those two
+granularity (lines 144--151). Each chunk slices the captured post-RoPE K/V, chooses transient
+routing features, computes one or more compact gists, and records logical source offsets
+(lines 152--197). Keeping those two
 scales separate is important: changing index granularity must not silently change how the
 pretrained model encoded the source.
 
 The same operation implements displaced long-prompt history. At
-\texttt{hf/injection.py}, lines 169--181, the prefix is published under the reserved
+\texttt{hf/injection.py}, lines 206--218, the prefix is published under the reserved
 \texttt{\#\_\_head} URI and the direct tail retains continued logical position IDs. Every
 reference-encoding call and every direct call must satisfy the model-safe native bound even
 when the logical source is longer.
@@ -447,21 +604,23 @@ A practical port begins by locating seven hooks in the installed family: the att
 inside each decoder layer; Q/K/V projections; any Q/K normalization; positional encoding;
 generation-cache update and its keyword arguments; native mask convention; and the eager
 attention plus output projection. Implement the six abstract methods declared at
-\texttt{hf/adapter\_base.py}, lines 66--88, then add a narrow type-selection branch analogous to
-\texttt{inject\_pra} at \texttt{hf/injection.py}, lines 191--211. No checkpoint conversion or
+\texttt{hf/adapter\_base.py}, lines 85--106, then add a narrow type-selection branch analogous to
+\texttt{inject\_pra} at \texttt{hf/injection.py}, lines 228--253. No checkpoint conversion or
 parameter copy should be needed.
 
 The recommended validation order is:
 \begin{enumerate}[leftmargin=*]
 \item With memory disabled, require exact logits, hidden states, greedy tokens, and generation-
-cache lengths against an unwrapped copy (test lines 54--71).
+cache lengths against an unwrapped copy (test lines 55--72).
 \item Capture a short reference and verify post-position state, logical offsets, device
-residency, and $H_{kv}$ rather than $H_q$ storage (lines 73--92).
-\item Compare GQA replay with explicit head repetition on a synthetic tensor (lines 94--117).
+residency, and $H_{kv}$ rather than $H_q$ storage (lines 74--93).
+\item Verify matched pre/post capture, representation switching, unchanged post-RoPE detail K/V,
+GQA grouping, serialization, and device parity (lines 95--171).
+\item Compare GQA replay with explicit head repetition on a synthetic tensor (lines 173--196).
 \item Exercise an over-limit logical prompt and verify bounded native operations plus continued
-position IDs (lines 119--141).
+position IDs (lines 198--220).
 \item Generate with active memory and assert that direct cache length grows by exactly one per
-decoded token (lines 143--158).
+decoded token (lines 222--237).
 \end{enumerate}
 
 Four mistakes deserve explicit tests. Applying position encoding again to stored post-position
@@ -485,16 +644,16 @@ Table~\ref{tab:code-map} connects the preceding control flow to the implementati
 \toprule
 Responsibility & File and physical lines \\
 \midrule
-Abstract family boundary & \texttt{src/pra\_torch/hf/adapter\_base.py}, 14--88 \\
-Qwen projections, RoPE, native kernel, and output & \texttt{src/pra\_torch/hf/qwen.py}, 43--100 \\
-Post-position reference K/V capture & \texttt{src/pra\_torch/hf/qwen.py}, 102--112;
-\texttt{src/pra\_torch/hf/injection.py}, 107--160 \\
-Disabled and active runtime paths & \texttt{src/pra\_torch/hf/qwen.py}, 132--227 \\
+Abstract family boundary & \texttt{src/pra\_torch/hf/adapter\_base.py}, 16--106 \\
+Qwen projections, RoPE, native kernel, and output & \texttt{src/pra\_torch/hf/qwen.py}, 50--107 \\
+Matched routing/detail capture & \texttt{src/pra\_torch/hf/qwen.py}, 109--148;
+\texttt{src/pra\_torch/hf/injection.py}, 76--204 \\
+Disabled and active runtime paths & \texttt{src/pra\_torch/hf/qwen.py}, 168--272 \\
 Routing query and GQA reduction & \texttt{src/pra\_torch/core.py}, 92--121 \\
-Budget, deduplication, transfer, and materialization & \texttt{src/pra\_torch/core.py}, 155--345 \\
-K/V and additive-mask composition & \texttt{src/pra\_torch/core.py}, 347--389 \\
-Selected-layer injection & \texttt{src/pra\_torch/hf/injection.py}, 191--211 \\
-Parity, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 54--177 \\
+Budget, deduplication, transfer, and materialization & \texttt{src/pra\_torch/core.py}, 155--360 \\
+K/V and additive-mask composition & \texttt{src/pra\_torch/core.py}, 362--404 \\
+Selected-layer injection & \texttt{src/pra\_torch/hf/injection.py}, 228--253 \\
+Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 55--252 \\
 \bottomrule
 \end{tabularx}
 \end{table}

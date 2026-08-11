@@ -55,4 +55,15 @@ Expected before running:
 Observed results must be retained even when they reject these hypotheses. Llama remains gated
 on sparse, position-independent evidence retrieval from a representative Qwen subset.
 
+Before the independent confirmation seed, the Qwen-to-Llama promotion gate is fixed as:
+
+- combined any-evidence recall@3 at least `0.70`;
+- each dataset's recall@3 at least `0.60`;
+- combined MRR at least `0.50`;
+- mean selected fraction at most `0.10`; and
+- absolute mean score-position correlation at most `0.15`.
+
+The thresholds require useful sparse retrieval rather than merely beating random ranking or
+recovering evidence by selecting a broad fraction of the source.
+
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.
