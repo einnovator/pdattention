@@ -65,6 +65,29 @@ def _correlation(left: list[float], right: list[float]) -> float | None:
     return numerator / (left_scale * right_scale) if left_scale and right_scale else None
 
 
+def _average_ranks(values: list[float]) -> list[float]:
+    """Assign one-based average ranks, preserving ties for Spearman correlation."""
+    ordered = sorted(range(len(values)), key=values.__getitem__)
+    ranks = [0.0] * len(values)
+    start = 0
+    while start < len(ordered):
+        end = start + 1
+        while end < len(ordered) and values[ordered[end]] == values[ordered[start]]:
+            end += 1
+        rank = (start + 1 + end) / 2.0
+        for index in ordered[start:end]:
+            ranks[index] = rank
+        start = end
+    return ranks
+
+
+def _rank_correlation(left: list[float], right: list[float]) -> float | None:
+    """Return Spearman rank correlation through average ranks for tied scores."""
+    if len(left) != len(right) or len(left) < 2:
+        return None
+    return _correlation(_average_ranks(left), _average_ranks(right))
+
+
 def _hotpot_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
     rows = load_dataset(
         "hotpotqa/hotpot_qa",
@@ -384,6 +407,12 @@ def _ranking_row(
         "native_token_mean_score_correlation": _correlation(
             scores, native_token_mean_scores
         ),
+        "native_token_max_rank_correlation": _rank_correlation(
+            scores, native_token_max_scores
+        ),
+        "native_token_mean_rank_correlation": _rank_correlation(
+            scores, native_token_mean_scores
+        ),
         "selected_chunks": len(selected),
         "chunks_materialized": len(retained),
         "materialized_tokens": int(budget["memory_tokens_materialized"]),
@@ -449,6 +478,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
         "score_position_correlation",
         "native_token_max_score_correlation",
         "native_token_mean_score_correlation",
+        "native_token_max_rank_correlation",
+        "native_token_mean_rank_correlation",
         "materialized_tokens",
         "active_kv_bytes",
         "extra_routing_cache_fraction",
@@ -535,13 +566,13 @@ def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
         f"{row['dataset']}\n{display_names.get(row['routing_representation'], row['routing_representation'])}\nG={row['gist_count']}"
         for row in diagnostic_rows
     ]
-    maximum = [row["native_token_max_score_correlation"] or 0.0 for row in diagnostic_rows]
-    mean = [row["native_token_mean_score_correlation"] or 0.0 for row in diagnostic_rows]
+    maximum = [row["native_token_max_rank_correlation"] or 0.0 for row in diagnostic_rows]
+    mean = [row["native_token_mean_rank_correlation"] or 0.0 for row in diagnostic_rows]
     x = torch.arange(len(labels), dtype=torch.float32).numpy()
     axis.bar(x - 0.2, maximum, width=0.4, label="native token-QK maximum")
     axis.bar(x + 0.2, mean, width=0.4, label="native token-QK mean")
     axis.axhline(0.0, color="black", linewidth=0.8)
-    axis.set_ylabel("Chunk-score correlation")
+    axis.set_ylabel("Chunk-rank correlation (Spearman)")
     axis.set_xticks(x, labels, rotation=25, ha="right")
     axis.set_ylim(-1.0, 1.0)
     axis.grid(axis="y", alpha=0.25)
