@@ -59,7 +59,12 @@ capacity and objective controls selects an asymmetric 128-dimensional margin rou
 to $0.631\pm0.069$ (95\% half-width), with HotpotQA/QASPER recall@3 of 0.588/0.675 and recall@8
 of 0.806. Width 256, sampled negatives, and one hard-negative refresh do not improve this
 selection. Cross-domain recall@3 remains 0.213 in both directions, the 0.70 promotion gate is
-not met, and an end-to-end check changes retrieval without changing answer F1. A retrospective
+not met, and an end-to-end check changes retrieval without changing answer F1. A causal
+memory-use intervention then forces every evidence-parent chunk through the unchanged native-K/V
+path. On four HotpotQA examples, oracle memory at the last four layers raises mean gold-token
+log-probability by 1.004 nats, versus 4.635 for direct evidence text, although generated F1 does
+not change. On four QASPER examples, even direct evidence text lowers the same score by 1.791;
+that subset therefore diagnoses a frozen-model/protocol failure rather than PRA transport. A retrospective
 fraction-based analysis nevertheless finds a useful operating region hidden by that fixed-$k$
 gate: the selected adapter reaches any-evidence recall 0.831 at 10\% of candidate chunks and
 0.956 at 20\%, with realized $f_{80}=0.105$ and $f_{90}=0.158$. This retrieval gain does not resolve weak
@@ -948,6 +953,101 @@ Answer F1 is 0.090 with PRA disabled and 0.090 with learned routing enabled. Bet
 does not establish causal use; further router capacity is not a justified response to that
 separate failure.
 
+\section{Does Correct Native Memory Change the Answer?}
+\label{sec:oracle-memory-use}
+
+Retrieval recall answers whether a router found annotated evidence. It does not answer whether
+the frozen decoder can use that evidence after it becomes native K/V. We therefore intervene at
+the selection boundary. The no-memory condition supplies only the question; the learned-router
+condition uses the validation-selected 128-dimensional margin adapter at the last layer; the
+oracle conditions force every 32-token parent that intersects an annotated evidence span; and
+the direct-text oracle places the same evidence in the ordinary prompt. The direct-text control
+tests the frozen model and answer protocol before attributing a failure to memory transport.
+
+Forced identities enter \texttt{prepare\_selected\_memory}, exactly where ordinary semantic
+routing ends. Both routes then share thresholding, whole-parent budgeting, native post-RoPE K/V,
+CPU-to-GPU transfer, GQA layout, source positions, additive masks, and Qwen's eager attention
+kernel. The 640-token diagnostic bound reserves 128 direct tokens and permits up to 512 memory
+tokens per layer. All annotated parents survive in every oracle run: there are no budget
+rejections or native-limit violations, and each reference-encoding operation remains bounded at
+128 tokens. Active K/V in Table~\ref{tab:oracle-memory-use} is summed over active layers; thus
+four-layer values are four times the physical per-layer payload. ``Attention'' denotes mass on
+the memory prefix, or on direct evidence tokens for the text control. These quantities are not
+numerically interchangeable because the key sets and number of measured layers differ.
+
+Generation-only F1/EM is too coarse for this small frozen checkpoint. The primary paired outcome
+is therefore teacher-forced mean gold-token log-probability,
+\begin{equation}
+\Delta_{c,i}=\frac{1}{|y_i|}\log p(y_i\mid q_i,c)-
+              \frac{1}{|y_i|}\log p(y_i\mid q_i,\varnothing),
+\end{equation}
+with first-token probability/rank, generated text, attention mass, and answer-position hidden
+state deltas retained in per-example traces. Four deterministic examples from each dataset are
+used. This is a mechanism probe, not an accuracy estimate.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Frozen-Qwen causal memory-use intervention. Evidence ``yes'' means all annotated
+parent chunks were materialized. $\Delta\log p$ is paired mean gold-token log-probability relative
+to no memory. Latency combines synchronized teacher-forced scoring and eight-token generation;
+the fixed condition order makes it descriptive, not a serving comparison.}
+\label{tab:oracle-memory-use}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llcccccccc}
+\toprule
+Dataset & Condition & Evidence & PRA layers & $\Delta\log p$ & Attention & F1/EM & Active K/V & Time (s) & Viol. \\
+\midrule
+HotpotQA & none & no & 0 & 0.000 & -- & .056/.000 & 0 & .911 & 0 \\
+HotpotQA & learned router & no & last 1 & +.011 & .473 & .056/.000 & 96 & .880 & 0 \\
+HotpotQA & oracle & yes & last 1 & +.071 & .605 & .056/.000 & 112 & .839 & 0 \\
+HotpotQA & oracle & yes & last 2 & +.233 & .582 & .056/.000 & 224 & .865 & 0 \\
+HotpotQA & oracle & yes & last 4 & +1.004 & .569 & .056/.000 & 449 & .910 & 0 \\
+HotpotQA & oracle & yes & early + last & -.372 & .591 & .056/.000 & 224 & .861 & 0 \\
+HotpotQA & direct evidence text & yes & 0 & +4.635 & .021 & .125/.000 & 0 & .972 & 0 \\
+\midrule
+QASPER & none & no & 0 & 0.000 & -- & .125/.000 & 0 & .859 & 0 \\
+QASPER & learned router & no & last 1 & -.461 & .505 & .125/.000 & 96 & .953 & 0 \\
+QASPER & oracle & yes & last 1 & -.091 & .654 & .125/.000 & 240 & .880 & 0 \\
+QASPER & oracle & yes & last 2 & -.145 & .657 & .125/.000 & 480 & .904 & 0 \\
+QASPER & oracle & yes & last 4 & -.161 & .636 & .125/.000 & 960 & .967 & 0 \\
+QASPER & oracle & yes & early + last & +.006 & .560 & .062/.000 & 480 & .925 & 0 \\
+QASPER & direct evidence text & yes & 0 & -1.791 & .022 & .000/.000 & 0 & 1.493 & 0 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper2_hf/oracle_memory_use/oracle_memory_use.pdf}
+\caption{Paired likelihood change and PRA-memory attention. The HotpotQA last-four oracle moves
+the gold answer in the correct direction while direct text remains a much stronger upper
+control. QASPER allocates substantial attention to oracle evidence without improving answer
+likelihood, and its direct-text control also fails. Attention allocation is therefore not by
+itself evidence of useful causal consumption.}
+\label{fig:oracle-memory-use}
+\end{figure}
+
+HotpotQA provides a qualified positive mechanism result. The last-one and last-two interventions
+move mean log-probability by only $+0.071$ and $+0.233$ nats/token. Applying the same evidence to
+the last four layers reaches $+1.004$, is positive in three of four examples, and improves mean
+first-token rank from 887 to 237. The direct-text oracle is positive in all four and reaches
+$+4.635$, so native memory recovers part, not all, of the model's available evidence benefit.
+Generated F1 remains unchanged, which places the result below an end-task quality claim.
+
+QASPER separates perturbation from utility. Oracle evidence receives 0.615--0.645 attention mass
+and the final answer-position hidden-state relative $\ell_2$ delta grows from 0.101 at one layer
+to 0.271 at four layers, yet gold likelihood does not improve. Direct evidence text is also
+negative in all four examples ($-1.791$ nats/token). Consequently this subset cannot distinguish
+PRA misalignment from a checkpoint, prompt, or compact-sample limitation. The correct conclusion
+is dataset-conditional: frozen native memory shows causal answer-likelihood use on HotpotQA at
+four upper layers, while QASPER fails the required direct-text upper control.
+
+The learned router is not rescued by this analysis. Its selected three parents contain little
+annotated-evidence attention mass (0.031 HotpotQA, 0.105 QASPER), and its paired likelihood change
+is $+0.011$ and $-0.461$, respectively. Better learned selection remains useful, but current
+end-to-end quality is jointly limited by selection and layer-specific memory-use alignment.
+
 \subsection{Canonical end-to-end confirmation}
 
 After establishing the routing/payload boundary, we run one HotpotQA example, one QASPER
@@ -997,14 +1097,15 @@ routing, asynchronous overlap, and serving concurrency remain outside this corre
 
 \section{Limitations and Next Experiments}
 
-The study has one family, one 596M-parameter checkpoint, and one PRA layer placement. The
+The study has one family and one 596M-parameter checkpoint. The
 representation/chunk and exploratory multi-gist sweeps use 16 matched examples; confirmation
-uses two deterministic subsets rather than a full validation corpus, and four examples overlap
-between seeds. The main sweeps measure annotated-span ranking; the three-probe end-to-end check
-also reports EM/F1 but is not an accuracy estimate. A model cannot receive causal credit for an
-answer when selected K/V excludes the evidence. There is no matched learned text retriever,
-multi-layer placement study, LoRA adaptation, serving-throughput study, or full dense-context
-quality comparison.
+uses deterministic subsets rather than a full validation corpus, and four examples overlap
+between seeds. The oracle layer-depth study has only four examples per dataset, reuses one fixed
+condition order, and is a mechanism probe rather than an accuracy or serving estimate. Its
+HotpotQA direction must be replicated at larger scale; its QASPER condition fails the direct-text
+upper control. The main sweeps measure annotated-span ranking, while generation remains too weak
+for an end-task claim. There is no matched learned text retriever, LoRA adaptation,
+serving-throughput study, or full dense-context quality comparison.
 
 The tiny learned adapter establishes that evidence supervision can reshape frozen hidden states,
 especially on QASPER, but validation/test instability and weak cross-domain transfer prevent a
@@ -1055,9 +1156,13 @@ geometry is a real part of the bottleneck. Fraction-based analysis further shows
 recall of 0.831 at 10\% and 0.956 at 20\%, so Recall@3 understates the usable retrieval regime.
 More dimensions and harder sampled negatives do not improve it. The validation-selected adapter
 still misses the held-out fixed-$k$ gate and transfers poorly.
-End-to-end answer quality remains unchanged even when evidence is selected. The next work must
-separate data-limited routing generalization from memory-use alignment, not claim solved
-long-context retrieval or proceed to Llama.
+Generated answer quality remains unchanged even when evidence is selected. Teacher-forced
+likelihood gives a narrower result: four upper oracle layers recover a positive part of the
+direct-text evidence effect on HotpotQA, whereas one or two upper layers do little and an
+early-plus-last placement is harmful. QASPER attends strongly to native oracle evidence without
+using it productively, but direct text also fails there. The next work must therefore separate
+data-limited routing generalization, checkpoint/task competence, and layer-specific memory-use
+alignment, not claim solved long-context retrieval or proceed to Llama.
 
 \appendix
 \section{Code-Level Adapter Reimplementation Guide}
@@ -1167,6 +1272,27 @@ loading and freezing are lines 77--94. Memory projection occurs at
 this boundary; the checkpoint is FP32 while Qwen emits FP16 states. Do not cast, project, or
 recompute native detail K/V. Their exact-equality invariant is the test that prevents a routing
 retrofit from silently becoming an attention rewrite.
+
+\subsection{Oracle selection and causal diagnostics}
+
+An oracle must replace only identity selection. Adding a separate K/V injection path would
+confound semantic correctness with different budgeting, positions, masks, or attention code.
+The operational handle activates a layer set and assigns optional row-local identities in
+\texttt{hf/injection.py}, lines 69--89. The Qwen adapter chooses ordinary routing or the fixed
+set at \texttt{hf/qwen.py}, lines 273--286; both enter
+\texttt{core.py::prepare\_selected\_memory}, lines 337--388. The latter still applies the
+trigger, deduplication, whole-chunk budget, overlap policy, residency transfer, and rectangular
+packing. The fixed-set setter and its ownership contract are in
+\texttt{hf/adapter\_base.py}, lines 71--83.
+
+The experiment constructs oracle identities by intersecting annotation token spans with parent
+logical spans in \texttt{run\_oracle\_memory\_use.py}, lines 107--134. Lines 194--281 append the
+gold continuation, gather its autoregressive token probabilities, retain opt-in eager-attention
+weights, and use temporary decoder-layer hooks for answer-position hidden states. Attention
+capture is disabled immediately afterward and is never part of ordinary inference. Conditions
+and paired deltas are assembled at lines 310--419. A reimplementation should assert three
+invariants per example: requested oracle IDs equal retained IDs, budget rejection is zero, and
+the largest native operation stays below the declared bound.
 
 \subsection{Publishing a reference}
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import io
+from dataclasses import replace
 
 import pytest
 import torch
@@ -502,6 +503,46 @@ def test_fixed_selected_set_has_identical_materialization_and_attention_output()
     assert torch.equal(routed.keys[0], oracle.keys[0])
     assert torch.equal(routed.values[0], oracle.values[0])
     assert torch.equal(routed_output, oracle_output)
+
+
+def test_qwen_fixed_selection_override_replays_requested_chunk():
+    torch.manual_seed(1082)
+    handle = inject_pra(_tiny_qwen(), _hf_config())
+    entry = handle.add_reference(
+        "mem://oracle", torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    )
+    chunks = entry.layer_memory[1].chunks
+    routed = handle.cache.search(chunks[0].routing_gist.k[0], 1, handle.pra_config)[0]
+    oracle = replace(routed[0], chunk=chunks[1], chunk_score=1.0)
+
+    handle.configure_memory_layers({1}, fixed_selections={1: [[oracle]]})
+    with torch.no_grad():
+        handle.model(torch.tensor([[1, 4, 8, 12]]), use_cache=False)
+
+    assert [hit.chunk_id for hit in handle.adapters[1].last_selected_chunks[0]] == [
+        chunks[1].chunk_id
+    ]
+    assert handle.diagnostics_by_layer()[1]["retrieved_physical_kv_tokens"] == 4
+
+    handle.configure_memory_layers(set())
+    assert handle.adapters[1].fixed_selected_chunks is None
+
+
+def test_qwen_attention_diagnostics_are_explicit_and_ephemeral():
+    torch.manual_seed(1083)
+    handle = inject_pra(_tiny_qwen(), _hf_config())
+    handle.add_reference("mem://attention-trace", torch.tensor([[11, 12, 13, 14]]))
+    handle.configure_memory_layers({1})
+    handle.set_attention_diagnostics(True)
+
+    with torch.no_grad():
+        handle.model(torch.tensor([[1, 4, 8, 12]]), use_cache=False)
+
+    weights = handle.adapters[1].last_attention_weights
+    assert weights is not None
+    assert weights.shape == (1, 4, 4, 8)
+    handle.set_attention_diagnostics(False)
+    assert handle.adapters[1].last_attention_weights is None
 
 
 def test_qwen_implicit_head_preserves_offsets_and_native_bound():

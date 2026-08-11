@@ -289,3 +289,28 @@ percent (realized `f80=0.105`, `f90=0.158`, normalized `AUC0-30=0.835`). Thus Re
 stress gate but understates the router's 10--20 percent operating range. Generated CSV, JSON,
 PNG, and PDF artifacts live under
 `docs/papers/shared/results/recall_sparsity/paper2_hf/`.
+
+## Oracle memory-use intervention
+
+Run the paired frozen-Qwen diagnostic with:
+
+```powershell
+python -m experiments.paper2_hf.qa.run_oracle_memory_use
+```
+
+The runner compares no memory, the selected learned router, evidence-oracle PRA at the last
+one/two/four layers and an early-plus-last placement, and direct evidence text. Oracle identities
+enter the common `prepare_selected_memory` boundary, so routing and oracle conditions share
+budgeting, native post-RoPE K/V, transfer, GQA, masks, positions, and Qwen eager attention.
+Teacher-forced gold-answer log-probability is primary; generated EM/F1, first-token rank,
+attention mass, hidden-state deltas, active K/V, timing, budget rejection, and per-example traces
+are retained.
+
+On four HotpotQA examples, last-four oracle PRA improves paired mean gold-token log-probability
+by `+1.004` nats/token, compared with `+4.635` for direct evidence text. The oracle direction is
+positive in three of four examples, but generated F1 stays `0.056`. On four QASPER examples,
+last-four oracle PRA changes the score by `-0.161`; direct text also fails at `-1.791`, so this
+subset cannot isolate a PRA transport defect. All oracle parents survive materialization, budget
+rejections and native-limit violations are zero, and the largest bounded reference operation is
+128 tokens. Artifacts and plots live under
+`docs/papers/shared/results/paper2_hf/oracle_memory_use/`.

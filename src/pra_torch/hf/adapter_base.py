@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from ..core import PRAExecutionCore
-from ..memory import LayerKV, PRAMemoryCache
+from ..memory import LayerKV, PRAMemoryCache, SelectedChunk
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,9 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         self.last_selected_chunks = []
         self.last_routing_rankings = []
         self.last_diagnostics: dict[str, float] = {}
+        self.fixed_selected_chunks: list[list[SelectedChunk]] | None = None
+        self.collect_attention_diagnostics = False
+        self.last_attention_weights: torch.Tensor | None = None
         self.pra_core = PRAExecutionCore(
             cache=cache,
             config=config,
@@ -64,6 +67,26 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
     def set_memory_enabled(self, enabled: bool) -> None:
         """Enable or disable routed memory without changing native parameters."""
         self.memory_enabled = bool(enabled)
+
+    def set_fixed_selected_chunks(
+        self,
+        selections: list[list[SelectedChunk]] | None,
+    ) -> None:
+        """Override semantic routing with explicit row-local chunk identities.
+
+        The override stops at the selection boundary. Thresholding, budgeting,
+        native-K/V transfer, masking, and attention remain on the ordinary PRA
+        path, which makes this suitable for oracle and router-control studies.
+        """
+        self.fixed_selected_chunks = (
+            None if selections is None else [list(row) for row in selections]
+        )
+
+    def set_attention_diagnostics(self, enabled: bool) -> None:
+        """Opt into retaining the latest eager-kernel attention probabilities."""
+        self.collect_attention_diagnostics = bool(enabled)
+        if not enabled:
+            self.last_attention_weights = None
 
     def begin_capture(self, position_ids: torch.Tensor) -> None:
         """Capture this layer's post-position native K/V during the next prefill."""

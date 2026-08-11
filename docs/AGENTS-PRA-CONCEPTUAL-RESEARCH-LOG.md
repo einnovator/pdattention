@@ -469,6 +469,59 @@ Next discriminating experiment:
 Affected papers:
 - Paper 2 immediately; Papers 1 and 1.5 receive mechanism-appropriate retrospectives.
 
+## 14d. Correct evidence can be attended without being used productively
+
+Observation:
+- Learned-router evidence recall and answer quality can diverge because selection and
+  consumption are separate causal gates.
+- On four HotpotQA examples, forcing every evidence-parent chunk at the last four layers raises
+  paired mean gold-token log-probability by 1.004 nats/token; direct evidence text raises it by
+  4.635. One and two upper layers give only +0.071 and +0.233.
+- On four QASPER examples, last-four oracle memory changes the score by -0.161 while direct text
+  changes it by -1.791. Oracle memory nevertheless receives 0.615--0.645 attention mass.
+
+Original hypothesis:
+- If exact evidence identities are supplied through faithful native K/V, a frozen decoder should
+  improve answer likelihood; otherwise the dominant defect is memory-use alignment.
+
+Experiment:
+- Compare no memory, the selected learned router, evidence-oracle PRA at last-one, last-two,
+  last-four, and early-plus-last placements, and bounded direct evidence text.
+- Force identities only at `prepare_selected_memory`, preserving the ordinary budget,
+  post-RoPE K/V, source positions, GQA, transfer, mask, and Qwen eager-attention path.
+- Record teacher-forced answer likelihood and first-token rank before generated EM/F1, together
+  with attention mass, hidden-state deltas, active K/V, timing, and per-example traces.
+
+Result:
+- Qualified positive for causal native-memory use on HotpotQA at four upper layers.
+- Negative for generated-quality improvement and for the current learned-router end-to-end path.
+- Inconclusive for PRA memory use on QASPER because the direct-text upper control also fails.
+
+Interpretation:
+- PRA consumption is layer-depth dependent; evidence in one upper layer is not equivalent to
+  evidence available across several late transformations.
+- High attention mass and large hidden-state perturbation do not establish useful consumption.
+- A direct-text evidence control is mandatory before assigning a negative oracle-PRA result to
+  transport or alignment.
+
+Alternative explanations:
+- Each dataset has only four deterministic examples, Qwen3-0.6B is weak at generated QA, and
+  condition order is fixed.
+- Annotated evidence parents include surrounding tokens and may not be the optimal composition.
+- Teacher-forced likelihood can reveal movement that greedy generation does not cross.
+
+Claim status:
+- Preliminary but causal for the paired HotpotQA likelihood intervention.
+- Unsupported for end-task accuracy, QASPER, larger checkpoints, and other model families.
+
+Next discriminating experiment:
+- Replicate the HotpotQA last-four result on a larger identity-disjoint sample with randomized
+  condition order, then test a frozen or tiny learned per-layer memory gate only if the direct
+  text upper control passes.
+
+Affected papers:
+- Paper 2 main results and implementation appendix; Paper 0 only after larger replication.
+
 ## 14. Multi-layer routing
 Hypothesis: best semantic routing depth may differ from later PRA consumption depth:
 

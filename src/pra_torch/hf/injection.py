@@ -66,6 +66,33 @@ class PRAHFModel:
         for adapter in self.adapters.values():
             adapter.set_memory_enabled(enabled)
 
+    def configure_memory_layers(
+        self,
+        layer_ids: set[int] | tuple[int, ...],
+        *,
+        fixed_selections: dict[int, list[list]] | None = None,
+    ) -> None:
+        """Activate a layer subset and optionally force its selected identities.
+
+        Omitting ``fixed_selections`` uses each active layer's configured router.
+        Supplying it makes listed layers replay those identities through the same
+        materialization and attention path. Inactive layers always delegate to
+        the original Hugging Face attention module.
+        """
+        active = {int(layer_id) for layer_id in layer_ids}
+        unknown = active.difference(self.adapters)
+        if unknown:
+            raise ValueError(f"PRA layers were not injected: {sorted(unknown)}")
+        fixed_selections = fixed_selections or {}
+        for layer_id, adapter in self.adapters.items():
+            adapter.set_memory_enabled(layer_id in active)
+            adapter.set_fixed_selected_chunks(fixed_selections.get(layer_id))
+
+    def set_attention_diagnostics(self, enabled: bool) -> None:
+        """Toggle opt-in eager attention-probability capture on injected layers."""
+        for adapter in self.adapters.values():
+            adapter.set_attention_diagnostics(enabled)
+
     def diagnostics_by_layer(self) -> dict[int, dict[str, float]]:
         """Return latest routing, materialization, GQA, and timing metrics."""
         return {layer: dict(adapter.last_diagnostics) for layer, adapter in self.adapters.items()}

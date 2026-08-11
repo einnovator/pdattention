@@ -242,7 +242,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             self.last_selected_chunks = [[] for _ in range(hidden_states.shape[0])]
             self.last_routing_rankings = [[] for _ in range(hidden_states.shape[0])]
             self.last_diagnostics = {}
-            return self.original_attention(
+            result = self.original_attention(
                 hidden_states,
                 position_embeddings,
                 attention_mask,
@@ -250,6 +250,12 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                 cache_position=cache_position,
                 **kwargs,
             )
+            self.last_attention_weights = (
+                result[1].detach()
+                if self.collect_attention_diagnostics and result[1] is not None
+                else None
+            )
+            return result
 
         input_shape = hidden_states.shape[:-1]
         pre_query, pre_key, value = self.project_qkv(hidden_states)
@@ -264,11 +270,22 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                 {"sin": sin, "cos": cos, "cache_position": cache_position},
             )
         routing_query_states = self._routing_query_states(hidden_states, pre_query, query)
-        prepared = self.pra_core.prepare_memory(
-            query,
-            direct_tokens=int(key.shape[2]),
-            routing_query_states=routing_query_states,
-        )
+        if self.fixed_selected_chunks is None:
+            prepared = self.pra_core.prepare_memory(
+                query,
+                direct_tokens=int(key.shape[2]),
+                routing_query_states=routing_query_states,
+            )
+        else:
+            prepared = self.pra_core.prepare_selected_memory(
+                query,
+                self.fixed_selected_chunks,
+                direct_tokens=int(key.shape[2]),
+                rankings=[
+                    [{"selection_source": "fixed_oracle"} for _ in row]
+                    for row in self.fixed_selected_chunks
+                ],
+            )
         self.last_selected_chunks = prepared.selections
         self.last_routing_rankings = prepared.rankings
         if not prepared.has_memory:
@@ -281,6 +298,11 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                 attention_mask,
                 **kwargs,
             )
+            self.last_attention_weights = (
+                attention_weights.detach()
+                if self.collect_attention_diagnostics and attention_weights is not None
+                else None
+            )
             return self.project_output(attention_output, input_shape), attention_weights
         combined = self.build_native_mask(
             key,
@@ -289,7 +311,11 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             attention_mask,
             query_tokens=int(query.shape[2]),
         )
-        started = torch.cuda.Event(enable_timing=True) if query.is_cuda and self.pra_config.collect_detailed_timing else None
+        started = (
+            torch.cuda.Event(enable_timing=True)
+            if query.is_cuda and self.pra_config.collect_detailed_timing
+            else None
+        )
         ended = torch.cuda.Event(enable_timing=True) if started is not None else None
         if started is not None:
             started.record()
@@ -299,6 +325,11 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             combined.value,
             combined.attention_mask,
             **kwargs,
+        )
+        self.last_attention_weights = (
+            attention_weights.detach()
+            if self.collect_attention_diagnostics and attention_weights is not None
+            else None
         )
         duration = 0.0
         if ended is not None:
