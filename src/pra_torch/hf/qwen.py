@@ -10,6 +10,7 @@ from .config import (
     CENTERED_ROPE_KEY,
     canonical_routing_representation,
 )
+from .query import aggregate_query_states
 from ..memory import LayerKV
 from ..memory_batching import MemoryBatchingStats
 
@@ -46,11 +47,17 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         config,
         rotary_embedding,
         routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE,
+        query_strategy: str = "last",
+        query_window: int = 16,
+        query_half_life: float = 4.0,
     ) -> None:
         super().__init__(original_attention, cache, config)
         self.routing_representation = canonical_routing_representation(
             routing_representation
         )
+        self.query_strategy = query_strategy
+        self.query_window = int(query_window)
+        self.query_half_life = float(query_half_life)
         # The owning Qwen model already registers this module. Keep a non-owning
         # reference so the adapter can request native fractional-position phases.
         self.__dict__["native_rotary_embedding"] = rotary_embedding
@@ -179,7 +186,12 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         if self.routing_representation == "pre_rope_key":
             return pre_query
         if self.routing_representation == ATTENTION_INPUT_HIDDEN_STATE:
-            return hidden_states[:, -1, :]
+            return aggregate_query_states(
+                hidden_states,
+                self.query_strategy,
+                window=self.query_window,
+                half_life=self.query_half_life,
+            )
         raise ValueError(f"Unsupported routing representation: {self.routing_representation}")
 
     def _stats(self, prepared) -> MemoryBatchingStats:

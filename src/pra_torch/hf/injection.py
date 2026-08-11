@@ -306,6 +306,9 @@ def inject_pra(model, config: PRAHFConfig | None = None) -> PRAHFModel:
             pra_config,
             model.model.rotary_emb,
             routing_representation=config.routing_representation,
+            query_strategy=config.query_strategy,
+            query_window=config.query_window,
+            query_half_life=config.query_half_life,
         )
         layers[layer_id].self_attn = adapter
         adapters[layer_id] = adapter

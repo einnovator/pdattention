@@ -65,6 +65,28 @@ def test_hf_default_names_attention_input_hidden_state_explicitly():
     )
 
 
+def test_hf_query_strategy_config_validates_runtime_modes():
+    assert PRAHFConfig().query_strategy == "last"
+    with pytest.raises(ValueError, match="query_strategy"):
+        PRAHFConfig(query_strategy="question_mean")
+    with pytest.raises(ValueError, match="query_window"):
+        PRAHFConfig(query_strategy="uniform", query_window=0)
+    with pytest.raises(ValueError, match="query_half_life"):
+        PRAHFConfig(query_strategy="exponential", query_half_life=0)
+
+
+def test_qwen_runtime_query_strategy_aggregates_attention_input_states():
+    handle = inject_pra(
+        _tiny_qwen(),
+        _hf_config(query_strategy="uniform", query_window=2),
+    )
+    adapter = handle.adapters[1]
+    hidden = torch.arange(4 * 32, dtype=torch.float32).view(1, 4, 32)
+    unused = torch.empty(1, 4, 4, 8)
+    actual = adapter._routing_query_states(hidden, unused, unused)
+    assert torch.equal(actual, hidden[:, -2:, :].mean(dim=1))
+
+
 def test_centered_rope_config_rejects_invalid_policy_and_pooling():
     with pytest.raises(ValueError, match="center_policy"):
         PRAHFConfig(

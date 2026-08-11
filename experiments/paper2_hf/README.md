@@ -204,3 +204,35 @@ mechanism but not a sparse semantic-routing solution. Freeze the current zero-pa
 and proceed to the tiny learned hidden-state router with Qwen frozen.
 
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.
+
+## Query representation study
+
+The next frozen-Qwen study holds memory routing fixed at one mean attention-input hidden-state
+gist per 32-token chunk and varies only the representation of the current information need.
+The predeclared broad validation comparison is:
+
+```powershell
+python experiments/paper2_hf/routing/run_query_strategies.py `
+  --device cuda --split validation --example-offset 0 --examples-per-dataset 8 `
+  --stem query_strategy_sweep
+```
+
+It compares the last-token baseline with recent uniform means (`W=4,8,16`), exponential
+means (`W=16`, half-life `2,4,8`), a linear-decay control, the exact question-span mean,
+and decayed question-span means (half-life `4,8`). Recall@3 is primary; Recall@8/16, MRR,
+coverage, source-position correlation, query norm, cosine to the last-token query, and
+pairwise query similarity are recorded. Exact question spans are benchmark metadata and are
+not assumed to exist in ordinary generation.
+
+Predictions recorded before execution:
+
+- H1: moderate exponential recency pooling modestly improves Recall@3, especially on QASPER;
+- H2: long uniform windows eventually blur the fully formed information need;
+- H3: half-life 4--8 is the most plausible useful range; and
+- H4: decayed exact-question pooling is the strongest hand-designed candidate.
+
+After selecting at most three candidates on validation, confirmation uses new QA identities
+starting at offset 8. The last-token baseline is always repeated. Query aggregation is promoted
+only if its combined Recall@3 rises by at least `0.10`, neither dataset loses Recall@3, and
+position-correlation magnitude does not increase by more than `0.10`. Otherwise the simplest
+last-token query remains canonical and the result is treated as evidence for learned alignment.

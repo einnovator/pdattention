@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..config import PRAConfig
+from .query import QUERY_LAST, RUNTIME_QUERY_STRATEGIES
 
 
 ATTENTION_INPUT_HIDDEN_STATE = "attention_input_hidden_state"
@@ -30,6 +31,9 @@ class PRAHFConfig:
     routing_chunk_tokens: int = 128
     routing_chunk_overlap_tokens: int = 0
     routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE
+    query_strategy: str = QUERY_LAST
+    query_window: int = 16
+    query_half_life: float = 4.0
     centered_rope_center_policy: str = "exact"
     max_materialized_memory_tokens: int = 512
     context_safety_reserve_tokens: int = 0
@@ -59,6 +63,14 @@ class PRAHFConfig:
             raise ValueError(
                 f"Unsupported HF routing representation: {self.routing_representation}"
             )
+        if self.query_strategy not in RUNTIME_QUERY_STRATEGIES:
+            raise ValueError(
+                "HF runtime query_strategy must be last, uniform, exponential, or linear."
+            )
+        if self.query_window <= 0:
+            raise ValueError("query_window must be positive.")
+        if self.query_half_life <= 0:
+            raise ValueError("query_half_life must be positive.")
         if self.centered_rope_center_policy not in {"exact", "floor", "ceil"}:
             raise ValueError(
                 "centered_rope_center_policy must be 'exact', 'floor', or 'ceil'."
