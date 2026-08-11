@@ -18,6 +18,7 @@ from ..memory import (
 from .adapter_base import HFRoutingCapture, PRAHFAttentionAdapter
 from .config import (
     ATTENTION_INPUT_HIDDEN_STATE,
+    CENTERED_ROPE_KEY,
     PRAHFConfig,
     canonical_routing_representation,
 )
@@ -91,7 +92,7 @@ class PRAHFModel:
         if representation == "post_rope_key":
             keys = projected_tokens(detail.k[:, :, start:end, :])
             values = projected_tokens(detail.v[:, :, start:end, :])
-        elif representation == "pre_rope_key":
+        elif representation in {"pre_rope_key", CENTERED_ROPE_KEY}:
             keys = projected_tokens(captured.pre_key[:, :, start:end, :])
             values = projected_tokens(detail.v[:, :, start:end, :])
         elif representation == ATTENTION_INPUT_HIDDEN_STATE:
@@ -100,6 +101,50 @@ class PRAHFModel:
         else:
             raise ValueError(f"Unsupported routing representation: {representation}")
         return keys, values
+
+    def _centered_rope_gists(
+        self,
+        adapter: PRAHFAttentionAdapter,
+        computed,
+        *,
+        logical_start: int,
+        token_count: int,
+    ):
+        """Place pooled pre-RoPE key gists at exact known source-span centers."""
+        spans = computed.metadata.get("segment_token_spans")
+        if spans is None:
+            spans = [[0, token_count]]
+        if len(spans) != int(computed.k.shape[0]):
+            raise ValueError("Centered gist spans must match the computed gist count.")
+        exact_centers = torch.tensor(
+            [
+                logical_start + (int(start) + int(end) - 1) / 2.0
+                for start, end in spans
+            ],
+            device=computed.k.device,
+            dtype=torch.float32,
+        )
+        policy = self.hf_config.centered_rope_center_policy
+        if policy == "floor":
+            applied_centers = exact_centers.floor()
+        elif policy == "ceil":
+            applied_centers = exact_centers.ceil()
+        else:
+            applied_centers = exact_centers
+        computed.k = adapter.rotate_routing_keys(computed.k, applied_centers)
+        computed.metadata.update(
+            {
+                "gist_position_policy": "span_center",
+                "center_rounding_policy": policy,
+                "exact_center_positions": exact_centers.detach().cpu().tolist(),
+                "applied_center_positions": applied_centers.detach().cpu().tolist(),
+                "source_token_spans": [
+                    [logical_start + int(start), logical_start + int(end)]
+                    for start, end in spans
+                ],
+            }
+        )
+        return computed
 
     @torch.no_grad()
     def add_reference(
@@ -174,6 +219,13 @@ class PRAHFModel:
                             config=self.pra_config,
                             context=GistContext(level="chunk", token_ids=chunk_token_ids),
                         )
+                        if self.hf_config.routing_representation == CENTERED_ROPE_KEY:
+                            computed = self._centered_rope_gists(
+                                self.adapters[layer],
+                                computed,
+                                logical_start=logical_start,
+                                token_count=local_end - local_start,
+                            )
                         chunk = ReferenceChunkMemory(
                             chunk_id=f"{uri}#chunk={logical_start}:{logical_end}",
                             source_uri=uri,
@@ -252,6 +304,7 @@ def inject_pra(model, config: PRAHFConfig | None = None) -> PRAHFModel:
             original,
             cache,
             pra_config,
+            model.model.rotary_emb,
             routing_representation=config.routing_representation,
         )
         layers[layer_id].self_attn = adapter

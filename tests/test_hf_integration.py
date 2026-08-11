@@ -11,7 +11,12 @@ import torch
 transformers = pytest.importorskip("transformers")
 from transformers import Qwen3Config, Qwen3ForCausalLM
 
-from pra_torch.hf import ATTENTION_INPUT_HIDDEN_STATE, PRAHFConfig, inject_pra
+from pra_torch.hf import (
+    ATTENTION_INPUT_HIDDEN_STATE,
+    CENTERED_ROPE_KEY,
+    PRAHFConfig,
+    inject_pra,
+)
 from pra_torch.memory_batching import native_kv_attention
 
 
@@ -58,6 +63,19 @@ def test_hf_default_names_attention_input_hidden_state_explicitly():
         PRAHFConfig(routing_representation="hidden_state").routing_representation
         == ATTENTION_INPUT_HIDDEN_STATE
     )
+
+
+def test_centered_rope_config_rejects_invalid_policy_and_pooling():
+    with pytest.raises(ValueError, match="center_policy"):
+        PRAHFConfig(
+            routing_representation=CENTERED_ROPE_KEY,
+            centered_rope_center_policy="nearest",
+        )
+    with pytest.raises(ValueError, match="mean.*segment_mean"):
+        PRAHFConfig(
+            routing_representation=CENTERED_ROPE_KEY,
+            gist_mode="kmeans",
+        )
 
 
 def test_qwen_disabled_adapter_has_exact_logits_hidden_states_and_generation_parity():
@@ -184,6 +202,159 @@ def test_hidden_state_segment_means_share_one_parent_native_kv_payload():
     assert chunk.token_kv.k.shape == (1, 2, 4, 8)
     assert chunk.token_kv.v.shape == (1, 2, 4, 8)
     assert chunk.metadata["routing_gist_bytes"] == 4 * 32 * 4
+
+
+def test_centered_rope_mean_uses_fractional_center_and_preserves_native_payload():
+    torch.manual_seed(1062)
+    original = _tiny_qwen()
+    ids = torch.tensor([[11, 12, 13, 14]])
+    handles = {
+        representation: inject_pra(
+            copy.deepcopy(original),
+            _hf_config(routing_representation=representation),
+        )
+        for representation in ("pre_rope_key", "post_rope_key", CENTERED_ROPE_KEY)
+    }
+    chunks = {
+        name: handle.add_reference(f"mem://{name}", ids).layer_memory[1].chunks[0]
+        for name, handle in handles.items()
+    }
+    centered = chunks[CENTERED_ROPE_KEY]
+    pre_gist = chunks["pre_rope_key"].routing_gist.k
+    adapter = handles[CENTERED_ROPE_KEY].adapters[1]
+    expected = adapter.rotate_routing_keys(pre_gist, torch.tensor([1.5]))
+
+    assert torch.allclose(centered.routing_gist.k, expected, atol=1e-6, rtol=1e-6)
+    assert not torch.allclose(
+        centered.routing_gist.k,
+        chunks["post_rope_key"].routing_gist.k,
+        atol=1e-6,
+        rtol=1e-6,
+    )
+    assert centered.routing_gist.metadata["exact_center_positions"] == [1.5]
+    assert centered.routing_gist.metadata["applied_center_positions"] == [1.5]
+    assert centered.routing_gist.metadata["source_token_spans"] == [[0, 4]]
+    for name in ("pre_rope_key", "post_rope_key"):
+        assert torch.equal(centered.token_kv.k, chunks[name].token_kv.k)
+        assert torch.equal(centered.token_kv.v, chunks[name].token_kv.v)
+    assert centered.token_kv.position_state == "post_position"
+
+    query = centered.routing_gist.k[0]
+    cpu_hit = handles[CENTERED_ROPE_KEY].cache.search(
+        query, 1, handles[CENTERED_ROPE_KEY].pra_config
+    )[0][0].chunk_id
+    if torch.cuda.is_available():
+        gpu_hit = handles[CENTERED_ROPE_KEY].cache.search(
+            query.cuda(), 1, handles[CENTERED_ROPE_KEY].pra_config
+        )[0][0].chunk_id
+        assert gpu_hit == cpu_hit
+    handles[CENTERED_ROPE_KEY].set_memory_enabled(True)
+    with torch.no_grad():
+        output = handles[CENTERED_ROPE_KEY].model(
+            torch.tensor([[1, 4, 8, 12]]), use_cache=False
+        )
+    assert output.logits.shape == (1, 4, 67)
+
+
+def test_centered_rope_segment_means_use_each_subspan_center():
+    torch.manual_seed(1063)
+    handle = inject_pra(
+        _tiny_qwen(),
+        _hf_config(
+            routing_representation=CENTERED_ROPE_KEY,
+            gist_mode="segment_mean",
+            gists_per_chunk=4,
+            routing_chunk_tokens=8,
+        ),
+    )
+    entry = handle.add_reference(
+        "mem://centered-segments",
+        torch.tensor(
+            [[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]]
+        ),
+    )
+    chunk = entry.layer_memory[1].chunks[0]
+    second = entry.layer_memory[1].chunks[1]
+
+    assert chunk.routing_gist.k.shape == (4, 16)
+    assert chunk.routing_gist.metadata["segment_token_spans"] == [
+        [0, 2],
+        [2, 4],
+        [4, 6],
+        [6, 8],
+    ]
+    assert chunk.routing_gist.metadata["exact_center_positions"] == [
+        0.5,
+        2.5,
+        4.5,
+        6.5,
+    ]
+    assert chunk.routing_gist.metadata["source_token_spans"] == [
+        [0, 2],
+        [2, 4],
+        [4, 6],
+        [6, 8],
+    ]
+    assert second.routing_gist.metadata["exact_center_positions"] == [
+        8.5,
+        10.5,
+        12.5,
+        14.5,
+    ]
+    assert second.routing_gist.metadata["source_token_spans"] == [
+        [8, 10],
+        [10, 12],
+        [12, 14],
+        [14, 16],
+    ]
+
+
+def test_centered_rope_fractional_floor_and_ceil_controls_are_distinct():
+    torch.manual_seed(1064)
+    original = _tiny_qwen()
+    ids = torch.tensor([[11, 12, 13, 14]])
+    gists = {}
+    for policy in ("exact", "floor", "ceil"):
+        handle = inject_pra(
+            copy.deepcopy(original),
+            _hf_config(
+                routing_representation=CENTERED_ROPE_KEY,
+                centered_rope_center_policy=policy,
+            ),
+        )
+        chunk = handle.add_reference(f"mem://center-{policy}", ids).layer_memory[1].chunks[0]
+        gists[policy] = chunk.routing_gist.k
+        expected_center = {"exact": 1.5, "floor": 1.0, "ceil": 2.0}[policy]
+        assert chunk.routing_gist.metadata["applied_center_positions"] == [
+            expected_center
+        ]
+
+    assert not torch.allclose(gists["exact"], gists["floor"])
+    assert not torch.allclose(gists["exact"], gists["ceil"])
+    assert not torch.allclose(gists["floor"], gists["ceil"])
+
+
+def test_native_centered_rope_composes_signed_displacements():
+    torch.manual_seed(1065)
+    handle = inject_pra(
+        _tiny_qwen(),
+        _hf_config(routing_representation=CENTERED_ROPE_KEY),
+    )
+    adapter = handle.adapters[1]
+    keys = torch.randn(3, 16)
+    first = torch.tensor([2.5, -3.0, 7.25])
+    second = torch.tensor([-1.0, 4.5, -2.25])
+
+    composed = adapter.rotate_routing_keys(
+        adapter.rotate_routing_keys(keys, first), second
+    )
+    direct = adapter.rotate_routing_keys(keys, first + second)
+    restored = adapter.rotate_routing_keys(
+        adapter.rotate_routing_keys(keys, first), -first
+    )
+
+    assert torch.allclose(composed, direct, atol=2e-6, rtol=2e-6)
+    assert torch.allclose(restored, keys, atol=2e-6, rtol=2e-6)
 
 
 def test_pre_rope_gqa_routing_query_matches_native_query_groups():

@@ -90,6 +90,10 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         """Apply the family's own positional implementation to Q/K."""
 
     @abstractmethod
+    def rotate_routing_keys(self, flattened_keys, positions):
+        """Position pooled native-key gists using the family's own encoding."""
+
+    @abstractmethod
     def normalize_qkv_layout(self, query, key, value):
         """Return canonical ``[B,H,T,Dh]`` query and native-head K/V tensors."""
 

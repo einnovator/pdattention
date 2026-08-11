@@ -145,4 +145,47 @@ This confirms HotpotQA, QASPER, and displaced `#__head` history with attention-i
 hidden-state routing and native post-RoPE K/V. It reports routing recall, selected fraction,
 materialized tokens, answer EM/F1, and native-limit violations separately.
 
+Before learned alignment, run the final zero-parameter K-space control. A centered-RoPE gist
+first pools pre-RoPE keys and then applies one native Qwen rotation at the exact known center of
+the summarized span:
+
+```text
+centered gist = R(span_center) mean(K_pre)
+query = Q_post
+```
+
+Primary matched representation comparison:
+
+```powershell
+python experiments/paper2_hf/routing/run_representation.py --device cuda `
+  --examples-per-dataset 8 `
+  --representations post_rope_key,pre_rope_key,attention_input_hidden_state,centered_rope_key `
+  --chunk-sizes 32 --gist-mode mean --gist-counts 1 --top-k 3,8,16 `
+  --stem centered_rope_gist_comparison `
+  --output-dir docs/papers/shared/results/paper2_hf/routing/centered_rope
+```
+
+Centered segment sweep:
+
+```powershell
+python experiments/paper2_hf/routing/run_representation.py --device cuda `
+  --examples-per-dataset 8 --representations centered_rope_key --chunk-sizes 32 `
+  --gist-mode segment_mean --gist-counts 1,2,4,8 --top-k 3,8,16 `
+  --stem centered_rope_segment_mean `
+  --output-dir docs/papers/shared/results/paper2_hf/routing/centered_rope
+```
+
+Predeclared expectations:
+
+- E1: centered-RoPE should beat post-RoPE mean and reduce its late-position correlation;
+- E2: it may modestly beat pre-RoPE mean if approximate relative distance helps relevance;
+- E3: attention-input hidden-state mean will probably remain the strongest sparse semantic
+  router; and
+- E4: `G=2/4/8` may improve centered routing because each gist reduces semantic pooling width
+  and center-position approximation error simultaneously.
+
+The runner also reports correlation with per-chunk native token-QK maximum and mean scores.
+Exact fractional centers are primary; matched `floor` and `ceil` controls use
+`--center-policy` only to verify that half-position handling is not driving the result.
+
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.

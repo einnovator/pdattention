@@ -8,6 +8,7 @@ from ..config import PRAConfig
 
 
 ATTENTION_INPUT_HIDDEN_STATE = "attention_input_hidden_state"
+CENTERED_ROPE_KEY = "centered_rope_key"
 _ROUTING_REPRESENTATION_ALIASES = {
     "hidden_state": ATTENTION_INPUT_HIDDEN_STATE,
 }
@@ -29,6 +30,7 @@ class PRAHFConfig:
     routing_chunk_tokens: int = 128
     routing_chunk_overlap_tokens: int = 0
     routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE
+    centered_rope_center_policy: str = "exact"
     max_materialized_memory_tokens: int = 512
     context_safety_reserve_tokens: int = 0
     top_k_references: int = 2
@@ -50,11 +52,23 @@ class PRAHFConfig:
         supported = {
             "post_rope_key",
             "pre_rope_key",
+            CENTERED_ROPE_KEY,
             ATTENTION_INPUT_HIDDEN_STATE,
         }
         if self.routing_representation not in supported:
             raise ValueError(
                 f"Unsupported HF routing representation: {self.routing_representation}"
+            )
+        if self.centered_rope_center_policy not in {"exact", "floor", "ceil"}:
+            raise ValueError(
+                "centered_rope_center_policy must be 'exact', 'floor', or 'ceil'."
+            )
+        if self.routing_representation == CENTERED_ROPE_KEY and self.gist_mode not in {
+            "mean",
+            "segment_mean",
+        }:
+            raise ValueError(
+                "centered_rope_key supports gist_mode='mean' or 'segment_mean'."
             )
 
     def build_pra_config(self, hf_config) -> PRAConfig:

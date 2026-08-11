@@ -2,6 +2,7 @@
 
 from .config import (
     ATTENTION_INPUT_HIDDEN_STATE,
+    CENTERED_ROPE_KEY,
     PRAHFConfig,
     canonical_routing_representation,
 )
@@ -9,6 +10,7 @@ from .injection import PRAHFModel, inject_pra
 
 __all__ = [
     "ATTENTION_INPUT_HIDDEN_STATE",
+    "CENTERED_ROPE_KEY",
     "PRAHFConfig",
     "PRAHFModel",
     "canonical_routing_representation",

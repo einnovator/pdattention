@@ -5,7 +5,11 @@ from __future__ import annotations
 import torch
 
 from .adapter_base import HFRoutingCapture, PRAHFAttentionAdapter
-from .config import ATTENTION_INPUT_HIDDEN_STATE, canonical_routing_representation
+from .config import (
+    ATTENTION_INPUT_HIDDEN_STATE,
+    CENTERED_ROPE_KEY,
+    canonical_routing_representation,
+)
 from ..memory import LayerKV
 from ..memory_batching import MemoryBatchingStats
 
@@ -40,12 +44,16 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         original_attention,
         cache,
         config,
+        rotary_embedding,
         routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE,
     ) -> None:
         super().__init__(original_attention, cache, config)
         self.routing_representation = canonical_routing_representation(
             routing_representation
         )
+        # The owning Qwen model already registers this module. Keep a non-owning
+        # reference so the adapter can request native fractional-position phases.
+        self.__dict__["native_rotary_embedding"] = rotary_embedding
         self.apply_rotary_pos_emb, self.eager_attention_forward, self.variant = _qwen_symbols(
             original_attention
         )
@@ -68,6 +76,30 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         """Apply the exact Qwen RoPE helper supplied by the installed family."""
         cos, sin = position_embeddings
         return self.apply_rotary_pos_emb(query, key, cos, sin)
+
+    def rotate_routing_keys(
+        self,
+        flattened_keys: torch.Tensor,
+        positions: torch.Tensor,
+    ) -> torch.Tensor:
+        """Apply native Qwen RoPE to ``[G,H_kv*Dh]`` keys at exact positions."""
+        if flattened_keys.ndim != 2 or positions.ndim != 1:
+            raise ValueError("Centered routing expects keys [G,D] and positions [G].")
+        if flattened_keys.shape[0] != positions.shape[0]:
+            raise ValueError("Every centered routing gist requires one position.")
+        heads = int(self.config.num_key_value_heads)
+        head_dim = int(self.original_attention.head_dim)
+        if flattened_keys.shape[1] != heads * head_dim:
+            raise ValueError("Centered routing gist width does not match native Qwen K heads.")
+        keys = (
+            flattened_keys.reshape(flattened_keys.shape[0], heads, head_dim)
+            .permute(1, 0, 2)
+            .unsqueeze(0)
+        )
+        position_ids = positions.to(device=keys.device, dtype=torch.float32).unsqueeze(0)
+        cos, sin = self.native_rotary_embedding(keys, position_ids)
+        _, rotated = self.apply_rotary_pos_emb(keys, keys, cos, sin)
+        return rotated.transpose(1, 2).contiguous().view(flattened_keys.shape)
 
     def normalize_qkv_layout(self, query, key, value):
         """Validate Qwen's canonical query-head and native K/V-head layout."""
@@ -142,7 +174,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         post_query: torch.Tensor,
     ) -> torch.Tensor:
         """Choose a query matched to the configured chunk-gist representation."""
-        if self.routing_representation == "post_rope_key":
+        if self.routing_representation in {"post_rope_key", CENTERED_ROPE_KEY}:
             return post_query
         if self.routing_representation == "pre_rope_key":
             return pre_query

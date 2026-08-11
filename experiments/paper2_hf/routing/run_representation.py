@@ -32,6 +32,7 @@ from experiments.paper2_hf.qa.run_smoke import evidence_token_spans, prompt_ids
 from experiments.paper2_hf.qwen.run_first_night import MODEL_ID, MODEL_REVISION
 from pra_torch.hf import (
     ATTENTION_INPUT_HIDDEN_STATE,
+    CENTERED_ROPE_KEY,
     PRAHFConfig,
     canonical_routing_representation,
     inject_pra,
@@ -41,6 +42,7 @@ from pra_torch.hf import (
 REPRESENTATIONS = (
     "post_rope_key",
     "pre_rope_key",
+    CENTERED_ROPE_KEY,
     ATTENTION_INPUT_HIDDEN_STATE,
     "hidden_state",
 )
@@ -147,6 +149,7 @@ def _configure(
     chunk_size: int,
     gist_mode: str,
     gist_count: int,
+    center_policy: str,
 ) -> None:
     handle.cache.clear()
     representation = canonical_routing_representation(representation)
@@ -154,6 +157,7 @@ def _configure(
     handle.hf_config.routing_chunk_tokens = int(chunk_size)
     handle.hf_config.gist_mode = gist_mode
     handle.hf_config.gists_per_chunk = int(gist_count)
+    handle.hf_config.centered_rope_center_policy = center_policy
     handle.pra_config.fixed_chunk_tokens = int(chunk_size)
     handle.pra_config.gist_mode = gist_mode
     handle.pra_config.gists_per_chunk = int(gist_count)
@@ -162,7 +166,7 @@ def _configure(
 
 
 @torch.no_grad()
-def _capture_query(handle, tokenizer, example: dict, device: torch.device) -> torch.Tensor:
+def _capture_query(handle, tokenizer, example: dict, device: torch.device):
     encoded = prompt_ids(tokenizer, example["question"], max_tokens=128).to(device)
     positions = torch.arange(encoded.input_ids.shape[1], device=device).unsqueeze(0)
     adapter = next(iter(handle.adapters.values()))
@@ -176,7 +180,8 @@ def _capture_query(handle, tokenizer, example: dict, device: torch.device) -> to
     )
     captured = adapter.consume_capture()
     representation = handle.hf_config.routing_representation
-    if representation == "post_rope_key":
+    native_query = adapter.pra_core.prepare_pra_query(captured.post_query)
+    if representation in {"post_rope_key", CENTERED_ROPE_KEY}:
         query = adapter.pra_core.prepare_pra_query(captured.post_query)
     elif representation == "pre_rope_key":
         query = adapter.pra_core.prepare_pra_query(captured.pre_query)
@@ -184,7 +189,7 @@ def _capture_query(handle, tokenizer, example: dict, device: torch.device) -> to
         query = captured.hidden_states[:, -1, :]
     else:
         raise ValueError(representation)
-    return query, int(encoded.input_ids.shape[1])
+    return query, native_query, int(encoded.input_ids.shape[1])
 
 
 def _overlaps(span: tuple[int, int], selected: list[tuple[int, int]]) -> bool:
@@ -209,11 +214,13 @@ def _ranking_row(
     source_tokens: int,
     evidence_spans: list[tuple[int, int]],
     query: torch.Tensor,
+    native_query: torch.Tensor,
     direct_tokens: int,
     representation: str,
     chunk_size: int,
     gist_mode: str,
     gist_count: int,
+    center_policy: str,
     top_k: int,
     index_build_seconds: float,
     warm_repeats: int,
@@ -295,6 +302,20 @@ def _ranking_row(
     actual_gist_counts = [
         int(chunk.routing_gist.k.shape[0]) for chunk in chunks_by_id.values()
     ]
+    native_query_vector = native_query[0].to(query.device, torch.float32)
+    native_token_max_scores = []
+    native_token_mean_scores = []
+    for ranking in rankings:
+        chunk = chunks_by_id[ranking["chunk_id"]]
+        token_keys = (
+            chunk.token_kv.k.transpose(1, 2)
+            .contiguous()
+            .view(chunk.token_count, -1)
+            .to(query.device, torch.float32)
+        )
+        token_scores = token_keys @ native_query_vector
+        native_token_max_scores.append(float(token_scores.max().item()))
+        native_token_mean_scores.append(float(token_scores.mean().item()))
 
     def recall_at(cutoff: int) -> float:
         return float(any(evidence_flags[:cutoff]))
@@ -313,6 +334,7 @@ def _ranking_row(
         "routing_representation": representation,
         "gist_mode": gist_mode,
         "gist_count": gist_count,
+        "center_policy": center_policy,
         "mean_actual_gists_per_chunk": statistics.fmean(actual_gist_counts),
         "candidate_gists": sum(actual_gist_counts),
         "top_k": top_k,
@@ -356,6 +378,12 @@ def _ranking_row(
             statistics.median(selected_positions) if selected_positions else None
         ),
         "score_position_correlation": _correlation(positions, scores),
+        "native_token_max_score_correlation": _correlation(
+            scores, native_token_max_scores
+        ),
+        "native_token_mean_score_correlation": _correlation(
+            scores, native_token_mean_scores
+        ),
         "selected_chunks": len(selected),
         "chunks_materialized": len(retained),
         "materialized_tokens": int(budget["memory_tokens_materialized"]),
@@ -399,6 +427,7 @@ def aggregate(rows: list[dict]) -> list[dict]:
                 row["routing_chunk_size"],
                 row["gist_mode"],
                 row["gist_count"],
+                row.get("center_policy", "exact"),
                 row["top_k"],
             )
         ].append(row)
@@ -418,6 +447,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
         "materialized_fraction",
         "mean_selected_normalized_position",
         "score_position_correlation",
+        "native_token_max_score_correlation",
+        "native_token_mean_score_correlation",
         "materialized_tokens",
         "active_kv_bytes",
         "extra_routing_cache_fraction",
@@ -434,7 +465,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
             "routing_chunk_size": key[2],
             "gist_mode": key[3],
             "gist_count": key[4],
-            "top_k": key[5],
+            "center_policy": key[5],
+            "top_k": key[6],
             "examples": len(values),
         }
         for metric in metrics:
@@ -448,11 +480,13 @@ def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
     figure, axis = plt.subplots(figsize=(7.2, 4.4))
     display_names = {
         ATTENTION_INPUT_HIDDEN_STATE: "attention input",
+        CENTERED_ROPE_KEY: "centered RoPE key",
         "hidden_state": "attention input",
     }
     markers = {
         "post_rope_key": "o",
         "pre_rope_key": "s",
+        CENTERED_ROPE_KEY: "D",
         ATTENTION_INPUT_HIDDEN_STATE: "^",
         "hidden_state": "^",
     }
@@ -495,6 +529,28 @@ def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
         figure.savefig(output_dir / f"{stem}_position_bias.{suffix}", dpi=180)
     plt.close(figure)
 
+    diagnostic_rows = [row for row in aggregates if int(row["top_k"]) == 3]
+    figure, axis = plt.subplots(figsize=(8.2, 4.6))
+    labels = [
+        f"{row['dataset']}\n{display_names.get(row['routing_representation'], row['routing_representation'])}\nG={row['gist_count']}"
+        for row in diagnostic_rows
+    ]
+    maximum = [row["native_token_max_score_correlation"] or 0.0 for row in diagnostic_rows]
+    mean = [row["native_token_mean_score_correlation"] or 0.0 for row in diagnostic_rows]
+    x = torch.arange(len(labels), dtype=torch.float32).numpy()
+    axis.bar(x - 0.2, maximum, width=0.4, label="native token-QK maximum")
+    axis.bar(x + 0.2, mean, width=0.4, label="native token-QK mean")
+    axis.axhline(0.0, color="black", linewidth=0.8)
+    axis.set_ylabel("Chunk-score correlation")
+    axis.set_xticks(x, labels, rotation=25, ha="right")
+    axis.set_ylim(-1.0, 1.0)
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(fontsize=8)
+    figure.tight_layout()
+    for suffix in ("png", "pdf"):
+        figure.savefig(output_dir / f"{stem}_token_qk_correlation.{suffix}", dpi=180)
+    plt.close(figure)
+
 
 def _group(rows: list[dict], *keys: str) -> dict[tuple, list[dict]]:
     grouped = defaultdict(list)
@@ -522,6 +578,7 @@ def run(args) -> dict:
             max_prompt_direct_tokens=128,
             encoding_block_tokens=128,
             routing_chunk_tokens=min(args.chunk_sizes),
+            centered_rope_center_policy=args.center_policy,
             gist_mode=args.gist_mode,
             gists_per_chunk=min(args.gist_counts),
             max_materialized_memory_tokens=128,
@@ -548,6 +605,7 @@ def run(args) -> dict:
             row["routing_chunk_size"],
             row.get("gist_mode", "mean"),
             row.get("gist_count", 1),
+            row.get("center_policy", "exact"),
             row["top_k"],
         )
         for row in rows
@@ -565,6 +623,7 @@ def run(args) -> dict:
                             chunk_size,
                             args.gist_mode,
                             gist_count,
+                            args.center_policy,
                             top_k,
                         )
                         for top_k in args.top_k
@@ -577,6 +636,7 @@ def run(args) -> dict:
                         chunk_size,
                         args.gist_mode,
                         gist_count,
+                        args.center_policy,
                     )
                     source = tokenizer(
                         example["source"], return_tensors="pt", add_special_tokens=False
@@ -590,7 +650,9 @@ def run(args) -> dict:
                         source,
                         text=example["source"],
                     )
-                    query, direct_tokens = _capture_query(handle, tokenizer, example, device)
+                    query, native_query, direct_tokens = _capture_query(
+                        handle, tokenizer, example, device
+                    )
                     adapter = next(iter(handle.adapters.values()))
                     _synchronize(device)
                     started = time.perf_counter()
@@ -609,11 +671,13 @@ def run(args) -> dict:
                                 source_tokens=source_tokens,
                                 evidence_spans=evidence_spans,
                                 query=query,
+                                native_query=native_query,
                                 direct_tokens=direct_tokens,
                                 representation=representation,
                                 chunk_size=chunk_size,
                                 gist_mode=args.gist_mode,
                                 gist_count=gist_count,
+                                center_policy=args.center_policy,
                                 top_k=top_k,
                                 index_build_seconds=index_build_seconds,
                                 warm_repeats=args.warm_repeats,
@@ -641,6 +705,7 @@ def run(args) -> dict:
         "chunk_sizes": list(args.chunk_sizes),
         "gist_mode": args.gist_mode,
         "gist_counts": list(args.gist_counts),
+        "center_policy": args.center_policy,
         "top_k": list(args.top_k),
         "rows": rows,
         "aggregates": aggregates,
@@ -667,6 +732,11 @@ def parse_args():
     parser.add_argument("--chunk-sizes", default="32")
     parser.add_argument("--gist-mode", default="mean")
     parser.add_argument("--gist-counts", default="1")
+    parser.add_argument(
+        "--center-policy",
+        choices=("exact", "floor", "ceil"),
+        default="exact",
+    )
     parser.add_argument("--top-k", default=",".join(map(str, DEFAULT_TOP_K)))
     parser.add_argument("--warm-repeats", type=int, default=5)
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
