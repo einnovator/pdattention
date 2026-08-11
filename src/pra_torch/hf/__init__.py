@@ -20,6 +20,7 @@ from .query import (
     streaming_exponential_query,
     token_span_from_offsets,
 )
+from .routing_adapter import HFRoutingProjection
 
 __all__ = [
     "ATTENTION_INPUT_HIDDEN_STATE",
@@ -39,4 +40,5 @@ __all__ = [
     "half_life_to_decay",
     "streaming_exponential_query",
     "token_span_from_offsets",
+    "HFRoutingProjection",
 ]

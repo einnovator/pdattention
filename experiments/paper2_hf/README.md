@@ -236,3 +236,16 @@ starting at offset 8. The last-token baseline is always repeated. Query aggregat
 only if its combined Recall@3 rises by at least `0.10`, neither dataset loses Recall@3, and
 position-correlation magnitude does not increase by more than `0.10`. Otherwise the simplest
 last-token query remains canonical and the result is treated as evidence for learned alignment.
+
+The learned-alignment gate uses frozen features from 24 train, 8 validation, and 16 test
+identities per dataset. It first compares shared and asymmetric linear projections at routing
+widths 64 and 128, with five adapter seeds, for both `last` and the strongest aggregate ablation
+(`question_exp_h2.0`). Every in-document chunk participates in the multi-positive contrastive
+denominator, so the objective includes random, lexical, position-matched, and current-router
+false-positive negatives without a lossy sampling stage. The Qwen backbone remains frozen.
+
+The predeclared Qwen-to-Llama promotion gate requires combined Recall@3 at least `0.70`,
+HotpotQA and QASPER Recall@3 each at least `0.50`, combined Recall@8 at least `0.80`, absolute
+score-position correlation no greater than `0.20`, and a routing vector no wider than 128
+float32 values. Five-seed variation, shuffled-label training, and Hotpot-to-QASPER plus
+QASPER-to-Hotpot transfer are required before promotion.
