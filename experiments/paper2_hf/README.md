@@ -93,4 +93,16 @@ Use the existing promotion thresholds. Select a candidate for independent confir
 recall@3, then MRR, then lower routing-index cost. Retain all results if the diagnostic fails;
 that failure strengthens the case for an evidence-supervised router with frozen Qwen.
 
+Observed over two 32-example confirmation subsets (64 evaluations per gist count):
+
+- `G=1/2/4/8` recall@3 is `0.391/0.313/0.266/0.281`, and MRR is
+  `0.326/0.292/0.234/0.249`; H5 is rejected;
+- `G=8` reaches recall@16 `0.828` versus `0.797` for `G=1`, but does not improve sparse
+  recall or MRR, so H6's proposed beneficial saturation is not observed;
+- routing-cache overhead is `1.57%/3.14%/6.28%/12.56%`, while selected and materialized parent
+  fractions are unchanged at fixed `k`; H7 is supported for bytes and K/V materialization, but
+  warm routing time is effectively flat at this scale; and
+- no setting passes the Qwen-to-Llama gate. The next intervention is the predeclared small
+  evidence-supervised router with Qwen frozen.
+
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.

@@ -41,9 +41,11 @@ key means, and attention-input hidden-state means all retain the same post-RoPE 
 position correlation ($r=0.652$) and recall@3 of 0.125. Pre-RoPE routing removes that correlation
 ($r=0.009$), while hidden-state routing gives the best sparse recall@3, 0.438. Two confirmation
 subsets totaling 64 evaluations give hidden-state recall@3/8/16 of 0.391/0.578/0.797, but QASPER
-recall@3 is only 0.156 and recall@16 selects 23.8\% of chunks. Thus semantic selection and
-positional K/V transport should be separated, but zero-parameter Qwen routing does not pass the
-predeclared gate for Llama integration.
+recall@3 is only 0.156 and recall@16 selects 23.8\% of chunks. Splitting each 32-token parent into
+2, 4, or 8 contiguous mean gists does not improve sparse ranking: recall@3 falls to
+0.313/0.266/0.281 and MRR falls in every condition. Thus semantic selection and positional K/V
+transport should be separated, but parameter-free Qwen routing does not pass the predeclared
+gate for Llama integration.
 \end{abstract}
 
 \section{Introduction}
@@ -322,7 +324,7 @@ both key representations, while hidden-state routing uses the matched final hidd
 The experiment scores all chunks and does not generate answers. This keeps evidence ranking
 separate from decoding and from the hard materialization budget. Stage~2 carries the best two
 representations to 64- and 128-token chunks. Stage~3 confirms the best sparse configuration on
-two deterministic 32-example subsets with different seeds: 64 evaluations covering 61 unique
+two deterministic 32-example subsets with different seeds: 64 evaluations covering 60 unique
 examples. No model or router parameter is trained.
 
 \subsection{Representation and position bias}
@@ -435,6 +437,85 @@ mean packed-index construction is 3.50~ms, warm exact routing plus selection is 
 and the isolated \texttt{torch.topk} primitive is about 0.05~ms. These are single-request Python
 measurements, not serving-throughput claims.
 
+\subsection{Contiguous multi-gist diagnostic}
+
+Before introducing learned parameters, we test whether one arithmetic mean simply erases useful
+local structure. Let the $T=32$ hidden states in parent chunk $c$ be divided into $G$ balanced,
+contiguous, nonempty subspans $S_{c,i}$. The routing representation and parent score are
+\begin{equation}
+ g_{c,i}=\frac{1}{|S_{c,i}|}\sum_{t\in S_{c,i}}h_t,
+ \qquad s_c=\max_{i\leq G}\cos(q,g_{c,i}).
+\end{equation}
+For $G=1,2,4,8$, nominal subspan widths are 32, 16, 8, and 4 tokens. Top-$k$ selection remains
+over parent chunks, not gists. A winning subspan therefore identifies one parent, whose post-RoPE
+native K/V is materialized once under the same 128-token budget. This isolates routing-index
+resolution from K/V storage and materialization granularity.
+
+The implementation was fixed before the run at repository
+\href{https://github.com/einnovator/pdattention/tree/0205df832f6a60a9c57870d6f5db0d04d4da9a6a}{commit
+\texttt{0205df8}}. Balanced pooling and local-span metadata occupy
+\texttt{gists/segment\_mean.py}, lines 11--56. Reference publication calls the common gist
+interface at \texttt{hf/injection.py}, lines 163--190. The existing packed router stores
+$[C,G,D]$ gist tensors, masks short final chunks, reduces with a maximum, and retains the winning
+gist index at \texttt{memory.py}, lines 487--593. A unit gate requires $G=1$ to be bit-exact with
+the historical single mean.
+
+The exploratory sweep uses the same 16 matched examples as Stage~1. Since every multi-gist
+condition loses at recall@3, no intervention qualifies as a candidate under the predeclared
+selection rule. We nevertheless run the three interventions on both established 32-example
+subsets to test whether the negative direction persists. Table~\ref{tab:segment-mean} combines
+64 evaluations per $G$; four examples occur in both subsets, leaving 60 unique examples.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Contiguous hidden-state means with fixed 32-token parents. Overhead is routing-gist
+bytes divided by post-RoPE detail K/V bytes.}
+\label{tab:segment-mean}
+\begin{tabular}{lcccccc}
+\toprule
+$G$ & Tokens/gist & Recall@3 & 95\% interval & MRR & Recall@8/16 & Overhead \\
+\midrule
+1 & 32 & \textbf{0.391} & [0.281, 0.513] & \textbf{0.326} & 0.578/0.797 & 1.57\% \\
+2 & 16 & 0.313 & [0.212, 0.434] & 0.292 & 0.516/0.734 & 3.14\% \\
+4 & 8  & 0.266 & [0.173, 0.385] & 0.234 & 0.500/0.688 & 6.28\% \\
+8 & 4  & 0.281 & [0.186, 0.401] & 0.249 & 0.563/\textbf{0.828} & 12.56\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{../shared/results/paper2_hf/routing/qwen_routing_segment_mean_sparse_quality.pdf}
+\caption{Sparse evidence ranking does not improve as a parent chunk receives more contiguous
+mean gists. Intervals are Wilson intervals over 64 evaluations.}
+\label{fig:segment-mean-quality}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{../shared/results/paper2_hf/routing/qwen_routing_segment_mean_dataset_recall_at3.pdf}
+\caption{Recall@3 declines on both datasets. The QASPER weakness is not repaired by finer
+parameter-free means.}
+\label{fig:segment-mean-datasets}
+\end{figure}
+
+At $k=3$, paired recall changes relative to $G=1$ are 4 gains versus 9 losses for $G=2$, 5 versus
+13 for $G=4$, and 5 versus 12 for $G=8$; exact two-sided McNemar $p$-values are 0.267, 0.096, and
+0.143. The intervals overlap and the paired tests do not cross 0.05, so this is not evidence that
+all multi-gist schemes are harmful. It is evidence against the specific proposed remedy:
+untrained contiguous means with max aggregation do not improve sparse ranking here. The $G=8$
+recall@16 increase is a broad-retrieval effect, not a sparse win; recall@3 and MRR remain below
+the single-mean baseline.
+
+Routing-index bytes scale nearly linearly with $G$, while selected/materialized parent fractions
+and active K/V bytes remain identical at fixed $k$. Packed-index construction is noisy
+(3.50, 11.60, 4.62, and 4.81~ms for $G=1,2,4,8$), and warm routing remains 1.93--2.79~ms at this
+small scale; neither timing sequence supports a throughput claim. The result rejects H5, leaves
+the proposed H6 saturation inapplicable, and supports H7 for bytes and K/V materialization. It
+makes an evidence-supervised frozen-Qwen router the next controlled intervention before broader
+clustering, query-conditioned gists, or another model family.
+
 \section{Systems Observations}
 
 The first run reaches 1,345,618,432 allocated GPU bytes, including the complete FP16 model and
@@ -449,9 +530,9 @@ routing, asynchronous overlap, and serving concurrency remain outside this corre
 
 \section{Limitations and Next Experiments}
 
-The study has one family, one 596M-parameter checkpoint, one PRA layer placement, and one-gist
-zero-parameter routing. The representation/chunk sweeps use 16 matched examples; confirmation
-uses two deterministic subsets rather than a full validation corpus, and three examples overlap
+The study has one family, one 596M-parameter checkpoint, and one PRA layer placement. The
+representation/chunk and exploratory multi-gist sweeps use 16 matched examples; confirmation
+uses two deterministic subsets rather than a full validation corpus, and four examples overlap
 between seeds. The evaluation measures annotated-span ranking, not answer EM/F1, because a model
 cannot receive credit for an answer when selected K/V excludes the evidence. There is no matched
 learned text retriever, multi-layer placement study, LoRA adaptation, serving-throughput study,
@@ -459,10 +540,11 @@ or full dense-context quality comparison.
 
 The next intervention should be a small evidence-supervised routing or gist adapter with the
 base Qwen checkpoint frozen. It should preserve hidden-state and pre-RoPE baselines, report
-parameter count and training cost, and test cross-dataset generalization. Multi-gist subchunk
-means are a reasonable zero-parameter diagnostic, but the present result does not justify a
-broad gist-count sweep: the dominant sparse failure is semantic ranking on QASPER. Llama remains
-blocked until Qwen passes the declared recall/MRR/sparsity/position gate. Gemma remains later.
+parameter count and training cost, and test cross-dataset generalization. The contiguous-mean
+result does not exclude learned, clustered, or query-conditioned multi-gist routing, but it does
+remove a broad parameter-free count sweep from the critical path. The dominant sparse failure is
+semantic ranking on QASPER. Llama remains blocked until Qwen passes the declared
+recall/MRR/sparsity/position gate. Gemma remains later.
 
 \section{Related Work}
 
@@ -489,8 +571,10 @@ without changing transported post-RoPE K/V.
 That correction is necessary but insufficient. Hidden-state routing reproduces useful evidence
 ranking above the post-RoPE baseline, yet sparse recall and MRR remain below the declared gate,
 especially on QASPER. Selecting nearly one quarter of chunks raises recall@16 to 0.797, but does
-not constitute a sparse-routing solution. The correct next step is a small frozen-Qwen learned
-router, not Llama integration and not a claim of solved long-context retrieval.
+not constitute a sparse-routing solution. Contiguous multi-gist means increase index size and
+occasionally improve broad recall without improving recall@3 or MRR. The correct next step is a
+small frozen-Qwen learned router, not Llama integration and not a claim of solved long-context
+retrieval.
 
 \appendix
 \section{Code-Level Adapter Reimplementation Guide}
@@ -591,6 +675,15 @@ routing features, computes one or more compact gists, and records logical source
 (lines 152--197). Keeping those two
 scales separate is important: changing index granularity must not silently change how the
 pretrained model encoded the source.
+
+The contiguous multi-gist extension keeps that ownership boundary explicit. For a requested
+count $G$, split the routing feature rows into balanced source-order ranges, mean each range,
+score all resulting $[G,D]$ rows, reduce to one parent score, and preserve the winning local
+index for diagnostics. Top-$k$ must then operate on parent identities before budgeting; otherwise
+several winning gists could duplicate one parent K/V payload. The reference implementation is
+revision-pinned at \texttt{0205df8}: pooling is in \texttt{gists/segment\_mean.py}, lines 11--56,
+publication remains \texttt{hf/injection.py}, lines 163--190, and packed scoring plus max
+reduction remains \texttt{memory.py}, lines 487--593.
 
 The same operation implements displaced long-prompt history. At
 \texttt{hf/injection.py}, lines 206--218, the prefix is published under the reserved

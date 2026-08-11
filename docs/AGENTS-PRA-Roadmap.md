@@ -297,6 +297,17 @@ Completed routing-representation gate:
 - one hidden-state gist adds 1.57% over 32-token detail K/V; mean packed-index build is 3.50 ms
   and warm exact routing plus selection is 1.90--2.74 ms on the GTX 950M
 
+Completed contiguous multi-gist diagnostic:
+- 32-token parents were split into 1, 2, 4, or 8 balanced hidden-state mean gists while parent
+  post-RoPE K/V, top-k selection, and materialization budgets remained fixed
+- across 64 confirmation evaluations per setting, recall@3 is 0.391/0.313/0.266/0.281 and MRR is
+  0.326/0.292/0.234/0.249 for 1/2/4/8 gists
+- eight gists improve only broad recall@16 from 0.797 to 0.828; sparse recall and MRR decline
+- routing-cache overhead grows from 1.57% to 3.14%/6.28%/12.56%, while materialized parent K/V
+  remains unchanged at fixed k
+- the negative result is specific to untrained contiguous means with max aggregation; it does
+  not exclude learned, clustered, or query-conditioned multi-gist routing
+
 Current scientific blocker:
 - RoPE phase contamination is confirmed as one cause of the original routing failure, but
   zero-parameter semantic ranking remains below the predeclared Qwen-to-Llama promotion gate
@@ -306,5 +317,5 @@ Current scientific blocker:
 Next:
 - keep Qwen frozen and train a small evidence-supervised router/gist adapter
 - retain pre-RoPE and hidden-state zero-parameter baselines and test cross-dataset generalization
-- defer broad multi-gist and overlap sweeps unless the learned-router diagnostic needs them
+- defer broader multi-gist and overlap sweeps unless the learned-router diagnostic needs them
 - do not move to Llama until Qwen passes the documented routing gate; Gemma remains later
