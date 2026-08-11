@@ -35,10 +35,14 @@ def answer_metrics(prediction: str, answer: str) -> dict[str, float]:
     overlap = sum((Counter(predicted) & Counter(expected)).values())
     precision = overlap / max(len(predicted), 1)
     recall = overlap / max(len(expected), 1)
+    contained = any(
+        predicted[start : start + len(expected)] == expected
+        for start in range(max(len(predicted) - len(expected) + 1, 0))
+    )
     return {
         "em": float(predicted == expected),
         "f1": 2 * precision * recall / max(precision + recall, 1e-12),
-        "answer_contained": float(bool(expected) and " ".join(expected) in " ".join(predicted)),
+        "answer_contained": float(bool(expected) and contained),
     }
 
 
