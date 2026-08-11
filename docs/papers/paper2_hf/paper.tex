@@ -9,6 +9,8 @@
 \usepackage{tabularx}
 \usepackage[hidelinks]{hyperref}
 \input{../shared/macros.tex}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \setlength{\emergencystretch}{3em}
 
 \title{Retrofitting Pretrained Transformers with Progressive Retrieval Attention:\
@@ -129,7 +131,7 @@ encoding, normalize tensor layout, combine the native mask, invoke PRA attention
 the output. Disabled memory takes an even narrower path: call the original attention object
 unchanged. This design preserves pretrained parameters and avoids checkpoint conversion.
 
-The initial Qwen file has 215 physical lines (193 nonblank, non-comment lines). It introduces
+The initial Qwen file has 227 physical lines (204 nonblank, non-comment lines). It introduces
 no learned parameter. Its family-specific branches distinguish Qwen2-style projections from
 Qwen3's Q/K normalization; routing, budgeting, materialization, residency, and metrics remain
 outside the file. This is a portability measurement, not a code-minimization target.
@@ -338,6 +340,164 @@ and even oracle text-RAG is unreliable at this model scale. The Qwen integration
 stable enough to continue routing work, but not yet strong enough to justify multiplying family
 adapters. The next milestone is content-causal evidence retrieval on Qwen; Llama follows that
 gate.
+
+\appendix
+\section{Code-Level Adapter Reimplementation Guide}
+\label{app:adapter-guide}
+
+This appendix gives the minimum code structure needed to reproduce the integration without
+copying the Qwen implementation. Source references use physical line numbers at repository
+\href{https://github.com/einnovator/pdattention/tree/9139ca28acdddf90f0bfe35be7cc0ceae0aa3145}{commit
+\texttt{9139ca2}}; the adapter source is unchanged by the manuscript-only revision containing
+this appendix. The line references are deliberately revision-pinned because upstream
+Transformers APIs and local diagnostics will move over time.
+
+\subsection{Tensor and ownership contract}
+
+A new family should add projection, position, cache, mask, kernel, and output conventions in its
+adapter, while leaving selection and memory policy in the shared core.
+
+The canonical tensor contract is
+\begin{equation}
+Q\in\mathbb{R}^{B\times H_q\times T_q\times d_h},\qquad
+K,V\in\mathbb{R}^{B\times H_{kv}\times T_k\times d_h}.
+\end{equation}
+Reference entries use $B=1$ and keep $H_{kv}$, including for GQA or MQA. They are not expanded
+to $H_q$ in persistent storage. The controlled replay implementation shows the only required
+expansion point in \texttt{memory\_batching.py}, lines 216--290: after memory and local K/V are
+joined, native K/V heads may be repeated for the attention computation. Qwen's installed eager
+kernel performs the corresponding operation in the production adapter.
+
+\subsection{Minimal forward-path skeleton}
+
+The following pseudocode is the adapter's essential control flow. It is intentionally
+family-neutral; ``native'' operations must call the installed model implementation rather than
+reimplementing its mathematics.
+
+\begin{verbatim}
+01  forward(hidden, native_positions, native_mask, past):
+02      if capture_is_armed:
+03          q, k, v = native_project_norm_and_position(hidden)
+04          save_detached_post_position_k_and_native_v(k, v)
+05
+06      if memory_is_disabled or reference_cache_is_empty:
+07          return original_attention(hidden, native_positions,
+08                                    native_mask, past)
+09
+10      q, k, v = native_project_norm_and_position(hidden)
+11      if past is not None:
+12          k, v = past.update(k, v, layer_id, native_cache_kwargs)
+13      memory = shared_core.prepare_memory(q, direct_tokens=k.shape[2])
+14
+15      if memory.is_empty:
+16          return native_attention_and_output(q, k, v, native_mask)
+17      k, v, mask = shared_core.combine_local_and_memory_kv(
+18          k, v, memory, native_mask, query_tokens=q.shape[2])
+19      return native_attention_and_output(q, k, v, mask)
+\end{verbatim}
+
+Lines 6--8 are a correctness boundary, not an optimization. The Qwen implementation delegates
+to the untouched module at \texttt{hf/qwen.py}, lines 147--158, which makes disabled behavior
+auditable and bit-exact. In the active path, projection and RoPE occur at lines 160--163 and
+\texttt{Cache.update} occurs once at lines 164--171. If routing then returns no materialized
+memory, lines 175--185 call the native kernel directly. Delegating at that point would execute a
+second cache update and duplicate generation history.
+
+Memory is composed only after the native cache update. The shared operation at
+\texttt{core.py}, lines 347--389, pads variable memory rows, prepends memory K/V, creates an
+all-visible additive mask for valid memory positions, masks padding, and concatenates the
+unchanged local mask. The adapter then invokes Qwen's eager function and one pretrained
+\texttt{o\_proj} at \texttt{hf/qwen.py}, lines 82--100 and 197--209. Thus local and memory
+positions share one softmax and one output projection.
+
+\subsection{Publishing a reference}
+
+Reference construction is a bounded prefill, not a second attention mechanism. A portable
+implementation follows this recipe:
+
+\begin{verbatim}
+01  disable_PRA_memory_during_reference_encoding()
+02  for [block_start:block_end] in bounded_encoding_blocks(source):
+03      position_ids = logical_source_positions(block_start, block_end)
+04      arm_post_position_kv_capture(position_ids)
+05      model(block_ids, position_ids=position_ids, use_cache=False)
+06      captured = consume_native_kv_for_each_PRA_layer()
+07      for routing_window in overlapping_windows(captured):
+08          gist = compute_routing_gists(routing_window.native_kv)
+09          publish(uri, logical_offsets, routing_window.native_kv, gist)
+10  restore_previous_memory_state()
+\end{verbatim}
+
+The concrete loop is \texttt{hf/injection.py}, lines 104--167. Encoding block size limits one
+native model invocation; routing chunk size and overlap independently determine index
+granularity (lines 121--128). Each chunk slices the captured post-RoPE K/V, computes one or more
+small routing gists, and records logical source offsets (lines 129--160). Keeping those two
+scales separate is important: changing index granularity must not silently change how the
+pretrained model encoded the source.
+
+The same operation implements displaced long-prompt history. At
+\texttt{hf/injection.py}, lines 169--181, the prefix is published under the reserved
+\texttt{\#\_\_head} URI and the direct tail retains continued logical position IDs. Every
+reference-encoding call and every direct call must satisfy the model-safe native bound even
+when the logical source is longer.
+
+\subsection{Porting another decoder family}
+
+A practical port begins by locating seven hooks in the installed family: the attention module
+inside each decoder layer; Q/K/V projections; any Q/K normalization; positional encoding;
+generation-cache update and its keyword arguments; native mask convention; and the eager
+attention plus output projection. Implement the six abstract methods declared at
+\texttt{hf/adapter\_base.py}, lines 66--88, then add a narrow type-selection branch analogous to
+\texttt{inject\_pra} at \texttt{hf/injection.py}, lines 191--211. No checkpoint conversion or
+parameter copy should be needed.
+
+The recommended validation order is:
+\begin{enumerate}[leftmargin=*]
+\item With memory disabled, require exact logits, hidden states, greedy tokens, and generation-
+cache lengths against an unwrapped copy (test lines 54--71).
+\item Capture a short reference and verify post-position state, logical offsets, device
+residency, and $H_{kv}$ rather than $H_q$ storage (lines 73--92).
+\item Compare GQA replay with explicit head repetition on a synthetic tensor (lines 94--117).
+\item Exercise an over-limit logical prompt and verify bounded native operations plus continued
+position IDs (lines 119--141).
+\item Generate with active memory and assert that direct cache length grows by exactly one per
+decoded token (lines 143--158).
+\end{enumerate}
+
+Four mistakes deserve explicit tests. Applying position encoding again to stored post-position
+keys changes their basis. Permanently expanding GQA K/V multiplies memory without adding
+information. Replacing the family mask with a generic causal mask can alter padding or sliding-
+window behavior. Finally, calling the wrapped module after manually updating its cache appends
+the same local token twice. Passing transport and parity tests establishes a faithful adapter;
+it does not establish that the router selects causally useful evidence, which requires the
+separate quality controls reported in the main paper.
+
+\subsection{Revision-pinned source map}
+
+Table~\ref{tab:code-map} connects the preceding control flow to the implementation.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Source map for an independent adapter implementation.}
+\label{tab:code-map}
+\begin{tabularx}{\linewidth}{L{0.37\linewidth}Y}
+\toprule
+Responsibility & File and physical lines \\
+\midrule
+Abstract family boundary & \texttt{src/pra\_torch/hf/adapter\_base.py}, 14--88 \\
+Qwen projections, RoPE, native kernel, and output & \texttt{src/pra\_torch/hf/qwen.py}, 43--100 \\
+Post-position reference K/V capture & \texttt{src/pra\_torch/hf/qwen.py}, 102--112;
+\texttt{src/pra\_torch/hf/injection.py}, 107--160 \\
+Disabled and active runtime paths & \texttt{src/pra\_torch/hf/qwen.py}, 132--227 \\
+Routing query and GQA reduction & \texttt{src/pra\_torch/core.py}, 92--121 \\
+Budget, deduplication, transfer, and materialization & \texttt{src/pra\_torch/core.py}, 155--345 \\
+K/V and additive-mask composition & \texttt{src/pra\_torch/core.py}, 347--389 \\
+Selected-layer injection & \texttt{src/pra\_torch/hf/injection.py}, 191--211 \\
+Parity, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 54--177 \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
