@@ -33,12 +33,13 @@ Natural-language and retrieved-memory validation qualify the result. On 8L WikiT
 offsets lower final-layer K error in 30/30 pairs but lower next-token loss in only 5/30. On
 controlled HotpotQA- and QASPER-derived answer-code probes, routed loss improves in 35/60 pairs:
 learned-absolute and sinusoidal means improve, whereas RoPE means worsen in both datasets and
-capacities. Thus coordinate fidelity does not by itself guarantee useful prediction. Overlap,
-routing, and memory composition remain independent factors. A four-cell pre/post-RoPE matrix
-also establishes exact parity at matched effective positions; deferred rotation permits
-rebinding but raises the measured unfused warm CUDA path from 0.179 to 0.649 ms. The evidence
-supports source-relative positional continuity as a transport requirement and RoPE as an
-explicit rebinding algebra, not a universal long-context quality advantage.
+capacities. Thus coordinate fidelity does not by itself guarantee useful prediction.
+Contextualization and routing remain separate factors, while oracle anomalies suggest memory
+composition as a fourth. A four-cell pre/post-RoPE matrix also establishes exact parity at
+matched effective positions; deferred rotation permits rebinding but raises the measured
+unfused warm CUDA path from 0.179 to 0.649 ms. The evidence supports source-relative positional
+continuity as a representation-fidelity contract for chunked native-KV transport and RoPE as
+an explicit rebinding algebra, not a universal long-context quality advantage.
 \end{abstract}
 
 \section{Introduction}
@@ -217,20 +218,28 @@ remove the first at layer 0. Encoding overlap can only approximate the second.
 
 \begin{table}[H]
 \centering
-\caption{Failure modes that must be measured separately.}
+\caption{Four primary factors and two RoPE storage-policy extensions that must be measured
+separately.}
 \label{tab:failure-modes}
 \begin{tabularx}{\linewidth}{lXXX}
 \toprule
-Failure & Cause & Diagnostic & Mitigation/control \\
+Failure or factor & Cause & Diagnostic & Control or implication \\
 \midrule
 Positional fragmentation & Chunk coordinates reset & Layer-0 K mismatch & Source-relative offsets \\
 Contextualization fragmentation & Earlier causal context is absent & Deeper mismatch after offset repair & Overlap or recomputation \\
 Selection failure & Router misses useful chunks & Routed--oracle gap and gist recall & Better routing \\
+Memory composition & Relevant chunks may omit support, interact poorly, or add distractors & Evidence-only set is not always best & Treat utility as a set-composition problem \\
 Positional rigidity & Phase is baked into K & Deliberate rebinding probe & Raw K plus deferred RoPE \\
 Remote approximation & Relative phase is compressed & Exact-distance output deviation & Policy-specific adaptation \\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+Selection asks which chunks are chosen. Composition asks which combination of chosen chunks is
+beneficial to the model's current prediction. Routed--oracle gaps directly support selection as
+an independent limitation. Composition is a candidate fourth factor: the observed oracle
+anomaly suggests it, but does not establish a universal composition law. In particular, a
+known evidence chunk is not automatically a performance oracle.
 
 \section{Implementation}
 
@@ -796,15 +805,16 @@ direction reverses, and overlap is not monotonic.}
 \label{fig:qa-validation}
 \end{figure}
 
-Selection and composition remain visible after coordinate repair. The evidence-only condition
-is position-insensitive here because the explicit answer-code anchor occupies the first source
-chunk. All-memory loss improves under offsets for learned absolute and sinusoidal models but
-worsens for RoPE on average. At the example level, the nominal evidence oracle is worse than
-the router-selected set in 3.3\%--78.3\% of cells, depending on dataset, tier, and mechanism;
-conversely, mean routed loss usually exceeds evidence-only loss. Evidence identity therefore
-does not define a universally optimal memory composition. The inexpensive composition probe
-compares evidence-only, all-memory, routed, and shuffled sets; evidence plus exactly one
-irrelevant chunk and exhaustive best-subset search remain untested.
+Selection remains visible after coordinate repair, and the oracle anomaly suggests composition
+as a fourth candidate factor. The evidence-only condition is position-insensitive here because
+the explicit answer-code anchor occupies the first source chunk. All-memory loss improves under
+offsets for learned absolute and sinusoidal models but worsens for RoPE on average. At the
+example level, the nominal evidence oracle is worse than the router-selected set in
+3.3\%--78.3\% of cells, depending on dataset, tier, and mechanism; conversely, mean routed loss
+usually exceeds evidence-only loss. Evidence identity therefore does not define a universally
+optimal memory composition. This is suggestive rather than a universal result. The inexpensive
+composition probe compares evidence-only, all-memory, routed, and shuffled sets; evidence plus
+exactly one irrelevant chunk and exhaustive best-subset search remain untested.
 
 \begin{figure}[H]
 \centering
@@ -825,12 +835,12 @@ change direction by mechanism or seed.}
 \toprule
 Finding & Synthetic & WikiText-2 & HotpotQA & QASPER \\
 \midrule
-Offsets repair positional fragmentation & Confirmed & Representation confirmed & Abs./sin. yes; RoPE no & Abs./sin. yes; RoPE no \\
+Offsets repair positional representation & Confirmed & Confirmed & Not directly measured & Not directly measured \\
 Offsets improve deeper representation & Confirmed & Confirmed & Not directly measured & Not directly measured \\
-Offsets improve task loss & Head probe yes & Unsupported at 8L & Mixed & Mixed \\
-Overlap reduces residual context error & Mostly & K error yes; loss small & Mixed & Mixed \\
-Selection remains independent & Confirmed & N/A & Confirmed & Confirmed \\
-Composition differs from evidence identity & Suggested & N/A & Confirmed & Confirmed \\
+Offsets improve task loss & Mixed by probe & Mostly unsupported (5/30) & Mechanism-dependent & Mechanism-dependent \\
+Overlap improves representation & Mostly & Confirmed & Not primary; task mixed & Not primary; task mixed \\
+Routing remains independently limiting & Confirmed & N/A & Supported & Supported \\
+Composition may differ from evidence identity & Suggested & N/A & Suggested & Suggested \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -852,21 +862,29 @@ repair; RoPE additionally provides common-translation and explicit Q/K rebinding
 The paired direction survives the small tier. The continuous-head experiment confirms that a
 logical span can advance while every native operation remains bounded.
 
-\paragraph{What the contract does not solve.} It does not restore left context lost by
-independent encoding, choose the relevant chunk, prevent harmful attention to irrelevant K/V,
-or guarantee extrapolation from short training contexts. WikiText offsets improve K fidelity
-without improving loss, and RoPE offsets worsen mean routed loss in both retrieved-memory
-datasets and tiers. The small-absolute overlap reversal, tiny-RoPE oracle reversal, and weak
-routed conditions are further counterexamples. Position correctness is necessary for an
-auditable continuity contract but insufficient for useful retrieval.
+\paragraph{Representation fidelity versus utility.}
+\textbf{Correct coordinates recover positional fidelity but do not reconstruct missing causal
+context.} Logical offsets attack positional fragmentation; overlap or historical encoding
+attacks the separate contextualization fragmentation caused by independently bounded blocks.
+The contract also does not choose the relevant chunk, prevent harmful attention to irrelevant
+K/V, or guarantee extrapolation from short training contexts.
+
+\textbf{Faithful K/V representation does not guarantee useful prediction: routing, learned
+distance distributions, and memory composition remain separate candidate determinants of task
+performance.} At 8L, offsets improve WikiText final-layer K error in 30/30 pairs but improve
+loss in only 5/30. Retrieved-memory routed-loss effects are mixed across 60 pairs and reverse
+for RoPE means in both datasets and tiers. Routed--oracle gaps establish selection as an
+independent limitation; oracle anomalies suggest, but do not universally establish, memory
+composition as a fourth factor.
 
 \paragraph{What is general and what is RoPE-specific.} The evidence supports a narrower thesis
-than an across-domain quality claim. Preserving source-relative coordinates is a general
-requirement for faithful chunked native-KV representation across learned-absolute, sinusoidal,
-and RoPE models. RoPE's distinctive contribution is not the offset itself; it is an explicit
-relative Q/K algebra that permits retrieval-time rebinding when raw K is retained. Once reset
-error is removed, residual task behavior can be attributed more cleanly---though not uniquely---
-to missing causal context, learned distance distribution, selection, and composition.
+than an across-domain quality claim. Source-relative positional continuity is a
+representation-fidelity contract for chunked native-KV transport across learned-absolute,
+sinusoidal, and RoPE models. RoPE's distinctive contribution is not the offset itself; it is an
+explicit relative Q/K algebra that permits retrieval-time rebinding when raw K is retained.
+Once reset error is removed, residual task behavior can be attributed more cleanly---though not
+uniquely---to missing causal context, learned distance distribution, selection, and the
+candidate composition factor.
 
 \paragraph{Post- versus pre-position K.} Post-position K is immediately compatible with
 attention but binds the cache to source positions. Pre-position K is portable and compact
@@ -919,16 +937,20 @@ guardrail.
 
 \section{Conclusion}
 
-Retrieved native-KV memory needs an explicit positional contract. A compact source offset
-removes first-layer reset error for learned absolute, sinusoidal, and RoPE models, and the
-final-layer direction survives a small-model capacity increase. RoPE additionally supports
-deferred binding and common translation, but the unfused raw-K path is slower and K-only
-displacement deliberately changes attention. WikiText and retrieved-memory results show why
-the claim must stop there: representation fidelity can improve while task loss is unchanged or
-worse. Deeper states still depend on causal encoding context, and useful prediction still
-depends on training distances, selection, and memory composition. This completes the paper's
-planned controlled scope. Pretrained RoPE/GQA evaluation is the smallest next external-validity
-test, not another expansion of the present benchmark matrix.
+\textbf{Source-relative positional continuity is required to faithfully preserve the intended
+positional identity of chunked native-KV memory, but faithful transport alone does not guarantee
+improved prediction.} A compact source offset removes first-layer reset error for learned
+absolute, sinusoidal, and RoPE models, and the final-layer direction survives a small-model
+capacity increase. RoPE additionally supports deferred binding and common translation, but the
+unfused raw-K path is slower and K-only displacement deliberately changes attention.
+
+\textbf{Correct coordinates do not reconstruct missing causal context, and faithful K/V does
+not ensure task utility.} The 30/30 representation improvements beside only 5/30 WikiText loss
+improvements and mechanism-dependent HotpotQA/QASPER effects locate the remaining problem in
+contextualization, learned distance distributions, routing, and a suggested memory-composition
+factor. This completes the paper's planned controlled scope. Pretrained RoPE/GQA evaluation is
+the smallest next external-validity test, not another expansion of the present benchmark
+matrix.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
