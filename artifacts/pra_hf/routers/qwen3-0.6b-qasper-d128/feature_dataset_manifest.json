@@ -1,0 +1,72 @@
+{
+  "base_parameter_count": 596049920,
+  "base_parameters_trainable": 0,
+  "feature_source": "attention_input_hidden_state",
+  "feature_width": 1024,
+  "gist_mode": "mean",
+  "identity_leakage": {
+    "test_train": 0,
+    "validation_test": 0,
+    "validation_train": 0
+  },
+  "lexical_hardness": "question/chunk token-id set Jaccard",
+  "model_id": "Qwen/Qwen3-0.6B",
+  "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "native_head_dim": 128,
+  "native_kv_dtype_bytes": 2,
+  "native_kv_heads": 8,
+  "native_limit_violations": 0,
+  "query_strategies": [
+    "last",
+    "question_exp_h2.0"
+  ],
+  "routing_chunk_tokens": 32,
+  "routing_layer": 27,
+  "runtime": {
+    "cuda_available": true,
+    "cuda_runtime": "12.6",
+    "device": "NVIDIA GeForce GTX 950M",
+    "git_branch": "research/paper2-hf",
+    "git_sha": "972e46e7585ee71ad917d67fa1a7ca6159b76d11",
+    "python": "3.10.11",
+    "timestamp_utc": "2026-08-11T18:22:07.673100+00:00",
+    "torch": "2.12.1+cu126",
+    "transformers": "4.55.4"
+  },
+  "seed": 20260811,
+  "splits": {
+    "test": {
+      "candidate_chunks": 3084,
+      "dataset_counts": {
+        "hotpotqa": 16,
+        "qasper": 16
+      },
+      "examples": 32,
+      "offset": 8,
+      "path": "router_features_test.pt",
+      "positive_chunks": 252
+    },
+    "train": {
+      "candidate_chunks": 4707,
+      "dataset_counts": {
+        "hotpotqa": 24,
+        "qasper": 24
+      },
+      "examples": 48,
+      "offset": 24,
+      "path": "router_features_train.pt",
+      "positive_chunks": 258
+    },
+    "validation": {
+      "candidate_chunks": 1634,
+      "dataset_counts": {
+        "hotpotqa": 8,
+        "qasper": 8
+      },
+      "examples": 16,
+      "offset": 0,
+      "path": "router_features_validation.pt",
+      "positive_chunks": 97
+    }
+  }
+}

@@ -112,8 +112,9 @@ def test_reference_lifecycle_fraction_routing_generation_and_stats(tmp_path):
     stats = pra.stats()
     assert result.generated_tokens == 2
     assert result.stats["candidate_chunks"] == 4
-    assert result.stats["selected_chunks"] == 2
-    assert result.stats["selected_chunk_fraction"] == 0.5
+    assert result.stats["requested_chunks"] == 2
+    assert result.stats["requested_chunk_fraction"] == 0.5
+    assert result.stats["materialized_kv_token_fraction"] == 0.5
     assert stats["family"] == "llama"
     assert stats["routing_index_bytes"] > 0
     assert stats["resident_detail_kv_bytes"] > stats["routing_index_bytes"]

@@ -14,7 +14,7 @@
 \setlength{\emergencystretch}{3em}
 
 \title{Retrofitting Pretrained Transformers with Progressive Retrieval Attention:\
-Thin Hugging Face Adapters and a Qwen Correctness Study}
+Bounded Native-K/V Memory for Qwen and Llama}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Retrofitting Pretrained Transformers with Progressive Retrieval Attention},pdfauthor={Jorge Simao}}
@@ -50,8 +50,8 @@ pre-RoPE keys and then rotates once at the exact span center. It improves recall
 post-RoPE mean from 0.125 to 0.188, but remains below pre-RoPE (0.313) and hidden-state (0.438)
 routing. With eight centered subgists, correlation with native token-QK maximum ordering rises
 to 0.874 while recall@3 reaches only 0.250. Thus semantic selection and positional K/V transport
-should be separated, but parameter-free Qwen routing does not pass the predeclared gate for
-Llama integration. A held-out query study then rejects recent-state and question-span pooling:
+should be separated, but parameter-free Qwen routing does not pass the predeclared quality gate.
+A held-out query study then rejects recent-state and question-span pooling:
 the last state obtains recall@3/MRR of 0.469/0.413, versus 0.250/0.279 for the strongest
 question-decay candidate. Evidence-supervised projections improve retrieval. Validation across
 capacity and objective controls selects an asymmetric 128-dimensional margin router with
@@ -71,7 +71,16 @@ $+0.374$ but lowers F1. The learned ranking reaches evidence-identity recall
 0.264/0.403/0.521/0.639 at 5/10/20/30\% of parent chunks. A bounded 416-token
 \texttt{\#\_\_head} probe retrieves the early fact at rank 1 and gains 5.469 nats/token through
 the last 8 layers, yet greedy decoding still misses it. Multi-layer consumption therefore
-establishes causal use of frozen native K/V, but not an end-task accuracy gain.
+establishes causal use of frozen native K/V, but not an end-task accuracy gain. We then
+productize the validated boundary as \texttt{pra-hf}: a stable Python API, CLI, fraction-based
+selection, Hugging Face-style router artifacts, and thin Qwen and Llama adapters. The
+Llama-family port uses the public 135M-parameter SmolLM2 checkpoint and passes exact disabled
+logit, hidden-state, generation-cache, and greedy-generation parity while preserving three
+native K/V heads of width 64. Five QASPER-trained seeds give QASPER evidence-identity
+recall@20\% of $0.454\pm0.007$ for Qwen and $0.447\pm0.051$ for Llama-family routing.
+Four-example product-API probes cover annotated evidence in 0.667 and 0.750 of cases but obtain
+only 0.033 and 0.028 routed answer F1. Thus the release establishes a portable bounded-memory
+mechanism and measurable retrieval frontier, not solved long-context question answering.
 \end{abstract}
 
 \section{Introduction}
@@ -93,10 +102,11 @@ values~\cite{vaswani2017attention}, while preserving Qwen's pretrained RoPE and 
 rather than approximating them in a parallel implementation~\cite{su2021roformer,ainslie2023gqa,qwen2025qwen3}.
 
 This paper begins with Qwen because a sub-billion-parameter checkpoint makes exact tests
-practical on constrained hardware while still exercising modern RoPE and GQA. It does not yet
-claim cross-family portability or useful long-context QA. The contribution is a tested first
-adapter and an evidence hierarchy that prevents working transport from being mistaken for
-working retrieval.
+practical on constrained hardware while still exercising modern RoPE and GQA. It then ports the
+same execution core to a Llama-family checkpoint through a family adapter that selects only the
+installed rotary and eager-attention functions. The contribution is a reproducible two-family
+reference implementation and an evidence hierarchy that prevents working transport or routing
+from being mistaken for useful answer generation.
 
 \section{PRA Recap and Prior Contracts}
 
@@ -491,8 +501,10 @@ At $k=3$, HotpotQA recall is 0.625 but QASPER recall is 0.156; combined MRR is 0
 combined score-position correlation is $-0.077$, so the original late-position failure is not
 the remaining blocker. The predeclared promotion gate requires combined recall@3 $\geq0.70$,
 each dataset $\geq0.60$, MRR $\geq0.50$, selected fraction $\leq0.10$, and absolute position
-correlation $\leq0.15$. Only the last two conditions pass. Qwen therefore does not advance to
-Llama.
+correlation $\leq0.15$. Only the last two conditions pass. Under the original sequential
+quality protocol, Qwen therefore does not promote a router to Llama. Section~\ref{sec:productization}
+later evaluates Llama as an independent software-portability gate and does not reinterpret this
+failed quality gate as a pass.
 
 One hidden-state gist adds 1.57\% over detail K/V bytes at 32-token chunks. On the GTX~950M,
 mean packed-index construction is 3.50~ms, warm exact routing plus selection is 1.90--2.74~ms,
@@ -1179,9 +1191,148 @@ The current HF path is intentionally eager and unfused. Variable memory rows are
 rectangle before Qwen's native eager function. Flash attention, SDPA, custom kernels, ANN
 routing, asynchronous overlap, and serving concurrency remain outside this correctness phase.
 
+\section{PRA-HF Productization and Cross-Family Portability}
+\label{sec:productization}
+
+The release implementation packages the validated mechanism as \texttt{pra-hf} rather than
+requiring callers to assemble experiment objects. Its public workflow is deliberately short:
+
+\begin{verbatim}
+from pra_hf import PRAConfig, PRAForCausalLM
+
+model = PRAForCausalLM.from_pretrained(
+    BASE_MODEL, routing_adapter=ROUTER,
+    pra_config=PRAConfig(selected_fraction=0.20))
+ref = model.add_reference_file("paper.txt")
+result = model.generate(question, return_details=True)
+model.remove_reference(ref)
+\end{verbatim}
+
+The same object supports explicit URI/text pairs, in-memory text, \texttt{\#\_\_head}
+rollover, chat formatting, memory clearing, and request statistics. Configuration is JSON
+serializable. When both are present, \texttt{selected\_fraction} takes precedence over
+\texttt{top\_k}. The router first ranks every parent identity, the requested policy selects
+$\lceil fN\rceil$ parents, and the hard native-context budget may retain fewer whole chunks.
+The API therefore reports requested parent fraction, requested native-K/V token fraction, and
+actually materialized native-K/V fraction separately.
+
+\subsection{Stable router artifact}
+
+Each release router contains only \texttt{adapter\_model.pt}, \texttt{config.json}, and a model
+card. Metadata pins the base model and revision, model family, routing representation and layer,
+32-token parent size, dataset, split and training seeds, adapter architecture and dimension,
+metrics, PRA version, and source revision. It never republishes base-model weights. The selected
+asymmetric linear metric has
+\begin{equation}
+  s(q,c)=\operatorname{norm}(W_qh_q)^\top\operatorname{norm}(W_cg_c).
+\end{equation}
+Qwen uses 262,144 trainable router parameters, 0.044\% of its frozen 596,049,920 parameters.
+SmolLM2 uses 147,456 parameters, 0.110\% of its frozen 134,515,008 parameters. Both use a
+128-dimensional FP32 routing vector, or 512 index bytes per parent. Reference K/V remains in
+the pretrained model's FP16 native-head layout.
+
+\subsection{Thin Llama-family adapter}
+
+SmolLM2-135M is a 30-layer Llama-family decoder with 9 query heads, 3 native K/V heads, and
+64-dimensional heads. The Llama adapter does not copy the Qwen or Transformers forward method.
+Qwen and Llama in Transformers 4.55.4 expose the same projection, RoPE, cache-update, GQA, and
+output contracts, so the shared adapter path owns capture and PRA control flow. The 49-line
+Llama module only resolves Llama's installed \texttt{apply\_rotary\_pos\_emb} and
+\texttt{eager\_attention\_forward}, then omits Qwen's sliding-window keyword. Injection
+dispatches by the concrete attention module.
+
+On the real FP16 checkpoint, memory-disabled wrapping gives exact logits, every hidden state,
+generation-cache length, and greedy output. An enabled CUDA probe captures CPU-resident
+$[1,3,23,64]$ post-RoPE K/V, transfers it without persistent head expansion, and produces finite
+memory-attended logits. Offline tiny-model tests independently cover exact disabled parity,
+native-head layout, active memory, and bounded long-prompt rollover.
+
+\subsection{Five-seed cross-family routing}
+
+For the portability release, both models use the same evidence-supervised protocol: frozen
+last-layer attention-input states, one mean per 32-token parent, asymmetric linear projection to
+128 dimensions, 512 optimization steps, QASPER training, and seeds 11, 23, 37, 53, and 71.
+Selection uses QASPER validation AUC over the 0--30\% region; HotpotQA is transfer stress rather
+than a selection set. Table~\ref{tab:product-routing} and
+Figure~\ref{fig:product-routing} report evidence-identity recall, which gives partial credit for
+multi-span evidence and reaches one only when all mapped evidence identities are recovered.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Five-seed QASPER test recall--sparsity results. Values are mean $\pm$ sample standard
+deviation; $f_{80}$ is the first measured requested fraction reaching 0.80 recall.}
+\label{tab:product-routing}
+\begin{tabular}{lrrrrrr}
+\toprule
+Family & R@5\% & R@10\% & R@20\% & R@30\% & AUC$_{0:30}$ & $f_{80}$ \\
+\midrule
+Qwen3-0.6B & 0.293 & 0.362 & $0.454\pm0.007$ & 0.532 & 0.396 & 1.00 \\
+SmolLM2-135M (Llama) & 0.243 & 0.334 & $0.447\pm0.051$ & 0.532 & 0.371 & 1.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{../shared/results/paper2_hf/productization/cross_family_qasper_recall.pdf}
+\caption{QASPER evidence recall versus requested parent fraction for five independently trained
+routers per family on the same 16-example test cohort. Bands show one sample standard
+deviation. Qwen is more seed-stable; neither family reaches high recall in the 10--20\%
+operating region.}
+\label{fig:product-routing}
+\end{figure}
+
+The selected Llama seed reaches R@20\%=0.497 and AUC$_{0:30}=0.419$; the selected Qwen seed
+reaches 0.446 and 0.405. These selected values are useful artifact descriptors, but the
+five-seed matched-cohort means are the comparison. The mean R@20\% values differ by only 0.007
+and mean R@30\% is 0.532 for both, but Qwen has the stronger sparse AUC and much lower R@20\%
+seed variance. Llama's variance and both families' $f_{80}=1.0$ prevent a claim of strong sparse
+retrieval. The result instead establishes that the same compact-router interface trains and
+executes across two native attention families.
+
+\subsection{Product-path systems and answer probes}
+
+We ran each packaged router through the public API on two held-out examples per dataset. This is
+a systems demonstration, not a statistically powered QA benchmark. Every request routes once
+and replays parent identities through the final eight layers under a 128-token materialization
+budget. Table~\ref{tab:product-systems} distinguishes the compact index, all CPU-resident
+layer-native detail K/V, and the subset transferred to each consuming layer.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Four-example CUDA product-path means on a GTX 950M. Detail and index sizes vary with
+source length. Peak GPU includes the complete model. Routing is exact Torch/Python search.}
+\label{tab:product-systems}
+\begin{tabular}{lrrrrrr}
+\toprule
+Family & Evidence & F1 & Requested & Materialized & Route ms & Peak GiB \\
+\midrule
+Qwen3-0.6B & 0.667 & 0.033 & 20.4\% & 6.61\% & 6.40 & 1.126 \\
+SmolLM2-135M & 0.750 & 0.028 & 21.0\% & 6.25\% & 32.74 & 0.261 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Qwen averages 45.9 KiB of routing index and 91.3 MiB of resident eight-layer detail K/V;
+SmolLM2 averages 48.8 KiB and 18.2 MiB. The 128-token cap explains why an approximately 20\%
+router request becomes only 6--7\% materialized K/V on these variable-length sources. Per
+request, the implementation transfers 4.0 MiB for Qwen and 0.75 MiB for SmolLM2 across the
+eight consuming layers. Mean routed wall time is 2.15 and 1.85 seconds for 16 generated tokens.
+There are no native-limit violations.
+
+Retrieval and use remain separate gates. The four-example probe obtains substantial annotation
+coverage but lower routed F1 than the already weak no-reference baseline. This agrees with the
+larger Qwen causal study: correct memory can alter gold likelihood, but a frozen small decoder
+does not reliably turn that signal into decoded answers. The product release therefore exposes
+the measurements and retains this limitation rather than treating evidence recall as end-task
+success.
+
 \section{Limitations and Next Experiments}
 
-The study has one family and one 596M-parameter checkpoint. The
+The mechanistic depth study uses one 596M-parameter Qwen checkpoint, while the portability
+study adds one smaller Llama-family checkpoint. The
 representation/chunk and exploratory multi-gist sweeps use 16 matched examples; confirmation
 uses deterministic subsets rather than a full validation corpus, and four examples overlap
 between seeds. The oracle layer-depth study has only four examples per dataset, reuses one fixed
@@ -1201,8 +1352,9 @@ next justified intervention. The next discriminating experiment should replicate
 result on a larger, checkpoint-solvable cohort, then jointly report decoded quality and
 likelihood at the last-eight operating point. Routing data should also increase in split size
 and label diversity before adding adapter capacity. The contiguous-mean, token-max,
-centered-RoPE, and query-pooling results close the current simple zero-parameter sweeps. Llama
-remains blocked until Qwen passes the declared quality gate. Gemma remains later.
+centered-RoPE, and query-pooling results close the current simple zero-parameter sweeps. The
+Llama port establishes software and tensor-contract portability, not transfer of Qwen routing
+quality or solved QA. Gemma, serving kernels, and larger checkpoints remain later work.
 
 \section{Related Work}
 
@@ -1218,10 +1370,12 @@ inserted beneath an existing pretrained family without changing its disabled beh
 
 \section{Conclusion}
 
-One shared PRA core now serves both the controlled model and a thin Qwen adapter. The frozen
-Qwen3-0.6B checkpoint passes bit-exact disabled parity, preserves native RoPE and GQA cache
-layout, replays selected native K/V through generation, and executes an implicit long-prompt
-head under a hard native-operation bound. The routing study adds a second architectural result:
+One shared PRA core now serves the controlled model plus thin Qwen and Llama-family adapters.
+Both real checkpoints pass exact disabled-path gates; active adapters preserve native RoPE,
+GQA cache layout, layer-native K/V, masks, cache growth, and output projection. They replay one
+selection through a contiguous late band, keep full references on CPU, and execute implicit
+long-prompt heads under a hard native-operation bound. The routing study adds a second
+architectural result:
 semantic routing state and native attention state are separate interfaces. Attention-input
 hidden-state gists form the canonical compact index, while a fixed selected identity always
 materializes the same native post-RoPE K and native V. A direct invariant test establishes
@@ -1254,7 +1408,14 @@ is consumed through that band. Frozen Qwen therefore can causally use retrieved 
 learned memory-use adapter is not yet required. It cannot yet decode the answer reliably, and
 QASPER fails its direct-text control. The next work must replicate the late-band operating point
 at scale and separate retrieval generalization, checkpoint/task competence, and the remaining
-likelihood-to-decoding gap before claiming solved long-context QA or proceeding to Llama.
+likelihood-to-decoding gap before claiming solved long-context QA. The productization study
+adds a narrower positive result: the family boundary, stable router artifact, reference API,
+fraction policy, and bounded execution transfer to Llama without copying the PRA mechanism.
+Across five QASPER-trained seeds on matched test identities, Qwen and SmolLM2 have similar mean
+recall at 20--30\% requested chunks, but Qwen is substantially more stable and has the stronger
+sparse AUC. Neither reaches 0.80 evidence recall before exhaustive selection.
+The released API and checkpoints therefore make the present capability reproducible and useful
+for further evaluation, but they do not justify a long-context QA quality claim.
 
 \appendix
 \section{Code-Level Adapter Reimplementation Guide}
@@ -1501,6 +1662,41 @@ the same local token twice. Passing transport and parity tests establishes a fai
 it does not establish that the router selects causally useful evidence, which requires the
 separate quality controls reported in the main paper.
 
+\subsection{Llama port and product API}
+
+The release implementation is pinned at
+\href{https://github.com/einnovator/pdattention/tree/809694b}{commit \texttt{809694b}}.
+The common abstract family contract remains in \texttt{adapter\_base.py}, lines 32--132.
+Qwen's implementation resolves its installed helper functions through an overridable method at
+\texttt{qwen.py}, lines 38--77. The Llama module at \texttt{llama.py}, lines 8--48, subclasses
+that shared projection/capture/control path, replaces the symbol resolver, and invokes Llama's
+native eager function without the Qwen sliding-window argument. This is inheritance of a
+family-neutral tensor contract, not reuse of Qwen parameters. Injection selects Qwen or Llama
+from the concrete attention module at \texttt{injection.py}, lines 380--430.
+
+An independent family port should make the same decision only after comparing installed forward
+signatures and testing every shared assumption. For Llama those assumptions are: Q/K/V linear
+outputs reshape to $[B,H,T,d_h]$; RoPE receives the same cosine/sine tuple; cache update accepts
+the layer index, sine, cosine, and cache position; the eager kernel repeats native K/V heads
+internally; and output returns token-major states before one native output projection. If any
+family differs, override that specific abstract method rather than adding a family branch to the
+router, cache, or budgeter. Tests in \texttt{test\_hf\_llama\_integration.py}, lines 51--106,
+cover exact disabled behavior, native-head reference payloads, active memory, and rollover.
+
+The public layer composes rather than replaces those internals. \texttt{pra\_hf/config.py},
+lines 14--127, validates stable product names, resolves negative layer indices, and translates
+them to the core configuration. \texttt{pra\_hf/router.py}, lines 14--110, defines the versioned
+weights/metadata/model-card artifact and legacy-checkpoint conversion. The high-level model in
+\texttt{pra\_hf/model.py}, lines 42--358, owns tokenizer/model loading, router compatibility,
+reference lifecycle, fraction selection, route-once identity replay, generation, chat, and
+memory economics. In particular, lines 192--258 flatten complete reference-grouped rankings,
+apply a global fraction or top-$k$ cutoff, reconstruct typed identities, and map those IDs to
+each consuming layer's native payload. The CLI in \texttt{pra\_hf/cli.py}, lines 22--145, is a
+thin caller of the same API; it does not maintain a second execution path. Product tests at
+\texttt{test\_pra\_hf\_api.py}, lines 66--132, pin config serialization and precedence, router
+save/load and freezing, add/remove/clear, fraction routing, generation, statistics, and the rule
+that a router cannot change after gists have been indexed.
+
 \subsection{Revision-pinned source map}
 
 Table~\ref{tab:code-map} connects the preceding control flow to the implementation.
@@ -1516,6 +1712,7 @@ Responsibility & File and physical lines \\
 \midrule
 Abstract family boundary & \texttt{src/pra\_torch/hf/adapter\_base.py}, 16--106 \\
 Qwen projections, RoPE, native kernel, and output & \texttt{src/pra\_torch/hf/qwen.py}, 53--110 \\
+Llama native-symbol binding and eager invocation & \texttt{src/pra\_torch/hf/llama.py}, 8--48 \\
 Matched routing/detail capture & \texttt{src/pra\_torch/hf/qwen.py}, 109--148;
 \texttt{src/pra\_torch/hf/injection.py}, 80--210 \\
 Disabled and active runtime paths & \texttt{src/pra\_torch/hf/qwen.py}, 171--275 \\
@@ -1527,6 +1724,10 @@ K/V and additive-mask composition & \texttt{src/pra\_torch/core.py}, 394--436 \\
 Reference publication and selected-layer injection & \texttt{src/pra\_torch/hf/injection.py}, 235--428 \\
 Depth schedules and causal protocol & \texttt{experiments/paper2\_hf/qa/run\_multilayer\_pra.py}, 62--964 \\
 Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 80--636 \\
+Stable config, router artifact, and public API & \texttt{src/pra\_hf/config.py}, 14--127;
+\texttt{src/pra\_hf/router.py}, 14--110; \texttt{src/pra\_hf/model.py}, 42--358 \\
+Llama and product-facing gates & \texttt{tests/test\_hf\_llama\_integration.py}, 51--106;
+\texttt{tests/test\_pra\_hf\_api.py}, 66--132 \\
 \bottomrule
 \end{tabularx}
 \end{table}

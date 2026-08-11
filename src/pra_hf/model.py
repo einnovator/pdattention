@@ -78,12 +78,17 @@ class PRAForCausalLM:
         )
         model_kwargs.setdefault("attn_implementation", "eager")
         model = AutoModelForCausalLM.from_pretrained(model_name_or_path, **model_kwargs)
+        tokenizer_kwargs = {}
+        if "revision" in model_kwargs:
+            tokenizer_kwargs["revision"] = model_kwargs["revision"]
         tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_name_or_path or model_name_or_path
+            tokenizer_name_or_path or model_name_or_path, **tokenizer_kwargs
         )
         router = PRARouter.from_pretrained(routing_adapter) if routing_adapter else None
         instance = cls(model, tokenizer, config, router)
-        instance._validate_router_compatibility(model_name_or_path)
+        instance._validate_router_compatibility(
+            model_name_or_path, model_kwargs.get("revision")
+        )
         return instance
 
     @classmethod
@@ -102,7 +107,11 @@ class PRAForCausalLM:
     def device(self) -> torch.device:
         return self._handle.device
 
-    def _validate_router_compatibility(self, model_name: str | None = None) -> None:
+    def _validate_router_compatibility(
+        self,
+        model_name: str | None = None,
+        revision: str | None = None,
+    ) -> None:
         if self.router is None:
             return
         hidden = int(self.model.config.hidden_size)
@@ -113,6 +122,11 @@ class PRAForCausalLM:
         expected = self.router.metadata.get("base_model")
         if expected and model_name and str(expected) != str(model_name):
             raise ValueError(f"Router expects base model {expected!r}, received {model_name!r}.")
+        expected_revision = self.router.metadata.get("base_model_revision")
+        if expected_revision and revision and str(expected_revision) != str(revision):
+            raise ValueError(
+                f"Router expects base revision {expected_revision!r}, received {revision!r}."
+            )
 
     def load_router(self, directory: str | Path) -> None:
         """Load a router before reference ingestion so cached gists use its space."""
@@ -139,7 +153,12 @@ class PRAForCausalLM:
             uri, content = reference, text
         else:
             candidate = Path(reference)
-            is_file = "\n" not in reference and len(reference) < 512 and candidate.is_file()
+            is_file = False
+            if "\n" not in reference and len(reference) < 512:
+                try:
+                    is_file = candidate.is_file()
+                except OSError:
+                    is_file = False
             if is_file:
                 return self.add_reference_file(candidate, uri=uri)
             content = reference
@@ -300,18 +319,27 @@ class PRAForCausalLM:
             for chunk in memory.chunks
         )
         selected_tokens = sum(hit.selected_token_count for hit in selected[0])
+        diagnostics = self._handle.diagnostics_by_layer()
+        routing_diagnostics = diagnostics.get(self.routing_layer, {})
+        materialized_tokens = int(
+            routing_diagnostics.get("memory_tokens_materialized", 0)
+        )
         self._last_stats = {
             "selection_policy": self.config.selection_policy,
             "candidate_chunks": candidate_count,
-            "selected_chunks": len(selected[0]),
-            "selected_chunk_fraction": len(selected[0]) / max(candidate_count, 1),
+            "requested_chunks": len(selected[0]),
+            "requested_chunk_fraction": len(selected[0]) / max(candidate_count, 1),
             "candidate_kv_tokens": candidate_tokens,
-            "selected_kv_token_fraction": selected_tokens / max(candidate_tokens, 1),
+            "requested_kv_tokens": selected_tokens,
+            "requested_kv_token_fraction": selected_tokens / max(candidate_tokens, 1),
+            "materialized_kv_tokens": materialized_tokens,
+            "materialized_kv_token_fraction": materialized_tokens
+            / max(candidate_tokens, 1),
             "selected": [hit.as_trace_dict() for hit in selected[0]],
             "query_encoding_seconds": query_seconds,
             "routing_seconds": routing_seconds,
             "generation_seconds": latency,
-            "diagnostics_by_layer": self._handle.diagnostics_by_layer(),
+            "diagnostics_by_layer": diagnostics,
             "head_tokens": prepared.head_tokens,
         }
         result = GenerationResult(
