@@ -41,6 +41,11 @@ def _load_features(directory: Path) -> dict[str, list[dict]]:
     }
 
 
+def _sync(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
 def _scores(model, feature: dict, query_strategy: str, device: torch.device):
     query = feature["queries"][query_strategy].to(device).unsqueeze(0)
     memory = feature["memory_gists"].to(device)
@@ -50,20 +55,28 @@ def _scores(model, feature: dict, query_strategy: str, device: torch.device):
 
 
 @torch.no_grad()
-def evaluate(model, features, query_strategy: str, device: torch.device) -> dict:
+def evaluate(model, features, query_strategy: str, device: torch.device, cost: dict) -> dict:
     if model is not None:
         model.eval()
     rows = []
-    elapsed = 0.0
+    projection_elapsed = 0.0
+    routing_elapsed = 0.0
     for feature in features:
-        if device.type == "cuda":
-            torch.cuda.synchronize(device)
+        _sync(device)
         started = time.perf_counter()
-        scores = _scores(model, feature, query_strategy, device)[0]
+        if model is None:
+            scores = _scores(model, feature, query_strategy, device)[0]
+        else:
+            query = feature["queries"][query_strategy].to(device).unsqueeze(0)
+            memory = feature["memory_gists"].to(device)
+            projected_query = model.project_query(query)
+            projected_memory = model.project_memory(memory)
+            scores = (projected_query @ projected_memory.transpose(0, 1))[0]
+        _sync(device)
+        projection_elapsed += time.perf_counter() - started
         ranking = torch.argsort(scores, descending=True)
-        if device.type == "cuda":
-            torch.cuda.synchronize(device)
-        elapsed += time.perf_counter() - started
+        _sync(device)
+        routing_elapsed += time.perf_counter() - started
         positive = feature["positive_mask"].to(device)[ranking]
         ranks = torch.nonzero(positive, as_tuple=False).flatten() + 1
         best_rank = int(ranks.min().item()) if len(ranks) else None
@@ -119,7 +132,24 @@ def evaluate(model, features, query_strategy: str, device: torch.device) -> dict
     return {
         "rows": rows,
         "aggregates": aggregates,
-        "adapter_seconds_per_example": elapsed / max(len(features), 1),
+        "adapter_seconds_per_example": (
+            projection_elapsed / max(len(features), 1) if model is not None else 0.0
+        ),
+        "routing_seconds_per_example": routing_elapsed / max(len(features), 1),
+        "routing_index_bytes_mean": statistics.fmean(
+            len(feature["positive_mask"])
+            * (model.routing_width if model is not None else int(cost["feature_width"]))
+            * 4
+            for feature in features
+        ),
+        "detail_kv_bytes_mean": statistics.fmean(
+            int(feature["source_tokens"])
+            * 2
+            * int(cost["native_kv_heads"])
+            * int(cost["native_head_dim"])
+            * int(cost["native_kv_dtype_bytes"])
+            for feature in features
+        ),
     }
 
 
@@ -131,10 +161,127 @@ def _training_mask(feature: dict, shuffled: bool, seed: int) -> torch.Tensor:
     return mask[torch.randperm(len(mask), generator=generator)]
 
 
-def _loss(model, feature, query_strategy, device, temperature, shuffled, seed):
-    scores = _scores(model, feature, query_strategy, device)[0] / temperature
+def _rank(values: torch.Tensor, negative: torch.Tensor) -> list[int]:
+    """Sort negative candidate indices by descending hardness values."""
+    indices = torch.nonzero(negative, as_tuple=False).flatten()
+    order = torch.argsort(values[indices], descending=True)
+    return indices[order].tolist()
+
+
+def select_training_candidates(
+    feature: dict,
+    query_strategy: str,
+    *,
+    policy: str,
+    negatives_per_positive: int,
+    seed: int,
+    mined_scores: torch.Tensor | None = None,
+    positive_mask: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, int]]:
+    """Select a deterministic mixture of lexical, routing, positional, and random negatives."""
+    positive = (
+        feature["positive_mask"].bool()
+        if positive_mask is None
+        else positive_mask.cpu().bool()
+    )
+    if policy == "exhaustive":
+        return torch.ones_like(positive), {"exhaustive": int((~positive).sum())}
+    if policy not in {"mixed", "mined"}:
+        raise ValueError(f"Unsupported negative policy: {policy}")
+    if "lexical_scores" not in feature:
+        raise ValueError("Frozen features must be enriched with lexical_scores.")
+
+    negative = ~positive
+    query = feature["queries"][query_strategy].float().unsqueeze(0)
+    memory = feature["memory_gists"].float()
+    baseline = (F.normalize(query, dim=-1) @ F.normalize(memory, dim=-1).T)[0]
+    positive_position = feature["normalized_positions"][positive].mean()
+    position_hardness = -(feature["normalized_positions"] - positive_position).abs()
+    generator = torch.Generator().manual_seed(
+        seed + sum(map(ord, str(feature["example_id"])))
+    )
+    random_hardness = torch.rand(len(positive), generator=generator)
+    sources = []
+    if policy == "mined":
+        if mined_scores is None:
+            raise ValueError("Mined-negative selection requires learned-router scores.")
+        sources.append(("learned_false_positive", _rank(mined_scores.cpu(), negative)))
+    sources.extend(
+        [
+            ("zero_shot_false_positive", _rank(baseline, negative)),
+            ("lexical", _rank(feature["lexical_scores"], negative)),
+            ("position_matched", _rank(position_hardness, negative)),
+            ("random", _rank(random_hardness, negative)),
+        ]
+    )
+    target = min(
+        int(negative.sum()),
+        max(int(positive.sum()) * int(negatives_per_positive), 1),
+    )
+    selected: set[int] = set()
+    composition = {name: 0 for name, _ in sources}
+    cursors = [0] * len(sources)
+    while len(selected) < target:
+        progressed = False
+        for source_index, (name, ranked) in enumerate(sources):
+            while cursors[source_index] < len(ranked):
+                candidate = int(ranked[cursors[source_index]])
+                cursors[source_index] += 1
+                if candidate in selected:
+                    continue
+                selected.add(candidate)
+                composition[name] += 1
+                progressed = True
+                break
+            if len(selected) >= target:
+                break
+        if not progressed:
+            break
+    mask = positive.clone()
+    if selected:
+        mask[torch.tensor(sorted(selected), dtype=torch.long)] = True
+    return mask, composition
+
+
+def _loss(
+    model,
+    feature,
+    query_strategy,
+    device,
+    temperature,
+    shuffled,
+    seed,
+    objective,
+    margin,
+    negative_policy,
+    negatives_per_positive,
+    mined_scores=None,
+):
+    scores = _scores(model, feature, query_strategy, device)[0]
     positive = _training_mask(feature, shuffled, seed).to(device)
-    return torch.logsumexp(scores, dim=0) - torch.logsumexp(scores[positive], dim=0)
+    candidate, composition = select_training_candidates(
+        feature,
+        query_strategy,
+        policy=negative_policy,
+        negatives_per_positive=negatives_per_positive,
+        seed=seed,
+        mined_scores=mined_scores,
+        positive_mask=positive,
+    )
+    candidate = candidate.to(device)
+    negative = candidate & ~positive
+    if objective == "contrastive":
+        scaled = scores / temperature
+        loss = torch.logsumexp(scaled[candidate], dim=0) - torch.logsumexp(
+            scaled[positive & candidate], dim=0
+        )
+    elif objective == "margin":
+        loss = F.relu(
+            margin - scores[positive & candidate, None] + scores[None, negative]
+        ).mean()
+    else:
+        raise ValueError(f"Unsupported objective: {objective}")
+    return loss, composition
 
 
 def _domain(features: list[dict], domain: str) -> list[dict]:
@@ -153,8 +300,14 @@ def train_one(
     steps,
     learning_rate,
     temperature,
+    objective,
+    margin,
+    negative_policy,
+    negatives_per_positive,
+    hard_negative_steps,
     shuffled_labels,
     checkpoint_dir,
+    cost,
 ):
     random.seed(seed)
     torch.manual_seed(seed)
@@ -168,49 +321,87 @@ def train_one(
     best_score = float("-inf")
     best_state = None
     best_step = 0
-    stale = 0
     losses = []
+    composition_totals = defaultdict(int)
+    completed_steps = 0
     started = time.perf_counter()
-    for step in range(1, steps + 1):
-        model.train()
-        feature = train_rows[(step - 1) % len(train_rows)]
-        optimizer.zero_grad(set_to_none=True)
-        loss = _loss(
-            model,
-            feature,
-            query_strategy,
-            device,
-            temperature,
-            shuffled_labels,
-            seed,
-        )
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        losses.append(float(loss.detach().cpu()))
-        if step % 25 != 0 and step != steps:
-            continue
-        validation = evaluate(model, validation_rows, query_strategy, device)
-        score = (
-            validation["aggregates"]["combined"]["recall_at_3"]
-            + 0.25 * validation["aggregates"]["combined"]["mrr"]
-        )
-        if score > best_score + 1e-9:
-            best_score = score
-            best_step = step
-            best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
-            stale = 0
-        else:
-            stale += 1
-        if stale >= 8:
-            break
+
+    def optimize(round_steps, policy, mined_by_example=None):
+        nonlocal best_score, best_state, best_step, completed_steps
+        stale = 0
+        for local_step in range(1, round_steps + 1):
+            completed_steps += 1
+            model.train()
+            feature = train_rows[(completed_steps - 1) % len(train_rows)]
+            optimizer.zero_grad(set_to_none=True)
+            mined = (
+                mined_by_example.get((feature["dataset"], feature["example_id"]))
+                if mined_by_example is not None
+                else None
+            )
+            loss, composition = _loss(
+                model,
+                feature,
+                query_strategy,
+                device,
+                temperature,
+                shuffled_labels,
+                seed + completed_steps,
+                objective,
+                margin,
+                policy,
+                negatives_per_positive,
+                mined,
+            )
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            losses.append(float(loss.detach().cpu()))
+            for name, count in composition.items():
+                composition_totals[name] += count
+            if local_step % 25 != 0 and local_step != round_steps:
+                continue
+            validation = evaluate(model, validation_rows, query_strategy, device, cost)
+            score = (
+                validation["aggregates"]["combined"]["recall_at_3"]
+                + 0.25 * validation["aggregates"]["combined"]["mrr"]
+            )
+            if score > best_score + 1e-9:
+                best_score = score
+                best_step = completed_steps
+                best_state = {
+                    key: value.detach().cpu().clone()
+                    for key, value in model.state_dict().items()
+                }
+                stale = 0
+            else:
+                stale += 1
+            if stale >= 8:
+                break
+
+    initial_policy = "mixed" if negative_policy == "mined" else negative_policy
+    optimize(steps, initial_policy)
+    mined_rounds = 0
+    if negative_policy == "mined" and hard_negative_steps > 0:
+        model.load_state_dict(best_state)
+        model.eval()
+        with torch.no_grad():
+            mined_by_example = {
+                (feature["dataset"], feature["example_id"]): _scores(
+                    model, feature, query_strategy, device
+                )[0].float().cpu()
+                for feature in train_rows
+            }
+        optimize(hard_negative_steps, "mined", mined_by_example)
+        mined_rounds = 1
     training_seconds = time.perf_counter() - started
     model.load_state_dict(best_state)
-    test = evaluate(model, features["test"], query_strategy, device)
-    validation = evaluate(model, validation_rows, query_strategy, device)
+    test = evaluate(model, features["test"], query_strategy, device, cost)
+    validation = evaluate(model, validation_rows, query_strategy, device, cost)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = checkpoint_dir / (
         f"{architecture}_d{routing_width}_{query_strategy}_{train_domain}_seed{seed}"
+        f"_{objective}_{negative_policy}"
         f"{'_shuffled' if shuffled_labels else ''}.pt"
     )
     torch.save(
@@ -220,6 +411,8 @@ def train_one(
             "routing_width": routing_width,
             "architecture": architecture,
             "query_strategy": query_strategy,
+            "objective": objective,
+            "negative_policy": negative_policy,
         },
         checkpoint,
     )
@@ -230,11 +423,17 @@ def train_one(
         "train_domain": train_domain,
         "seed": seed,
         "shuffled_labels": shuffled_labels,
-        "objective": "multi_positive_contrastive_all_document_chunks",
+        "objective": objective,
+        "negative_policy": negative_policy,
+        "negatives_per_positive": negatives_per_positive,
+        "negative_composition": dict(composition_totals),
+        "hard_negative_rounds": mined_rounds,
+        "hard_negative_steps": hard_negative_steps if mined_rounds else 0,
         "temperature": temperature,
+        "margin": margin,
         "learning_rate": learning_rate,
         "requested_steps": steps,
-        "completed_steps": step,
+        "completed_steps": completed_steps,
         "best_step": best_step,
         "training_seconds": training_seconds,
         "mean_training_loss": statistics.fmean(losses),
@@ -256,6 +455,8 @@ def _condition_aggregates(runs: list[dict]) -> list[dict]:
             run["query_strategy"],
             run["train_domain"],
             run["shuffled_labels"],
+            run["objective"],
+            run["negative_policy"],
         )
         grouped[key].append(run)
     output = []
@@ -266,16 +467,45 @@ def _condition_aggregates(runs: list[dict]) -> list[dict]:
             "query_strategy": key[2],
             "train_domain": key[3],
             "shuffled_labels": key[4],
+            "objective": key[5],
+            "negative_policy": key[6],
             "seeds": len(values),
             "adapter_parameters": values[0]["adapter_parameters"],
         }
         for dataset in ("combined", "hotpotqa", "qasper"):
-            for metric in ("recall_at_3", "recall_at_8", "recall_at_16", "mrr", "score_position_correlation"):
+            for metric in (
+                "recall_at_3",
+                "recall_at_8",
+                "recall_at_16",
+                "all_evidence_recall_at_3",
+                "target_coverage_at_3",
+                "mrr",
+                "selected_fraction_at_3",
+                "mean_selected_normalized_position",
+                "score_position_correlation",
+            ):
                 samples = [run["test"]["aggregates"][dataset][metric] for run in values]
                 record[f"{dataset}_{metric}_mean"] = statistics.fmean(samples)
                 record[f"{dataset}_{metric}_std"] = statistics.stdev(samples) if len(samples) > 1 else 0.0
+                record[f"{dataset}_{metric}_ci95"] = (
+                    2.776 * record[f"{dataset}_{metric}_std"] / math.sqrt(len(samples))
+                    if len(samples) > 1
+                    else 0.0
+                )
         record["adapter_seconds_per_example"] = statistics.fmean(
             run["test"]["adapter_seconds_per_example"] for run in values
+        )
+        record["routing_seconds_per_example"] = statistics.fmean(
+            run["test"]["routing_seconds_per_example"] for run in values
+        )
+        record["routing_index_bytes_mean"] = statistics.fmean(
+            run["test"]["routing_index_bytes_mean"] for run in values
+        )
+        record["detail_kv_bytes_mean"] = statistics.fmean(
+            run["test"]["detail_kv_bytes_mean"] for run in values
+        )
+        record["routing_index_fraction_of_detail_kv"] = (
+            record["routing_index_bytes_mean"] / record["detail_kv_bytes_mean"]
         )
         output.append(record)
     return output
@@ -292,6 +522,18 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 def run(args) -> dict:
     device = torch.device(args.device)
     features = _load_features(args.feature_dir)
+    manifest = json.loads(
+        (args.feature_dir / "feature_dataset_manifest.json").read_text(encoding="utf-8")
+    )
+    cost = {
+        key: manifest[key]
+        for key in (
+            "feature_width",
+            "native_kv_heads",
+            "native_head_dim",
+            "native_kv_dtype_bytes",
+        )
+    }
     runs = []
     for architecture in args.architectures:
         for routing_width in args.routing_widths:
@@ -309,8 +551,14 @@ def run(args) -> dict:
                             steps=args.steps,
                             learning_rate=args.learning_rate,
                             temperature=args.temperature,
+                            objective=args.objective,
+                            margin=args.margin,
+                            negative_policy=args.negative_policy,
+                            negatives_per_positive=args.negatives_per_positive,
+                            hard_negative_steps=args.hard_negative_steps,
                             shuffled_labels=args.shuffled_labels,
                             checkpoint_dir=args.feature_dir / "checkpoints",
+                            cost=cost,
                         )
                         runs.append(result)
                         print(
@@ -320,7 +568,7 @@ def run(args) -> dict:
                             flush=True,
                         )
     baselines = {
-        query: evaluate(None, features["test"], query, device)
+        query: evaluate(None, features["test"], query, device, cost)
         for query in args.query_strategies
     }
     aggregates = _condition_aggregates(runs)
@@ -334,7 +582,14 @@ def run(args) -> dict:
         "query_strategies": list(args.query_strategies),
         "train_domains": list(args.train_domains),
         "shuffled_labels": args.shuffled_labels,
-        "negative_policy": "all in-document chunks; includes baseline false positives",
+        "objective": args.objective,
+        "temperature": args.temperature,
+        "margin": args.margin,
+        "negative_policy": args.negative_policy,
+        "negatives_per_positive": args.negatives_per_positive,
+        "hard_negative_steps": args.hard_negative_steps,
+        "optimizer": "AdamW",
+        "cost_model": cost,
         "baselines": baselines,
         "runs": runs,
         "aggregates": aggregates,
@@ -362,6 +617,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=400)
     parser.add_argument("--learning-rate", type=float, default=0.001)
     parser.add_argument("--temperature", type=float, default=0.1)
+    parser.add_argument("--objective", choices=("contrastive", "margin"), default="contrastive")
+    parser.add_argument("--margin", type=float, default=0.2)
+    parser.add_argument(
+        "--negative-policy", choices=("exhaustive", "mixed", "mined"), default="exhaustive"
+    )
+    parser.add_argument("--negatives-per-positive", type=int, default=7)
+    parser.add_argument("--hard-negative-steps", type=int, default=200)
     parser.add_argument("--shuffled-labels", action="store_true")
     parser.add_argument("--stem", default="linear_adapter_results")
     parser.add_argument(

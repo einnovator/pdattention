@@ -38,6 +38,18 @@ SPLITS = {
 }
 
 
+def lexical_chunk_scores(tokenizer, source: str, question: str, spans) -> torch.Tensor:
+    """Return token-set Jaccard overlap between the question and each source chunk."""
+    source_ids = tokenizer(source, add_special_tokens=False).input_ids
+    question_ids = set(tokenizer(question, add_special_tokens=False).input_ids)
+    scores = []
+    for start, end in spans:
+        chunk_ids = set(source_ids[int(start) : int(end)])
+        union = question_ids | chunk_ids
+        scores.append(len(question_ids & chunk_ids) / len(union) if union else 0.0)
+    return torch.tensor(scores, dtype=torch.float32)
+
+
 def _features_for_example(handle, tokenizer, example: dict, device, query_specs) -> dict:
     _configure(handle, ATTENTION_INPUT_HIDDEN_STATE, 32, "mean", 1, "exact")
     source = tokenizer(
@@ -87,6 +99,9 @@ def _features_for_example(handle, tokenizer, example: dict, device, query_specs)
         "memory_gists": gists,
         "positive_mask": positive,
         "normalized_positions": positions,
+        "lexical_scores": lexical_chunk_scores(
+            tokenizer, example["source"], example["question"], spans
+        ),
         "chunk_spans": spans,
         "evidence_spans": evidence_spans,
         "source_tokens": source_tokens,
@@ -183,6 +198,9 @@ def run(args) -> dict:
         "routing_layer": next(iter(handle.adapters)),
         "feature_source": ATTENTION_INPUT_HIDDEN_STATE,
         "feature_width": feature_width,
+        "native_kv_heads": int(model.config.num_key_value_heads),
+        "native_head_dim": int(model.config.head_dim),
+        "native_kv_dtype_bytes": torch.tensor([], dtype=dtype).element_size(),
         "routing_chunk_tokens": 32,
         "gist_mode": "mean",
         "query_strategies": args.query_strategies,
