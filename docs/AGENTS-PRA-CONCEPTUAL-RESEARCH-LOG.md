@@ -479,27 +479,47 @@ Observation:
   4.635. One and two upper layers give only +0.071 and +0.233.
 - On four QASPER examples, last-four oracle memory changes the score by -0.161 while direct text
   changes it by -1.791. Oracle memory nevertheless receives 0.615--0.645 attention mass.
+- The follow-up depth sweep revises the narrow last-four diagnosis. HotpotQA oracle memory gives
+  +2.311 at the last eight layers and +3.641 at the last half, compared with +4.635 for direct
+  text. All 28 layers give -0.766. QASPER is +0.347 at last eight but its direct-text control
+  remains negative.
+- Equal-count placement is decisive: early four, evenly spaced four, and every fourth layer give
+  combined changes of -10.573, -10.398, and -6.090, while contiguous late four and late seven
+  give +0.421 and +1.128.
+- Route-once learned retrieval through the last eight layers gives +0.227 combined while
+  preserving F1; the bounded `#__head` rank-1 fact gives +5.469 but remains absent from greedy
+  output.
 
 Original hypothesis:
 - If exact evidence identities are supplied through faithful native K/V, a frozen decoder should
   improve answer likelihood; otherwise the dominant defect is memory-use alignment.
 
 Experiment:
-- Compare no memory, the selected learned router, evidence-oracle PRA at last-one, last-two,
-  last-four, and early-plus-last placements, and bounded direct evidence text.
+- Compare no memory, evidence-oracle PRA at last-one/two/four/eight, last-quarter, last-half, and
+  all layers; follow with matched-count early, middle, late, even, and every-fourth placement.
+- Route once at layer 27 with the selected learned router or raw hidden-state cosine, reuse only
+  parent IDs, and resolve each consuming layer's own native K/V.
 - Force identities only at `prepare_selected_memory`, preserving the ordinary budget,
   post-RoPE K/V, source positions, GQA, transfer, mask, and Qwen eager-attention path.
 - Record teacher-forced answer likelihood and first-token rank before generated EM/F1, together
   with attention mass, hidden-state deltas, active K/V, timing, and per-example traces.
 
 Result:
-- Qualified positive for causal native-memory use on HotpotQA at four upper layers.
-- Negative for generated-quality improvement and for the current learned-router end-to-end path.
+- Positive for causal native-memory use on HotpotQA through a contiguous late band and for the
+  bounded implicit head's teacher-forced answer likelihood.
+- Positive but smaller for route-once learned retrieval at the last-eight operating point.
+- Negative for generated-quality improvement.
 - Inconclusive for PRA memory use on QASPER because the direct-text upper control also fails.
 
 Interpretation:
 - PRA consumption is layer-depth dependent; evidence in one upper layer is not equivalent to
   evidence available across several late transformations.
+- Layer placement is not interchangeable. Earlier exposure and sparse depth do not compensate
+  by leaving more downstream layers; they can be catastrophically incompatible with the local
+  residual stream. All-layer replay is also harmful, so the mechanism is a late band rather
+  than maximal depth.
+- Chunk identity can be routed once while payload remains layer-native. Routing depth and
+  consumption depth are now experimentally separate controls.
 - High attention mass and large hidden-state perturbation do not establish useful consumption.
 - A direct-text evidence control is mandatory before assigning a negative oracle-PRA result to
   transport or alignment.
@@ -515,9 +535,9 @@ Claim status:
 - Unsupported for end-task accuracy, QASPER, larger checkpoints, and other model families.
 
 Next discriminating experiment:
-- Replicate the HotpotQA last-four result on a larger identity-disjoint sample with randomized
-  condition order, then test a frozen or tiny learned per-layer memory gate only if the direct
-  text upper control passes.
+- Replicate the HotpotQA late-eight/late-half frontier on a larger identity-disjoint sample with
+  randomized condition order and a checkpoint-solvable generation protocol. Do not add a
+  learned memory-use gate yet: frozen Qwen already demonstrates causal use.
 
 Affected papers:
 - Paper 2 main results and implementation appendix; Paper 0 only after larger replication.
@@ -540,7 +560,8 @@ later PRA layer 21 → K21/V21 for IDs
 
 Potential benefits: better semantics and fewer repeated routing calls while preserving layer-native K/V.
 
-**Status:** planned Paper 3 experiment.
+**Status:** route-once at layer 27 with last-eight/last-half consumption is complete in Paper 2.
+Semantic routing-depth optimization remains a Paper 3 question.
 
 ## 15. Multi-gist and multi-layer are orthogonal
 Represent routing state as `G_c^(l,i)`:
@@ -559,9 +580,9 @@ Do not run the full Cartesian product initially.
 ## 16. Route once vs route every PRA layer
 Compare independent per-layer routing with route-once chunk-ID reuse. Later layers still consume their own K/V; never reuse one layer's K/V at another layer.
 
-Needed evidence: cross-layer selected-set overlap, task quality, routing latency.
-
-**Status:** open Paper 3 systems question.
+Route-once evidence now includes task likelihood, generated F1, full ranking curves, query and
+routing latency, and aggregate per-layer materialization. Independent per-layer routing remains
+an open Paper 3 comparison because it changes selection and consumption simultaneously.
 
 ## 17. Positive and negative results both shape architecture
 Important negative results include:

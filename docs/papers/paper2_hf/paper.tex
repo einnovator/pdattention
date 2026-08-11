@@ -58,17 +58,20 @@ capacity and objective controls selects an asymmetric 128-dimensional margin rou
 262,144 parameters (0.044\% of Qwen). Across five seeds it raises held-out recall@3 from 0.469
 to $0.631\pm0.069$ (95\% half-width), with HotpotQA/QASPER recall@3 of 0.588/0.675 and recall@8
 of 0.806. Width 256, sampled negatives, and one hard-negative refresh do not improve this
-selection. Cross-domain recall@3 remains 0.213 in both directions, the 0.70 promotion gate is
-not met, and an end-to-end check changes retrieval without changing answer F1. A causal
-memory-use intervention then forces every evidence-parent chunk through the unchanged native-K/V
-path. On four HotpotQA examples, oracle memory at the last four layers raises mean gold-token
-log-probability by 1.004 nats, versus 4.635 for direct evidence text, although generated F1 does
-not change. On four QASPER examples, even direct evidence text lowers the same score by 1.791;
-that subset therefore diagnoses a frozen-model/protocol failure rather than PRA transport. A retrospective
-fraction-based analysis nevertheless finds a useful operating region hidden by that fixed-$k$
-gate: the selected adapter reaches any-evidence recall 0.831 at 10\% of candidate chunks and
-0.956 at 20\%, with realized $f_{80}=0.105$ and $f_{90}=0.158$. This retrieval gain does not resolve weak
-cross-domain transfer or the absence of an answer-quality improvement.
+selection. Cross-domain recall@3 remains 0.213 in both directions and the 0.70 promotion gate is
+not met. A causal depth sweep then fixes oracle parent identities while replaying each identity's
+layer-native K/V. On four HotpotQA examples, mean gold-token log-probability rises by
+1.004, 2.311, and 3.641 nats when the last 4, 8, and 14 layers consume memory, respectively,
+versus 4.635 for direct evidence text. All 28 layers are harmful ($-0.766$), and early or sparse
+placement is strongly harmful. QASPER becomes weakly positive only at 8 layers ($+0.347$), but
+its direct-text control is negative, so it remains non-diagnostic for transport quality. Routing
+once with the learned metric and replaying the selected IDs through the last 8 layers gives a
+combined $+0.227$ nats/token while preserving generated F1; the last-half setting gives
+$+0.374$ but lowers F1. The learned ranking reaches evidence-identity recall
+0.264/0.403/0.521/0.639 at 5/10/20/30\% of parent chunks. A bounded 416-token
+\texttt{\#\_\_head} probe retrieves the early fact at rank 1 and gains 5.469 nats/token through
+the last 8 layers, yet greedy decoding still misses it. Multi-layer consumption therefore
+establishes causal use of frozen native K/V, but not an end-task accuracy gain.
 \end{abstract}
 
 \section{Introduction}
@@ -234,7 +237,8 @@ Revision & \texttt{c1899de289a04d12100db370d81485cdf75e47ca} \\
 Parameters / layers & 596,049,920 / 28 \\
 Query heads / K/V heads / head width & 16 / 8 / 128 \\
 RoPE base / advertised positions & $10^6$ / 40,960 \\
-PRA placement & layer 27 only \\
+Initial PRA placement & layer 27 only \\
+Depth-study instrumentation / selected band & all 28 layers / layers 20--27 \\
 Initial gist / routing policy & mean, one gist/chunk, exact top-$k$ \\
 Native limit / direct / selected-memory cap & 256 / 128 / 64 tokens \\
 K/V residency & CPU full cache, selected transfer \\
@@ -957,23 +961,23 @@ separate failure.
 \label{sec:oracle-memory-use}
 
 Retrieval recall answers whether a router found annotated evidence. It does not answer whether
-the frozen decoder can use that evidence after it becomes native K/V. We therefore intervene at
-the selection boundary. The no-memory condition supplies only the question; the learned-router
-condition uses the validation-selected 128-dimensional margin adapter at the last layer; the
-oracle conditions force every 32-token parent that intersects an annotated evidence span; and
-the direct-text oracle places the same evidence in the ordinary prompt. The direct-text control
-tests the frozen model and answer protocol before attributing a failure to memory transport.
+the frozen decoder can use that evidence after it becomes native K/V. The initial adapter
+consumed routed memory only at layer 27; the earlier oracle diagnostic activated at most layers
+24--27. We therefore intervene at both the selection and consumption boundaries. The no-memory
+condition supplies only the question. Oracle conditions force every 32-token parent intersecting
+an annotated evidence span. The direct-text control places the same evidence in the ordinary
+prompt. Four deterministic examples from each dataset are used, so this remains a mechanism
+probe rather than an accuracy estimate.
 
 Forced identities enter \texttt{prepare\_selected\_memory}, exactly where ordinary semantic
 routing ends. Both routes then share thresholding, whole-parent budgeting, native post-RoPE K/V,
 CPU-to-GPU transfer, GQA layout, source positions, additive masks, and Qwen's eager attention
-kernel. The 640-token diagnostic bound reserves 128 direct tokens and permits up to 512 memory
-tokens per layer. All annotated parents survive in every oracle run: there are no budget
-rejections or native-limit violations, and each reference-encoding operation remains bounded at
-128 tokens. Active K/V in Table~\ref{tab:oracle-memory-use} is summed over active layers; thus
-four-layer values are four times the physical per-layer payload. ``Attention'' denotes mass on
-the memory prefix, or on direct evidence tokens for the text control. These quantities are not
-numerically interchangeable because the key sets and number of measured layers differ.
+kernel. A selected parent identity is fixed across layers, but its tensor is not: layer $\ell$
+receives $K_c^{(\ell)},V_c^{(\ell)}$ captured from that layer's own Qwen projections and RoPE
+path. The 640-token bound reserves 128 direct tokens and permits up to 512 memory tokens per
+layer. Every oracle parent survives; no budget or native-limit violation occurs, and each
+reference-encoding call is at most 128 tokens. ``Active K/V'' is the sum of materialized physical
+tokens over consuming layers, not the number of distinct source tokens.
 
 Generation-only F1/EM is too coarse for this small frozen checkpoint. The primary paired outcome
 is therefore teacher-forced mean gold-token log-probability,
@@ -988,96 +992,169 @@ used. This is a mechanism probe, not an accuracy estimate.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Frozen-Qwen causal memory-use intervention. Evidence ``yes'' means all annotated
-parent chunks were materialized. $\Delta\log p$ is paired mean gold-token log-probability relative
-to no memory. Latency combines synchronized teacher-forced scoring and eight-token generation;
-the fixed condition order makes it descriptive, not a serving comparison.}
+\caption{Oracle consumption-depth sweep. $\Delta\log p$ is paired mean gold-token
+log-probability relative to no memory. K/V is aggregate physical materialization across active
+layers. TTFT and generation are synchronized descriptive seconds, not serving benchmarks.}
 \label{tab:oracle-memory-use}
 \resizebox{\linewidth}{!}{%
-\begin{tabular}{llcccccccc}
+\begin{tabular}{llrrrrrrr}
 \toprule
-Dataset & Condition & Evidence & PRA layers & $\Delta\log p$ & Attention & F1/EM & Active K/V & Time (s) & Viol. \\
+Dataset & Condition & Layers & $\Delta\log p$ & F1 & K/V tokens & TTFT & Generation \\
 \midrule
-HotpotQA & none & no & 0 & 0.000 & -- & .056/.000 & 0 & .911 & 0 \\
-HotpotQA & learned router & no & last 1 & +.011 & .473 & .056/.000 & 96 & .880 & 0 \\
-HotpotQA & oracle & yes & last 1 & +.071 & .605 & .056/.000 & 112 & .839 & 0 \\
-HotpotQA & oracle & yes & last 2 & +.233 & .582 & .056/.000 & 224 & .865 & 0 \\
-HotpotQA & oracle & yes & last 4 & +1.004 & .569 & .056/.000 & 449 & .910 & 0 \\
-HotpotQA & oracle & yes & early + last & -.372 & .591 & .056/.000 & 224 & .861 & 0 \\
-HotpotQA & direct evidence text & yes & 0 & +4.635 & .021 & .125/.000 & 0 & .972 & 0 \\
+HotpotQA & none & 0 & .000 & .056 & 0 & .140 & .737 \\
+HotpotQA & oracle, last 1 & 1 & +.071 & .056 & 112 & .143 & .733 \\
+HotpotQA & oracle, last 4 & 4 & +1.004 & .056 & 449 & .154 & .813 \\
+HotpotQA & oracle, last 8 & 8 & +2.311 & .056 & 898 & .169 & .877 \\
+HotpotQA & oracle, last half & 14 & +3.641 & .056 & 1,572 & .193 & 1.013 \\
+HotpotQA & oracle, all & 28 & -.766 & .000 & 3,143 & .245 & 1.382 \\
+HotpotQA & direct evidence text & 0 & +4.635 & .125 & 0 & .198 & .986 \\
 \midrule
-QASPER & none & no & 0 & 0.000 & -- & .125/.000 & 0 & .859 & 0 \\
-QASPER & learned router & no & last 1 & -.461 & .505 & .125/.000 & 96 & .953 & 0 \\
-QASPER & oracle & yes & last 1 & -.091 & .654 & .125/.000 & 240 & .880 & 0 \\
-QASPER & oracle & yes & last 2 & -.145 & .657 & .125/.000 & 480 & .904 & 0 \\
-QASPER & oracle & yes & last 4 & -.161 & .636 & .125/.000 & 960 & .967 & 0 \\
-QASPER & oracle & yes & early + last & +.006 & .560 & .062/.000 & 480 & .925 & 0 \\
-QASPER & direct evidence text & yes & 0 & -1.791 & .022 & .000/.000 & 0 & 1.493 & 0 \\
+QASPER & none & 0 & .000 & .125 & 0 & .135 & .781 \\
+QASPER & oracle, last 1 & 1 & -.091 & .125 & 240 & .137 & .785 \\
+QASPER & oracle, last 4 & 4 & -.161 & .125 & 960 & .149 & .844 \\
+QASPER & oracle, last 8 & 8 & +.347 & .125 & 1,920 & .163 & .899 \\
+QASPER & oracle, last half & 14 & +.072 & .100 & 3,360 & .188 & 1.081 \\
+QASPER & oracle, all & 28 & -7.492 & .000 & 6,720 & .249 & 1.488 \\
+QASPER & direct evidence text & 0 & -1.791 & .000 & 0 & .416 & 1.090 \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\linewidth]{../shared/results/paper2_hf/oracle_memory_use/oracle_memory_use.pdf}
-\caption{Paired likelihood change and PRA-memory attention. The HotpotQA last-four oracle moves
-the gold answer in the correct direction while direct text remains a much stronger upper
-control. QASPER allocates substantial attention to oracle evidence without improving answer
-likelihood, and its direct-text control also fails. Attention allocation is therefore not by
-itself evidence of useful causal consumption.}
-\label{fig:oracle-memory-use}
+\includegraphics[width=\linewidth]{../shared/results/paper2_hf/multilayer_pra/oracle_layer_depth.pdf}
+\caption{Oracle depth sweep. Repeated exposure through a contiguous late band improves
+HotpotQA likelihood, but the curve is non-monotone: all-layer replay is harmful on both
+datasets. The lower panels expose the associated aggregate materialization cost and per-layer
+attention rather than treating layer count as free.}
+\label{fig:oracle-layer-depth}
 \end{figure}
 
-HotpotQA provides a qualified positive mechanism result. The last-one and last-two interventions
-move mean log-probability by only $+0.071$ and $+0.233$ nats/token. Applying the same evidence to
-the last four layers reaches $+1.004$, is positive in three of four examples, and improves mean
-first-token rank from 887 to 237. The direct-text oracle is positive in all four and reaches
-$+4.635$, so native memory recovers part, not all, of the model's available evidence benefit.
-Generated F1 remains unchanged, which places the result below an end-task quality claim.
+HotpotQA supports the integration-depth hypothesis within a late band. The last-one, last-four,
+last-eight, and last-half interventions move mean log-probability by $+0.071$, $+1.004$,
+$+2.311$, and $+3.641$ nats/token. The last eight recover 49.9\% of the direct-text effect while
+using 8/28 layers; the last half recover 78.6\% at 1.75 times the last-eight materialization.
+Generated F1 does not change. The evidence therefore establishes causal likelihood use, not
+decoded QA success.
 
-QASPER separates perturbation from utility. Oracle evidence receives 0.615--0.645 attention mass
-and the final answer-position hidden-state relative $\ell_2$ delta grows from 0.101 at one layer
-to 0.271 at four layers, yet gold likelihood does not improve. Direct evidence text is also
-negative in all four examples ($-1.791$ nats/token). Consequently this subset cannot distinguish
-PRA misalignment from a checkpoint, prompt, or compact-sample limitation. The correct conclusion
-is dataset-conditional: frozen native memory shows causal answer-likelihood use on HotpotQA at
-four upper layers, while QASPER fails the required direct-text upper control.
+QASPER separates perturbation from interpretable utility. It turns positive at the last eight
+layers ($+0.347$) but is only $+0.072$ at the last half, while direct evidence text is negative
+($-1.791$). That control failure prevents using this subset to grade PRA transport. Attention
+mass and hidden-state perturbations are retained in the artifact, but neither alone is evidence
+that a perturbation is useful.
 
-The learned router is not rescued by this analysis. Its selected three parents contain little
-annotated-evidence attention mass (0.031 HotpotQA, 0.105 QASPER), and its paired likelihood change
-is $+0.011$ and $-0.461$, respectively. Better learned selection remains useful, but current
-end-to-end quality is jointly limited by selection and layer-specific memory-use alignment.
+\subsection{Placement is not interchangeable}
 
-\subsection{Canonical end-to-end confirmation}
-
-After establishing the routing/payload boundary, we run one HotpotQA example, one QASPER
-example, and one synthetic displaced prompt through the explicit default: attention-input
-hidden-state routing followed by native post-RoPE K/V materialization. Table~\ref{tab:canonical-confirmation}
-reports prefill routing and answer generation separately.
+The depth result justifies one placement follow-up. Table~\ref{tab:oracle-placement} fixes either
+four or seven consuming layers and leaves oracle parent identities, positions, prompts, and
+per-layer payload sizes unchanged.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Compact end-to-end confirmation. All conditions materialize three 32-token parents.}
-\label{tab:canonical-confirmation}
-\begin{tabular}{lccccc}
+\caption{Combined oracle placement result. Equal-count rows have equal aggregate K/V cost.}
+\label{tab:oracle-placement}
+\begin{tabular}{lrrrr}
 \toprule
-Source & Recall & Selected & K/V tokens & F1 & Violations \\
+Placement & Layers & First layer & $\Delta\log p$ & F1 \\
 \midrule
-HotpotQA explicit URI & 0.000 & 0.071 & 96 & 0.000 & 0 \\
-QASPER explicit URI & 0.000 & 0.023 & 96 & 0.000 & 0 \\
-Synthetic \texttt{\#\_\_head} & 1.000 & 0.375 & 96 & 0.000 & 0 \\
+Early contiguous & 4 & 0 & -10.573 & .000 \\
+Middle contiguous & 4 & 12 & -.556 & .090 \\
+Evenly spaced & 4 & 0 & -10.398 & .000 \\
+Late contiguous & 4 & 24 & +.421 & .090 \\
+Every fourth & 7 & 0 & -6.090 & .000 \\
+Late contiguous quarter & 7 & 21 & +1.128 & .090 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The explicit cases reproduce the earlier causal-negative result: neither selected set overlaps
-annotated evidence and neither answer is correct. The 416-token implicit-prompt case displaces
-256 tokens, keeps a 160-token direct tail, selects the chunk containing the early ``cobalt''
-fact, and combines 96 memory tokens with the tail at the 256-token native bound. It nevertheless
-does not generate the target answer. This is a useful separation of claims: native transport,
-logical positions, and even evidence selection can work in one probe without establishing that
-a single frozen upper layer uses the memory causally for decoding.
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper2_hf/multilayer_pra/oracle_layer_placement.pdf}
+\caption{Oracle placement at matched parent identities and matched per-layer payload. Earlier
+and sparse placements are not approximations to a late contiguous band; they reverse the
+likelihood effect despite comparable attention and exactly equal K/V cost at equal counts.}
+\label{fig:oracle-layer-placement}
+\end{figure}
+
+This rejects both proposed shortcuts. Earlier insertion does not help by leaving more downstream
+depth, and every-fourth insertion does not approximate dense late consumption. The likely
+mechanism is a layer-specific contextualization/topology mismatch: independently encoded
+reference states are least compatible with early residual computation, whereas a contiguous
+upper band can repeatedly integrate them after the local question has become semantically
+formed. This interpretation is mechanistic, not yet a general theorem about decoder depth.
+All-layer replay is especially informative: more attention opportunities can make the answer
+worse. The operating point is therefore a band, not ``as many PRA layers as possible.''
+
+\subsection{Route once, consume with layer-native payloads}
+
+The routed follow-up scores the question once at layer 27, selects three parent IDs, and reuses
+those identities across either the last 8 or last 14 layers. Every layer resolves the ID to its
+own post-RoPE K/V; no tensor crosses layer boundaries. Table~\ref{tab:routed-multilayer} reports
+the complete pre-top-$k$ evidence-identity ranking and the aggregate consumption cost.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Combined route-once result over eight examples. Recall is the fraction of mapped
+evidence-parent identities recovered at a parent-selection fraction; $f_{80}$ and $f_{90}$ are
+the first measured fractions reaching those recall levels.}
+\label{tab:routed-multilayer}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llrrrrrrrrr}
+\toprule
+Router & Consumption & R@5\% & R@10\% & R@20\% & R@30\% & $f_{80}$ & $f_{90}$ & $\Delta\log p$ & F1 & K/V \\
+\midrule
+Learned margin & last 8 & .264 & .403 & .521 & .639 & .502 & 1.000 & +.227 & .090 & 768 \\
+Learned margin & last half & .264 & .403 & .521 & .639 & .502 & 1.000 & +.374 & .028 & 1,344 \\
+Raw hidden-state cosine & last 8 & .092 & .224 & .414 & .573 & 1.000 & 1.000 & +.150 & .090 & 768 \\
+Raw hidden-state cosine & last half & .092 & .224 & .414 & .573 & 1.000 & 1.000 & +.568 & .090 & 1,344 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The learned router gives the stronger sparse ranking and reaches evidence in 5/8 selected top-3
+sets. Last-eight consumption preserves the no-memory F1 and moves likelihood by $+0.227$;
+last-half consumption moves it by $+0.374$ but lowers F1 to .028. Raw cosine has weaker sparse
+recall yet a larger last-half likelihood shift. This is not a contradiction: a selected
+non-annotated parent can still change the answer distribution, and a likelihood movement need
+not cross the greedy decoding boundary. The learned last-eight condition is the conservative
+quality/cost operating point. It materializes 768 K/V tokens across layers, increases TTFT from
+.141 to .167 seconds and generation from .759 to .907 seconds, and adds one .149-second query
+encoding plus .021-second exact route. Its layer-27 learned index averages 45,184 bytes; storing
+projected gists for all 28 instrumented layers averages 1.27 MB, versus 322.7 MB of resident
+detail K/V. These eager single-example timings characterize this implementation only.
+
+\subsection{Canonical end-to-end confirmation}
+
+The earlier single-layer \texttt{\#\_\_head} run established bounded displacement but generated
+no correct answer. We repeat that probe with the learned router at layer 27 and the selected
+late-eight consumption band. The 416-token logical prompt displaces 288 tokens, retains a
+128-token direct tail with positions 288--415, and indexes nine 32-token parents. The router
+ranks the evidence parent first and selects it with two neighboring parents. Each layer 20--27
+then consumes its own 96-token native K/V payload.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Multi-layer bounded-head confirmation. Rank is the gold first-token vocabulary rank;
+K/V is aggregate physical materialization over the consuming layers.}
+\label{tab:canonical-confirmation}
+\begin{tabular}{lrrrrrr}
+\toprule
+Condition & Evidence rank & $\Delta\log p$ & First-token rank & K/V & F1 & Viol. \\
+\midrule
+No memory & -- & .000 & 94,106 & 0 & .000 & 0 \\
+Learned route, last 8 & 1 & +5.469 & 1,351 & 768 & .000 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The intervention raises the two-token answer's mean log-probability from $-10.924$ to $-5.455$
+and its first-token probability from $3.79\times10^{-9}$ to $1.95\times10^{-5}$. Greedy output
+still omits ``cobalt.'' The maximum native operation remains 128 tokens and no violation occurs.
+Thus the bounded head now demonstrates routing, multi-layer layer-native transport, and strong
+causal likelihood use together. It still does not establish decoded task success.
 
 \section{Systems Observations}
 
@@ -1090,6 +1167,13 @@ routing, generation, and transfer are reported separately so cache reuse is not 
 The artifacts keep three quantities distinct: compact routing-index bytes, resident detail-K/V
 bytes, and selected/materialized K/V bytes. The token-max experiment changes the first by
 roughly 32 times while holding the latter two fixed at a given parent selection and budget.
+Multi-layer consumption changes a fourth quantity: the same three parent identities correspond
+to 96 distinct physical K/V tokens per consuming layer. Last-eight and last-half route-once
+runs therefore materialize 768 and 1,344 physical tokens, respectively. They route once; they do
+not pay eight or fourteen semantic searches. The layer-27 learned routing index averages 45 KB,
+but this diagnostic implementation stores routing gists for every instrumented layer. A serving
+implementation that routes only at layer 27 can omit the other routing views while retaining
+the required per-layer detail K/V.
 
 The current HF path is intentionally eager and unfused. Variable memory rows are padded into a
 rectangle before Qwen's native eager function. Flash attention, SDPA, custom kernels, ANN
@@ -1111,11 +1195,14 @@ The tiny learned adapter establishes that evidence supervision can reshape froze
 especially on QASPER, but validation/test instability and weak cross-domain transfer prevent a
 general routing claim. Fraction-based evaluation shows that it has a useful 10--20\% retrieval
 operating region despite failing Recall@3; this revises the gate interpretation, not the causal
-generation result. The next experiment should increase split size and label diversity before
-adding adapter capacity. If retrieval becomes stable while generation remains unchanged, the
-next mechanism belongs to memory-use alignment rather than routing. The contiguous-mean,
-token-max, centered-RoPE, and query-pooling results close the current simple zero-parameter
-sweeps. Llama remains blocked until Qwen passes the declared gate. Gemma remains later.
+generation result. Multi-layer oracle and bounded-head results show that frozen Qwen can use
+selected native K/V without a learned memory-use adapter; such an adapter is therefore not the
+next justified intervention. The next discriminating experiment should replicate the late-band
+result on a larger, checkpoint-solvable cohort, then jointly report decoded quality and
+likelihood at the last-eight operating point. Routing data should also increase in split size
+and label diversity before adding adapter capacity. The contiguous-mean, token-max,
+centered-RoPE, and query-pooling results close the current simple zero-parameter sweeps. Llama
+remains blocked until Qwen passes the declared quality gate. Gemma remains later.
 
 \section{Related Work}
 
@@ -1156,13 +1243,18 @@ geometry is a real part of the bottleneck. Fraction-based analysis further shows
 recall of 0.831 at 10\% and 0.956 at 20\%, so Recall@3 understates the usable retrieval regime.
 More dimensions and harder sampled negatives do not improve it. The validation-selected adapter
 still misses the held-out fixed-$k$ gate and transfers poorly.
-Generated answer quality remains unchanged even when evidence is selected. Teacher-forced
-likelihood gives a narrower result: four upper oracle layers recover a positive part of the
-direct-text evidence effect on HotpotQA, whereas one or two upper layers do little and an
-early-plus-last placement is harmful. QASPER attends strongly to native oracle evidence without
-using it productively, but direct text also fails there. The next work must therefore separate
-data-limited routing generalization, checkpoint/task competence, and layer-specific memory-use
-alignment, not claim solved long-context retrieval or proceed to Llama.
+Generated answer quality remains unchanged even when evidence is selected, but the expanded
+causal diagnosis revises the earlier conclusion. On HotpotQA, repeated oracle consumption in a
+contiguous late band produces a monotone gain through the last half and recovers most of the
+direct-text likelihood effect. Early, sparse, and all-layer placement are harmful, so layer
+count alone is not the mechanism. Route-once learned retrieval through the last eight layers
+produces a smaller positive likelihood change at 4.9\% selected parents while preserving F1.
+The bounded \texttt{\#\_\_head} probe produces a large gold-likelihood gain when its rank-1 fact
+is consumed through that band. Frozen Qwen therefore can causally use retrieved native K/V; a
+learned memory-use adapter is not yet required. It cannot yet decode the answer reliably, and
+QASPER fails its direct-text control. The next work must replicate the late-band operating point
+at scale and separate retrieval generalization, checkpoint/task competence, and the remaining
+likelihood-to-decoding gap before claiming solved long-context QA or proceeding to Llama.
 
 \appendix
 \section{Code-Level Adapter Reimplementation Guide}
@@ -1175,6 +1267,10 @@ copying the Qwen implementation. Source references use physical line numbers at 
 default and exposes the fixed-selection materialization boundary.
 The line references are deliberately revision-pinned because upstream
 Transformers APIs and local diagnostics will move over time.
+The multi-layer identity mapping, experiments, tests, and complete artifacts are pinned
+separately at
+\href{https://github.com/einnovator/pdattention/tree/8f6ef41}{commit \texttt{8f6ef41}};
+all multi-layer line references below refer to that revision.
 
 \subsection{Tensor and ownership contract}
 
@@ -1294,6 +1390,40 @@ and paired deltas are assembled at lines 310--419. A reimplementation should ass
 invariants per example: requested oracle IDs equal retained IDs, budget rejection is zero, and
 the largest native operation stays below the declared bound.
 
+\subsection{Route-once multi-layer consumption}
+
+Multi-layer PRA shares an identity decision, not an attention tensor. An implementation should
+make the distinction visible in its types:
+
+\begin{verbatim}
+01  selected = route_once(query_at_layer_27)       # parent IDs + scores
+02  for layer in consumption_layers:
+03      layer_hits = []
+04      for hit in selected:
+05          chunk = cache[hit.uri].layer[layer].by_id[hit.chunk_id]
+06          assert chunk.kv.was_projected_by == layer
+07          layer_hits.append(hit.with_payload(chunk.kv))
+08      adapter[layer].set_fixed_selection(layer_hits)
+09  model(question)                                # no further semantic search
+\end{verbatim}
+
+The operational API activates an arbitrary layer set at
+\texttt{hf/injection.py}, lines 70--93. Identity-to-payload resolution is lines 97--145: for
+each requested layer it looks up the stable \texttt{chunk\_id} in that layer's
+\texttt{LayerReferenceMemory}, replaces the payload, and records the source routing layer. A
+missing layer or chunk is an error rather than a fallback to another layer's K/V. The Qwen
+adapter's fixed-selection branch at \texttt{hf/qwen.py}, lines 273--289 then calls the same
+budgeting, transfer, mask, and attention path as ordinary routing.
+
+The experiment captures the last-layer information-need state and performs one complete ranking
+at \texttt{run\_multilayer\_pra.py}, lines 161--198. Oracle and routed identities are mapped at
+lines 277--325; the remainder of the function records per-layer attention, hidden-state changes,
+materialized tokens, transfers, and latency. The invariant test at
+\texttt{tests/test\_hf\_integration.py}, lines 548--586 asserts equal parent IDs but different
+target-layer objects, tensor pointers, and values while preserving native
+$[B,H_{kv},T,d_h]$ shape. This catches the most dangerous superficially working implementation:
+copying $K^{(27)},V^{(27)}$ into every consuming layer.
+
 \subsection{Publishing a reference}
 
 Reference construction is a bounded prefill, not a second attention mechanism. A portable
@@ -1313,11 +1443,11 @@ implementation follows this recipe:
 11  restore_previous_memory_state()
 \end{verbatim}
 
-The concrete loop is \texttt{hf/injection.py}, lines 105--210. Encoding block size limits one
+The concrete loop is \texttt{hf/injection.py}, lines 235--354. Encoding block size limits one
 native model invocation; routing chunk size and overlap independently determine index
-granularity (lines 128--147). Each chunk slices the captured post-RoPE K/V, chooses transient
-routing features through \texttt{\_routing\_points} (lines 80--103), computes one or more
-compact gists, and records logical source offsets (lines 148--203). Keeping those two
+granularity (lines 266--292). Each chunk slices the captured post-RoPE K/V, chooses transient
+routing features through \texttt{\_routing\_points} (lines 172--233), computes one or more
+compact gists, and records logical source offsets (lines 293--348). Keeping those two
 scales separate is important: changing index granularity must not silently change how the
 pretrained model encoded the source.
 
@@ -1331,7 +1461,7 @@ publication remains \texttt{hf/injection.py}, lines 163--190, and packed scoring
 reduction remains \texttt{memory.py}, lines 487--593.
 
 The same operation implements displaced long-prompt history. At
-\texttt{hf/injection.py}, lines 212--226, the prefix is published under the reserved
+\texttt{hf/injection.py}, lines 357--370, the prefix is published under the reserved
 \texttt{\#\_\_head} URI and the direct tail retains continued logical position IDs. Every
 reference-encoding call and every direct call must satisfy the model-safe native bound even
 when the logical source is longer.
@@ -1343,7 +1473,7 @@ inside each decoder layer; Q/K/V projections; any Q/K normalization; positional 
 generation-cache update and its keyword arguments; native mask convention; and the eager
 attention plus output projection. Implement the six abstract methods declared at
 \texttt{hf/adapter\_base.py}, lines 85--106, then add a narrow type-selection branch analogous to
-\texttt{inject\_pra} at \texttt{hf/injection.py}, lines 228--253. No checkpoint conversion or
+\texttt{inject\_pra} at \texttt{hf/injection.py}, lines 379--428. No checkpoint conversion or
 parameter copy should be needed.
 
 The recommended validation order is:
@@ -1392,9 +1522,11 @@ Disabled and active runtime paths & \texttt{src/pra\_torch/hf/qwen.py}, 171--275
 Routing query and GQA reduction & \texttt{src/pra\_torch/core.py}, 92--121 \\
 Budget, deduplication, transfer, and materialization & \texttt{src/pra\_torch/core.py}, 155--392 \\
 Fixed-selection identity/payload boundary & \texttt{src/pra\_torch/core.py}, 335--392 \\
+Route-once layer-native identity mapping & \texttt{src/pra\_torch/hf/injection.py}, 70--145 \\
 K/V and additive-mask composition & \texttt{src/pra\_torch/core.py}, 394--436 \\
-Selected-layer injection & \texttt{src/pra\_torch/hf/injection.py}, 234--259 \\
-Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 55--330 \\
+Reference publication and selected-layer injection & \texttt{src/pra\_torch/hf/injection.py}, 235--428 \\
+Depth schedules and causal protocol & \texttt{experiments/paper2\_hf/qa/run\_multilayer\_pra.py}, 62--964 \\
+Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 80--636 \\
 \bottomrule
 \end{tabularx}
 \end{table}
