@@ -33,7 +33,9 @@ Natural-language and retrieved-memory validation qualify the result. On 8L WikiT
 offsets lower final-layer K error in 30/30 pairs but lower next-token loss in only 5/30. On
 controlled HotpotQA- and QASPER-derived answer-code probes, routed loss improves in 35/60 pairs:
 learned-absolute and sinusoidal means improve, whereas RoPE means worsen in both datasets and
-capacities. Thus coordinate fidelity does not by itself guarantee useful prediction.
+capacities. A ranking retrospective reinforces the separation: with one of four references
+selected, small-tier sinusoidal target recall is 0.779/0.800 on the two probes, versus
+0.454/0.408 for RoPE. Thus coordinate fidelity does not by itself guarantee useful prediction.
 Contextualization and routing remain separate factors, while oracle anomalies suggest memory
 composition as a fourth. A four-cell pre/post-RoPE matrix also establishes exact parity at
 matched effective positions; deferred rotation permits rebinding but raises the measured
@@ -805,6 +807,74 @@ direction reverses, and overlap is not monotonic.}
 \label{fig:qa-validation}
 \end{figure}
 
+\subsection{Routing Recall Versus Realized Memory Fraction}
+
+The preceding fixed-selection recall reports whether the union executed by the multilayer
+router contains the programmatic target. The stored per-layer rankings permit a complementary
+retrospective: for each example and layer, select
+$k_i(f)=\lceil fN_i\rceil$ references and measure target-reference recall before cross-layer
+union. This is a routing experiment with labels; the evidence-only, all-memory, constructed
+oracle, and fixed-selection positional controls are deliberately excluded.
+
+These probes contain only four candidate references. Consequently, requested fractions from
+1\% through 25\% all realize one selected reference (25\%), while 30\% realizes two (50\%).
+Table~\ref{tab:rope-recall-sparsity} retains the requested-fraction columns for consistency,
+but Figure~\ref{fig:rope-recall-sparsity} uses the honest realized fraction. $f_{80}$ and
+$f_{90}$ likewise report realized selection after ceiling. AUC$_{0--30}$ integrates the
+predeclared requested-fraction grid and is included only as a compact within-protocol summary;
+it should not be mistaken for evidence below the 25\% physical operating point.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Small-tier offset-plus-overlap per-layer target-reference recall. R@5/10/20 all map
+to one of four references; R@30 maps to two. Inverse fractions are realized, not requested.
+Each row averages 240 layer rankings from five seeds.}
+\label{tab:rope-recall-sparsity}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Dataset & Position & R@5\% & R@10\% & R@20\% & R@30\% & $f_{80}$ & $f_{90}$ & AUC$_{0--30}$ \\
+\midrule
+HotpotQA & Learned absolute & .629 & .629 & .629 & .721 & 1.00 & 1.00 & .626 \\
+HotpotQA & Sinusoidal & .779 & .779 & .779 & .829 & .50 & 1.00 & .770 \\
+HotpotQA & RoPE & .454 & .454 & .454 & .588 & 1.00 & 1.00 & .458 \\
+QASPER & Learned absolute & .571 & .571 & .571 & .700 & 1.00 & 1.00 & .572 \\
+QASPER & Sinusoidal & .800 & .800 & .800 & .875 & .25 & 1.00 & .793 \\
+QASPER & RoPE & .408 & .408 & .408 & .558 & 1.00 & 1.00 & .414 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/figures/rope_qa_recall_sparsity.pdf}
+\caption{Per-layer target-reference recall at the three realizable selected-reference
+fractions. Sinusoidal routing dominates learned absolute and RoPE in this controlled probe.
+The four-candidate design cannot resolve behavior below 25\%.}
+\label{fig:rope-recall-sparsity}
+\end{figure}
+
+The ranking result is mechanism-specific rather than a generic benefit from coordinate repair.
+At the 25\% operating point, sinusoidal recall is 0.779 on HotpotQA-derived and 0.800 on
+QASPER-derived text. Learned absolute reaches 0.629/0.571, while RoPE reaches 0.454/0.408.
+Moving to 50\% raises all six conditions but leaves the ordering unchanged. The result agrees
+with the loss direction in Table~\ref{tab:qa-offset-effects}: exact RoPE coordinate fidelity
+does not make the mean-gist router semantically stronger.
+
+Exact candidate spans also permit a native-K/V axis. One selected reference materializes about
+25\% of indexed source K/V on average, two materialize about 50\%, and all four give the
+complete endpoint. Figure~\ref{fig:rope-recall-kv} uses those physical token counts rather
+than treating references as equal length. The close agreement between the two x-axes is a
+property of this four-part generator, not a general PRA assumption.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/figures/rope_qa_recall_kv_fraction.pdf}
+\caption{Per-layer target-reference recall against exact materialized native-K/V token
+fraction. Candidate lengths come from stored chunk spans; no token fraction is approximated.}
+\label{fig:rope-recall-kv}
+\end{figure}
+
 Selection remains visible after coordinate repair, and the oracle anomaly suggests composition
 as a fourth candidate factor. The evidence-only condition is position-insensitive here because
 the explicit answer-code anchor occupies the first source chunk. All-memory loss improves under
@@ -950,7 +1020,9 @@ improvements and mechanism-dependent HotpotQA/QASPER effects locate the remainin
 contextualization, learned distance distributions, routing, and a suggested memory-composition
 factor. This completes the paper's planned controlled scope. Pretrained RoPE/GQA evaluation is
 the smallest next external-validity test, not another expansion of the present benchmark
-matrix.
+matrix. The routing retrospective also shows why that next study needs substantially more than
+four candidates: the current data has only 25\%, 50\%, and 100\% realized operating points and
+cannot support a claim about highly sparse retrieval.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
