@@ -634,7 +634,7 @@ def test_qwen_generation_cache_does_not_duplicate_local_history_with_memory():
     assert diagnostics["retrieved_physical_kv_tokens"] == 4
 
 
-def test_qwen_layer_selection_rejects_non_qwen_and_out_of_range_layers():
+def test_hf_layer_selection_rejects_out_of_range_and_dispatches_llama():
     with pytest.raises(ValueError, match="outside"):
         inject_pra(_tiny_qwen(), _hf_config(layer_ids=(5,)))
 
@@ -649,5 +649,7 @@ def test_qwen_layer_selection_rejects_non_qwen_and_out_of_range_layers():
     )
     llama_config._attn_implementation = "eager"
     llama = transformers.LlamaForCausalLM(llama_config)
-    with pytest.raises(TypeError, match="Only Qwen"):
-        inject_pra(llama, _hf_config(layer_ids=(0,), model_max_context_tokens=64))
+    handle = inject_pra(
+        llama, _hf_config(layer_ids=(0,), model_max_context_tokens=64)
+    )
+    assert handle.adapters[0].family == "llama"

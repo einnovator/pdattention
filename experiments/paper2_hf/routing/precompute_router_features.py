@@ -1,4 +1,4 @@
-"""Precompute frozen Qwen query/chunk features for tiny routing adapters."""
+"""Precompute frozen HF query/chunk features for tiny routing adapters."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ if str(ROOT) not in sys.path:
 
 from experiments.paper2_hf.common.artifacts import runtime_metadata
 from experiments.paper2_hf.qa.run_smoke import evidence_token_spans
-from experiments.paper2_hf.qwen.run_first_night import MODEL_ID, MODEL_REVISION
 from experiments.paper2_hf.routing.run_query_strategies import (
     REGISTRY,
     _capture_query_features,
@@ -113,10 +112,12 @@ def _features_for_example(handle, tokenizer, example: dict, device, query_specs)
 def run(args) -> dict:
     device = torch.device(args.device)
     dtype = torch.float16 if device.type == "cuda" else torch.float32
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_id, revision=args.model_revision
+    )
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID,
-        revision=MODEL_REVISION,
+        args.model_id,
+        revision=args.model_revision,
         attn_implementation="eager",
         torch_dtype=dtype,
         low_cpu_mem_usage=True,
@@ -126,7 +127,7 @@ def run(args) -> dict:
     handle = inject_pra(
         model,
         PRAHFConfig(
-            layer_ids=(-1,),
+            layer_ids=(args.routing_layer,),
             model_max_context_tokens=256,
             max_prompt_direct_tokens=128,
             encoding_block_tokens=128,
@@ -193,13 +194,19 @@ def run(args) -> dict:
         raise RuntimeError(f"Feature split identity leakage: {leakage}")
     manifest = {
         "runtime": runtime_metadata(),
-        "model_id": MODEL_ID,
-        "model_revision": MODEL_REVISION,
+        "model_id": args.model_id,
+        "model_revision": args.model_revision,
         "routing_layer": next(iter(handle.adapters)),
         "feature_source": ATTENTION_INPUT_HIDDEN_STATE,
         "feature_width": feature_width,
         "native_kv_heads": int(model.config.num_key_value_heads),
-        "native_head_dim": int(model.config.head_dim),
+        "native_head_dim": int(
+            getattr(
+                model.config,
+                "head_dim",
+                model.config.hidden_size // model.config.num_attention_heads,
+            )
+        ),
         "native_kv_dtype_bytes": torch.tensor([], dtype=dtype).element_size(),
         "routing_chunk_tokens": 32,
         "gist_mode": "mean",
@@ -219,6 +226,9 @@ def run(args) -> dict:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model-id", default="Qwen/Qwen3-0.6B")
+    parser.add_argument("--model-revision", default="main")
+    parser.add_argument("--routing-layer", type=int, default=-1)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=20260811)
     parser.add_argument("--train-examples", type=int)

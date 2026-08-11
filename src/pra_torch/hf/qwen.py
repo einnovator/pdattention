@@ -40,6 +40,11 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
 
     family = "qwen"
 
+    @staticmethod
+    def resolve_native_symbols(original_attention):
+        """Return the installed family's RoPE helper, eager kernel, and variant."""
+        return _qwen_symbols(original_attention)
+
     def __init__(
         self,
         original_attention,
@@ -65,9 +70,11 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         # The owning Qwen model already registers this module. Keep a non-owning
         # reference so the adapter can request native fractional-position phases.
         self.__dict__["native_rotary_embedding"] = rotary_embedding
-        self.apply_rotary_pos_emb, self.eager_attention_forward, self.variant = _qwen_symbols(
-            original_attention
-        )
+        (
+            self.apply_rotary_pos_emb,
+            self.eager_attention_forward,
+            self.variant,
+        ) = self.resolve_native_symbols(original_attention)
 
     def project_qkv(self, hidden_states: torch.Tensor):
         """Project ``[B,T,D]`` using native Qwen Q/K/V and optional QK norms."""

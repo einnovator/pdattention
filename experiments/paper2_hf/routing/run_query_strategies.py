@@ -105,12 +105,15 @@ def load_split_examples(cache_dir: Path, count: int, offset: int, seed: int) -> 
 
 def _prompt_with_question_span(tokenizer, question: str, max_tokens: int):
     content = f"Answer briefly and directly.\nQuestion: {question}"
-    rendered = tokenizer.apply_chat_template(
-        [{"role": "user", "content": content}],
-        tokenize=False,
-        add_generation_prompt=True,
-        enable_thinking=False,
-    )
+    if tokenizer.chat_template:
+        rendered = tokenizer.apply_chat_template(
+            [{"role": "user", "content": content}],
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
+    else:
+        rendered = content
     marker = f"Question: {question}"
     marker_start = rendered.rfind(marker)
     if marker_start < 0:

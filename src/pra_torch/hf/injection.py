@@ -24,6 +24,7 @@ from .config import (
     canonical_routing_representation,
 )
 from .qwen import QwenPRAAttentionAdapter
+from .llama import LlamaPRAAttentionAdapter
 
 
 @dataclass(frozen=True)
@@ -382,7 +383,7 @@ def inject_pra(
     *,
     routing_projection=None,
 ) -> PRAHFModel:
-    """Wrap selected Qwen attention modules while reusing every pretrained parameter."""
+    """Wrap selected supported attention modules while reusing pretrained parameters."""
     config = config or PRAHFConfig()
     if not hasattr(model, "model") or not hasattr(model.model, "layers"):
         raise TypeError("Expected a Hugging Face decoder model exposing model.layers.")
@@ -401,9 +402,17 @@ def inject_pra(
     adapters: dict[int, PRAHFAttentionAdapter] = {}
     for layer_id in selected:
         original = layers[layer_id].self_attn
-        if ".qwen2." not in original.__class__.__module__ and ".qwen3." not in original.__class__.__module__:
-            raise TypeError("Only Qwen2/Qwen2.5/Qwen3 is implemented in the first Paper 2 milestone.")
-        adapter = QwenPRAAttentionAdapter(
+        module_name = original.__class__.__module__
+        if ".qwen2." in module_name or ".qwen3." in module_name:
+            adapter_class = QwenPRAAttentionAdapter
+        elif ".llama." in module_name:
+            adapter_class = LlamaPRAAttentionAdapter
+        else:
+            raise TypeError(
+                "PRA-HF supports Qwen2/Qwen2.5/Qwen3 and Llama attention modules; "
+                f"received {original.__class__.__qualname__}."
+            )
+        adapter = adapter_class(
             original,
             cache,
             pra_config,

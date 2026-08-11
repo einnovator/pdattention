@@ -7,6 +7,7 @@ from .config import (
     canonical_routing_representation,
 )
 from .injection import PRAHFModel, inject_pra
+from .llama import LlamaPRAAttentionAdapter
 from .query import (
     QUERY_EXPONENTIAL,
     QUERY_LAST,
@@ -29,6 +30,7 @@ __all__ = [
     "PRAHFModel",
     "canonical_routing_representation",
     "inject_pra",
+    "LlamaPRAAttentionAdapter",
     "QUERY_EXPONENTIAL",
     "QUERY_LAST",
     "QUERY_LINEAR",
