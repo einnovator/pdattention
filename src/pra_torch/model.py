@@ -184,7 +184,7 @@ class PRATransformerBlock(nn.Module):
 
     def set_pra_cache(self, pra_cache: PRAMemoryCache) -> None:
         """Attach a cache to this block's PRA attention."""
-        self.attn.pra_cache = pra_cache
+        self.attn.set_pra_cache(pra_cache)
 
     def project_reference_kv(self, x, *, detach: bool = True, position_ids=None):
         """Map ``[1,M,D]`` reference states to this layer's ``[1,H,M,Dh]`` K/V."""
@@ -280,7 +280,7 @@ class PRASATransformerBlock(nn.Module):
 
     def set_pra_cache(self, pra_cache: PRAMemoryCache) -> None:
         """Attach a cache to this block's PRA attention."""
-        self.pra_attn.pra_cache = pra_cache
+        self.pra_attn.set_pra_cache(pra_cache)
 
     def project_reference_kv(self, x, *, detach: bool = True, position_ids=None):
         """Project reference K/V from the same post-vanilla state queried by PRA."""
