@@ -131,11 +131,21 @@ def load_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
     ]
 
 
-def _configure(handle, representation: str, chunk_size: int) -> None:
+def _configure(
+    handle,
+    representation: str,
+    chunk_size: int,
+    gist_mode: str,
+    gist_count: int,
+) -> None:
     handle.cache.clear()
     handle.hf_config.routing_representation = representation
     handle.hf_config.routing_chunk_tokens = int(chunk_size)
+    handle.hf_config.gist_mode = gist_mode
+    handle.hf_config.gists_per_chunk = int(gist_count)
     handle.pra_config.fixed_chunk_tokens = int(chunk_size)
+    handle.pra_config.gist_mode = gist_mode
+    handle.pra_config.gists_per_chunk = int(gist_count)
     for adapter in handle.adapters.values():
         adapter.routing_representation = representation
 
@@ -191,6 +201,8 @@ def _ranking_row(
     direct_tokens: int,
     representation: str,
     chunk_size: int,
+    gist_mode: str,
+    gist_count: int,
     top_k: int,
     index_build_seconds: float,
     warm_repeats: int,
@@ -219,6 +231,29 @@ def _ranking_row(
     scores = [float(row["chunk_score"]) for row in rankings]
     positions = [((start + end) / 2) / max(source_tokens, 1) for start, end in ranked_spans]
 
+    chunks_by_id = {
+        chunk.chunk_id: chunk
+        for entry in handle.cache.all_entries()
+        for chunk in entry.layer_memory[adapter.layer_idx].chunks
+    }
+    winning_gist_spans = []
+    winning_gist_evidence_flags = []
+    for ranking in rankings:
+        chunk = chunks_by_id[ranking["chunk_id"]]
+        local_spans = chunk.routing_gist.metadata.get("segment_token_spans", [])
+        winner = ranking.get("winning_gist_index")
+        if winner is None or winner >= len(local_spans):
+            winning_gist_spans.append(None)
+            winning_gist_evidence_flags.append(False)
+            continue
+        local_start, local_end = local_spans[int(winner)]
+        winner_span = (
+            int(chunk.logical_start) + int(local_start),
+            int(chunk.logical_start) + int(local_end),
+        )
+        winning_gist_spans.append(winner_span)
+        winning_gist_evidence_flags.append(_overlaps(winner_span, evidence_spans))
+
     retained, budget = adapter.pra_core.budget_selected_memory(
         selected,
         direct_tokens=direct_tokens,
@@ -246,6 +281,9 @@ def _ranking_row(
         + hit.chunk.token_kv.v.numel() * hit.chunk.token_kv.v.element_size()
         for hit in retained
     )
+    actual_gist_counts = [
+        int(chunk.routing_gist.k.shape[0]) for chunk in chunks_by_id.values()
+    ]
 
     def recall_at(cutoff: int) -> float:
         return float(any(evidence_flags[:cutoff]))
@@ -262,7 +300,10 @@ def _ranking_row(
         "candidate_chunks": len(rankings),
         "routing_chunk_size": chunk_size,
         "routing_representation": representation,
-        "gist_count": 1,
+        "gist_mode": gist_mode,
+        "gist_count": gist_count,
+        "mean_actual_gists_per_chunk": statistics.fmean(actual_gist_counts),
+        "candidate_gists": sum(actual_gist_counts),
         "top_k": top_k,
         "evidence_token_spans": evidence_spans,
         "evidence_chunk_ids": [
@@ -274,6 +315,8 @@ def _ranking_row(
         "materialized_spans": materialized_spans,
         "scores": scores,
         "normalized_source_positions": positions,
+        "winning_gist_spans": winning_gist_spans,
+        "winning_gist_evidence_flags": winning_gist_evidence_flags,
         "best_evidence_rank": best_rank,
         "mrr": 1.0 / best_rank if best_rank else 0.0,
         "recall_at_1": recall_at(1),
@@ -282,6 +325,9 @@ def _ranking_row(
         "recall_at_16": recall_at(16),
         "any_evidence_recall": recall_at(top_k),
         "all_evidence_recall": all_recall_at(top_k),
+        "winning_gist_evidence_recall": float(
+            any(winning_gist_evidence_flags[:top_k])
+        ),
         "target_coverage": (
             sum(_overlaps(span, selected_spans) for span in evidence_spans)
             / max(len(evidence_spans), 1)
@@ -332,7 +378,7 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 
 
 def aggregate(rows: list[dict]) -> list[dict]:
-    """Aggregate matched examples by dataset, representation, chunk size, and k."""
+    """Aggregate matched examples by routing, gist, chunk-size, and top-k settings."""
     grouped = defaultdict(list)
     for row in rows:
         grouped[
@@ -340,6 +386,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
                 row["dataset"],
                 row["routing_representation"],
                 row["routing_chunk_size"],
+                row["gist_mode"],
+                row["gist_count"],
                 row["top_k"],
             )
         ].append(row)
@@ -351,6 +399,7 @@ def aggregate(rows: list[dict]) -> list[dict]:
         "recall_at_16",
         "any_evidence_recall",
         "all_evidence_recall",
+        "winning_gist_evidence_recall",
         "mrr",
         "target_coverage",
         "materialized_target_coverage",
@@ -361,6 +410,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
         "materialized_tokens",
         "active_kv_bytes",
         "extra_routing_cache_fraction",
+        "mean_actual_gists_per_chunk",
+        "candidate_gists",
         "packed_index_build_seconds",
         "warm_routing_topk_seconds",
         "topk_primitive_seconds",
@@ -370,7 +421,9 @@ def aggregate(rows: list[dict]) -> list[dict]:
             "dataset": key[0],
             "routing_representation": key[1],
             "routing_chunk_size": key[2],
-            "top_k": key[3],
+            "gist_mode": key[3],
+            "gist_count": key[4],
+            "top_k": key[5],
             "examples": len(values),
         }
         for metric in metrics:
@@ -383,15 +436,15 @@ def aggregate(rows: list[dict]) -> list[dict]:
 def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
     figure, axis = plt.subplots(figsize=(7.2, 4.4))
     markers = {"post_rope_key": "o", "pre_rope_key": "s", "hidden_state": "^"}
-    for (dataset, representation), values in sorted(
-        _group(aggregates, "dataset", "routing_representation").items()
+    for (dataset, representation, gist_count), values in sorted(
+        _group(aggregates, "dataset", "routing_representation", "gist_count").items()
     ):
         values = sorted(values, key=lambda row: row["selected_fraction"])
         axis.plot(
             [row["selected_fraction"] for row in values],
             [row["any_evidence_recall"] for row in values],
             marker=markers[representation],
-            label=f"{dataset}: {representation}",
+            label=f"{dataset}: {representation}, G={gist_count}",
         )
     axis.set_xlabel("Selected chunk fraction")
     axis.set_ylabel("Any-evidence recall")
@@ -405,11 +458,11 @@ def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
 
     figure, axis = plt.subplots(figsize=(7.2, 4.4))
     labels, correlations = [], []
-    for (dataset, representation), values in sorted(
-        _group(aggregates, "dataset", "routing_representation").items()
+    for (dataset, representation, gist_count), values in sorted(
+        _group(aggregates, "dataset", "routing_representation", "gist_count").items()
     ):
         samples = [row["score_position_correlation"] for row in values if row["score_position_correlation"] is not None]
-        labels.append(f"{dataset}\n{representation}")
+        labels.append(f"{dataset}\n{representation}\nG={gist_count}")
         correlations.append(statistics.fmean(samples) if samples else 0.0)
     axis.bar(range(len(labels)), correlations, color=["#4472c4", "#70ad47", "#ed7d31"] * 2)
     axis.axhline(0.0, color="black", linewidth=0.8)
@@ -447,6 +500,8 @@ def run(args) -> dict:
             max_prompt_direct_tokens=128,
             encoding_block_tokens=128,
             routing_chunk_tokens=min(args.chunk_sizes),
+            gist_mode=args.gist_mode,
+            gists_per_chunk=min(args.gist_counts),
             max_materialized_memory_tokens=128,
             top_k_references=1,
             top_k_chunks_per_reference=max(args.top_k),
@@ -464,67 +519,93 @@ def run(args) -> dict:
     if args.resume and checkpoint.exists():
         rows = json.loads(checkpoint.read_text(encoding="utf-8")).get("rows", [])
     completed = {
-        (row["dataset"], row["example_id"], row["routing_representation"], row["routing_chunk_size"], row["top_k"])
+        (
+            row["dataset"],
+            row["example_id"],
+            row["routing_representation"],
+            row["routing_chunk_size"],
+            row.get("gist_mode", "mean"),
+            row.get("gist_count", 1),
+            row["top_k"],
+        )
         for row in rows
     }
 
     for representation in args.representations:
         for chunk_size in args.chunk_sizes:
-            for example_index, example in enumerate(examples, start=1):
-                keys = [
-                    (example["dataset"], example["id"], representation, chunk_size, top_k)
-                    for top_k in args.top_k
-                ]
-                if all(key in completed for key in keys):
-                    continue
-                _configure(handle, representation, chunk_size)
-                source = tokenizer(
-                    example["source"], return_tensors="pt", add_special_tokens=False
-                ).input_ids
-                source_tokens = int(source.shape[1])
-                evidence_spans = evidence_token_spans(
-                    tokenizer, example["source"], example["evidence"]
-                )
-                handle.add_reference(
-                    f"benchmark://{example['dataset']}/{example['id']}",
-                    source,
-                    text=example["source"],
-                )
-                query, direct_tokens = _capture_query(handle, tokenizer, example, device)
-                adapter = next(iter(handle.adapters.values()))
-                _synchronize(device)
-                started = time.perf_counter()
-                handle.cache.prepare_routing_index(
-                    adapter.layer_idx, query, force_rebuild=True
-                )
-                _synchronize(device)
-                index_build_seconds = time.perf_counter() - started
-                for top_k, key in zip(args.top_k, keys):
-                    if key in completed:
-                        continue
-                    rows.append(
-                        _ranking_row(
-                            handle=handle,
-                            example=example,
-                            source_tokens=source_tokens,
-                            evidence_spans=evidence_spans,
-                            query=query,
-                            direct_tokens=direct_tokens,
-                            representation=representation,
-                            chunk_size=chunk_size,
-                            top_k=top_k,
-                            index_build_seconds=index_build_seconds,
-                            warm_repeats=args.warm_repeats,
-                            seed=args.seed,
+            for gist_count in args.gist_counts:
+                for example_index, example in enumerate(examples, start=1):
+                    keys = [
+                        (
+                            example["dataset"],
+                            example["id"],
+                            representation,
+                            chunk_size,
+                            args.gist_mode,
+                            gist_count,
+                            top_k,
                         )
+                        for top_k in args.top_k
+                    ]
+                    if all(key in completed for key in keys):
+                        continue
+                    _configure(
+                        handle,
+                        representation,
+                        chunk_size,
+                        args.gist_mode,
+                        gist_count,
                     )
-                    completed.add(key)
-                _write_json(checkpoint, {"rows": rows})
-                print(
-                    f"[{example_index}/{len(examples)}] {representation} "
-                    f"chunk={chunk_size} {example['dataset']} {example['id']}",
-                    flush=True,
-                )
+                    source = tokenizer(
+                        example["source"], return_tensors="pt", add_special_tokens=False
+                    ).input_ids
+                    source_tokens = int(source.shape[1])
+                    evidence_spans = evidence_token_spans(
+                        tokenizer, example["source"], example["evidence"]
+                    )
+                    handle.add_reference(
+                        f"benchmark://{example['dataset']}/{example['id']}",
+                        source,
+                        text=example["source"],
+                    )
+                    query, direct_tokens = _capture_query(handle, tokenizer, example, device)
+                    adapter = next(iter(handle.adapters.values()))
+                    _synchronize(device)
+                    started = time.perf_counter()
+                    handle.cache.prepare_routing_index(
+                        adapter.layer_idx, query, force_rebuild=True
+                    )
+                    _synchronize(device)
+                    index_build_seconds = time.perf_counter() - started
+                    for top_k, key in zip(args.top_k, keys):
+                        if key in completed:
+                            continue
+                        rows.append(
+                            _ranking_row(
+                                handle=handle,
+                                example=example,
+                                source_tokens=source_tokens,
+                                evidence_spans=evidence_spans,
+                                query=query,
+                                direct_tokens=direct_tokens,
+                                representation=representation,
+                                chunk_size=chunk_size,
+                                gist_mode=args.gist_mode,
+                                gist_count=gist_count,
+                                top_k=top_k,
+                                index_build_seconds=index_build_seconds,
+                                warm_repeats=args.warm_repeats,
+                                seed=args.seed,
+                            )
+                        )
+                        completed.add(key)
+                    _write_json(checkpoint, {"rows": rows})
+                    print(
+                        f"[{example_index}/{len(examples)}] {representation} "
+                        f"chunk={chunk_size} {args.gist_mode} G={gist_count} "
+                        f"{example['dataset']} {example['id']}",
+                        flush=True,
+                    )
 
     aggregates = aggregate(rows)
     artifact = {
@@ -536,6 +617,8 @@ def run(args) -> dict:
         "examples_per_dataset": args.examples_per_dataset,
         "representations": list(args.representations),
         "chunk_sizes": list(args.chunk_sizes),
+        "gist_mode": args.gist_mode,
+        "gist_counts": list(args.gist_counts),
         "top_k": list(args.top_k),
         "rows": rows,
         "aggregates": aggregates,
@@ -560,6 +643,8 @@ def parse_args():
     parser.add_argument("--examples-per-dataset", type=int, default=8)
     parser.add_argument("--representations", default=",".join(REPRESENTATIONS))
     parser.add_argument("--chunk-sizes", default="32")
+    parser.add_argument("--gist-mode", default="mean")
+    parser.add_argument("--gist-counts", default="1")
     parser.add_argument("--top-k", default=",".join(map(str, DEFAULT_TOP_K)))
     parser.add_argument("--warm-repeats", type=int, default=5)
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
@@ -573,6 +658,7 @@ def parse_args():
     args = parser.parse_args()
     args.representations = _csv_tuple(args.representations, str)
     args.chunk_sizes = _csv_tuple(args.chunk_sizes, int)
+    args.gist_counts = _csv_tuple(args.gist_counts, int)
     args.top_k = _csv_tuple(args.top_k, int)
     invalid = set(args.representations) - set(REPRESENTATIONS)
     if invalid:

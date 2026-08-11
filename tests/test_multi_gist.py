@@ -91,6 +91,42 @@ def test_single_gist_modes_always_return_one_two_dimensional_gist(mode):
     assert result.metadata["actual_gists"] == 1
 
 
+def test_segment_mean_uses_balanced_contiguous_subchunks_and_paired_values():
+    keys = torch.arange(20, dtype=torch.float32).view(5, 4)
+    values = keys + 100.0
+
+    result = _compute("segment_mean", keys, values, count=2)
+
+    assert result.k.shape == result.v.shape == (2, 4)
+    assert result.metadata["segment_token_spans"] == [[0, 3], [3, 5]]
+    assert result.metadata["occupancy"] == [3, 2]
+    assert torch.equal(result.k, torch.stack((keys[:3].mean(0), keys[3:].mean(0))))
+    assert torch.equal(result.v, torch.stack((values[:3].mean(0), values[3:].mean(0))))
+
+
+def test_one_segment_mean_is_exactly_the_legacy_mean():
+    keys = torch.randn(7, 5)
+    values = torch.randn(7, 5)
+
+    legacy = _compute("mean", keys, values, count=1)
+    segmented = _compute("segment_mean", keys, values, count=1)
+
+    assert torch.equal(segmented.k, legacy.k)
+    assert torch.equal(segmented.v, legacy.v)
+    assert segmented.metadata["segment_token_spans"] == [[0, 7]]
+
+
+def test_segment_mean_caps_gist_count_at_nonempty_token_count():
+    keys = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+
+    result = _compute("segment_mean", keys, None, count=8)
+
+    assert torch.equal(result.k, keys)
+    assert result.metadata["requested_gists"] == 8
+    assert result.metadata["actual_gists"] == 2
+    assert result.metadata["segment_token_spans"] == [[0, 1], [1, 2]]
+
+
 @pytest.mark.parametrize("mode", ["kmeans", "som", "prototype", "hybrid"])
 def test_multi_gist_strategy_shapes_edges_and_determinism(mode):
     keys = torch.tensor(

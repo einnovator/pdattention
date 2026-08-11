@@ -55,7 +55,7 @@ class PRAConfig:
     reference_level_gist_mode: str | None = None  # URI gist strategy for reference_first.
     reference_gists_per_reference: int = 1  # Requested URI-level gists per layer.
     reference_gist_score_aggregation: str = "max"  # Reduce query scores over URI gists.
-    gist_mode: str = "mean"  # Chunk gist strategy; single or multi-prototype.
+    gist_mode: str = "mean"  # Chunk gist strategy; single, segmented, or multi-prototype.
     gists_per_chunk: int = 1  # Requested chunk-level gists; single modes still produce one.
     gist_score_aggregation: str = "max"  # Reduce query scores over one chunk's gist set.
     max_gists_per_reference: int = 4  # Maximum independently routable chunks per URI.
@@ -292,7 +292,17 @@ class PRAConfig:
             raise ValueError(
                 f"Unsupported reference_score_aggregation: {self.reference_score_aggregation}"
             )
-        gist_modes = {"mean", "last", "ref_end", "gru", "kmeans", "som", "prototype", "hybrid"}
+        gist_modes = {
+            "mean",
+            "segment_mean",
+            "last",
+            "ref_end",
+            "gru",
+            "kmeans",
+            "som",
+            "prototype",
+            "hybrid",
+        }
         if self.reference_level_gist_mode not in {None, *gist_modes}:
             raise ValueError(
                 f"Unsupported reference_level_gist_mode: {self.reference_level_gist_mode}"

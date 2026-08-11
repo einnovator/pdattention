@@ -137,6 +137,31 @@ def test_routing_representation_switch_preserves_materialized_post_rope_kv():
     assert chunks["hidden_state"].routing_gist.k.shape == (1, 32)
 
 
+def test_hidden_state_segment_means_share_one_parent_native_kv_payload():
+    torch.manual_seed(1061)
+    handle = inject_pra(
+        _tiny_qwen(),
+        _hf_config(
+            routing_representation="hidden_state",
+            gist_mode="segment_mean",
+            gists_per_chunk=4,
+        ),
+    )
+    entry = handle.add_reference("mem://segments", torch.tensor([[11, 12, 13, 14]]))
+    chunk = entry.layer_memory[1].chunks[0]
+
+    assert chunk.routing_gist.k.shape == (4, 32)
+    assert chunk.routing_gist.metadata["segment_token_spans"] == [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+    ]
+    assert chunk.token_kv.k.shape == (1, 2, 4, 8)
+    assert chunk.token_kv.v.shape == (1, 2, 4, 8)
+    assert chunk.metadata["routing_gist_bytes"] == 4 * 32 * 4
+
+
 def test_pre_rope_gqa_routing_query_matches_native_query_groups():
     torch.manual_seed(107)
     handle = inject_pra(_tiny_qwen(), _hf_config(routing_representation="pre_rope_key"))

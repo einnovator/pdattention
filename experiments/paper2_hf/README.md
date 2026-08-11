@@ -66,4 +66,31 @@ Before the independent confirmation seed, the Qwen-to-Llama promotion gate is fi
 The thresholds require useful sparse retrieval rather than merely beating random ranking or
 recovering evidence by selecting a broad fraction of the source.
 
+Before training a router, run the parameter-free contiguous multi-gist diagnostic:
+
+```powershell
+python experiments/paper2_hf/routing/run_representation.py --device cuda `
+  --examples-per-dataset 8 --representations hidden_state --chunk-sizes 32 `
+  --gist-mode segment_mean --gist-counts 1,2,4,8 --top-k 3,8,16 `
+  --stem qwen_routing_segment_mean
+```
+
+This keeps 32-token parent chunks and their post-RoPE native K/V fixed. Each parent is divided
+into balanced contiguous sub-chunks, with one attention-input hidden-state mean per sub-chunk.
+The chunk score is the maximum cosine score over its gists, and selecting several gists from one
+parent can materialize that parent's K/V only once.
+
+Predeclared expectations:
+
+- H5: multiple segment means improve recall@3 and MRR over one mean at the same selected-chunk
+  and materialization budgets;
+- H6: gains saturate before eight gists if four- to eight-token summaries preserve enough local
+  evidence identity; and
+- H7: routing-index bytes and scoring time grow with gist count, while selected native-K/V bytes
+  remain determined by parent chunks and the unchanged materialization budget.
+
+Use the existing promotion thresholds. Select a candidate for independent confirmation by
+recall@3, then MRR, then lower routing-index cost. Retain all results if the diagnostic fails;
+that failure strengthens the case for an evidence-supervised router with frozen Qwen.
+
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.
