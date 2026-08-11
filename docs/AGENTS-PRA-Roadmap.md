@@ -259,7 +259,39 @@ Theory:
 Paper 0 -> Position
 Paper 1 -> Standalone prototype
 Paper 1.5 -> Positional semantics for retrieved native-KV
-Paper 2 -> Pretrained integration
+Paper 2 -> Pretrained integration [Qwen correctness milestone active]
 Paper 3 -> Runtime systems
 Paper 4 -> Theory
 Paper 5 -> Enterprise and analytics applications
+
+## Paper 2 Qwen checkpoint (August 2026)
+
+The pretrained phase has started on `research/paper2-hf` from the frozen Paper 1.5 RoPE head.
+The controlled attention implementation now delegates routing, whole-chunk budgeting,
+materialization, selected transfer, native-K/V composition, and metrics to `PRAExecutionCore`.
+A thin HF contract preserves family projection, position, mask, cache, and output semantics.
+
+Completed first Qwen gate:
+- pinned `Qwen/Qwen3-0.6B` revision `c1899de` under Transformers 4.55.4 eager attention
+- one wrapped upper layer with all pretrained Q/K/V/QK-norm/output parameters reused
+- bit-exact disabled logits and hidden states, 100% greedy-token agreement, and identical
+  generation-cache shapes across all 28 layers
+- native GQA storage with 8 K/V heads for 16 query heads; exact synthetic replay against
+  explicit K/V repetition
+- CPU-resident explicit-reference K/V with selected-only transfer and cached generation
+- 408-token logical prompt split into a 280-token `#__head` and 128-token direct tail with
+  source-relative offsets and zero native-limit violations
+- structured JSON/CSV artifacts and unrestricted HotpotQA/QASPER pipeline smokes
+
+Current scientific blocker:
+- one HotpotQA and one QASPER probe both routed to irrelevant late-source chunks, with zero
+  annotated-evidence recall; the output therefore does not demonstrate content-causal use
+- QASPER dense and PRA generations contain the expected `no`, but PRA did not retrieve the
+  evidence; HotpotQA and even oracle evidence text-RAG failed at this checkpoint/decoding setup
+
+Next:
+- separate routing representation from materialized post-RoPE K/V and compare content-only,
+  pre-RoPE, and post-RoPE gists
+- evaluate span-level evidence recall before scaling model families or context lengths
+- train only a small router/gist adapter if frozen routing remains near zero
+- move to Llama only after Qwen evidence routing is stable; Gemma remains later

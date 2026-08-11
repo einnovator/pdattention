@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import platform
 import subprocess
 from datetime import datetime, timezone
@@ -42,8 +43,19 @@ def write_artifacts(result: dict, output_dir: Path, stem: str) -> tuple[Path, Pa
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / f"{stem}.json"
     csv_path = output_dir / f"{stem}.csv"
+    def json_safe(value):
+        if isinstance(value, dict):
+            return {key: json_safe(child) for key, child in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [json_safe(child) for child in value]
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        return value
+
     json_path.write_text(
-        json.dumps(result, indent=2, sort_keys=True, allow_nan=True, default=str),
+        json.dumps(json_safe(result), indent=2, sort_keys=True, allow_nan=False),
         encoding="utf-8",
     )
 

@@ -59,6 +59,16 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         cos, sin = position_embeddings
         return self.apply_rotary_pos_emb(query, key, cos, sin)
 
+    def normalize_qkv_layout(self, query, key, value):
+        """Validate Qwen's canonical query-head and native K/V-head layout."""
+        if query.ndim != 4 or key.ndim != 4 or value.shape != key.shape:
+            raise ValueError("Qwen Q and K/V must be canonical rank-four tensors.")
+        if query.shape[1] != self.original_attention.config.num_attention_heads:
+            raise ValueError("Qwen query-head layout differs from model configuration.")
+        if key.shape[1] != self.original_attention.config.num_key_value_heads:
+            raise ValueError("Qwen native K/V-head layout differs from model configuration.")
+        return query, key, value
+
     def build_native_mask(self, local_key, local_value, prepared, attention_mask, query_tokens):
         """Prepend selected K/V and an all-visible, row-isolated memory mask."""
         return self.pra_core.combine_local_and_memory_kv(
@@ -131,6 +141,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         """Use exact delegation for parity and native Qwen eager attention for PRA."""
         if self.capture_enabled:
             query, key, value = self.project_qkv(hidden_states)
+            query, key, value = self.normalize_qkv_layout(query, key, value)
             _query, key = self.apply_native_position_encoding(query, key, position_embeddings)
             self._record_capture(key, value)
         if not self.memory_enabled or self.cache.is_empty():
@@ -148,6 +159,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
 
         input_shape = hidden_states.shape[:-1]
         query, key, value = self.project_qkv(hidden_states)
+        query, key, value = self.normalize_qkv_layout(query, key, value)
         query, key = self.apply_native_position_encoding(query, key, position_embeddings)
         if past_key_value is not None:
             cos, sin = position_embeddings

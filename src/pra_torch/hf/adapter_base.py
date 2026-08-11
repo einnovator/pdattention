@@ -72,6 +72,10 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         """Apply the family's own positional implementation to Q/K."""
 
     @abstractmethod
+    def normalize_qkv_layout(self, query, key, value):
+        """Return canonical ``[B,H,T,Dh]`` query and native-head K/V tensors."""
+
+    @abstractmethod
     def build_native_mask(self, local_key, local_value, prepared, attention_mask, query_tokens):
         """Combine memory and local K/V while preserving the native additive mask."""
 

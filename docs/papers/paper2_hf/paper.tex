@@ -1,0 +1,344 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage[hidelinks]{hyperref}
+\input{../shared/macros.tex}
+\setlength{\emergencystretch}{3em}
+
+\title{Retrofitting Pretrained Transformers with Progressive Retrieval Attention:\
+Thin Hugging Face Adapters and a Qwen Correctness Study}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{\today}
+\hypersetup{pdftitle={Retrofitting Pretrained Transformers with Progressive Retrieval Attention},pdfauthor={Jorge Simao}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Progressive Retrieval Attention (PRA) selects sparse, layer-native key/value (K/V) memory
+from references or displaced prompt history. Controlled models establish the mechanism but do
+not show that it can preserve a real pretrained transformer's attention semantics. We begin a
+pretrained integration study with a shared PRA execution core and thin Hugging Face attention
+adapters. The first adapter wraps one upper layer of the frozen 596M-parameter
+\texttt{Qwen/Qwen3-0.6B} checkpoint. When memory is disabled, the wrapper delegates to the
+original module and obtains bit-exact logits, hidden states, greedy generation, and all 28
+generation-cache shapes. When memory is enabled, it reuses Qwen's pretrained projections,
+Q/K normalization, rotary embedding, grouped-query layout, causal mask, cache update, eager
+attention function, and output projection. Stored memory retains eight native K/V heads rather
+than expanding to 16 query heads. A CUDA smoke run materializes 22 reference tokens from CPU,
+generates finite text, and executes a 408-token logical prompt as a 280-token implicit head plus
+a 128-token direct tail with zero configured native-limit violations. These are transport and
+compatibility results, not retrieval-quality results. In one HotpotQA and one QASPER example,
+mean-gist routing selected no annotated evidence; HotpotQA failed under every tested baseline,
+and the QASPER answer appeared under dense context and PRA without establishing causation.
+The first milestone therefore supports the adapter boundary and native-KV transport, while
+identifying frozen zero-shot routing as the next blocking scientific problem before Llama or
+Gemma integration.
+\end{abstract}
+
+\section{Introduction}
+
+Pretrained decoder families differ in projection layout, rotary implementation, grouped-query
+attention (GQA), masks, sliding windows, and generation-cache conventions. Replacing a complete
+model class to add memory duplicates rapidly changing library code and makes parity difficult
+to audit. The alternative studied here is narrower:
+
+\begin{center}
+normal pretrained model $\rightarrow$ wrap selected attention modules $\rightarrow$
+shared PRA core.
+\end{center}
+
+The family adapter owns only native attention semantics. The shared core owns references,
+chunk gists, exact routing, the materialization budget, selected K/V transfer, and metrics.
+This boundary follows the broader transformer interface of queries attending to keys and
+values~\cite{vaswani2017attention}, while preserving Qwen's pretrained RoPE and GQA choices
+rather than approximating them in a parallel implementation~\cite{su2021roformer,ainslie2023gqa,qwen2025qwen3}.
+
+This paper begins with Qwen because a sub-billion-parameter checkpoint makes exact tests
+practical on constrained hardware while still exercising modern RoPE and GQA. It does not yet
+claim cross-family portability or useful long-context QA. The contribution is a tested first
+adapter and an evidence hierarchy that prevents working transport from being mistaken for
+working retrieval.
+
+\section{PRA Recap and Prior Contracts}
+
+For layer $\ell$, PRA stores reference chunks as native
+$K^{(\ell)}_c,V^{(\ell)}_c\in\mathbb{R}^{H_{kv}\times T_c\times d_h}$ and one or more compact
+gists $g^{(\ell)}_c$. A query representation $r^{(\ell)}$ scores the gists, and a global
+budgeter selects whole chunks. Materialized memory precedes the direct K/V sequence under one
+softmax:
+\begin{equation}
+  \operatorname{Attn}(Q,[K_M;K_D],[V_M;V_D])
+  = \operatorname{softmax}\!\left(\frac{Q[K_M;K_D]^\top}{\sqrt{d_h}}+M\right)[V_M;V_D].
+\end{equation}
+This is not a separately normalized cross-attention residual. The native output projection is
+applied once to the combined result.
+
+Paper~1 established controlled native-K/V routing and materialization. Paper~1.5 separated
+logical source position from contextual fragmentation. Continuous sources use
+$p_i=p_{\mathrm{logical\ start}}+i$, and ordinary post-RoPE keys remain the canonical cache
+state. The present adapter preserves that contract by capturing each selected HF layer's
+actual post-RoPE keys and by assigning source-relative positions across bounded encoding
+blocks.
+
+\section{Adapter Architecture}
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.92\linewidth}
+\centering
+\textbf{Logical source / long prompt}\\[2pt]
+$\downarrow$ bounded source encoding with logical offsets\\[2pt]
+$\downarrow$ family-native projections, Q/K normalization, and RoPE\\[2pt]
+$\downarrow$ native $H_{kv}$ K/V + smaller routing chunks + mean gists\\[2pt]
+$\downarrow$ shared exact router $\rightarrow$ shared whole-chunk budgeter\\[2pt]
+$\downarrow$ selected CPU/GPU native K/V materialization\\[2pt]
+$\downarrow$ thin family adapter prepends memory to local/cache K/V\\[2pt]
+$\downarrow$ family-native eager attention and pretrained output projection
+\end{minipage}}
+\caption{Paper~2 boundary. Model-family semantics stay in a thin adapter; references,
+routing, budgeting, materialization, residency, and metrics stay in one shared PRA core.}
+\label{fig:adapter}
+\end{figure}
+
+\subsection{Shared execution core}
+
+The controlled model's former monolithic attention forward pass was divided into reusable
+operations. \texttt{prepare\_pra\_query} selects the newest valid query and maps GQA query
+groups into the native K/V routing width. \texttt{route\_memory} calls the exact packed-index
+router. \texttt{budget\_selected\_memory} enforces
+\begin{equation}
+ L_{\mathrm{direct}}+L_{\mathrm{materialized}}+L_{\mathrm{reserve}}
+ \leq L_{\mathrm{native,max}}.
+\end{equation}
+\texttt{materialize\_selected\_kv} removes duplicate overlap, preserves row isolation, and
+moves only retained detail K/V. \texttt{combine\_local\_and\_memory\_kv} pads variable rows
+and prepends an additive all-visible memory mask to the family's existing local causal mask.
+The controlled model and HF adapters now call this same core.
+
+\subsection{Thin HF contract}
+
+The abstract adapter exposes six family operations: project Q/K/V, apply native position
+encoding, normalize tensor layout, combine the native mask, invoke PRA attention, and project
+the output. Disabled memory takes an even narrower path: call the original attention object
+unchanged. This design preserves pretrained parameters and avoids checkpoint conversion.
+
+The initial Qwen file has 215 physical lines (193 nonblank, non-comment lines). It introduces
+no learned parameter. Its family-specific branches distinguish Qwen2-style projections from
+Qwen3's Q/K normalization; routing, budgeting, materialization, residency, and metrics remain
+outside the file. This is a portability measurement, not a code-minimization target.
+
+\section{Qwen Native Semantics}
+
+\subsection{Projection and RoPE}
+
+The adapter calls the wrapped module's \texttt{q\_proj}, \texttt{k\_proj}, and
+\texttt{v\_proj}. Qwen3's existing \texttt{q\_norm} and \texttt{k\_norm} are applied before
+the installed Transformers \texttt{apply\_rotary\_pos\_emb} function. Reference capture saves
+post-RoPE $K$ and position-independent $V$. No independent RoPE implementation is introduced.
+
+\subsection{Grouped-query attention}
+
+The tested checkpoint has $H_q=16$, $H_{kv}=8$, and $d_h=128$. Cache objects retain
+$[B,8,T,128]$ K/V. For routing only, each pair of query heads sharing one K/V head is averaged,
+producing a vector in the same $8\times128$ space as a flattened key gist. K/V expansion occurs
+inside Qwen's eager attention function, never in persistent PRA storage. A synthetic replay
+test compares this path with explicit K/V head repetition and matches within $10^{-6}$.
+
+\subsection{HF cache and masks}
+
+Prefill and single-token decode both use the wrapped module's HF \texttt{Cache.update} call.
+PRA memory is prepended after that update, so direct generation history appears once. A decode
+test with four prompt tokens and two generated tokens observes five direct cache positions at
+the last invocation, plus four separate memory positions. The original causal mask remains on
+local/cache positions; selected historical memory receives a visible prefix mask. Memory-
+disabled generation delegates entirely to the original module.
+
+\section{Experimental Setup}
+
+Table~\ref{tab:model} records the first checkpoint exactly. Tests use synthetic Qwen3 configs
+offline. The pretrained run uses Python 3.10.11, PyTorch 2.12.1+CUDA~12.6, Transformers 4.55.4,
+eager attention, FP16, and an NVIDIA GeForce GTX~950M. The frozen model is not fine-tuned.
+
+\begin{table}[H]
+\centering
+\caption{Pinned Qwen checkpoint and PRA placement.}
+\label{tab:model}
+\begin{tabular}{ll}
+\toprule
+Checkpoint & \texttt{Qwen/Qwen3-0.6B} \\
+Revision & \texttt{c1899de289a04d12100db370d81485cdf75e47ca} \\
+Parameters / layers & 596,049,920 / 28 \\
+Query heads / K/V heads / head width & 16 / 8 / 128 \\
+RoPE base / advertised positions & $10^6$ / 40,960 \\
+PRA placement & layer 27 only \\
+Initial gist / routing policy & mean, one gist/chunk, exact top-$k$ \\
+Native limit / direct / selected-memory cap & 256 / 128 / 64 tokens \\
+K/V residency & CPU full cache, selected transfer \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every run writes JSON and scalar CSV with the Git SHA, model revision, software versions,
+device, dtype, layer selection, limits, routing settings, timings, and metrics. The exact
+executed commit is retained in each artifact rather than inferred from the manuscript build.
+
+\section{Adapter Parity}
+
+PRA-disabled parity is the hard gate. The baseline is evaluated first; the same in-memory model
+is then wrapped, leaving every parameter object in place. Table~\ref{tab:parity} reports exact
+results for the five-token prompt ``The capital of Portugal is'' and four-token greedy decode.
+
+\begin{table}[H]
+\centering
+\caption{Original HF model versus memory-disabled PRA wrapper.}
+\label{tab:parity}
+\begin{tabular}{lr}
+\toprule
+Metric & Result \\
+\midrule
+Maximum / mean absolute logit difference & 0 / 0 \\
+Maximum hidden-state difference & 0 \\
+Greedy token agreement & 100\% \\
+Greedy sequences exactly equal & yes \\
+Generation-cache shapes equal & all 28 layers \\
+Finite adapted logits & yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Single-run prefill times were 0.447~s before wrapping and 0.136~s after wrapping. This order is
+confounded by first-call warm-up and is not a speed comparison. Exact outputs, rather than
+latency, are the parity evidence.
+
+\section{Native-KV Reference Smoke}
+
+An explicit 22-token reference about Lisbon is encoded through the frozen model. The selected
+layer captures $[1,8,22,128]$ K/V, stores it on CPU, creates a mean gist, and transfers all 22
+tokens because the source fits one routing chunk. The physical transfer is 90,112 bytes, exactly
+$2\times22\times8\times128\times2$ bytes for FP16 K and V. The run reports 1.6~ms routing,
+0.40~ms materialization orchestration, 0.15~ms selected transfer, and 0.11~ms combined attention.
+These synchronized phase values are instrumentation checks on one machine, not throughput
+claims. Cold reference construction took 0.144~s and the warm query took 0.191~s.
+
+The generated continuation contains ``Lisbon'', but the unmodified model also knows this fact.
+Consequently, this observation establishes functional selected-K/V transport and generation,
+not a causal retrieval benefit. The exact native-replay claim is instead restricted to the
+synthetic tensor test, where GQA memory plus local K/V equals explicit dense composition.
+
+\section{Implicit Head and Bounded Long Prompt}
+
+A repeated prompt tokenizes to 408 logical tokens. The direct cap retains the final 128 tokens;
+the first 280 become \texttt{\#\_\_head}. That head is encoded in blocks of at most 64 tokens,
+with source-relative positions. The direct tail receives positions 280 through 407. Every
+encoding operation and the final selected-memory operation stays under the 256-token configured
+native limit; the largest observed source-encoding call is 64 tokens and violations are zero.
+The final finite-logit query took 0.258~s. This proves bounded execution and offset propagation
+for the frozen Qwen adapter. It does not show that the router selected the information needed by
+an arbitrary continuation.
+
+\section{Unrestricted QA Smoke}
+
+We next run one fixed HotpotQA example~\cite{yang2018hotpotqa} and one QASPER
+example~\cite{dasigi2021qasper}. Four conditions use the same frozen checkpoint: question-only
+truncation, dense text left-truncated to 256 tokens, oracle evidence text-RAG, and PRA with the
+question direct and the complete source in native-K/V memory. Oracle text-RAG is an upper
+control because it receives annotated evidence. This two-example matrix diagnoses plumbing; it
+cannot estimate dataset accuracy.
+
+\begin{table}[H]
+\centering
+\caption{Unrestricted-QA smoke outcomes. Standard normalized token F1 is shown.}
+\label{tab:qa}
+\begin{tabularx}{\linewidth}{lXcc}
+\toprule
+Dataset & Condition & F1 & Annotated evidence selected \\
+\midrule
+HotpotQA & truncation; dense; oracle text-RAG; PRA & 0; 0; 0; 0 & PRA: 0\% \\
+QASPER & truncation; dense; oracle text-RAG; PRA & 0; 0.182; 0; 0.182 & PRA: 0\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+HotpotQA's expected answer is ``yes''; every condition begins with ``No''. QASPER's expected
+answer is ``no''; dense and PRA generations begin with ``No'', while truncation begins with
+``Yes''. However, PRA routes three tail chunks, none overlapping the annotated evidence, so the
+QASPER output cannot be credited to retrieved evidence. Qwen also fails the oracle text-RAG
+control on both examples. The proper conclusion is negative: this frozen top-layer,
+one-gist-per-chunk configuration has not demonstrated content-causal retrieval.
+
+The selections expose a concrete failure mode. For HotpotQA, evidence lies at token spans
+107--137 and 543--588, while routed chunks lie near 1216--1318. For QASPER, evidence lies at
+0--317, while selected chunks lie near 4032--4192. Post-RoPE mean-key gists and an unadapted
+top-layer query systematically prefer irrelevant late-source chunks in these two probes.
+
+\section{Systems Observations}
+
+The first run reaches 1,345,618,432 allocated GPU bytes, including the complete FP16 model and
+temporary activations. Full reference K/V remains on CPU; only selected detail K/V moves to the
+GPU. This is evidence that the residency path executes, not a memory-savings comparison: no
+matched dense long-context peak is measured here. Likewise, cold source construction, warm
+routing, generation, and transfer are reported separately so cache reuse is not hidden.
+
+The current HF path is intentionally eager and unfused. Variable memory rows are padded into a
+rectangle before Qwen's native eager function. Flash attention, SDPA, custom kernels, ANN
+routing, asynchronous overlap, and serving concurrency remain outside this correctness phase.
+
+\section{Limitations and Next Experiments}
+
+The study has one family, one checkpoint size, one PRA layer placement, one seed for systems
+smoke, and two QA examples. It does not compare full dense context where the complete 1,318- or
+4,207-token source fits Qwen's advertised window, because the first experiment deliberately
+holds the deployment-native limit at 256. It has no matched RAG retriever, no statistical QA
+sample, no LoRA adaptation, and no throughput or cost study.
+
+The next experiment should address routing before family breadth. Candidate corrections are:
+\begin{enumerate}[leftmargin=*]
+\item compare pre-RoPE/content-only and post-RoPE routing gists while keeping stored detail K
+post-RoPE;
+\item pool hidden-state or normalized pre-position keys for routing without changing native
+K/V materialization;
+\item increase gist count and PRA layer placement only after evidence recall is measurable;
+\item train a small router/gist adapter with span-level evidence supervision while freezing the
+pretrained language model;
+\item run enough HotpotQA and QASPER examples to estimate retrieval recall, EM, and F1 with
+confidence intervals, and include full dense and a real text retriever.
+\end{enumerate}
+
+Only after a Qwen configuration retrieves evidence above simple controls should the same adapter
+contract be tested on Llama. Llama should be next in the family order; Gemma follows only after
+Qwen and Llama no longer require shared-core changes.
+
+\section{Related Work}
+
+PRA differs from text retrieval-augmented generation, which retrieves text and lets the model
+encode it in the current prompt~\cite{lewis2020rag}. It retrieves layer-native K/V after a
+separate bounded encoding path. This makes PRA complementary to RAG: a text retriever may choose
+documents before PRA routes chunks inside cached model state. Sparse-attention systems such as
+Longformer and BigBird constrain token-token connectivity inside a forward
+pass~\cite{beltagy2020longformer,zaheer2020bigbird}; PRA instead materializes selected state from
+an external addressable cache. KV-cache systems emphasize serving capacity and token retention
+policies~\cite{kwon2023vllm,zhang2023h2o,li2024snapkv}. Paper~2 asks whether selection can be
+inserted beneath an existing pretrained family without changing its disabled behavior.
+
+\section{Conclusion}
+
+One shared PRA core now serves both the controlled model and a thin Qwen adapter. The frozen
+Qwen3-0.6B checkpoint passes bit-exact disabled parity, preserves native RoPE and GQA cache
+layout, replays selected native K/V through generation, and executes an implicit long-prompt
+head under a hard native-operation bound. These are meaningful integration results. They do
+not establish useful retrieval. The first unrestricted-QA probes select no annotated evidence,
+and even oracle text-RAG is unreliable at this model scale. The Qwen integration is generic and
+stable enough to continue routing work, but not yet strong enough to justify multiplying family
+adapters. The next milestone is content-causal evidence retrieval on Qwen; Llama follows that
+gate.
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+\end{document}
