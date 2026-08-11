@@ -130,25 +130,33 @@ def _plot_requested_fraction(curves: list[dict[str, object]]) -> None:
     }
     for axis, dataset in zip(axes, ("hotpotqa", "qasper"), strict=True):
         for position, (color, marker, label) in styles.items():
-            group = [
+            raw = [
                 row
                 for row in curves
                 if row["dataset"] == dataset
                 and row["model_tier"] == "small"
                 and row["position_mode"] == position
                 and row["stage"] == "offset_overlap"
-                and float(row["fraction"]) <= 0.30
             ]
+            points = sorted(
+                {
+                    (
+                        round(float(row["selected_chunk_fraction"]), 12),
+                        float(row["recall"]),
+                    )
+                    for row in raw
+                }
+            )
             axis.plot(
-                [100 * float(row["fraction"]) for row in group],
-                [float(row["recall"]) for row in group],
+                [100 * point[0] for point in points],
+                [point[1] for point in points],
                 marker=marker,
                 color=color,
                 label=label,
             )
         axis.set_title("HotpotQA-derived" if dataset == "hotpotqa" else "QASPER-derived")
-        axis.set_xlabel("Requested parent-reference fraction (%)")
-        axis.set_xlim(0, 30)
+        axis.set_xlabel("Realized selected parent references (%)")
+        axis.set_xlim(20, 105)
         axis.set_ylim(0.35, 1.02)
     axes[0].set_ylabel("Programmatic target-reference recall")
     axes[1].legend(loc="lower right", frameon=True)
