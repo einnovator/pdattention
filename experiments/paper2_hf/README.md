@@ -125,4 +125,24 @@ hidden-state space. Report the approximately 32-fold routing-index increase, mea
 time, selected fraction, and materialized K/V separately; token-max is a diagnostic rather than
 a proposed production index.
 
+Observed on the matched 16-example diagnostic:
+
+- combined recall@3 changes from `0.4375` at `G=1` to `0.3750` at `G=32`;
+- combined MRR changes from `0.2755` to `0.3143`, but the direction differs by dataset:
+  HotpotQA improves from `0.3384` to `0.4690`, while QASPER falls from `0.2126` to `0.1595`;
+- the routing index grows from about `1.57%` to `50%` of detail-K/V bytes; and
+- parent selected fractions and materialization budgets remain matched. H8 is not supported as
+  a general sparse-routing improvement, though the HotpotQA MRR change suggests that pooling
+  loss is dataset-dependent.
+
+Run the canonical routing/payload path end to end:
+
+```powershell
+python experiments/paper2_hf/qa/run_hidden_postrope_confirmation.py --device cuda
+```
+
+This confirms HotpotQA, QASPER, and displaced `#__head` history with attention-input
+hidden-state routing and native post-RoPE K/V. It reports routing recall, selected fraction,
+materialized tokens, answer EM/F1, and native-limit violations separately.
+
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.

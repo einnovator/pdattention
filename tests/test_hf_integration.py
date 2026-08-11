@@ -96,6 +96,12 @@ def test_qwen_reference_capture_keeps_native_gqa_layout_and_uses_memory():
     assert all(chunk.routing_gist.k.shape == (1, 32) for chunk in chunks)
     assert [chunk.logical_start for chunk in chunks] == [0, 4]
 
+    query = chunks[0].routing_gist.k[0]
+    cpu_hit = handle.cache.search(query, 1, handle.pra_config)[0][0].chunk_id
+    if torch.cuda.is_available():
+        gpu_hit = handle.cache.search(query.cuda(), 1, handle.pra_config)[0][0].chunk_id
+        assert gpu_hit == cpu_hit
+
     handle.set_memory_enabled(True)
     with torch.no_grad():
         output = handle.model(torch.tensor([[1, 4, 8, 12]]), use_cache=False)

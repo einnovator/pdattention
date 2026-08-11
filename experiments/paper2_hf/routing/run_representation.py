@@ -446,6 +446,10 @@ def aggregate(rows: list[dict]) -> list[dict]:
 
 def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
     figure, axis = plt.subplots(figsize=(7.2, 4.4))
+    display_names = {
+        ATTENTION_INPUT_HIDDEN_STATE: "attention input",
+        "hidden_state": "attention input",
+    }
     markers = {
         "post_rope_key": "o",
         "pre_rope_key": "s",
@@ -460,7 +464,7 @@ def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
             [row["selected_fraction"] for row in values],
             [row["any_evidence_recall"] for row in values],
             marker=markers[representation],
-            label=f"{dataset}: {representation}, G={gist_count}",
+            label=f"{dataset}: {display_names.get(representation, representation)}, G={gist_count}",
         )
     axis.set_xlabel("Selected chunk fraction")
     axis.set_ylabel("Any-evidence recall")
@@ -478,7 +482,9 @@ def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
         _group(aggregates, "dataset", "routing_representation", "gist_count").items()
     ):
         samples = [row["score_position_correlation"] for row in values if row["score_position_correlation"] is not None]
-        labels.append(f"{dataset}\n{representation}\nG={gist_count}")
+        labels.append(
+            f"{dataset}\n{display_names.get(representation, representation)}\nG={gist_count}"
+        )
         correlations.append(statistics.fmean(samples) if samples else 0.0)
     axis.bar(range(len(labels)), correlations, color=["#4472c4", "#70ad47", "#ed7d31"] * 2)
     axis.axhline(0.0, color="black", linewidth=0.8)
