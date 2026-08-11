@@ -25,11 +25,14 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
 
 from data.native_kv_benchmarks import load_qasper_papers
 from experiments.paper2_hf.common.artifacts import runtime_metadata
 from experiments.paper2_hf.qa.run_smoke import evidence_token_spans, prompt_ids
 from experiments.paper2_hf.qwen.run_first_night import MODEL_ID, MODEL_REVISION
+from common import recall_sparsity_curve
 from pra_torch.hf import (
     ATTENTION_INPUT_HIDDEN_STATE,
     CENTERED_ROPE_KEY,
@@ -367,6 +370,11 @@ def _ranking_row(
         "evidence_chunk_ids": [
             rankings[index]["chunk_id"] for index, flag in enumerate(evidence_flags) if flag
         ],
+        "ranked_chunk_ids": [ranking["chunk_id"] for ranking in rankings],
+        "ranked_chunk_token_counts": [
+            int(ranking["token_end"]) - int(ranking["token_start"])
+            for ranking in rankings
+        ],
         "selected_chunk_ids": selected_ids,
         "selected_spans": selected_spans,
         "materialized_chunk_ids": materialized_ids,
@@ -506,6 +514,44 @@ def aggregate(rows: list[dict]) -> list[dict]:
             samples = [float(row[metric]) for row in values if row.get(metric) is not None]
             record[metric] = statistics.fmean(samples) if samples else None
         output.append(record)
+    return output
+
+
+def aggregate_recall_sparsity(rows: list[dict]) -> list[dict]:
+    """Emit one exact recall-sparsity record per routing condition and dataset."""
+    grouped = defaultdict(dict)
+    for row in rows:
+        if "ranked_chunk_ids" not in row:
+            continue
+        condition = (
+            row["dataset"],
+            row["routing_representation"],
+            row["routing_chunk_size"],
+            row["gist_mode"],
+            row["gist_count"],
+            row.get("center_policy", "exact"),
+        )
+        grouped[condition].setdefault((row.get("seed"), row["example_id"]), row)
+    output = []
+    for condition, examples in sorted(grouped.items()):
+        values = list(examples.values())
+        metrics = recall_sparsity_curve(
+            [row["ranked_chunk_ids"] for row in values],
+            [set(row["evidence_chunk_ids"]) for row in values],
+            candidate_token_lengths=[row["ranked_chunk_token_counts"] for row in values],
+            require_complete_endpoint=True,
+        )
+        output.append(
+            {
+                "dataset": condition[0],
+                "routing_representation": condition[1],
+                "routing_chunk_size": condition[2],
+                "gist_mode": condition[3],
+                "gist_count": condition[4],
+                "center_policy": condition[5],
+                "metrics": metrics,
+            }
+        )
     return output
 
 
@@ -742,6 +788,7 @@ def run(args) -> dict:
         "top_k": list(args.top_k),
         "rows": rows,
         "aggregates": aggregates,
+        "recall_sparsity": aggregate_recall_sparsity(rows),
         "max_native_operation_tokens": handle.max_native_operation_tokens,
         "native_limit_violations": handle.native_limit_violations,
     }

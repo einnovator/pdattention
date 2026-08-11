@@ -422,6 +422,52 @@ selection and use.
 routing and causal-use claims remain unsupported. Do not promote to Llama. Increase routing-data
 diversity before capacity, then study memory-use alignment only after retrieval generalizes.
 
+## 14c. Fixed-k stress tests can conceal a useful fractional operating range
+
+Observation:
+- The validation-selected learned router fails the predeclared combined Recall@3 gate at 0.631.
+- Recomputing selection per example as `ceil(f * candidate_chunks)` gives any-evidence recall
+  0.831 at 10% and 0.956 at 20%, with `f80=0.10`, `f90=0.15`, and normalized `AUC0-30=0.835`.
+- The parameter-free last-state query reaches 0.719 and 0.875 at the same fractions.
+- On artifacts with exact parent lengths, realized K/V fraction differs from realized chunk
+  fraction by less than 0.2 percentage points because almost all parents contain 32 tokens.
+
+Original hypothesis:
+- Failure at very small fixed `k` implied that no useful sparse routing regime had emerged.
+
+Experiment:
+- Historical rankings were reevaluated at 1, 2, 5, 10, 15, 20, 25, 30, 50, and 100 percent,
+  using a per-example ceiling and first-measured inverse thresholds.
+- Complete frozen-feature rankings additionally measured all-evidence coverage against physical
+  native-K/V token fraction.
+
+Result:
+- Negative for the original broad interpretation of the Recall@3 failure.
+- Positive for a practical 10--20% candidate-selection regime.
+- Still negative for cross-domain transfer and causal answer improvement.
+
+Interpretation:
+- Fixed `k` and fixed fraction answer different scaling questions. PRA evaluations should report
+  both, with materialized K/V fraction preferred when physical lengths are available.
+- Any-evidence recall and all-evidence coverage are not interchangeable, especially for HotpotQA.
+
+Alternative explanations:
+- Several zero-parameter mechanisms use an older 16-example cohort, so their curves are
+  descriptive rather than paired with the 32-example, five-seed learned-router study.
+- Annotated evidence may not equal the functionally optimal memory composition.
+
+Claim status:
+- Strong for metric design and the selected adapter's measured operating curve.
+- Preliminary for broad benchmark or model-family generalization.
+
+Next discriminating experiment:
+- Preserve complete rankings and physical parent lengths automatically in future runs, then
+  repeat fraction curves on larger identity-disjoint cohorts and test whether the 10--20%
+  retrieval gain changes answer quality.
+
+Affected papers:
+- Paper 2 immediately; Papers 1 and 1.5 receive mechanism-appropriate retrospectives.
+
 ## 14. Multi-layer routing
 Hypothesis: best semantic routing depth may differ from later PRA consumption depth:
 

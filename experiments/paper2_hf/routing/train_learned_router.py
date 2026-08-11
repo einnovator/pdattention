@@ -19,7 +19,10 @@ import torch.nn.functional as F
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
 
+from common import recall_sparsity_curve
 from experiments.paper2_hf.common.artifacts import runtime_metadata
 from pra_torch.hf import HFRoutingProjection
 
@@ -81,6 +84,7 @@ def evaluate(model, features, query_strategy: str, device: torch.device, cost: d
         ranks = torch.nonzero(positive, as_tuple=False).flatten() + 1
         best_rank = int(ranks.min().item()) if len(ranks) else None
         ranked_positions = feature["normalized_positions"].to(device)[ranking]
+        ranking_ids = ranking.cpu().tolist()
         rows.append(
             {
                 "dataset": feature["dataset"],
@@ -102,6 +106,15 @@ def evaluate(model, features, query_strategy: str, device: torch.device, cost: d
                 "score_position_correlation": _correlation(
                     feature["normalized_positions"].tolist(), scores.float().cpu().tolist()
                 ),
+                "ranking": ranking_ids,
+                "evidence_candidate_ids": torch.nonzero(
+                    feature["positive_mask"], as_tuple=False
+                ).flatten().tolist(),
+                "ranked_chunk_token_counts": [
+                    int(feature["chunk_spans"][index][1])
+                    - int(feature["chunk_spans"][index][0])
+                    for index in ranking_ids
+                ],
             }
         )
     metrics = (
@@ -132,6 +145,12 @@ def evaluate(model, features, query_strategy: str, device: torch.device, cost: d
     return {
         "rows": rows,
         "aggregates": aggregates,
+        "recall_sparsity": recall_sparsity_curve(
+            [row["ranking"] for row in rows],
+            [set(row["evidence_candidate_ids"]) for row in rows],
+            candidate_token_lengths=[row["ranked_chunk_token_counts"] for row in rows],
+            require_complete_endpoint=True,
+        ),
         "adapter_seconds_per_example": (
             projection_elapsed / max(len(features), 1) if model is not None else 0.0
         ),

@@ -59,7 +59,11 @@ capacity and objective controls selects an asymmetric 128-dimensional margin rou
 to $0.631\pm0.069$ (95\% half-width), with HotpotQA/QASPER recall@3 of 0.588/0.675 and recall@8
 of 0.806. Width 256, sampled negatives, and one hard-negative refresh do not improve this
 selection. Cross-domain recall@3 remains 0.213 in both directions, the 0.70 promotion gate is
-not met, and an end-to-end check changes retrieval without changing answer F1.
+not met, and an end-to-end check changes retrieval without changing answer F1. A retrospective
+fraction-based analysis nevertheless finds a useful operating region hidden by that fixed-$k$
+gate: the selected adapter reaches any-evidence recall 0.831 at 10\% of candidate chunks and
+0.956 at 20\%, with $f_{80}=0.10$ and $f_{90}=0.15$. This retrieval gain does not resolve weak
+cross-domain transfer or the absence of an answer-quality improvement.
 \end{abstract}
 
 \section{Introduction}
@@ -826,6 +830,77 @@ recall@3 is 0.125. Hotpot-to-QASPER and QASPER-to-Hotpot transfer both reach onl
 adapter learns evidence alignment rather than a label-independent shortcut, but the geometry is
 not yet domain-general.
 
+\subsection{Recall as a Function of Selected Memory}
+
+A fixed $k$ is a useful severe-sparsity test, but it changes meaning when documents contain
+different numbers of candidate chunks. We therefore reconstruct a second view at requested
+fractions $f\in\{0.01,0.02,0.05,0.10,0.15,0.20,0.25,0.30,0.50,1.0\}$, selecting
+$k_i(f)=\lceil fN_i\rceil$ separately for every example. Table~\ref{tab:recall-sparsity}
+reports any-evidence recall because the historical artifacts retained the rank of the first
+annotated chunk, not the complete ordered evidence set. $f_{80}$ and $f_{90}$ are the first
+measured fractions reaching the corresponding recall, without interpolation. AUC$_{0--30}$ is
+the normalized area over the sparse interval.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Retrospective any-evidence recall versus requested parent-chunk fraction. The learned
+adapter averages five seeds and 160 seed--example evaluations. Other rows use historical
+16- or 32-example cohorts and are not fully paired; differences across those rows are therefore
+descriptive. Per-example ceiling makes the realized fraction slightly larger than requested.}
+\label{tab:recall-sparsity}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Mechanism & Dataset & R@5\% & R@10\% & R@20\% & R@30\% & $f_{80}$ & $f_{90}$ & AUC$_{0--30}$ \\
+\midrule
+Post-RoPE K mean & Combined & 0.125 & 0.125 & 0.250 & 0.375 & 1.00 & 1.00 & 0.190 \\
+Pre-RoPE K mean & Combined & 0.375 & 0.563 & 0.938 & 1.000 & 0.15 & 0.20 & 0.700 \\
+Centered-RoPE, $G=8$ & Combined & 0.250 & 0.375 & 0.563 & 0.688 & 0.50 & 0.50 & 0.430 \\
+Hidden-state mean & Combined & 0.438 & 0.625 & 0.625 & 0.813 & 0.30 & 0.50 & 0.574 \\
+Last-state query & Combined & 0.531 & 0.719 & 0.875 & 0.906 & 0.15 & 0.30 & 0.724 \\
+Learned margin adapter & Combined & \textbf{0.675} & \textbf{0.831} & \textbf{0.956} & \textbf{1.000} & \textbf{0.10} & \textbf{0.15} & \textbf{0.835} \\
+\midrule
+Learned margin adapter & HotpotQA & 0.488 & 0.700 & 0.925 & 1.000 & 0.15 & 0.20 & 0.753 \\
+Learned margin adapter & QASPER & 0.863 & 0.963 & 0.988 & 1.000 & 0.05 & 0.10 & 0.918 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.84\linewidth]{../shared/results/recall_sparsity/paper2_hf/major_sparse_curve.pdf}
+\caption{Any-evidence recall over the 0--30\% selected-parent region. The learned metric has a
+clear 10--20\% operating range that Recall@3 alone concealed. The strong pre-RoPE curve is from
+the earlier 16-example cohort and should not be read as a paired defeat of the learned adapter.}
+\label{fig:recall-sparsity-sparse}
+\end{figure}
+
+The fixed-$k$ conclusion is therefore narrower than originally stated. The adapter does not
+meet the deliberately severe Recall@3 promotion gate, yet it retrieves some annotated evidence
+for 83.1\% of cases after selecting 10\% of candidates and for 95.6\% after selecting 20\%.
+Even the parameter-free last-state query reaches 71.9\% and 87.5\% at those fractions. This is
+evidence for a practical sub-30\% routing regime, not evidence of causal answer use. The
+HotpotQA--QASPER difference also remains material: QASPER reaches $f_{90}=0.10$, whereas the
+multi-hop HotpotQA set requires 0.20.
+
+For the frozen-feature test set, complete rankings and exact parent lengths permit a stricter
+multi-evidence calculation. Figure~\ref{fig:recall-sparsity-kv} plots the fraction of all
+annotated evidence chunks recovered against measured native-K/V tokens. At requested 10\% and
+20\%, the selected seed recovers 0.356 and 0.442 of all annotated chunks, respectively; the
+corresponding any-evidence values are 0.844 and 0.906. These quantities answer different
+questions and must not be interchanged. Because nearly every parent has 32 tokens, the measured
+K/V fractions (0.104 and 0.205) closely track realized chunk fractions (0.105 and 0.206). We do
+not infer K/V fractions for older artifacts that lack exact token lengths.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{../shared/results/recall_sparsity/paper2_hf/exact_kv_sparse_curve.pdf}
+\caption{Exact annotated-evidence coverage versus measured materialized native-K/V fraction on
+the frozen-feature test set. This plot uses complete evidence sets and physical parent lengths;
+it is intentionally stricter than the any-evidence table.}
+\label{fig:recall-sparsity-kv}
+\end{figure}
+
 The earlier $2\times2$ contrastive ablation also constrains the query interpretation. With
 cosine scoring, last/question-decay recall@3 is 0.469/0.250; with the learned metric it is
 0.563/0.519. Learning removes much of the aggregate query's deficit, but aggregation adds no
@@ -932,7 +1007,9 @@ quality comparison.
 
 The tiny learned adapter establishes that evidence supervision can reshape frozen hidden states,
 especially on QASPER, but validation/test instability and weak cross-domain transfer prevent a
-general routing claim. The next experiment should increase split size and label diversity before
+general routing claim. Fraction-based evaluation shows that it has a useful 10--20\% retrieval
+operating region despite failing Recall@3; this revises the gate interpretation, not the causal
+generation result. The next experiment should increase split size and label diversity before
 adding adapter capacity. If retrieval becomes stable while generation remains unchanged, the
 next mechanism belongs to memory-use alignment rather than routing. The contiguous-mean,
 token-max, centered-RoPE, and query-pooling results close the current simple zero-parameter
@@ -973,8 +1050,10 @@ on annotated evidence. This directly supports the routing/payload split: native 
 compatibility is not semantic evidence relevance. Recent-state and question-span query
 aggregation also fail to beat the last state. A tiny margin-trained metric improves combined
 recall@3 by 0.163 and balances HotpotQA/QASPER without positional bias, showing that relevance
-geometry is a real part of the bottleneck. More dimensions and harder sampled negatives do not
-improve it. The validation-selected adapter still misses the held-out gate and transfers poorly.
+geometry is a real part of the bottleneck. Fraction-based analysis further shows any-evidence
+recall of 0.831 at 10\% and 0.956 at 20\%, so Recall@3 understates the usable retrieval regime.
+More dimensions and harder sampled negatives do not improve it. The validation-selected adapter
+still misses the held-out fixed-$k$ gate and transfers poorly.
 End-to-end answer quality remains unchanged even when evidence is selected. The next work must
 separate data-limited routing generalization from memory-use alignment, not claim solved
 long-context retrieval or proceed to Llama.
