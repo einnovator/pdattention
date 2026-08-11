@@ -52,13 +52,17 @@ class HFRoutingProjection(nn.Module):
     def project_query(self, query: torch.Tensor, *, normalize: bool = True) -> torch.Tensor:
         """Project query rows ``[B,D_model]`` into ``[B,D_route]``."""
         self._validate(query)
-        projected = self.query_projection(query)
+        parameter = next(self.query_projection.parameters())
+        projected = self.query_projection(query.to(device=parameter.device, dtype=parameter.dtype))
         return F.normalize(projected, dim=-1, eps=1e-12) if normalize else projected
 
     def project_memory(self, memory: torch.Tensor, *, normalize: bool = True) -> torch.Tensor:
         """Project memory rows ``[C,D_model]`` into ``[C,D_route]``."""
         self._validate(memory)
-        projected = self.memory_projection(memory)
+        parameter = next(self.memory_projection.parameters())
+        projected = self.memory_projection(
+            memory.to(device=parameter.device, dtype=parameter.dtype)
+        )
         return F.normalize(projected, dim=-1, eps=1e-12) if normalize else projected
 
     def scores(self, query: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:

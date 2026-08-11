@@ -40,6 +40,13 @@ def test_mlp_projection_and_invalid_inputs():
         HFRoutingProjection(16, 4, "bilinear")
 
 
+def test_projection_accepts_half_precision_backbone_states_at_fp32_boundary():
+    adapter = HFRoutingProjection(16, 4, "shared_linear")
+    query = adapter.project_query(torch.randn(2, 16, dtype=torch.float16))
+    memory = adapter.project_memory(torch.randn(3, 16, dtype=torch.float16))
+    assert query.dtype == memory.dtype == torch.float32
+
+
 def test_routing_projection_checkpoint_restores_frozen_parameters(tmp_path):
     original = HFRoutingProjection(16, 4, "shared_linear")
     path = tmp_path / "projection.pt"
