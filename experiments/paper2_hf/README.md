@@ -285,7 +285,7 @@ The analysis selects `ceil(f * N_i)` candidates per example at 1, 2, 5, 10, 15, 
 50, and 100 percent. It preserves historical any-overlap evidence mapping and reports exact
 native-K/V fractions only for artifacts that retain physical parent lengths. The selected
 learned router reaches combined any-evidence recall `0.831` at 10 percent and `0.956` at 20
-percent (`f80=0.10`, `f90=0.15`, normalized `AUC0-30=0.835`). Thus Recall@3 remains a useful
+percent (realized `f80=0.105`, `f90=0.158`, normalized `AUC0-30=0.835`). Thus Recall@3 remains a useful
 stress gate but understates the router's 10--20 percent operating range. Generated CSV, JSON,
 PNG, and PDF artifacts live under
 `docs/papers/shared/results/recall_sparsity/paper2_hf/`.

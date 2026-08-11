@@ -62,7 +62,7 @@ selection. Cross-domain recall@3 remains 0.213 in both directions, the 0.70 prom
 not met, and an end-to-end check changes retrieval without changing answer F1. A retrospective
 fraction-based analysis nevertheless finds a useful operating region hidden by that fixed-$k$
 gate: the selected adapter reaches any-evidence recall 0.831 at 10\% of candidate chunks and
-0.956 at 20\%, with $f_{80}=0.10$ and $f_{90}=0.15$. This retrieval gain does not resolve weak
+0.956 at 20\%, with realized $f_{80}=0.105$ and $f_{90}=0.158$. This retrieval gain does not resolve weak
 cross-domain transfer or the absence of an answer-quality improvement.
 \end{abstract}
 
@@ -838,7 +838,8 @@ fractions $f\in\{0.01,0.02,0.05,0.10,0.15,0.20,0.25,0.30,0.50,1.0\}$, selecting
 $k_i(f)=\lceil fN_i\rceil$ separately for every example. Table~\ref{tab:recall-sparsity}
 reports any-evidence recall because the historical artifacts retained the rank of the first
 annotated chunk, not the complete ordered evidence set. $f_{80}$ and $f_{90}$ are the first
-measured fractions reaching the corresponding recall, without interpolation. AUC$_{0--30}$ is
+measured realized fractions reaching the corresponding recall after per-example ceiling,
+without interpolation. AUC$_{0--30}$ is
 the normalized area over the sparse interval.
 
 \begin{table}[H]
@@ -853,15 +854,15 @@ descriptive. Per-example ceiling makes the realized fraction slightly larger tha
 \toprule
 Mechanism & Dataset & R@5\% & R@10\% & R@20\% & R@30\% & $f_{80}$ & $f_{90}$ & AUC$_{0--30}$ \\
 \midrule
-Post-RoPE K mean & Combined & 0.125 & 0.125 & 0.250 & 0.375 & 1.00 & 1.00 & 0.190 \\
-Pre-RoPE K mean & Combined & 0.375 & 0.563 & 0.938 & 1.000 & 0.15 & 0.20 & 0.700 \\
-Centered-RoPE, $G=8$ & Combined & 0.250 & 0.375 & 0.563 & 0.688 & 0.50 & 0.50 & 0.430 \\
-Hidden-state mean & Combined & 0.438 & 0.625 & 0.625 & 0.813 & 0.30 & 0.50 & 0.574 \\
-Last-state query & Combined & 0.531 & 0.719 & 0.875 & 0.906 & 0.15 & 0.30 & 0.724 \\
-Learned margin adapter & Combined & \textbf{0.675} & \textbf{0.831} & \textbf{0.956} & \textbf{1.000} & \textbf{0.10} & \textbf{0.15} & \textbf{0.835} \\
+Post-RoPE K mean & Combined & 0.125 & 0.125 & 0.250 & 0.375 & 1.000 & 1.000 & 0.190 \\
+Pre-RoPE K mean & Combined & 0.375 & 0.563 & 0.938 & 1.000 & 0.155 & 0.206 & 0.700 \\
+Centered-RoPE, $G=8$ & Combined & 0.250 & 0.375 & 0.563 & 0.688 & 0.504 & 0.504 & 0.430 \\
+Hidden-state mean & Combined & 0.438 & 0.625 & 0.625 & 0.813 & 0.306 & 0.504 & 0.574 \\
+Last-state query & Combined & 0.531 & 0.719 & 0.875 & 0.906 & 0.158 & 0.306 & 0.724 \\
+Learned margin adapter & Combined & \textbf{0.675} & \textbf{0.831} & \textbf{0.956} & \textbf{1.000} & \textbf{0.105} & \textbf{0.158} & \textbf{0.835} \\
 \midrule
-Learned margin adapter & HotpotQA & 0.488 & 0.700 & 0.925 & 1.000 & 0.15 & 0.20 & 0.753 \\
-Learned margin adapter & QASPER & 0.863 & 0.963 & 0.988 & 1.000 & 0.05 & 0.10 & 0.918 \\
+Learned margin adapter & HotpotQA & 0.488 & 0.700 & 0.925 & 1.000 & 0.160 & 0.207 & 0.753 \\
+Learned margin adapter & QASPER & 0.863 & 0.963 & 0.988 & 1.000 & 0.054 & 0.104 & 0.918 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -880,8 +881,8 @@ meet the deliberately severe Recall@3 promotion gate, yet it retrieves some anno
 for 83.1\% of cases after selecting 10\% of candidates and for 95.6\% after selecting 20\%.
 Even the parameter-free last-state query reaches 71.9\% and 87.5\% at those fractions. This is
 evidence for a practical sub-30\% routing regime, not evidence of causal answer use. The
-HotpotQA--QASPER difference also remains material: QASPER reaches $f_{90}=0.10$, whereas the
-multi-hop HotpotQA set requires 0.20.
+HotpotQA--QASPER difference also remains material: QASPER reaches realized $f_{90}=0.104$,
+whereas the multi-hop HotpotQA set requires 0.207.
 
 For the frozen-feature test set, complete rankings and exact parent lengths permit a stricter
 multi-evidence calculation. Figure~\ref{fig:recall-sparsity-kv} plots the fraction of all

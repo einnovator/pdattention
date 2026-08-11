@@ -427,7 +427,8 @@ diversity before capacity, then study memory-use alignment only after retrieval 
 Observation:
 - The validation-selected learned router fails the predeclared combined Recall@3 gate at 0.631.
 - Recomputing selection per example as `ceil(f * candidate_chunks)` gives any-evidence recall
-  0.831 at 10% and 0.956 at 20%, with `f80=0.10`, `f90=0.15`, and normalized `AUC0-30=0.835`.
+  0.831 at 10% and 0.956 at 20%, with realized `f80=0.105`, `f90=0.158`, and normalized
+  `AUC0-30=0.835`.
 - The parameter-free last-state query reaches 0.719 and 0.875 at the same fractions.
 - On artifacts with exact parent lengths, realized K/V fraction differs from realized chunk
   fraction by less than 0.2 percentage points because almost all parents contain 32 tokens.
