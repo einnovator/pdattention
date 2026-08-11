@@ -30,10 +30,20 @@ from data.native_kv_benchmarks import load_qasper_papers
 from experiments.paper2_hf.common.artifacts import runtime_metadata
 from experiments.paper2_hf.qa.run_smoke import evidence_token_spans, prompt_ids
 from experiments.paper2_hf.qwen.run_first_night import MODEL_ID, MODEL_REVISION
-from pra_torch.hf import PRAHFConfig, inject_pra
+from pra_torch.hf import (
+    ATTENTION_INPUT_HIDDEN_STATE,
+    PRAHFConfig,
+    canonical_routing_representation,
+    inject_pra,
+)
 
 
-REPRESENTATIONS = ("post_rope_key", "pre_rope_key", "hidden_state")
+REPRESENTATIONS = (
+    "post_rope_key",
+    "pre_rope_key",
+    ATTENTION_INPUT_HIDDEN_STATE,
+    "hidden_state",
+)
 DEFAULT_TOP_K = (3, 8, 16)
 
 
@@ -139,6 +149,7 @@ def _configure(
     gist_count: int,
 ) -> None:
     handle.cache.clear()
+    representation = canonical_routing_representation(representation)
     handle.hf_config.routing_representation = representation
     handle.hf_config.routing_chunk_tokens = int(chunk_size)
     handle.hf_config.gist_mode = gist_mode
@@ -169,7 +180,7 @@ def _capture_query(handle, tokenizer, example: dict, device: torch.device) -> to
         query = adapter.pra_core.prepare_pra_query(captured.post_query)
     elif representation == "pre_rope_key":
         query = adapter.pra_core.prepare_pra_query(captured.pre_query)
-    elif representation == "hidden_state":
+    elif representation == ATTENTION_INPUT_HIDDEN_STATE:
         query = captured.hidden_states[:, -1, :]
     else:
         raise ValueError(representation)
@@ -435,7 +446,12 @@ def aggregate(rows: list[dict]) -> list[dict]:
 
 def _plot(aggregates: list[dict], output_dir: Path, stem: str) -> None:
     figure, axis = plt.subplots(figsize=(7.2, 4.4))
-    markers = {"post_rope_key": "o", "pre_rope_key": "s", "hidden_state": "^"}
+    markers = {
+        "post_rope_key": "o",
+        "pre_rope_key": "s",
+        ATTENTION_INPUT_HIDDEN_STATE: "^",
+        "hidden_state": "^",
+    }
     for (dataset, representation, gist_count), values in sorted(
         _group(aggregates, "dataset", "routing_representation", "gist_count").items()
     ):
@@ -663,6 +679,12 @@ def parse_args():
     invalid = set(args.representations) - set(REPRESENTATIONS)
     if invalid:
         parser.error(f"Unsupported representations: {sorted(invalid)}")
+    args.representations = tuple(
+        dict.fromkeys(
+            canonical_routing_representation(value)
+            for value in args.representations
+        )
+    )
     return args
 
 

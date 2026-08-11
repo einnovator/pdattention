@@ -7,6 +7,17 @@ from dataclasses import dataclass
 from ..config import PRAConfig
 
 
+ATTENTION_INPUT_HIDDEN_STATE = "attention_input_hidden_state"
+_ROUTING_REPRESENTATION_ALIASES = {
+    "hidden_state": ATTENTION_INPUT_HIDDEN_STATE,
+}
+
+
+def canonical_routing_representation(value: str) -> str:
+    """Return the explicit persistent name for a supported HF routing space."""
+    return _ROUTING_REPRESENTATION_ALIASES.get(value, value)
+
+
 @dataclass
 class PRAHFConfig:
     """Small HF-facing configuration that expands into canonical ``PRAConfig``."""
@@ -17,7 +28,7 @@ class PRAHFConfig:
     encoding_block_tokens: int = 512
     routing_chunk_tokens: int = 128
     routing_chunk_overlap_tokens: int = 0
-    routing_representation: str = "post_rope_key"
+    routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE
     max_materialized_memory_tokens: int = 512
     context_safety_reserve_tokens: int = 0
     top_k_references: int = 2
@@ -33,7 +44,14 @@ class PRAHFConfig:
 
     def __post_init__(self) -> None:
         """Reject routing modes that the installed family adapter cannot represent."""
-        supported = {"post_rope_key", "pre_rope_key", "hidden_state"}
+        self.routing_representation = canonical_routing_representation(
+            self.routing_representation
+        )
+        supported = {
+            "post_rope_key",
+            "pre_rope_key",
+            ATTENTION_INPUT_HIDDEN_STATE,
+        }
         if self.routing_representation not in supported:
             raise ValueError(
                 f"Unsupported HF routing representation: {self.routing_representation}"

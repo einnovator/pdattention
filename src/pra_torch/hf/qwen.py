@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch
 
 from .adapter_base import HFRoutingCapture, PRAHFAttentionAdapter
+from .config import ATTENTION_INPUT_HIDDEN_STATE, canonical_routing_representation
 from ..memory import LayerKV
 from ..memory_batching import MemoryBatchingStats
 
@@ -39,10 +40,12 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         original_attention,
         cache,
         config,
-        routing_representation: str = "post_rope_key",
+        routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE,
     ) -> None:
         super().__init__(original_attention, cache, config)
-        self.routing_representation = routing_representation
+        self.routing_representation = canonical_routing_representation(
+            routing_representation
+        )
         self.apply_rotary_pos_emb, self.eager_attention_forward, self.variant = _qwen_symbols(
             original_attention
         )
@@ -143,7 +146,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             return post_query
         if self.routing_representation == "pre_rope_key":
             return pre_query
-        if self.routing_representation == "hidden_state":
+        if self.routing_representation == ATTENTION_INPUT_HIDDEN_STATE:
             return hidden_states[:, -1, :]
         raise ValueError(f"Unsupported routing representation: {self.routing_representation}")
 

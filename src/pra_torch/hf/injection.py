@@ -16,7 +16,11 @@ from ..memory import (
     ReferenceChunkMemory,
 )
 from .adapter_base import HFRoutingCapture, PRAHFAttentionAdapter
-from .config import PRAHFConfig
+from .config import (
+    ATTENTION_INPUT_HIDDEN_STATE,
+    PRAHFConfig,
+    canonical_routing_representation,
+)
 from .qwen import QwenPRAAttentionAdapter
 
 
@@ -80,7 +84,9 @@ class PRAHFModel:
         end: int,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Return token routing features while leaving detail K/V post-RoPE."""
-        representation = self.hf_config.routing_representation
+        representation = canonical_routing_representation(
+            self.hf_config.routing_representation
+        )
         detail = captured.detail_kv
         if representation == "post_rope_key":
             keys = projected_tokens(detail.k[:, :, start:end, :])
@@ -88,7 +94,7 @@ class PRAHFModel:
         elif representation == "pre_rope_key":
             keys = projected_tokens(captured.pre_key[:, :, start:end, :])
             values = projected_tokens(detail.v[:, :, start:end, :])
-        elif representation == "hidden_state":
+        elif representation == ATTENTION_INPUT_HIDDEN_STATE:
             keys = captured.hidden_states[0, start:end, :]
             values = None
         else:

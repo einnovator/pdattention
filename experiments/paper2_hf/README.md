@@ -70,7 +70,7 @@ Before training a router, run the parameter-free contiguous multi-gist diagnosti
 
 ```powershell
 python experiments/paper2_hf/routing/run_representation.py --device cuda `
-  --examples-per-dataset 8 --representations hidden_state --chunk-sizes 32 `
+  --examples-per-dataset 8 --representations attention_input_hidden_state --chunk-sizes 32 `
   --gist-mode segment_mean --gist-counts 1,2,4,8 --top-k 3,8,16 `
   --stem qwen_routing_segment_mean
 ```
@@ -104,5 +104,25 @@ Observed over two 32-example confirmation subsets (64 evaluations per gist count
   warm routing time is effectively flat at this scale; and
 - no setting passes the Qwen-to-Llama gate. The next intervention is the predeclared small
   evidence-supervised router with Qwen frozen.
+
+Before training that adaptor, run one higher-resolution, parameter-free diagnostic:
+
+```powershell
+python experiments/paper2_hf/routing/run_representation.py --device cuda `
+  --examples-per-dataset 8 --representations attention_input_hidden_state `
+  --chunk-sizes 32 --gist-mode segment_mean --gist-counts 1,32 `
+  --top-k 3,8,16 --stem qwen_routing_hidden_token_max
+```
+
+With a 32-token parent, `G=32` makes every segment one token. The existing maximum-over-gists
+score is therefore exactly the diagnostic `max_t cos(h_query, h_t)` while selected parent IDs,
+post-RoPE K/V payloads, and materialization limits stay unchanged.
+
+Predeclared expectation H8: if token-max substantially improves recall@3 and MRR over `G=1`,
+mean pooling is losing sparse evidence and richer pooling deserves further work. If token-max
+also performs poorly, the more immediate problem is query/evidence alignment in the frozen
+hidden-state space. Report the approximately 32-fold routing-index increase, measured routing
+time, selected fraction, and materialized K/V separately; token-max is a diagnostic rather than
+a proposed production index.
 
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.

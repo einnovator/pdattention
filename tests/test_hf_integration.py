@@ -11,7 +11,7 @@ import torch
 transformers = pytest.importorskip("transformers")
 from transformers import Qwen3Config, Qwen3ForCausalLM
 
-from pra_torch.hf import PRAHFConfig, inject_pra
+from pra_torch.hf import ATTENTION_INPUT_HIDDEN_STATE, PRAHFConfig, inject_pra
 from pra_torch.memory_batching import native_kv_attention
 
 
@@ -52,6 +52,14 @@ def _hf_config(**overrides) -> PRAHFConfig:
     return PRAHFConfig(**values)
 
 
+def test_hf_default_names_attention_input_hidden_state_explicitly():
+    assert PRAHFConfig().routing_representation == ATTENTION_INPUT_HIDDEN_STATE
+    assert (
+        PRAHFConfig(routing_representation="hidden_state").routing_representation
+        == ATTENTION_INPUT_HIDDEN_STATE
+    )
+
+
 def test_qwen_disabled_adapter_has_exact_logits_hidden_states_and_generation_parity():
     torch.manual_seed(101)
     original = _tiny_qwen()
@@ -80,6 +88,12 @@ def test_qwen_reference_capture_keeps_native_gqa_layout_and_uses_memory():
     assert len(chunks) == 2
     assert all(chunk.token_kv.k.shape[1] == 2 for chunk in chunks)
     assert all(chunk.token_kv.k.device.type == "cpu" for chunk in chunks)
+    assert all(chunk.token_kv.position_state == "post_position" for chunk in chunks)
+    assert all(
+        chunk.metadata["routing_representation"] == ATTENTION_INPUT_HIDDEN_STATE
+        for chunk in chunks
+    )
+    assert all(chunk.routing_gist.k.shape == (1, 32) for chunk in chunks)
     assert [chunk.logical_start for chunk in chunks] == [0, 4]
 
     handle.set_memory_enabled(True)
@@ -118,7 +132,11 @@ def test_routing_representation_switch_preserves_materialized_post_rope_kv():
     original = _tiny_qwen()
     ids = torch.tensor([[11, 12, 13, 14]])
     entries = {}
-    for representation in ("post_rope_key", "pre_rope_key", "hidden_state"):
+    for representation in (
+        "post_rope_key",
+        "pre_rope_key",
+        ATTENTION_INPUT_HIDDEN_STATE,
+    ):
         handle = inject_pra(
             copy.deepcopy(original),
             _hf_config(routing_representation=representation),
@@ -134,7 +152,7 @@ def test_routing_representation_switch_preserves_materialized_post_rope_kv():
         assert chunk.metadata["routing_representation"] == representation
     assert baseline.routing_gist.k.shape == (1, 16)
     assert chunks["pre_rope_key"].routing_gist.k.shape == (1, 16)
-    assert chunks["hidden_state"].routing_gist.k.shape == (1, 32)
+    assert chunks[ATTENTION_INPUT_HIDDEN_STATE].routing_gist.k.shape == (1, 32)
 
 
 def test_hidden_state_segment_means_share_one_parent_native_kv_payload():
@@ -142,7 +160,7 @@ def test_hidden_state_segment_means_share_one_parent_native_kv_payload():
     handle = inject_pra(
         _tiny_qwen(),
         _hf_config(
-            routing_representation="hidden_state",
+            routing_representation=ATTENTION_INPUT_HIDDEN_STATE,
             gist_mode="segment_mean",
             gists_per_chunk=4,
         ),
@@ -220,6 +238,47 @@ def test_native_kv_attention_replays_gqa_without_expanding_stored_memory():
     assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-6)
 
 
+def test_fixed_selected_set_has_identical_materialization_and_attention_output():
+    torch.manual_seed(1081)
+    handle = inject_pra(_tiny_qwen(), _hf_config())
+    entry = handle.add_reference(
+        "mem://fixed-selection", torch.tensor([[11, 12, 13, 14]])
+    )
+    chunk = entry.layer_memory[1].chunks[0]
+    selected = handle.cache.search(
+        chunk.routing_gist.k[0], 1, handle.pra_config
+    )[0][0]
+    core = handle.adapters[1].pra_core
+    query = torch.randn(1, 4, 2, 8)
+    local_key = torch.randn(1, 2, 2, 8)
+    local_value = torch.randn(1, 2, 2, 8)
+
+    routed = core.prepare_selected_memory(
+        query,
+        [[selected]],
+        direct_tokens=2,
+        rankings=[[{"selection_source": "router"}]],
+    )
+    oracle = core.prepare_selected_memory(
+        query,
+        [[selected]],
+        direct_tokens=2,
+        rankings=[[{"selection_source": "oracle"}]],
+    )
+    routed_output, _, _ = core.apply_pra_attention(
+        query, local_key, local_value, routed
+    )
+    oracle_output, _, _ = core.apply_pra_attention(
+        query, local_key, local_value, oracle
+    )
+
+    assert torch.equal(routed.keys[0], chunk.token_kv.k)
+    assert torch.equal(routed.values[0], chunk.token_kv.v)
+    assert torch.equal(routed.keys[0], oracle.keys[0])
+    assert torch.equal(routed.values[0], oracle.values[0])
+    assert torch.equal(routed_output, oracle_output)
+
+
 def test_qwen_implicit_head_preserves_offsets_and_native_bound():
     torch.manual_seed(109)
     handle = inject_pra(_tiny_qwen(), _hf_config())
@@ -230,6 +289,15 @@ def test_qwen_implicit_head_preserves_offsets_and_native_bound():
     assert prepared.input_ids.shape == (1, 16)
     assert prepared.position_ids.tolist() == [list(range(24, 40))]
     assert handle.cache.has("#__head")
+    head = handle.cache.get("#__head")
+    assert head is not None
+    chunks = head.layer_memory[1].chunks
+    assert all(
+        chunk.metadata["routing_representation"] == ATTENTION_INPUT_HIDDEN_STATE
+        for chunk in chunks
+    )
+    assert all(chunk.token_kv.position_state == "post_position" for chunk in chunks)
+    assert [chunk.logical_start for chunk in chunks] == [0, 4, 8, 12, 16, 20]
     assert handle.max_native_operation_tokens <= 16
     assert handle.native_limit_violations == 0
 

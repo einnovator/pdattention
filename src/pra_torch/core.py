@@ -324,6 +324,38 @@ class PRAExecutionCore:
         synchronize_detailed_timing(query_states, detailed)
         routing_duration = time.perf_counter() - started
 
+        return self.prepare_selected_memory(
+            query_states,
+            selected_by_batch,
+            direct_tokens=direct_tokens,
+            rankings=rankings,
+            routing_duration_seconds=routing_duration,
+        )
+
+    def prepare_selected_memory(
+        self,
+        query_states: torch.Tensor,
+        selected_by_batch: list[list[SelectedChunk]],
+        *,
+        direct_tokens: int,
+        rankings: list[list[dict]] | None = None,
+        routing_duration_seconds: float = 0.0,
+    ) -> PreparedPRAMemory:
+        """Materialize fixed identities independently of how they were routed.
+
+        This method is the boundary between semantic selection and native
+        attention payload replay. Different routers and oracle controls can
+        supply the same ``SelectedChunk`` set; budgeting and post-RoPE K/V
+        handling from this point onward are then exactly shared.
+        """
+        batch = int(query_states.shape[0])
+        if len(selected_by_batch) != batch:
+            raise ValueError("Fixed PRA selections must match the attention batch.")
+        if rankings is None:
+            rankings = [[] for _ in range(batch)]
+        if len(rankings) != batch:
+            raise ValueError("Fixed PRA rankings must match the attention batch.")
+        detailed = self.config.collect_detailed_timing
         synchronize_detailed_timing(query_states, detailed)
         started = time.perf_counter()
         keys: list[torch.Tensor] = []
@@ -354,7 +386,7 @@ class PRAExecutionCore:
             budget_stats=budget_stats,
             duplicate_tokens=duplicate_tokens,
             transferred_kv_bytes=transferred_bytes,
-            routing_duration_seconds=routing_duration,
+            routing_duration_seconds=float(routing_duration_seconds),
             materialization_duration_seconds=time.perf_counter() - started,
             transfer_duration_seconds=transfer_duration,
         )
