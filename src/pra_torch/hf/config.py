@@ -17,6 +17,7 @@ class PRAHFConfig:
     encoding_block_tokens: int = 512
     routing_chunk_tokens: int = 128
     routing_chunk_overlap_tokens: int = 0
+    routing_representation: str = "post_rope_key"
     max_materialized_memory_tokens: int = 512
     context_safety_reserve_tokens: int = 0
     top_k_references: int = 2
@@ -28,6 +29,15 @@ class PRAHFConfig:
     kv_cache_pin_memory: bool = False
     kv_cache_non_blocking: bool = False
     collect_detailed_timing: bool = True
+    collect_routing_metrics: bool = False
+
+    def __post_init__(self) -> None:
+        """Reject routing modes that the installed family adapter cannot represent."""
+        supported = {"post_rope_key", "pre_rope_key", "hidden_state"}
+        if self.routing_representation not in supported:
+            raise ValueError(
+                f"Unsupported HF routing representation: {self.routing_representation}"
+            )
 
     def build_pra_config(self, hf_config) -> PRAConfig:
         """Translate native model dimensions without changing pretrained parameters."""
@@ -72,4 +82,5 @@ class PRAHFConfig:
             kv_cache_pin_memory=self.kv_cache_pin_memory,
             kv_cache_non_blocking=self.kv_cache_non_blocking,
             collect_detailed_timing=self.collect_detailed_timing,
+            collect_routing_metrics=self.collect_routing_metrics,
         )

@@ -3,12 +3,30 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 
 from ..core import PRAExecutionCore
 from ..memory import LayerKV, PRAMemoryCache
+
+
+@dataclass(frozen=True)
+class HFRoutingCapture:
+    """Matched routing features and native detail K/V from one bounded prefill.
+
+    ``pre_query`` and ``post_query`` use ``[1,H_q,T,Dh]``; ``pre_key`` and
+    ``detail_kv`` use native ``[1,H_kv,T,Dh]``; ``hidden_states`` uses
+    ``[1,T,D_model]``.
+    Full pre-RoPE tensors are transient and are discarded after gist pooling.
+    """
+
+    pre_query: torch.Tensor
+    post_query: torch.Tensor
+    pre_key: torch.Tensor
+    hidden_states: torch.Tensor
+    detail_kv: LayerKV
 
 
 class PRAHFAttentionAdapter(nn.Module, ABC):
@@ -25,7 +43,7 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         self.memory_enabled = False
         self.capture_enabled = False
         self.capture_position_ids: torch.Tensor | None = None
-        self.captured_kv: LayerKV | None = None
+        self.captured_routing: HFRoutingCapture | None = None
         self.last_selected_chunks = []
         self.last_routing_rankings = []
         self.last_diagnostics: dict[str, float] = {}
@@ -51,16 +69,16 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         """Capture this layer's post-position native K/V during the next prefill."""
         self.capture_enabled = True
         self.capture_position_ids = position_ids.detach().clone()
-        self.captured_kv = None
+        self.captured_routing = None
 
-    def consume_capture(self) -> LayerKV:
-        """Return one completed capture and reset the temporary capture state."""
-        if self.captured_kv is None:
+    def consume_capture(self) -> HFRoutingCapture:
+        """Return one completed routing/detail capture and reset temporary state."""
+        if self.captured_routing is None:
             raise RuntimeError(f"Layer {self.layer_idx} did not capture reference K/V.")
-        captured = self.captured_kv
+        captured = self.captured_routing
         self.capture_enabled = False
         self.capture_position_ids = None
-        self.captured_kv = None
+        self.captured_routing = None
         return captured
 
     @abstractmethod

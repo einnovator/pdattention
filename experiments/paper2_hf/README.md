@@ -33,4 +33,26 @@ This compares question-only truncation, dense text truncated to the same native 
 oracle evidence text-RAG, and zero-shot PRA on one HotpotQA and one QASPER example. It is a
 pipeline diagnostic, not an accuracy estimate.
 
+Run the staged routing-representation comparison:
+
+```powershell
+python experiments/paper2_hf/routing/run_representation.py --device cuda `
+  --examples-per-dataset 8 --representations post_rope_key,pre_rope_key,hidden_state `
+  --chunk-sizes 32 --top-k 3,8,16 --stem qwen_routing_representation
+```
+
+The runner captures matched pre-RoPE Q/K, post-RoPE Q/K, and attention-input hidden states,
+but stores only the configured compact routing gist alongside post-RoPE native detail K/V. It
+measures evidence ranks without generating answers and checkpoints after every example.
+
+Expected before running:
+
+- H1: pre-RoPE routing should improve evidence recall and weaken late-position score bias.
+- H2: post-RoPE mean routing should degrade more as routing chunks grow.
+- H3: larger `k` should improve recall while increasing selected fraction and K/V cost.
+- H4: hidden-state means may win if native key features are not semantic retrieval features.
+
+Observed results must be retained even when they reject these hypotheses. Llama remains gated
+on sparse, position-independent evidence retrieval from a representative Qwen subset.
+
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.

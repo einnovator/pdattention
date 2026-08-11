@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import io
 
 import pytest
 import torch
@@ -89,6 +90,84 @@ def test_qwen_reference_capture_keeps_native_gqa_layout_and_uses_memory():
     assert diagnostics["hf_query_heads"] == 4
     assert diagnostics["hf_native_kv_heads"] == 2
     assert diagnostics["retrieved_physical_kv_tokens"] == 8
+
+
+def test_qwen_capture_exposes_matched_pre_rope_features_and_post_rope_detail():
+    torch.manual_seed(105)
+    handle = inject_pra(_tiny_qwen(), _hf_config(routing_representation="pre_rope_key"))
+    adapter = handle.adapters[1]
+    ids = torch.tensor([[1, 7, 9, 3]])
+    positions = torch.arange(ids.shape[1]).unsqueeze(0)
+
+    adapter.begin_capture(positions)
+    with torch.no_grad():
+        handle.model(input_ids=ids, position_ids=positions, use_cache=False)
+    captured = adapter.consume_capture()
+
+    assert captured.pre_query.shape == (1, 4, 4, 8)
+    assert captured.post_query.shape == captured.pre_query.shape
+    assert captured.pre_key.shape == captured.detail_kv.k.shape == (1, 2, 4, 8)
+    assert captured.hidden_states.shape == (1, 4, 32)
+    assert captured.detail_kv.position_state == "post_position"
+    assert torch.equal(captured.detail_kv.position_ids, positions)
+    assert not torch.equal(captured.pre_key, captured.detail_kv.k)
+
+
+def test_routing_representation_switch_preserves_materialized_post_rope_kv():
+    torch.manual_seed(106)
+    original = _tiny_qwen()
+    ids = torch.tensor([[11, 12, 13, 14]])
+    entries = {}
+    for representation in ("post_rope_key", "pre_rope_key", "hidden_state"):
+        handle = inject_pra(
+            copy.deepcopy(original),
+            _hf_config(routing_representation=representation),
+        )
+        entries[representation] = handle.add_reference(f"mem://{representation}", ids)
+
+    chunks = {name: entry.layer_memory[1].chunks[0] for name, entry in entries.items()}
+    baseline = chunks["post_rope_key"]
+    for representation, chunk in chunks.items():
+        assert torch.equal(chunk.token_kv.k, baseline.token_kv.k)
+        assert torch.equal(chunk.token_kv.v, baseline.token_kv.v)
+        assert chunk.token_kv.position_state == "post_position"
+        assert chunk.metadata["routing_representation"] == representation
+    assert baseline.routing_gist.k.shape == (1, 16)
+    assert chunks["pre_rope_key"].routing_gist.k.shape == (1, 16)
+    assert chunks["hidden_state"].routing_gist.k.shape == (1, 32)
+
+
+def test_pre_rope_gqa_routing_query_matches_native_query_groups():
+    torch.manual_seed(107)
+    handle = inject_pra(_tiny_qwen(), _hf_config(routing_representation="pre_rope_key"))
+    adapter = handle.adapters[1]
+    query = torch.randn(1, 4, 3, 8)
+
+    actual = adapter.pra_core.prepare_pra_query(query)
+    expected = query[:, :, -1, :].view(1, 2, 2, 8).mean(dim=2).reshape(1, 16)
+
+    assert torch.equal(actual, expected)
+
+
+def test_pre_rope_routing_cache_round_trip_and_device_parity():
+    torch.manual_seed(108)
+    handle = inject_pra(_tiny_qwen(), _hf_config(routing_representation="pre_rope_key"))
+    entry = handle.add_reference("mem://round-trip", torch.tensor([[2, 4, 6, 8]]))
+    stream = io.BytesIO()
+    torch.save(entry, stream)
+    stream.seek(0)
+    restored = torch.load(stream, weights_only=False)
+    chunk = restored.layer_memory[1].chunks[0]
+
+    assert chunk.metadata["routing_representation"] == "pre_rope_key"
+    assert chunk.token_kv.position_state == "post_position"
+    assert torch.equal(chunk.routing_gist.k, entry.layer_memory[1].chunks[0].routing_gist.k)
+
+    query = chunk.routing_gist.k[0]
+    cpu_hit = handle.cache.search(query, 1, handle.pra_config)[0][0].chunk_id
+    if torch.cuda.is_available():
+        gpu_hit = handle.cache.search(query.cuda(), 1, handle.pra_config)[0][0].chunk_id
+        assert gpu_hit == cpu_hit
 
 
 def test_native_kv_attention_replays_gqa_without_expanding_stored_memory():

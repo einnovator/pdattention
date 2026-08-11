@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from .adapter_base import PRAHFAttentionAdapter
+from .adapter_base import HFRoutingCapture, PRAHFAttentionAdapter
 from ..memory import LayerKV
 from ..memory_batching import MemoryBatchingStats
 
@@ -34,8 +34,15 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
 
     family = "qwen"
 
-    def __init__(self, original_attention, cache, config) -> None:
+    def __init__(
+        self,
+        original_attention,
+        cache,
+        config,
+        routing_representation: str = "post_rope_key",
+    ) -> None:
         super().__init__(original_attention, cache, config)
+        self.routing_representation = routing_representation
         self.apply_rotary_pos_emb, self.eager_attention_forward, self.variant = _qwen_symbols(
             original_attention
         )
@@ -99,17 +106,46 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         output = attention_output.reshape(*input_shape, -1).contiguous()
         return self.original_attention.o_proj(output)
 
-    def _record_capture(self, key: torch.Tensor, value: torch.Tensor) -> None:
-        """Save detached post-RoPE K and native V without expanding GQA heads."""
+    def _record_capture(
+        self,
+        pre_query: torch.Tensor,
+        post_query: torch.Tensor,
+        pre_key: torch.Tensor,
+        post_key: torch.Tensor,
+        value: torch.Tensor,
+        hidden_states: torch.Tensor,
+    ) -> None:
+        """Capture matched routing features plus unchanged post-RoPE detail K/V."""
         positions = self.capture_position_ids
         if positions is None:
-            positions = torch.arange(key.shape[2], device=key.device).unsqueeze(0)
-        self.captured_kv = LayerKV(
-            k=key.detach(),
-            v=value.detach(),
-            position_ids=positions.detach().clone(),
-            position_state="post_position",
+            positions = torch.arange(post_key.shape[2], device=post_key.device).unsqueeze(0)
+        self.captured_routing = HFRoutingCapture(
+            pre_query=pre_query.detach(),
+            post_query=post_query.detach(),
+            pre_key=pre_key.detach(),
+            hidden_states=hidden_states.detach(),
+            detail_kv=LayerKV(
+                k=post_key.detach(),
+                v=value.detach(),
+                position_ids=positions.detach().clone(),
+                position_state="post_position",
+            ),
         )
+
+    def _routing_query_states(
+        self,
+        hidden_states: torch.Tensor,
+        pre_query: torch.Tensor,
+        post_query: torch.Tensor,
+    ) -> torch.Tensor:
+        """Choose a query matched to the configured chunk-gist representation."""
+        if self.routing_representation == "post_rope_key":
+            return post_query
+        if self.routing_representation == "pre_rope_key":
+            return pre_query
+        if self.routing_representation == "hidden_state":
+            return hidden_states[:, -1, :]
+        raise ValueError(f"Unsupported routing representation: {self.routing_representation}")
 
     def _stats(self, prepared) -> MemoryBatchingStats:
         """Describe HF rectangular packing while retaining physical-token counts."""
@@ -140,10 +176,14 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
     ):
         """Use exact delegation for parity and native Qwen eager attention for PRA."""
         if self.capture_enabled:
-            query, key, value = self.project_qkv(hidden_states)
-            query, key, value = self.normalize_qkv_layout(query, key, value)
-            _query, key = self.apply_native_position_encoding(query, key, position_embeddings)
-            self._record_capture(key, value)
+            pre_query, pre_key, value = self.project_qkv(hidden_states)
+            pre_query, pre_key, value = self.normalize_qkv_layout(pre_query, pre_key, value)
+            _post_query, post_key = self.apply_native_position_encoding(
+                pre_query, pre_key, position_embeddings
+            )
+            self._record_capture(
+                pre_query, _post_query, pre_key, post_key, value, hidden_states
+            )
         if not self.memory_enabled or self.cache.is_empty():
             self.last_selected_chunks = [[] for _ in range(hidden_states.shape[0])]
             self.last_routing_rankings = [[] for _ in range(hidden_states.shape[0])]
@@ -158,9 +198,9 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             )
 
         input_shape = hidden_states.shape[:-1]
-        query, key, value = self.project_qkv(hidden_states)
-        query, key, value = self.normalize_qkv_layout(query, key, value)
-        query, key = self.apply_native_position_encoding(query, key, position_embeddings)
+        pre_query, pre_key, value = self.project_qkv(hidden_states)
+        pre_query, pre_key, value = self.normalize_qkv_layout(pre_query, pre_key, value)
+        query, key = self.apply_native_position_encoding(pre_query, pre_key, position_embeddings)
         if past_key_value is not None:
             cos, sin = position_embeddings
             key, value = past_key_value.update(
@@ -169,7 +209,12 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                 self.layer_idx,
                 {"sin": sin, "cos": cos, "cache_position": cache_position},
             )
-        prepared = self.pra_core.prepare_memory(query, direct_tokens=int(key.shape[2]))
+        routing_query_states = self._routing_query_states(hidden_states, pre_query, query)
+        prepared = self.pra_core.prepare_memory(
+            query,
+            direct_tokens=int(key.shape[2]),
+            routing_query_states=routing_query_states,
+        )
         self.last_selected_chunks = prepared.selections
         self.last_routing_rankings = prepared.rankings
         if not prepared.has_memory:

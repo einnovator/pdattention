@@ -15,7 +15,7 @@ from ..memory import (
     PRASimpleMemoryCache,
     ReferenceChunkMemory,
 )
-from .adapter_base import PRAHFAttentionAdapter
+from .adapter_base import HFRoutingCapture, PRAHFAttentionAdapter
 from .config import PRAHFConfig
 from .qwen import QwenPRAAttentionAdapter
 
@@ -73,6 +73,28 @@ class PRAHFModel:
             value = value.pin_memory()
         return LayerKV(key, value, kv.position_ids, kv.position_state)
 
+    def _routing_points(
+        self,
+        captured: HFRoutingCapture,
+        start: int,
+        end: int,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Return token routing features while leaving detail K/V post-RoPE."""
+        representation = self.hf_config.routing_representation
+        detail = captured.detail_kv
+        if representation == "post_rope_key":
+            keys = projected_tokens(detail.k[:, :, start:end, :])
+            values = projected_tokens(detail.v[:, :, start:end, :])
+        elif representation == "pre_rope_key":
+            keys = projected_tokens(captured.pre_key[:, :, start:end, :])
+            values = projected_tokens(detail.v[:, :, start:end, :])
+        elif representation == "hidden_state":
+            keys = captured.hidden_states[0, start:end, :]
+            values = None
+        else:
+            raise ValueError(f"Unsupported routing representation: {representation}")
+        return keys, values
+
     @torch.no_grad()
     def add_reference(
         self,
@@ -98,6 +120,7 @@ class PRAHFModel:
                 "source_tokens": total,
                 "encoding_block_tokens": self.hf_config.encoding_block_tokens,
                 "routing_chunk_tokens": self.hf_config.routing_chunk_tokens,
+                "routing_representation": self.hf_config.routing_representation,
                 "position_state": "post_position",
             },
         )
@@ -127,15 +150,19 @@ class PRAHFModel:
                     logical_end = block_start + local_end
                     chunk_token_ids = block_ids[0, local_start:local_end].tolist()
                     for layer, captured in captures.items():
+                        detail = captured.detail_kv
                         kv = LayerKV(
-                            k=captured.k[:, :, local_start:local_end, :],
-                            v=captured.v[:, :, local_start:local_end, :],
+                            k=detail.k[:, :, local_start:local_end, :],
+                            v=detail.v[:, :, local_start:local_end, :],
                             position_ids=positions[:, local_start:local_end],
                             position_state="post_position",
                         )
+                        routing_keys, routing_values = self._routing_points(
+                            captured, local_start, local_end
+                        )
                         computed = compute_gists(
-                            keys=projected_tokens(kv.k),
-                            values=projected_tokens(kv.v),
+                            keys=routing_keys,
+                            values=routing_values,
                             mode=self.pra_config.gist_mode,
                             num_gists=self.pra_config.gists_per_chunk,
                             config=self.pra_config,
@@ -155,7 +182,17 @@ class PRAHFModel:
                                 method=self.pra_config.gist_mode,
                                 metadata=computed.metadata,
                             ),
-                            metadata={"encoding_block_start": block_start},
+                            metadata={
+                                "encoding_block_start": block_start,
+                                "routing_representation": self.hf_config.routing_representation,
+                                "routing_gist_bytes": int(
+                                    computed.k.numel() * computed.k.element_size()
+                                ),
+                                "detail_kv_bytes": int(
+                                    (kv.k.numel() * kv.k.element_size())
+                                    + (kv.v.numel() * kv.v.element_size())
+                                ),
+                            },
                         )
                         entry.layer_memory.setdefault(layer, LayerReferenceMemory()).chunks.append(chunk)
                     if local_end == int(block_ids.shape[1]):
@@ -205,7 +242,12 @@ def inject_pra(model, config: PRAHFConfig | None = None) -> PRAHFModel:
         original = layers[layer_id].self_attn
         if ".qwen2." not in original.__class__.__module__ and ".qwen3." not in original.__class__.__module__:
             raise TypeError("Only Qwen2/Qwen2.5/Qwen3 is implemented in the first Paper 2 milestone.")
-        adapter = QwenPRAAttentionAdapter(original, cache, pra_config)
+        adapter = QwenPRAAttentionAdapter(
+            original,
+            cache,
+            pra_config,
+            routing_representation=config.routing_representation,
+        )
         layers[layer_id].self_attn = adapter
         adapters[layer_id] = adapter
     return PRAHFModel(model, adapters, cache, config, pra_config)

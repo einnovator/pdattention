@@ -289,8 +289,15 @@ class PRAExecutionCore:
         *,
         direct_tokens: int,
         routing_attention_mask: torch.Tensor | None = None,
+        routing_query_states: torch.Tensor | None = None,
     ) -> PreparedPRAMemory:
-        """Route and materialize one batch while preserving row isolation."""
+        """Route and materialize one batch while preserving row isolation.
+
+        Family adapters may supply matched routing features independently of
+        the post-position query used by native attention. Rank-four features
+        retain the standard GQA reduction; rank-two features are already
+        pooled routing queries such as a final-token hidden state.
+        """
         batch = int(query_states.shape[0])
         if self.cache.is_empty():
             empty = query_states.new_empty((1, self.num_key_value_heads, 0, self.head_dim))
@@ -304,7 +311,15 @@ class PRAExecutionCore:
         detailed = self.config.collect_detailed_timing
         synchronize_detailed_timing(query_states, detailed)
         started = time.perf_counter()
-        routing_query = self.prepare_pra_query(query_states, routing_attention_mask)
+        routing_source = query_states if routing_query_states is None else routing_query_states
+        if routing_source.ndim == 4:
+            routing_query = self.prepare_pra_query(routing_source, routing_attention_mask)
+        elif routing_source.ndim == 2:
+            if routing_source.shape[0] != batch:
+                raise ValueError("Prepared routing queries must match the attention batch.")
+            routing_query = routing_source
+        else:
+            raise ValueError("Routing query states must be [B,H,T,Dh] or prepared [B,D].")
         selected_by_batch, rankings = self.route_memory(routing_query)
         synchronize_detailed_timing(query_states, detailed)
         routing_duration = time.perf_counter() - started
