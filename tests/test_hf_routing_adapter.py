@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from pra_torch.hf import HFRoutingProjection
+from pra_torch.hf import HFRoutingProjection, load_hf_routing_projection
 
 
 @pytest.mark.parametrize(
@@ -38,3 +38,23 @@ def test_mlp_projection_and_invalid_inputs():
         adapter.project_query(torch.randn(1, 15))
     with pytest.raises(ValueError, match="Unsupported"):
         HFRoutingProjection(16, 4, "bilinear")
+
+
+def test_routing_projection_checkpoint_restores_frozen_parameters(tmp_path):
+    original = HFRoutingProjection(16, 4, "shared_linear")
+    path = tmp_path / "projection.pt"
+    torch.save(
+        {
+            "state_dict": original.state_dict(),
+            "input_width": 16,
+            "routing_width": 4,
+            "architecture": "shared_linear",
+        },
+        path,
+    )
+    restored = load_hf_routing_projection(path)
+    assert torch.equal(
+        restored.query_projection.weight,
+        original.query_projection.weight,
+    )
+    assert not any(parameter.requires_grad for parameter in restored.parameters())

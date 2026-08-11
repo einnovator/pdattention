@@ -15,6 +15,7 @@ from pra_torch.hf import (
     ATTENTION_INPUT_HIDDEN_STATE,
     CENTERED_ROPE_KEY,
     PRAHFConfig,
+    HFRoutingProjection,
     inject_pra,
 )
 from pra_torch.memory_batching import native_kv_attention
@@ -85,6 +86,31 @@ def test_qwen_runtime_query_strategy_aggregates_attention_input_states():
     unused = torch.empty(1, 4, 4, 8)
     actual = adapter._routing_query_states(hidden, unused, unused)
     assert torch.equal(actual, hidden[:, -2:, :].mean(dim=1))
+
+
+def test_learned_projection_changes_only_routing_width_not_native_detail_kv():
+    torch.manual_seed(102)
+    original = _tiny_qwen()
+    projection = HFRoutingProjection(32, 8, "shared_linear").eval()
+    projected = inject_pra(
+        copy.deepcopy(original),
+        _hf_config(),
+        routing_projection=projection,
+    )
+    baseline = inject_pra(copy.deepcopy(original), _hf_config())
+    ids = torch.tensor([[11, 12, 13, 14]])
+    projected_chunk = projected.add_reference("mem://projected", ids).layer_memory[1].chunks[0]
+    baseline_chunk = baseline.add_reference("mem://baseline", ids).layer_memory[1].chunks[0]
+
+    assert projected_chunk.routing_gist.k.shape == (1, 8)
+    assert projected_chunk.metadata["routing_gist_bytes"] == 8 * 4
+    assert projected_chunk.routing_gist.metadata["routing_projection_width"] == 8
+    assert torch.equal(projected_chunk.token_kv.k, baseline_chunk.token_kv.k)
+    assert torch.equal(projected_chunk.token_kv.v, baseline_chunk.token_kv.v)
+    hidden = torch.randn(1, 4, 32)
+    unused = torch.empty(1, 4, 4, 8)
+    query = projected.adapters[1]._routing_query_states(hidden, unused, unused)
+    assert query.shape == (1, 8)
 
 
 def test_centered_rope_config_rejects_invalid_policy_and_pooling():

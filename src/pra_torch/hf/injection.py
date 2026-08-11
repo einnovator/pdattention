@@ -38,12 +38,21 @@ class PreparedLongPrompt:
 class PRAHFModel:
     """Operational handle for an injected HF model and its shared PRA cache."""
 
-    def __init__(self, model, adapters, cache, hf_config, pra_config) -> None:
+    def __init__(
+        self,
+        model,
+        adapters,
+        cache,
+        hf_config,
+        pra_config,
+        routing_projection=None,
+    ) -> None:
         self.model = model
         self.adapters: dict[int, PRAHFAttentionAdapter] = adapters
         self.cache = cache
         self.hf_config = hf_config
         self.pra_config = pra_config
+        self.routing_projection = routing_projection
         self.max_native_operation_tokens = 0
         self.native_limit_violations = 0
 
@@ -226,6 +235,14 @@ class PRAHFModel:
                                 logical_start=logical_start,
                                 token_count=local_end - local_start,
                             )
+                        if self.routing_projection is not None:
+                            computed.k = self.routing_projection.project_memory(computed.k)
+                            computed.metadata.update(
+                                {
+                                    "routing_projection": self.routing_projection.architecture,
+                                    "routing_projection_width": self.routing_projection.routing_width,
+                                }
+                            )
                         chunk = ReferenceChunkMemory(
                             chunk_id=f"{uri}#chunk={logical_start}:{logical_end}",
                             source_uri=uri,
@@ -283,7 +300,12 @@ def _normalize_layer_ids(layer_ids, layer_count: int) -> tuple[int, ...]:
     return normalized
 
 
-def inject_pra(model, config: PRAHFConfig | None = None) -> PRAHFModel:
+def inject_pra(
+    model,
+    config: PRAHFConfig | None = None,
+    *,
+    routing_projection=None,
+) -> PRAHFModel:
     """Wrap selected Qwen attention modules while reusing every pretrained parameter."""
     config = config or PRAHFConfig()
     if not hasattr(model, "model") or not hasattr(model.model, "layers"):
@@ -293,6 +315,11 @@ def inject_pra(model, config: PRAHFConfig | None = None) -> PRAHFModel:
     layers = model.model.layers
     selected = _normalize_layer_ids(config.layer_ids, len(layers))
     pra_config = config.build_pra_config(model.config)
+    if routing_projection is not None:
+        if config.routing_representation != ATTENTION_INPUT_HIDDEN_STATE:
+            raise ValueError("Learned routing projections require hidden-state routing.")
+        if routing_projection.input_width != int(model.config.hidden_size):
+            raise ValueError("Routing projection input width must match the HF hidden size.")
     pra_config.pra_layer_ids = selected
     cache = PRASimpleMemoryCache()
     adapters: dict[int, PRAHFAttentionAdapter] = {}
@@ -309,7 +336,15 @@ def inject_pra(model, config: PRAHFConfig | None = None) -> PRAHFModel:
             query_strategy=config.query_strategy,
             query_window=config.query_window,
             query_half_life=config.query_half_life,
+            routing_projection=routing_projection,
         )
         layers[layer_id].self_attn = adapter
         adapters[layer_id] = adapter
-    return PRAHFModel(model, adapters, cache, config, pra_config)
+    return PRAHFModel(
+        model,
+        adapters,
+        cache,
+        config,
+        pra_config,
+        routing_projection,
+    )

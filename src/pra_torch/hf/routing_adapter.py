@@ -68,3 +68,22 @@ class HFRoutingProjection(nn.Module):
     @property
     def parameter_count(self) -> int:
         return sum(parameter.numel() for parameter in self.parameters())
+
+
+def load_hf_routing_projection(
+    checkpoint_path,
+    *,
+    device: torch.device | str = "cpu",
+) -> HFRoutingProjection:
+    """Restore a frozen routing projection from an experiment checkpoint."""
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    projection = HFRoutingProjection(
+        int(checkpoint["input_width"]),
+        int(checkpoint["routing_width"]),
+        str(checkpoint["architecture"]),
+    ).to(device)
+    projection.load_state_dict(checkpoint["state_dict"])
+    projection.eval()
+    for parameter in projection.parameters():
+        parameter.requires_grad_(False)
+    return projection

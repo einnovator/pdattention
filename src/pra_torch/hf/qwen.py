@@ -50,6 +50,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         query_strategy: str = "last",
         query_window: int = 16,
         query_half_life: float = 4.0,
+        routing_projection=None,
     ) -> None:
         super().__init__(original_attention, cache, config)
         self.routing_representation = canonical_routing_representation(
@@ -58,6 +59,9 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         self.query_strategy = query_strategy
         self.query_window = int(query_window)
         self.query_half_life = float(query_half_life)
+        # The operational handle owns this optional frozen module. A non-owning
+        # reference avoids registering the same projection below multiple layers.
+        self.__dict__["routing_projection"] = routing_projection
         # The owning Qwen model already registers this module. Keep a non-owning
         # reference so the adapter can request native fractional-position phases.
         self.__dict__["native_rotary_embedding"] = rotary_embedding
@@ -186,12 +190,15 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         if self.routing_representation == "pre_rope_key":
             return pre_query
         if self.routing_representation == ATTENTION_INPUT_HIDDEN_STATE:
-            return aggregate_query_states(
+            query = aggregate_query_states(
                 hidden_states,
                 self.query_strategy,
                 window=self.query_window,
                 half_life=self.query_half_life,
             )
+            if self.routing_projection is not None:
+                query = self.routing_projection.project_query(query)
+            return query
         raise ValueError(f"Unsupported routing representation: {self.routing_representation}")
 
     def _stats(self, prepared) -> MemoryBatchingStats:

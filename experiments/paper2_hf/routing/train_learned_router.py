@@ -105,6 +105,10 @@ def evaluate(model, features, query_strategy: str, device: torch.device) -> dict
     aggregates = {}
     for dataset in ("combined", "hotpotqa", "qasper"):
         selected = rows if dataset == "combined" else [row for row in rows if row["dataset"] == dataset]
+        if not selected:
+            aggregates[dataset] = {metric: None for metric in metrics}
+            aggregates[dataset]["examples"] = 0
+            continue
         aggregates[dataset] = {
             metric: statistics.fmean(
                 float(row[metric]) for row in selected if row.get(metric) is not None

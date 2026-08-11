@@ -119,6 +119,7 @@ def _hotpot_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
                     "dataset": "hotpotqa",
                     "id": str(row["id"]),
                     "question": str(row["question"]),
+                    "answer": str(row["answer"]),
                     "source": "\n".join(segments),
                     "evidence": evidence,
                 }
@@ -146,6 +147,7 @@ def _qasper_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
                         "dataset": "qasper",
                         "id": f"{paper_id}:{qa.get('question_id', '')}",
                         "question": str(qa["question"]),
+                        "answer": "yes" if answer["yes_no"] else "no",
                         # Keep the exact smoke-study construction protocol.
                         "source": "\n".join(dict.fromkeys([*evidence, *paragraphs])),
                         "evidence": evidence,
