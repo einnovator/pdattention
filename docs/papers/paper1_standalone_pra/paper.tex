@@ -47,7 +47,11 @@ safe causal blocks before exposing smaller routing chunks. This distinction repa
 early fragmentation failure: contextual/native-KV slicing recovers 0.998--1.000 of dense
 context benefit through 256 addressable units while activating 4.4--5.1\% of accessible
 K/V at fixed selection breadth. A packed exact router reduces warm 256-way selection to
-5.5--11.6 ms. Under a hard 32-token native-operation limit, a five-seed probe addresses a
+5.5--11.6 ms. A retrospective correction separates fixed breadth from fixed fraction: on
+the small tier, selecting about 12.5\% of references keeps annotated target coverage at
+0.756--0.772 on HotpotQA-derived text and 0.794--0.803 on QASPER-derived text from 64 through
+256 units, while fixed $k=8$ becomes four times sparser. Under a hard 32-token native-operation
+limit, a five-seed probe addresses a
 184-token displaced prompt head; at 192 logical tokens, routed loss is 1.0567 versus
 1.2287 for truncation and 1.7089 for independent block encoding. These controlled results
 establish sparse native-KV transport, exact routing, and model-bounded long-context
@@ -1267,6 +1271,77 @@ above annotated-oracle RCB and the coexistence of near-perfect answer loss with 
 multi-target coverage. The result demonstrates causal transport of a sufficient native
 state, not complete evidence recovery.
 
+\subsection{Retrospective: Fixed Breadth Versus Fixed Fraction}
+
+The original scale narrative emphasized $k=8$. That is the correct view for bounded
+materialization cost, but not a complete test of routing quality: with $N-1$ addressable
+references, its nominal selected fraction falls from 12.7\% at 64 units to 6.3\% at 128
+and 3.1\% at 256. We therefore re-express the stored coverage diagnostics at their actual
+$k/(N-1)$ fractions. The artifacts retain aggregate values at
+$k\in\{1,2,4,8,16,32\}$, not full per-example rankings. Figure~\ref{fig:pra-fixed-vs-fraction}
+uses only those measured points. It does not interpolate the requested fraction grid or
+approximate native-K/V token fractions.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Fixed-$k$ and approximately fixed-fraction scaling for the final small-tier native
+historical-slice mechanism. Coverage is the mean fraction of annotated target URIs recovered
+over five seeds. The 32-unit rows are an earlier independent-encoding screen and are shown
+separately; they are not included in the 64--256 trend claim.}
+\label{tab:pra-recall-sparsity}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrr}
+\toprule
+Probe & Units & $k=8$ fraction & $k=8$ coverage & Matched $k$ & Matched fraction & Matched coverage & Protocol \\
+\midrule
+HotpotQA & 32  & .258 & .794 & 4  & .129 & .709 & independent screen \\
+QASPER   & 32  & .258 & .878 & 4  & .129 & .700 & independent screen \\
+\midrule
+HotpotQA & 64  & .127 & .756 & 8  & .127 & .756 & native slice, small \\
+HotpotQA & 128 & .063 & .713 & 16 & .126 & .772 & native slice, small \\
+HotpotQA & 256 & .031 & .700 & 32 & .125 & .762 & native slice, small \\
+QASPER   & 64  & .127 & .794 & 8  & .127 & .794 & native slice, small \\
+QASPER   & 128 & .063 & .800 & 16 & .126 & .803 & native slice, small \\
+QASPER   & 256 & .031 & .759 & 32 & .125 & .800 & native slice, small \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.92\textwidth]{../shared/figures/pra_fixed_k_vs_fraction_scaling.pdf}
+\caption{Fixed $k=8$ becomes progressively more selective as the candidate set grows. Holding
+the selected-reference fraction near 12.5\% instead keeps annotated coverage nearly constant
+from 64 through 256 units.}
+\label{fig:pra-fixed-vs-fraction}
+\end{figure}
+
+The reinterpretation is material. At fixed $k=8$, HotpotQA-derived coverage changes from
+0.756 to 0.713 to 0.700, and QASPER-derived coverage from 0.794 to 0.800 to 0.759. Near a
+constant 12.5\% budget, the corresponding sequences are 0.756/0.772/0.762 and
+0.794/0.803/0.800. The apparent scaling loss is therefore largely a change in sparsity,
+not a collapse of the ranking geometry. Conversely, fixed-fraction selection grows $k$
+from 8 to 32 and gives up the nearly constant materialization cost that motivated the
+fixed-$k$ experiment. Both views are necessary: fixed $k$ measures systems scalability;
+fixed fraction measures selector scalability.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.92\textwidth]{../shared/figures/pra_recall_sparsity_small.pdf}
+\caption{Measured coverage curves for the final small-tier native-slice router. The vertical
+line marks 12.5\%. Only stored $k\in\{1,2,4,8,16,32\}$ points inside the 0--30\% region are
+connected.}
+\label{fig:pra-recall-sparsity}
+\end{figure}
+
+The inverse thresholds are correspondingly coarse. On HotpotQA-derived text, the first
+measured $f_{80}$ is 0.254 at 64 units and 0.252 at 128; it is not reached through $k=32$
+at 256. On QASPER-derived text, first-measured $f_{80}$ is 0.254, 0.063, and 0.125. Only
+the 64-unit conditions reach $f_{90}$ within the measured ladder, at 0.508. These are
+first observed fractions, not interpolated estimates. Exact alternative-$k$ physical K/V
+lengths were not retained, so no retrospective K/V-fraction curve is claimed.
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=.84\textwidth]{../shared/figures/pra_model_capacity.pdf}
@@ -1890,10 +1965,12 @@ The controlled studies establish implementation invariants, sparse native transp
 fragmentation diagnosis, exact routing parity, and bounded execution. They do not yet show
 semantic selection on unrestricted tasks, recursive benefit, end-to-end serving speedup,
 or a favorable comparison with strong long-context, cache-compression, and RAG baselines.
+The recall--sparsity retrospective is limited to stored aggregate fixed-$k$ points; complete
+rankings are required for exact per-example fraction grids and alternative-budget K/V curves.
 
 \section{Conclusion}
 
-The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Exact whole-model tests cover historical source K/V and continued tail positions. Native historical slicing preserves dense transport through 256 units, and controlled implicit-head studies recover causally relevant tokens outside the direct window. The model-bounded path now separates logical, native, encoding, and routing scales; enforces one whole-chunk budget across all memory sources; and rolls generated history into routable memory. At fixed $k=8$, active K/V falls to roughly 5\%. Reusable exact indexes reduce 256-way warm routing to 5.5--11.6 ms, while CPU-resident source K/V demonstrates a 0.73--3.42 MiB GPU-capacity reduction at a 4--9 ms warm transfer cost. This establishes mechanisms and concrete prototype tradeoffs, not unrestricted QA or production efficiency. The immediate priorities are genuine QA with a capable pretrained backbone, incremental streaming-cache append, batched asynchronous cache movement, fused attention, and end-to-end comparisons.
+The standalone PyTorch PRA prototype now makes native K/V the default transport, converts trained SelfAttention weights without adding transport parameters, and preserves the former cross-attention path for reproducibility. Exact whole-model tests cover historical source K/V and continued tail positions. Native historical slicing preserves dense transport through 256 units, and controlled implicit-head studies recover causally relevant tokens outside the direct window. The model-bounded path now separates logical, native, encoding, and routing scales; enforces one whole-chunk budget across all memory sources; and rolls generated history into routable memory. At fixed $k=8$, active K/V falls to roughly 5\%. Reusable exact indexes reduce 256-way warm routing to 5.5--11.6 ms, while CPU-resident source K/V demonstrates a 0.73--3.42 MiB GPU-capacity reduction at a 4--9 ms warm transfer cost. The retrospective scale view adds a necessary qualification: fixed-$k$ routing preserves materialization cost while becoming progressively sparser, whereas a constant 12.5\% reference budget preserves roughly 0.76 HotpotQA-derived and 0.80 QASPER-derived target coverage through 256 units. Routing quality and systems sparsity must therefore be reported together rather than compressed into one Recall@$k$ value. This establishes mechanisms and concrete prototype tradeoffs, not unrestricted QA or production efficiency. The immediate priorities are genuine QA with a capable pretrained backbone, incremental streaming-cache append, batched asynchronous cache movement, fused attention, and end-to-end comparisons.
 
 \appendix
 \section{Line-Numbered Reimplementation Guide}
