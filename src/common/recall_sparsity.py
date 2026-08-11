@@ -125,7 +125,11 @@ def recall_sparsity_curve(
     inverse = {}
     for target in (0.70, 0.80, 0.90, 0.95):
         inverse[f"f{int(target * 100)}"] = next(
-            (float(row["fraction"]) for row in curve if float(row["recall"]) >= target),
+            (
+                float(row["selected_chunk_fraction"])
+                for row in curve
+                if float(row["recall"]) >= target
+            ),
             None,
         )
     fixed = {}

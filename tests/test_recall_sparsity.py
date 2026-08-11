@@ -44,6 +44,15 @@ def test_exact_kv_fraction_follows_ranked_token_lengths():
     assert result["curve"][0]["selected_kv_token_fraction"] == pytest.approx(0.1)
 
 
+def test_inverse_metrics_report_realized_fraction_after_ceiling():
+    result = recall_sparsity_curve(
+        [["target", "b", "c", "d"]],
+        [{"target"}],
+        fractions=(0.01, 0.30, 1.0),
+    )
+    assert result["inverse"]["f80"] == pytest.approx(0.25)
+
+
 def test_endpoint_mismatch_is_visible_and_optionally_fatal():
     kwargs = {
         "rankings": [["a", "b"]],
