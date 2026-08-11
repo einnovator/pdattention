@@ -188,4 +188,19 @@ The runner also reports correlation with per-chunk native token-QK maximum and m
 Exact fractional centers are primary; matched `floor` and `ceil` controls use
 `--center-policy` only to verify that half-position handling is not driving the result.
 
+Observed on the matched 16-example primary run:
+
+- post/centered/pre/hidden Recall@3 is `0.125/0.188/0.313/0.438`, with MRR
+  `0.131/0.168/0.301/0.275`;
+- centered routing reduces score-position correlation from post-RoPE's `0.651` to `0.567`,
+  but does not approach pre-RoPE (`0.008`) or hidden-state (`-0.021`) position neutrality;
+- centered `G=1/2/4/8` Recall@3 is `0.188/0.125/0.250/0.250`, while Spearman correlation
+  with native token-QK maximum ordering rises `0.521/0.602/0.710/0.874`; and
+- exact/floor/ceil centers all give Recall@3 `0.125` on the matched eight-example control.
+
+E1 is directionally supported but based on one paired gain and no losses; E2 is rejected, E3
+is supported, and E4 has weak partial support. Centered-RoPE validates the positional-aggregation
+mechanism but not a sparse semantic-routing solution. Freeze the current zero-parameter search
+and proceed to the tiny learned hidden-state router with Qwen frozen.
+
 Llama and Gemma remain intentionally unimplemented until Qwen exposes no shared-core issue.

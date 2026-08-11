@@ -45,9 +45,13 @@ recall@3 is only 0.156 and recall@16 selects 23.8\% of chunks. Splitting each 32
 2, 4, or 8 contiguous mean gists does not improve sparse ranking: recall@3 falls to
 0.313/0.266/0.281 and MRR falls in every condition. A token-resolution maximum over 32 hidden
 states also fails as a general remedy: recall@3 changes from 0.438 to 0.375 while routing-index
-overhead grows from 1.57\% to 50\% of detail-K/V bytes. Thus semantic selection and positional
-K/V transport should be separated, but parameter-free Qwen routing does not pass the
-predeclared gate for Llama integration.
+overhead grows from 1.57\% to 50\% of detail-K/V bytes. A final centered-RoPE control pools
+pre-RoPE keys and then rotates once at the exact span center. It improves recall@3 over a
+post-RoPE mean from 0.125 to 0.188, but remains below pre-RoPE (0.313) and hidden-state (0.438)
+routing. With eight centered subgists, correlation with native token-QK maximum ordering rises
+to 0.874 while recall@3 reaches only 0.250. Thus semantic selection and positional K/V transport
+should be separated, but parameter-free Qwen routing does not pass the predeclared gate for
+Llama integration.
 \end{abstract}
 
 \section{Introduction}
@@ -601,6 +605,105 @@ Its measured index-construction time is about 40.1~ms versus 16.4~ms on this sma
 warm top-$k$ timing is too noisy to interpret. The decisive cost is persistent routing state:
 50\% of detail-K/V bytes is incompatible with the intended compact-index role.
 
+\subsection{Center-Position RoPE Gists}
+
+The final zero-parameter control asks whether post-RoPE routing failed because it averaged keys
+expressed in different positional frames. For a contiguous span $S_c$ with known source
+positions $p_s,\ldots,p_e$, we distinguish
+\begin{align}
+ g_{\mathrm{pre}} &= \frac{1}{|S_c|}\sum_{t\in S_c}K_{\mathrm{pre},t},\\
+ g_{\mathrm{postmean}} &= \frac{1}{|S_c|}\sum_{t\in S_c}R(p_t)K_{\mathrm{pre},t},\\
+ g_{\mathrm{center}} &= R(p_c)g_{\mathrm{pre}},\qquad
+ p_c=\frac{p_s+p_e}{2}.
+\end{align}
+The centered form pools in one position-neutral frame and introduces a single representative
+position afterward. Its matched routing query is $Q_{\mathrm{post}}=R(q)Q_{\mathrm{pre}}$.
+Even-length spans use their exact half-integer center through Qwen's installed rotary module;
+no independent RoPE approximation is introduced. This changes routing gists only. Every
+selected parent still materializes the same native post-RoPE K and native V.
+
+The implementation is revision-pinned at
+\href{https://github.com/einnovator/pdattention/tree/4c2a0f0825861f1d6e7c171c4212fb7f1e138431}{commit
+\texttt{4c2a0f0}}. Configuration and policy validation are in
+\texttt{hf/config.py}, lines 11--75. Qwen reshapes each pooled $[G,H_{kv}d_h]$ gist to native
+heads, asks the installed rotary module for float-position cosines and sines, applies the
+family helper, and restores packed routing layout at \texttt{hf/qwen.py}, lines 80--105.
+Span centers and persistent source-span metadata are constructed independently of packed-index
+order at \texttt{hf/injection.py}, lines 105--148; publication invokes that transform only
+after ordinary pre-RoPE pooling at lines 207--229.
+
+Table~\ref{tab:centered-representations} reports the same 16 examples, 32-token parents, and
+$k\in\{3,8,16\}$ used in the representation study. Centered-RoPE is directionally better than
+the post-RoPE mean, with one paired Recall@3 gain and no losses, but the exact two-sided McNemar
+$p$-value is 1.0 because only one example changes. Its position correlation falls from 0.651 to
+0.567 but remains far above the position-neutral alternatives.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Matched centered-RoPE representation control with one gist per 32-token parent.}
+\label{tab:centered-representations}
+\begin{tabular}{lccccc}
+\toprule
+Router & Recall@3 & Recall@8 & Recall@16 & MRR & Position $r$ \\
+\midrule
+Post-RoPE mean & 0.125 & 0.250 & 0.313 & 0.131 & 0.651 \\
+Centered-RoPE mean & 0.188 & 0.313 & 0.438 & 0.168 & 0.567 \\
+Pre-RoPE mean & 0.313 & \textbf{0.563} & \textbf{0.750} & \textbf{0.301} & 0.008 \\
+Hidden-state mean & \textbf{0.438} & 0.500 & \textbf{0.750} & 0.275 & -0.021 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\linewidth]{../shared/results/paper2_hf/routing/centered_rope/centered_rope_gist_recall.pdf}
+\caption{Centered pooling repairs part of the post-RoPE mean failure, but position-neutral
+pre-RoPE and hidden-state routing retain substantially better sparse evidence recall.}
+\label{fig:centered-recall}
+\end{figure}
+
+For segment means, each subspan receives its own exact center. At $G=1,2,4,8$, nominal spans
+contain 32, 16, 8, and 4 tokens, with maximum center-approximation errors of 15.5, 7.5, 3.5,
+and 1.5 positions. Table~\ref{tab:centered-segments} compares evidence ranking with Spearman
+correlation against the chunk ordering produced by maximum native token-QK score.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Centered segment gists. QK rank is Spearman correlation with native token-QK maximum
+ordering; overhead is routing-index bytes divided by detail-K/V bytes.}
+\label{tab:centered-segments}
+\begin{tabular}{lccccc}
+\toprule
+$G$ & Recall@3 & MRR & Position $r$ & Native-max QK rank & Overhead \\
+\midrule
+1 & 0.188 & 0.168 & 0.567 & 0.521 & 1.57\% \\
+2 & 0.125 & 0.134 & 0.588 & 0.602 & 3.14\% \\
+4 & \textbf{0.250} & 0.139 & 0.557 & 0.710 & 6.28\% \\
+8 & \textbf{0.250} & \textbf{0.180} & 0.455 & \textbf{0.874} & 12.56\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{../shared/results/paper2_hf/routing/centered_rope/centered_rope_token_qk_correlation.pdf}
+\caption{Finer centered gists increasingly reproduce native token-QK maximum ordering, but
+semantic Recall@3 remains weak. Native attention compatibility and evidence relevance are
+different objectives.}
+\label{fig:centered-qk}
+\end{figure}
+
+The mechanistic hypothesis is therefore supported, but the routing-quality hypothesis is not.
+At $G=8$, native-maximum rank correlation reaches 0.874 and position bias declines, yet
+Recall@3 is 0.250 and QASPER Recall@3 remains zero. Exact, floor, and ceil center policies all
+produce Recall@3 of 0.125 on the matched eight-example fractional control; their score changes
+are below 0.0074, so fractional-position handling is not the blocker. E1 is directionally
+supported, E2 is rejected, E3 is supported, and E4 receives only weak partial support. This
+closes the current zero-parameter routing transformations and advances the frozen-Qwen learned
+hidden-state router.
+
 \subsection{Canonical end-to-end confirmation}
 
 After establishing the routing/payload boundary, we run one HotpotQA example, one QASPER
@@ -662,9 +765,11 @@ quality comparison.
 The next intervention should be a small evidence-supervised routing or gist adapter with the
 base Qwen checkpoint frozen. It should preserve hidden-state and pre-RoPE baselines, report
 parameter count and training cost, and test cross-dataset generalization. The contiguous-mean
-and token-max results do not exclude learned, clustered, or query-conditioned multi-gist
-routing, but they remove two simple parameter-free sweeps from the critical path. The dominant
-sparse failure is semantic ranking on QASPER. Llama remains blocked until Qwen passes the declared
+token-max, and centered-RoPE results do not exclude learned, clustered, or query-conditioned
+multi-gist routing, but they close the current simple zero-parameter sweeps. Centered routing's
+small representation study does not establish cross-seed superiority over post-RoPE pooling;
+its main contribution is the native-QK/evidence-relevance separation. The dominant sparse
+failure is semantic ranking on QASPER. Llama remains blocked until Qwen passes the declared
 recall/MRR/sparsity/position gate. Gemma remains later.
 
 \section{Related Work}
@@ -695,8 +800,12 @@ ranking above the post-RoPE baseline, yet sparse recall and MRR remain below the
 especially on QASPER. Selecting nearly one quarter of chunks raises recall@16 to 0.797, but does
 not constitute a sparse-routing solution. Contiguous multi-gist means increase index size and
 occasionally improve broad recall without improving recall@3 or MRR. Token-resolution maxima
-raise some HotpotQA ranks but worsen sparse QASPER recall at 50\% routing-index overhead. The
-correct next step is a small frozen-Qwen learned router, not Llama integration and not a claim
+raise some HotpotQA ranks but worsen sparse QASPER recall at 50\% routing-index overhead.
+Centered-RoPE gists repair part of incompatible-frame averaging and, with finer segments,
+closely reproduce native token-QK ordering. They still trail pre-RoPE and hidden-state routing
+on annotated evidence. This directly supports the routing/payload split: native attention
+compatibility is not semantic evidence relevance. The correct next step is a small frozen-Qwen
+learned router, not another unmotivated zero-parameter transform, Llama integration, or a claim
 of solved long-context retrieval.
 
 \appendix
