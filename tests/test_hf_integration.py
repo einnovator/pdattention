@@ -545,6 +545,45 @@ def test_qwen_attention_diagnostics_are_explicit_and_ephemeral():
     assert handle.adapters[1].last_attention_weights is None
 
 
+def test_route_once_reuses_chunk_identity_but_not_cross_layer_kv():
+    torch.manual_seed(1084)
+    handle = inject_pra(_tiny_qwen(), _hf_config(layer_ids=(0, 1)))
+    entry = handle.add_reference(
+        "mem://multilayer", torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    )
+    source_chunk = entry.layer_memory[1].chunks[0]
+    selected = handle.cache.search(
+        source_chunk.routing_gist.k[0], 1, handle.pra_config
+    )
+    mapped = handle.map_chunk_identities_to_layers(selected, {0, 1})
+
+    for layer_id in (0, 1):
+        hit = mapped[layer_id][0][0]
+        assert hit.chunk_id == selected[0][0].chunk_id
+        assert hit.layer_id == layer_id
+        assert hit.chunk is entry.layer_memory[layer_id].chunks[0]
+        assert hit.chunk.token_kv.k.shape == (1, 2, 4, 8)
+        assert hit.chunk.token_kv.v.shape == (1, 2, 4, 8)
+    assert (
+        mapped[0][0][0].chunk.token_kv.k.data_ptr()
+        != mapped[1][0][0].chunk.token_kv.k.data_ptr()
+    )
+    assert not torch.equal(
+        mapped[0][0][0].chunk.token_kv.k,
+        mapped[1][0][0].chunk.token_kv.k,
+    )
+
+    handle.configure_memory_layers({0, 1}, fixed_selections=mapped)
+    with torch.no_grad():
+        handle.model(torch.tensor([[1, 4, 8, 12]]), use_cache=False)
+    expected_tokens = sum(hit.selected_token_count for hit in selected[0])
+    assert all(
+        handle.diagnostics_by_layer()[layer]["retrieved_physical_kv_tokens"]
+        == expected_tokens
+        for layer in (0, 1)
+    )
+
+
 def test_qwen_implicit_head_preserves_offsets_and_native_bound():
     torch.manual_seed(109)
     handle = inject_pra(_tiny_qwen(), _hf_config())

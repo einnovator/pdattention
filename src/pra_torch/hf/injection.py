@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import torch
 
@@ -14,6 +14,7 @@ from ..memory import (
     PRACacheEntry,
     PRASimpleMemoryCache,
     ReferenceChunkMemory,
+    SelectedChunk,
 )
 from .adapter_base import HFRoutingCapture, PRAHFAttentionAdapter
 from .config import (
@@ -92,6 +93,54 @@ class PRAHFModel:
         """Toggle opt-in eager attention-probability capture on injected layers."""
         for adapter in self.adapters.values():
             adapter.set_attention_diagnostics(enabled)
+
+    def map_chunk_identities_to_layers(
+        self,
+        selections: list[list[SelectedChunk]],
+        layer_ids: tuple[int, ...] | set[int],
+    ) -> dict[int, list[list[SelectedChunk]]]:
+        """Reuse selected parent IDs while resolving each layer's native K/V.
+
+        Chunk IDs and source spans are stable across layer-specific cache views.
+        Only that identity is shared: every returned hit owns the target layer's
+        independently projected and positioned K/V payload.
+        """
+        targets = tuple(sorted({int(layer_id) for layer_id in layer_ids}))
+        unknown = set(targets).difference(self.adapters)
+        if unknown:
+            raise ValueError(f"PRA layers were not injected: {sorted(unknown)}")
+        mapped: dict[int, list[list[SelectedChunk]]] = {}
+        for layer_id in targets:
+            layer_rows: list[list[SelectedChunk]] = []
+            for row in selections:
+                mapped_row = []
+                for hit in row:
+                    memory = hit.entry.layer_memory.get(layer_id)
+                    if memory is None:
+                        raise ValueError(
+                            f"Reference {hit.reference_uri} has no K/V for layer {layer_id}."
+                        )
+                    by_id = {chunk.chunk_id: chunk for chunk in memory.chunks}
+                    chunk = by_id.get(hit.chunk_id)
+                    if chunk is None:
+                        raise ValueError(
+                            f"Chunk {hit.chunk_id} has no payload at layer {layer_id}."
+                        )
+                    mapped_row.append(
+                        replace(
+                            hit,
+                            chunk=chunk,
+                            layer_id=layer_id,
+                            metadata={
+                                **hit.metadata,
+                                "selection_source_layer": hit.layer_id,
+                                "identity_reused_across_layers": True,
+                            },
+                        )
+                    )
+                layer_rows.append(mapped_row)
+            mapped[layer_id] = layer_rows
+        return mapped
 
     def diagnostics_by_layer(self) -> dict[int, dict[str, float]]:
         """Return latest routing, materialization, GQA, and timing metrics."""
