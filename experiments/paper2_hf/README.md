@@ -249,3 +249,21 @@ HotpotQA and QASPER Recall@3 each at least `0.50`, combined Recall@8 at least `0
 score-position correlation no greater than `0.20`, and a routing vector no wider than 128
 float32 values. Five-seed variation, shuffled-label training, and Hotpot-to-QASPER plus
 QASPER-to-Hotpot transfer are required before promotion.
+
+Observed outcomes:
+
+- On 32 identity-disjoint confirmation examples, last/question-decay-H2/uniform-W32 Recall@3
+  is `0.469/0.250/0.313`; the last state remains canonical.
+- Validation selected the asymmetric linear 1024-to-128 adapter (`262,144` parameters,
+  `0.044%` of Qwen). Its five-seed held-out Recall@3 is `0.563 +/- 0.031`, with HotpotQA
+  `0.400` and QASPER `0.725`; it does not pass the `0.70` combined gate.
+- A shared 64-dimensional adapter reaches `0.650 +/- 0.041` held-out Recall@3, but this is an
+  exploratory test-best result, not the validation-selected confirmatory model.
+- Canonical shuffled-label Recall@3 is `0.231`. Hotpot-to-QASPER and QASPER-to-Hotpot transfer
+  are `0.150` and `0.225`, so the learned geometry is not domain-general.
+- The validation-selected adapter retrieves evidence in `4/8` end-to-end probes, while answer
+  F1 remains exactly `0.090` with PRA disabled and enabled. Retrieval and causal use remain
+  separate gates.
+
+The Qwen-to-Llama gate is not passed. Increase routing-data diversity before increasing adapter
+capacity; investigate memory-use alignment only after retrieval generalizes.

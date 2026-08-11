@@ -182,7 +182,7 @@ def run(args) -> dict:
         "runtime": runtime_metadata(),
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
-        "checkpoint": str(args.checkpoint.relative_to(ROOT)),
+        "checkpoint": str(args.checkpoint.resolve().relative_to(ROOT)),
         "adapter_parameters": projection.parameter_count,
         "query_strategy": "last",
         "top_k": 3,
@@ -216,7 +216,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=result_dir / "checkpoints" / "shared_linear_d64_last_joint_seed23.pt",
+        default=result_dir / "checkpoints" / "asymmetric_linear_d128_last_joint_seed53.pt",
     )
     parser.add_argument("--output", type=Path, default=result_dir / "learned_router_e2e.json")
     return parser.parse_args()

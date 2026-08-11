@@ -343,6 +343,56 @@ selection, while retaining exact native post-RoPE `K_c,V_c` for attention after 
 transform invention unless a new discriminating hypothesis appears; proceed to a tiny learned
 hidden-state alignment router.
 
+## 14a. The final hidden state remains the best hand-designed information-need query
+
+The query study held memory fixed at one attention-input hidden-state mean per 32-token chunk.
+On 32 identity-disjoint confirmation examples:
+
+```text
+query                         Recall@3   Recall@8   MRR
+last state                       .469       .719    .413
+question decay, half-life 2      .250       .688    .279
+uniform recent 32                .313       .469    .348
+```
+
+The aggregates genuinely changed geometry (cosine to last `.459` and `.576`) but did not improve
+relevance. Long-window averaging appeared less harmful for the small long-question subgroup,
+but the split confounds dataset and length and is not sufficient for a conditional policy.
+
+**Interpretation:** a causal final state already contains a more useful complete information need
+than means of earlier, partially formed states. Query aggregation is not the dominant zero-shot
+bottleneck. Keep `last` as the canonical query.
+
+## 14b. Learned relevance geometry helps, but current evidence is dataset-specific
+
+A frozen-Qwen adapter study used 48 train, 16 validation, and 32 held-out test examples with no
+identity leakage. Validation selected an asymmetric 1024-to-128 query/memory projection. Across
+five seeds its held-out result was:
+
+```text
+metric                         Recall@3   Recall@8   MRR   Hotpot R@3   QASPER R@3
+cosine last                       .469       .719    .413      .813         .125
+asymmetric-128 selected           .563       .806    .516      .400         .725
+```
+
+The adapter has 262,144 parameters (`.044%` of Qwen). It greatly improves QASPER but gives away
+much of HotpotQA and misses the predeclared `.70` combined gate. A shared 64-dimensional adapter
+reaches `.650` test Recall@3, but that is post-hoc test-best evidence, not the validation-selected
+confirmatory model. Shuffled-label Recall@3 is `.231`. Hotpot-to-QASPER transfer is `.150`, and
+QASPER-to-Hotpot transfer is `.225`.
+
+The adapter therefore demonstrates that learned alignment can matter more than representation
+resolution, but not yet that it learns a reusable relevance geometry. In the real PRA generation
+path, the selected adapter recalled evidence on 4/8 probes while answer F1 remained exactly
+`.090` with and without PRA.
+
+> **Routing alignment and causal memory use are distinct trainable interfaces. Better evidence
+> selection does not imply that a frozen decoder will use selected native K/V to answer.**
+
+**Status:** learned-alignment hypothesis supported; domain-general routing and causal-use claims
+not supported. Do not promote to Llama. Increase split diversity before adapter capacity, then
+study memory-use alignment only after retrieval generalizes.
+
 ## 14. Multi-layer routing
 Hypothesis: best semantic routing depth may differ from later PRA consumption depth:
 
