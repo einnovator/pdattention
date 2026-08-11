@@ -363,11 +363,11 @@ but the split confounds dataset and length and is not sufficient for a condition
 than means of earlier, partially formed states. Query aggregation is not the dominant zero-shot
 bottleneck. Keep `last` as the canonical query.
 
-## 14b. Learned relevance geometry helps, but current evidence is dataset-specific
+## 14b. Learned relevance geometry helps, but current evidence is objective- and dataset-specific
 
 A frozen-Qwen adapter study used 48 train, 16 validation, and 32 held-out test examples with no
-identity leakage. Validation selected an asymmetric 1024-to-128 query/memory projection. Across
-five seeds its held-out result was:
+identity leakage. The first contrastive stage selected an asymmetric 1024-to-128 query/memory
+projection. Across five seeds its held-out result was:
 
 ```text
 metric                         Recall@3   Recall@8   MRR   Hotpot R@3   QASPER R@3
@@ -389,9 +389,38 @@ path, the selected adapter recalled evidence on 4/8 probes while answer F1 remai
 > **Routing alignment and causal memory use are distinct trainable interfaces. Better evidence
 > selection does not imply that a frozen decoder will use selected native K/V to answer.**
 
-**Status:** learned-alignment hypothesis supported; domain-general routing and causal-use claims
-not supported. Do not promote to Llama. Increase split diversity before adapter capacity, then
-study memory-use alignment only after retrieval generalizes.
+An extension then tested the missing 256-dimensional capacity rung, a pairwise margin objective,
+mixed lexical/position/current-router negatives, and one learned-hard-negative refresh. Selection
+remained validation-only. The margin objective, not width or mining, revised the canonical result:
+
+```text
+condition                         R@3    R@8    MRR    Hotpot R@3   QASPER R@3
+zero-shot cosine                 .469   .719   .413       .813          .125
+contrastive asymmetric-128       .563   .806   .516       .400          .725
+margin asymmetric-128            .631   .806   .498       .588          .675
+contrastive shared-256           .631   .819   .558       .500          .763
+mixed negatives                  .538   .819   .494       .313          .763
+mined round 1                    .506   .825   .479       .288          .725
+```
+
+The margin router improves paired Recall@3 by `.163 +/- .069` (95% half-width across five seeds),
+reduces score-position correlation to `-.026`, and uses a 128-dimensional index equal to `.392%`
+of native detail-K/V bytes. It passes the per-dataset, Recall@8, position, and width gates, but
+still misses combined Recall@3 `.70`. Shuffled-label Recall@3 falls to `.125`, while both
+cross-domain directions reach only `.213`. One hard-negative refresh worsens sparse recall,
+which argues against insufficient false-positive mining as the current explanation.
+
+The selected seed recalls evidence on `5/8` end-to-end probes, but answer F1 remains exactly
+`.090` with and without PRA. This strengthens rather than weakens the separation between
+selection and use.
+
+> **For this frozen Qwen study, learning the ranking objective matters more than increasing
+> routing resolution or adapter width. The remaining failures are transfer and causal use, not
+> an obvious shortage of router parameters.**
+
+**Status (revised):** learned-alignment hypothesis supported more strongly; domain-general
+routing and causal-use claims remain unsupported. Do not promote to Llama. Increase routing-data
+diversity before capacity, then study memory-use alignment only after retrieval generalizes.
 
 ## 14. Multi-layer routing
 Hypothesis: best semantic routing depth may differ from later PRA consumption depth:

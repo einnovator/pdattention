@@ -53,12 +53,13 @@ to 0.874 while recall@3 reaches only 0.250. Thus semantic selection and position
 should be separated, but parameter-free Qwen routing does not pass the predeclared gate for
 Llama integration. A held-out query study then rejects recent-state and question-span pooling:
 the last state obtains recall@3/MRR of 0.469/0.413, versus 0.250/0.279 for the strongest
-question-decay candidate. Evidence-supervised projections improve QASPER retrieval, but the
-validation-selected asymmetric 128-dimensional adapter reaches only 0.563 held-out recall@3,
-regresses HotpotQA to 0.400, and transfers poorly across datasets. An exploratory test-best
-shared 64-dimensional projection reaches 0.650 but is not a confirmatory selection. Neither
-adapter passes the promotion gate, and an end-to-end check changes retrieval without changing
-answer F1.
+question-decay candidate. Evidence-supervised projections improve retrieval. Validation across
+capacity and objective controls selects an asymmetric 128-dimensional margin router with
+262,144 parameters (0.044\% of Qwen). Across five seeds it raises held-out recall@3 from 0.469
+to $0.631\pm0.069$ (95\% half-width), with HotpotQA/QASPER recall@3 of 0.588/0.675 and recall@8
+of 0.806. Width 256, sampled negatives, and one hard-negative refresh do not improve this
+selection. Cross-domain recall@3 remains 0.213 in both directions, the 0.70 promotion gate is
+not met, and an end-to-end check changes retrieval without changing answer F1.
 \end{abstract}
 
 \section{Introduction}
@@ -769,57 +770,82 @@ hand-designed representation. We precompute frozen last-state queries and mean c
 48 train, 16 validation, and 32 test examples, split by QA identity. The sets contain 4,707,
 1,634, and 3,084 candidate chunks, with no identity overlap. All 596,049,920 Qwen parameters
 have \texttt{requires\_grad=False}. For positive chunks $P_q$ among all in-document candidates
-$C_q$, adapters minimize
+$C_q$, the first adapters minimize
 \begin{equation}
 \mathcal L_q=-\log\frac{\sum_{c\in P_q}\exp(s(q,c)/\tau)}
 {\sum_{c\in C_q}\exp(s(q,c)/\tau)}.
 \end{equation}
-Using every candidate includes current-router false positives and position-matched negatives;
-there is no sampled hard-negative pool to refresh.
+The objective extension also evaluates pairwise margin ranking,
+\begin{equation}
+\mathcal L_q^{\mathrm{margin}}=
+\frac{1}{|P_q||N_q|}\sum_{p\in P_q}\sum_{n\in N_q}
+\max(0,m-s(q,p)+s(q,n)),
+\end{equation}
+with $m=0.2$. Exhaustive candidates include current-router false positives, lexical competitors,
+and position-matched negatives. Separate controls sample seven mixed negatives per positive and
+then refresh that pool once with top false positives from the learned router.
 
 We compare shared linear, asymmetric linear, and asymmetric two-layer MLP projections at widths
-64 and 128 with five seeds. Architecture is selected by validation recall@3 and MRR before the
-held-out result is interpreted. Validation selects asymmetric linear width 128 (mean validation
-recall@3 0.813), containing 262,144 parameters, or 0.044\% of Qwen. Table~\ref{tab:learned-router}
-shows that this selection does not generalize to the promotion threshold.
+64 and 128 with five seeds, then add width 256 and the margin objective without opening the test
+set for selection. Validation recall@3 followed by MRR selects asymmetric linear width 128 with
+the margin objective (validation recall@3/MRR 0.838/0.692). It contains 262,144 parameters,
+1.0 MiB in float32, or 0.044\% of Qwen. Table~\ref{tab:learned-router} reports the held-out result.
 
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Five-seed held-out learned-routing results. The shared-64 row is explicitly post-hoc:
-it has the best test mean but was not selected on validation.}
+\caption{Five-seed held-out learned-routing controls. The confidence interval is the 95\%
+half-width across adapter seeds. Selection uses validation only.}
 \label{tab:learned-router}
 \begin{tabular}{lccccc}
 \toprule
 Metric & Recall@3 & Recall@8 & MRR & Hotpot R@3 & QASPER R@3 \\
 \midrule
 Cosine, last state & 0.469 & 0.719 & 0.413 & 0.813 & 0.125 \\
-Asymmetric-128, validation-selected & $0.563\pm0.031$ & 0.806 & 0.516 & 0.400 & 0.725 \\
-Shared-64, exploratory test-best & $0.650\pm0.041$ & 0.819 & 0.567 & 0.538 & 0.763 \\
-Asymmetric MLP-64 & $0.606\pm0.052$ & 0.794 & 0.512 & 0.500 & 0.713 \\
+Asymmetric-128, contrastive & $0.563\pm0.039$ & 0.806 & 0.516 & 0.400 & 0.725 \\
+Shared-256, contrastive & $0.631\pm0.058$ & 0.819 & 0.558 & 0.500 & 0.763 \\
+Asymmetric-128, margin (selected) & $\mathbf{0.631\pm0.069}$ & 0.806 & 0.498 & 0.588 & 0.675 \\
+Asymmetric-128, mixed negatives & $0.538\pm0.069$ & 0.819 & 0.494 & 0.313 & 0.763 \\
+Asymmetric-128, mined round 1 & $0.506\pm0.042$ & 0.825 & 0.479 & 0.288 & 0.725 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.82\linewidth]{../shared/results/paper2_hf/routing/learned_adapter/learned_router_recall.pdf}
-\caption{Learned metrics reverse much of QASPER's failure but trade away HotpotQA ranking.
-The dashed line is the predeclared combined recall@3 gate, not a fitted threshold.}
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_hf/routing/learned_adapter/learned_router_extended_recall.pdf}
+\caption{The margin objective balances HotpotQA and QASPER better than the contrastive adapter.
+Larger width and harder sampled negatives do not cross the predeclared combined gate.}
 \label{fig:learned-router}
 \end{figure}
 
-The validation-selected adapter passes recall@8 (0.806), position bias ($r=-0.081$), and width
-gates, but fails combined recall@3 (0.563 versus 0.70 required) and per-dataset recall because
-HotpotQA falls to 0.400. Shuffled-label recall@3 is 0.231. Training on HotpotQA alone transfers
-at 0.150 recall@3 to QASPER; QASPER-only training transfers at 0.225 to HotpotQA. The learned
-geometry is therefore not yet a domain-general relevance relation.
+The selected adapter improves recall@3 over zero-shot cosine by $0.163\pm0.069$ across the five
+paired seeds. It passes recall@8 (0.806), both per-dataset recall@3 thresholds, position bias
+($r=-0.026$), and width gates, but fails combined recall@3 (0.631 versus 0.70). Shuffled-label
+recall@3 is 0.125. Hotpot-to-QASPER and QASPER-to-Hotpot transfer both reach only 0.213. The
+adapter learns evidence alignment rather than a label-independent shortcut, but the geometry is
+not yet domain-general.
 
-The $2\times2$ query/metric ablation reinforces that conclusion. With cosine scoring,
-last/question-decay recall@3 is 0.469/0.250. Under the validation-selected metric it is
+The earlier $2\times2$ contrastive ablation also constrains the query interpretation. With
+cosine scoring, last/question-decay recall@3 is 0.469/0.250; with the learned metric it is
 0.563/0.519. Learning removes much of the aggregate query's deficit, but aggregation adds no
-independent gain over the last state. The canonical experimental stack remains last-state
-query plus the validation-selected adapter for diagnosis; it is not promoted beyond Qwen.
+independent gain. The last state therefore remains the canonical query.
+
+Increasing representation resolution is less effective than learning alignment. The selected
+single-mean adapter reaches recall@3 0.631 with a routing index equal to 0.392\% of native detail
+K/V bytes. The earlier zero-shot token-resolution maximum reaches 0.375 while indexing 50\%; it
+uses a smaller cohort and is therefore descriptive rather than paired. Width 256 doubles index
+cost to 0.784\% without validation selection. Figure~\ref{fig:learned-router-cost} shows the
+matched learned conditions. The raw 1024-dimensional float32 hidden-state index occupies 3.14\%
+of detail K/V; the selected 128-dimensional index is eight times smaller.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{../shared/results/paper2_hf/routing/learned_adapter/learned_router_cost_quality.pdf}
+\caption{Held-out sparse recall versus routing-index storage for matched frozen-feature
+conditions. Width 128 improves the quality/cost point; width 256 adds cost without selection.}
+\label{fig:learned-router-cost}
+\end{figure}
 
 The integration changes routing only. At revision
 \href{https://github.com/einnovator/pdattention/tree/a657bc7}{\texttt{a657bc7}}, query pooling is
@@ -829,9 +855,19 @@ projects only computed gists in \texttt{hf/injection.py}, lines 238--246, while 
 is projected in \texttt{hf/qwen.py}, lines 188--202. Native detail K/V bypass both projections.
 An invariant test confirms exact K/V equality with and without the adapter.
 
+The implementation keeps this experiment auditable. At revision
+\href{https://github.com/einnovator/pdattention/tree/604926e}{\texttt{604926e}}, frozen feature
+publication sets every Qwen parameter non-trainable in
+\texttt{precompute\_router\_features.py}, lines 117--126. Deterministic mixed-negative selection
+is in \texttt{train\_learned\_router.py}, lines 171--239; contrastive and margin losses are at
+lines 246--283. These training paths consume stored vectors and cannot update native K/V.
+
 Finally, the validation-selected seed is exercised through cache lookup, materialization, and
-generation on four held-out examples per dataset. It recalls evidence in 4/8 cases, stores a
-routing index equal to 0.393\% of detail-K/V bytes, and incurs no native-limit violation.
+generation on four held-out examples per dataset. It recalls evidence in 5/8 cases, covers
+47.9\% of annotated targets, stores a routing index equal to 0.393\% of detail-K/V bytes, and
+incurs no native-limit violation. Frozen-feature adapter scoring takes 2.05 ms/example and full
+ranking 2.67 ms on the GTX 950M, versus 2.18 ms for raw cosine; these small synchronized timings
+are descriptive rather than a serving benchmark.
 Answer F1 is 0.090 with PRA disabled and 0.090 with learned routing enabled. Better selection
 does not establish causal use; further router capacity is not a justified response to that
 separate failure.
@@ -935,9 +971,10 @@ Centered-RoPE gists repair part of incompatible-frame averaging and, with finer 
 closely reproduce native token-QK ordering. They still trail pre-RoPE and hidden-state routing
 on annotated evidence. This directly supports the routing/payload split: native attention
 compatibility is not semantic evidence relevance. Recent-state and question-span query
-aggregation also fail to beat the last state. A tiny learned metric improves QASPER recall
-substantially, showing that relevance geometry is a real part of the bottleneck, but the
-validation-selected adapter misses the held-out gate, regresses HotpotQA, and transfers poorly.
+aggregation also fail to beat the last state. A tiny margin-trained metric improves combined
+recall@3 by 0.163 and balances HotpotQA/QASPER without positional bias, showing that relevance
+geometry is a real part of the bottleneck. More dimensions and harder sampled negatives do not
+improve it. The validation-selected adapter still misses the held-out gate and transfers poorly.
 End-to-end answer quality remains unchanged even when evidence is selected. The next work must
 separate data-limited routing generalization from memory-use alignment, not claim solved
 long-context retrieval or proceed to Llama.

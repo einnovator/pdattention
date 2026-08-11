@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import statistics
 import sys
 from collections import defaultdict
@@ -268,20 +269,6 @@ def _learned_summary() -> dict:
     (LEARNED_DIR / "learned_router_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
     )
-    (LEARNED_DIR / "hard_negative_results.json").write_text(
-        json.dumps(
-            {
-                "policy": "exhaustive in-document negatives",
-                "interpretation": "Every non-evidence chunk, including baseline false positives, was present in every contrastive denominator; a sampled mining round would add no candidates.",
-                "candidate_chunks": 4707,
-                "status": "satisfied_without_sampling",
-            },
-            indent=2,
-            sort_keys=True,
-        ),
-        encoding="utf-8",
-    )
-
     conditions = [
         ("Cosine\nlast", linear["baselines"]["last"]["aggregates"]),
         ("Validation-selected\nasymmetric linear", {
@@ -343,9 +330,266 @@ def _learned_summary() -> dict:
     return summary
 
 
+def _learned_extension_summary(previous: dict) -> dict:
+    """Summarize the capacity, objective, and hard-negative extension protocol."""
+    capacity = _load(LEARNED_DIR / "capacity_d256_results.json")
+    margin = _load(LEARNED_DIR / "margin_objective_results.json")
+    mixed = _load(LEARNED_DIR / "mixed_negative_results.json")
+    mined = _load(LEARNED_DIR / "hard_negative_results.json")
+    shuffled = _load(LEARNED_DIR / "shuffled_margin_control.json")
+    transfer = _load(LEARNED_DIR / "cross_domain_margin_results.json")
+    e2e = _load(LEARNED_DIR / "learned_router_margin_e2e.json")
+
+    def validation_score(artifact: dict, aggregate: dict) -> tuple[float, float]:
+        runs = [
+            run
+            for run in artifact["runs"]
+            if run["architecture"] == aggregate["architecture"]
+            and int(run["routing_width"]) == int(aggregate["routing_width"])
+            and run["train_domain"] == aggregate["train_domain"]
+            and run["objective"] == aggregate["objective"]
+            and run["negative_policy"] == aggregate["negative_policy"]
+        ]
+        return (
+            statistics.fmean(
+                run["validation"]["aggregates"]["combined"]["recall_at_3"]
+                for run in runs
+            ),
+            statistics.fmean(
+                run["validation"]["aggregates"]["combined"]["mrr"] for run in runs
+            ),
+        )
+
+    candidates = []
+    for artifact in (capacity, margin):
+        for aggregate in artifact["aggregates"]:
+            recall, mrr = validation_score(artifact, aggregate)
+            candidates.append((artifact, aggregate, recall, mrr))
+    _, selected, validation_recall, validation_mrr = max(
+        candidates, key=lambda item: (item[2], item[3])
+    )
+    selected_runs = [
+        run
+        for run in margin["runs"]
+        if run["architecture"] == selected["architecture"]
+        and int(run["routing_width"]) == int(selected["routing_width"])
+    ]
+    baseline = margin["baselines"]["last"]["aggregates"]
+    seed_deltas = [
+        run["test"]["aggregates"]["combined"]["recall_at_3"]
+        - baseline["combined"]["recall_at_3"]
+        for run in selected_runs
+    ]
+    delta_std = statistics.stdev(seed_deltas)
+    paired = {
+        "seeds": len(seed_deltas),
+        "recall_at_3_delta_mean": statistics.fmean(seed_deltas),
+        "recall_at_3_delta_std": delta_std,
+        "recall_at_3_delta_ci95": 2.776 * delta_std / math.sqrt(len(seed_deltas)),
+        "per_seed": seed_deltas,
+    }
+    transfer_rows = {row["train_domain"]: row for row in transfer["aggregates"]}
+    capacity_rows = {
+        row["architecture"]: row for row in capacity["aggregates"]
+    }
+    mixed_row = mixed["aggregates"][0]
+    mined_row = mined["aggregates"][0]
+    shuffled_row = shuffled["aggregates"][0]
+    gate = {
+        "combined_recall_at_3_at_least_0_70": selected["combined_recall_at_3_mean"] >= 0.70,
+        "each_dataset_recall_at_3_at_least_0_50": min(
+            selected["hotpotqa_recall_at_3_mean"], selected["qasper_recall_at_3_mean"]
+        ) >= 0.50,
+        "combined_recall_at_8_at_least_0_80": selected["combined_recall_at_8_mean"] >= 0.80,
+        "absolute_position_correlation_at_most_0_20": abs(
+            selected["combined_score_position_correlation_mean"]
+        ) <= 0.20,
+        "routing_width_at_most_128": int(selected["routing_width"]) <= 128,
+    }
+    gate["passed"] = all(gate.values())
+    summary = {
+        "source_git_sha": margin["runtime"]["git_sha"],
+        "hypothesis": "Frozen hidden states contain semantic knowledge, but require a learned query-memory relevance geometry.",
+        "selection_protocol": "Architecture, width, and objective selected by validation Recall@3 then MRR; held-out test remained sealed.",
+        "validation_selected_adapter": selected,
+        "validation_selected_recall_at_3": validation_recall,
+        "validation_selected_mrr": validation_mrr,
+        "adapter_cost": {
+            "parameters": selected["adapter_parameters"],
+            "bytes_fp32": selected["adapter_parameters"] * 4,
+            "percentage_of_qwen": selected["adapter_parameters"] / 596_049_920 * 100,
+            "routing_vector_dimension": selected["routing_width"],
+            "routing_vector_bytes_fp32": selected["routing_width"] * 4,
+            "index_fraction_of_detail_kv": selected[
+                "routing_index_fraction_of_detail_kv"
+            ],
+            "adapter_score_seconds_per_example": selected[
+                "adapter_seconds_per_example"
+            ],
+            "full_routing_seconds_per_example": selected[
+                "routing_seconds_per_example"
+            ],
+        },
+        "paired_vs_zero_shot": paired,
+        "zero_shot_last": baseline,
+        "previous_contrastive_selection": previous["validation_selected_adapter"],
+        "capacity_d256": capacity_rows,
+        "negative_policy": {
+            "mixed": mixed_row,
+            "mined_round_1": mined_row,
+            "interpretation": "Sampling and one learned-false-positive refresh both underperformed the exhaustive in-document denominator.",
+        },
+        "shuffled_label_recall_at_3": shuffled_row["combined_recall_at_3_mean"],
+        "cross_domain": {
+            "hotpot_to_qasper_recall_at_3": transfer_rows["hotpotqa"]["qasper_recall_at_3_mean"],
+            "qasper_to_hotpot_recall_at_3": transfer_rows["qasper"]["hotpotqa_recall_at_3_mean"],
+        },
+        "resolution_comparison": {
+            "zero_shot_token_level_recall_at_3": 0.375,
+            "zero_shot_token_level_index_fraction": 0.5,
+            "learned_single_mean_recall_at_3": selected["combined_recall_at_3_mean"],
+            "learned_single_mean_index_fraction": selected[
+                "routing_index_fraction_of_detail_kv"
+            ],
+            "cohort_note": "Token-level diagnostic used an earlier 16-example cohort; comparison is descriptive, not paired.",
+        },
+        "end_to_end": e2e["aggregates"],
+        "native_limit_violations": e2e["native_limit_violations"],
+        "promotion_gate": gate,
+        "decision": {
+            "canonical_query": "last",
+            "canonical_adapter": "asymmetric_linear_d128_margin_exhaustive",
+            "qwen_to_llama": "do_not_promote",
+            "reason": "The margin objective improves balance and sparse recall but remains below the predeclared combined Recall@3 gate; cross-domain transfer and causal QA use remain weak.",
+            "next_problem_if_retrieval_improves": "memory-use alignment",
+        },
+    }
+    for name in ("learned_router_extended_summary.json", "learned_router_summary.json"):
+        (LEARNED_DIR / name).write_text(
+            json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
+        )
+
+    conditions = [
+        {
+            "condition": "Zero-shot cosine",
+            "combined_recall_at_3": baseline["combined"]["recall_at_3"],
+            "hotpotqa_recall_at_3": baseline["hotpotqa"]["recall_at_3"],
+            "qasper_recall_at_3": baseline["qasper"]["recall_at_3"],
+            "routing_index_fraction": margin["baselines"]["last"][
+                "routing_index_bytes_mean"
+            ]
+            / margin["baselines"]["last"]["detail_kv_bytes_mean"],
+        },
+        {
+            "condition": "Contrastive asymmetric-128",
+            **{
+                f"{dataset}_recall_at_3": previous["validation_selected_adapter"][
+                    f"{dataset}_recall_at_3_mean"
+                ]
+                for dataset in ("combined", "hotpotqa", "qasper")
+            },
+            "routing_index_fraction": 0.003928906317528372,
+        },
+        {
+            "condition": "Margin asymmetric-128",
+            **{
+                f"{dataset}_recall_at_3": selected[f"{dataset}_recall_at_3_mean"]
+                for dataset in ("combined", "hotpotqa", "qasper")
+            },
+            "routing_index_fraction": selected["routing_index_fraction_of_detail_kv"],
+        },
+        {
+            "condition": "Contrastive shared-256",
+            **{
+                f"{dataset}_recall_at_3": capacity_rows["shared_linear"][
+                    f"{dataset}_recall_at_3_mean"
+                ]
+                for dataset in ("combined", "hotpotqa", "qasper")
+            },
+            "routing_index_fraction": capacity_rows["shared_linear"][
+                "routing_index_fraction_of_detail_kv"
+            ],
+        },
+        {
+            "condition": "Mixed negatives",
+            **{
+                f"{dataset}_recall_at_3": mixed_row[f"{dataset}_recall_at_3_mean"]
+                for dataset in ("combined", "hotpotqa", "qasper")
+            },
+            "routing_index_fraction": mixed_row["routing_index_fraction_of_detail_kv"],
+        },
+        {
+            "condition": "Mined round 1",
+            **{
+                f"{dataset}_recall_at_3": mined_row[f"{dataset}_recall_at_3_mean"]
+                for dataset in ("combined", "hotpotqa", "qasper")
+            },
+            "routing_index_fraction": mined_row["routing_index_fraction_of_detail_kv"],
+        },
+    ]
+    _write_csv(LEARNED_DIR / "learned_router_extended_conditions.csv", conditions)
+    _write_csv(
+        LEARNED_DIR / "learned_router_paired_effects.csv",
+        [{"seed": run["seed"], "recall_at_3_delta": delta} for run, delta in zip(selected_runs, seed_deltas)],
+    )
+
+    figure, axis = plt.subplots(figsize=(9.0, 4.7))
+    x = range(len(conditions))
+    width = 0.25
+    for offset, dataset, color in (
+        (-width, "combined", "#4472c4"),
+        (0.0, "hotpotqa", "#70ad47"),
+        (width, "qasper", "#ed7d31"),
+    ):
+        axis.bar(
+            [value + offset for value in x],
+            [row[f"{dataset}_recall_at_3"] for row in conditions],
+            width,
+            label=dataset,
+            color=color,
+        )
+    axis.axhline(0.70, color="black", linestyle="--", linewidth=1, label="combined gate")
+    axis.set_xticks(list(x), [row["condition"] for row in conditions], rotation=18, ha="right")
+    axis.set_ylabel("Held-out Recall@3")
+    axis.set_ylim(0.0, 1.0)
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(fontsize=8, ncol=2)
+    figure.tight_layout()
+    for suffix in ("png", "pdf"):
+        figure.savefig(LEARNED_DIR / f"learned_router_extended_recall.{suffix}", dpi=180)
+    plt.close(figure)
+
+    figure, axis = plt.subplots(figsize=(7.2, 4.6))
+    cost_rows = [conditions[0], conditions[2], conditions[3]]
+    for row, label, color, marker in zip(
+        cost_rows,
+        ("Raw cosine, 1024D", "Margin, 128D", "Contrastive, 256D"),
+        ("#a5a5a5", "#4472c4", "#70ad47"),
+        ("o", "s", "^"),
+    ):
+        axis.scatter(
+            row["routing_index_fraction"] * 100,
+            row["combined_recall_at_3"],
+            s=60,
+            color=color,
+            marker=marker,
+            label=label,
+        )
+    axis.set_xlabel("Routing index / native detail K/V (%)")
+    axis.set_ylabel("Held-out Recall@3")
+    axis.grid(alpha=0.25)
+    axis.legend(fontsize=8, loc="center right")
+    figure.tight_layout()
+    for suffix in ("png", "pdf"):
+        figure.savefig(LEARNED_DIR / f"learned_router_cost_quality.{suffix}", dpi=180)
+    plt.close(figure)
+    return summary
+
+
 if __name__ == "__main__":
+    learned = _learned_summary()
     result = {
         "query": _query_summary(),
-        "learned": _learned_summary(),
+        "learned": _learned_extension_summary(learned),
     }
     print(json.dumps({key: value["decision"] for key, value in result.items()}, indent=2))

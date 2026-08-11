@@ -238,11 +238,11 @@ position-correlation magnitude does not increase by more than `0.10`. Otherwise 
 last-token query remains canonical and the result is treated as evidence for learned alignment.
 
 The learned-alignment gate uses frozen features from 24 train, 8 validation, and 16 test
-identities per dataset. It first compares shared and asymmetric linear projections at routing
-widths 64 and 128, with five adapter seeds, for both `last` and the strongest aggregate ablation
-(`question_exp_h2.0`). Every in-document chunk participates in the multi-positive contrastive
-denominator, so the objective includes random, lexical, position-matched, and current-router
-false-positive negatives without a lossy sampling stage. The Qwen backbone remains frozen.
+identities per dataset. It compares shared and asymmetric linear projections at routing widths
+64, 128, and 256 with five adapter seeds. The extension adds an exhaustive pairwise-margin
+baseline, a seven-negative mixed sampler, and one mined false-positive refresh. Frozen vectors
+now store token-Jaccard lexical hardness; no extension reruns or updates Qwen. The backbone
+remains fully frozen and native detail K/V never enters the learned projection.
 
 The predeclared Qwen-to-Llama promotion gate requires combined Recall@3 at least `0.70`,
 HotpotQA and QASPER Recall@3 each at least `0.50`, combined Recall@8 at least `0.80`, absolute
@@ -254,14 +254,19 @@ Observed outcomes:
 
 - On 32 identity-disjoint confirmation examples, last/question-decay-H2/uniform-W32 Recall@3
   is `0.469/0.250/0.313`; the last state remains canonical.
-- Validation selected the asymmetric linear 1024-to-128 adapter (`262,144` parameters,
-  `0.044%` of Qwen). Its five-seed held-out Recall@3 is `0.563 +/- 0.031`, with HotpotQA
-  `0.400` and QASPER `0.725`; it does not pass the `0.70` combined gate.
+- Validation now selects the margin-trained asymmetric linear 1024-to-128 adapter (`262,144`
+  parameters, `0.044%` of Qwen). Its five-seed held-out Recall@3 is `0.631 +/- 0.069` (95%
+  half-width), with HotpotQA `0.588`, QASPER `0.675`, Recall@8 `0.806`, and position correlation
+  `-0.026`. It passes every gate except combined Recall@3 `0.70`.
 - A shared 64-dimensional adapter reaches `0.650 +/- 0.041` held-out Recall@3, but this is an
   exploratory test-best result, not the validation-selected confirmatory model.
-- Canonical shuffled-label Recall@3 is `0.231`. Hotpot-to-QASPER and QASPER-to-Hotpot transfer
-  are `0.150` and `0.225`, so the learned geometry is not domain-general.
-- The validation-selected adapter retrieves evidence in `4/8` end-to-end probes, while answer
+- Width 256 does not win validation. Mixed sampled negatives and one learned hard-negative
+  refresh reach only `0.538` and `0.506` Recall@3, below the exhaustive objective.
+- Canonical shuffled-label Recall@3 is `0.125`. Hotpot-to-QASPER and QASPER-to-Hotpot transfer
+  are both `0.213`, so the learned geometry is not domain-general.
+- The selected 128-dimensional routing index is `0.392%` of native detail-K/V bytes, eight times
+  smaller than the raw float32 hidden-state index. It retrieves evidence in `5/8` end-to-end
+  probes, while answer
   F1 remains exactly `0.090` with PRA disabled and enabled. Retrieval and causal use remain
   separate gates.
 
