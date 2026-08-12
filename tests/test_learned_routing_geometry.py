@@ -7,6 +7,7 @@ from experiments.paper1_5_rope.learned_routing import (
     AsymmetricLinearRouter,
     contrastive_margin_loss,
     materialize_native_payload,
+    native_attention_output,
     rank_candidate_ids,
     shuffled_positive_mask,
     train_router,
@@ -72,9 +73,13 @@ def test_fixed_selection_preserves_native_payload_exactly():
 
     routed_k, routed_v = materialize_native_payload(payload, ["b", "a"])
     oracle_k, oracle_v = materialize_native_payload(payload, ["b", "a"])
+    query = torch.randn(1, 2, 1, 4)
+    routed_output = native_attention_output(query, routed_k, routed_v)
+    oracle_output = native_attention_output(query, oracle_k, oracle_v)
 
     assert torch.equal(routed_k, oracle_k)
     assert torch.equal(routed_v, oracle_v)
+    assert torch.equal(routed_output, oracle_output)
     assert routed_k.data_ptr() != payload["a"][0].data_ptr()
 
 

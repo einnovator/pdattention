@@ -37,6 +37,7 @@ from experiments.paper1_5_rope.learned_routing import (  # noqa: E402
     AsymmetricLinearRouter,
     cosine_scores,
     materialize_native_payload,
+    native_attention_output,
     rank_candidate_ids,
     shuffled_positive_mask,
     train_router,
@@ -207,12 +208,15 @@ def _extract_representations(model, tokenizer, samples, device: str) -> RoutingR
 
         fixed_ids = candidate_ids[: min(3, len(candidate_ids))]
         baseline_k, baseline_v = materialize_native_payload(payload_by_id, fixed_ids)
+        baseline_output = native_attention_output(post_query, baseline_k, baseline_v)
         for _method in METHODS:
             candidate_k, candidate_v = materialize_native_payload(payload_by_id, fixed_ids)
+            candidate_output = native_attention_output(post_query, candidate_k, candidate_v)
             parity_error = max(
                 parity_error,
                 float((candidate_k - baseline_k).abs().max().cpu()),
                 float((candidate_v - baseline_v).abs().max().cpu()),
+                float((candidate_output - baseline_output).abs().max().cpu()),
             )
 
         evidence = set(str(value) for value in sample.target_reference_uris)

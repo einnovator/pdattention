@@ -170,6 +170,21 @@ def materialize_native_payload(
     )
 
 
+def native_attention_output(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+) -> torch.Tensor:
+    """Apply the ordinary native attention equation to fixed selected K/V."""
+
+    if query.ndim != 4 or key.ndim != 4 or value.shape != key.shape:
+        raise ValueError("query, key, and value must use [B,H,T,Dh] attention shapes")
+    if query.shape[:2] != key.shape[:2] or query.shape[-1] != key.shape[-1]:
+        raise ValueError("Query and payload head dimensions must match")
+    scores = query @ key.transpose(-2, -1) / (query.shape[-1] ** 0.5)
+    return torch.softmax(scores, dim=-1) @ value
+
+
 def trainable_parameter_count(module: nn.Module) -> int:
     """Count parameters optimized by the learned routing metric."""
 
