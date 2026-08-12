@@ -2,6 +2,7 @@
 
 from .config import PRAConfig
 from .evaluation import evaluate_router_features
+from .memory_adapter import PRAMemoryAdapter
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
 from .router import PRARouter
 
@@ -11,6 +12,7 @@ __all__ = [
     "GenerationResult",
     "PRAConfig",
     "PRAForCausalLM",
+    "PRAMemoryAdapter",
     "PRARouter",
     "ReferenceHandle",
     "evaluate_router_features",

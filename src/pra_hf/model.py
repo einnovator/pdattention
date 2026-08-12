@@ -15,6 +15,7 @@ from pra_torch.hf import inject_pra
 from pra_torch.memory import SelectedChunk
 
 from .config import PRAConfig
+from .memory_adapter import PRAMemoryAdapter
 from .router import PRARouter
 
 
@@ -42,7 +43,14 @@ class GenerationResult:
 class PRAForCausalLM:
     """A supported frozen Hugging Face causal LM with bounded PRA memory."""
 
-    def __init__(self, model, tokenizer, config: PRAConfig, router: PRARouter | None = None):
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        config: PRAConfig,
+        router: PRARouter | None = None,
+        memory_adapter: PRAMemoryAdapter | None = None,
+    ):
         self.model = model
         self.tokenizer = tokenizer
         self.config = config
@@ -54,9 +62,13 @@ class PRAForCausalLM:
             routing_projection=router,
         )
         self.router = router
+        self.memory_adapter: PRAMemoryAdapter | None = None
         self._references: dict[str, ReferenceHandle] = {}
         self._last_stats: dict[str, Any] = {}
         self._handle.set_memory_enabled(False)
+        if memory_adapter is not None:
+            self._install_memory_adapter(memory_adapter)
+            self._validate_memory_adapter_compatibility()
 
     @classmethod
     def from_pretrained(
@@ -64,6 +76,7 @@ class PRAForCausalLM:
         model_name_or_path: str,
         *,
         routing_adapter: str | Path | None = None,
+        memory_adapter: str | Path | None = None,
         pra_config: PRAConfig | dict[str, Any] | None = None,
         tokenizer_name_or_path: str | None = None,
         **model_kwargs,
@@ -85,8 +98,16 @@ class PRAForCausalLM:
             tokenizer_name_or_path or model_name_or_path, **tokenizer_kwargs
         )
         router = PRARouter.from_pretrained(routing_adapter) if routing_adapter else None
-        instance = cls(model, tokenizer, config, router)
+        conditional = (
+            PRAMemoryAdapter.from_pretrained(memory_adapter)
+            if memory_adapter
+            else None
+        )
+        instance = cls(model, tokenizer, config, router, conditional)
         instance._validate_router_compatibility(
+            model_name_or_path, model_kwargs.get("revision")
+        )
+        instance._validate_memory_adapter_compatibility(
             model_name_or_path, model_kwargs.get("revision")
         )
         return instance
@@ -99,9 +120,16 @@ class PRAForCausalLM:
         *,
         pra_config: PRAConfig | None = None,
         router: PRARouter | None = None,
+        memory_adapter: PRAMemoryAdapter | None = None,
     ) -> "PRAForCausalLM":
         """Wrap an already-loaded model; useful for offline tests and custom loading."""
-        return cls(model, tokenizer, pra_config or PRAConfig(), router)
+        return cls(
+            model,
+            tokenizer,
+            pra_config or PRAConfig(),
+            router,
+            memory_adapter,
+        )
 
     @property
     def device(self) -> torch.device:
@@ -128,6 +156,36 @@ class PRAForCausalLM:
                 f"Router expects base revision {expected_revision!r}, received {revision!r}."
             )
 
+    def _validate_memory_adapter_compatibility(
+        self,
+        model_name: str | None = None,
+        revision: str | None = None,
+    ) -> None:
+        if self.memory_adapter is None:
+            return
+        metadata = self.memory_adapter.metadata
+        expected = metadata.get("base_model")
+        if expected and model_name and str(expected) != str(model_name):
+            raise ValueError(
+                f"Memory adapter expects base model {expected!r}, received {model_name!r}."
+            )
+        expected_revision = metadata.get("base_model_revision")
+        if expected_revision and revision and str(expected_revision) != str(revision):
+            raise ValueError(
+                "Memory adapter expects base revision "
+                f"{expected_revision!r}, received {revision!r}."
+            )
+        expected_family = metadata.get("model_family")
+        family = next(iter(self._handle.adapters.values())).family
+        if expected_family and str(expected_family) != str(family):
+            raise ValueError(
+                f"Memory adapter expects family {expected_family!r}, received {family!r}."
+            )
+
+    def _install_memory_adapter(self, adapter: PRAMemoryAdapter) -> None:
+        adapter.apply(self._handle)
+        self.memory_adapter = adapter
+
     def load_router(self, directory: str | Path) -> None:
         """Load a router before reference ingestion so cached gists use its space."""
         if not self._handle.cache.is_empty():
@@ -138,6 +196,15 @@ class PRAForCausalLM:
         self._handle.routing_projection = router
         for adapter in self._handle.adapters.values():
             adapter.__dict__["routing_projection"] = router
+
+    def load_memory_adapter(self, directory: str | Path) -> None:
+        """Load conditional memory-use weights before reference ingestion."""
+
+        if not self._handle.cache.is_empty():
+            raise RuntimeError("Clear references before replacing the memory adapter.")
+        adapter = PRAMemoryAdapter.from_pretrained(directory, device=self.device)
+        self._install_memory_adapter(adapter)
+        self._validate_memory_adapter_compatibility()
 
     def add_reference(
         self,
@@ -393,6 +460,12 @@ class PRAForCausalLM:
             "routing_layer": self.routing_layer,
             "consumption_layers": list(self.consumption_layers),
             "router_parameters": self.router.parameter_count if self.router else 0,
+            "memory_adapter_parameters": (
+                self.memory_adapter.parameter_count if self.memory_adapter else 0
+            ),
+            "memory_adapter": (
+                self.memory_adapter.artifact_config() if self.memory_adapter else None
+            ),
             "references": [asdict(handle) for handle in self._references.values()],
             "routing_index_bytes": routing_bytes,
             "resident_detail_kv_bytes": detail_bytes,
