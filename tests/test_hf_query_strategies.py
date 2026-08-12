@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+from experiments.paper2_hf.routing.run_query_strategies import _prompt_with_question_span
 from pra_torch.hf import (
     QUERY_EXPONENTIAL,
     QUERY_LAST,
@@ -77,6 +78,30 @@ def test_token_span_extraction_uses_overlap_and_rejects_truncated_span():
     assert token_span_from_offsets(offsets, 4, 14) == (2, 4)
     with pytest.raises(ValueError, match="does not overlap"):
         token_span_from_offsets(offsets, 20, 24)
+
+
+def test_prompt_span_normalizes_dataset_boundary_whitespace():
+    class TrimmingTokenizer:
+        chat_template = "trim"
+        truncation_side = "right"
+
+        def apply_chat_template(self, messages, **_kwargs):
+            return messages[0]["content"].strip()
+
+        def __call__(self, text, **_kwargs):
+            offsets = torch.tensor([[(i, i + 1) for i in range(len(text))]])
+            return {
+                "input_ids": torch.arange(len(text)).unsqueeze(0),
+                "attention_mask": torch.ones(1, len(text), dtype=torch.long),
+                "offset_mapping": offsets,
+            }
+
+    encoded, span = _prompt_with_question_span(
+        TrimmingTokenizer(), "Does trimming preserve this question?  ", 128
+    )
+
+    assert encoded["input_ids"].shape[1] > 0
+    assert span[1] - span[0] == len("Does trimming preserve this question?")
 
 
 def test_streaming_ema_matches_normalized_full_history_exponential_pooling():

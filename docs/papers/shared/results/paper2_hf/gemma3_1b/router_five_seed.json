@@ -1,0 +1,3540 @@
+{
+  "aggregates": {
+    "combined": {
+      "AUC0-30": {
+        "mean": 0.27959348926536426,
+        "std": 0.012318821756193627
+      },
+      "MRR": {
+        "mean": 0.33027383472630234,
+        "std": 0.029299086234549524
+      },
+      "R@10%": {
+        "mean": 0.22979815323565322,
+        "std": 0.017574274583709852
+      },
+      "R@16": {
+        "mean": 0.38461996336996335,
+        "std": 0.027579698900324984
+      },
+      "R@20%": {
+        "mean": 0.3426551053113553,
+        "std": 0.018369984086088233
+      },
+      "R@3": {
+        "mean": 0.13655677655677656,
+        "std": 0.011861348576809486
+      },
+      "R@30%": {
+        "mean": 0.441332036019536,
+        "std": 0.016117888250403493
+      },
+      "R@5%": {
+        "mean": 0.16186603327228327,
+        "std": 0.008078508173613405
+      },
+      "R@8": {
+        "mean": 0.2549612713675214,
+        "std": 0.010341842681235789
+      },
+      "f70": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f80": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f90": {
+        "mean": 1.0,
+        "std": 0.0
+      }
+    },
+    "hotpotqa": {
+      "AUC0-30": {
+        "mean": 0.19611160714285714,
+        "std": 0.013621601353243076
+      },
+      "MRR": {
+        "mean": 0.26668566528933957,
+        "std": 0.027825211395720393
+      },
+      "R@10%": {
+        "mean": 0.13342261904761904,
+        "std": 0.020600742451891415
+      },
+      "R@16": {
+        "mean": 0.41175595238095236,
+        "std": 0.04069702428400093
+      },
+      "R@20%": {
+        "mean": 0.25285714285714284,
+        "std": 0.01735447010171551
+      },
+      "R@3": {
+        "mean": 0.08821428571428572,
+        "std": 0.020419573234728376
+      },
+      "R@30%": {
+        "mean": 0.3681845238095238,
+        "std": 0.03872014087136872
+      },
+      "R@5%": {
+        "mean": 0.07258928571428572,
+        "std": 0.022710741852550686
+      },
+      "R@8": {
+        "mean": 0.2293452380952381,
+        "std": 0.022095683877892215
+      },
+      "f70": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f80": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f90": {
+        "mean": 1.0,
+        "std": 0.0
+      }
+    },
+    "qasper": {
+      "AUC0-30": {
+        "mean": 0.3630753713878714,
+        "std": 0.01215386770917584
+      },
+      "MRR": {
+        "mean": 0.3938620041632652,
+        "std": 0.03294816978567273
+      },
+      "R@10%": {
+        "mean": 0.3261736874236874,
+        "std": 0.018205125999897424
+      },
+      "R@16": {
+        "mean": 0.35748397435897433,
+        "std": 0.024219369657917152
+      },
+      "R@20%": {
+        "mean": 0.43245306776556774,
+        "std": 0.025236066125064138
+      },
+      "R@3": {
+        "mean": 0.1848992673992674,
+        "std": 0.007635624132336832
+      },
+      "R@30%": {
+        "mean": 0.5144795482295482,
+        "std": 0.00960141568326558
+      },
+      "R@5%": {
+        "mean": 0.2511427808302808,
+        "std": 0.016889791250601204
+      },
+      "R@8": {
+        "mean": 0.2805773046398047,
+        "std": 0.01005434579353761
+      },
+      "f70": {
+        "mean": 0.701314027655099,
+        "std": 0.2726617411061108
+      },
+      "f80": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f90": {
+        "mean": 1.0,
+        "std": 0.0
+      }
+    }
+  },
+  "base_model": "google/gemma-3-1b-it",
+  "base_model_revision": "dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+  "chunk_tokens": 32,
+  "git_sha": "cb3312a3b1e068d4e9c85f7bfc8d582a81bf0013",
+  "model_family": "gemma3",
+  "protocol": "five-seed frozen-backbone asymmetric-linear router productization",
+  "router_directory": "artifacts\\pra_hf\\routers\\gemma3-1b-qasper-d128",
+  "routing_dim": 128,
+  "routing_layer": 23,
+  "runs": [
+    {
+      "seed": 11,
+      "test": {
+        "combined": {
+          "auc_0_30": 0.2855249828296703,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.28125,
+              "fraction": 0.01,
+              "recall": 0.10530563186813187,
+              "selected_chunk_fraction": 0.018213386733410098,
+              "selected_kv_token_fraction": 0.016190022766410433
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.34375,
+              "fraction": 0.02,
+              "recall": 0.12209630647130647,
+              "selected_chunk_fraction": 0.026720096282539324,
+              "selected_kv_token_fraction": 0.024759448035473867
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.05,
+              "recall": 0.16744600885225885,
+              "selected_chunk_fraction": 0.0556154492588562,
+              "selected_kv_token_fraction": 0.053263599352705054
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.59375,
+              "fraction": 0.1,
+              "recall": 0.23233936202686203,
+              "selected_chunk_fraction": 0.10531731150425439,
+              "selected_kv_token_fraction": 0.10311218877123624
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.71875,
+              "fraction": 0.15,
+              "recall": 0.31005513583638583,
+              "selected_chunk_fraction": 0.15670094743023547,
+              "selected_kv_token_fraction": 0.15401924456136365
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.2,
+              "recall": 0.3561717796092796,
+              "selected_chunk_fraction": 0.2047937071975457,
+              "selected_kv_token_fraction": 0.2024607605614254
+            },
+            {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.78125,
+              "fraction": 0.25,
+              "recall": 0.3962263431013431,
+              "selected_chunk_fraction": 0.2562847095398573,
+              "selected_kv_token_fraction": 0.25397724119150167
+            },
+            {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.3,
+              "recall": 0.4290016407203907,
+              "selected_chunk_fraction": 0.306683685024637,
+              "selected_kv_token_fraction": 0.3043418923777272
+            },
+            {
+              "all_evidence_recall": 0.28125,
+              "any_evidence_recall": 0.9375,
+              "fraction": 0.5,
+              "recall": 0.5972288995726496,
+              "selected_chunk_fraction": 0.5047526056042346,
+              "selected_kv_token_fraction": 0.5020157036594444
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16,
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 32,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.25,
+              "recall": 0.10290178571428571,
+              "selected_chunk_fraction": 0.015214585638676574,
+              "selected_kv_token_fraction": 0.013182946409009801
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "recall": 0.37778827075702076,
+              "selected_chunk_fraction": 0.2434333702188252,
+              "selected_kv_token_fraction": 0.24147934565033552
+            },
+            "3": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.375,
+              "recall": 0.13506753663003662,
+              "selected_chunk_fraction": 0.045643756916029725,
+              "selected_kv_token_fraction": 0.043291915089989676
+            },
+            "8": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.6875,
+              "recall": 0.26159283424908425,
+              "selected_chunk_fraction": 0.1217166851094126,
+              "selected_kv_token_fraction": 0.1192024116608274
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.2855249828296703,
+            "MRR": 0.37700487031887986,
+            "R@10%": 0.23233936202686203,
+            "R@16": 0.37778827075702076,
+            "R@20%": 0.3561717796092796,
+            "R@3": 0.13506753663003662,
+            "R@30%": 0.4290016407203907,
+            "R@5%": 0.16744600885225885,
+            "R@8": 0.26159283424908425,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "hotpotqa": {
+          "auc_0_30": 0.2017237103174603,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.01,
+              "recall": 0.046875,
+              "selected_chunk_fraction": 0.0228189876406825,
+              "selected_kv_token_fraction": 0.019576317595455688
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.02,
+              "recall": 0.046875,
+              "selected_chunk_fraction": 0.029143894443842046,
+              "selected_kv_token_fraction": 0.025975486746187836
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.05,
+              "recall": 0.10788690476190477,
+              "selected_chunk_fraction": 0.056450197844161734,
+              "selected_kv_token_fraction": 0.052370685483198856
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.1,
+              "recall": 0.15029761904761904,
+              "selected_chunk_fraction": 0.10677874084822651,
+              "selected_kv_token_fraction": 0.10319579445779595
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5625,
+              "fraction": 0.15,
+              "recall": 0.22380952380952382,
+              "selected_chunk_fraction": 0.15938906941134248,
+              "selected_kv_token_fraction": 0.15463512762017761
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.2,
+              "recall": 0.2488095238095238,
+              "selected_chunk_fraction": 0.20563812708592194,
+              "selected_kv_token_fraction": 0.2013739321362022
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.25,
+              "recall": 0.3081845238095238,
+              "selected_chunk_fraction": 0.2583352612045935,
+              "selected_kv_token_fraction": 0.25467512832104355
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.3,
+              "recall": 0.32961309523809523,
+              "selected_chunk_fraction": 0.3099658875419916,
+              "selected_kv_token_fraction": 0.30602391400336926
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.5,
+              "recall": 0.48660714285714285,
+              "selected_chunk_fraction": 0.5073151651166375,
+              "selected_kv_token_fraction": 0.5029128420406348
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "recall": 0.046875,
+              "selected_chunk_fraction": 0.022298154307349168,
+              "selected_kv_token_fraction": 0.019053031357883735
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "recall": 0.39479166666666665,
+              "selected_chunk_fraction": 0.3567704689175867,
+              "selected_kv_token_fraction": 0.35345420492228624
+            },
+            "3": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.3125,
+              "recall": 0.08705357142857142,
+              "selected_chunk_fraction": 0.0668944629220475,
+              "selected_kv_token_fraction": 0.0629234827141723
+            },
+            "8": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "recall": 0.2488095238095238,
+              "selected_chunk_fraction": 0.17838523445879334,
+              "selected_kv_token_fraction": 0.17387576084166978
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.2017237103174603,
+            "MRR": 0.31276066934741503,
+            "R@10%": 0.15029761904761904,
+            "R@16": 0.39479166666666665,
+            "R@20%": 0.2488095238095238,
+            "R@3": 0.08705357142857142,
+            "R@30%": 0.32961309523809523,
+            "R@5%": 0.10788690476190477,
+            "R@8": 0.2488095238095238,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "qasper": {
+          "auc_0_30": 0.36932625534188035,
+          "curve": [
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.01,
+              "recall": 0.16373626373626374,
+              "selected_chunk_fraction": 0.013607785826137694,
+              "selected_kv_token_fraction": 0.012803727937365178
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.02,
+              "recall": 0.19731761294261294,
+              "selected_chunk_fraction": 0.024296298121236598,
+              "selected_kv_token_fraction": 0.023543409324759897
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.05,
+              "recall": 0.22700511294261294,
+              "selected_chunk_fraction": 0.054780700673550654,
+              "selected_kv_token_fraction": 0.05415651322221126
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.1,
+              "recall": 0.314381105006105,
+              "selected_chunk_fraction": 0.10385588216028224,
+              "selected_kv_token_fraction": 0.10302858308467654
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.15,
+              "recall": 0.39630074786324787,
+              "selected_chunk_fraction": 0.15401282544912845,
+              "selected_kv_token_fraction": 0.1534033615025497
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.2,
+              "recall": 0.4635340354090354,
+              "selected_chunk_fraction": 0.20394928730916945,
+              "selected_kv_token_fraction": 0.20354758898664857
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.25,
+              "recall": 0.4842681623931624,
+              "selected_chunk_fraction": 0.25423415787512116,
+              "selected_kv_token_fraction": 0.2532793540619598
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.9375,
+              "fraction": 0.3,
+              "recall": 0.5283901862026862,
+              "selected_chunk_fraction": 0.30340148250728244,
+              "selected_kv_token_fraction": 0.3026598707520851
+            },
+            {
+              "all_evidence_recall": 0.375,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.7078506562881562,
+              "selected_chunk_fraction": 0.5021900460918317,
+              "selected_kv_token_fraction": 0.5011185652782539
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.3125,
+              "recall": 0.15892857142857142,
+              "selected_chunk_fraction": 0.008131016970003983,
+              "selected_kv_token_fraction": 0.007312861460135867
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "recall": 0.3607848748473748,
+              "selected_chunk_fraction": 0.13009627152006373,
+              "selected_kv_token_fraction": 0.1295044863783848
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.4375,
+              "recall": 0.18308150183150182,
+              "selected_chunk_fraction": 0.024393050910011947,
+              "selected_kv_token_fraction": 0.02366034746580705
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.2743761446886447,
+              "selected_chunk_fraction": 0.06504813576003186,
+              "selected_kv_token_fraction": 0.06452906247998501
+            }
+          },
+          "inverse": {
+            "f70": 0.5021900460918317,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.36932625534188035,
+            "MRR": 0.4412490712903449,
+            "R@10%": 0.314381105006105,
+            "R@16": 0.3607848748473748,
+            "R@20%": 0.4635340354090354,
+            "R@3": 0.18308150183150182,
+            "R@30%": 0.5283901862026862,
+            "R@5%": 0.22700511294261294,
+            "R@8": 0.2743761446886447,
+            "f70": 0.5021900460918317,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      },
+      "training": {
+        "adapter_parameters": 294912,
+        "learning_rate": 0.001,
+        "mean_training_loss": 0.2457681632367894,
+        "seed": 11,
+        "steps": 512,
+        "training_seconds": 6.692401800013613,
+        "validation": {
+          "auc_0_30": 0.3749809854497354,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.01,
+              "recall": 0.0734126984126984,
+              "selected_chunk_fraction": 0.013791392709065006,
+              "selected_kv_token_fraction": 0.013823457099517869
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.02,
+              "recall": 0.08591269841269841,
+              "selected_chunk_fraction": 0.02346940047847517,
+              "selected_kv_token_fraction": 0.023526230190780154
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.05,
+              "recall": 0.2640376984126984,
+              "selected_chunk_fraction": 0.05394398975589249,
+              "selected_kv_token_fraction": 0.05407601076660718
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.1,
+              "recall": 0.3327876984126984,
+              "selected_chunk_fraction": 0.10324882008872426,
+              "selected_kv_token_fraction": 0.10350301446902638
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.15,
+              "recall": 0.4248015873015873,
+              "selected_chunk_fraction": 0.15288686072339328,
+              "selected_kv_token_fraction": 0.15326436746287775
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.2,
+              "recall": 0.482093253968254,
+              "selected_chunk_fraction": 0.2036167461151705,
+              "selected_kv_token_fraction": 0.20345377762750042
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.25,
+              "recall": 0.4999503968253968,
+              "selected_chunk_fraction": 0.2522705347813356,
+              "selected_kv_token_fraction": 0.25181349629711985
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.3,
+              "recall": 0.4999503968253968,
+              "selected_chunk_fraction": 0.3025596170826713,
+              "selected_kv_token_fraction": 0.30222791051546105
+            },
+            {
+              "all_evidence_recall": 0.25,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.6612103174603174,
+              "selected_chunk_fraction": 0.5024097998144602,
+              "selected_kv_token_fraction": 0.5021532550178734
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 8
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 8,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "recall": 0.0734126984126984,
+              "selected_chunk_fraction": 0.006895696354532503,
+              "selected_kv_token_fraction": 0.006911728549758934
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "recall": 0.38278769841269844,
+              "selected_chunk_fraction": 0.11033114167252005,
+              "selected_kv_token_fraction": 0.11058765679614295
+            },
+            "3": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "recall": 0.08591269841269841,
+              "selected_chunk_fraction": 0.020687089063597508,
+              "selected_kv_token_fraction": 0.020735185649276806
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "recall": 0.27653769841269843,
+              "selected_chunk_fraction": 0.055165570836260024,
+              "selected_kv_token_fraction": 0.055293828398071475
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.3749809854497354,
+            "MRR": 0.4820463320463321,
+            "R@10%": 0.3327876984126984,
+            "R@16": 0.38278769841269844,
+            "R@20%": 0.482093253968254,
+            "R@3": 0.08591269841269841,
+            "R@30%": 0.4999503968253968,
+            "R@5%": 0.2640376984126984,
+            "R@8": 0.27653769841269843,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 23,
+      "test": {
+        "combined": {
+          "auc_0_30": 0.28825275997150995,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.01,
+              "recall": 0.08802083333333334,
+              "selected_chunk_fraction": 0.018213386733410098,
+              "selected_kv_token_fraction": 0.01742517146571453
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.28125,
+              "fraction": 0.02,
+              "recall": 0.10337110805860805,
+              "selected_chunk_fraction": 0.026720096282539324,
+              "selected_kv_token_fraction": 0.025188320774118523
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.05,
+              "recall": 0.16459382631257632,
+              "selected_chunk_fraction": 0.0556154492588562,
+              "selected_kv_token_fraction": 0.05396350132811406
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.1,
+              "recall": 0.2511246565934066,
+              "selected_chunk_fraction": 0.10531731150425439,
+              "selected_kv_token_fraction": 0.10252915849793179
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.15,
+              "recall": 0.3218711843711844,
+              "selected_chunk_fraction": 0.15670094743023547,
+              "selected_kv_token_fraction": 0.15391904052314304
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.2,
+              "recall": 0.3526480463980464,
+              "selected_chunk_fraction": 0.2047937071975457,
+              "selected_kv_token_fraction": 0.20230714045860315
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.84375,
+              "fraction": 0.25,
+              "recall": 0.3899229242979243,
+              "selected_chunk_fraction": 0.2562847095398573,
+              "selected_kv_token_fraction": 0.2534779921516921
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.90625,
+              "fraction": 0.3,
+              "recall": 0.44664415445665445,
+              "selected_chunk_fraction": 0.306683685024637,
+              "selected_kv_token_fraction": 0.304266851482714
+            },
+            {
+              "all_evidence_recall": 0.21875,
+              "any_evidence_recall": 0.96875,
+              "fraction": 0.5,
+              "recall": 0.6480855082417583,
+              "selected_chunk_fraction": 0.5047526056042346,
+              "selected_kv_token_fraction": 0.5020717974287804
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16,
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 32,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.1875,
+              "recall": 0.08802083333333334,
+              "selected_chunk_fraction": 0.015214585638676574,
+              "selected_kv_token_fraction": 0.014418095108313898
+            },
+            "16": {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.78125,
+              "recall": 0.3818042200854701,
+              "selected_chunk_fraction": 0.2434333702188252,
+              "selected_kv_token_fraction": 0.24085317864574993
+            },
+            "3": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.40625,
+              "recall": 0.15471039377289378,
+              "selected_chunk_fraction": 0.045643756916029725,
+              "selected_kv_token_fraction": 0.04348142612650667
+            },
+            "8": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.625,
+              "recall": 0.24942765567765568,
+              "selected_chunk_fraction": 0.1217166851094126,
+              "selected_kv_token_fraction": 0.11959967445241908
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.28825275997150995,
+            "MRR": 0.3354497408512847,
+            "R@10%": 0.2511246565934066,
+            "R@16": 0.3818042200854701,
+            "R@20%": 0.3526480463980464,
+            "R@3": 0.15471039377289378,
+            "R@30%": 0.44664415445665445,
+            "R@5%": 0.16459382631257632,
+            "R@8": 0.24942765567765568,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "hotpotqa": {
+          "auc_0_30": 0.2054563492063492,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.0625,
+              "fraction": 0.01,
+              "recall": 0.015625,
+              "selected_chunk_fraction": 0.0228189876406825,
+              "selected_kv_token_fraction": 0.021185733451364156
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.125,
+              "fraction": 0.02,
+              "recall": 0.024553571428571428,
+              "selected_chunk_fraction": 0.029143894443842046,
+              "selected_kv_token_fraction": 0.027584902602096305
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.3125,
+              "fraction": 0.05,
+              "recall": 0.08035714285714285,
+              "selected_chunk_fraction": 0.056450197844161734,
+              "selected_kv_token_fraction": 0.05473764167111574
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.4375,
+              "fraction": 0.1,
+              "recall": 0.15327380952380953,
+              "selected_chunk_fraction": 0.10677874084822651,
+              "selected_kv_token_fraction": 0.10324862624139695
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5625,
+              "fraction": 0.15,
+              "recall": 0.23258928571428572,
+              "selected_chunk_fraction": 0.15938906941134248,
+              "selected_kv_token_fraction": 0.15615528871542664
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.2,
+              "recall": 0.2727678571428571,
+              "selected_chunk_fraction": 0.20563812708592194,
+              "selected_kv_token_fraction": 0.2028412614478502
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.25,
+              "recall": 0.3098214285714286,
+              "selected_chunk_fraction": 0.2583352612045935,
+              "selected_kv_token_fraction": 0.25476736891729057
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.3,
+              "recall": 0.37410714285714286,
+              "selected_chunk_fraction": 0.3099658875419916,
+              "selected_kv_token_fraction": 0.30696457088920903
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.9375,
+              "fraction": 0.5,
+              "recall": 0.5418154761904762,
+              "selected_chunk_fraction": 0.5073151651166375,
+              "selected_kv_token_fraction": 0.5039049055326983
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.0625,
+              "recall": 0.015625,
+              "selected_chunk_fraction": 0.022298154307349168,
+              "selected_kv_token_fraction": 0.020662447213792207
+            },
+            "16": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.8125,
+              "recall": 0.4303571428571429,
+              "selected_chunk_fraction": 0.3567704689175867,
+              "selected_kv_token_fraction": 0.35354644551853326
+            },
+            "3": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "recall": 0.11681547619047619,
+              "selected_chunk_fraction": 0.0668944629220475,
+              "selected_kv_token_fraction": 0.06405417516582544
+            },
+            "8": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5625,
+              "recall": 0.21175595238095238,
+              "selected_chunk_fraction": 0.17838523445879334,
+              "selected_kv_token_fraction": 0.17563743866195203
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.2054563492063492,
+            "MRR": 0.25989152289703754,
+            "R@10%": 0.15327380952380953,
+            "R@16": 0.4303571428571429,
+            "R@20%": 0.2727678571428571,
+            "R@3": 0.11681547619047619,
+            "R@30%": 0.37410714285714286,
+            "R@5%": 0.08035714285714285,
+            "R@8": 0.21175595238095238,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "qasper": {
+          "auc_0_30": 0.3710491707366708,
+          "curve": [
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.3125,
+              "fraction": 0.01,
+              "recall": 0.16041666666666668,
+              "selected_chunk_fraction": 0.013607785826137694,
+              "selected_kv_token_fraction": 0.013664609480064902
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.4375,
+              "fraction": 0.02,
+              "recall": 0.18218864468864468,
+              "selected_chunk_fraction": 0.024296298121236598,
+              "selected_kv_token_fraction": 0.022791738946140744
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.05,
+              "recall": 0.24883050976800977,
+              "selected_chunk_fraction": 0.054780700673550654,
+              "selected_kv_token_fraction": 0.05318936098511238
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.1,
+              "recall": 0.34897550366300367,
+              "selected_chunk_fraction": 0.10385588216028224,
+              "selected_kv_token_fraction": 0.10180969075446662
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.15,
+              "recall": 0.411153083028083,
+              "selected_chunk_fraction": 0.15401282544912845,
+              "selected_kv_token_fraction": 0.15168279233085943
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.2,
+              "recall": 0.43252823565323567,
+              "selected_chunk_fraction": 0.20394928730916945,
+              "selected_kv_token_fraction": 0.2017730194693561
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.9375,
+              "fraction": 0.25,
+              "recall": 0.47002442002442,
+              "selected_chunk_fraction": 0.25423415787512116,
+              "selected_kv_token_fraction": 0.2521886153860936
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.3,
+              "recall": 0.519181166056166,
+              "selected_chunk_fraction": 0.30340148250728244,
+              "selected_kv_token_fraction": 0.30156913207621894
+            },
+            {
+              "all_evidence_recall": 0.3125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.7543555402930403,
+              "selected_chunk_fraction": 0.5021900460918317,
+              "selected_kv_token_fraction": 0.5002386893248624
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.3125,
+              "recall": 0.16041666666666668,
+              "selected_chunk_fraction": 0.008131016970003983,
+              "selected_kv_token_fraction": 0.008173743002835592
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.3332512973137973,
+              "selected_chunk_fraction": 0.13009627152006373,
+              "selected_kv_token_fraction": 0.1281599117729666
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.4375,
+              "recall": 0.19260531135531136,
+              "selected_chunk_fraction": 0.024393050910011947,
+              "selected_kv_token_fraction": 0.022908677087187898
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.6875,
+              "recall": 0.28709935897435895,
+              "selected_chunk_fraction": 0.06504813576003186,
+              "selected_kv_token_fraction": 0.06356191024288613
+            }
+          },
+          "inverse": {
+            "f70": 0.5021900460918317,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.3710491707366708,
+            "MRR": 0.41100795880553176,
+            "R@10%": 0.34897550366300367,
+            "R@16": 0.3332512973137973,
+            "R@20%": 0.43252823565323567,
+            "R@3": 0.19260531135531136,
+            "R@30%": 0.519181166056166,
+            "R@5%": 0.24883050976800977,
+            "R@8": 0.28709935897435895,
+            "f70": 0.5021900460918317,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      },
+      "training": {
+        "adapter_parameters": 294912,
+        "learning_rate": 0.001,
+        "mean_training_loss": 0.24075050401734188,
+        "seed": 23,
+        "steps": 512,
+        "training_seconds": 3.0253966000163928,
+        "validation": {
+          "auc_0_30": 0.37556134259259266,
+          "curve": [
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.01,
+              "recall": 0.23333333333333334,
+              "selected_chunk_fraction": 0.013791392709065006,
+              "selected_kv_token_fraction": 0.013157855395577508
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.02,
+              "recall": 0.23333333333333334,
+              "selected_chunk_fraction": 0.02346940047847517,
+              "selected_kv_token_fraction": 0.02286062848683979
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.05,
+              "recall": 0.2708333333333333,
+              "selected_chunk_fraction": 0.05394398975589249,
+              "selected_kv_token_fraction": 0.053032765558135096
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.1,
+              "recall": 0.3597222222222222,
+              "selected_chunk_fraction": 0.10324882008872426,
+              "selected_kv_token_fraction": 0.10245976926055429
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.15,
+              "recall": 0.3753472222222222,
+              "selected_chunk_fraction": 0.15288686072339328,
+              "selected_kv_token_fraction": 0.15222112225440568
+            },
+            {
+              "all_evidence_recall": 0.25,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.2,
+              "recall": 0.44340277777777776,
+              "selected_chunk_fraction": 0.2036167461151705,
+              "selected_kv_token_fraction": 0.20294999890601612
+            },
+            {
+              "all_evidence_recall": 0.25,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.25,
+              "recall": 0.45590277777777777,
+              "selected_chunk_fraction": 0.2522705347813356,
+              "selected_kv_token_fraction": 0.2517239413839455
+            },
+            {
+              "all_evidence_recall": 0.375,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.3,
+              "recall": 0.5246527777777777,
+              "selected_chunk_fraction": 0.3025596170826713,
+              "selected_kv_token_fraction": 0.3021383556022867
+            },
+            {
+              "all_evidence_recall": 0.375,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.7157738095238095,
+              "selected_chunk_fraction": 0.5024097998144602,
+              "selected_kv_token_fraction": 0.5016773009659513
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 8
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 8,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "recall": 0.19166666666666665,
+              "selected_chunk_fraction": 0.006895696354532503,
+              "selected_kv_token_fraction": 0.006246126845818573
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "recall": 0.3597222222222222,
+              "selected_chunk_fraction": 0.11033114167252005,
+              "selected_kv_token_fraction": 0.10954441158767086
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "recall": 0.23333333333333334,
+              "selected_chunk_fraction": 0.020687089063597508,
+              "selected_kv_token_fraction": 0.020069583945336443
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.5,
+              "recall": 0.2708333333333333,
+              "selected_chunk_fraction": 0.055165570836260024,
+              "selected_kv_token_fraction": 0.0542505831895994
+            }
+          },
+          "inverse": {
+            "f70": 0.5024097998144602,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.37556134259259266,
+            "MRR": 0.41900708653026425,
+            "R@10%": 0.3597222222222222,
+            "R@16": 0.3597222222222222,
+            "R@20%": 0.44340277777777776,
+            "R@3": 0.23333333333333334,
+            "R@30%": 0.5246527777777777,
+            "R@5%": 0.2708333333333333,
+            "R@8": 0.2708333333333333,
+            "f70": 0.5024097998144602,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 37,
+      "test": {
+        "combined": {
+          "auc_0_30": 0.2578867457773708,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.21875,
+              "fraction": 0.01,
+              "recall": 0.09404761904761905,
+              "selected_chunk_fraction": 0.018213386733410098,
+              "selected_kv_token_fraction": 0.01794018586060664
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.3125,
+              "fraction": 0.02,
+              "recall": 0.1075997786935287,
+              "selected_chunk_fraction": 0.026720096282539324,
+              "selected_kv_token_fraction": 0.026509611129670072
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.4375,
+              "fraction": 0.05,
+              "recall": 0.15945989774114774,
+              "selected_chunk_fraction": 0.0556154492588562,
+              "selected_kv_token_fraction": 0.05440169779433117
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.53125,
+              "fraction": 0.1,
+              "recall": 0.20214152167277166,
+              "selected_chunk_fraction": 0.10531731150425439,
+              "selected_kv_token_fraction": 0.10291379380098373
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.59375,
+              "fraction": 0.15,
+              "recall": 0.25546302655677655,
+              "selected_chunk_fraction": 0.15670094743023547,
+              "selected_kv_token_fraction": 0.1537126552048436
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.71875,
+              "fraction": 0.2,
+              "recall": 0.31144879426129424,
+              "selected_chunk_fraction": 0.2047937071975457,
+              "selected_kv_token_fraction": 0.2021277553131048
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.25,
+              "recall": 0.3760197268009768,
+              "selected_chunk_fraction": 0.2562847095398573,
+              "selected_kv_token_fraction": 0.2534700021624701
+            },
+            {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.3,
+              "recall": 0.42566010378510377,
+              "selected_chunk_fraction": 0.306683685024637,
+              "selected_kv_token_fraction": 0.304258861493492
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.610618894993895,
+              "selected_chunk_fraction": 0.5047526056042346,
+              "selected_kv_token_fraction": 0.503159286121306
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16,
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 32,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.1875,
+              "recall": 0.08154761904761905,
+              "selected_chunk_fraction": 0.015214585638676574,
+              "selected_kv_token_fraction": 0.014933109503206008
+            },
+            "16": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.75,
+              "recall": 0.3436965811965812,
+              "selected_chunk_fraction": 0.2434333702188252,
+              "selected_kv_token_fraction": 0.24124438496659995
+            },
+            "3": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.3125,
+              "recall": 0.1230654761904762,
+              "selected_chunk_fraction": 0.045643756916029725,
+              "selected_kv_token_fraction": 0.0446178700393895
+            },
+            "8": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.625,
+              "recall": 0.23944501678876678,
+              "selected_chunk_fraction": 0.1217166851094126,
+              "selected_kv_token_fraction": 0.11883201451618473
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.2578867457773708,
+            "MRR": 0.32376480752431064,
+            "R@10%": 0.20214152167277166,
+            "R@16": 0.3436965811965812,
+            "R@20%": 0.31144879426129424,
+            "R@3": 0.1230654761904762,
+            "R@30%": 0.42566010378510377,
+            "R@5%": 0.15945989774114774,
+            "R@8": 0.23944501678876678,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "hotpotqa": {
+          "auc_0_30": 0.1731919642857143,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.125,
+              "fraction": 0.01,
+              "recall": 0.02142857142857143,
+              "selected_chunk_fraction": 0.0228189876406825,
+              "selected_kv_token_fraction": 0.023076643783848102
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.125,
+              "fraction": 0.02,
+              "recall": 0.030357142857142857,
+              "selected_chunk_fraction": 0.029143894443842046,
+              "selected_kv_token_fraction": 0.02947581293458025
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.05,
+              "recall": 0.054910714285714285,
+              "selected_chunk_fraction": 0.056450197844161734,
+              "selected_kv_token_fraction": 0.05502259538199851
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.3125,
+              "fraction": 0.1,
+              "recall": 0.10178571428571428,
+              "selected_chunk_fraction": 0.10677874084822651,
+              "selected_kv_token_fraction": 0.10372734964565228
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.4375,
+              "fraction": 0.15,
+              "recall": 0.17008928571428572,
+              "selected_chunk_fraction": 0.15938906941134248,
+              "selected_kv_token_fraction": 0.15507454850865987
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.2,
+              "recall": 0.22589285714285715,
+              "selected_chunk_fraction": 0.20563812708592194,
+              "selected_kv_token_fraction": 0.20176052124108343
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.25,
+              "recall": 0.3113095238095238,
+              "selected_chunk_fraction": 0.2583352612045935,
+              "selected_kv_token_fraction": 0.25406965393386133
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.3,
+              "recall": 0.3394345238095238,
+              "selected_chunk_fraction": 0.3099658875419916,
+              "selected_kv_token_fraction": 0.30626685590577973
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.546875,
+              "selected_chunk_fraction": 0.5073151651166375,
+              "selected_kv_token_fraction": 0.5046983978919346
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.125,
+              "recall": 0.02142857142857143,
+              "selected_chunk_fraction": 0.022298154307349168,
+              "selected_kv_token_fraction": 0.02255335754627615
+            },
+            "16": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.75,
+              "recall": 0.35252976190476193,
+              "selected_chunk_fraction": 0.3567704689175867,
+              "selected_kv_token_fraction": 0.3536971468246967
+            },
+            "3": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.25,
+              "recall": 0.07053571428571428,
+              "selected_chunk_fraction": 0.0668944629220475,
+              "selected_kv_token_fraction": 0.06557539261297195
+            },
+            "8": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "recall": 0.20133928571428572,
+              "selected_chunk_fraction": 0.17838523445879334,
+              "selected_kv_token_fraction": 0.17426234994655104
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.1731919642857143,
+            "MRR": 0.2591369533924681,
+            "R@10%": 0.10178571428571428,
+            "R@16": 0.35252976190476193,
+            "R@20%": 0.22589285714285715,
+            "R@3": 0.07053571428571428,
+            "R@30%": 0.3394345238095238,
+            "R@5%": 0.054910714285714285,
+            "R@8": 0.20133928571428572,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "qasper": {
+          "auc_0_30": 0.34258152726902724,
+          "curve": [
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.3125,
+              "fraction": 0.01,
+              "recall": 0.16666666666666666,
+              "selected_chunk_fraction": 0.013607785826137694,
+              "selected_kv_token_fraction": 0.012803727937365178
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.02,
+              "recall": 0.18484241452991454,
+              "selected_chunk_fraction": 0.024296298121236598,
+              "selected_kv_token_fraction": 0.023543409324759897
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.05,
+              "recall": 0.2640090811965812,
+              "selected_chunk_fraction": 0.054780700673550654,
+              "selected_kv_token_fraction": 0.053780800206663835
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.1,
+              "recall": 0.30249732905982907,
+              "selected_chunk_fraction": 0.10385588216028224,
+              "selected_kv_token_fraction": 0.10210023795631518
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.15,
+              "recall": 0.3408367673992674,
+              "selected_chunk_fraction": 0.15401282544912845,
+              "selected_kv_token_fraction": 0.1523507619010273
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.2,
+              "recall": 0.39700473137973136,
+              "selected_chunk_fraction": 0.20394928730916945,
+              "selected_kv_token_fraction": 0.20249498938512617
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.25,
+              "recall": 0.4407299297924298,
+              "selected_chunk_fraction": 0.25423415787512116,
+              "selected_kv_token_fraction": 0.25287035039107897
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.3,
+              "recall": 0.5118856837606838,
+              "selected_chunk_fraction": 0.30340148250728244,
+              "selected_kv_token_fraction": 0.3022508670812043
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.67436278998779,
+              "selected_chunk_fraction": 0.5021900460918317,
+              "selected_kv_token_fraction": 0.5016201743506773
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.25,
+              "recall": 0.14166666666666666,
+              "selected_chunk_fraction": 0.008131016970003983,
+              "selected_kv_token_fraction": 0.007312861460135867
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.33486340048840046,
+              "selected_chunk_fraction": 0.13009627152006373,
+              "selected_kv_token_fraction": 0.12879162310850317
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "recall": 0.1755952380952381,
+              "selected_chunk_fraction": 0.024393050910011947,
+              "selected_kv_token_fraction": 0.02366034746580705
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.27755074786324785,
+              "selected_chunk_fraction": 0.06504813576003186,
+              "selected_kv_token_fraction": 0.06340167908581842
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.34258152726902724,
+            "MRR": 0.3883926616561533,
+            "R@10%": 0.30249732905982907,
+            "R@16": 0.33486340048840046,
+            "R@20%": 0.39700473137973136,
+            "R@3": 0.1755952380952381,
+            "R@30%": 0.5118856837606838,
+            "R@5%": 0.2640090811965812,
+            "R@8": 0.27755074786324785,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      },
+      "training": {
+        "adapter_parameters": 294912,
+        "learning_rate": 0.001,
+        "mean_training_loss": 0.22948356589768082,
+        "seed": 37,
+        "steps": 512,
+        "training_seconds": 2.7786131000029854,
+        "validation": {
+          "auc_0_30": 0.34740988756613755,
+          "curve": [
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.01,
+              "recall": 0.23333333333333334,
+              "selected_chunk_fraction": 0.013791392709065006,
+              "selected_kv_token_fraction": 0.013823457099517869
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.02,
+              "recall": 0.23333333333333334,
+              "selected_chunk_fraction": 0.02346940047847517,
+              "selected_kv_token_fraction": 0.023526230190780154
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.05,
+              "recall": 0.25972222222222224,
+              "selected_chunk_fraction": 0.05394398975589249,
+              "selected_kv_token_fraction": 0.05369836726207546
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.1,
+              "recall": 0.2972222222222222,
+              "selected_chunk_fraction": 0.10324882008872426,
+              "selected_kv_token_fraction": 0.10245976926055429
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.15,
+              "recall": 0.3557043650793651,
+              "selected_chunk_fraction": 0.15288686072339328,
+              "selected_kv_token_fraction": 0.15222112225440568
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.2,
+              "recall": 0.38070436507936506,
+              "selected_chunk_fraction": 0.2036167461151705,
+              "selected_kv_token_fraction": 0.2030761341229687
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.25,
+              "recall": 0.4687003968253968,
+              "selected_chunk_fraction": 0.2522705347813356,
+              "selected_kv_token_fraction": 0.2518500766008981
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.3,
+              "recall": 0.4687003968253968,
+              "selected_chunk_fraction": 0.3025596170826713,
+              "selected_kv_token_fraction": 0.3022644908192393
+            },
+            {
+              "all_evidence_recall": 0.25,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.7060019841269841,
+              "selected_chunk_fraction": 0.5024097998144602,
+              "selected_kv_token_fraction": 0.5021349609655565
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 8
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 8,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "recall": 0.19166666666666665,
+              "selected_chunk_fraction": 0.006895696354532503,
+              "selected_kv_token_fraction": 0.006911728549758934
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.2972222222222222,
+              "selected_chunk_fraction": 0.11033114167252005,
+              "selected_kv_token_fraction": 0.10954441158767086
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "recall": 0.23333333333333334,
+              "selected_chunk_fraction": 0.020687089063597508,
+              "selected_kv_token_fraction": 0.020735185649276806
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "recall": 0.25972222222222224,
+              "selected_chunk_fraction": 0.055165570836260024,
+              "selected_kv_token_fraction": 0.054916184893539756
+            }
+          },
+          "inverse": {
+            "f70": 0.5024097998144602,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.34740988756613755,
+            "MRR": 0.4349107142857143,
+            "R@10%": 0.2972222222222222,
+            "R@16": 0.2972222222222222,
+            "R@20%": 0.38070436507936506,
+            "R@3": 0.23333333333333334,
+            "R@30%": 0.4687003968253968,
+            "R@5%": 0.25972222222222224,
+            "R@8": 0.25972222222222224,
+            "f70": 0.5024097998144602,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 53,
+      "test": {
+        "combined": {
+          "auc_0_30": 0.2827351858211233,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.01,
+              "recall": 0.09769345238095238,
+              "selected_chunk_fraction": 0.018213386733410098,
+              "selected_kv_token_fraction": 0.016210301489977895
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.21875,
+              "fraction": 0.02,
+              "recall": 0.11644345238095238,
+              "selected_chunk_fraction": 0.026720096282539324,
+              "selected_kv_token_fraction": 0.024214380533214754
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.4375,
+              "fraction": 0.05,
+              "recall": 0.16889690170940172,
+              "selected_chunk_fraction": 0.0556154492588562,
+              "selected_kv_token_fraction": 0.053191530893015856
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.59375,
+              "fraction": 0.1,
+              "recall": 0.23067384004884006,
+              "selected_chunk_fraction": 0.10531731150425439,
+              "selected_kv_token_fraction": 0.10209462867039544
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.65625,
+              "fraction": 0.15,
+              "recall": 0.2853861416361416,
+              "selected_chunk_fraction": 0.15670094743023547,
+              "selected_kv_token_fraction": 0.15388252337066397
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.2,
+              "recall": 0.3521520146520147,
+              "selected_chunk_fraction": 0.2047937071975457,
+              "selected_kv_token_fraction": 0.20186392443788714
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.25,
+              "recall": 0.4072964362026862,
+              "selected_chunk_fraction": 0.2562847095398573,
+              "selected_kv_token_fraction": 0.2530635817135513
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.3,
+              "recall": 0.4393381791819292,
+              "selected_chunk_fraction": 0.306683685024637,
+              "selected_kv_token_fraction": 0.30350392803342074
+            },
+            {
+              "all_evidence_recall": 0.15625,
+              "any_evidence_recall": 0.9375,
+              "fraction": 0.5,
+              "recall": 0.6185220161782662,
+              "selected_chunk_fraction": 0.5047526056042346,
+              "selected_kv_token_fraction": 0.5014750707065576
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16,
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 32,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.15625,
+              "recall": 0.08102678571428572,
+              "selected_chunk_fraction": 0.015214585638676574,
+              "selected_kv_token_fraction": 0.013203225132577262
+            },
+            "16": {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.75,
+              "recall": 0.4057501526251526,
+              "selected_chunk_fraction": 0.2434333702188252,
+              "selected_kv_token_fraction": 0.24101041923889466
+            },
+            "3": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.28125,
+              "recall": 0.1396577380952381,
+              "selected_chunk_fraction": 0.045643756916029725,
+              "selected_kv_token_fraction": 0.042604370732289176
+            },
+            "8": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.65625,
+              "recall": 0.2642342032967033,
+              "selected_chunk_fraction": 0.1217166851094126,
+              "selected_kv_token_fraction": 0.118901154090197
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.2827351858211233,
+            "MRR": 0.29890558197663375,
+            "R@10%": 0.23067384004884006,
+            "R@16": 0.4057501526251526,
+            "R@20%": 0.3521520146520147,
+            "R@3": 0.1396577380952381,
+            "R@30%": 0.4393381791819292,
+            "R@5%": 0.16889690170940172,
+            "R@8": 0.2642342032967033,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "hotpotqa": {
+          "auc_0_30": 0.19433283730158732,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.125,
+              "fraction": 0.01,
+              "recall": 0.03645833333333333,
+              "selected_chunk_fraction": 0.0228189876406825,
+              "selected_kv_token_fraction": 0.01961687504259061
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.125,
+              "fraction": 0.02,
+              "recall": 0.03645833333333333,
+              "selected_chunk_fraction": 0.029143894443842046,
+              "selected_kv_token_fraction": 0.024885351741669608
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.05,
+              "recall": 0.06770833333333333,
+              "selected_chunk_fraction": 0.056450197844161734,
+              "selected_kv_token_fraction": 0.05251681421494436
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.1,
+              "recall": 0.1324404761904762,
+              "selected_chunk_fraction": 0.10677874084822651,
+              "selected_kv_token_fraction": 0.10187353752599597
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.15,
+              "recall": 0.19345238095238096,
+              "selected_chunk_fraction": 0.15938906941134248,
+              "selected_kv_token_fraction": 0.15507454850865987
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.2,
+              "recall": 0.2571428571428571,
+              "selected_chunk_fraction": 0.20563812708592194,
+              "selected_kv_token_fraction": 0.20151900451605023
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.25,
+              "recall": 0.3223214285714286,
+              "selected_chunk_fraction": 0.2583352612045935,
+              "selected_kv_token_fraction": 0.2539189526276978
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.3,
+              "recall": 0.3691964285714286,
+              "selected_chunk_fraction": 0.3099658875419916,
+              "selected_kv_token_fraction": 0.30541912857731146
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.5,
+              "recall": 0.51875,
+              "selected_chunk_fraction": 0.5073151651166375,
+              "selected_kv_token_fraction": 0.50221581601833
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.0625,
+              "recall": 0.015625,
+              "selected_chunk_fraction": 0.022298154307349168,
+              "selected_kv_token_fraction": 0.019093588805018658
+            },
+            "16": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.6875,
+              "recall": 0.42023809523809524,
+              "selected_chunk_fraction": 0.3567704689175867,
+              "selected_kv_token_fraction": 0.35314376800486263
+            },
+            "3": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.25,
+              "recall": 0.09895833333333333,
+              "selected_chunk_fraction": 0.0668944629220475,
+              "selected_kv_token_fraction": 0.0615483939987713
+            },
+            "8": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "recall": 0.23407738095238095,
+              "selected_chunk_fraction": 0.17838523445879334,
+              "selected_kv_token_fraction": 0.17431518173015204
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.19433283730158732,
+            "MRR": 0.23726496995119117,
+            "R@10%": 0.1324404761904762,
+            "R@16": 0.42023809523809524,
+            "R@20%": 0.2571428571428571,
+            "R@3": 0.09895833333333333,
+            "R@30%": 0.3691964285714286,
+            "R@5%": 0.06770833333333333,
+            "R@8": 0.23407738095238095,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "qasper": {
+          "auc_0_30": 0.3711375343406594,
+          "curve": [
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.25,
+              "fraction": 0.01,
+              "recall": 0.15892857142857142,
+              "selected_chunk_fraction": 0.013607785826137694,
+              "selected_kv_token_fraction": 0.012803727937365178
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.3125,
+              "fraction": 0.02,
+              "recall": 0.19642857142857142,
+              "selected_chunk_fraction": 0.024296298121236598,
+              "selected_kv_token_fraction": 0.023543409324759897
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.05,
+              "recall": 0.27008547008547007,
+              "selected_chunk_fraction": 0.054780700673550654,
+              "selected_kv_token_fraction": 0.05386624757108735
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.1,
+              "recall": 0.3289072039072039,
+              "selected_chunk_fraction": 0.10385588216028224,
+              "selected_kv_token_fraction": 0.1023157198147949
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.15,
+              "recall": 0.3773199023199023,
+              "selected_chunk_fraction": 0.15401282544912845,
+              "selected_kv_token_fraction": 0.15269049823266806
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.2,
+              "recall": 0.4471611721611722,
+              "selected_chunk_fraction": 0.20394928730916945,
+              "selected_kv_token_fraction": 0.20220884435972405
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.25,
+              "recall": 0.49227144383394383,
+              "selected_chunk_fraction": 0.25423415787512116,
+              "selected_kv_token_fraction": 0.25220821079940475
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 0.9375,
+              "fraction": 0.3,
+              "recall": 0.5094799297924298,
+              "selected_chunk_fraction": 0.30340148250728244,
+              "selected_kv_token_fraction": 0.3015887274895301
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.7182940323565323,
+              "selected_chunk_fraction": 0.5021900460918317,
+              "selected_kv_token_fraction": 0.5007343253947852
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.25,
+              "recall": 0.14642857142857144,
+              "selected_chunk_fraction": 0.008131016970003983,
+              "selected_kv_token_fraction": 0.007312861460135867
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "recall": 0.39126221001221,
+              "selected_chunk_fraction": 0.13009627152006373,
+              "selected_kv_token_fraction": 0.12887707047292668
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.3125,
+              "recall": 0.18035714285714285,
+              "selected_chunk_fraction": 0.024393050910011947,
+              "selected_kv_token_fraction": 0.02366034746580705
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.6875,
+              "recall": 0.29439102564102565,
+              "selected_chunk_fraction": 0.06504813576003186,
+              "selected_kv_token_fraction": 0.06348712645024195
+            }
+          },
+          "inverse": {
+            "f70": 0.5021900460918317,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.3711375343406594,
+            "MRR": 0.3605461940020763,
+            "R@10%": 0.3289072039072039,
+            "R@16": 0.39126221001221,
+            "R@20%": 0.4471611721611722,
+            "R@3": 0.18035714285714285,
+            "R@30%": 0.5094799297924298,
+            "R@5%": 0.27008547008547007,
+            "R@8": 0.29439102564102565,
+            "f70": 0.5021900460918317,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      },
+      "training": {
+        "adapter_parameters": 294912,
+        "learning_rate": 0.001,
+        "mean_training_loss": 0.25184440254815854,
+        "seed": 53,
+        "steps": 512,
+        "training_seconds": 3.1590754000353627,
+        "validation": {
+          "auc_0_30": 0.3507357804232804,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.01,
+              "recall": 0.09618055555555555,
+              "selected_chunk_fraction": 0.013791392709065006,
+              "selected_kv_token_fraction": 0.013823457099517869
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "fraction": 0.02,
+              "recall": 0.09618055555555555,
+              "selected_chunk_fraction": 0.02346940047847517,
+              "selected_kv_token_fraction": 0.023526230190780154
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.05,
+              "recall": 0.3284722222222222,
+              "selected_chunk_fraction": 0.05394398975589249,
+              "selected_kv_token_fraction": 0.05407601076660718
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.1,
+              "recall": 0.35659722222222223,
+              "selected_chunk_fraction": 0.10324882008872426,
+              "selected_kv_token_fraction": 0.10283741276508601
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.15,
+              "recall": 0.3940972222222222,
+              "selected_chunk_fraction": 0.15288686072339328,
+              "selected_kv_token_fraction": 0.15259876575893738
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.2,
+              "recall": 0.3940972222222222,
+              "selected_chunk_fraction": 0.2036167461151705,
+              "selected_kv_token_fraction": 0.20345377762750042
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.25,
+              "recall": 0.4065972222222222,
+              "selected_chunk_fraction": 0.2522705347813356,
+              "selected_kv_token_fraction": 0.2522277201054298
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.3,
+              "recall": 0.4650793650793651,
+              "selected_chunk_fraction": 0.3025596170826713,
+              "selected_kv_token_fraction": 0.3022644908192393
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.536061507936508,
+              "selected_chunk_fraction": 0.5024097998144602,
+              "selected_kv_token_fraction": 0.5026054150932547
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 8
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 8,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "recall": 0.09618055555555555,
+              "selected_chunk_fraction": 0.006895696354532503,
+              "selected_kv_token_fraction": 0.006911728549758934
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.3815972222222222,
+              "selected_chunk_fraction": 0.11033114167252005,
+              "selected_kv_token_fraction": 0.1099220550922026
+            },
+            "3": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5,
+              "recall": 0.09618055555555555,
+              "selected_chunk_fraction": 0.020687089063597508,
+              "selected_kv_token_fraction": 0.020735185649276806
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "recall": 0.3284722222222222,
+              "selected_chunk_fraction": 0.055165570836260024,
+              "selected_kv_token_fraction": 0.055293828398071475
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.3507357804232804,
+            "MRR": 0.5464498299319728,
+            "R@10%": 0.35659722222222223,
+            "R@16": 0.3815972222222222,
+            "R@20%": 0.3940972222222222,
+            "R@3": 0.09618055555555555,
+            "R@30%": 0.4650793650793651,
+            "R@5%": 0.3284722222222222,
+            "R@8": 0.3284722222222222,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 71,
+      "test": {
+        "combined": {
+          "auc_0_30": 0.28356777192714694,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.28125,
+              "fraction": 0.01,
+              "recall": 0.11800595238095238,
+              "selected_chunk_fraction": 0.018213386733410098,
+              "selected_kv_token_fraction": 0.015405593562023659
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.28125,
+              "fraction": 0.02,
+              "recall": 0.12872023809523808,
+              "selected_chunk_fraction": 0.026720096282539324,
+              "selected_kv_token_fraction": 0.023975018831087092
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.05,
+              "recall": 0.14893353174603174,
+              "selected_chunk_fraction": 0.0556154492588562,
+              "selected_kv_token_fraction": 0.052430922169442604
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.5625,
+              "fraction": 0.1,
+              "recall": 0.23271138583638584,
+              "selected_chunk_fraction": 0.10531731150425439,
+              "selected_kv_token_fraction": 0.10232519025878073
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.71875,
+              "fraction": 0.15,
+              "recall": 0.3026356456043956,
+              "selected_chunk_fraction": 0.15670094743023547,
+              "selected_kv_token_fraction": 0.1538359602665316
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.2,
+              "recall": 0.34085489163614163,
+              "selected_chunk_fraction": 0.2047937071975457,
+              "selected_kv_token_fraction": 0.20227747626659331
+            },
+            {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.78125,
+              "fraction": 0.25,
+              "recall": 0.3979605463980464,
+              "selected_chunk_fraction": 0.2562847095398573,
+              "selected_kv_token_fraction": 0.25372360318809517
+            },
+            {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.8125,
+              "fraction": 0.3,
+              "recall": 0.46601610195360194,
+              "selected_chunk_fraction": 0.306683685024637,
+              "selected_kv_token_fraction": 0.3039630371836899
+            },
+            {
+              "all_evidence_recall": 0.21875,
+              "any_evidence_recall": 0.90625,
+              "fraction": 0.5,
+              "recall": 0.5935153388278388,
+              "selected_chunk_fraction": 0.5047526056042346,
+              "selected_kv_token_fraction": 0.5027967431740881
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16,
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 32,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.1875,
+              "recall": 0.08883928571428572,
+              "selected_chunk_fraction": 0.015214585638676574,
+              "selected_kv_token_fraction": 0.012398517204623028
+            },
+            "16": {
+              "all_evidence_recall": 0.09375,
+              "any_evidence_recall": 0.78125,
+              "recall": 0.4140605921855922,
+              "selected_chunk_fraction": 0.2434333702188252,
+              "selected_kv_token_fraction": 0.24107237379035248
+            },
+            "3": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.28125,
+              "recall": 0.1302827380952381,
+              "selected_chunk_fraction": 0.045643756916029725,
+              "selected_kv_token_fraction": 0.042604370732289176
+            },
+            "8": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.625,
+              "recall": 0.2601066468253968,
+              "selected_chunk_fraction": 0.1217166851094126,
+              "selected_kv_token_fraction": 0.11927698927950657
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.28356777192714694,
+            "MRR": 0.31624417296040286,
+            "R@10%": 0.23271138583638584,
+            "R@16": 0.4140605921855922,
+            "R@20%": 0.34085489163614163,
+            "R@3": 0.1302827380952381,
+            "R@30%": 0.46601610195360194,
+            "R@5%": 0.14893353174603174,
+            "R@8": 0.2601066468253968,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "hotpotqa": {
+          "auc_0_30": 0.20585317460317457,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.01,
+              "recall": 0.05208333333333333,
+              "selected_chunk_fraction": 0.0228189876406825,
+              "selected_kv_token_fraction": 0.018007459186682142
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.02,
+              "recall": 0.05208333333333333,
+              "selected_chunk_fraction": 0.029143894443842046,
+              "selected_kv_token_fraction": 0.02440662833741429
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "fraction": 0.05,
+              "recall": 0.05208333333333333,
+              "selected_chunk_fraction": 0.056450197844161734,
+              "selected_kv_token_fraction": 0.050995596767797864
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.1,
+              "recall": 0.12931547619047618,
+              "selected_chunk_fraction": 0.10677874084822651,
+              "selected_kv_token_fraction": 0.10187353752599597
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.5625,
+              "fraction": 0.15,
+              "recall": 0.2069940476190476,
+              "selected_chunk_fraction": 0.15938906941134248,
+              "selected_kv_token_fraction": 0.15507454850865987
+            },
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.2,
+              "recall": 0.25967261904761907,
+              "selected_chunk_fraction": 0.20563812708592194,
+              "selected_kv_token_fraction": 0.20181335302468445
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.6875,
+              "fraction": 0.25,
+              "recall": 0.35193452380952384,
+              "selected_chunk_fraction": 0.2583352612045935,
+              "selected_kv_token_fraction": 0.25429001095095066
+            },
+            {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.3,
+              "recall": 0.42857142857142855,
+              "selected_chunk_fraction": 0.3099658875419916,
+              "selected_kv_token_fraction": 0.30614003263063383
+            },
+            {
+              "all_evidence_recall": 0.1875,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.5,
+              "recall": 0.5334821428571429,
+              "selected_chunk_fraction": 0.5073151651166375,
+              "selected_kv_token_fraction": 0.5048420450944053
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "hotpotqa": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.125,
+              "recall": 0.03125,
+              "selected_chunk_fraction": 0.022298154307349168,
+              "selected_kv_token_fraction": 0.01748417294911019
+            },
+            "16": {
+              "all_evidence_recall": 0.0625,
+              "any_evidence_recall": 0.75,
+              "recall": 0.4608630952380952,
+              "selected_chunk_fraction": 0.3567704689175867,
+              "selected_kv_token_fraction": 0.35301625576859225
+            },
+            "3": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.1875,
+              "recall": 0.06770833333333333,
+              "selected_chunk_fraction": 0.0668944629220475,
+              "selected_kv_token_fraction": 0.0615483939987713
+            },
+            "8": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.625,
+              "recall": 0.2507440476190476,
+              "selected_chunk_fraction": 0.17838523445879334,
+              "selected_kv_token_fraction": 0.17431518173015204
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.20585317460317457,
+            "MRR": 0.2643742108585859,
+            "R@10%": 0.12931547619047618,
+            "R@16": 0.4608630952380952,
+            "R@20%": 0.25967261904761907,
+            "R@3": 0.06770833333333333,
+            "R@30%": 0.42857142857142855,
+            "R@5%": 0.05208333333333333,
+            "R@8": 0.2507440476190476,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        },
+        "qasper": {
+          "auc_0_30": 0.36128236925111923,
+          "curve": [
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.01,
+              "recall": 0.18392857142857144,
+              "selected_chunk_fraction": 0.013607785826137694,
+              "selected_kv_token_fraction": 0.012803727937365178
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.02,
+              "recall": 0.20535714285714285,
+              "selected_chunk_fraction": 0.024296298121236598,
+              "selected_kv_token_fraction": 0.023543409324759897
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.5625,
+              "fraction": 0.05,
+              "recall": 0.24578373015873015,
+              "selected_chunk_fraction": 0.054780700673550654,
+              "selected_kv_token_fraction": 0.05386624757108735
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.1,
+              "recall": 0.33610729548229545,
+              "selected_chunk_fraction": 0.10385588216028224,
+              "selected_kv_token_fraction": 0.1027768429915655
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.15,
+              "recall": 0.3982772435897436,
+              "selected_chunk_fraction": 0.15401282544912845,
+              "selected_kv_token_fraction": 0.15259737202440335
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.2,
+              "recall": 0.4220371642246642,
+              "selected_chunk_fraction": 0.20394928730916945,
+              "selected_kv_token_fraction": 0.2027415995085022
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.25,
+              "recall": 0.44398656898656896,
+              "selected_chunk_fraction": 0.25423415787512116,
+              "selected_kv_token_fraction": 0.25315719542523973
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.3,
+              "recall": 0.5034607753357754,
+              "selected_chunk_fraction": 0.30340148250728244,
+              "selected_kv_token_fraction": 0.30178604173674595
+            },
+            {
+              "all_evidence_recall": 0.25,
+              "any_evidence_recall": 0.9375,
+              "fraction": 0.5,
+              "recall": 0.6535485347985348,
+              "selected_chunk_fraction": 0.5021900460918317,
+              "selected_kv_token_fraction": 0.5007514412537707
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 16
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 16,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.25,
+              "recall": 0.14642857142857144,
+              "selected_chunk_fraction": 0.008131016970003983,
+              "selected_kv_token_fraction": 0.007312861460135867
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.8125,
+              "recall": 0.36725808913308916,
+              "selected_chunk_fraction": 0.13009627152006373,
+              "selected_kv_token_fraction": 0.12912849181211272
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.375,
+              "recall": 0.19285714285714287,
+              "selected_chunk_fraction": 0.024393050910011947,
+              "selected_kv_token_fraction": 0.02366034746580705
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "recall": 0.26946924603174605,
+              "selected_chunk_fraction": 0.06504813576003186,
+              "selected_kv_token_fraction": 0.0642387968288611
+            }
+          },
+          "inverse": {
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.36128236925111923,
+            "MRR": 0.36811413506221974,
+            "R@10%": 0.33610729548229545,
+            "R@16": 0.36725808913308916,
+            "R@20%": 0.4220371642246642,
+            "R@3": 0.19285714285714287,
+            "R@30%": 0.5034607753357754,
+            "R@5%": 0.24578373015873015,
+            "R@8": 0.26946924603174605,
+            "f70": 1.0,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      },
+      "training": {
+        "adapter_parameters": 294912,
+        "learning_rate": 0.001,
+        "mean_training_loss": 0.2383873619546648,
+        "seed": 71,
+        "steps": 512,
+        "training_seconds": 3.3102074000053108,
+        "validation": {
+          "auc_0_30": 0.3746693121693122,
+          "curve": [
+            {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.375,
+              "fraction": 0.01,
+              "recall": 0.06805555555555555,
+              "selected_chunk_fraction": 0.013791392709065006,
+              "selected_kv_token_fraction": 0.013823457099517869
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.625,
+              "fraction": 0.02,
+              "recall": 0.20868055555555556,
+              "selected_chunk_fraction": 0.02346940047847517,
+              "selected_kv_token_fraction": 0.02286062848683979
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.05,
+              "recall": 0.27534722222222224,
+              "selected_chunk_fraction": 0.05394398975589249,
+              "selected_kv_token_fraction": 0.05341040906266682
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "fraction": 0.1,
+              "recall": 0.3048611111111111,
+              "selected_chunk_fraction": 0.10324882008872426,
+              "selected_kv_token_fraction": 0.10283741276508601
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.875,
+              "fraction": 0.15,
+              "recall": 0.4079861111111111,
+              "selected_chunk_fraction": 0.15288686072339328,
+              "selected_kv_token_fraction": 0.15259876575893738
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.2,
+              "recall": 0.42584325396825395,
+              "selected_chunk_fraction": 0.2036167461151705,
+              "selected_kv_token_fraction": 0.20303955381919045
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.25,
+              "recall": 0.5178571428571429,
+              "selected_chunk_fraction": 0.2522705347813356,
+              "selected_kv_token_fraction": 0.25181349629711985
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.3,
+              "recall": 0.5482142857142858,
+              "selected_chunk_fraction": 0.3025596170826713,
+              "selected_kv_token_fraction": 0.3018502670109293
+            },
+            {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 1.0,
+              "fraction": 0.5,
+              "recall": 0.7125496031746031,
+              "selected_chunk_fraction": 0.5024097998144602,
+              "selected_kv_token_fraction": 0.5021911912849447
+            },
+            {
+              "all_evidence_recall": 1.0,
+              "any_evidence_recall": 1.0,
+              "fraction": 1.0,
+              "recall": 1.0,
+              "selected_chunk_fraction": 1.0,
+              "selected_kv_token_fraction": 1.0
+            }
+          ],
+          "dataset_counts": {
+            "qasper": 8
+          },
+          "endpoint_complete": true,
+          "evidence_semantics": "fraction of mapped evidence identities recovered",
+          "examples": 8,
+          "fixed_k": {
+            "1": {
+              "all_evidence_recall": 0.0,
+              "any_evidence_recall": 0.25,
+              "recall": 0.05555555555555555,
+              "selected_chunk_fraction": 0.006895696354532503,
+              "selected_kv_token_fraction": 0.006911728549758934
+            },
+            "16": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.3423611111111111,
+              "selected_chunk_fraction": 0.11033114167252005,
+              "selected_kv_token_fraction": 0.1099220550922026
+            },
+            "3": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.5,
+              "recall": 0.19305555555555556,
+              "selected_chunk_fraction": 0.020687089063597508,
+              "selected_kv_token_fraction": 0.020735185649276806
+            },
+            "8": {
+              "all_evidence_recall": 0.125,
+              "any_evidence_recall": 0.75,
+              "recall": 0.27534722222222224,
+              "selected_chunk_fraction": 0.055165570836260024,
+              "selected_kv_token_fraction": 0.054628226694131116
+            }
+          },
+          "inverse": {
+            "f70": 0.5024097998144602,
+            "f80": 1.0,
+            "f90": 1.0,
+            "f95": 1.0
+          },
+          "kv_fraction_exact": true,
+          "query_strategy": "last",
+          "summary": {
+            "AUC0-30": 0.3746693121693122,
+            "MRR": 0.42529761904761904,
+            "R@10%": 0.3048611111111111,
+            "R@16": 0.3423611111111111,
+            "R@20%": 0.42584325396825395,
+            "R@3": 0.19305555555555556,
+            "R@30%": 0.5482142857142858,
+            "R@5%": 0.27534722222222224,
+            "R@8": 0.27534722222222224,
+            "f70": 0.5024097998144602,
+            "f80": 1.0,
+            "f90": 1.0
+          }
+        }
+      }
+    }
+  ],
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "selected_seed": 23,
+  "selected_test": {
+    "combined": {
+      "auc_0_30": 0.28825275997150995,
+      "curve": [
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.1875,
+          "fraction": 0.01,
+          "recall": 0.08802083333333334,
+          "selected_chunk_fraction": 0.018213386733410098,
+          "selected_kv_token_fraction": 0.01742517146571453
+        },
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.28125,
+          "fraction": 0.02,
+          "recall": 0.10337110805860805,
+          "selected_chunk_fraction": 0.026720096282539324,
+          "selected_kv_token_fraction": 0.025188320774118523
+        },
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.5,
+          "fraction": 0.05,
+          "recall": 0.16459382631257632,
+          "selected_chunk_fraction": 0.0556154492588562,
+          "selected_kv_token_fraction": 0.05396350132811406
+        },
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.625,
+          "fraction": 0.1,
+          "recall": 0.2511246565934066,
+          "selected_chunk_fraction": 0.10531731150425439,
+          "selected_kv_token_fraction": 0.10252915849793179
+        },
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.6875,
+          "fraction": 0.15,
+          "recall": 0.3218711843711844,
+          "selected_chunk_fraction": 0.15670094743023547,
+          "selected_kv_token_fraction": 0.15391904052314304
+        },
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.75,
+          "fraction": 0.2,
+          "recall": 0.3526480463980464,
+          "selected_chunk_fraction": 0.2047937071975457,
+          "selected_kv_token_fraction": 0.20230714045860315
+        },
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.84375,
+          "fraction": 0.25,
+          "recall": 0.3899229242979243,
+          "selected_chunk_fraction": 0.2562847095398573,
+          "selected_kv_token_fraction": 0.2534779921516921
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.90625,
+          "fraction": 0.3,
+          "recall": 0.44664415445665445,
+          "selected_chunk_fraction": 0.306683685024637,
+          "selected_kv_token_fraction": 0.304266851482714
+        },
+        {
+          "all_evidence_recall": 0.21875,
+          "any_evidence_recall": 0.96875,
+          "fraction": 0.5,
+          "recall": 0.6480855082417583,
+          "selected_chunk_fraction": 0.5047526056042346,
+          "selected_kv_token_fraction": 0.5020717974287804
+        },
+        {
+          "all_evidence_recall": 1.0,
+          "any_evidence_recall": 1.0,
+          "fraction": 1.0,
+          "recall": 1.0,
+          "selected_chunk_fraction": 1.0,
+          "selected_kv_token_fraction": 1.0
+        }
+      ],
+      "dataset_counts": {
+        "hotpotqa": 16,
+        "qasper": 16
+      },
+      "endpoint_complete": true,
+      "evidence_semantics": "fraction of mapped evidence identities recovered",
+      "examples": 32,
+      "fixed_k": {
+        "1": {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.1875,
+          "recall": 0.08802083333333334,
+          "selected_chunk_fraction": 0.015214585638676574,
+          "selected_kv_token_fraction": 0.014418095108313898
+        },
+        "16": {
+          "all_evidence_recall": 0.09375,
+          "any_evidence_recall": 0.78125,
+          "recall": 0.3818042200854701,
+          "selected_chunk_fraction": 0.2434333702188252,
+          "selected_kv_token_fraction": 0.24085317864574993
+        },
+        "3": {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.40625,
+          "recall": 0.15471039377289378,
+          "selected_chunk_fraction": 0.045643756916029725,
+          "selected_kv_token_fraction": 0.04348142612650667
+        },
+        "8": {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.625,
+          "recall": 0.24942765567765568,
+          "selected_chunk_fraction": 0.1217166851094126,
+          "selected_kv_token_fraction": 0.11959967445241908
+        }
+      },
+      "inverse": {
+        "f70": 1.0,
+        "f80": 1.0,
+        "f90": 1.0,
+        "f95": 1.0
+      },
+      "kv_fraction_exact": true,
+      "query_strategy": "last",
+      "summary": {
+        "AUC0-30": 0.28825275997150995,
+        "MRR": 0.3354497408512847,
+        "R@10%": 0.2511246565934066,
+        "R@16": 0.3818042200854701,
+        "R@20%": 0.3526480463980464,
+        "R@3": 0.15471039377289378,
+        "R@30%": 0.44664415445665445,
+        "R@5%": 0.16459382631257632,
+        "R@8": 0.24942765567765568,
+        "f70": 1.0,
+        "f80": 1.0,
+        "f90": 1.0
+      }
+    },
+    "hotpotqa": {
+      "auc_0_30": 0.2054563492063492,
+      "curve": [
+        {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.0625,
+          "fraction": 0.01,
+          "recall": 0.015625,
+          "selected_chunk_fraction": 0.0228189876406825,
+          "selected_kv_token_fraction": 0.021185733451364156
+        },
+        {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.125,
+          "fraction": 0.02,
+          "recall": 0.024553571428571428,
+          "selected_chunk_fraction": 0.029143894443842046,
+          "selected_kv_token_fraction": 0.027584902602096305
+        },
+        {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.3125,
+          "fraction": 0.05,
+          "recall": 0.08035714285714285,
+          "selected_chunk_fraction": 0.056450197844161734,
+          "selected_kv_token_fraction": 0.05473764167111574
+        },
+        {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.4375,
+          "fraction": 0.1,
+          "recall": 0.15327380952380953,
+          "selected_chunk_fraction": 0.10677874084822651,
+          "selected_kv_token_fraction": 0.10324862624139695
+        },
+        {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.5625,
+          "fraction": 0.15,
+          "recall": 0.23258928571428572,
+          "selected_chunk_fraction": 0.15938906941134248,
+          "selected_kv_token_fraction": 0.15615528871542664
+        },
+        {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.625,
+          "fraction": 0.2,
+          "recall": 0.2727678571428571,
+          "selected_chunk_fraction": 0.20563812708592194,
+          "selected_kv_token_fraction": 0.2028412614478502
+        },
+        {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.75,
+          "fraction": 0.25,
+          "recall": 0.3098214285714286,
+          "selected_chunk_fraction": 0.2583352612045935,
+          "selected_kv_token_fraction": 0.25476736891729057
+        },
+        {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.8125,
+          "fraction": 0.3,
+          "recall": 0.37410714285714286,
+          "selected_chunk_fraction": 0.3099658875419916,
+          "selected_kv_token_fraction": 0.30696457088920903
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.9375,
+          "fraction": 0.5,
+          "recall": 0.5418154761904762,
+          "selected_chunk_fraction": 0.5073151651166375,
+          "selected_kv_token_fraction": 0.5039049055326983
+        },
+        {
+          "all_evidence_recall": 1.0,
+          "any_evidence_recall": 1.0,
+          "fraction": 1.0,
+          "recall": 1.0,
+          "selected_chunk_fraction": 1.0,
+          "selected_kv_token_fraction": 1.0
+        }
+      ],
+      "dataset_counts": {
+        "hotpotqa": 16
+      },
+      "endpoint_complete": true,
+      "evidence_semantics": "fraction of mapped evidence identities recovered",
+      "examples": 16,
+      "fixed_k": {
+        "1": {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.0625,
+          "recall": 0.015625,
+          "selected_chunk_fraction": 0.022298154307349168,
+          "selected_kv_token_fraction": 0.020662447213792207
+        },
+        "16": {
+          "all_evidence_recall": 0.0625,
+          "any_evidence_recall": 0.8125,
+          "recall": 0.4303571428571429,
+          "selected_chunk_fraction": 0.3567704689175867,
+          "selected_kv_token_fraction": 0.35354644551853326
+        },
+        "3": {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.375,
+          "recall": 0.11681547619047619,
+          "selected_chunk_fraction": 0.0668944629220475,
+          "selected_kv_token_fraction": 0.06405417516582544
+        },
+        "8": {
+          "all_evidence_recall": 0.0,
+          "any_evidence_recall": 0.5625,
+          "recall": 0.21175595238095238,
+          "selected_chunk_fraction": 0.17838523445879334,
+          "selected_kv_token_fraction": 0.17563743866195203
+        }
+      },
+      "inverse": {
+        "f70": 1.0,
+        "f80": 1.0,
+        "f90": 1.0,
+        "f95": 1.0
+      },
+      "kv_fraction_exact": true,
+      "query_strategy": "last",
+      "summary": {
+        "AUC0-30": 0.2054563492063492,
+        "MRR": 0.25989152289703754,
+        "R@10%": 0.15327380952380953,
+        "R@16": 0.4303571428571429,
+        "R@20%": 0.2727678571428571,
+        "R@3": 0.11681547619047619,
+        "R@30%": 0.37410714285714286,
+        "R@5%": 0.08035714285714285,
+        "R@8": 0.21175595238095238,
+        "f70": 1.0,
+        "f80": 1.0,
+        "f90": 1.0
+      }
+    },
+    "qasper": {
+      "auc_0_30": 0.3710491707366708,
+      "curve": [
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.3125,
+          "fraction": 0.01,
+          "recall": 0.16041666666666668,
+          "selected_chunk_fraction": 0.013607785826137694,
+          "selected_kv_token_fraction": 0.013664609480064902
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.4375,
+          "fraction": 0.02,
+          "recall": 0.18218864468864468,
+          "selected_chunk_fraction": 0.024296298121236598,
+          "selected_kv_token_fraction": 0.022791738946140744
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.6875,
+          "fraction": 0.05,
+          "recall": 0.24883050976800977,
+          "selected_chunk_fraction": 0.054780700673550654,
+          "selected_kv_token_fraction": 0.05318936098511238
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.8125,
+          "fraction": 0.1,
+          "recall": 0.34897550366300367,
+          "selected_chunk_fraction": 0.10385588216028224,
+          "selected_kv_token_fraction": 0.10180969075446662
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.8125,
+          "fraction": 0.15,
+          "recall": 0.411153083028083,
+          "selected_chunk_fraction": 0.15401282544912845,
+          "selected_kv_token_fraction": 0.15168279233085943
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.875,
+          "fraction": 0.2,
+          "recall": 0.43252823565323567,
+          "selected_chunk_fraction": 0.20394928730916945,
+          "selected_kv_token_fraction": 0.2017730194693561
+        },
+        {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.9375,
+          "fraction": 0.25,
+          "recall": 0.47002442002442,
+          "selected_chunk_fraction": 0.25423415787512116,
+          "selected_kv_token_fraction": 0.2521886153860936
+        },
+        {
+          "all_evidence_recall": 0.1875,
+          "any_evidence_recall": 1.0,
+          "fraction": 0.3,
+          "recall": 0.519181166056166,
+          "selected_chunk_fraction": 0.30340148250728244,
+          "selected_kv_token_fraction": 0.30156913207621894
+        },
+        {
+          "all_evidence_recall": 0.3125,
+          "any_evidence_recall": 1.0,
+          "fraction": 0.5,
+          "recall": 0.7543555402930403,
+          "selected_chunk_fraction": 0.5021900460918317,
+          "selected_kv_token_fraction": 0.5002386893248624
+        },
+        {
+          "all_evidence_recall": 1.0,
+          "any_evidence_recall": 1.0,
+          "fraction": 1.0,
+          "recall": 1.0,
+          "selected_chunk_fraction": 1.0,
+          "selected_kv_token_fraction": 1.0
+        }
+      ],
+      "dataset_counts": {
+        "qasper": 16
+      },
+      "endpoint_complete": true,
+      "evidence_semantics": "fraction of mapped evidence identities recovered",
+      "examples": 16,
+      "fixed_k": {
+        "1": {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.3125,
+          "recall": 0.16041666666666668,
+          "selected_chunk_fraction": 0.008131016970003983,
+          "selected_kv_token_fraction": 0.008173743002835592
+        },
+        "16": {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.75,
+          "recall": 0.3332512973137973,
+          "selected_chunk_fraction": 0.13009627152006373,
+          "selected_kv_token_fraction": 0.1281599117729666
+        },
+        "3": {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.4375,
+          "recall": 0.19260531135531136,
+          "selected_chunk_fraction": 0.024393050910011947,
+          "selected_kv_token_fraction": 0.022908677087187898
+        },
+        "8": {
+          "all_evidence_recall": 0.125,
+          "any_evidence_recall": 0.6875,
+          "recall": 0.28709935897435895,
+          "selected_chunk_fraction": 0.06504813576003186,
+          "selected_kv_token_fraction": 0.06356191024288613
+        }
+      },
+      "inverse": {
+        "f70": 0.5021900460918317,
+        "f80": 1.0,
+        "f90": 1.0,
+        "f95": 1.0
+      },
+      "kv_fraction_exact": true,
+      "query_strategy": "last",
+      "summary": {
+        "AUC0-30": 0.3710491707366708,
+        "MRR": 0.41100795880553176,
+        "R@10%": 0.34897550366300367,
+        "R@16": 0.3332512973137973,
+        "R@20%": 0.43252823565323567,
+        "R@3": 0.19260531135531136,
+        "R@30%": 0.519181166056166,
+        "R@5%": 0.24883050976800977,
+        "R@8": 0.28709935897435895,
+        "f70": 0.5021900460918317,
+        "f80": 1.0,
+        "f90": 1.0
+      }
+    }
+  },
+  "steps": 512,
+  "test_examples": 32,
+  "train_domain": "qasper",
+  "training_examples": 24,
+  "validation_examples": 8
+}

@@ -4,9 +4,10 @@ This manuscript records the pretrained-model integration and productization phas
 evidence covers frozen Qwen3-0.6B and SmolLM2-135M Llama-family checkpoints, configurable PRA
 consumption bands, eager attention, native GQA K/V, explicit reference memory, route-once
 identity reuse, a bounded `#__head` prompt, stable router artifacts, and the public `pra_hf`
-API. A thin Gemma 3 adapter and pinned official-checkpoint runner preserve Gemma's periodic
-local/global attention schedule; the official 1B run remains gated until the Hugging Face
-account is granted Gemma license access. Serving-optimized kernels remain future work.
+API. A thin Gemma 3 adapter and pinned official-checkpoint run preserve Gemma's periodic
+local/global attention schedule. The official 1B checkpoint passes exact disabled parity,
+five-seed routing, public API, bounded-memory, and causal-use smoke gates. Serving-optimized
+kernels remain future work.
 
 Build from this directory:
 
@@ -25,7 +26,8 @@ python -m experiments.paper2_hf.qa.run_multilayer_head --device cuda --router le
 python -m experiments.paper2_hf.productize_router --help
 python -m experiments.paper2_hf.run_product_demo --help
 python -m experiments.paper2_hf.summarize_productization
-python -m experiments.paper2_hf.gemma.run_gemma3_1b --preflight-only
+python -m experiments.paper2_hf.gemma.run_gemma3_1b
+python -m experiments.paper2_hf.gemma.summarize_gemma3_1b
 ```
 
 Structured results are under `docs/papers/shared/results/paper2_hf/`; release router artifacts

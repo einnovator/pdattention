@@ -299,6 +299,12 @@ class PRAForCausalLM:
             )
         else:
             self._handle.configure_memory_layers(set())
+        if self.device.type == "cuda":
+            major, _ = torch.cuda.get_device_capability(self.device)
+            if major < 7:
+                # Transformers auto-compiles some generation caches, but Triton
+                # supports only compute capability 7.0 and newer.
+                generation_kwargs.setdefault("disable_compile", True)
         started = time.perf_counter()
         output = self.model.generate(
             input_ids=input_ids,

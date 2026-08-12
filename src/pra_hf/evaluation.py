@@ -47,6 +47,13 @@ def evaluate_router_features(
         candidate_token_lengths=token_lengths,
         require_complete_endpoint=True,
     )
+    reciprocal_ranks = []
+    for order, positives in zip(rankings, evidence):
+        first_positive = next(
+            (rank for rank, candidate in enumerate(order, start=1) if candidate in positives),
+            None,
+        )
+        reciprocal_ranks.append(1.0 / first_positive if first_positive is not None else 0.0)
     by_fraction = {float(row["fraction"]): row for row in report["curve"]}
     report["summary"] = {
         **{
@@ -57,6 +64,7 @@ def evaluate_router_features(
         "f80": report["inverse"]["f80"],
         "f90": report["inverse"]["f90"],
         "AUC0-30": report["auc_0_30"],
+        "MRR": sum(reciprocal_ranks) / len(reciprocal_ranks) if reciprocal_ranks else 0.0,
         **{
             f"R@{cutoff}": report["fixed_k"][str(cutoff)]["recall"]
             for cutoff in (3, 8, 16)

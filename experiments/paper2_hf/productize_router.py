@@ -13,8 +13,9 @@ import torch
 from transformers import __version__ as transformers_version
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for path in (ROOT, ROOT / "src"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from pra_hf import evaluate_router_features
 from pra_hf.training import load_feature_rows, train_router

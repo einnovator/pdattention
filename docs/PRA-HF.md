@@ -42,10 +42,12 @@ budget can materialize fewer chunks; request statistics report both fractions.
 
 ## Supported Families
 
-PRA-HF v0.2.0rc1 supports Qwen2/Qwen2.5/Qwen3 and Llama-family eager attention.
+PRA-HF v0.2.0rc1 supports Qwen2/Qwen2.5/Qwen3, Llama-family, and Gemma 3 eager attention.
 The disabled path delegates to the original attention module exactly. The enabled
 path preserves each family's projections, RoPE, native K/V head count, cache
 updates, masks, eager kernel, and output projection.
+For Gemma 3, PRA is restricted to native global-attention layers; local sliding-window
+layers and their hybrid-cache semantics remain untouched.
 
 The release routers target:
 
@@ -53,6 +55,7 @@ The release routers target:
 |---|---|---:|---|
 | `qwen3-0.6b-qasper-d128` | `Qwen/Qwen3-0.6B` | 262,144 | QASPER |
 | `smollm2-135m-qasper-d128` | `HuggingFaceTB/SmolLM2-135M` | 147,456 | QASPER |
+| `gemma3-1b-qasper-d128` | `google/gemma-3-1b-it` | 294,912 | QASPER |
 
 Meta Llama 3.2-1B uses the same thin Llama adapter, but its official weights are
 license-gated and are not redistributed by PRA-HF. Paper 2's pinned validation
@@ -97,6 +100,7 @@ pra-hf ask HuggingFaceTB/SmolLM2-135M "What is the conclusion?" \
 `pra-hf router train` accepts frozen train and validation feature files. Router
 evaluation automatically emits `R@5%`, `R@10%`, `R@20%`, `R@30%`, `f70`, `f80`,
 `f90`, `AUC0-30`, and fixed `R@3/8/16`, including exact K/V-token fractions.
+MRR is retained as a first-relevant-evidence diagnostic.
 
 ## Current Limits
 

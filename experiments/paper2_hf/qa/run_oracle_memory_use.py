@@ -208,6 +208,21 @@ def _memory_attention_trace(adapter, weights, query_positions, evidence_spans) -
     }
 
 
+def _decoder_hidden_tensor(layer_output) -> torch.Tensor:
+    """Extract hidden states from common Hugging Face decoder-layer returns."""
+    if isinstance(layer_output, torch.Tensor):
+        return layer_output
+    if isinstance(layer_output, (tuple, list)) and layer_output:
+        if isinstance(layer_output[0], torch.Tensor):
+            return layer_output[0]
+    candidate = getattr(layer_output, "last_hidden_state", None)
+    if isinstance(candidate, torch.Tensor):
+        return candidate
+    raise TypeError(
+        f"Unsupported decoder-layer output for diagnostics: {type(layer_output).__name__}"
+    )
+
+
 def _teacher_forced(
     handle,
     tokenizer,
@@ -227,7 +242,7 @@ def _teacher_forced(
     hooks = [
         layer.register_forward_hook(
             lambda _module, _inputs, output, layer_id=layer_id: layer_outputs.__setitem__(
-                layer_id, output.detach()
+                layer_id, _decoder_hidden_tensor(output).detach()
             )
         )
         for layer_id, layer in enumerate(handle.model.model.layers)
@@ -633,6 +648,10 @@ def run(args) -> dict:
         torch_dtype=dtype,
         low_cpu_mem_usage=True,
     ).to(device).eval()
+    generation_compile_disabled = False
+    if device.type == "cuda" and torch.cuda.get_device_capability(device)[0] < 7:
+        model.generation_config.disable_compile = True
+        generation_compile_disabled = True
     for parameter in model.parameters():
         parameter.requires_grad_(False)
     projection = (
@@ -733,6 +752,7 @@ def run(args) -> dict:
         "protocol": "frozen HF causal memory-use intervention; teacher-forced and generated QA",
         "model_id": args.model_id,
         "model_revision": args.model_revision,
+        "generation_compile_disabled": generation_compile_disabled,
         "eligible_attention_layers": list(eligible_layers),
         "checkpoint": str(args.checkpoint.resolve().relative_to(ROOT)),
         "adapter_parameters": projection.parameter_count,

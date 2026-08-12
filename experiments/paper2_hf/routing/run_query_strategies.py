@@ -104,6 +104,7 @@ def load_split_examples(cache_dir: Path, count: int, offset: int, seed: int) -> 
 
 
 def _prompt_with_question_span(tokenizer, question: str, max_tokens: int):
+    question = question.strip()
     content = f"Answer briefly and directly.\nQuestion: {question}"
     if tokenizer.chat_template:
         rendered = tokenizer.apply_chat_template(

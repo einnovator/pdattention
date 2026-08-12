@@ -12,7 +12,10 @@ transformers = pytest.importorskip("transformers")
 from transformers import Gemma3ForCausalLM, Gemma3TextConfig
 from transformers.models.gemma3.modeling_gemma3 import apply_rotary_pos_emb
 
-from experiments.paper2_hf.gemma.run_gemma3_1b import validate_loaded_model
+from experiments.paper2_hf.gemma.run_gemma3_1b import (
+    _disable_unsupported_generation_compile,
+    validate_loaded_model,
+)
 from pra_hf import PRAConfig, PRAForCausalLM
 from pra_torch.hf import (
     ATTENTION_INPUT_HIDDEN_STATE,
@@ -85,6 +88,18 @@ def _product_config() -> PRAConfig:
         context_safety_reserve_tokens=0,
         encoding_block_tokens=16,
     )
+
+
+def test_legacy_cuda_disables_transformers_generation_compile(monkeypatch):
+    model = SimpleNamespace(
+        generation_config=SimpleNamespace(disable_compile=False)
+    )
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda _device: (5, 0))
+
+    changed = _disable_unsupported_generation_compile(model, torch.device("cuda"))
+
+    assert changed is True
+    assert model.generation_config.disable_compile is True
 
 
 def test_gemma3_disabled_adapter_has_exact_native_parity_and_preserves_local_layers():

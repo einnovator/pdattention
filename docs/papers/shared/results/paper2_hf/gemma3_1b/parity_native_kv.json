@@ -1,0 +1,150 @@
+{
+  "architecture_audit": {
+    "cache": "HybridCache: sliding storage for local layers, full storage for global layers",
+    "global_attention_layers": [
+      5,
+      11,
+      17,
+      23
+    ],
+    "global_rope_theta": 1000000.0,
+    "head_dim": 256,
+    "hidden_size": 1152,
+    "intermediate_size": 6912,
+    "layer_types": [
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "full_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "full_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "full_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "full_attention",
+      "sliding_attention",
+      "sliding_attention"
+    ],
+    "layers": 26,
+    "local_attention_layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      6,
+      7,
+      8,
+      9,
+      10,
+      12,
+      13,
+      14,
+      15,
+      16,
+      18,
+      19,
+      20,
+      21,
+      22,
+      24,
+      25
+    ],
+    "local_rope_theta": 10000.0,
+    "mask_semantics": "causal; local layers additionally enforce the native sliding window",
+    "max_position_embeddings": 32768,
+    "model_type": "gemma3_text",
+    "native_kv_heads": 1,
+    "normalization_order": "pre-attention and pre-MLP RMSNorm with post norms",
+    "qk_normalization": "per-head RMSNorm before RoPE",
+    "query_heads": 4,
+    "sliding_window_pattern": 6,
+    "sliding_window_tokens": 512
+  },
+  "attention_backend": "eager",
+  "base_parameters": 999885955,
+  "base_trainable_parameters": 0,
+  "device": "cuda",
+  "disabled_parity": {
+    "cache_length_exact": true,
+    "cache_tensors_exact": true,
+    "greedy_generation_exact": true,
+    "hidden_states_exact": true,
+    "local_layer_classes_exact": true,
+    "logits_exact": true
+  },
+  "enabled_path": {
+    "causal_prefix_exact": true,
+    "finite_logits": true
+  },
+  "generation_compile_disabled": true,
+  "long_prompt": {
+    "direct_tokens": 128,
+    "head_reference_count": 1,
+    "head_tokens": 256,
+    "logical_tokens": 384,
+    "max_native_operation_tokens": 128,
+    "native_limit_violations": 0
+  },
+  "model_id": "google/gemma-3-1b-it",
+  "model_revision": "dcc83ea841ab6100d6b47a070329e1ba4cf78752",
+  "native_reference": {
+    "detail_k_shape": [
+      1,
+      1,
+      32,
+      256
+    ],
+    "detail_v_shape": [
+      1,
+      1,
+      32,
+      256
+    ],
+    "permanently_expanded_to_query_heads": false,
+    "position_state": "post_position",
+    "positions_exact": true,
+    "residency": "cpu"
+  },
+  "pra_placement": {
+    "consumption_layers": [
+      17,
+      23
+    ],
+    "local_layers_wrapped": [],
+    "policy": "last two native global-attention layers",
+    "routing_layer": 23
+  },
+  "runtime": {
+    "cuda_available": true,
+    "cuda_runtime": "12.6",
+    "device": "NVIDIA GeForce GTX 950M",
+    "git_branch": "research/paper2-hf",
+    "git_sha": "cb3312a3b1e068d4e9c85f7bfc8d582a81bf0013",
+    "python": "3.10.11",
+    "timestamp_utc": "2026-08-12T20:43:27.440626+00:00",
+    "torch": "2.12.1+cu126",
+    "transformers": "4.55.4"
+  },
+  "runtime_dtype": "torch.float16",
+  "status": "passed",
+  "timing_seconds": {
+    "baseline": 1.079026999999769,
+    "wrapped_disabled": 0.6118679000064731
+  },
+  "tokenizer_revision": "dcc83ea841ab6100d6b47a070329e1ba4cf78752"
+}

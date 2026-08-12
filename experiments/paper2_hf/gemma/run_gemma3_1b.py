@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -20,8 +21,10 @@ from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = ROOT / "src"
+for path in (ROOT, SRC):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from experiments.paper2_hf.common.artifacts import runtime_metadata
 from pra_torch.hf import (
@@ -46,6 +49,17 @@ def _sync(device: torch.device) -> None:
 
 def _shape(tensor: torch.Tensor) -> list[int]:
     return [int(value) for value in tensor.shape]
+
+
+def _disable_unsupported_generation_compile(model, device: torch.device) -> bool:
+    """Keep Transformers generation eager when Triton cannot target the GPU."""
+    if device.type != "cuda":
+        return False
+    major, _ = torch.cuda.get_device_capability(device)
+    if major >= 7:
+        return False
+    model.generation_config.disable_compile = True
+    return True
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -366,6 +380,7 @@ def run_parity(args) -> dict:
         torch_dtype=dtype,
         low_cpu_mem_usage=True,
     ).to(device).eval()
+    generation_compile_disabled = _disable_unsupported_generation_compile(model, device)
     for parameter in model.parameters():
         parameter.requires_grad_(False)
     input_ids = tokenizer(
@@ -396,6 +411,7 @@ def run_parity(args) -> dict:
         "model_revision": args.model_revision,
         "tokenizer_revision": args.tokenizer_revision,
         "attention_backend": "eager",
+        "generation_compile_disabled": generation_compile_disabled,
         "runtime_dtype": str(dtype),
         "device": str(device),
         "base_parameters": sum(parameter.numel() for parameter in model.parameters()),
@@ -409,7 +425,10 @@ def run_parity(args) -> dict:
 
 
 def _run(command: list[str]) -> None:
-    subprocess.run(command, cwd=ROOT, check=True)
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = os.pathsep.join([str(SRC), str(ROOT), *([existing] if existing else [])])
+    subprocess.run(command, cwd=ROOT, env=env, check=True)
 
 
 def run_suite(args) -> dict:
@@ -419,7 +438,33 @@ def run_suite(args) -> dict:
     )
     if access["status"] != "access_ready":
         return access
-    parity = run_parity(args)
+    python = sys.executable
+    # Keep each 1B-model phase in a separate process. In-process parity leaves
+    # allocator and CUDA-context state resident while feature extraction loads
+    # a second copy, which can exhaust memory on small GPUs.
+    _run([
+        python,
+        "-m",
+        "experiments.paper2_hf.gemma.run_gemma3_1b",
+        "--parity-only",
+        "--model-id",
+        args.model_id,
+        "--model-revision",
+        args.model_revision,
+        "--tokenizer-revision",
+        args.tokenizer_revision,
+        "--device",
+        args.device,
+        "--native-limit",
+        str(args.native_limit),
+        "--direct-limit",
+        str(args.direct_limit),
+        "--encoding-block-tokens",
+        str(args.encoding_block_tokens),
+        "--output-dir",
+        str(args.output_dir),
+    ])
+    parity = json.loads((args.output_dir / "parity_native_kv.json").read_text(encoding="utf-8"))
     globals_ = parity["architecture_audit"]["global_attention_layers"]
     routing_layer = int(globals_[-1])
     consumption_layers = tuple(int(layer) for layer in globals_[-2:])
@@ -428,7 +473,6 @@ def run_suite(args) -> dict:
     router_json = args.output_dir / "router_five_seed.json"
     demo_json = args.output_dir / "product_demo.json"
     oracle_dir = args.output_dir / "oracle"
-    python = sys.executable
     _run([
         python, "-m", "experiments.paper2_hf.routing.precompute_router_features",
         "--model-id", args.model_id,
@@ -472,6 +516,13 @@ def run_suite(args) -> dict:
         "--output-dir", str(oracle_dir),
         "--device", args.device,
     ])
+    _run([
+        python,
+        "-m",
+        "experiments.paper2_hf.gemma.summarize_gemma3_1b",
+        "--results-dir",
+        str(args.output_dir),
+    ])
     result = {
         "runtime": runtime_metadata(),
         "status": "completed",
@@ -487,6 +538,7 @@ def run_suite(args) -> dict:
         "router_metrics": str(router_json.relative_to(ROOT)),
         "product_demo": str(demo_json.relative_to(ROOT)),
         "oracle": str(oracle_dir.relative_to(ROOT)),
+        "summary": str((args.output_dir / "gemma3_1b_summary.json").relative_to(ROOT)),
     }
     _write(args.output_dir / "suite_status.json", result)
     return result
