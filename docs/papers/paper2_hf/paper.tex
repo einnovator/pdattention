@@ -41,8 +41,11 @@ held-out recall@3 from 0.469 to $0.631\pm0.069$ across five seeds. More informat
 evaluation reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% of parent chunks, although
 cross-domain recall@3 remains 0.213. Oracle causal tests show that correct native memory changes
 the frozen model: on HotpotQA, final-four-layer replay improves gold-token log-probability by
-1.004 nats/token, compared with 4.635 for direct evidence text. Generated F1 does not improve,
-and QASPER's direct-text control fails, so these are mechanistic rather than solved-QA results.
+1.004 nats/token, compared with 4.635 for direct evidence text. With the backbone, LM head, and
+router still frozen, a 393,344-parameter residual adapter raises routed gold likelihood by
+$1.210\pm0.248$ nats/token on HotpotQA and $0.837\pm0.241$ on QASPER over five optimization
+seeds. Generated F1 does not improve reliably, so these are mechanistic rather than solved-QA
+results.
 The implementation packages exact routing, fraction-based selection, bounded materialization,
 CPU-resident detail K/V, and route-once multi-layer replay behind a small public API. Five-seed
 QASPER runs produce evidence-identity recall@20\% of $0.454\pm0.007$ on Qwen3-0.6B and
@@ -85,6 +88,7 @@ Can compact gists find evidence? & Five-seed router over frozen Qwen & Any-evide
 How small is the learned index? & Asymmetric 128-D Qwen router & 262,144 parameters (0.044\%); 0.392\% of per-layer detail K/V \\
 Does routing scale at fixed sparsity? & 12.5\% selection over 64/128/256 units & Coverage remains 0.756--0.772 (Hotpot) and 0.794--0.803 (QASPER) \\
 Does selected native K/V affect the model? & HotpotQA oracle, final four layers & $+1.004$ nats/token; generated F1 unchanged \\
+Can a tiny readout align memory use? & Frozen base/router, width-32 late-layer adapter & 0.066\% of base; routed $\Delta\log p$ +1.210 HotpotQA, +.837 QASPER \\
 Does the interface cross families? & QASPER evidence-identity recall@20\% & Qwen $0.454\pm0.007$; SmolLM2 $0.447\pm0.051$ \\
 Is there a reusable implementation? & Public API, CLI, router artifacts, and metrics & Yes; exact-search research implementation \\
 Is long-context QA solved? & Product-path generation & No; routed F1 remains 0.033/0.028 in a four-example probe \\
@@ -791,6 +795,95 @@ still omits ``cobalt.'' The maximum native operation remains 128 tokens and no v
 Thus the bounded head now demonstrates routing, multi-layer layer-native transport, and strong
 causal likelihood use together. It still does not establish decoded task success.
 
+\subsection{A tiny residual adapter aligns memory with the frozen decoder}
+\label{sec:residual-adapter}
+
+The preceding experiments expose a narrower problem than failed retrieval. Correct late-layer
+memory can improve the gold distribution, yet the same memory effect is not necessarily aligned
+with the trajectory expected by a decoder pretrained without external K/V. We therefore freeze
+the transformer, LM head, and router and adapt only the difference caused by memory. Let
+$y_l^{\mathrm{mem}}$ be the native attention output with selected memory, let
+$y_l^{\mathrm{local}}$ be a second attention evaluation with only the prompt K/V, and define the
+counterfactual memory effect $d_l=y_l^{\mathrm{mem}}-y_l^{\mathrm{local}}$. A scalar gate uses
+
+\begin{equation}
+y_l = y_l^{\mathrm{local}} + \alpha_l d_l .
+\end{equation}
+
+The residual adapter instead retains frozen PRA at initialization and learns a correction:
+
+\begin{equation}
+y_l = y_l^{\mathrm{local}} + d_l
+    + W_{\mathrm{up},l}\,\mathrm{SiLU}\!\left(
+      W_{\mathrm{down},l}[h_l;d_l]+b_l\right).
+\label{eq:pra-residual-adapter}
+\end{equation}
+
+$W_{\mathrm{up}}$ is initialized to zero, so the initial function is exactly frozen PRA. The
+down projection maps $2D$ features to a bottleneck of 16, 32, or 64; the up projection maps back
+to $D$. One adapter is installed at each of Qwen's final four layers. When PRA is disabled the
+original attention module is called directly, bypassing both the counterfactual attention and
+the adapter.
+
+We train on eight HotpotQA identities for 24 oracle-memory updates at learning rate $10^{-3}$.
+The base model, LM head, and learned router remain frozen. Evaluation uses four identity-disjoint
+HotpotQA examples and four QASPER examples, under oracle and learned-router selection. The data
+cohort is fixed while bottleneck initialization and example order vary over seeds 11, 23, 37,
+53, and 71. Table~\ref{tab:residual-adapter} reports means across those five optimization seeds;
+the fixed baseline is deterministic on the same examples.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Frozen late-four-layer memory calibration. $\Delta\log p$ is mean gold-token
+log-probability relative to no memory. F1 uses routed greedy output. Parameter percentages use
+the 596.0M-parameter base model.}
+\label{tab:residual-adapter}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Method & Params & \% base & \multicolumn{2}{c}{HotpotQA $\Delta\log p$} &
+\multicolumn{2}{c}{QASPER $\Delta\log p$} & \multicolumn{2}{c}{Routed F1} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+& & & Oracle & Routed & Oracle & Routed & HotpotQA & QASPER \\
+\midrule
+Frozen PRA & 0 & .000 & +1.004 & +.110 & -.161 & -.456 & .056 & .125 \\
+Scalar gate & 1 & $<$.001 & +1.206 & -.187 & +.114 & -.663 & .056 & .063 \\
+Residual 16 & 196,672 & .033 & +2.867 & +1.176 & +.002 & -.161 & .043 & .000 \\
+Residual 32 & 393,344 & .066 & +3.088 & +1.210 & +1.022 & +.837 & .063 & .013 \\
+Residual 64 & 786,688 & .132 & +2.697 & +.896 & +1.079 & +.853 & .072 & .017 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper2_hf/memory_residual_adapter/memory_residual_adapter.pdf}
+\caption{Five-seed memory-calibration result. Error bars are population standard deviations
+over optimization seeds. The residual adapters improve gold likelihood, but those gains do not
+translate into commensurate greedy token F1.}
+\label{fig:residual-adapter}
+\end{figure}
+
+Width 32 is the smallest robust operating point. Its routed HotpotQA gain is
+$1.210\pm0.248$ nats per token, compared with $+.110$ for frozen PRA; its routed QASPER gain is
+$+.837\pm.241$, compared with $-.456$. Each paired difference favors width 32 in all five
+seeds. With only five pairs, however, the smallest exact two-sided sign-flip result is
+$p=.0625$, and the examples are not independent dataset replications. On HotpotQA, width 32
+improves the first-token margin by 3.063 logits and lowers the first-token rank by 770 positions
+relative to no memory. On QASPER it improves the margin by 1.280 logits while worsening rank by
+8.05 positions, another warning that sequence likelihood, first-token ordering, and greedy
+decoding are distinct outcomes.
+
+The adapter does not solve QA. EM remains zero, HotpotQA F1 changes only from .056 to .063, and
+QASPER F1 falls from .125 to .013. The result supports the narrower interpretation that useful
+PRA-conditioned state already exists and a 0.066\%-of-model readout can align its gold-sequence
+likelihood with the frozen decoder. It does not show that this tiny cohort teaches robust answer
+generation. Width 32 occupies 1.50 MiB in FP32. Routed teacher-forced latency rises from .163 to
+.172 seconds on HotpotQA and from .160 to .162 seconds on QASPER; generation timing is noisy and
+shows no consistent width trend. PRA-off gold scores remain exactly equal in every run, active
+K/V materialization is unchanged, and there are no native-limit violations.
+
 \section{Product and Systems Boundary}
 
 The validated path is packaged as \texttt{pra-hf}, with a stable Python API, CLI, serializable
@@ -860,7 +953,9 @@ The evidence base is still small. The primary representation study uses 16 match
 learned router has 32 held-out test identities, and the oracle depth study uses only four examples
 per dataset. The product path uses two held-out examples from each dataset. Confidence across
 five training seeds measures optimization variation on a fixed cohort; it does not replace a
-larger test set. The HotpotQA likelihood direction therefore needs independent replication.
+larger test set. The residual-adapter study likewise trains on eight HotpotQA identities and
+tests on four identities per dataset. Its all-seed likelihood direction therefore needs
+independent replication on a larger calibration, validation, and test split.
 
 Retrieval labels are also imperfect proxies for answer sufficiency. Any-evidence recall can be
 high while a multi-hop model misses another required passage. Evidence-identity recall improves
@@ -882,12 +977,14 @@ long-context baseline, fused attention, ANN index, asynchronous transfer, batchi
 study. The official Meta Llama 3.2-1B run is also absent because checkpoint access was denied; the
 paper reports SmolLM2 only as a measured Llama-family control.
 
-The most discriminating next experiment is a larger checkpoint-solvable cohort at the final-eight
-operating point, with oracle, routed, direct-text, and no-memory conditions evaluated together.
-It should measure gold likelihood, calibrated first-token rank, decoded EM/F1, exact memory bytes,
-TTFT, and per-token latency. If likelihood improves reproducibly while decoding does not, a small
-memory-use adaptation becomes justified. If oracle native K/V fails where direct text succeeds,
-the integration representation, not routing capacity, remains the priority.
+The most discriminating next experiment is a larger checkpoint-solvable cohort with separate
+calibration, model-selection, and test identities at the late-layer operating point. It should
+evaluate oracle, routed, direct-text, and no-memory conditions together and measure gold
+likelihood, calibrated first-token rank, decoded EM/F1, exact memory bytes, TTFT, and per-token
+latency. The width-32 residual result justifies that replication before a broader LoRA update:
+likelihood alignment is already strong, but decoded QA remains unsolved. If oracle native K/V
+fails where direct text succeeds, the integration representation, not routing capacity, remains
+the priority.
 
 \section{Related Work}
 
@@ -922,6 +1019,16 @@ replay are harmful. The effect is therefore about compatible placement, not simp
 memory-attention sites. Generated F1 remains unchanged, and QASPER's failed direct-text control
 leaves that subset non-diagnostic. The present result is causal use in logits, not solved
 long-context question answering.
+
+A tiny conditional readout strengthens that logit-level result. With the backbone, LM head, and
+router frozen, a final-four-layer width-32 residual adapter uses 393,344 parameters (0.066\% of
+the base model) and raises routed gold likelihood by 1.210 nats/token on HotpotQA and .837 on
+QASPER. Both paired improvements over frozen PRA have the same direction in five optimization
+seeds, and disabled-PRA output remains exact. EM is still zero and token F1 does not improve
+reliably. The current boundary is therefore sharper: routing and native-state transport can
+produce useful answer evidence, and a very small transformation can align its sequence
+likelihood, but robust decoding needs a larger identity-disjoint study rather than a broader
+uncontrolled parameter update.
 
 These boundaries are the point of the paper. Exact transport is established. Sparse discovery is
 strong and improving but domain-limited. Causal use is visible in likelihood, while reliable
@@ -1245,6 +1352,31 @@ thin caller of the same API; it does not maintain a second execution path. Produ
 save/load and freezing, add/remove/clear, fraction routing, generation, statistics, and the rule
 that a router cannot change after gists have been indexed.
 
+\subsection{Memory calibration path}
+
+The calibration code preserves the same ownership boundary. The registered scalar bank in
+\texttt{hf/memory\_gate.py}, lines 19--94, supports fixed, shared, and per-layer values. The
+residual bank in \texttt{hf/residual\_adapter.py}, lines 10--111, lazily constructs only the
+requested bottleneck and enables gradients only for that width. Its zero output projection is
+what makes Equation~\ref{eq:pra-residual-adapter} initially equal frozen PRA rather than a
+random perturbation.
+
+The Qwen/Llama forward path computes $y^{\mathrm{mem}}$ first. Only when a trainable gate or
+residual adapter is active does \texttt{hf/qwen.py}, lines 358--405, invoke local attention a
+second time, form $d_l$, apply the gate and adapter in FP32, and cast the result back to the
+model dtype. The ordinary fixed-PRA path therefore does not pay for the counterfactual
+attention. Registration and public configuration live in \texttt{hf/injection.py}, lines
+94--106 and 444--463; adapters hold non-owning references so the model registers one parameter
+bank rather than duplicating it under every attention wrapper.
+
+The reproducible protocol is in
+\texttt{experiments/paper2\_hf/qa/run\_memory\_gate.py}: lines 158--234 freeze and optimize the
+selected owner, lines 236--331 evaluate exact no-memory, oracle, and routed conditions, and
+lines 332--461 aggregate and plot seed-level measurements. Unit tests at
+\texttt{tests/test\_hf\_integration.py}, lines 83--118 and 577--710, pin parameter ownership,
+zero-gate behavior, frozen-PRA initialization, adapter-only gradients, and exact disabled-PRA
+bypass.
+
 \subsection{Revision-pinned source map}
 
 Table~\ref{tab:code-map} connects the preceding control flow to the implementation.
@@ -1271,6 +1403,10 @@ Route-once layer-native identity mapping & \texttt{src/pra\_torch/hf/injection.p
 K/V and additive-mask composition & \texttt{src/pra\_torch/core.py}, 394--436 \\
 Reference publication and selected-layer injection & \texttt{src/pra\_torch/hf/injection.py}, 235--428 \\
 Depth schedules and causal protocol & \texttt{experiments/paper2\_hf/qa/run\_multilayer\_pra.py}, 62--964 \\
+Memory gate and residual calibration & \texttt{src/pra\_torch/hf/memory\_gate.py}, 19--94;
+\texttt{src/pra\_torch/hf/residual\_adapter.py}, 10--111;
+\texttt{src/pra\_torch/hf/qwen.py}, 358--405 \\
+Five-seed calibration protocol & \texttt{experiments/paper2\_hf/qa/run\_memory\_gate.py}, 158--461 \\
 Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 80--636 \\
 Stable config, router artifact, and public API & \texttt{src/pra\_hf/config.py}, 14--127;
 \texttt{src/pra\_hf/router.py}, 14--110; \texttt{src/pra\_hf/model.py}, 42--358 \\

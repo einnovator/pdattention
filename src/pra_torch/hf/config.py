@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..config import PRAConfig
+from .memory_gate import MEMORY_GATE_FIXED, MEMORY_GATE_MODES
 from .query import QUERY_LAST, RUNTIME_QUERY_STRATEGIES
 
 
@@ -47,6 +48,9 @@ class PRAHFConfig:
     kv_cache_non_blocking: bool = False
     collect_detailed_timing: bool = True
     collect_routing_metrics: bool = False
+    memory_gate_mode: str = MEMORY_GATE_FIXED
+    memory_gate_initial_value: float = 1.0
+    residual_adapter_bottleneck: int = 0
 
     def __post_init__(self) -> None:
         """Reject routing modes that the installed family adapter cannot represent."""
@@ -82,6 +86,12 @@ class PRAHFConfig:
             raise ValueError(
                 "centered_rope_key supports gist_mode='mean' or 'segment_mean'."
             )
+        if self.memory_gate_mode not in MEMORY_GATE_MODES:
+            raise ValueError(
+                f"Unsupported HF PRA memory_gate_mode: {self.memory_gate_mode}"
+            )
+        if int(self.residual_adapter_bottleneck) < 0:
+            raise ValueError("residual_adapter_bottleneck must be non-negative.")
 
     def build_pra_config(self, hf_config) -> PRAConfig:
         """Translate native model dimensions without changing pretrained parameters."""

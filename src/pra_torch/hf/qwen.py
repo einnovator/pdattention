@@ -56,8 +56,16 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         query_window: int = 16,
         query_half_life: float = 4.0,
         routing_projection=None,
+        memory_gate=None,
+        residual_adapter=None,
     ) -> None:
-        super().__init__(original_attention, cache, config)
+        super().__init__(
+            original_attention,
+            cache,
+            config,
+            memory_gate=memory_gate,
+            residual_adapter=residual_adapter,
+        )
         self.routing_representation = canonical_routing_representation(
             routing_representation
         )
@@ -343,14 +351,47 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             ended.record()
             torch.cuda.synchronize(query.device)
             duration = started.elapsed_time(ended) / 1000.0
-        output = self.project_output(attention_output, input_shape)
+        memory_output = self.project_output(attention_output, input_shape)
+        local_output = None
+        gate_value = 1.0
+        memory_residual_norm = 0.0
+        needs_delta = (
+            self.memory_gate is not None and self.memory_gate.requires_delta_path
+        ) or (
+            self.residual_adapter is not None and self.residual_adapter.enabled
+        )
+        if needs_delta:
+            local_attention_output, _ = self.invoke_pra(
+                query,
+                key,
+                value,
+                attention_mask,
+                **kwargs,
+            )
+            local_output = self.project_output(local_attention_output, input_shape)
+            memory_residual = memory_output - local_output
+            gate = self.memory_gate.value(self.layer_idx, memory_residual)
+            gated_residual = gate * memory_residual.float()
+            if self.residual_adapter is not None:
+                gated_residual = self.residual_adapter.transform(
+                    self.layer_idx,
+                    hidden_states,
+                    gated_residual,
+                )
+            output = (local_output.float() + gated_residual).to(memory_output.dtype)
+            gate_value = float(gate.detach().float().cpu())
+            memory_residual_norm = float(
+                memory_residual.detach().float().norm().cpu()
+            )
+        else:
+            output = memory_output
         stats = self._stats(prepared)
         self.last_diagnostics = self.pra_core.collect_pra_metrics(
             prepared,
             stats,
             direct_tokens=int(key.shape[2]) * int(key.shape[0]),
             output=output,
-            local_output=None,
+            local_output=local_output,
             memory_attention_duration_seconds=duration,
         )
         self.last_diagnostics.update(
@@ -359,6 +400,8 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                 "hf_query_heads": float(query.shape[1]),
                 "hf_memory_width": float(combined.memory_width),
                 "hf_cache_tokens": float(key.shape[2]),
+                "hf_memory_gate": gate_value,
+                "hf_memory_residual_norm": memory_residual_norm,
             }
         )
         return output, attention_weights

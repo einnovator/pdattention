@@ -7,6 +7,13 @@ from .config import (
     canonical_routing_representation,
 )
 from .injection import PRAHFModel, inject_pra
+from .memory_gate import (
+    MEMORY_GATE_FIXED,
+    MEMORY_GATE_PER_LAYER,
+    MEMORY_GATE_SINGLE,
+    PRAHFMemoryGate,
+)
+from .residual_adapter import PRAHFResidualAdapter, PRAHFResidualAdapterBank
 from .llama import LlamaPRAAttentionAdapter
 from .query import (
     QUERY_EXPONENTIAL,
@@ -30,6 +37,12 @@ __all__ = [
     "PRAHFModel",
     "canonical_routing_representation",
     "inject_pra",
+    "MEMORY_GATE_FIXED",
+    "MEMORY_GATE_SINGLE",
+    "MEMORY_GATE_PER_LAYER",
+    "PRAHFMemoryGate",
+    "PRAHFResidualAdapter",
+    "PRAHFResidualAdapterBank",
     "LlamaPRAAttentionAdapter",
     "QUERY_EXPONENTIAL",
     "QUERY_LAST",

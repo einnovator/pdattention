@@ -25,6 +25,8 @@ from .config import (
 )
 from .qwen import QwenPRAAttentionAdapter
 from .llama import LlamaPRAAttentionAdapter
+from .memory_gate import PRAHFMemoryGate
+from .residual_adapter import PRAHFResidualAdapterBank
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,8 @@ class PRAHFModel:
         hf_config,
         pra_config,
         routing_projection=None,
+        memory_gate=None,
+        residual_adapter=None,
     ) -> None:
         self.model = model
         self.adapters: dict[int, PRAHFAttentionAdapter] = adapters
@@ -55,6 +59,8 @@ class PRAHFModel:
         self.hf_config = hf_config
         self.pra_config = pra_config
         self.routing_projection = routing_projection
+        self.memory_gate = memory_gate
+        self.residual_adapter = residual_adapter
         self.max_native_operation_tokens = 0
         self.native_limit_violations = 0
 
@@ -67,6 +73,36 @@ class PRAHFModel:
         """Toggle PRA across every selected layer."""
         for adapter in self.adapters.values():
             adapter.set_memory_enabled(enabled)
+
+    def configure_memory_gate(
+        self,
+        mode: str,
+        *,
+        initial_value: float | None = None,
+    ) -> None:
+        """Select fixed, shared-scalar, or per-layer memory calibration."""
+        self.memory_gate.configure(mode, initial_value=initial_value)
+
+    def memory_gate_parameters(self) -> list[torch.nn.Parameter]:
+        """Return the active gate variant's complete trainable parameter set."""
+        return self.memory_gate.trainable_parameters()
+
+    def memory_gate_values(self) -> dict[int, float]:
+        """Return effective per-layer scales for checkpoints and diagnostics."""
+        return self.memory_gate.values()
+
+    def configure_residual_adapter(
+        self,
+        bottleneck: int,
+        *,
+        reset: bool = True,
+    ) -> None:
+        """Enable a late-layer bottleneck correction or disable it with zero."""
+        self.residual_adapter.configure(bottleneck, reset=reset)
+
+    def residual_adapter_parameters(self) -> list[torch.nn.Parameter]:
+        """Return the active residual adapter's complete parameter set."""
+        return self.residual_adapter.trainable_parameters()
 
     def configure_memory_layers(
         self,
@@ -399,6 +435,18 @@ def inject_pra(
             raise ValueError("Routing projection input width must match the HF hidden size.")
     pra_config.pra_layer_ids = selected
     cache = PRASimpleMemoryCache()
+    memory_gate = PRAHFMemoryGate(
+        selected,
+        mode=config.memory_gate_mode,
+        initial_value=config.memory_gate_initial_value,
+    ).to(model.get_input_embeddings().weight.device)
+    model.add_module("pra_memory_gate", memory_gate)
+    residual_adapter = PRAHFResidualAdapterBank(
+        int(model.config.hidden_size),
+        selected,
+        bottleneck=config.residual_adapter_bottleneck,
+    ).to(model.get_input_embeddings().weight.device)
+    model.add_module("pra_residual_adapter", residual_adapter)
     adapters: dict[int, PRAHFAttentionAdapter] = {}
     for layer_id in selected:
         original = layers[layer_id].self_attn
@@ -422,6 +470,8 @@ def inject_pra(
             query_window=config.query_window,
             query_half_life=config.query_half_life,
             routing_projection=routing_projection,
+            memory_gate=memory_gate,
+            residual_adapter=residual_adapter,
         )
         layers[layer_id].self_attn = adapter
         adapters[layer_id] = adapter
@@ -432,4 +482,6 @@ def inject_pra(
         config,
         pra_config,
         routing_projection,
+        memory_gate,
+        residual_adapter,
     )

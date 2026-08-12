@@ -34,7 +34,14 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
 
     family = "unknown"
 
-    def __init__(self, original_attention: nn.Module, cache: PRAMemoryCache, config) -> None:
+    def __init__(
+        self,
+        original_attention: nn.Module,
+        cache: PRAMemoryCache,
+        config,
+        memory_gate=None,
+        residual_adapter=None,
+    ) -> None:
         super().__init__()
         self.original_attention = original_attention
         self.layer_idx = int(original_attention.layer_idx)
@@ -50,6 +57,9 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         self.fixed_selected_chunks: list[list[SelectedChunk]] | None = None
         self.collect_attention_diagnostics = False
         self.last_attention_weights: torch.Tensor | None = None
+        # The owning HF model registers this module exactly once.
+        self.__dict__["memory_gate"] = memory_gate
+        self.__dict__["residual_adapter"] = residual_adapter
         self.pra_core = PRAExecutionCore(
             cache=cache,
             config=config,

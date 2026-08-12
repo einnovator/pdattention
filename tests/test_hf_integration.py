@@ -15,6 +15,9 @@ from transformers import Qwen3Config, Qwen3ForCausalLM
 from pra_torch.hf import (
     ATTENTION_INPUT_HIDDEN_STATE,
     CENTERED_ROPE_KEY,
+    MEMORY_GATE_FIXED,
+    MEMORY_GATE_PER_LAYER,
+    MEMORY_GATE_SINGLE,
     PRAHFConfig,
     HFRoutingProjection,
     inject_pra,
@@ -75,6 +78,44 @@ def test_hf_query_strategy_config_validates_runtime_modes():
         PRAHFConfig(query_strategy="uniform", query_window=0)
     with pytest.raises(ValueError, match="query_half_life"):
         PRAHFConfig(query_strategy="exponential", query_half_life=0)
+
+
+def test_hf_memory_gate_config_and_parameter_ownership():
+    with pytest.raises(ValueError, match="memory_gate_mode"):
+        PRAHFConfig(memory_gate_mode="per_token")
+
+    handle = inject_pra(
+        _tiny_qwen(),
+        _hf_config(layer_ids=(0, 1), memory_gate_mode=MEMORY_GATE_FIXED),
+    )
+    assert handle.memory_gate_parameters() == []
+    assert handle.memory_gate_values() == {0: 1.0, 1: 1.0}
+
+    handle.configure_memory_gate(MEMORY_GATE_SINGLE, initial_value=0.75)
+    assert len(handle.memory_gate_parameters()) == 1
+    assert handle.memory_gate_values() == {0: 0.75, 1: 0.75}
+
+    handle.configure_memory_gate(MEMORY_GATE_PER_LAYER, initial_value=0.5)
+    assert len(handle.memory_gate_parameters()) == 2
+    assert handle.memory_gate_values() == {0: 0.5, 1: 0.5}
+
+
+def test_hf_residual_adapter_is_lazy_and_counts_only_active_width():
+    handle = inject_pra(
+        _tiny_qwen(),
+        _hf_config(layer_ids=(0, 1)),
+    )
+    assert handle.residual_adapter_parameters() == []
+
+    handle.configure_residual_adapter(16)
+    # Per layer: (2D * B + B) down projection plus (B * D) up projection.
+    expected = 2 * ((2 * 32 * 16 + 16) + (16 * 32))
+    assert sum(
+        parameter.numel() for parameter in handle.residual_adapter_parameters()
+    ) == expected
+
+    handle.configure_residual_adapter(0)
+    assert handle.residual_adapter_parameters() == []
 
 
 def test_qwen_runtime_query_strategy_aggregates_attention_input_states():
@@ -526,6 +567,139 @@ def test_qwen_fixed_selection_override_replays_requested_chunk():
 
     handle.configure_memory_layers(set())
     assert handle.adapters[1].fixed_selected_chunks is None
+
+
+def test_qwen_fixed_gate_one_matches_trainable_gate_one_with_memory():
+    torch.manual_seed(10821)
+    original = _tiny_qwen()
+    fixed = inject_pra(
+        copy.deepcopy(original),
+        _hf_config(memory_gate_mode=MEMORY_GATE_FIXED),
+    )
+    learned = inject_pra(
+        copy.deepcopy(original),
+        _hf_config(memory_gate_mode=MEMORY_GATE_SINGLE),
+    )
+    reference = torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    fixed.add_reference("mem://fixed-gate", reference)
+    learned.add_reference("mem://fixed-gate", reference)
+    fixed.set_memory_enabled(True)
+    learned.set_memory_enabled(True)
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    with torch.no_grad():
+        expected = fixed.model(query, use_cache=False).logits
+        actual = learned.model(query, use_cache=False).logits
+
+    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
+
+
+def test_qwen_zero_memory_gate_matches_disabled_memory_and_preserves_gradient_isolation():
+    torch.manual_seed(10822)
+    model = _tiny_qwen()
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    handle = inject_pra(
+        model,
+        _hf_config(memory_gate_mode=MEMORY_GATE_SINGLE),
+    )
+    handle.add_reference(
+        "mem://zero-gate", torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    )
+    query = torch.tensor([[1, 4, 8, 12]])
+    handle.set_memory_enabled(False)
+    with torch.no_grad():
+        local = handle.model(query, use_cache=False).logits
+
+    handle.configure_memory_gate(MEMORY_GATE_SINGLE, initial_value=0.0)
+    handle.set_memory_enabled(True)
+    actual = handle.model(query, use_cache=False).logits
+    torch.testing.assert_close(actual, local, rtol=1e-5, atol=1e-6)
+
+    loss = actual.float().square().mean()
+    loss.backward()
+    gate_parameters = handle.memory_gate_parameters()
+    assert len(gate_parameters) == 1
+    assert gate_parameters[0].grad is not None
+    assert all(
+        parameter.grad is None
+        for name, parameter in handle.model.named_parameters()
+        if "pra_memory_gate" not in name
+    )
+
+
+def test_qwen_pra_off_ignores_trainable_gate_with_populated_cache_exactly():
+    torch.manual_seed(10823)
+    original = _tiny_qwen()
+    handle = inject_pra(
+        copy.deepcopy(original),
+        _hf_config(memory_gate_mode=MEMORY_GATE_PER_LAYER),
+    )
+    handle.add_reference(
+        "mem://disabled-gate", torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    )
+    handle.configure_memory_gate(MEMORY_GATE_PER_LAYER, initial_value=9.0)
+    handle.set_memory_enabled(False)
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    with torch.no_grad():
+        expected = original(query, use_cache=False).logits
+        actual = handle.model(query, use_cache=False).logits
+
+    assert torch.equal(actual, expected)
+
+
+def test_qwen_zero_initialized_residual_adapter_matches_frozen_pra():
+    torch.manual_seed(10824)
+    original = _tiny_qwen()
+    frozen = inject_pra(copy.deepcopy(original), _hf_config())
+    adapted = inject_pra(copy.deepcopy(original), _hf_config())
+    adapted.configure_residual_adapter(16)
+    reference = torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    frozen.add_reference("mem://residual-init", reference)
+    adapted.add_reference("mem://residual-init", reference)
+    frozen.set_memory_enabled(True)
+    adapted.set_memory_enabled(True)
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    with torch.no_grad():
+        expected = frozen.model(query, use_cache=False).logits
+        actual = adapted.model(query, use_cache=False).logits
+
+    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
+
+
+def test_qwen_residual_adapter_receives_exclusive_gradients_and_bypasses_pra_off():
+    torch.manual_seed(10825)
+    model = _tiny_qwen()
+    original = copy.deepcopy(model)
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    handle = inject_pra(model, _hf_config())
+    handle.configure_residual_adapter(16)
+    handle.add_reference(
+        "mem://residual-gradient",
+        torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]]),
+    )
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    handle.set_memory_enabled(False)
+    with torch.no_grad():
+        expected = original(query, use_cache=False).logits
+        disabled = handle.model(query, use_cache=False).logits
+    assert torch.equal(disabled, expected)
+
+    handle.set_memory_enabled(True)
+    output = handle.model(query, use_cache=False).logits
+    output.float().square().mean().backward()
+    trainable = handle.residual_adapter_parameters()
+    assert trainable
+    assert any(parameter.grad is not None for parameter in trainable)
+    assert all(
+        parameter.grad is None
+        for name, parameter in handle.model.named_parameters()
+        if "pra_residual_adapter" not in name
+    )
 
 
 def test_qwen_attention_diagnostics_are_explicit_and_ephemeral():
