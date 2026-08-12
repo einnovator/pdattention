@@ -39,7 +39,9 @@ representation improves in 30/30 pairs, but next-token loss improves in only 5/3
 QA-derived loss improves in 35/60 pairs and reverses direction for some RoPE conditions.
 Changing RoPE distance alone yields no stable useful optimum. By contrast, a frozen
 32-dimensional learned metric over position-independent hidden states reaches .908--.985
-one-of-15 evidence recall while leaving selected native K/V unchanged. A 192-token logical
+one-of-15 evidence recall, versus .369--.723 for post-RoPE K and .000--.015 under shuffled
+supervision. For fixed selected identities, post-RoPE K, V, and native attention output remain
+bit-exact. A 192-token logical
 prompt also runs with every measured native operation at or below 24 tokens under a 32-token
 limit. Positional continuity is necessary, but coordinate correctness, representation
 fidelity, attention geometry, semantic selection, and downstream use are distinct empirical
@@ -65,10 +67,9 @@ prompt head is encoded in bounded blocks. Compact gists route a later query to s
 chunks, but attention consumes the chunks' original token-level K/V. The position carried by
 those keys must therefore be a cache contract rather than an implementation accident.
 
-The problem initially appears to have four parts: coordinates, representation, attention
-geometry, and task usefulness. Retrieval makes the last part too broad. A router can find the
-annotated evidence while the model still fails to use that composition, so we split selection
-from downstream use. The paper consequently asks five increasingly demanding questions:
+We organize the problem into five increasingly demanding levels. Retrieval selection and
+downstream use are separate because a router can find annotated evidence while the model still
+fails to use that composition:
 \begin{enumerate}[leftmargin=*]
 \item \textbf{Coordinate correctness:} were source-relative positions preserved?
 \item \textbf{Representation fidelity:} does chunked K/V resemble the state produced with
@@ -81,7 +82,7 @@ position-independent content representation?
 or answers?
 \end{enumerate}
 
-These properties form a dependency, not an equivalence. Correct coordinates do not recreate
+These levels form a dependency, not an equivalence. Correct coordinates do not recreate
 missing causal context. Faithful K/V can still be selected poorly. Even annotated evidence
 can be an inferior context composition for a particular model. This leads to the paper's
 headline result:
@@ -102,8 +103,9 @@ rotation and retrieval-time rebinding.
 quality--encoding-cost tradeoff.
 \item We demonstrate that systematic representation improvement need not produce monotonic
 language-model or QA-derived loss improvement.
-\item We show that a small learned, position-independent routing metric can improve controlled
-evidence selection while native post-RoPE K/V remains the attention payload.
+\item We demonstrate that semantic evidence routing can use a tiny learned hidden-state
+projection while selected native post-RoPE K/V remains unchanged for attention, separating
+semantic relevance geometry from positional attention geometry.
 \item We demonstrate bounded implicit-head execution in which logical prompt length exceeds
 every native model operation, while carefully separating this mechanical result from dense
 long-context equivalence.
@@ -188,7 +190,7 @@ Does overlap improve representation? & Yes in the verified WikiText scope; 29/30
 Are pre/post RoPE keys equivalent? & Zero K, logit, and output error at matched effective positions & Storage state does not change the intended geometry \\
 Does better geometry guarantee task quality? & No: WikiText loss improves in 5/30; QA routed loss in 35/60 & Functional utility is a separate empirical property \\
 Can deferred rotation rebind keys? & Yes; warm latency rises from 0.179 to 0.649 ms & Flexibility has a measured systems cost \\
-Can routing use another geometry? & A 32-D learned hidden-state metric reaches .908--.985 one-of-15 evidence recall; shuffled labels reach .000--.015 & Semantic selection need not reuse native Q/K geometry \\
+Must semantic routing reuse native attention geometry? & No: a 32-D learned projection reaches .908--.985 one-of-15 recall, versus .369--.723 for post-RoPE K; shuffled labels reach .000--.015 & Semantic selection and positional attention can use different geometries \\
 Can logical prompt exceed a native operation? & 192 logical tokens, maximum measured operation 24 under a limit of 32 & Bounded positional and transport mechanics \\
 \bottomrule
 \end{tabularx}
@@ -199,18 +201,23 @@ The mechanisms can now be stated without conflating their roles:
 \begin{table}[H]
 \centering
 \small
-\caption{Each intervention repairs a different failure mode; none alone guarantees the next
-level of behavior.}
+\caption{Five levels of memory correctness and utility. Success at one level does not certify
+the next.}
 \label{tab:decomposition}
-\begin{tabularx}{\textwidth}{lXX}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{.19\textwidth}XX}
 \toprule
-Intervention & What it repairs & What it does not guarantee \\
+Level & Question & Main intervention or result \\
 \midrule
-Logical offsets & Chunk-local coordinate reset & Missing causal context \\
-Overlap or grouped encoding & Contextual fragmentation & Correct semantic selection \\
-RoPE placement or rebinding & Controls the native Q/K positional relation & A useful retrieval ranking \\
-Hidden-state routing metric & Evidence-identity ranking & Useful context composition \\
-Evidence oracle & Selection error & Lower loss or better answers \\
+Coordinate correctness & Are source-relative positions correct? & Logical offsets remove
+chunk-local reset error. \\
+Representation fidelity & Are chunk states contextually faithful? & Overlap or grouped
+encoding reduces contextual fragmentation. \\
+Attention-geometry fidelity & Is native positional Q/K geometry preserved or deliberately
+rebound? & RoPE placement controls the native attention relation. \\
+Semantic retrieval utility & Are relevant chunks ranked highly? & A learned 32-D projection
+exposes an evidence-relevance geometry. \\
+Downstream task utility & Does selected memory improve loss or answers? & Composition and model
+use remain empirical even under an evidence oracle. \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -420,7 +427,10 @@ choose the state or teach the model how to use it.
 \section{Does RoPE Distance Explain Task Quality?}
 \label{sec:distance-context}
 
-The task results leave two plausible explanations for the RoPE reversal. Very small
+This section stays within level 3, attention-geometry fidelity. It asks a specific hypothesis:
+perhaps exact source-relative RoPE is geometrically correct but functionally suboptimal because
+retrieved memory is too distant from the query. Can virtual rebinding help? The task results
+also leave a contextual alternative. Very small
 memory fragments might lack enough contextual state, or exact source placement might expose
 a learned relative-distance mismatch. We separate encoding context from materialized-unit
 size and begin with oracle evidence so routing does not obscure the comparison.
@@ -448,7 +458,7 @@ rises from .0655 under exact placement to 1.1855, and QASPER-derived loss rises 
 response is not monotonic: $D=2048$ is less harmful than $D=1024$, consistent with RoPE's
 multi-frequency periodic geometry rather than a scalar distance-decay story.
 
-The near-range result is deliberately negative. In the two-tier confirmation matrix,
+The near-range result resolves the hypothesis negatively. In the two-tier confirmation matrix,
 fixed $D=64$ beats exact placement in 50 of 100 matched
 dataset--tier--seed--composition cells and loses in 50; mean loss changes by
 $+8.1\times10^{-5}$. Clipping only source distances above 64 wins 68/100 cells, but its mean
@@ -485,7 +495,8 @@ deviation over five seeds.}
 \end{figure}
 
 The combined diagnosis is therefore an interaction dominated here by contextualization and
-composition. Exact source placement is substantially better than a full local reset in the
+composition. Their effects are larger and more stable than the small near-range distance
+changes. Exact source placement is substantially better than a full local reset in the
 tiny-tier oracle rows, and a small near-query rebase does not reliably improve on exact
 placement. Remote rebinding can be destructive, but the measured models do not support a
 universal replacement geometry. For continuous history, exact source coordinates remain the
@@ -510,6 +521,11 @@ hidden state of candidate chunk $c$. Two bias-free linear maps define
 where $A_q,A_c\in\mathbb{R}^{32\times d_{\mathrm{model}}}$. The transformer, positional
 encoding, Q/K/V projections, and payload path remain frozen. Only $A_q$ and $A_c$ receive a
 within-example margin-ranking loss against the programmatic evidence identity.
+
+\begin{quote}
+\textbf{A tiny learned semantic geometry sharply improves evidence ranking without altering
+native positional K/V.}
+\end{quote}
 
 \begin{figure}[H]
 \centering
@@ -579,12 +595,21 @@ uniform at 3/5 despite a positive mean difference. Thus the result is not that e
 initialization beats every K-space baseline. It is that evidence supervision exposes a routing
 geometry absent from both raw hidden cosine and the matched label-noise control.
 
+Raw hidden-state cosine is an important negative result: one-reference recall is .000--.138,
+despite the learned maps receiving exactly those hidden states. Semantic information can be
+present in contextual hidden states while cosine in the native hidden coordinates remains a
+poor relevance metric. The asymmetric projection exposes a more useful relevance geometry.
+The shuffled-label projection collapses to .000--.015 recall, showing that the gain is learned
+evidence relevance rather than a generic benefit from low dimension or reparameterization.
+
 The router adds 4,096 parameters in the tiny tier and 8,192 in the small tier, or
 .31--.79\% of the dataset-specific backbone. A 15-candidate float32 index falls from
 3,840 to 1,920 bytes in the tiny tier and from 7,680 to 1,920 bytes in the small tier. The
 corresponding full native detail-K/V averages 52.9--55.3 KB and 105.9--110.6 KB. For a fixed
-selected identity list, post-RoPE K, V, and native attention output have zero maximum absolute
-error across routing methods. The projection changes only the search representation.
+selected identity list, post-RoPE K is identical, V is identical, and native attention output
+is identical: every comparison has zero maximum absolute error. The projection changes only
+the search representation, not the selected payload or its use by attention. In short,
+$\text{routing geometry}\ne\text{attention payload geometry}$.
 
 This closes the placement loop in the controlled scope. Exact, local, fixed, clipped, and
 compressed RoPE placements did not yield a stable beneficial fixed distance. Learned routing
@@ -592,6 +617,9 @@ does not repair that geometry; it avoids asking positional attention geometry to
 semantic relevance metric. Larger contextual encoding improves the representation being
 summarized, learned projection improves evidence ranking, and RoPE placement controls native
 positional attention. They are separate axes.
+
+This contextualization result independently reinforces Paper~1's separation between encoding
+and routing granularity: fine addressability does not require equally fine independent encoding.
 
 \subsection{Does an Evidence Oracle Guarantee Better Use?}
 
@@ -709,24 +737,29 @@ not be read back into the present evidence.
 
 \section{Conclusion}
 
-Source-relative positional continuity is necessary for chunked and retrieved native K/V. A
-logical start offset repairs reset fragmentation exactly at layer zero for learned absolute,
-sinusoidal, and RoPE models, and improves deeper representation in every paired test. This is
-the general result. RoPE's special value is narrower: its algebra relates pre- and
-post-rotation keys and permits retrieval-time rebinding, at a measurable runtime cost.
+The evidence supports six conclusions. First, a source-relative logical start offset repairs
+reset fragmentation exactly at layer zero for learned absolute, sinusoidal, and RoPE models,
+and improves deeper representation in every paired test. Second, contextual fragmentation
+remains separate: overlap or grouped encoding can improve representation, but costs additional
+encoding and does not follow from correct coordinates.
 
-The remaining errors reveal separate problems. Overlap can reduce contextual fragmentation,
-but only through extra encoding. Remote rebinding can strongly alter attention and loss, yet
-no stable beneficial fixed distance emerges near the measured source distances. Larger
-encoding groups and materialized units help the controlled answer probes more reliably.
+Third, RoPE provides explicit algebraic Q/K rebinding, and matched pre-, post-, and deferred
+rotation preserve native attention geometry. That flexibility has a measured runtime cost, and
+no stable beneficial fixed retrieval distance emerged in the tested regime. Very remote
+placement can be destructive; the near-range response is non-monotonic rather than a universal
+distance rule.
 
-Finally, semantic selection need not reuse positional attention geometry. A small learned
-projection sharply improves controlled evidence ranking while selected native post-RoPE K/V
-remains unchanged. Even perfect evidence identity, however, does not guarantee the best
-context composition or lower loss. The practical conclusion is therefore precise: repair
-coordinates with source-relative offsets, use RoPE when explicit binding or rebinding is
-needed, treat contextualization and routing as separate mechanisms, and measure downstream
-use rather than inferring it from geometric correctness.
+Fourth, native positional attention geometry is not necessarily semantic relevance geometry.
+A tiny asymmetric projection of contextual hidden states sharply improves controlled evidence
+ranking. Fifth, routing can use that learned geometry while selected native post-RoPE K, V,
+and attention output remain bit-exact. Sixth, semantic retrieval success still does not
+guarantee downstream utility: annotated evidence and the functionally best context composition
+are not always identical.
+
+The practical prescription is therefore to repair source coordinates, preserve contextual
+provenance, choose a routing metric for relevance, retain native K/V for attention, and measure
+model use independently. \textbf{Position, context, routing, and use are separate architectural
+problems.}
 
 \appendix
 
