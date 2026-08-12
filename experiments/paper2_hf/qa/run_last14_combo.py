@@ -23,6 +23,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from matplotlib.lines import Line2D
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -358,9 +359,19 @@ def _entry_economics(record, layers, route_layer):
     }
 
 
-def _valid_ratio(numerator: float, denominator: float, epsilon: float) -> float | None:
+def _valid_ratio(
+    numerator: float | None,
+    denominator: float | None,
+    epsilon: float,
+) -> float | None:
     """Return benefit recovery only for positive, non-negligible matched controls."""
-    if not math.isfinite(numerator) or not math.isfinite(denominator) or denominator <= epsilon:
+    if (
+        numerator is None
+        or denominator is None
+        or not math.isfinite(numerator)
+        or not math.isfinite(denominator)
+        or denominator <= epsilon
+    ):
         return None
     return numerator / denominator
 
@@ -422,7 +433,7 @@ def _evaluate_memory(
             full_delta = (
                 full["gold_sequence_logprob"] - baseline["gold_sequence_logprob"]
                 if full is not None
-                else float("nan")
+                else None
             )
             rows.append(
                 {
@@ -500,14 +511,20 @@ def _seed_aggregates(rows):
         "gold_first_token_margin",
         "gold_first_token_rank_delta_vs_none",
         "gold_first_token_margin_delta_vs_none",
+        "direct_sequence_benefit",
+        "full_sequence_benefit",
         "f1",
         "em",
         "selected_chunk_fraction",
+        "materialized_native_kv_tokens",
         "materialized_native_kv_fraction",
+        "active_kv_tokens_across_layers",
+        "routing_index_bytes",
         "routing_index_over_detail_kv",
         "gpu_materialized_kv_bytes",
         "cpu_detail_kv_bytes",
         "kv_transfer_bytes",
+        "peak_gpu_bytes",
         "teacher_forced_seconds",
         "generation_seconds",
         "rho_direct",
@@ -581,6 +598,15 @@ def _aggregates(seed_rows):
             result[f"{metric}_mean"] = mean
             result[f"{metric}_std"] = std
             result[f"{metric}_ci95"] = 2.776 * std / math.sqrt(len(samples)) if len(samples) == 5 else None
+        sequence_gain = result.get("gold_sequence_logprob_delta_vs_none_mean")
+        direct_benefit = result.get("direct_sequence_benefit_mean")
+        full_benefit = result.get("full_sequence_benefit_mean")
+        result["rho_direct_cohort"] = _valid_ratio(
+            sequence_gain, direct_benefit, 0.05
+        )
+        result["rho_full_cohort"] = _valid_ratio(
+            sequence_gain, full_benefit, 0.05
+        )
         output.append(result)
     return output
 
@@ -673,35 +699,73 @@ def _plot(aggregates, output_dir: Path) -> None:
         "lora_o_r4": "LoRA r4",
         "lora_o_r8": "LoRA r8",
     }
+    short_labels = {
+        "fixed": "F",
+        "residual_16": "R16",
+        "residual_32": "R32",
+        "residual_64": "R64",
+        "lora_o_r4": "L4",
+        "lora_o_r8": "L8",
+    }
     rows = [
         row for row in aggregates
         if row["dataset"] == "hotpotqa" and row["condition"] in {"oracle", "routed"}
     ]
     for row in rows:
         labels.setdefault(row["variant"], "Residual + LoRA")
+        short_labels.setdefault(row["variant"], "R16+L4")
     colors = {"oracle": "#245A8D", "routed": "#A34832"}
+    label_offsets = {
+        "oracle": {
+            "fixed": (6, 12),
+            "residual_16": (6, 7),
+            "residual_32": (6, -3),
+            "residual_64": (6, -10),
+            "lora_o_r4": (6, 8),
+            "lora_o_r8": (6, -15),
+            "combo_residual_16_lora_r4": (6, -1),
+        },
+        "routed": {
+            "fixed": (6, 11),
+            "residual_16": (6, -9),
+            "residual_32": (6, 5),
+            "residual_64": (6, 8),
+            "lora_o_r4": (6, -2),
+            "lora_o_r8": (6, 5),
+            "combo_residual_16_lora_r4": (6, -8),
+        },
+    }
+    legend = [
+        Line2D([0], [0], marker="o", color="none", markerfacecolor=colors["oracle"],
+               markeredgecolor=colors["oracle"], label="Oracle selection"),
+        Line2D([0], [0], marker="s", color="none", markerfacecolor=colors["routed"],
+               markeredgecolor=colors["routed"], label="Learned routing"),
+    ]
     figure, axis = plt.subplots(figsize=(7.4, 4.5))
     for row in rows:
-        if row.get("rho_direct_mean") is None:
+        if row.get("rho_direct_cohort") is None:
             continue
         axis.scatter(
             100 * row["materialized_native_kv_fraction_mean"],
-            100 * row["rho_direct_mean"],
+            100 * row["rho_direct_cohort"],
             color=colors[row["condition"]],
             marker="o" if row["condition"] == "oracle" else "s",
             s=45,
         )
-        axis.annotate(
-            labels[row["variant"]],
-            (100 * row["materialized_native_kv_fraction_mean"], 100 * row["rho_direct_mean"]),
-            xytext=(4, 4),
-            textcoords="offset points",
-            fontsize=7,
-        )
+        if row["variant"] in {"fixed", "residual_16", "lora_o_r4"} or row["variant"].startswith("combo_"):
+            axis.annotate(
+                short_labels[row["variant"]],
+                (100 * row["materialized_native_kv_fraction_mean"], 100 * row["rho_direct_cohort"]),
+                xytext=label_offsets[row["condition"]][row["variant"]],
+                textcoords="offset points",
+                fontsize=7,
+            )
     axis.axhline(100, color="black", linewidth=0.8, linestyle="--")
     axis.set_xlabel("Materialized native-K/V tokens (% of source)")
     axis.set_ylabel("Direct-evidence benefit recovered (%)")
     axis.grid(alpha=0.25)
+    axis.margins(x=0.10, y=0.08)
+    axis.legend(handles=legend, loc="center left", frameon=False)
     figure.tight_layout()
     for suffix in ("png", "pdf"):
         figure.savefig(output_dir / f"recovery_vs_materialized_kv.{suffix}", dpi=190)
@@ -709,18 +773,18 @@ def _plot(aggregates, output_dir: Path) -> None:
 
     figure, axis = plt.subplots(figsize=(7.4, 4.5))
     for row in rows:
-        if row.get("rho_direct_mean") is None:
+        if row.get("rho_direct_cohort") is None:
             continue
         axis.scatter(
             row["memory_use_parameter_percent_mean"],
-            100 * row["rho_direct_mean"],
+            100 * row["rho_direct_cohort"],
             color=colors[row["condition"]],
             marker="o" if row["condition"] == "oracle" else "s",
             s=45,
         )
         axis.annotate(
             labels[row["variant"]],
-            (row["memory_use_parameter_percent_mean"], 100 * row["rho_direct_mean"]),
+            (row["memory_use_parameter_percent_mean"], 100 * row["rho_direct_cohort"]),
             xytext=(4, 4),
             textcoords="offset points",
             fontsize=7,
@@ -728,6 +792,8 @@ def _plot(aggregates, output_dir: Path) -> None:
     axis.set_xlabel("PRA-specific memory-use parameters (% of base model)")
     axis.set_ylabel("Direct-evidence benefit recovered (%)")
     axis.grid(alpha=0.25)
+    axis.margins(x=0.08, y=0.08)
+    axis.legend(handles=legend, loc="lower right", frameon=False)
     figure.tight_layout()
     for suffix in ("png", "pdf"):
         figure.savefig(output_dir / f"recovery_vs_adaptation_size.{suffix}", dpi=190)

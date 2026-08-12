@@ -368,3 +368,32 @@ subset cannot isolate a PRA transport defect. All oracle parents survive materia
 rejections and native-limit violations are zero, and the largest bounded reference operation is
 128 tokens. Artifacts and plots live under
 `docs/papers/shared/results/paper2_hf/oracle_memory_use/`.
+
+## Last-14 adaptation convergence
+
+Run the final five-seed, identity-disjoint comparison with:
+
+```powershell
+python -m experiments.paper2_hf.qa.run_last14_combo --device cuda
+```
+
+The runner freezes Qwen3-0.6B and the established 262,144-parameter router, consumes PRA memory
+at layers 14--27, and trains residual widths 16/32/64 plus conditional output-LoRA ranks 4/8.
+Validation uses only disjoint identities to select residual 16 and LoRA rank 4 before their
+combination is trained. The test cohort contains eight new HotpotQA and eight new QASPER
+identities. No-context, direct-evidence, and complete full-context controls are scored separately;
+full-context recovery is omitted when the complete rendered prompt exceeds 2,048 tokens.
+
+The larger cohort rejects the combination. On HotpotQA, residual 16 improves oracle sequence
+log-probability by `+14.478` relative to no context and recovers `90.8%` of direct-evidence and
+`107.3%` of feasible full-context benefit at `11.39%` materialized K/V. Under learned routing,
+however, frozen PRA remains best: `+1.901` sequence log-probability, `11.9%` direct recovery, and
+`14.1%` full recovery at `6.56%` materialized K/V. Residual 16 reaches only `+1.395`; LoRA and
+the combination are negative. The selected product architecture is therefore frozen last-14 PRA
+plus the router (`0.044%` of Qwen), with residual 16 retained only as an oracle integration probe.
+
+QASPER adaptations improve likelihood and residual 16 raises routed F1 to `0.205`, but its
+direct-text cohort benefit is negative and no full source fits the control budget, so recovery
+ratios are not reported. PRA-off logits and generation are exact in every run, and native-limit
+violations are zero. Raw rows, seed summaries, plots, and the JSON report live under
+`docs/papers/shared/results/paper2_hf/last14_combo/`; adapter checkpoints are intentionally ignored.

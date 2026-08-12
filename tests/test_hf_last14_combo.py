@@ -28,6 +28,7 @@ def test_recovery_ratio_rejects_invalid_context_denominators():
     assert _valid_ratio(2.0, 4.0, 0.05) == 0.5
     assert _valid_ratio(2.0, -1.0, 0.05) is None
     assert _valid_ratio(2.0, 0.01, 0.05) is None
+    assert _valid_ratio(2.0, None, 0.05) is None
 
 
 def test_aggregate_retains_ratios_when_first_seed_has_no_valid_full_context():
@@ -54,3 +55,25 @@ def test_aggregate_retains_ratios_when_first_seed_has_no_valid_full_context():
     aggregate = _aggregates(rows)[0]
     assert aggregate["rho_full_mean"] == 0.5
     assert aggregate["gold_sequence_logprob_delta_vs_none_mean"] == 1.5
+
+
+def test_aggregate_recovery_uses_ratio_of_matched_cohort_means():
+    rows = [
+        {
+            "seed": seed,
+            "variant": "fixed",
+            "dataset": "hotpotqa",
+            "condition": "routed",
+            "examples": 8,
+            "gold_sequence_logprob_delta_vs_none": gain,
+            "direct_sequence_benefit": direct,
+            "full_sequence_benefit": full,
+        }
+        for seed, gain, direct, full in (
+            (11, 2.0, 8.0, 4.0),
+            (23, 4.0, 12.0, 8.0),
+        )
+    ]
+    aggregate = _aggregates(rows)[0]
+    assert aggregate["rho_direct_cohort"] == pytest.approx(3.0 / 10.0)
+    assert aggregate["rho_full_cohort"] == pytest.approx(3.0 / 6.0)
