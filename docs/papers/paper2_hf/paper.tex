@@ -1069,6 +1069,64 @@ mean first-token rank but does not improve F1/EM. Oracle residual 16 reaches EM 
 gold probability to .409, yet the mean rank is still 22.8 and the margin remains negative.
 Reliable decoded QA is not closed by this adaptation ladder.
 
+\subsection{Blind behavioral-equivalence protocol}
+\label{sec:behavioral-judge}
+
+Token-level and answer-level metrics answer different questions. Logits and log-probabilities
+measure whether two systems follow similar probability trajectories. F1 and exact match measure
+lexical agreement with a reference answer. Neither establishes whether two generated answers are
+equally meaningful and useful to a reader. We therefore release a third, explicitly separate
+evaluation: a blind LLM-judge package for semantic and behavioral equivalence. This package is an
+evaluation protocol, not a reported judge result; no external-judge scores had been collected at
+the time of writing.
+
+The package is generated deterministically from the identity-disjoint last-14 artifact. Each item
+contains an opaque ID, the question, and outputs A and B. It contains no model, dataset, PRA,
+native, routing, adaptation, or source-order labels. A private truth file maps each item back to
+its conditions and records model revision, generation mode and seed, realized selected-chunk and
+materialized-K/V fractions, source-artifact hash, prompt hash, repository revision, and the
+randomization seed. SHA-256 hashes of the displayed prompt and each answer make the A/B mapping
+independently checkable without copying labels into the blind file.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Released blind behavioral-judge comparisons. Counts are underlying pairs before the
+exact reversed-order duplicate. All source generations are greedy. Full-context controls exist
+only for the eight HotpotQA cases whose source fits the matched 2,048-token limit.}
+\label{tab:behavioral-judge-package}
+\begin{tabularx}{\linewidth}{L{0.43\linewidth}rY}
+\toprule
+Comparison group & Pairs & Purpose \\
+\midrule
+Native no context vs. frozen routed PRA & 16 & Behavioral change from sparse memory \\
+Native direct evidence vs. frozen routed PRA & 16 & Gap to a concise text-context control \\
+Native full context vs. frozen routed PRA & 8 & Gap to feasible dense source context \\
+Frozen routed PRA vs. residual-16 PRA & 80 & Adaptation effect over 16 identities and five seeds \\
+Identical-answer calibration & 16 & Expected equivalence near 100 and quality near zero \\
+Controlled-corruption calibration & 16 & Detect an insensitive or inverted judge \\
+\midrule
+Total & 152 & 304 blind items after order reversal \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For every pair, a seeded coin flip chooses the first A/B order and a second opaque item presents
+the exact reverse. The judge assigns semantic equivalence in $[0,100]$, relative quality in
+$[-100,100]$ with positive values favoring B, independent A/B validity, confidence, and a reason
+of at most 40 words. Identical copies and controlled truncation or contradiction provide positive
+and negative calibration anchors. Native-vs-native sampling and faithful-paraphrase controls are
+not fabricated: the source artifact contains greedy generations only and no independently
+authored paraphrases. Likewise, it contains one routed operating point rather than decoded
+5/10/20/30\% K/V-fraction sweeps.
+
+The preregistered hypothesis is that behavioral fidelity may saturate at a lower active-K/V
+fraction than exact logit fidelity. The current package cannot test that fraction curve because
+the required decoded sweep does not yet exist. It can test whether the measured frozen and
+adapted outputs are behaviorally interchangeable with their native controls, and whether that
+conclusion survives answer-order reversal. Any future judge results must be reported by comparison
+group, with calibration and reversal consistency, rather than pooled into one score.
+
 \paragraph{Decision.}
 PRA-specific capacity totals 262,144 parameters (0.044\% of Qwen) in the selected routed system.
 The oracle residual probe adds 458,976 parameters, bringing the diagnostic total to 721,120
@@ -1412,6 +1470,13 @@ identities per dataset---but is still small. Five seeds measure optimization var
 test identities; they are not five independent dataset samples. The 1,024-token WikiText-2
 control can detect drift but is not a broad language-capability evaluation.
 
+The released behavioral-equivalence package contains 304 blinded items, but it does not yet
+contain external-judge responses. It therefore adds a reproducible semantic evaluation protocol,
+not evidence that PRA and native generations are behaviorally equivalent. Judge-model sensitivity,
+calibration against the identical/corrupted controls, and reversal consistency must be reported
+before making such a claim. A decoded K/V-fraction sweep is also required to test whether semantic
+fidelity saturates earlier than logit fidelity.
+
 Evidence labels and answer behavior measure different things. Any-evidence recall can be high
 while a multi-hop example still lacks another required passage. Evidence-identity recall is
 stricter, but it still assumes that annotations identify the state this checkpoint needs. The
@@ -1502,7 +1567,8 @@ routing-conditioned robustness and recursive multi-hop evidence gathering are ne
 mechanism supports a general decoded-QA claim.
 
 The released \texttt{pra\_hf} package, artifacts, metrics, tests, and reimplementation guide make
-this exact portable retrofit independently usable. PRA-HF therefore establishes sparse semantic
+this exact portable retrofit independently usable. A deterministic 304-item blind judge package
+also fixes the next semantic evaluation before its scores are observed. PRA-HF therefore establishes sparse semantic
 selection and depth-dependent causal use of large native-K/V memory; reliable decoded task gains
 remain the principal open boundary.
 

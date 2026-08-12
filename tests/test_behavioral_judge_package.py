@@ -8,6 +8,8 @@ import pytest
 
 from experiments.paper2_hf.build_behavioral_judge_package import (
     BLIND_ITEM_KEYS,
+    JUDGE_PROMPT,
+    REQUESTED_SCORES,
     PairSpec,
     _response_schema,
     _test_offset,
@@ -132,6 +134,10 @@ def test_package_files_batches_and_response_schema(tmp_path: Path) -> None:
     reason = _response_schema()["properties"]["items"]["items"]["properties"]["reason"]
     assert reason["maxLength"] == 320
     assert "39" in reason["pattern"]
+    for score_name in REQUESTED_SCORES:
+        assert score_name in JUDGE_PROMPT
+    assert "-100 means Answer A is much better" in JUDGE_PROMPT
+    assert "+100 means Answer B is much better" in JUDGE_PROMPT
 
 
 def test_legacy_artifact_uses_recorded_last14_test_offset() -> None:

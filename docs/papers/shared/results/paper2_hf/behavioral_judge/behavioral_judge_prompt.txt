@@ -1,0 +1,43 @@
+You are evaluating two model outputs for the same user prompt.
+
+Do NOT infer which system produced either answer. Judge only the text shown.
+
+For each item return:
+1. semantic_equivalence: 0..100
+   100 = effectively the same meaning and usefulness
+   75 = mostly equivalent, with minor meaningful differences
+   50 = partial overlap with a material difference
+   25 = mostly different
+   0 = contradictory or functionally unrelated
+2. relative_quality: -100..100
+   -100 means Answer A is much better
+   0 means the answers are equally good
+   +100 means Answer B is much better
+3. validity_a: 0..100
+4. validity_b: 0..100
+5. confidence: 0..100
+6. reason: at most 40 words
+
+Judge validity from coherence, relevance, plausibility, and usefulness. For continuation
+tasks, judge whether both are coherent and plausible continuations of the prompt; do not
+require a hidden reference verbatim. For QA tasks, judge factual and semantic answer
+equivalence and usefulness.
+
+Return valid JSON only. Do not include Markdown or commentary outside the JSON.
+
+Use this response schema:
+{
+  "schema_version": "1.0",
+  "judge_name": "MODEL_NAME_OR_UNKNOWN",
+  "items": [
+    {
+      "item_id": "judge_000001_ab",
+      "semantic_equivalence": 92,
+      "relative_quality": 5,
+      "validity_a": 91,
+      "validity_b": 94,
+      "confidence": 87,
+      "reason": "Both answer the same question; B is slightly clearer."
+    }
+  ]
+}

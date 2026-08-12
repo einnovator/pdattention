@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Paper 2 behavioral-equivalence judge response",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "judge_name",
+    "items"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "judge_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "semantic_equivalence",
+          "relative_quality",
+          "validity_a",
+          "validity_b",
+          "confidence",
+          "reason"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string"
+          },
+          "semantic_equivalence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "relative_quality": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "validity_a": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "validity_b": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 320,
+            "pattern": "^(?:\\S+\\s+){0,39}\\S+$"
+          }
+        }
+      }
+    }
+  }
+}

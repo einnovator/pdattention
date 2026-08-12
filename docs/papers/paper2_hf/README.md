@@ -34,7 +34,13 @@ python -m experiments.paper2_hf.run_product_demo --help
 python -m experiments.paper2_hf.summarize_productization
 python -m experiments.paper2_hf.gemma.run_gemma3_1b
 python -m experiments.paper2_hf.gemma.summarize_gemma3_1b
+python experiments/paper2_hf/build_behavioral_judge_package.py `
+  --input docs/papers/shared/results/paper2_hf/last14_combo/last14_combo.json `
+  --output-dir docs/papers/shared/results/paper2_hf/behavioral_judge `
+  --seed 1234 --include-order-reversal --include-controls --batch-size 64
 ```
 
 Structured results are under `docs/papers/shared/results/paper2_hf/`; release router artifacts
-are under `artifacts/pra_hf/routers/`.
+are under `artifacts/pra_hf/routers/`. The behavioral judge directory contains the blind package,
+private truth mapping, response schema, calibration controls, and optional batches. Never send the
+truth mapping to a judge.
