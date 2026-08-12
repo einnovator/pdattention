@@ -364,13 +364,13 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             duration = started.elapsed_time(ended) / 1000.0
         memory_features = self.flatten_attention_output(attention_output, input_shape)
         memory_output = self.original_attention.o_proj(memory_features)
+        lora_delta = None
         lora_delta_norm = 0.0
         if self.late_band_lora is not None and self.late_band_lora.enabled:
             lora_delta = self.late_band_lora.transform(
                 self.layer_idx,
                 memory_features,
             )
-            memory_output = (memory_output.float() + lora_delta).to(memory_output.dtype)
             lora_delta_norm = float(lora_delta.detach().float().norm().cpu())
         local_output = None
         gate_value = 1.0
@@ -398,13 +398,18 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                     hidden_states,
                     gated_residual,
                 )
-            output = (local_output.float() + gated_residual).to(memory_output.dtype)
+            output = local_output.float() + gated_residual
+            if lora_delta is not None:
+                output = output + lora_delta
+            output = output.to(memory_output.dtype)
             gate_value = float(gate.detach().float().cpu())
             memory_residual_norm = float(
                 memory_residual.detach().float().norm().cpu()
             )
         else:
             output = memory_output
+            if lora_delta is not None:
+                output = (output.float() + lora_delta).to(memory_output.dtype)
         stats = self._stats(prepared)
         self.last_diagnostics = self.pra_core.collect_pra_metrics(
             prepared,

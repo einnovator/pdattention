@@ -14,7 +14,7 @@ class PRAHFResidualAdapter(nn.Module):
         super().__init__()
         self.hidden_size = int(hidden_size)
         self.bottleneck = int(bottleneck)
-        self.down = nn.Linear(2 * self.hidden_size, self.bottleneck)
+        self.down = nn.Linear(self.hidden_size, self.bottleneck)
         self.up = nn.Linear(self.bottleneck, self.hidden_size, bias=False)
         self.reset_parameters()
 
@@ -30,11 +30,11 @@ class PRAHFResidualAdapter(nn.Module):
         memory_residual: torch.Tensor,
     ) -> torch.Tensor:
         """Return frozen PRA's residual plus a learned FP32 correction."""
-        features = torch.cat(
-            (hidden_states.float(), memory_residual.float()),
-            dim=-1,
-        )
-        correction = self.up(F.silu(self.down(features)))
+        # The adapter calibrates the counterfactual effect of memory itself.
+        # ``hidden_states`` remains in the stable call signature but is not an
+        # input feature: delta = y_mem - y_local is the complete intervention.
+        del hidden_states
+        correction = self.up(F.silu(self.down(memory_residual.float())))
         return memory_residual.float() + correction
 
 

@@ -109,8 +109,8 @@ def test_hf_residual_adapter_is_lazy_and_counts_only_active_width():
     assert handle.residual_adapter_parameters() == []
 
     handle.configure_residual_adapter(16)
-    # Per layer: (2D * B + B) down projection plus (B * D) up projection.
-    expected = 2 * ((2 * 32 * 16 + 16) + (16 * 32))
+    # Per layer: (D * B + B) down projection plus (B * D) up projection.
+    expected = 2 * ((32 * 16 + 16) + (16 * 32))
     assert sum(
         parameter.numel() for parameter in handle.residual_adapter_parameters()
     ) == expected
@@ -786,6 +786,47 @@ def test_qwen_conditional_lora_receives_exclusive_gradients_and_is_exact_when_of
         parameter.grad is None
         for name, parameter in handle.model.named_parameters()
         if "pra_late_band_lora" not in name
+    )
+
+
+def test_qwen_residual_and_lora_combine_with_exclusive_gradients_and_exact_bypass():
+    torch.manual_seed(10828)
+    model = _tiny_qwen()
+    original = copy.deepcopy(model)
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    handle = inject_pra(model, _hf_config())
+    handle.configure_residual_adapter(16)
+    handle.configure_late_band_lora(4, alpha=4.0)
+    handle.add_reference(
+        "mem://combo-gradient",
+        torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]]),
+    )
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    handle.set_memory_enabled(False)
+    with torch.no_grad():
+        expected = original(query, use_cache=False).logits
+        disabled = handle.model(query, use_cache=False).logits
+        expected_generation = original.generate(query, max_new_tokens=2, do_sample=False)
+        disabled_generation = handle.model.generate(
+            query, max_new_tokens=2, do_sample=False
+        )
+    assert torch.equal(disabled, expected)
+    assert torch.equal(disabled_generation, expected_generation)
+
+    handle.set_memory_enabled(True)
+    output = handle.model(query, use_cache=False).logits
+    output.float().square().mean().backward()
+    trainable = handle.memory_use_parameters()
+    assert len(trainable) == len(handle.residual_adapter_parameters()) + len(
+        handle.late_band_lora_parameters()
+    )
+    assert any(parameter.grad is not None for parameter in trainable)
+    assert all(
+        parameter.grad is None
+        for name, parameter in handle.model.named_parameters()
+        if "pra_residual_adapter" not in name and "pra_late_band_lora" not in name
     )
 
 

@@ -128,6 +128,18 @@ class PRAHFModel:
         """Return only factors belonging to the active conditional LoRA rank."""
         return self.late_band_lora.trainable_parameters()
 
+    def memory_use_parameters(self) -> list[torch.nn.Parameter]:
+        """Return every active PRA-conditional memory-use parameter.
+
+        Residual correction and conditional output LoRA are independent banks.
+        Returning both makes their joint ownership explicit for matched
+        optimization while all pretrained and router parameters stay frozen.
+        """
+        return [
+            *self.residual_adapter_parameters(),
+            *self.late_band_lora_parameters(),
+        ]
+
     def configure_memory_layers(
         self,
         layer_ids: set[int] | tuple[int, ...],
