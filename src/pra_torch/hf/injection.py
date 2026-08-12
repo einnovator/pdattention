@@ -25,6 +25,7 @@ from .config import (
 )
 from .qwen import QwenPRAAttentionAdapter
 from .llama import LlamaPRAAttentionAdapter
+from .gemma3 import Gemma3PRAAttentionAdapter
 from .memory_gate import PRAHFMemoryGate
 from .residual_adapter import PRAHFResidualAdapterBank
 from .late_band_lora import PRAHFConditionalOutputLoRABank
@@ -488,9 +489,12 @@ def inject_pra(
             adapter_class = QwenPRAAttentionAdapter
         elif ".llama." in module_name:
             adapter_class = LlamaPRAAttentionAdapter
+        elif ".gemma3." in module_name:
+            adapter_class = Gemma3PRAAttentionAdapter
         else:
             raise TypeError(
-                "PRA-HF supports Qwen2/Qwen2.5/Qwen3 and Llama attention modules; "
+                "PRA-HF supports Qwen2/Qwen2.5/Qwen3, Llama, and Gemma 3 "
+                "global attention modules; "
                 f"received {original.__class__.__qualname__}."
             )
         adapter = adapter_class(

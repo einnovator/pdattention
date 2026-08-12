@@ -641,10 +641,25 @@ def run(args) -> dict:
         else load_hf_routing_projection(args.checkpoint, device=device)
     )
     layer_count = int(model.config.num_hidden_layers)
-    last_eight = tuple(range(max(0, layer_count - 8), layer_count))
+    layer_types = tuple(getattr(model.config, "layer_types", ()) or ())
+    eligible_layers = (
+        tuple(
+            layer_id
+            for layer_id, layer_type in enumerate(layer_types)
+            if layer_type == "full_attention"
+        )
+        if layer_types
+        else tuple(range(layer_count))
+    )
+    if not eligible_layers:
+        raise ValueError("The host model exposes no PRA-eligible attention layers.")
+    last_eight = eligible_layers[-8:]
     last_four = last_eight[-4:]
     learned_layers = last_eight[-min(args.learned_depth, len(last_eight)) :]
-    early_late = (layer_count // 3, layer_count - 1)
+    early_late = (
+        eligible_layers[len(eligible_layers) // 3],
+        eligible_layers[-1],
+    )
     requested = set(args.conditions)
     required_layers = [*last_four, *early_late]
     if "learned_router" in requested:
@@ -675,7 +690,7 @@ def run(args) -> dict:
     conditions = (
         Condition("no_memory", "none"),
         Condition("learned_router", "router", learned_layers),
-        Condition("oracle_last_1", "oracle", (layer_count - 1,)),
+        Condition("oracle_last_1", "oracle", (eligible_layers[-1],)),
         Condition("oracle_last_2", "oracle", last_four[-2:]),
         Condition("oracle_last_4", "oracle", last_four),
         Condition("oracle_last_8", "oracle", last_eight),
@@ -718,6 +733,7 @@ def run(args) -> dict:
         "protocol": "frozen HF causal memory-use intervention; teacher-forced and generated QA",
         "model_id": args.model_id,
         "model_revision": args.model_revision,
+        "eligible_attention_layers": list(eligible_layers),
         "checkpoint": str(args.checkpoint.resolve().relative_to(ROOT)),
         "adapter_parameters": projection.parameter_count,
         "seed": args.seed,

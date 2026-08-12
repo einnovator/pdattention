@@ -47,10 +47,10 @@ class PRAForCausalLM:
         self.tokenizer = tokenizer
         self.config = config
         layer_count = len(model.model.layers)
-        self.routing_layer, self.consumption_layers = config.resolved_layers(layer_count)
+        self.routing_layer, self.consumption_layers = config.resolved_layers(model.config)
         self._handle = inject_pra(
             model,
-            config.to_internal(layer_count),
+            config.to_internal(model.config),
             routing_projection=router,
         )
         self.router = router
@@ -68,7 +68,7 @@ class PRAForCausalLM:
         tokenizer_name_or_path: str | None = None,
         **model_kwargs,
     ) -> "PRAForCausalLM":
-        """Load a Qwen or Llama causal LM and inject PRA's thin adapters."""
+        """Load a supported Qwen, Llama, or Gemma 3 LM and inject PRA."""
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         config = (

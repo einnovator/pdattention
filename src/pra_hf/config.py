@@ -10,6 +10,9 @@ from typing import Any
 from pra_torch.hf import ATTENTION_INPUT_HIDDEN_STATE, PRAHFConfig
 
 
+_DEFAULT_CONSUMPTION_LAYERS = tuple(range(-8, 0))
+
+
 @dataclass
 class PRAConfig:
     """Configure one-shot semantic routing and bounded native-K/V consumption.
@@ -20,7 +23,7 @@ class PRAConfig:
 
     enabled: bool = True
     routing_layer: int = -1
-    consumption_layers: tuple[int, ...] = tuple(range(-8, 0))
+    consumption_layers: tuple[int, ...] = _DEFAULT_CONSUMPTION_LAYERS
     routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE
     chunk_tokens: int = 32
     chunk_overlap_tokens: int = 0
@@ -59,21 +62,72 @@ class PRAConfig:
         """Return the active budget policy, including documented precedence."""
         return "selected_fraction" if self.selected_fraction is not None else "top_k"
 
-    def resolved_layers(self, layer_count: int) -> tuple[int, tuple[int, ...]]:
-        """Resolve routing and consumption layer IDs for a concrete model."""
+    def resolved_layers(self, model_config_or_layer_count) -> tuple[int, tuple[int, ...]]:
+        """Resolve layer IDs while preserving a host model's native scope.
+
+        Ordinary decoder families resolve negative indices against the complete
+        stack. Gemma 3 defaults instead select the late native-global layers;
+        explicit local-layer requests are rejected rather than silently turning
+        sliding attention into full external-memory attention.
+        """
+        if isinstance(model_config_or_layer_count, int):
+            layer_count = model_config_or_layer_count
+            layer_types: tuple[str, ...] = ()
+        else:
+            model_config = model_config_or_layer_count
+            layer_count = int(model_config.num_hidden_layers)
+            layer_types = (
+                tuple(getattr(model_config, "layer_types", ()) or ())
+                if getattr(model_config, "model_type", None) == "gemma3_text"
+                else ()
+            )
+
         def resolve(value: int) -> int:
             result = layer_count + value if value < 0 else value
             if result < 0 or result >= layer_count:
                 raise ValueError(f"Layer {value} is outside a {layer_count}-layer model.")
             return result
 
-        routing = resolve(self.routing_layer)
-        consumption = tuple(sorted({resolve(layer) for layer in self.consumption_layers}))
+        if not layer_types:
+            routing = resolve(self.routing_layer)
+            consumption = tuple(sorted({resolve(layer) for layer in self.consumption_layers}))
+            return routing, consumption
+
+        global_layers = tuple(
+            index for index, layer_type in enumerate(layer_types)
+            if layer_type == "full_attention"
+        )
+        if not global_layers:
+            raise ValueError("Gemma 3 exposes no native full-attention layers.")
+        routing = (
+            global_layers[-1]
+            if self.routing_layer == -1
+            else resolve(self.routing_layer)
+        )
+        if routing not in global_layers:
+            raise ValueError(
+                f"Gemma 3 routing layer {routing} is sliding attention; "
+                f"choose one of the native global layers {global_layers}."
+            )
+        if self.consumption_layers == _DEFAULT_CONSUMPTION_LAYERS:
+            requested = tuple(range(max(0, layer_count - 8), layer_count))
+            consumption = tuple(layer for layer in requested if layer in global_layers)
+            if not consumption:
+                consumption = (global_layers[-1],)
+        else:
+            requested = tuple(sorted({resolve(layer) for layer in self.consumption_layers}))
+            local = tuple(layer for layer in requested if layer not in global_layers)
+            if local:
+                raise ValueError(
+                    f"Gemma 3 PRA consumption layers {local} are sliding attention; "
+                    f"choose native global layers from {global_layers}."
+                )
+            consumption = requested
         return routing, consumption
 
-    def to_internal(self, layer_count: int) -> PRAHFConfig:
+    def to_internal(self, model_config_or_layer_count) -> PRAHFConfig:
         """Translate stable product fields into the shared research-core config."""
-        routing, consumption = self.resolved_layers(layer_count)
+        routing, consumption = self.resolved_layers(model_config_or_layer_count)
         layers = tuple(sorted({routing, *consumption}))
         return PRAHFConfig(
             layer_ids=layers,

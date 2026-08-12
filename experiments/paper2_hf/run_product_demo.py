@@ -58,8 +58,8 @@ def run(args) -> dict:
     device = torch.device(args.device)
     dtype = torch.float16 if device.type == "cuda" else torch.float32
     config = PRAConfig(
-        routing_layer=-1,
-        consumption_layers=tuple(range(-8, 0)),
+        routing_layer=args.routing_layer,
+        consumption_layers=args.consumption_layers,
         chunk_tokens=32,
         selected_fraction=0.20,
         max_direct_context=128,
@@ -206,13 +206,18 @@ def run(args) -> dict:
         for subset in [[row for row in rows if dataset == "combined" or row["dataset"] == dataset]]
     }
     result = {
-        "protocol": "public PRAForCausalLM API; one-shot route; final-eight-layer native-KV consumption",
+        "protocol": (
+            "public PRAForCausalLM API; one-shot route; native-scope-preserving "
+            "late-layer K/V consumption"
+        ),
         "model": args.model,
         "revision": args.revision,
         "router": str(args.router),
         "device": str(device),
         "dtype": str(dtype),
         "config": config.to_dict(),
+        "resolved_routing_layer": pra.routing_layer,
+        "resolved_consumption_layers": list(pra.consumption_layers),
         "aggregates": aggregates,
         "rows": rows,
     }
@@ -227,11 +232,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--revision", required=True)
     parser.add_argument("--router", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--routing-layer", type=int, default=-1)
+    parser.add_argument("--consumption-layers", default="-8,-7,-6,-5,-4,-3,-2,-1")
     parser.add_argument("--examples-per-dataset", type=int, default=2)
     parser.add_argument("--max-new-tokens", type=int, default=16)
     parser.add_argument("--cache-dir", type=Path, default=ROOT / "data" / ".hf_cache")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.consumption_layers = tuple(
+        int(value) for value in args.consumption_layers.split(",") if value.strip()
+    )
+    return args
 
 
 if __name__ == "__main__":

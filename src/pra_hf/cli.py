@@ -35,12 +35,13 @@ def inspect(model: str) -> None:
         {
             "model": model,
             "family": family,
-            "supported": family in {"qwen2", "qwen3", "llama"},
+            "supported": family in {"qwen2", "qwen3", "llama", "gemma3_text"},
             "layers": getattr(config, "num_hidden_layers", None),
             "hidden_size": getattr(config, "hidden_size", None),
             "attention_heads": getattr(config, "num_attention_heads", None),
             "kv_heads": getattr(config, "num_key_value_heads", None),
             "max_positions": getattr(config, "max_position_embeddings", None),
+            "attention_pattern": getattr(config, "layer_types", None),
         }
     )
 
@@ -62,7 +63,7 @@ def router_inspect(directory: Path) -> None:
 @click.option("--validation-features", required=True, multiple=True, type=click.Path(exists=True, path_type=Path))
 @click.option("--output", required=True, type=click.Path(path_type=Path))
 @click.option("--base-model", required=True)
-@click.option("--model-family", required=True, type=click.Choice(["qwen", "llama"]))
+@click.option("--model-family", required=True, type=click.Choice(["qwen", "llama", "gemma3"]))
 @click.option("--dataset", "datasets", multiple=True, default=("QASPER",), show_default=True)
 @click.option("--routing-dim", default=128, show_default=True)
 @click.option("--steps", default=512, show_default=True)

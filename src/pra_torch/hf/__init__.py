@@ -19,6 +19,7 @@ from .late_band_lora import (
     PRAHFConditionalOutputLoRABank,
 )
 from .llama import LlamaPRAAttentionAdapter
+from .gemma3 import Gemma3PRAAttentionAdapter, gemma3_global_layer_ids
 from .query import (
     QUERY_EXPONENTIAL,
     QUERY_LAST,
@@ -50,6 +51,8 @@ __all__ = [
     "PRAHFConditionalOutputLoRA",
     "PRAHFConditionalOutputLoRABank",
     "LlamaPRAAttentionAdapter",
+    "Gemma3PRAAttentionAdapter",
+    "gemma3_global_layer_ids",
     "QUERY_EXPONENTIAL",
     "QUERY_LAST",
     "QUERY_LINEAR",

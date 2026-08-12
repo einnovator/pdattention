@@ -1,5 +1,31 @@
 # Paper 2 Hugging Face Experiments
 
+## Gemma 3 1B portability validation
+
+The Gemma runner pins the official `google/gemma-3-1b-it` checkpoint and tokenizer to revision
+`dcc83ea841ab6100d6b47a070329e1ba4cf78752`:
+
+```powershell
+python -m experiments.paper2_hf.gemma.run_gemma3_1b
+```
+
+Gemma's host schedule is part of the adapter contract. Its local sliding-window layers remain
+untouched; PRA routing and native-K/V consumption use only the late native-global layers. The
+runner audits the physical schedule, native one-head MQA K/V, global and local RoPE settings,
+hybrid cache, exact disabled logits/hidden states/generation/cache, explicit references,
+bounded `#__head`, causal masking, and zero native-limit violations before training anything.
+It then reuses the matched 24/8/16-per-dataset feature protocol and five seeds
+`11,23,37,53,71` for the frozen 128-D router, public API demo, and compact causal probe.
+
+The repository is manually gated. Logging in is necessary but not sufficient: accept Google's
+Gemma usage terms for this exact repository first. A failed check writes
+`docs/papers/shared/results/paper2_hf/gemma3_1b/access_status.json` and never substitutes Gemma 2,
+another size, or a community conversion. Run only the correctness gate after access is granted:
+
+```powershell
+python -m experiments.paper2_hf.gemma.run_gemma3_1b --parity-only
+```
+
 ## Meta Llama 3.2-1B validation
 
 The pre-freeze Meta checkpoint gate is one resumable command:

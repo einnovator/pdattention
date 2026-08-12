@@ -14,7 +14,7 @@
 \setlength{\emergencystretch}{3em}
 
 \title{Progressive Retrieval Attention for Pretrained Transformers:\
-Sparse Native-K/V Memory for Qwen and Llama-Family Decoders}
+Sparse Native-K/V Memory Across Qwen, Llama, and Gemma Decoders}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Progressive Retrieval Attention for Pretrained Transformers},pdfauthor={Jorge Simao}}
@@ -26,9 +26,11 @@ Sparse Native-K/V Memory for Qwen and Llama-Family Decoders}
 Dense long-context attention couples logical memory size to the key/value (K/V) state active in
 every transformer operation. PRA-HF separates these quantities. It encodes references in
 model-safe blocks, searches a compact semantic index, and materializes only selected
-layer-native K/V under a fixed attention budget. Thin Qwen and Llama-family adapters preserve
+layer-native K/V under a fixed attention budget. Thin Qwen, Llama-family, and Gemma~3 adapters preserve
 the host model's rotary, grouped-query, mask, cache, and output-projection semantics; when PRA is
-disabled, logits, hidden states, and greedy outputs are exactly unchanged.
+disabled, logits, hidden states, and greedy outputs are exactly unchanged in the measured Qwen and
+Llama paths and in architecture-faithful Gemma offline gates. Gemma's local sliding-window layers
+remain native; PRA is admitted only at its periodic global-attention layers.
 
 The central empirical principle is to \emph{route semantic state and attend native positional
 state}. Contextual hidden states provide the routing index, while selected tokens return as the
@@ -56,7 +58,7 @@ active context and restores only selected native K/V.
 Paper~1 showed in controlled models that logical memory and active attention can be separated.
 Paper~1.5 established the positional contract for sources encoded in bounded blocks. This paper
 asks whether the same mechanism can be retrofitted into pretrained Hugging Face decoders without
-changing their native attention semantics. That requirement is strict. Qwen and Llama-family
+changing their native attention semantics. That requirement is strict. Qwen, Llama-family, and Gemma
 decoders differ in projection details, RoPE helpers, grouped-query layout, masks, cache protocols,
 and output paths. An adapter can produce plausible text while violating one of these contracts.
 
@@ -258,6 +260,24 @@ The Qwen adapter has 272 physical lines (248 nonblank, non-comment lines). It in
 no learned parameter. Its family-specific branches distinguish Qwen2-style projections from
 Qwen3's Q/K normalization; routing, budgeting, materialization, residency, and metrics remain
 outside the file. This is a portability measurement, not a code-minimization target.
+
+The Gemma adapter is narrower. It reuses the same projection and capture path but rejects any
+layer whose native \texttt{is\_sliding} flag is true. The wrapper republishes this metadata because
+\texttt{Gemma3DecoderLayer} chooses local versus global rotary embeddings before calling its
+attention child. Local layers therefore retain their 512-token window, local RoPE base, mask,
+and hybrid-cache behavior. At global layers, the adapter invokes Gemma's installed eager kernel
+with its attention-logit soft cap and leaves the native one-head MQA payload unexpanded in storage.
+No Gemma branch was added to routing, budgeting, materialization, or reference publication.
+
+The exact target is \texttt{google/gemma-3-1b-it} at revision
+\texttt{dcc83ea841ab6100d6b47a070329e1ba\allowbreak4cf78752}. Its documented contract is 26 layers,
+four query heads, one K/V head, width 256 per head, and a five-local/one-global periodic schedule;
+global layers are 5, 11, 17, and 23 under zero-based indexing. Offline tests instantiate
+Transformers' real Gemma~3 classes with the same hybrid semantics and require bit-exact disabled
+logits, hidden states, greedy tokens, and every cache tensor. The official checkpoint evaluation
+is not reported: the authenticated account still receives HTTP~403 until its separate Gemma
+license request is granted. This access state is retained as an artifact rather than hidden by a
+replacement checkpoint.
 
 \subsection{Qwen native semantics}
 
@@ -597,14 +617,17 @@ evidence-identity recall, not the any-evidence metric above.
 annotated identities recovered, not the any-evidence metric in Table~\ref{tab:recall-sparsity-main}.
 Values are mean $\pm$ sample standard deviation where shown.}
 \label{tab:cross-family-main}
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{lrrrrr}
 \toprule
 Family & Identity R@5\% & Identity R@10\% & Identity R@20\% & Identity R@30\% & AUC$_{0:30}$ \\
 \midrule
 Qwen3-0.6B & 0.293 & 0.362 & $0.454\pm0.007$ & 0.532 & 0.396 \\
 SmolLM2-135M & 0.243 & 0.334 & $0.447\pm0.051$ & 0.532 & 0.371 \\
+Gemma3-1B-IT (gated) & -- & -- & -- & -- & -- \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 \begin{figure}[htbp]
@@ -620,7 +643,11 @@ The means at 20--30\% are close, but Qwen is more stable and has the stronger sp
 supports software and tensor-contract portability, not universal transfer of routing quality.
 The official Meta Llama 3.2-1B checkpoint remains an unmeasured target because its manually gated
 repository returned HTTP 401 in the available environment. No SmolLM2 number is presented as a
-Meta Llama result.
+Meta Llama result. Gemma~3 is likewise not assigned a numerical result: its thin adapter,
+global-only placement policy, exact offline gates, public configuration, CLI surface, and pinned
+runner are complete, but the official repository returned HTTP~403 after authentication. The
+three-family software boundary is implemented; the third-family empirical portability claim
+remains pending checkpoint access.
 
 \section{Causal Use Is Depth Dependent}
 \label{sec:oracle-memory-use}
@@ -1141,7 +1168,7 @@ concurrency study.
 The public implementation makes the tested boundary reusable. It preserves native GQA storage
 rather than permanently expanding K/V heads, reports both requested and actual materialization,
 and permits exact disabled-path testing for a new family. The release includes examples, router
-save/load artifacts, package and CLI tests, and 275 passing repository tests at the pinned
+save/load artifacts, package and CLI tests, and 281 passing repository tests at the pinned
 revision. The thin Llama adapter resolves installed rotary and eager-attention functions while
 the shared core retains publication, routing, budgeting, and replay. Full code-level guidance
 appears in Appendix~\ref{app:adapter-guide}.
@@ -1172,8 +1199,11 @@ conditions at a selected late band.
 The systems result is bounded execution, not serving speed. Detail K/V remains CPU-resident,
 search is eager and exact, and selected rows are padded. Fused attention, approximate indexing,
 asynchronous transfer, batching, concurrency, and a matched dense long-context baseline remain
-unmeasured. Meta Llama 3.2-1B is also pending because checkpoint access returned HTTP 401;
-SmolLM2-135M is reported only as a measured Llama-family control.
+unmeasured. Meta Llama 3.2-1B is pending because checkpoint access returned HTTP 401;
+SmolLM2-135M is reported only as a measured Llama-family control. Gemma~3 1B is also pending:
+the exact official revision resolves in Hub metadata, but file access returns HTTP 403 until the
+authenticated account is admitted under the Gemma license. Offline parity cannot substitute for
+pretrained-checkpoint routing, memory economics, systems measurements, or causal-use results.
 
 The next Paper~2 experiment is a larger checkpoint-solvable generation cohort at the late-band
 operating point. Recursive multi-hop gathering belongs to Paper~2.5. Multi-gist strategy,
@@ -1198,8 +1228,11 @@ inserted beneath an existing pretrained family without changing its disabled beh
 PRA-HF retrofits pretrained Hugging Face decoders with external native-K/V memory while preserving
 their ordinary behavior exactly when disabled. References are encoded in model-safe blocks,
 detail K/V may remain off the active path, and a compact index selects whole chunks for bounded
-native attention. The shared core works through thin Qwen and Llama-family adapters without
-checkpoint conversion.
+native attention. The shared core works through thin Qwen, Llama-family, and Gemma~3 adapters
+without checkpoint conversion. Gemma adds an important scope constraint: native local/global
+structure is a prior for where external memory may enter, so local sliding layers remain untouched
+and only global layers are eligible. The official Gemma checkpoint result remains access-gated and
+is not folded into the measured cross-family claims.
 
 The architectural result is to route semantic state and attend native positional state.
 Hidden-state gists avoid the positional bias of post-RoPE key means, while selection still returns
@@ -1537,6 +1570,45 @@ thin caller of the same API; it does not maintain a second execution path. Produ
 save/load and freezing, add/remove/clear, fraction routing, generation, statistics, and the rule
 that a router cannot change after gists have been indexed.
 
+\subsection{Gemma 3 hybrid-attention port}
+
+Gemma requires one additional decision before the ordinary family hooks: determine whether a
+layer is eligible at all. The helper in \texttt{hf/gemma3.py}, lines 8--17, reads the checkpoint's
+\texttt{layer\_types} schedule and returns only \texttt{full\_attention} indices. The adapter
+constructor at lines 34--60 rejects \texttt{is\_sliding} modules and republishes
+\texttt{is\_sliding=False} on the wrapper. This second assignment is necessary because the parent
+decoder layer inspects the child before selecting its global or local rotary embedding. Omitting
+it can silently send a global layer through local positional geometry even if the K/V tensors
+have plausible shapes.
+
+Projection, per-head Q/K RMS normalization, native RoPE, cache update, and output projection are
+inherited from the already tested family-neutral path. Lines 63--71 then assert the concrete
+$[B,H_q,T,d_h]$ query and $[B,H_{kv},T,d_h]$ payload layout. For Gemma~3 1B,
+$H_q=4$, $H_{kv}=1$, and $d_h=256$. Lines 73--91 call the installed Gemma eager function with
+the checkpoint's scaling and logit soft cap, explicitly setting no sliding window because this
+adapter can exist only at a native global layer. K/V head repetition, if needed by the attention
+calculation, remains inside that native kernel; cached reference payloads stay one-head MQA.
+The injector's only family-specific addition is the concrete-class selection at
+\texttt{hf/injection.py}, lines 488--499.
+
+The product layer independently enforces the same boundary. \texttt{pra\_hf/config.py}, lines
+65--120, maps the default final layer to Gemma's final global layer, intersects the default late
+band with the global schedule, and rejects explicit local-layer requests. This duplication is a
+public validation boundary, not a second implementation of attention. The pinned runner at
+\texttt{experiments/paper2\_hf/gemma/run\_gemma3\_1b.py}, lines 120--153, audits the physical
+schedule, heads, RoPE bases, normalization, cache, and masks before injection. Lines 156--354
+then gate exact disabled tensors, unchanged local module classes, native post-RoPE CPU K/V,
+continued source positions, causal-prefix invariance, finite enabled output, and bounded
+\texttt{\#\_\_head}. Only after those checks does the orchestration at lines 415--505 create
+features, train five 128-dimensional routers, exercise the public API, and run one causal probe.
+
+The offline suite in \texttt{tests/test\_hf\_gemma3\_integration.py}, lines 90--260, uses
+Transformers' actual Gemma classes rather than a mock attention module. It pins six independent
+contracts: exact hybrid-cache parity; untouched local layers; rejection of invalid placement;
+native global RoPE and Q/K normalization; one-head post-RoPE reference K/V; and bounded product
+API plus runner behavior. These tests are necessary but deliberately not reported as pretrained
+Gemma quality evidence.
+
 \subsection{Memory calibration path}
 
 The calibration code preserves the same ownership boundary. The registered scalar bank in
@@ -1608,6 +1680,7 @@ the earlier gate, residual, and late-LoRA artifacts; lines 670--891 execute the 
 Tests in \texttt{test\_hf\_lm\_head\_control.py}, lines 9--37, pin zero-initialized LoRA
 equality, factor-only ownership, and exact-but-untied full-head cloning.
 
+\clearpage
 \subsection{Revision-pinned source map}
 
 Table~\ref{tab:code-map} connects the preceding control flow to the implementation.
@@ -1624,6 +1697,8 @@ Responsibility & File and physical lines \\
 Abstract family boundary & \texttt{src/pra\_torch/hf/adapter\_base.py}, 16--106 \\
 Qwen projections, RoPE, native kernel, and output & \texttt{src/pra\_torch/hf/qwen.py}, 53--110 \\
 Llama native-symbol binding and eager invocation & \texttt{src/pra\_torch/hf/llama.py}, 8--48 \\
+Gemma global-layer policy, native MQA, and eager invocation &
+\texttt{src/pra\_torch/hf/gemma3.py}, 8--91 \\
 Matched routing/detail capture & \texttt{src/pra\_torch/hf/qwen.py}, 109--148;
 \texttt{src/pra\_torch/hf/injection.py}, 80--210 \\
 Disabled and active runtime paths & \texttt{src/pra\_torch/hf/qwen.py}, 171--275 \\
@@ -1648,6 +1723,9 @@ Stable config, router artifact, and public API & \texttt{src/pra\_hf/config.py},
 \texttt{src/pra\_hf/router.py}, 14--110; \texttt{src/pra\_hf/model.py}, 42--358 \\
 Llama and product-facing gates & \texttt{tests/test\_hf\_llama\_integration.py}, 51--153;
 \texttt{tests/test\_pra\_hf\_api.py}, 66--132 \\
+Gemma hybrid-attention and pinned-runner gates &
+\texttt{tests/test\_hf\_gemma3\_integration.py}, 90--260;
+\texttt{experiments/paper2\_hf/gemma/run\_gemma3\_1b.py}, 120--505 \\
 \bottomrule
 \end{tabularx}
 \end{table}

@@ -156,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--base-model", required=True)
     parser.add_argument("--base-model-revision", required=True)
-    parser.add_argument("--model-family", choices=("qwen", "llama"), required=True)
+    parser.add_argument("--model-family", choices=("qwen", "llama", "gemma3"), required=True)
     parser.add_argument("--routing-layer", type=int, required=True)
     parser.add_argument("--chunk-tokens", type=int, default=32)
     parser.add_argument("--routing-dim", type=int, default=128)
