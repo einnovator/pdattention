@@ -218,6 +218,8 @@ def _train_variant(
     learning_rate: float,
     device: torch.device,
     checkpoint: Path,
+    *,
+    optimizer_foreach: bool | None = None,
 ) -> tuple[dict, int]:
     """Optimize oracle-memory likelihood with exclusive conditional ownership."""
     _freeze_backbone(handle)
@@ -243,7 +245,12 @@ def _train_variant(
     if variant.lora_rank and not any("pra_late_band_lora" in name for name in names):
         raise RuntimeError("LoRA parameters are absent from a LoRA variant.")
 
-    optimizer = torch.optim.AdamW(parameters, lr=learning_rate, weight_decay=0.0)
+    optimizer = torch.optim.AdamW(
+        parameters,
+        lr=learning_rate,
+        weight_decay=0.0,
+        foreach=optimizer_foreach,
+    )
     order = list(range(len(records)))
     random.Random(seed).shuffle(order)
     losses = []
@@ -271,6 +278,7 @@ def _train_variant(
         "trainable_parameters": sum(parameter.numel() for parameter in parameters),
         "steps": steps,
         "learning_rate": learning_rate,
+        "optimizer_foreach": optimizer_foreach,
         "training_seconds": time.perf_counter() - started,
         "initial_loss_mean": statistics.fmean(losses[: min(len(losses), len(records))]),
         "final_loss_mean": statistics.fmean(losses[-min(len(losses), len(records)) :]),

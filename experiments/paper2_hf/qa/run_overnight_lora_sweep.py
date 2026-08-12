@@ -279,6 +279,7 @@ def _run_candidate(
         config.learning_rate,
         device,
         _checkpoint_path(args.output_dir, config, seed),
+        optimizer_foreach=False,
     )
     report.update(
         {
@@ -801,6 +802,7 @@ def run(args) -> dict[str, Any]:
             combo.learning_rate,
             device,
             args.output_dir / "checkpoints" / f"{combo_variant.name}_seed{seed}.pt",
+            optimizer_foreach=False,
         )
         report.update(
             {
