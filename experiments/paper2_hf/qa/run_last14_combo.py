@@ -281,17 +281,36 @@ def _train_variant(
 
 
 @torch.no_grad()
-def _score_prompt(handle, tokenizer, prompt_ids, prompt_mask, answer_ids, device, new_tokens):
+def _score_prompt(
+    handle,
+    tokenizer,
+    prompt_ids,
+    prompt_mask,
+    answer_ids,
+    device,
+    new_tokens,
+    *,
+    generate: bool = True,
+):
     started = time.perf_counter()
     _, metrics = _compact_gold_scores(handle, prompt_ids, prompt_mask, answer_ids, device)
     _sync(device)
     teacher_seconds = time.perf_counter() - started
-    prediction, generation_seconds = _generate(
-        handle, tokenizer, prompt_ids, prompt_mask, device, new_tokens
-    )
+    if generate:
+        prediction, generation_seconds = _generate(
+            handle, tokenizer, prompt_ids, prompt_mask, device, new_tokens
+        )
+        generation_metrics = answer_metrics(
+            prediction,
+            tokenizer.decode(answer_ids[0], skip_special_tokens=True),
+        )
+    else:
+        prediction = ""
+        generation_seconds = 0.0
+        generation_metrics = {"f1": None, "em": None}
     return {
         **metrics,
-        **answer_metrics(prediction, tokenizer.decode(answer_ids[0], skip_special_tokens=True)),
+        **generation_metrics,
         "generated_answer": prediction,
         "teacher_forced_seconds": teacher_seconds,
         "generation_seconds": generation_seconds,
@@ -299,7 +318,16 @@ def _score_prompt(handle, tokenizer, prompt_ids, prompt_mask, answer_ids, device
 
 
 @torch.no_grad()
-def _context_controls(handle, tokenizer, records, layers, new_tokens, device):
+def _context_controls(
+    handle,
+    tokenizer,
+    records,
+    layers,
+    new_tokens,
+    device,
+    *,
+    generate: bool = True,
+):
     """Measure seed-independent no-context, direct-text, and feasible full-context controls."""
     controls = {}
     rows = []
@@ -322,6 +350,7 @@ def _context_controls(handle, tokenizer, records, layers, new_tokens, device):
                 record["answer_ids"],
                 device,
                 new_tokens,
+                generate=generate,
             )
             per_example[condition] = metrics
             rows.append(
@@ -392,6 +421,7 @@ def _evaluate_memory(
     router_parameters,
     checkpoint_bytes,
     recovery_epsilon,
+    generate=True,
 ):
     """Evaluate oracle and routed memory with matched economics and recovery ratios."""
     rows = []
@@ -411,6 +441,7 @@ def _evaluate_memory(
                 record["answer_ids"],
                 device,
                 new_tokens,
+                generate=generate,
             )
             diagnostics = handle.diagnostics_by_layer()
             selected = handle.adapters[route_layer].last_selected_chunks[0]

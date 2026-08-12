@@ -321,6 +321,7 @@ def _run_candidate(
         router_parameters,
         checkpoint_bytes,
         args.recovery_epsilon,
+        generate=False,
     )
     return report, rows
 
@@ -645,12 +646,27 @@ def run(args) -> dict[str, Any]:
     )
     _configure_variant(handle, Variant("fixed"), reset=True)
     validation_controls, validation_control_rows = _context_controls(
-        handle, tokenizer, validation_records, layers, args.new_tokens, device
+        handle,
+        tokenizer,
+        validation_records,
+        layers,
+        args.new_tokens,
+        device,
+        generate=False,
     )
     reference_record = validation_records[0]
+    _configure_variant(handle, Variant("fixed"), reset=True)
+    _, off_generation = _generate(
+        handle,
+        tokenizer,
+        reference_record["prompt_ids"],
+        reference_record["prompt_mask"],
+        device,
+        args.new_tokens,
+    )
     off_reference = {
         "metrics": validation_controls[reference_record["example"]["id"]]["none"],
-        "generation": validation_controls[reference_record["example"]["id"]]["none"]["generated_answer"],
+        "generation": off_generation,
     }
 
     training_reports: list[dict[str, Any]] = []
@@ -822,6 +838,7 @@ def run(args) -> dict[str, Any]:
                 router_parameters,
                 checkpoint_bytes,
                 args.recovery_epsilon,
+                generate=False,
             )
         )
         print(f"combo validation seed={seed}", flush=True)

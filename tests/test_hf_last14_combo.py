@@ -4,10 +4,45 @@ import pytest
 
 from experiments.paper2_hf.qa.run_last14_combo import (
     _aggregates,
+    _score_prompt,
     _valid_ratio,
     last_band_layers,
     variant_from_name,
 )
+
+
+def test_screen_score_can_skip_generation(monkeypatch):
+    import torch
+
+    class Handle:
+        pass
+
+    def compact(*args, **kwargs):
+        return torch.tensor(0.0), {
+            "gold_sequence_logprob": -1.0,
+            "gold_mean_token_logprob": -0.5,
+            "gold_first_token_probability": 0.25,
+            "gold_first_token_rank": 3,
+            "gold_first_token_margin": -1.5,
+        }
+
+    monkeypatch.setattr(
+        "experiments.paper2_hf.qa.run_last14_combo._compact_gold_scores", compact
+    )
+    result = _score_prompt(
+        Handle(),
+        object(),
+        torch.ones(1, 2, dtype=torch.long),
+        torch.ones(1, 2, dtype=torch.long),
+        torch.ones(1, 1, dtype=torch.long),
+        torch.device("cpu"),
+        8,
+        generate=False,
+    )
+    assert result["generated_answer"] == ""
+    assert result["generation_seconds"] == 0.0
+    assert result["f1"] is None
+    assert result["em"] is None
 
 
 def test_last14_layer_band_is_exact_and_validated():
