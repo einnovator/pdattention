@@ -1,5 +1,33 @@
 # Paper 2 Hugging Face Experiments
 
+## Meta Llama 3.2-1B validation
+
+The pre-freeze Meta checkpoint gate is one resumable command:
+
+```powershell
+python -m experiments.paper2_hf.llama.run_llama32_1b
+```
+
+It pins `meta-llama/Llama-3.2-1B` at revision
+`4e20de362430cd3b72f300e6b0f18e50e7166e08`. Before any quality experiment it
+requires exact disabled-PRA logits, hidden states, greedy generation, and every
+native cache tensor; native GQA/post-RoPE reference K/V; CPU residency without
+permanent KV-head expansion; bounded explicit references; `#__head` rollover;
+finite enabled output; and zero native-limit violations. Once those gates pass,
+the runner precomputes the same 24/8/16-per-dataset train/validation/test feature
+split, trains five frozen-backbone 128-D routers, runs the public product API,
+and executes the no-memory/routed/oracle/direct-evidence causal probe.
+
+The official repository is manually gated. Accept the Meta Llama 3.2 license
+for the account, authenticate with `hf auth login`, and rerun. A failed access
+check writes `docs/papers/shared/results/paper2_hf/llama32_1b/access_status.json`
+and exits before loading a substitute checkpoint. To run only the correctness
+gate after authentication:
+
+```powershell
+python -m experiments.paper2_hf.llama.run_llama32_1b --parity-only
+```
+
 Paper 2 uses one shared PRA routing/materialization core beneath thin family adapters. The
 first milestone is intentionally limited to Qwen, eager attention, one upper PRA layer, and
 the frozen `Qwen/Qwen3-0.6B` checkpoint at revision

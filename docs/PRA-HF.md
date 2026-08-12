@@ -54,6 +54,19 @@ The release routers target:
 | `qwen3-0.6b-qasper-d128` | `Qwen/Qwen3-0.6B` | 262,144 | QASPER |
 | `smollm2-135m-qasper-d128` | `HuggingFaceTB/SmolLM2-135M` | 147,456 | QASPER |
 
+Meta Llama 3.2-1B uses the same thin Llama adapter, but its official weights are
+license-gated and are not redistributed by PRA-HF. Paper 2's pinned validation
+runner is:
+
+```powershell
+hf auth login
+python -m experiments.paper2_hf.llama.run_llama32_1b
+```
+
+The runner refuses to substitute another Llama-family checkpoint. A distributable
+Meta router is published only after the official checkpoint passes exact parity,
+native GQA/RoPE, bounded-reference, five-seed routing, systems, and causal-use gates.
+
 Router directories contain `adapter_model.pt`, `config.json`, and a model card.
 They never contain base-model weights.
 

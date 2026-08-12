@@ -1,4 +1,4 @@
-"""Test whether frozen Qwen uses correct native-K/V evidence once supplied.
+"""Test whether a frozen supported HF model uses native-K/V evidence once supplied.
 
 The experiment separates selection from use. Learned routing, evidence-oracle
 routing, and layer-depth controls all enter the same fixed-selection boundary;
@@ -32,6 +32,7 @@ from experiments.paper2_hf.qwen.run_first_night import MODEL_ID, MODEL_REVISION
 from experiments.paper2_hf.routing.run_query_strategies import load_split_examples
 from pra_torch.hf import PRAHFConfig, inject_pra, load_hf_routing_projection
 from pra_torch.memory import SelectedChunk
+from pra_hf import PRARouter
 
 
 @dataclass(frozen=True)
@@ -67,12 +68,24 @@ def _prompt(
         context_marker = f"Context:\n{context}"
         content += f"\n{context_marker}"
     content += f"\nQuestion: {question}"
-    rendered = tokenizer.apply_chat_template(
-        [{"role": "user", "content": content}],
-        tokenize=False,
-        add_generation_prompt=True,
-        enable_thinking=False,
-    )
+    if getattr(tokenizer, "chat_template", None):
+        template_args = {
+            "tokenize": False,
+            "add_generation_prompt": True,
+        }
+        try:
+            rendered = tokenizer.apply_chat_template(
+                [{"role": "user", "content": content}],
+                enable_thinking=False,
+                **template_args,
+            )
+        except TypeError:
+            # Llama templates do not expose Qwen's optional thinking switch.
+            rendered = tokenizer.apply_chat_template(
+                [{"role": "user", "content": content}], **template_args
+            )
+    else:
+        rendered = content
     previous = tokenizer.truncation_side
     tokenizer.truncation_side = "left"
     encoded = tokenizer(
@@ -304,6 +317,43 @@ def _generate(handle, tokenizer, prompt_ids, prompt_mask, device, new_tokens) ->
     )
 
 
+@torch.no_grad()
+def _route_once(handle, tokenizer, question, route_layer, prompt_tokens, device) -> dict:
+    """Select parent identities once at one layer for native-K/V replay elsewhere."""
+    prompt_ids, prompt_mask, _ = _prompt(
+        tokenizer, question, max_tokens=prompt_tokens
+    )
+    prompt_ids = prompt_ids.to(device)
+    prompt_mask = prompt_mask.to(device)
+    positions = torch.arange(prompt_ids.shape[1], device=device).unsqueeze(0)
+    adapter = handle.adapters[route_layer]
+    handle.configure_memory_layers(set())
+    adapter.begin_capture(positions)
+    _synchronize(device)
+    query_started = time.perf_counter()
+    handle.model(
+        input_ids=prompt_ids,
+        attention_mask=prompt_mask,
+        position_ids=positions,
+        use_cache=False,
+    )
+    _synchronize(device)
+    captured = adapter.consume_capture()
+    query = adapter._routing_query_states(
+        captured.hidden_states, captured.pre_query, captured.post_query
+    )
+    routing_started = time.perf_counter()
+    selected, rankings = adapter.pra_core.route_memory(query)
+    _synchronize(device)
+    return {
+        "selected": selected,
+        "rankings": rankings,
+        "query_encoding_seconds": routing_started - query_started,
+        "routing_seconds": time.perf_counter() - routing_started,
+        "routing_layer": route_layer,
+    }
+
+
 def _hidden_deltas(signatures, baseline) -> list[dict]:
     rows = []
     for layer, (current, reference) in enumerate(zip(signatures, baseline)):
@@ -323,6 +373,18 @@ def _hidden_deltas(signatures, baseline) -> list[dict]:
 def _condition_rows(handle, tokenizer, example, entry, evidence_spans, conditions, args, device):
     rows = []
     baseline_hidden = None
+    routed = (
+        _route_once(
+            handle,
+            tokenizer,
+            example["question"],
+            max(handle.adapters),
+            args.prompt_tokens,
+            device,
+        )
+        if any(condition.kind == "router" for condition in conditions)
+        else None
+    )
     oracle_by_layer = {
         layer: [_oracle_selections(entry, layer, evidence_spans)]
         for layer in handle.adapters
@@ -336,11 +398,16 @@ def _condition_rows(handle, tokenizer, example, entry, evidence_spans, condition
             max_tokens=args.direct_text_tokens if context else args.prompt_tokens,
         )
         answer_ids = _answer_ids(tokenizer, example["answer"])
-        fixed = (
-            {layer: oracle_by_layer[layer] for layer in condition.layers}
-            if condition.kind == "oracle"
-            else None
-        )
+        if condition.kind == "oracle":
+            fixed = {layer: oracle_by_layer[layer] for layer in condition.layers}
+        elif condition.kind == "router":
+            if routed is None:
+                raise RuntimeError("Learned routing requires a route-once result.")
+            fixed = handle.map_chunk_identities_to_layers(
+                routed["selected"], condition.layers
+            )
+        else:
+            fixed = None
         handle.configure_memory_layers(set(condition.layers), fixed_selections=fixed)
         scored, hidden = _teacher_forced(
             handle,
@@ -415,6 +482,21 @@ def _condition_rows(handle, tokenizer, example, entry, evidence_spans, condition
                 "evidence_guaranteed": evidence_guaranteed,
                 "chunks_budget_rejected": budget_rejections,
                 "native_limit_violations": handle.native_limit_violations,
+                "route_once_query_encoding_seconds": (
+                    routed["query_encoding_seconds"]
+                    if routed is not None and condition.kind == "router"
+                    else 0.0
+                ),
+                "route_once_routing_seconds": (
+                    routed["routing_seconds"]
+                    if routed is not None and condition.kind == "router"
+                    else 0.0
+                ),
+                "route_once_routing_layer": (
+                    routed["routing_layer"]
+                    if routed is not None and condition.kind == "router"
+                    else None
+                ),
                 "memory_attention_mass": memory_mass,
                 "evidence_attention_mass": evidence_mass,
                 "selected_by_layer": selected,
@@ -476,6 +558,8 @@ def _aggregate(rows: list[dict]) -> list[dict]:
                             "native_limit_violations",
                             "teacher_forced_seconds",
                             "generation_seconds",
+                            "route_once_query_encoding_seconds",
+                            "route_once_routing_seconds",
                         )
                     },
                 }
@@ -539,21 +623,35 @@ def _plot(aggregates: list[dict], output_dir: Path) -> None:
 def run(args) -> dict:
     device = torch.device(args.device)
     dtype = torch.float16 if device.type == "cuda" else torch.float32
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_id, revision=args.model_revision
+    )
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID,
-        revision=MODEL_REVISION,
+        args.model_id,
+        revision=args.model_revision,
         attn_implementation="eager",
         torch_dtype=dtype,
         low_cpu_mem_usage=True,
     ).to(device).eval()
     for parameter in model.parameters():
         parameter.requires_grad_(False)
-    projection = load_hf_routing_projection(args.checkpoint, device=device)
+    projection = (
+        PRARouter.from_pretrained(args.checkpoint, device=device)
+        if args.checkpoint.is_dir()
+        else load_hf_routing_projection(args.checkpoint, device=device)
+    )
     layer_count = int(model.config.num_hidden_layers)
-    last_four = tuple(range(layer_count - 4, layer_count))
+    last_eight = tuple(range(max(0, layer_count - 8), layer_count))
+    last_four = last_eight[-4:]
+    learned_layers = last_eight[-min(args.learned_depth, len(last_eight)) :]
     early_late = (layer_count // 3, layer_count - 1)
-    injected_layers = tuple(sorted(set((*last_four, *early_late))))
+    requested = set(args.conditions)
+    required_layers = [*last_four, *early_late]
+    if "learned_router" in requested:
+        required_layers.extend(learned_layers)
+    if "oracle_last_8" in requested:
+        required_layers.extend(last_eight)
+    injected_layers = tuple(sorted(set(required_layers)))
     handle = inject_pra(
         model,
         PRAHFConfig(
@@ -576,14 +674,14 @@ def run(args) -> dict:
     )
     conditions = (
         Condition("no_memory", "none"),
-        Condition("learned_router", "router", (layer_count - 1,)),
+        Condition("learned_router", "router", learned_layers),
         Condition("oracle_last_1", "oracle", (layer_count - 1,)),
         Condition("oracle_last_2", "oracle", last_four[-2:]),
         Condition("oracle_last_4", "oracle", last_four),
+        Condition("oracle_last_8", "oracle", last_eight),
         Condition("oracle_early_late", "oracle", early_late),
         Condition("direct_text_oracle", "direct"),
     )
-    requested = set(args.conditions)
     conditions = tuple(condition for condition in conditions if condition.name in requested)
     if "no_memory" not in {condition.name for condition in conditions}:
         raise ValueError("no_memory is required to compute paired deltas.")
@@ -617,9 +715,9 @@ def run(args) -> dict:
     aggregates = _aggregate(rows)
     artifact = {
         "runtime": runtime_metadata(),
-        "protocol": "frozen Qwen causal memory-use intervention; teacher-forced and generated QA",
-        "model_id": MODEL_ID,
-        "model_revision": MODEL_REVISION,
+        "protocol": "frozen HF causal memory-use intervention; teacher-forced and generated QA",
+        "model_id": args.model_id,
+        "model_revision": args.model_revision,
         "checkpoint": str(args.checkpoint.resolve().relative_to(ROOT)),
         "adapter_parameters": projection.parameter_count,
         "seed": args.seed,
@@ -627,6 +725,8 @@ def run(args) -> dict:
         "examples_per_dataset": args.examples_per_dataset,
         "routing_chunk_tokens": 32,
         "top_k_chunks": 3,
+        "routing_policy": "route once at the final layer; replay parent identities with target-layer native K/V",
+        "learned_depth": args.learned_depth,
         "native_context_tokens": args.native_tokens,
         "memory_budget_tokens": args.memory_tokens,
         "injected_layers": list(injected_layers),
@@ -653,6 +753,8 @@ def run(args) -> dict:
 def parse_args() -> argparse.Namespace:
     result_dir = ROOT / "docs" / "papers" / "shared" / "results" / "paper2_hf"
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model-id", default=MODEL_ID)
+    parser.add_argument("--model-revision", default=MODEL_REVISION)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=20260811)
     parser.add_argument("--example-offset", type=int, default=8)
@@ -662,6 +764,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--direct-text-tokens", type=int, default=640)
     parser.add_argument("--native-tokens", type=int, default=640)
     parser.add_argument("--memory-tokens", type=int, default=512)
+    parser.add_argument("--learned-depth", type=int, choices=range(1, 9), default=1)
     parser.add_argument("--cache-dir", type=Path, default=ROOT / "data" / ".hf_cache")
     parser.add_argument(
         "--checkpoint",

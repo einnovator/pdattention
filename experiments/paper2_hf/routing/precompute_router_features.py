@@ -113,7 +113,7 @@ def run(args) -> dict:
     device = torch.device(args.device)
     dtype = torch.float16 if device.type == "cuda" else torch.float32
     tokenizer = AutoTokenizer.from_pretrained(
-        args.model_id, revision=args.model_revision
+        args.model_id, revision=args.tokenizer_revision or args.model_revision
     )
     model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
@@ -196,6 +196,7 @@ def run(args) -> dict:
         "runtime": runtime_metadata(),
         "model_id": args.model_id,
         "model_revision": args.model_revision,
+        "tokenizer_revision": args.tokenizer_revision or args.model_revision,
         "routing_layer": next(iter(handle.adapters)),
         "feature_source": ATTENTION_INPUT_HIDDEN_STATE,
         "feature_width": feature_width,
@@ -228,6 +229,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-id", default="Qwen/Qwen3-0.6B")
     parser.add_argument("--model-revision", default="main")
+    parser.add_argument("--tokenizer-revision")
     parser.add_argument("--routing-layer", type=int, default=-1)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=20260811)

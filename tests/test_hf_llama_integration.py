@@ -10,6 +10,7 @@ import torch
 transformers = pytest.importorskip("transformers")
 from transformers import LlamaConfig, LlamaForCausalLM
 
+from experiments.paper2_hf.llama.run_llama32_1b import validate_loaded_model
 from pra_torch.hf import ATTENTION_INPUT_HIDDEN_STATE, PRAHFConfig, inject_pra
 
 
@@ -22,6 +23,33 @@ def _tiny_llama() -> LlamaForCausalLM:
         num_attention_heads=4,
         num_key_value_heads=2,
         max_position_embeddings=64,
+        attention_dropout=0.0,
+        bos_token_id=1,
+        eos_token_id=66,
+        pad_token_id=0,
+    )
+    config._attn_implementation = "eager"
+    return LlamaForCausalLM(config).eval()
+
+
+def _tiny_llama32_contract() -> LlamaForCausalLM:
+    """Use Llama 3.2's scaled-RoPE contract at an offline-testable width."""
+    config = LlamaConfig(
+        vocab_size=67,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        max_position_embeddings=128,
+        rope_theta=500_000.0,
+        rope_scaling={
+            "rope_type": "llama3",
+            "factor": 4.0,
+            "low_freq_factor": 1.0,
+            "high_freq_factor": 2.0,
+            "original_max_position_embeddings": 32,
+        },
         attention_dropout=0.0,
         bos_token_id=1,
         eos_token_id=66,
@@ -103,3 +131,27 @@ def test_llama_long_prompt_rollover_stays_bounded():
     head = next(entry for entry in handle.cache.all_entries() if entry.uri == "#__head")
     assert head.metadata["source_tokens"] == 8
     assert handle.max_native_operation_tokens <= 64
+
+
+def test_llama32_checkpoint_gate_covers_parity_gqa_rope_and_head_rollover():
+    torch.manual_seed(203)
+    _, report = validate_loaded_model(
+        _tiny_llama32_contract(),
+        torch.tensor([[1, 7, 9, 3, 5]]),
+        torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18] * 3]),
+        torch.tensor([[1, *([21, 22, 23, 24] * 12)]]),
+        native_limit=64,
+        direct_limit=16,
+        encoding_block_tokens=16,
+    )
+
+    assert all(report["disabled_parity"].values())
+    assert report["model_contract"]["query_heads"] == 4
+    assert report["model_contract"]["native_kv_heads"] == 2
+    assert report["native_reference"]["position_state"] == "post_position"
+    assert report["native_reference"]["positions_exact"] is True
+    assert report["native_reference"]["permanently_expanded_to_query_heads"] is False
+    assert report["long_prompt"]["head_reference_count"] == 1
+    assert report["long_prompt"]["head_tokens"] > 0
+    assert report["enabled_path"]["native_limit_violations"] == 0
+    assert report["enabled_path"]["causal_prefix_exact"] is True

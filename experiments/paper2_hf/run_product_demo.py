@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import torch
+from transformers import StoppingCriteria
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -23,6 +24,21 @@ from pra_hf import PRAConfig, PRAForCausalLM
 def _sync(device: torch.device) -> None:
     if device.type == "cuda":
         torch.cuda.synchronize(device)
+
+
+class _FirstTokenClock(StoppingCriteria):
+    """Capture request-to-first-token latency without changing generation."""
+
+    def __init__(self, device: torch.device, started: float) -> None:
+        self.device = device
+        self.started = started
+        self.first_token_seconds: float | None = None
+
+    def __call__(self, input_ids, scores, **kwargs) -> bool:
+        if self.first_token_seconds is None:
+            _sync(self.device)
+            self.first_token_seconds = time.perf_counter() - self.started
+        return False
 
 
 def _mean(rows: list[dict], key: str) -> float:
@@ -90,10 +106,12 @@ def run(args) -> dict:
             torch.cuda.reset_peak_memory_stats(device)
         _sync(device)
         routed_started = time.perf_counter()
+        first_token_clock = _FirstTokenClock(device, routed_started)
         routed = pra.generate(
             prompt,
             max_new_tokens=args.max_new_tokens,
             do_sample=False,
+            stopping_criteria=[first_token_clock],
             return_details=True,
         )
         _sync(device)
@@ -132,6 +150,14 @@ def run(args) -> dict:
                 "routing_seconds": stats["routing_seconds"],
                 "generation_seconds": stats["generation_seconds"],
                 "routed_wall_seconds": routed_wall,
+                "ttft_seconds": first_token_clock.first_token_seconds,
+                "tpot_seconds": (
+                    (routed_wall - float(first_token_clock.first_token_seconds))
+                    / (routed.generated_tokens - 1)
+                    if first_token_clock.first_token_seconds is not None
+                    and routed.generated_tokens > 1
+                    else None
+                ),
                 "generated_tokens": routed.generated_tokens,
                 "tokens_per_second": routed.generated_tokens / max(routed_wall, 1e-12),
                 "transfer_bytes_across_layers": transfer_bytes,
@@ -166,6 +192,8 @@ def run(args) -> dict:
                     "query_encoding_seconds",
                     "routing_seconds",
                     "routed_wall_seconds",
+                    "ttft_seconds",
+                    "tpot_seconds",
                     "tokens_per_second",
                     "routing_index_bytes",
                     "resident_detail_kv_bytes",

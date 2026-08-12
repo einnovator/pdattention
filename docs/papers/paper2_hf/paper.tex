@@ -1247,6 +1247,46 @@ $[1,3,23,64]$ post-RoPE K/V, transfers it without persistent head expansion, and
 memory-attended logits. Offline tiny-model tests independently cover exact disabled parity,
 native-head layout, active memory, and bounded long-prompt rollover.
 
+The expanded checkpoint gate additionally compares every cache key and value tensor exactly,
+not only cache length. We exercised that gate end to end on SmolLM2 as a real-checkpoint control:
+all 30 layers matched, reference chunks retained the native $[1,3,32,64]$ GQA layout on CPU,
+the final eight layers produced finite memory-attended output, and a 384-token logical prompt
+moved 256 tokens into \texttt{\#\_\_head}. The largest native operation was 128 tokens and no
+native-limit violation occurred. This validates the runner and Llama-family contract; it is not
+a measurement on a Meta checkpoint.
+
+\subsection{Meta Llama 3.2-1B pre-freeze gate}
+\label{sec:meta-llama-gate}
+
+Paper~2's remaining checkpoint target is exactly
+\texttt{meta-llama/Llama-3.2-1B} at revision
+\texttt{4e20de362430cd3b72f300e6b0f18e50e7166e08}, with the tokenizer pinned to the same
+revision. Hugging Face metadata resolves that revision to a
+\texttt{LlamaForCausalLM} artifact with 1,235,814,400 BF16 parameters and the
+\texttt{llama3.2} license tag. The repository is manually gated: the account must accept the
+Meta Llama 3.2 community license and authenticate before files can be downloaded.
+
+On 12 August 2026, the preflight resolved the requested revision but received HTTP 401 while
+requesting \texttt{config.json}; the local Hugging Face client reported that it was not logged
+in. Consequently, no Meta weights were loaded and no Meta parity, routing, systems, or causal-use
+number is reported here. SmolLM2 remains a measured lightweight Llama-family control and is not
+renamed, substituted, or used to fill the Meta row. The machine-readable attempt is retained in
+\texttt{llama32\_1b/access\_status.json}.
+
+The resumable runner \texttt{run\_llama32\_1b.py} closes the gate in a fixed order after access
+is granted. First, it requires bit-exact logits, every hidden state, greedy generation, and every
+per-layer cache K/V tensor with PRA disabled. It then verifies post-RoPE layer-native K/V,
+native GQA head count, CPU residency without permanent head expansion, bounded reference blocks,
+exact positions, explicit references, \texttt{\#\_\_head}, finite enabled output, and zero
+native-limit violations. Only after those checks does it extract the matched QASPER/HotpotQA
+features, train the five 128-dimensional asymmetric-linear router seeds, run the public
+\texttt{PRAForCausalLM} path, and compare no memory, routed final-eight PRA, oracle final-eight
+PRA, and direct evidence text. This ordering prevents a routing result from concealing a failed
+family integration. The product probe synchronizes CUDA and records routing latency, transfer
+bytes, resident detail-K/V and index bytes, peak GPU allocation, request-to-first-token latency,
+per-output-token latency after the first token, total generation latency, throughput, requested
+parent fraction, and actual materialized native-K/V fraction.
+
 \subsection{Five-seed cross-family routing}
 
 For the portability release, both models use the same evidence-supervised protocol: frozen
@@ -1354,7 +1394,9 @@ likelihood at the last-eight operating point. Routing data should also increase 
 and label diversity before adding adapter capacity. The contiguous-mean, token-max,
 centered-RoPE, and query-pooling results close the current simple zero-parameter sweeps. The
 Llama port establishes software and tensor-contract portability, not transfer of Qwen routing
-quality or solved QA. Gemma, serving kernels, and larger checkpoints remain later work.
+quality or solved QA. The required Meta Llama 3.2-1B run is externally blocked by repository
+access, so the intended three-model headline table and Meta router artifact are not yet release
+claims. Gemma, serving kernels, and larger checkpoints remain later work.
 
 \section{Related Work}
 
