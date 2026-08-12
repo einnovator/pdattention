@@ -47,6 +47,8 @@ final four layers uses 98,304 parameters and raises routed gold likelihood by
 $1.846\pm0.088$ nats/token on HotpotQA and $1.487\pm0.062$ on QASPER over five optimization
 seeds. It outperforms a four-times-larger residual adapter in every paired seed. Generated F1
 does not improve reliably, so these are compatibility-calibration rather than solved-QA results.
+Global LM-head controls do not increase the memory-specific gain and worsen WikiText-2 loss,
+supporting conditional late-band adaptation over broad readout tuning.
 The implementation packages exact routing, fraction-based selection, bounded materialization,
 CPU-resident detail K/V, and route-once multi-layer replay behind a small public API. Five-seed
 QASPER runs produce evidence-identity recall@20\% of $0.454\pm0.007$ on Qwen3-0.6B and
@@ -90,6 +92,7 @@ How small is the learned index? & Asymmetric 128-D Qwen router & 262,144 paramet
 Does routing scale at fixed sparsity? & 12.5\% selection over 64/128/256 units & Coverage remains 0.756--0.772 (Hotpot) and 0.794--0.803 (QASPER) \\
 Does selected native K/V affect the model? & HotpotQA oracle, final four layers & $+1.004$ nats/token; generated F1 unchanged \\
 Can a tiny readout align memory use? & Frozen base/router, rank-8 conditional output LoRA & 0.0165\% of base; routed $\Delta\log p$ +1.846 HotpotQA, +1.487 QASPER \\
+Is the remaining bottleneck global readout? & Head LoRA and full-head controls & No; memory increment does not improve and WikiText loss rises \\
 Does the interface cross families? & QASPER evidence-identity recall@20\% & Qwen $0.454\pm0.007$; SmolLM2 $0.447\pm0.051$ \\
 Is there a reusable implementation? & Public API, CLI, router artifacts, and metrics & Yes; exact-search research implementation \\
 Is long-context QA solved? & Product-path generation & No; routed F1 remains 0.033/0.028 in a four-example probe \\
@@ -969,6 +972,79 @@ output-only sweep already separates likelihood calibration from decoding, broade
 updates are deferred until a larger calibration/validation/test cohort can decide whether their
 extra degrees of freedom improve answer generation rather than fit eight identities.
 
+\subsection{A staged adaptation sequence rejects global readout tuning}
+\label{sec:adaptation-sequence}
+
+We close the calibration study with the predefined sequence: decoding diagnostics, scalar gate,
+conditional residual adapter, conditional late-band LoRA, and only then a global LM-head control.
+Every trained stage uses the same eight HotpotQA identities, 24 oracle-memory updates, four
+held-out HotpotQA identities, and seeds 11, 23, 37, 53, and 71. Evaluation always includes no
+memory, routed PRA, oracle PRA, and direct evidence text. The direct-text HotpotQA control is
+positive at $+4.635$ nats/token and F1 .125, so this cohort can distinguish model failure from an
+unanswerable prompt. QASPER remains a supplementary sensitivity result because its direct-text
+control is negative on the four selected cases.
+
+The last control changes the global vocabulary readout. Qwen ties its native
+$151{,}936\times1024$ LM head to token embeddings, so ``head only'' would otherwise update the
+input embedding table too. We explicitly clone and untie the output matrix while freezing the
+embedding. We test rank-8 head LoRA, the full untied head, and final RMS normalization plus that
+head. The two full-matrix variants use state-free SGD because AdamW and Adafactor optimizer state
+exceed the 4-GiB evaluation GPU; head LoRA uses AdamW. All optimize oracle-memory likelihood plus
+KL distillation from frozen no-PRA answer-position distributions. Ordinary behavior is measured
+on 1,024 fixed WikiText-2 validation tokens, not inferred from QA alone.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Final HotpotQA adaptation sequence. $\Delta\log p$, rank, and margin are for routed PRA
+relative to each method's own no-memory baseline; uncertainty is population standard deviation
+over five optimization seeds. Weight memory excludes optimizer state. ``Exact'' means a
+structural PRA-off bypass.}
+\label{tab:adaptation-sequence}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrcrrrrr}
+\toprule
+Method & Params & Weight MiB & PRA-off & $\Delta\log p$ & Rank & $\Delta$margin & F1/EM & Time (s) \\
+\midrule
+Frozen PRA & 0 & 0 & yes & +.110 & 441 & +.104 & .056/.000 & .163 \\
+Scalar gate & 1 & $<$.001 & yes & $-.187\pm.007$ & 160 & +.733 & .056/.000 & .173 \\
+Residual 32 & 393,344 & 1.50 & yes & $+1.210\pm.248$ & 117 & +3.063 & .063/.000 & .172 \\
+Late output LoRA $r=8$ & 98,304 & .375 & yes & $+1.846\pm.088$ & 254 & +4.627 & .071/.000 & .168 \\
+LM-head LoRA $r=8$ & 1,223,680 & 4.67 & no & $+.104\pm.009$ & 445 & +.096 & .056/.000 & .171 \\
+Full LM head & 155,582,464 & 296.75 & no & $+.090\pm.026$ & 444 & +.075 & .056/.000 & .164 \\
+Final norm + head & 155,583,488 & 296.75 & no & $+.090\pm.026$ & 444 & +.074 & .056/.000 & .163 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper2_hf/lm_head_control/lm_head_control.pdf}
+\caption{The complete adaptation sequence. Conditional residual and late output-LoRA improve the
+routed-minus-no-memory likelihood effect. Global readout controls do not, alter no-PRA QA scores,
+and increase WikiText-2 loss. QASPER is shown for sensitivity but is not used for the stop
+decision because its direct-text control fails.}
+\label{fig:adaptation-sequence}
+\end{figure}
+
+The sequence separates answer-token calibration from memory use. Head LoRA changes no-PRA
+HotpotQA likelihood by $+.086\pm.044$ nats/token yet leaves the routed memory increment at
+$+.104\pm.009$, no better than frozen PRA. The full head changes the no-PRA score by
+$+.052\pm.042$ while reducing the memory increment to $+.090\pm.026$. Adding final
+normalization changes neither result. On WikiText-2, head LoRA raises loss by
+$+.0161\pm.0071$ and both full-head variants by about $+.0938\pm.0069$, increasing perplexity
+from 48.48 to 49.27 and 53.25. Global adaptation therefore spends 12.4 or 1,583 times the
+parameters of late output-LoRA, weakens exact retrofit, and does not teach the decoder to use PRA
+memory more effectively.
+
+The stop decision is consequently narrow. The scalar gate is insufficient. Residual-32 and late
+output-LoRA demonstrate memory-specific likelihood calibration, with rank-8 late output-LoRA the
+most parameter-efficient measured choice. None produces reliable generation: HotpotQA EM remains
+zero and the best F1 is .071. The global control rules out a simple LM-head bottleneck on this
+cohort, but it does not solve decoding. Following the paper boundary, we stop rather than widen
+LoRA to Q, MLP, or the whole model. A larger identity-disjoint generation study is the next unit
+of evidence.
+
 \section{Product and Systems Boundary}
 
 The validated path is packaged as \texttt{pra-hf}, with a stable Python API, CLI, serializable
@@ -1038,9 +1114,11 @@ The evidence base is still small. The primary representation study uses 16 match
 learned router has 32 held-out test identities, and the oracle depth study uses only four examples
 per dataset. The product path uses two held-out examples from each dataset. Confidence across
 five training seeds measures optimization variation on a fixed cohort; it does not replace a
-larger test set. The residual and conditional-LoRA studies likewise train on eight HotpotQA
-identities and test on four identities per dataset. Their all-seed likelihood directions
-therefore need independent replication on a larger calibration, validation, and test split.
+larger test set. The residual, conditional-LoRA, and global-readout studies likewise train on
+eight HotpotQA identities and test on four identities per dataset. Their all-seed likelihood
+directions therefore need independent replication on a larger calibration, validation, and test
+split. The 1,024-token WikiText control detects ordinary-language drift but is not a broad
+language-capability evaluation.
 
 Retrieval labels are also imperfect proxies for answer sufficiency. Any-evidence recall can be
 high while a multi-hop model misses another required passage. Evidence-identity recall improves
@@ -1068,8 +1146,10 @@ evaluate oracle, routed, direct-text, and no-memory conditions together and meas
 likelihood, calibrated first-token rank, decoded EM/F1, exact memory bytes, TTFT, and per-token
 latency. The rank-8 conditional-LoRA result makes that replication more urgent: likelihood
 alignment is strong with 0.0165\% of the base model, but decoded QA remains unsolved. Only after
-that test should Q/O or MLP LoRA widen the adaptation surface. If oracle native K/V fails where
-direct text succeeds, the integration representation, not routing capacity, remains the priority.
+that test should Q/O or MLP LoRA widen the adaptation surface. Global LM-head tuning is not the
+next step: it fails to increase memory-specific likelihood, changes ordinary behavior, and
+degrades WikiText loss. If oracle native K/V fails where direct text succeeds, the integration
+representation, not routing capacity, remains the priority.
 
 \section{Related Work}
 
@@ -1114,6 +1194,12 @@ The current boundary is therefore sharper: routing and native-state transport ca
 answer evidence, and a very small memory-conditional transformation can align its sequence
 likelihood, but robust decoding needs a larger identity-disjoint study rather than a broader
 uncontrolled parameter update.
+
+The staged control supports that boundary. Rank-8 LM-head LoRA uses 1.22M parameters and the full
+untied head uses 155.6M, yet neither exceeds frozen PRA's routed-minus-no-memory effect on
+HotpotQA. They instead shift no-PRA QA scores and raise WikiText-2 loss. Final normalization adds
+no measurable benefit. The evidence therefore favors a 98,304-parameter PRA-conditional update
+over global readout tuning, while leaving reliable generation explicitly unresolved.
 
 These boundaries are the point of the paper. Exact transport is established. Sparse discovery is
 strong and improving but domain-limited. Causal use is visible in likelihood, while reliable
@@ -1490,6 +1576,24 @@ shape handling, zero initialization, parameter ownership, active gradients, and 
 bypass. \texttt{test\_hf\_llama\_integration.py}, lines 124--153, exercises the same ownership
 and bypass contract through the Llama-family wrapper.
 
+\subsection{Global readout control}
+
+The LM-head experiment is intentionally outside the product adapter. The class
+\texttt{LMHeadLoRA} in \texttt{run\_lm\_head\_control.py}, lines 51--89, holds a non-owning
+reference to the frozen tied head and registers only rectangular low-rank factors. The zero
+output factor makes its initial logits exact. Lines 92--124 restore the native head and final
+normalization before every variant; full-head controls clone the output matrix so optimization
+cannot mutate the tied input embeddings.
+
+Lines 126--171 build fixed cached WikiText blocks and compute ordinary no-PRA causal loss. Lines
+173--300 train oracle-memory examples and the frozen-logit KL control with sequential backward
+passes, which preserves the summed objective while bounding activation memory. Lines 302--405
+evaluate no memory, routed memory, oracle memory, and direct text against both the current and
+frozen no-memory baselines. Lines 407--668 aggregate the language and QA controls and join them to
+the earlier gate, residual, and late-LoRA artifacts; lines 670--891 execute the common cohort.
+Tests in \texttt{test\_hf\_lm\_head\_control.py}, lines 9--37, pin zero-initialized LoRA
+equality, factor-only ownership, and exact-but-untied full-head cloning.
+
 \subsection{Revision-pinned source map}
 
 Table~\ref{tab:code-map} connects the preceding control flow to the implementation.
@@ -1523,10 +1627,12 @@ Five-seed calibration protocol & \texttt{experiments/paper2\_hf/qa/run\_memory\_
 Conditional output LoRA & \texttt{src/pra\_torch/hf/late\_band\_lora.py}, 10--149;
 \texttt{src/pra\_torch/hf/qwen.py}, 348--374 \\
 Five-seed LoRA protocol & \texttt{experiments/paper2\_hf/qa/run\_late\_band\_lora.py}, 73--547 \\
-Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 80--636 \\
+Global readout and ordinary-language control & \texttt{experiments/paper2\_hf/qa/run\_lm\_head\_control.py}, 51--891;
+\texttt{tests/test\_hf\_lm\_head\_control.py}, 9--37 \\
+Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 80--790 \\
 Stable config, router artifact, and public API & \texttt{src/pra\_hf/config.py}, 14--127;
 \texttt{src/pra\_hf/router.py}, 14--110; \texttt{src/pra\_hf/model.py}, 42--358 \\
-Llama and product-facing gates & \texttt{tests/test\_hf\_llama\_integration.py}, 51--106;
+Llama and product-facing gates & \texttt{tests/test\_hf\_llama\_integration.py}, 51--153;
 \texttt{tests/test\_pra\_hf\_api.py}, 66--132 \\
 \bottomrule
 \end{tabularx}
