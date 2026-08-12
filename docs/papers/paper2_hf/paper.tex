@@ -14,7 +14,7 @@
 \setlength{\emergencystretch}{3em}
 
 \title{Progressive Retrieval Attention for Pretrained Transformers:\
-Sparse Native-K/V Memory for Qwen and Llama}
+Sparse Native-K/V Memory for Qwen and Llama-Family Decoders}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Progressive Retrieval Attention for Pretrained Transformers},pdfauthor={Jorge Simao}}
@@ -23,127 +23,135 @@ Sparse Native-K/V Memory for Qwen and Llama}
 \maketitle
 
 \begin{abstract}
-Dense attention makes every retained token part of every subsequent operation. Progressive
-Retrieval Attention (PRA) instead keeps detailed, layer-native key/value (K/V) state outside the
-active context, indexes it with compact semantic gists, and materializes only selected native
-K/V under a fixed token budget. This paper asks whether that mechanism can be added beneath
-pretrained Hugging Face decoders without changing their ordinary behavior. Thin Qwen and
-Llama-family adapters pass exact disabled-path tests for logits, hidden states, and greedy
-generation; cache shapes match on Qwen, and every cache K/V tensor matches on SmolLM2. The
-adapters preserve each model's rotary, grouped-query, mask, cache, and output-projection
-semantics. The central design result is that routing state should not be
-attention state: contextual hidden states support semantic selection, whereas selected tokens
-must return as the model's own positional K/V.
+Dense long-context attention couples logical memory size to the key/value (K/V) state active in
+every transformer operation. PRA-HF separates these quantities. It encodes references in
+model-safe blocks, searches a compact semantic index, and materializes only selected
+layer-native K/V under a fixed attention budget. Thin Qwen and Llama-family adapters preserve
+the host model's rotary, grouped-query, mask, cache, and output-projection semantics; when PRA is
+disabled, logits, hidden states, and greedy outputs are exactly unchanged.
 
-On matched HotpotQA and QASPER evidence-ranking tasks, a 262,144-parameter router trained over a
-frozen backbone raises
-held-out recall@3 from 0.469 to $0.631\pm0.069$ across five seeds. More informative fraction-based
-evaluation reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% of parent chunks, although
-cross-domain recall@3 remains 0.213. Oracle causal tests show that correct native memory changes
-the frozen model: on HotpotQA, final-four-layer replay improves gold-token log-probability by
-1.004 nats/token, compared with 4.635 for direct evidence text. With the backbone, LM head, and
-router still frozen, a PRA-conditional rank-8 update to the attention output projections in the
-final four layers uses 98,304 parameters and raises routed gold likelihood by
-$1.846\pm0.088$ nats/token on HotpotQA and $1.487\pm0.062$ on QASPER over five optimization
-seeds. It outperforms a four-times-larger residual adapter in every paired seed. Generated F1
-does not improve reliably, so these are compatibility-calibration rather than solved-QA results.
-Global LM-head controls do not increase the memory-specific gain and worsen WikiText-2 loss,
-supporting conditional late-band adaptation over broad readout tuning.
-The implementation packages exact routing, fraction-based selection, bounded materialization,
-CPU-resident detail K/V, and route-once multi-layer replay behind a small public API. Five-seed
-QASPER runs produce evidence-identity recall@20\% of $0.454\pm0.007$ on Qwen3-0.6B and
-$0.447\pm0.051$ on SmolLM2-135M. PRA-HF therefore establishes exact retrofit, sparse discovery,
-and causal use of native K/V as separate measurable capabilities; robust decoded-answer gains
-and broad cross-domain routing remain open.
+The central empirical principle is to \emph{route semantic state and attend native positional
+state}. Contextual hidden states provide the routing index, while selected tokens return as the
+model's own post-RoPE keys and native values. A 262,144-parameter router over frozen Qwen3-0.6B
+reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected parents. On QASPER,
+evidence-identity recall at 20\% is $0.454\pm0.007$ for Qwen3-0.6B and $0.447\pm0.051$ for the
+SmolLM2-135M Llama-family control. Oracle HotpotQA replay shows a non-monotone depth effect:
+the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766. In a
+bounded implicit-head probe, evidence ranked first and improved gold likelihood by 5.469 nats
+per token, yet greedy decoding remained wrong. A 98,304-parameter PRA-conditional calibration
+further improves routed likelihood, but reliable decoded QA gains remain open. The released
+\texttt{pra\_hf} package provides the adapters, reference lifecycle, router artifacts,
+fraction-based selection, accounting, CLI, and reimplementation tests.
 \end{abstract}
 
 \section{Introduction}
 
-The cost of long context is not only storing old tokens. As long as every token remains active,
-each new query must attend over all of them and every decoder layer must carry their K/V state on
-the accelerator. A system may have abundant CPU memory or external storage and still be unable
-to make a long document an ordinary dense prompt. Prompt truncation avoids the cost by discarding
-history. Text retrieval reduces the prompt before inference, but then re-encodes retrieved text
-and exposes selection only at document or passage boundaries. PRA explores a third boundary:
-retain the model's already computed internal detail, keep most of it off the active path, and
-bring back only the native K/V for chunks selected for the present query.
+Dense long-context attention couples logical memory size to the K/V participating in each
+transformer operation. Retaining more history therefore increases both stored state and active
+attention, even when most of that history is irrelevant to the current token. Prompt truncation
+breaks the coupling by discarding history. Text retrieval narrows the prompt before inference,
+but then re-encodes the selected text. PRA instead keeps already computed model state outside the
+active context and restores only selected native K/V.
 
-That idea is easy to state and surprisingly easy to implement incorrectly. A pretrained decoder
-has learned a particular projection layout, rotary coordinate system, grouped-query expansion,
-mask convention, cache protocol, and output projection. A replacement attention block can appear
-plausible while silently changing one of those contracts. Retrieval creates a second problem:
-the representation best suited to deciding whether a chunk is relevant need not be the
-representation that the model expects to attend to after selection. This paper treats exact
-transport, sparse discovery, and useful consumption as three different questions.
+Paper~1 showed in controlled models that logical memory and active attention can be separated.
+Paper~1.5 established the positional contract for sources encoded in bounded blocks. This paper
+asks whether the same mechanism can be retrofitted into pretrained Hugging Face decoders without
+changing their native attention semantics. That requirement is strict. Qwen and Llama-family
+decoders differ in projection details, RoPE helpers, grouped-query layout, masks, cache protocols,
+and output paths. An adapter can produce plausible text while violating one of these contracts.
+
+Retrofitting also exposes a representational distinction. The state best suited to finding a
+semantically relevant chunk need not be the state a pretrained attention head expects after
+selection. PRA-HF therefore separates a compact \emph{routing index} from the layer-native
+\emph{detail K/V} payload. The resulting architectural rule, derived empirically below, is:
+\textbf{route semantic state; attend native positional state.}
+
+Figure~\ref{fig:adapter} gives the complete data path before the individual contracts are
+developed. Publication creates a small search representation and a full native payload; only the
+selected payload enters active attention.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.92\linewidth}
+\centering
+\textbf{Large logical source / long prompt}\\[3pt]
+$\downarrow$ model-safe encoding blocks with logical offsets\\[3pt]
+\begin{tabular}{ccc}
+attention-input hidden state & & full layer-native post-RoPE K / native V \\
+$\downarrow$ & & $\downarrow$ \\
+compact semantic routing index & & CPU / off-active-memory detail store \\
+$\uparrow$ current hidden-state query & & $\downarrow$ selected chunk IDs \\
+$\downarrow$ tiny learned router & $\longrightarrow$ & whole-chunk materialization budgeter \\
+ & & $\downarrow$ selected exact native K/V
+\end{tabular}\\[3pt]
+$\downarrow$ direct K/V $+$ memory K/V under one bounded native attention softmax
+\end{minipage}}
+\caption{Canonical PRA-HF path. \textbf{PRA-HF compresses the search representation, not the
+selected memory payload.} Routing uses compact semantic state; attention receives the host
+model's exact selected positional K/V.}
+\label{fig:adapter}
+\end{figure}
 
 \begin{table}[H]
 \centering
 \footnotesize
-\caption{Headline findings. ``Exact'' means equality in the disabled path, not approximate
-agreement. Recall definitions and cohort sizes are given with the corresponding experiments.}
+\caption{Headline findings. The retrofit is exact when disabled, sparse when active, and
+causally useful at a depth-dependent operating point. Recall definitions and cohorts are stated
+with each result.}
 \label{tab:headline}
-\begin{tabularx}{\linewidth}{L{0.23\linewidth}L{0.31\linewidth}Y}
+\begin{tabularx}{\linewidth}{L{0.24\linewidth}L{0.25\linewidth}Y}
 \toprule
-Question & Measurement & Result \\
+Finding & Result & Why it matters \\
 \midrule
-Can PRA be an exact retrofit? & Disabled logits, hidden states, greedy output; cache contract & Exact outputs on both; cache shapes on Qwen and tensors on SmolLM2 \\
-Can compact gists find evidence? & Five-seed router over frozen Qwen & Any-evidence recall 0.831/0.956 at 10/20\% selected parents \\
-How small is the learned index? & Asymmetric 128-D Qwen router & 262,144 parameters (0.044\%); 0.392\% of per-layer detail K/V \\
-Does routing scale at fixed sparsity? & 12.5\% selection over 64/128/256 units & Coverage remains 0.756--0.772 (Hotpot) and 0.794--0.803 (QASPER) \\
-Does selected native K/V affect the model? & HotpotQA oracle, final four layers & $+1.004$ nats/token; generated F1 unchanged \\
-Can a tiny readout align memory use? & Frozen base/router, rank-8 conditional output LoRA & 0.0165\% of base; routed $\Delta\log p$ +1.846 HotpotQA, +1.487 QASPER \\
-Is the remaining bottleneck global readout? & Head LoRA and full-head controls & No; memory increment does not improve and WikiText loss rises \\
-Does the interface cross families? & QASPER evidence-identity recall@20\% & Qwen $0.454\pm0.007$; SmolLM2 $0.447\pm0.051$ \\
-Is there a reusable implementation? & Public API, CLI, router artifacts, and metrics & Yes; exact-search research implementation \\
-Is long-context QA solved? & Product-path generation & No; routed F1 remains 0.033/0.028 in a four-example probe \\
+Exact disabled retrofit & Zero logit and hidden-state difference; identical greedy output & External memory can be added without changing ordinary inference \\
+Semantic routing, native payload & Hidden-state index; selected post-RoPE K and native V & Search features need not replace pretrained attention state \\
+Compact sparse discovery & 262,144 parameters; any-evidence recall .831/.956 at 10/20\% & A 0.044\%-of-model router searches a 0.392\%-of-detail index \\
+Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28 & More memory exposure is not monotonically better \\
+Bounded-head causal probe & Evidence rank 1; $\Delta\log p=+5.469$; greedy answer wrong & Retrieval, probability change, and decoding are distinct \\
+Portable shared core & QASPER identity recall@20\%: Qwen $.454\pm.007$, SmolLM2 $.447\pm.051$ & Thin family adapters preserve one execution contract \\
+Memory-conditional calibration & 98,304 parameters; routed gain $+1.846\pm.088$ on Hotpot & Small conditional updates beat global readout controls \\
+Reusable artifact & Python API, CLI, saved routers, metrics, tests, wheel & The measured mechanism is independently exercisable \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Our contribution is a working boundary, not a new pretrained model. A shared execution core owns
-reference publication, compact indexing, exact routing, whole-chunk budgeting, transfer, and
-metrics. Thin family adapters own only the host model's native attention semantics. Qwen3-0.6B
-is the main mechanistic checkpoint because it exercises modern RoPE and GQA at a size that allows
-exact testing on constrained hardware. SmolLM2-135M tests whether the same boundary transfers to
-a Llama-family implementation. The release adds a stable router artifact, a Python API and CLI,
-and machine-readable accounting for requested versus physically materialized memory.
+The paper makes five contributions. First, it defines and tests an exact pretrained-model retrofit
+for bounded native-K/V memory. Second, it identifies routing/payload separation as an architectural
+principle rather than a family-specific workaround. Third, it measures sparse discovery by
+selected-memory fraction and shows that a tiny supervised projection improves frozen semantic
+geometry. Fourth, it demonstrates that selected native K/V has a causal, non-monotone effect
+through model depth. Fifth, it releases the shared core, thin adapters, artifacts, and accounting
+needed to reproduce these claims. The contribution is a working boundary, not a new pretrained
+model or a solved long-context QA system.
 
-The experiments are deliberately layered. WikiText-2 in the controlled predecessor establishes
-ordinary language-model integrity. QASPER supplies the primary one-shot evidence retrieval task,
-where a question typically points into a long scientific document. HotpotQA is the harder
-multi-hop stress test: finding any supporting passage is useful, but finding every required
-piece is stricter. We report \emph{any-evidence recall}, \emph{evidence-identity recall} (fraction
-of annotated identities recovered), and \emph{all-evidence recall} separately. A high value for
-one must not be read as a high value for the others.
+The datasets have different jobs. WikiText-style controls test ordinary language-model integrity
+and bounded-memory mechanics. QASPER tests one-shot retrieval from a long scientific document.
+HotpotQA stresses multi-passage discovery and, where direct evidence text helps the checkpoint,
+provides the cleanest oracle causal probe. It is not a universal pass/fail test for one-shot PRA.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Recall metrics answer different questions and are never substituted for one another.}
+\label{tab:recall-definitions}
+\begin{tabularx}{\linewidth}{L{0.25\linewidth}Y}
+\toprule
+Metric & Meaning \\
+\midrule
+Any-evidence recall & Fraction of examples for which at least one annotated evidence region is selected \\
+Evidence-identity recall & Fraction of all annotated evidence identities recovered \\
+All-evidence recall & Fraction of examples for which every required annotated evidence identity is selected \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \section{PRA-HF in 60 Seconds}
 
-Figure~\ref{fig:adapter} is the entire mechanism. A long source is encoded in blocks that fit the
-host model. At each PRA-enabled layer, publication keeps two products. The first is a tiny index:
-one or more semantic gists per routing chunk. The second is the detail payload: the exact native
-post-RoPE keys and native values produced by that layer. Detail may remain on CPU. At query time,
-a compact query state scores all gists, a policy chooses parent chunks, and a hard budget may trim
-that choice. Only then are the selected native K/V tensors moved to the accelerator and prepended
-to the direct K/V sequence under the model's own attention softmax.
-
-\begin{figure}[htbp]
-\centering
-\fbox{\begin{minipage}{0.92\linewidth}
-\centering
-\textbf{Logical source / long prompt}\\[2pt]
-$\downarrow$ model-safe encoding blocks with logical offsets\\[2pt]
-$\downarrow$ attention-input hidden state $R$ \quad $+$ \quad native post-RoPE $K$ and native $V$\\[2pt]
-$\downarrow$ smaller routing chunks $\rightarrow$ compact gists / packed index\\[2pt]
-$\downarrow$ exact semantic routing $\rightarrow$ selected chunk identities\\[2pt]
-$\downarrow$ whole-chunk materialization budgeter $\rightarrow$ selected native K/V\\[2pt]
-$\downarrow$ direct K/V $+$ memory K/V under one native attention softmax\\[2pt]
-$\downarrow$ pretrained output projection
-\end{minipage}}
-\caption{Canonical PRA-HF path. Routing uses compact semantic state, whereas attention receives
-the host model's selected native positional K/V payload. Model-family projection, RoPE, GQA,
-mask, cache, and output semantics remain in the thin adapter.}
-\label{fig:adapter}
-\end{figure}
+A long source is encoded in blocks that fit the host model. Publication keeps compact semantic
+gists in a routing index and stores exact
+layer-native post-RoPE keys and native values as the detail payload, which may remain on CPU. A
+query searches only the compact index. Selected chunk identities pass through a hard budget, and
+only their native K/V moves to the accelerator for bounded attention with the direct sequence.
 
 This division answers the most important implementation question. PRA does \emph{not} attend to
 the gist. The gist is an address label, analogous to a compact catalog entry. Once an address is
@@ -161,16 +169,17 @@ still occupies CPU memory unless a separate compression or tiering method is add
 \begin{table}[H]
 \centering
 \small
-\caption{Three independent success layers. Later evidence cannot repair a failure in an earlier
-layer, and success in an earlier layer does not imply success in a later one.}
+\caption{Four stages of a memory-augmented prediction. Success at one stage does not imply
+success at the next.}
 \label{tab:success-layers}
-\begin{tabularx}{\linewidth}{L{0.18\linewidth}L{0.28\linewidth}L{0.20\linewidth}Y}
+\begin{tabularx}{\linewidth}{L{0.15\linewidth}L{0.29\linewidth}L{0.20\linewidth}Y}
 \toprule
 Layer & Question & Present status & Evidence \\
 \midrule
-Transport & Is native behavior preserved and bounded memory delivered correctly? & Yes & Exact disabled parity; native GQA K/V; bounded CUDA probes \\
-Discovery & Can a compact index find useful chunks sparsely? & Strong but incomplete & 0.831 any-evidence recall at 10\%; weak cross-domain transfer \\
-Causal use & Does retrieved state help the frozen decoder? & Yes in logits; decoded gains open & HotpotQA oracle $+1.004$ nats/token at four late layers; F1 unchanged \\
+Transport & Can external native K/V be stored and materialized correctly? & Yes & Exact disabled parity; native GQA K/V; bounded CUDA probes \\
+Discovery & Can relevant memory be selected sparsely? & Strong, domain-dependent & .831 any-evidence recall at 10\%; weak cross-domain transfer \\
+Causal use & Does selected memory change the pretrained prediction usefully? & Yes in clean likelihood probes & Hotpot oracle last-half $+3.641$ nats/token; all-layer replay harmful \\
+Decoded task success & Does the intervention reliably change generated answers? & Not yet & Implicit-head likelihood $+5.469$; greedy answer remains wrong \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -225,10 +234,10 @@ the tested Qwen checkpoint, not a claim that hidden states are universally optim
 
 \subsection{Shared execution core}
 
-The controlled model's former monolithic attention forward pass was divided into reusable
-operations. \texttt{prepare\_pra\_query} selects the newest valid query and maps GQA query
-groups into the native K/V routing width. \texttt{route\_memory} calls the exact packed-index
-router. \texttt{budget\_selected\_memory} enforces
+The shared core divides the former monolithic attention path into explicit stages. Query
+preparation selects the newest valid state and maps GQA query groups into native K/V routing
+width. Exact packed-index search returns parent identities. The materialization budget then
+enforces
 \begin{equation}
  L_{\mathrm{direct}}+L_{\mathrm{materialized}}+L_{\mathrm{reserve}}
  \leq L_{\mathrm{native,max}}.
@@ -365,10 +374,11 @@ The final finite-logit query took 0.258~s. This proves bounded execution and off
 for the frozen Qwen adapter. It does not show that the router selected the information needed by
 an arbitrary continuation.
 
-\subsection{Why transport is not retrieval}
+\subsection{Transport does not establish discovery}
 
-We next run one fixed HotpotQA example~\cite{yang2018hotpotqa} and one QASPER
-example~\cite{dasigi2021qasper}. Four conditions use the same frozen checkpoint: question-only
+The transport tests intentionally do not establish semantic selection. A diagnostic with one
+fixed HotpotQA example~\cite{yang2018hotpotqa} and one QASPER example~\cite{dasigi2021qasper}
+shows why. Four conditions use the same frozen checkpoint: question-only
 truncation, dense text left-truncated to 256 tokens, oracle evidence text-RAG, and PRA with the
 question direct and the complete source in native-K/V memory. Oracle text-RAG is an upper
 control because it receives annotated evidence. This two-example matrix diagnoses plumbing; it
@@ -392,8 +402,8 @@ HotpotQA's expected answer is ``yes''; every condition begins with ``No''. QASPE
 answer is ``no''; dense and PRA generations begin with ``No'', while truncation begins with
 ``Yes''. However, PRA routes three tail chunks, none overlapping the annotated evidence, so the
 QASPER output cannot be credited to retrieved evidence. Qwen also fails the oracle text-RAG
-control on both examples. The proper conclusion is negative: this frozen top-layer,
-one-gist-per-chunk configuration has not demonstrated content-causal retrieval.
+control on both examples. The diagnostic therefore separates a functioning K/V transport path
+from an unsuitable routing representation; it does not grade the architecture as a QA system.
 
 The selections expose a concrete failure mode. For HotpotQA, evidence lies at token spans
 107--137 and 543--588, while routed chunks lie near 1216--1318. For QASPER, evidence lies at
@@ -402,8 +412,8 @@ top-layer query systematically prefer irrelevant late-source chunks in these two
 
 \section{Semantic Routing, Native Attention}
 
-The smoke failure motivates a narrower test: is the post-RoPE representation appropriate for
-semantic routing? For token $j$ at position $p_j$, the baseline pools
+The architectural question is whether native attention state is also a suitable semantic search
+index. For token $j$ at position $p_j$, the direct baseline pools
 \begin{equation}
  g_{\mathrm{post}}=\frac{1}{m}\sum_{j=1}^{m}R(p_j)K_{\mathrm{pre},j},
 \end{equation}
@@ -422,8 +432,8 @@ semantic routing $\leftarrow$ pre-RoPE Q/K $\xrightarrow{\mathrm{RoPE}}$ post-Ro
 $\hspace{1.5em}\uparrow$ pre-RoPE key gist \hfill $\downarrow$ post-RoPE detail K + native V\\[3pt]
 exact selection $\longrightarrow$ selected native K/V $\longrightarrow$ Qwen attention
 \end{minipage}}
-\caption{Routing and transport are separate. Pre-RoPE or hidden-state features rank chunks;
-the attention path always materializes post-RoPE native K/V.}
+\caption{\textbf{Route semantic state; attend native positional state.} Pre-RoPE or hidden-state
+features rank chunks, while the attention path always materializes exact post-RoPE native K/V.}
 \label{fig:routing-separation}
 \end{figure}
 
@@ -445,12 +455,13 @@ selection materializes the same post-RoPE native K and native V for a fixed pare
 \begin{table}[H]
 \centering
 \small
-\caption{Parameter-free routing representations on 16 matched examples. Score-position $r$
-measures correlation with normalized source position.}
+\caption{Parameter-free routing representations on 16 matched examples. Any-evidence recall
+measures whether at least one annotated region is selected; score-position $r$ measures
+correlation with normalized source position.}
 \label{tab:routing-representations-main}
 \begin{tabular}{lccccc}
 \toprule
-Routing representation & Recall@3 & Recall@8 & Recall@16 & MRR & Position $r$ \\
+Routing representation & Any R@3 & Any R@8 & Any R@16 & MRR & Position $r$ \\
 \midrule
 Post-RoPE key mean & 0.125 & 0.250 & 0.313 & 0.131 & 0.652 \\
 Pre-RoPE key mean & 0.313 & \textbf{0.563} & \textbf{0.750} & \textbf{0.301} & 0.009 \\
@@ -460,19 +471,22 @@ Hidden-state mean & \textbf{0.438} & 0.500 & \textbf{0.750} & 0.276 & -0.021 \\
 \end{table}
 
 The post-RoPE mean is not merely noisy; it strongly favors late chunks. Removing rotary phase
-nearly eliminates that bias, and hidden states give the best low-budget result. Centered RoPE
-offers a useful positive control: rotate a pooled pre-RoPE gist once at the exact center of its
-span. This raises recall@3 from 0.125 to 0.188, and eight centered subgists reproduce native
-token-QK ordering with correlation 0.874. Yet their recall@3 is only 0.250. Centering repairs the
-coordinate frame, but positional compatibility is not semantic relevance. We therefore use
+nearly eliminates that bias, and hidden states give the best low-budget result. Centered RoPE is
+a mechanistic control: it rotates a pooled pre-RoPE gist once at the center of its source span.
+Eight centered subgists reproduce native token-QK ordering with correlation 0.874, yet their
+any-evidence recall@3 is only 0.250. The control distinguishes two objectives:
+\begin{equation}
+  \text{native attention geometry} \neq \text{semantic retrieval relevance}.
+\end{equation}
+Centering repairs the coordinate frame without creating evidence semantics. We therefore use
 hidden-state gists for routing and preserve post-RoPE keys only for attention.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.76\linewidth]{../shared/results/paper2_hf/routing/qwen_routing_recall_vs_selected_fraction.pdf}
-\caption{Parameter-free any-evidence recall versus selected-parent fraction. Position-neutral
-representations dominate the post-RoPE mean. These 16-example curves are diagnostic, not a
-cross-method statistical comparison with the larger learned-router cohort.}
+\caption{\textbf{Semantic hidden-state and pre-RoPE routing dominate post-RoPE key means for
+evidence selection.} The selected attention payload remains native post-RoPE K/V. These
+16-example curves are diagnostic and use a smaller cohort than the learned-router result.}
 \label{fig:routing-recall-main}
 \end{figure}
 
@@ -493,11 +507,12 @@ selected configuration.
 \begin{table}[H]
 \centering
 \small
-\caption{Held-out sparse ranking. The interval is the 95\% half-width over five router seeds.}
+\caption{Held-out sparse ranking. Recall is any-evidence recall; the interval is the 95\%
+half-width over five router seeds.}
 \label{tab:learned-router-main}
 \begin{tabular}{lccccc}
 \toprule
-Router & Recall@3 & Recall@8 & MRR & Hotpot R@3 & QASPER R@3 \\
+Router & Any R@3 & Any R@8 & MRR & Hotpot any R@3 & QASPER any R@3 \\
 \midrule
 Frozen cosine, last state & 0.469 & 0.719 & 0.413 & 0.813 & 0.125 \\
 Learned asymmetric-128 & $\mathbf{0.631\pm0.069}$ & 0.806 & 0.498 & 0.588 & 0.675 \\
@@ -506,15 +521,18 @@ Shuffled-label control & 0.125 & -- & -- & -- & -- \\
 \end{tabular}
 \end{table}
 
-The adapter improves paired recall@3 by $0.163\pm0.069$ and removes measurable position bias
-($r=-0.026$). The shuffled-label collapse shows that the gain depends on evidence supervision.
-It is not yet a general retriever: Hotpot-to-QASPER and QASPER-to-Hotpot transfer both reach only
-0.213 recall@3, and the combined 0.70 promotion target is missed. Wider projections, sampled
-negatives, and one hard-negative refresh do not improve the validation-selected result.
+The adapter improves paired any-evidence recall@3 by $0.163\pm0.069$ and removes measurable
+position bias ($r=-0.026$). The shuffled-label collapse shows that the gain depends on evidence
+supervision. The learned projection substantially improves the relevance geometry of frozen
+hidden states while adding only 262,144 parameters. It is not yet a general retriever:
+Hotpot-to-QASPER and QASPER-to-Hotpot transfer both reach only 0.213 any-evidence recall@3.
+Wider projections, sampled negatives, and one hard-negative refresh do not improve the
+validation-selected result; Appendix~\ref{app:routing-ablations} reports these controls.
 
-\subsection{The useful operating point is a fraction, not a fixed rank}
+\subsection{Recall--sparsity, not fixed rank, defines the operating point}
 
-Recall@3 is intentionally severe, but it changes meaning as source length changes. For each
+Any-evidence recall@3 is an intentionally severe diagnostic, but it changes meaning as source
+length changes. For each
 example with $N_i$ parents, we also select $k_i(f)=\lceil fN_i\rceil$. Historical artifacts
 support \emph{any-evidence recall}: whether at least one annotated parent is recovered. Complete
 rankings support the stricter \emph{evidence-identity recall}: the fraction of all mapped evidence
@@ -528,7 +546,7 @@ seeds and 160 seed--example evaluations. Other rows are descriptive historical c
 \label{tab:recall-sparsity-main}
 \begin{tabular}{lrrrrr}
 \toprule
-Mechanism & R@5\% & R@10\% & R@20\% & R@30\% & AUC$_{0--30}$ \\
+Mechanism & Any R@5\% & Any R@10\% & Any R@20\% & Any R@30\% & AUC$_{0--30}$ \\
 \midrule
 Post-RoPE key mean & 0.125 & 0.125 & 0.250 & 0.375 & 0.190 \\
 Pre-RoPE key mean & 0.375 & 0.563 & 0.938 & 1.000 & 0.700 \\
@@ -542,14 +560,16 @@ Learned margin router & \textbf{0.675} & \textbf{0.831} & \textbf{0.956} & \text
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.84\linewidth]{../shared/results/recall_sparsity/paper2_hf/major_sparse_curve.pdf}
-\caption{Any-evidence recall over the primary 0--30\% region. The learned router has a useful
-10--20\% operating range that fixed Recall@3 conceals. Cohorts differ for historical baselines,
-so only the five-seed learned result supports uncertainty across seeds.}
+\caption{\textbf{The tiny learned router moves the recall--sparsity frontier.} Any-evidence recall
+rises sharply in the 10--20\% selected-parent range that fixed-rank evaluation conceals. Cohorts
+differ for historical baselines, so only the learned result supports uncertainty over seeds.}
 \label{fig:recall-sparsity-main}
 \end{figure}
 
-At requested 10\% and 20\%, the selected seed recovers 0.356 and 0.442 of \emph{all} annotated
-evidence identities, while the corresponding any-evidence values are 0.844 and 0.906. Thus a
+At requested 10\% and 20\%, the selected route-once seed recovers 0.356 and 0.442 of annotated
+evidence identities, while its corresponding any-evidence values are 0.844 and 0.906. These are
+not the five-seed any-evidence means of 0.831 and 0.956 in Table~\ref{tab:recall-sparsity-main}.
+The seed, cohort, and metric differ. Thus a
 system can often find one useful passage while still missing other evidence required for a
 multi-hop answer. This distinction explains why HotpotQA needs a larger realized fraction for
 90\% any-evidence recall (0.207) than QASPER (0.104).
@@ -573,12 +593,13 @@ evidence-identity recall, not the any-evidence metric above.
 \begin{table}[H]
 \centering
 \small
-\caption{Five-seed QASPER test evidence-identity recall. Values are mean $\pm$ sample standard
-deviation where shown.}
+\caption{Five-seed QASPER test evidence-identity recall. This stricter metric is the fraction of
+annotated identities recovered, not the any-evidence metric in Table~\ref{tab:recall-sparsity-main}.
+Values are mean $\pm$ sample standard deviation where shown.}
 \label{tab:cross-family-main}
 \begin{tabular}{lrrrrr}
 \toprule
-Family & R@5\% & R@10\% & R@20\% & R@30\% & AUC$_{0:30}$ \\
+Family & Identity R@5\% & Identity R@10\% & Identity R@20\% & Identity R@30\% & AUC$_{0:30}$ \\
 \midrule
 Qwen3-0.6B & 0.293 & 0.362 & $0.454\pm0.007$ & 0.532 & 0.396 \\
 SmolLM2-135M & 0.243 & 0.334 & $0.447\pm0.051$ & 0.532 & 0.371 \\
@@ -589,8 +610,9 @@ SmolLM2-135M & 0.243 & 0.334 & $0.447\pm0.051$ & 0.532 & 0.371 \\
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.74\linewidth]{../shared/results/paper2_hf/productization/cross_family_qasper_recall.pdf}
-\caption{Matched QASPER evidence-identity recall across five router seeds. The interface crosses
-families, but neither family reaches 0.80 recall before exhaustive selection.}
+\caption{\textbf{The shared PRA-HF core ports through thin family adapters.} Matched QASPER
+evidence-identity recall is similar for Qwen3-0.6B and the SmolLM2-135M Llama-family control,
+although neither reaches 0.80 before exhaustive selection.}
 \label{fig:cross-family-main}
 \end{figure}
 
@@ -600,17 +622,16 @@ The official Meta Llama 3.2-1B checkpoint remains an unmeasured target because i
 repository returned HTTP 401 in the available environment. No SmolLM2 number is presented as a
 Meta Llama result.
 
-\section{Causal Use: Does Correct Native Memory Help?}
+\section{Causal Use Is Depth Dependent}
 \label{sec:oracle-memory-use}
 
-Retrieval recall answers whether a router found annotated evidence. It does not answer whether
-the frozen decoder can use that evidence after it becomes native K/V. The initial adapter
-consumed routed memory only at layer 27; the earlier oracle diagnostic activated at most layers
-24--27. We therefore intervene at both the selection and consumption boundaries. The no-memory
+Retrieval recall asks whether annotated evidence was selected. Causal evaluation asks a different
+question: does the frozen decoder assign more probability to the gold answer after that evidence
+becomes native K/V? We intervene at both the selection and consumption boundaries. The no-memory
 condition supplies only the question. Oracle conditions force every 32-token parent intersecting
 an annotated evidence span. The direct-text control places the same evidence in the ordinary
-prompt. Four deterministic examples from each dataset are used, so this remains a mechanism
-probe rather than an accuracy estimate.
+prompt. Four deterministic examples from each dataset make this a mechanism probe rather than an
+accuracy estimate.
 
 Forced identities enter \texttt{prepare\_selected\_memory}, exactly where ordinary semantic
 routing ends. Both routes then share thresholding, whole-parent budgeting, native post-RoPE K/V,
@@ -637,7 +658,8 @@ used. This is a mechanism probe, not an accuracy estimate.
 \scriptsize
 \caption{Oracle consumption-depth sweep. $\Delta\log p$ is paired mean gold-token
 log-probability relative to no memory. K/V is aggregate physical materialization across active
-layers. TTFT and generation are synchronized descriptive seconds, not serving benchmarks.}
+layers. The key comparison is non-monotone: a late band helps on HotpotQA, whereas all-layer
+injection harms both datasets.}
 \label{tab:oracle-memory-use}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{llrrrrrrr}
@@ -666,10 +688,9 @@ QASPER & direct evidence text & 0 & -1.791 & .000 & 0 & .416 & 1.090 \\
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{../shared/results/paper2_hf/multilayer_pra/oracle_layer_depth.pdf}
-\caption{Oracle depth sweep. Repeated exposure through a contiguous late band improves
-HotpotQA likelihood, but the curve is non-monotone: all-layer replay is harmful on both
-datasets. The lower panels expose the associated aggregate materialization cost and per-layer
-attention rather than treating layer count as free.}
+\caption{\textbf{Retrieved native K/V has a depth-dependent causal effect.} A contiguous late
+band approaches the direct-text benefit on HotpotQA, whereas all-layer sparse injection is
+harmful. The lower panels show that additional exposure also increases materialization cost.}
 \label{fig:oracle-layer-depth}
 \end{figure}
 
@@ -679,6 +700,16 @@ $+2.311$, and $+3.641$ nats/token. The last eight recover 49.9\% of the direct-t
 using 8/28 layers; the last half recover 78.6\% at 1.75 times the last-eight materialization.
 Generated F1 does not change. The evidence therefore establishes causal likelihood use, not
 decoded QA success.
+
+This depth dependence is plausible because a residual transformer accumulates
+context-conditioned updates,
+\begin{equation}
+  h^{(\ell+1)}=h^{(\ell)}+\Delta h^{(\ell)}.
+\end{equation}
+Memory introduced too late has few opportunities to affect that trajectory. Memory introduced
+at every layer can interfere before the local question representation has formed. The measured
+late band lies between those extremes, but the small probe does not establish a universal theory
+of transformer hierarchy.
 
 QASPER separates perturbation from interpretable utility. It turns positive at the last eight
 layers ($+0.347$) but is only $+0.072$ at the last half, while direct evidence text is negative
@@ -695,7 +726,8 @@ per-layer payload sizes unchanged.
 \begin{table}[H]
 \centering
 \small
-\caption{Combined oracle placement result. Equal-count rows have equal aggregate K/V cost.}
+\caption{Oracle placement at fixed memory identities. Equal-count rows have equal aggregate K/V
+cost, isolating where memory enters the residual trajectory.}
 \label{tab:oracle-placement}
 \begin{tabular}{lrrrr}
 \toprule
@@ -714,9 +746,9 @@ Late contiguous quarter & 7 & 21 & +1.128 & .090 \\
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{../shared/results/paper2_hf/multilayer_pra/oracle_layer_placement.pdf}
-\caption{Oracle placement at matched parent identities and matched per-layer payload. Earlier
-and sparse placements are not approximations to a late contiguous band; they reverse the
-likelihood effect despite comparable attention and exactly equal K/V cost at equal counts.}
+\caption{\textbf{A contiguous late band is not interchangeable with earlier or sparse placement.}
+At matched parent identities and per-layer payload, earlier schedules reverse the likelihood
+effect despite equal K/V cost at equal layer counts.}
 \label{fig:oracle-layer-placement}
 \end{figure}
 
@@ -739,14 +771,14 @@ the complete pre-top-$k$ evidence-identity ranking and the aggregate consumption
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Combined route-once result over eight examples. Recall is the fraction of mapped
-evidence-parent identities recovered at a parent-selection fraction; $f_{80}$ and $f_{90}$ are
-the first measured fractions reaching those recall levels.}
+\caption{Combined route-once result over eight examples. Recall is evidence-identity recall, the
+fraction of mapped evidence-parent identities recovered; $f_{80}$ and $f_{90}$ are the first
+measured parent fractions reaching those levels.}
 \label{tab:routed-multilayer}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{llrrrrrrrrr}
 \toprule
-Router & Consumption & R@5\% & R@10\% & R@20\% & R@30\% & $f_{80}$ & $f_{90}$ & $\Delta\log p$ & F1 & K/V \\
+Router & Consumption & ID R@5\% & ID R@10\% & ID R@20\% & ID R@30\% & $f_{80}$ & $f_{90}$ & $\Delta\log p$ & F1 & K/V \\
 \midrule
 Learned margin & last 8 & .264 & .403 & .521 & .639 & .502 & 1.000 & +.227 & .090 & 768 \\
 Learned margin & last half & .264 & .403 & .521 & .639 & .502 & 1.000 & +.374 & .028 & 1,344 \\
@@ -768,7 +800,7 @@ encoding plus .021-second exact route. Its layer-27 learned index averages 45,18
 projected gists for all 28 instrumented layers averages 1.27 MB, versus 322.7 MB of resident
 detail K/V. These eager single-example timings characterize this implementation only.
 
-\subsection{Canonical end-to-end confirmation}
+\subsection{Retrieval, causal influence, and decoding are distinct}
 
 The earlier single-layer \texttt{\#\_\_head} run established bounded displacement but generated
 no correct answer. We repeat that probe with the learned router at layer 27 and the selected
@@ -780,8 +812,9 @@ then consumes its own 96-token native K/V payload.
 \begin{table}[H]
 \centering
 \small
-\caption{Multi-layer bounded-head confirmation. Rank is the gold first-token vocabulary rank;
-K/V is aggregate physical materialization over the consuming layers.}
+\caption{Bounded implicit-head confirmation. The router ranks the evidence first and selected
+memory strongly improves the gold distribution, but the greedy answer remains wrong. Rank is the
+gold first-token vocabulary rank; K/V is aggregate physical materialization.}
 \label{tab:canonical-confirmation}
 \begin{tabular}{lrrrrrr}
 \toprule
@@ -796,8 +829,10 @@ Learned route, last 8 & 1 & +5.469 & 1,351 & 768 & .000 & 0 \\
 The intervention raises the two-token answer's mean log-probability from $-10.924$ to $-5.455$
 and its first-token probability from $3.79\times10^{-9}$ to $1.95\times10^{-5}$. Greedy output
 still omits ``cobalt.'' The maximum native operation remains 128 tokens and no violation occurs.
-Thus the bounded head now demonstrates routing, multi-layer layer-native transport, and strong
-causal likelihood use together. It still does not establish decoded task success.
+Thus one bounded run demonstrates successful discovery, layer-native transport, and strong causal
+likelihood use together. It also shows why they must be measured separately from decoded task
+success: a five-order-of-magnitude first-token probability increase need not cross the greedy
+decision boundary.
 
 \subsection{A tiny residual adapter aligns memory with the frozen decoder}
 \label{sec:residual-adapter}
@@ -1048,8 +1083,9 @@ of evidence.
 \section{Product and Systems Boundary}
 
 The validated path is packaged as \texttt{pra-hf}, with a stable Python API, CLI, serializable
-configuration, fraction-based selection, and Hugging Face-style router artifacts. A caller adds
-a reference and generates through the same model object:
+configuration, fraction-based selection, and Hugging Face-style router artifacts. Version
+\texttt{0.2.0rc1} builds as a wheel and is pinned by tag \texttt{paper2-hf-rc1}. A caller adds a
+reference and generates through the same model object:
 
 \begin{verbatim}
 from pra_hf import PRAConfig, PRAForCausalLM
@@ -1080,8 +1116,9 @@ incurs eight layer-specific payloads even though semantic routing happened once.
 \begin{table}[H]
 \centering
 \small
-\caption{Four-example CUDA product-path means on a GTX 950M. This is a systems demonstration,
-not a throughput or QA benchmark. Peak GPU allocation includes the full model.}
+\caption{\textbf{The same product path runs on Qwen3-0.6B and SmolLM2-135M with bounded
+materialization.} Four-example CUDA means on a GTX 950M are a systems demonstration, not a
+throughput or QA benchmark. Peak GPU allocation includes the full model.}
 \label{tab:product-systems-main}
 \begin{tabular}{lrrrrrr}
 \toprule
@@ -1101,55 +1138,48 @@ eager Python implementation with exact Torch search. They are not evidence of se
 there is no matched dense long-context baseline, fused kernel, asynchronous transfer, or
 concurrency study.
 
-The public implementation is nevertheless a research contribution. It makes the tested boundary
-reusable, preserves native GQA storage rather than permanently expanding K/V heads, reports both
-requested and actual materialization, and permits exact disabled-path testing for a new family.
-The thin Llama adapter resolves the installed rotary and eager-attention functions while the
-shared core retains reference publication, routing, budgeting, and replay. Full code-level
-guidance appears in Appendix~\ref{app:adapter-guide}.
+The public implementation makes the tested boundary reusable. It preserves native GQA storage
+rather than permanently expanding K/V heads, reports both requested and actual materialization,
+and permits exact disabled-path testing for a new family. The release includes examples, router
+save/load artifacts, package and CLI tests, and 275 passing repository tests at the pinned
+revision. The thin Llama adapter resolves installed rotary and eager-attention functions while
+the shared core retains publication, routing, budgeting, and replay. Full code-level guidance
+appears in Appendix~\ref{app:adapter-guide}.
 
 \section{Limitations and Next Experiments}
 
-The evidence base is still small. The primary representation study uses 16 matched examples, the
-learned router has 32 held-out test identities, and the oracle depth study uses only four examples
-per dataset. The product path uses two held-out examples from each dataset. Confidence across
-five training seeds measures optimization variation on a fixed cohort; it does not replace a
-larger test set. The residual, conditional-LoRA, and global-readout studies likewise train on
-eight HotpotQA identities and test on four identities per dataset. Their all-seed likelihood
-directions therefore need independent replication on a larger calibration, validation, and test
-split. The 1,024-token WikiText control detects ordinary-language drift but is not a broad
-language-capability evaluation.
+The experiments establish mechanisms on modest cohorts, not benchmark accuracy. The primary
+representation study uses 16 matched examples, the learned router has 32 held-out test identities,
+and the oracle depth study uses four examples per dataset. Five seeds measure optimization
+variation on fixed identities; they do not replace a larger test set. The 1,024-token WikiText-2
+control can detect drift but is not a broad language-capability evaluation.
 
-Retrieval labels are also imperfect proxies for answer sufficiency. Any-evidence recall can be
-high while a multi-hop model misses another required passage. Evidence-identity recall improves
-that accounting but still assumes the annotations identify what the checkpoint needs. The
-HotpotQA direct-text control is positive and makes its oracle result interpretable. QASPER's
-direct-text control is negative on the causal subset, so QASPER cannot grade native-K/V utility
-there. Neither result establishes decoded QA improvement.
+Evidence labels and answer behavior measure different things. Any-evidence recall can be high
+while a multi-hop example still lacks another required passage. Evidence-identity recall is
+stricter, but it still assumes that annotations identify the state this checkpoint needs. The
+positive HotpotQA direct-text control makes its causal comparison interpretable. QASPER direct
+text lowers the target likelihood on the selected causal subset, so that subset cannot grade PRA
+transport in isolation. Reliable decoded QA gains remain unestablished on both datasets.
 
-The router remains domain-bound. Its 0.213 cross-domain recall@3 in both directions is the clearest
-warning against a general semantic-memory claim. More dimensions, contiguous subchunk means,
-token-level maxima, centered-RoPE gists, question-span pooling, sampled negatives, and one
-hard-negative refresh do not solve that problem. The next routing experiment should increase
-identity count and domain diversity before adding capacity, and should report any-, all-, and
-identity recall against both selected-parent and exact K/V fractions.
+The router is domain-dependent and memory exposure is depth-sensitive. Cross-domain any-evidence
+recall@3 is 0.213 in both directions. Additional gist resolution, centered-RoPE features, query
+pooling, width, and negative-mining variants do not remove this limitation. All-layer native-K/V
+injection is also harmful despite using more memory. A larger study should separate calibration,
+model selection, and test identities; report any-, identity-, and all-evidence recall against both
+selected-parent and exact-K/V fractions; and compare no-memory, routed, oracle, and direct-text
+conditions at a selected late band.
 
-The systems work establishes bounded execution and a portable API, not speed. Detail K/V remains
-resident on CPU, exact search is eager, and selected rows are padded. There is no matched dense
-long-context baseline, fused attention, ANN index, asynchronous transfer, batching, or concurrency
-study. The official Meta Llama 3.2-1B run is also absent because checkpoint access was denied; the
-paper reports SmolLM2 only as a measured Llama-family control.
+The systems result is bounded execution, not serving speed. Detail K/V remains CPU-resident,
+search is eager and exact, and selected rows are padded. Fused attention, approximate indexing,
+asynchronous transfer, batching, concurrency, and a matched dense long-context baseline remain
+unmeasured. Meta Llama 3.2-1B is also pending because checkpoint access returned HTTP 401;
+SmolLM2-135M is reported only as a measured Llama-family control.
 
-The most discriminating next experiment is a larger checkpoint-solvable cohort with separate
-calibration, model-selection, and test identities at the late-layer operating point. It should
-evaluate oracle, routed, direct-text, and no-memory conditions together and measure gold
-likelihood, calibrated first-token rank, decoded EM/F1, exact memory bytes, TTFT, and per-token
-latency. The rank-8 conditional-LoRA result makes that replication more urgent: likelihood
-alignment is strong with 0.0165\% of the base model, but decoded QA remains unsolved. Only after
-that test should Q/O or MLP LoRA widen the adaptation surface. Global LM-head tuning is not the
-next step: it fails to increase memory-specific likelihood, changes ordinary behavior, and
-degrades WikiText loss. If oracle native K/V fails where direct text succeeds, the integration
-representation, not routing capacity, remains the priority.
+The next Paper~2 experiment is a larger checkpoint-solvable generation cohort at the late-band
+operating point. Recursive multi-hop gathering belongs to Paper~2.5. Multi-gist strategy,
+semantic positional distance, and large-scale vLLM serving are separate research questions.
+Global LM-head tuning is not the next adaptation step: it fails to improve the memory-specific
+increment, changes no-PRA behavior, and raises WikiText-2 loss.
 
 \section{Related Work}
 
@@ -1165,46 +1195,30 @@ inserted beneath an existing pretrained family without changing its disabled beh
 
 \section{Conclusion}
 
-PRA-HF makes long external state addressable without asking a pretrained decoder to keep every
-token active. The implementation encodes references in model-safe blocks, retains their native
-layer K/V on CPU, searches a much smaller semantic index, and materializes selected whole chunks
-under a hard bound. When disabled, the adapters are exact. When enabled, they preserve native
-RoPE, GQA layout, masks, cache growth, and output projection across Qwen and Llama-family models.
+PRA-HF retrofits pretrained Hugging Face decoders with external native-K/V memory while preserving
+their ordinary behavior exactly when disabled. References are encoded in model-safe blocks,
+detail K/V may remain off the active path, and a compact index selects whole chunks for bounded
+native attention. The shared core works through thin Qwen and Llama-family adapters without
+checkpoint conversion.
 
-The main architectural lesson is simple: route semantic state and attend native positional state.
-Hidden-state gists avoid the strong position bias of post-RoPE means, while fixed selected
-identities always recover the same post-RoPE K and native V. A 0.044\%-of-model router then finds
-some annotated evidence in 83.1\% of cases at 10\% selected parents and 95.6\% at 20\%. That is a
-credible sparse discovery regime, but weak cross-domain transfer prevents a general retrieval
-claim.
+The architectural result is to route semantic state and attend native positional state.
+Hidden-state gists avoid the positional bias of post-RoPE key means, while selection still returns
+the host layer's exact post-RoPE keys and native values. A 0.044\%-of-model Qwen router reaches
+any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected parents. Matched QASPER results on
+SmolLM2 show that the shared interface, rather than identical retrieval quality, is portable.
 
-Correct memory can matter to the frozen decoder. HotpotQA oracle replay through the last four
-layers improves gold-token log-probability by 1.004 nats/token, while all-layer and early-layer
-replay are harmful. The effect is therefore about compatible placement, not simply adding more
-memory-attention sites. Generated F1 remains unchanged, and QASPER's failed direct-text control
-leaves that subset non-diagnostic. The present result is causal use in logits, not solved
-long-context question answering.
+Selected memory measurably affects pretrained predictions. HotpotQA oracle replay gains 3.641
+nats per gold token over the last 14 layers but loses 0.766 over all 28, establishing a bounded
+depth regime rather than a monotone layer-count effect. The implicit-head probe strengthens the
+separation among stages: evidence ranks first and gold likelihood rises by 5.469 nats per token,
+yet the greedy answer remains wrong. A 98,304-parameter PRA-conditional update improves routed
+likelihood further, whereas much larger global readout controls do not improve the memory-specific
+increment and disturb ordinary language modeling.
 
-A tiny conditional readout strengthens that logit-level result. With the backbone, LM head, and
-router frozen, rank-8 output-projection LoRA in the final four layers uses 98,304 parameters
-(0.0165\% of the base model) and raises routed gold likelihood by 1.846 nats/token on HotpotQA
-and 1.487 on QASPER. It beats the four-times-larger residual-32 adapter in every paired seed,
-while disabled-PRA output remains exact. EM is still zero and token F1 does not improve reliably.
-The current boundary is therefore sharper: routing and native-state transport can produce useful
-answer evidence, and a very small memory-conditional transformation can align its sequence
-likelihood, but robust decoding needs a larger identity-disjoint study rather than a broader
-uncontrolled parameter update.
-
-The staged control supports that boundary. Rank-8 LM-head LoRA uses 1.22M parameters and the full
-untied head uses 155.6M, yet neither exceeds frozen PRA's routed-minus-no-memory effect on
-HotpotQA. They instead shift no-PRA QA scores and raise WikiText-2 loss. Final normalization adds
-no measurable benefit. The evidence therefore favors a 98,304-parameter PRA-conditional update
-over global readout tuning, while leaving reliable generation explicitly unresolved.
-
-These boundaries are the point of the paper. Exact transport is established. Sparse discovery is
-strong and improving but domain-limited. Causal use is visible in likelihood, while reliable
-decoded gains remain open. The released API, artifacts, metrics, and reimplementation guide make
-that frontier reproducible without concealing what has not yet been achieved.
+The released \texttt{pra\_hf} package, artifacts, metrics, tests, and reimplementation guide make
+this exact portable retrofit independently usable. PRA-HF therefore establishes sparse semantic
+selection and depth-dependent causal use of large native-K/V memory; reliable decoded task gains
+remain the principal open boundary.
 
 \appendix
 \section{Routing Ablations}
@@ -1224,10 +1238,10 @@ artifact metadata, so rows summarize directions rather than a single paired lead
 \toprule
 Intervention & Sparse result & Cost or control & Interpretation \\
 \midrule
-Hidden segment means, $G=1/2/4/8$ & R@3 0.391/0.313/0.266/0.281 & Index overhead 1.57/3.14/6.28/12.56\% & Finer untrained means do not improve sparse ranking \\
-Token-level hidden maximum & R@3 0.375 versus mean 0.438 & Index overhead 50\% versus 1.57\% & Resolution helps some Hotpot ranks but hurts QASPER \\
-Centered-RoPE, $G=8$ & R@3 0.250 & Token-QK order correlation 0.874 & Coordinate repair does not create evidence semantics \\
-Question decay, strongest tested & R@3/MRR 0.250/0.279 & Last state 0.469/0.413 & More query tokens are not automatically a better query \\
+Hidden segment means, $G=1/2/4/8$ & Any R@3 0.391/0.313/0.266/0.281 & Index overhead 1.57/3.14/6.28/12.56\% & Finer untrained means do not improve sparse ranking \\
+Token-level hidden maximum & Any R@3 0.375 versus mean 0.438 & Index overhead 50\% versus 1.57\% & Resolution helps some Hotpot ranks but hurts QASPER \\
+Centered-RoPE, $G=8$ & Any R@3 0.250 & Token-QK order correlation 0.874 & Coordinate repair does not create evidence semantics \\
+Question decay, strongest tested & Any R@3/MRR 0.250/0.279 & Last state 0.469/0.413 & More query tokens are not automatically a better query \\
 Width 256 and harder negatives & No validation-selected gain & Twice the 128-wide index at width 256 & Data and objective generalization dominate raw capacity \\
 \bottomrule
 \end{tabularx}
