@@ -11,6 +11,8 @@
 \usepackage[hidelinks]{hyperref}
 \usetikzlibrary{arrows.meta,fit,positioning,shapes.geometric}
 \input{../shared/macros.tex}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \setlength{\emergencystretch}{3em}
 \definecolor{prablue}{HTML}{245A8D}
 \definecolor{pragreen}{HTML}{2D7A68}
@@ -27,11 +29,11 @@
   sysflow/.style={-{Stealth[length=2mm]}, thick, draw=pragray}
 }
 
-\title{Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory}
+\title{Progressive Retrieval Attention: Bounded Sparse Native-KV for Addressable Logical Memory}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{
-  pdftitle={Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory},
+  pdftitle={Progressive Retrieval Attention: Bounded Sparse Native-KV for Addressable Logical Memory},
   pdfauthor={Jorge Simao}
 }
 
@@ -46,8 +48,10 @@ a bounded subset; and only the selected, full-detail K/V participates in the mod
 ordinary attention operation. The gist is therefore metadata for selection, not a
 compressed replacement for the token state that attention reads.
 
-We evaluate this mechanism in controlled standalone transformers. With fixed selection
-breadth, 64--256 addressable units reduce the active fraction from 17.9--18.7\% to
+We evaluate this mechanism in controlled standalone transformers. The central repair is to
+encode contiguous context before slicing smaller routing units; independently encoded
+microchunks lose the historical context needed for faithful K/V. After this repair, fixed
+selection breadth over 64--256 addressable units reduces the active fraction from 17.9--18.7\% to
 4.4--4.9\% while retaining essentially all measured dense-context benefit in the small
 model. A fixed-fraction reanalysis isolates router quality from increasing sparsity:
 selecting about 12.5\% of references gives annotated target coverage of
@@ -78,6 +82,7 @@ K/V then share the same attention softmax. In short:
 
 \begin{center}
 \fbox{large logical memory}
+$\rightarrow$ \fbox{contextual encoding}
 $\rightarrow$ \fbox{compact routing gists}
 $\rightarrow$ \fbox{selected regions}
 $\rightarrow$ \fbox{full-detail native K/V}
@@ -106,22 +111,40 @@ confuse: whether cached native K/V carries useful detail, whether the router fin
 annotated source, how quality changes as selection becomes sparse, and whether every
 underlying model call remains within a declared length bound.
 
-\paragraph{Main findings.}
-\begin{itemize}[leftmargin=*]
-\item Selected native K/V recovers nearly all measured dense-context benefit through 256
-addressable units in the small tier while the active fraction falls to about 5\%.
-\item At a fixed selection fraction of about 12.5\%, annotated target coverage remains
-stable from 64 to 256 units on both natural-text-derived probes. The apparent decline at
-fixed $k=8$ mostly reflects that $k=8$ becomes four times sparser.
-\item Encoding context and routing context are not the same partition. Encoding isolated
-microchunks destroys contextual K/V; encoding larger contiguous blocks and then slicing
-smaller routing units repairs the failure.
-\item A model-bounded run addresses 192 logical tokens while every encoding and decoding
-operation stays below a 32-token native limit. Routing improves loss over truncation by
-0.1720 in that probe.
-\item Packed exact routing and CPU-resident source K/V establish viable implementation
-mechanisms, but the current Python prototype is not an optimized serving system.
-\end{itemize}
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Headline results. Together, the rows separate representation fidelity, sparse
+systems scaling, routing quality, bounded execution, and device residency.}
+\label{tab:headline}
+\begin{tabularx}{\textwidth}{P{0.22\textwidth}P{0.31\textwidth}Y}
+\toprule
+Finding & Measurement & Meaning \\
+\midrule
+Fragmentation repair & Split-64 oracle RCB: .546$\rightarrow$.996
+(HotpotQA-derived), .748$\rightarrow$.999 (QASPER-derived) & Encode contiguous context
+before exposing smaller routing views \\
+Fixed-$k$ sparse scaling & $k=8$ keeps 11--13 physical K/V tokens active; active fraction
+falls .179$\rightarrow$.044 and .187$\rightarrow$.049 from 64 to 256 units & Accessible
+memory grows while the selected payload remains approximately flat \\
+Fixed-fraction quality scaling & Coverage at about 12.5\% selection is
+.756/.772/.762 and .794/.803/.800 at 64/128/256 units & Fixed-$k$ decline partly reflects
+increasing sparsity rather than routing collapse \\
+Bounded logical context & 192 logical tokens, 184-token \texttt{\#\_\_head}, largest
+native call 20 under a limit of 32, zero violations & Logical memory can exceed one native
+operation without violating the configured bound \\
+CPU-resident detail K/V & At 256 units, .734--3.420 MiB leaves GPU; loss and selection are
+unchanged; warm overhead is 4.0--13.5 ms & Sparse selection becomes a measured device-capacity
+tradeoff when inactive detail is offloaded \\
+Measured capacity effect & QASPER-derived routed RCB at 256 units: .908 tiny versus 1.000
+small & Some high-scale weakness belongs to the tested model/router capacity, not transport \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The headline is not that one operating point solves long context. It is that logical memory,
+routing resolution, active native K/V, and device residency are separately controllable and
+separately measurable.
 
 The remainder of the paper first explains the mechanism, then evaluates transport,
 routing, scaling, and bounded execution in that order. Positional extrapolation is treated
@@ -162,8 +185,9 @@ one attention operation. Figure~\ref{fig:architecture-pipeline} shows the comple
 \draw[sysflow] (selected) -- (attention);
 \end{tikzpicture}%
 }
-\caption{PRA separates source encoding, routing metadata, and the K/V payload consumed by
-attention. Gists select; selected token-level native K/V supplies detail.}
+\caption{\textbf{PRA compresses the search representation, not the selected memory payload.}
+Contextual encoding produces native state, compact gists select addresses, and full-detail
+token K/V enters bounded attention.}
 \label{fig:architecture-pipeline}
 \end{figure}
 
@@ -190,6 +214,8 @@ For memory K/V $(K_M,V_M)$ and direct K/V $(K_D,V_D)$, the final operation is
 where $M$ preserves causal and padding constraints. The same attention scores and output
 projection are used for memory and direct state. The prototype's default native-KV mode
 does not introduce a separate memory output projection.
+All main experiments evaluate this native-KV path. Appendix~\ref{app:adaptation} records an
+earlier cross-attention-capable V1 branch only for historical provenance.
 
 \section{Mechanism}
 \label{sec:mechanism}
@@ -206,26 +232,35 @@ not receive one averaged value in place of those positions. The gist participate
 ranking. If selected, the chunk's 16 original key and value vectors are materialized. PRA
 therefore compresses the selection problem, not the content delivered to attention.
 
-References are also authorization boundaries. The cache is built from references present
-in the current sample, and batched execution uses a row-private cache. The same URI string
-in two rows does not imply shared content or permission.
-
 \subsection{Encoding Blocks Are Not Routing Chunks}
 
-Long sources cannot always be encoded in one native operation. PRA therefore uses two
-granularities:
-\begin{enumerate}[leftmargin=*]
-\item \emph{Encoding blocks} are sufficiently large, contiguous model calls that produce
-contextual hidden states and native K/V.
-\item \emph{Routing chunks} are smaller addressable slices used by the index and
-materialization budgeter.
-\end{enumerate}
+Addressable granularity does not need to equal encoding granularity. Consider a 128-token
+source region that should be searchable at 32-token resolution. PRA can encode all 128 tokens
+causally once, retain their contextual hidden and K/V states, and expose four 32-token views to
+the router. The model receives the context it needs, while the index retains fine addresses.
 
-Encoding every tiny routing chunk independently removes left context before K/V is ever
-cached. No later router can reconstruct state that the encoder did not produce. The
-correct order is to encode contiguous context first and partition the resulting native K/V
-for routing second. For model-bounded sources, overlapping left context may be carried into
-an encoding block while only the nonoverlapping core is committed.
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.91\textwidth}
+\centering
+\textbf{Fragmented path}\quad
+128 source tokens $\rightarrow$ four independent 32-token model calls
+$\rightarrow$ four context-poor K/V blocks\\[6pt]
+\textbf{Contextual-slice path}\quad
+128 source tokens $\rightarrow$ one causal encoding
+$\rightarrow$ native hidden/K/V $\rightarrow$ four 32-token routing views
+\end{minipage}}
+\caption{\textbf{Encoding resolution and routing resolution are independent.} Larger causal
+encoding preserves historical context; smaller metadata views preserve sparse selection
+granularity without re-encoding isolated microchunks.}
+\label{fig:encoding-routing-granularity}
+\end{figure}
+
+An \emph{encoding block} is therefore a contiguous model call that produces contextual state.
+A \emph{routing chunk} is a smaller addressable view used by the index and budgeter. Encoding
+each routing chunk independently removes left context before K/V is cached, and no later router
+can reconstruct state the encoder never produced. For model-bounded sources, a block may carry
+overlapping left context while committing only its nonoverlapping core.
 
 \subsection{Exact Routing and Whole-Chunk Budgeting}
 
@@ -347,8 +382,8 @@ diagnostic at roughly 10\% active K/V.
 \begin{table}[H]
 \centering
 \small
-\caption{Split-64 fragmentation diagnosis. The selector column distinguishes transport
-from routing measurements.}
+\caption{\textbf{Contextual native-K/V slicing repairs the split-64 transport failure.} The
+selector column separates payload fidelity from learned routing quality.}
 \label{tab:fragmentation}
 \begin{tabularx}{\textwidth}{Xlrr}
 \toprule
@@ -370,16 +405,16 @@ itself is not meaningful unless the encoding procedure is also specified.
 \label{sec:scaling}
 
 After the fragmentation repair, we scale each natural-text-derived source to 64, 128, and
-256 addressable units. With fixed $k=8$, the small model uses only 11--13 physical K/V
-tokens per example. Table~\ref{tab:scale-main} separates the resulting active fraction
-from annotated target coverage and RCB.
+256 addressable units. Two comparisons answer different questions. Fixed $k=8$ asks whether
+the physical working set remains bounded as logical memory grows. Selection near a fixed 12.5\%
+asks whether routing quality remains stable under comparable sparsity pressure.
 
 \begin{table}[H]
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
-\caption{Small-tier scaling. Fixed-$k$ coverage and RCB use $k=8$; fixed-fraction coverage
-uses the measured $k$ nearest 12.5\% ($8,16,32$).}
+\caption{Small-tier scaling under two controls. Fixed-$k$ coverage and RCB use $k=8$;
+fixed-fraction coverage uses the measured $k$ nearest 12.5\% ($8,16,32$).}
 \label{tab:scale-main}
 \begin{tabular}{llrrrr}
 \toprule
@@ -396,39 +431,53 @@ QASPER-derived   & 64  & 0.187 & 0.794 & 1.000 & 0.794 \\
 \end{tabular}
 \end{table}
 
-At fixed $k=8$, the selected fraction changes from 12.7\% at 64 candidates to 6.3\% at
-128 and 3.1\% at 256. A fixed-$k$ curve therefore combines two effects: more candidates and
-more aggressive sparsity. The fixed-fraction comparison removes that confound. Through the
-measured range, coverage is essentially stable: 0.756/0.772/0.762 for HotpotQA-derived
-text and 0.794/0.803/0.800 for QASPER-derived text. Figure~\ref{fig:fixed-fraction}
-shows all measured points; no values are interpolated.
+\subsection{Fixed breadth: a nearly bounded physical working set}
+
+At fixed $k=8$, candidate count grows from 63 to 255 while the small model materializes only
+11--13 physical K/V tokens per example. The active fraction falls from .179 to .044 on the
+HotpotQA-derived probe and from .187 to .049 on the QASPER-derived probe. At 256 units this
+avoids 96.9--97.4\% of reference K/V and 94.9--95.6\% of total accessible K/V. Routed RCB
+remains 1.000 to the reported precision. This is the PRA systems law measured here:
+accessible memory grows while the selected native-K/V working set remains approximately flat.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\textwidth]{../shared/figures/pra_scale_sparsity.pdf}
+\caption{\textbf{Fixed $k=8$ keeps physical selected K/V nearly flat as candidate memory
+grows.} The resulting active fraction falls to 4.4--4.9\% at 256 addressable units.}
+\label{fig:scale-sparsity}
+\end{figure}
+
+\subsection{Fixed fraction: routing quality under equal sparsity pressure}
+
+Fixed $k$ becomes progressively harsher: the selected candidate fraction changes from 12.7\%
+at 64 units to 6.3\% at 128 and 3.1\% at 256. Selecting the measured $k$ nearest 12.5\%
+removes that confound. Coverage remains 0.756/0.772/0.762 for HotpotQA-derived text and
+0.794/0.803/0.800 for QASPER-derived text. Figure~\ref{fig:fixed-fraction} shows every
+measured point; no values are interpolated.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=.88\textwidth]{../shared/figures/pra_fixed_k_vs_fraction_scaling.pdf}
-\caption{Fixed breadth becomes increasingly sparse as candidate count grows. Holding the
-selection fraction near 12.5\% yields stable annotated target coverage through 256 units.}
+\caption{\textbf{Fixed-$k$ decline partly reflects increasing sparsity, not intrinsic routing
+collapse.} Holding selection near 12.5\% yields stable annotated target coverage through the
+measured 256-unit scale.}
 \label{fig:fixed-fraction}
 \end{figure}
 
-The RCB and coverage columns answer different questions. RCB asks whether the selected K/V
+RCB and coverage answer different questions. RCB asks whether the selected K/V
 is sufficient for this controlled prediction. Coverage asks whether the annotated source
 was selected. A model can recover the answer when redundant or correlated evidence is
 present even if the annotated URI is absent. Accordingly, the perfect measured RCB at
 $k=8$ should not be read as perfect routing.
 
-At 256 units, fixed-$k$ selection avoids 96.9--97.4\% of reference K/V and 94.9--95.6\%
-of total accessible K/V in these runs. This is the central scaling result: logical source
-size grows while the active native-KV payload remains nearly constant. It is an active
-attention saving, not elimination of the external cache.
+\subsection{Measured model-capacity effect}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=.86\textwidth]{../shared/figures/pra_scale_sparsity.pdf}
-\caption{Fixed $k=8$ keeps the selected physical payload nearly constant as candidate
-count grows, causing the active fraction to fall.}
-\label{fig:scale-sparsity}
-\end{figure}
+The same QASPER-derived $k=8$ run separates transport from tested model capacity. Tiny-tier
+routed RCB declines from 1.000 at 64 units to 0.908 at 256, while the small tier remains 1.000.
+Its target coverage at 256 is also 0.388 versus 0.759. Increased capacity materially improves
+this measured high-scale operating point, but two small tiers do not support extrapolation to
+large models or prove that capacity alone solves routing.
 
 \section{Model-Bounded Logical Context}
 \label{sec:bounded}
@@ -441,12 +490,29 @@ The logical prompt contains 192 tokens, of which 184 form an implicit addressabl
 Encoding uses 16-token cores with up to four tokens of left context; the largest observed
 native operation is 20 tokens, or 62.5\% of the declared limit.
 
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.90\textwidth}
+\centering
+\textbf{Logical request: 192 tokens}\\[3pt]
+184-token displaced \texttt{\#\_\_head} $+$ 8-token direct tail\\[5pt]
+$\downarrow$ head encoded in bounded blocks (largest source call: 20 tokens)\\[4pt]
+$\downarrow$ compact routing selects full-detail K/V under a 20-token memory budget\\[4pt]
+$\downarrow$ native attention constraint:
+$8\ \text{direct} + L_M\ \text{selected} + 4\ \text{reserve} \leq 32$
+\end{minipage}}
+\caption{\textbf{A 192-token logical request executes without a native call longer than 20
+tokens under the configured 32-token limit.} Logical history, displaced head, direct tail,
+materialized memory, and native operation length are distinct quantities.}
+\label{fig:bounded-head-path}
+\end{figure}
+
 \begin{table}[H]
 \centering
 \small
-\caption{Five-seed bounded-context probe over 80 held-out cases. The dense condition is a
-diagnostic, not an oracle: it violates the imposed deployment limit and is out of the
-model's shorter training distribution.}
+\caption{\textbf{Routed PRA improves on truncation while all measured native calls remain
+bounded.} Five seeds cover 80 held-out cases. Dense full context is a diagnostic outside the
+imposed deployment limit and the model's shorter training distribution.}
 \label{tab:bounded}
 \begin{tabular}{lrrr}
 \toprule
@@ -476,8 +542,8 @@ can enter the bounded operation.
 \begin{figure}[H]
 \centering
 \includegraphics[width=.82\textwidth]{../shared/figures/pra_materialization_budget.pdf}
-\caption{Quality and target recall improve as more of the 32-token operation budget is
-assigned to materialized memory.}
+\caption{\textbf{The materialization budget exposes a quality--working-set frontier.} Assigning
+more of the 32-token operation budget to selected native K/V improves loss and target recall.}
 \label{fig:bounded-budget}
 \end{figure}
 
@@ -497,18 +563,28 @@ tier, compared with 563--1183 ms for the scalar path. The selected chunks are id
 This 94--103$\times$ microbenchmark improvement demonstrates that exact routing need not be
 Python-loop bound; it is not an end-to-end latency claim.
 
-Persistent source K/V may also reside on CPU and move to the accelerator only after
-selection. At 256 units, this removes 0.734--3.420 MiB of measured source K/V from GPU
-residency, transfers 24.6--87.9 KiB per example, and adds 4.0--8.9 ms in the prototype.
-Selections and loss are unchanged. Index memory itself is 260 KiB in the tiny tier and
-1.03 MiB in the small tier. These measurements expose the real trade: PRA can reduce
-active and resident GPU K/V, but external state, routing metadata, and transfer still cost
-memory and time.
+Persistent source K/V may also reside on CPU and move to the accelerator only after selection.
+At 256 units, this removes 0.734--3.420 MiB of measured source K/V from GPU residency and
+transfers only 24.6--87.9 KiB per example. The selected identities, materialized tokens, and
+loss match GPU-resident execution exactly. Selective transfer itself takes 4.0--8.9 ms; the
+complete warm-request path is 4.0--13.5 ms slower. Index memory remains on GPU at 260 KiB in
+the tiny tier and 1.03 MiB in the small tier. Figure~\ref{fig:kv-residency} also shows why
+source-K/V savings should not be confused with whole-model peak allocation.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\textwidth]{../shared/figures/pra_kv_residency.pdf}
+\caption{\textbf{CPU residency removes the full inactive source cache from GPU while preserving
+the sparse selected payload.} At 256 units the measured saving is .734--3.420 MiB; total peak
+CUDA allocation falls less because model parameters and other tensors remain resident.}
+\label{fig:kv-residency}
+\end{figure}
 
 \begin{table}[H]
 \centering
 \small
-\caption{What the systems measurements establish, and what they do not.}
+\caption{Systems measurements distinguish sparse-compute mechanics from unmeasured production
+serving claims.}
 \label{tab:systems}
 \begin{tabularx}{\textwidth}{l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
@@ -524,43 +600,28 @@ Long-form generation quality \\
 \end{tabularx}
 \end{table}
 
-\section{A Controlled Adaptation Result}
-\label{sec:adaptation}
+\section{Related Work by Changed Resource}
 
-An earlier cross-attention-capable branch tested whether ordinary-language pretraining
-helps a newly introduced memory path. Across five paired seeds, freezing the pretrained
-backbone and adapting only the memory path reduced reference-conditioned loss from 6.3557
-to 4.6720 in the full-PRA variant and from 6.3642 to 4.7296 in the hybrid variant. It
-preserved the corresponding plain-language losses exactly at 4.5034 and 4.5500. Direct
-joint tuning instead increased plain loss by 0.1775 and 0.1562.
+\paragraph{Retrieved input.}
+RAG, REALM, and RETRO retrieve external text or neighbors that a model then consumes
+\cite{lewis2020rag,guu2020realm,borgeaud2022retro}. PRA can use those retrieval results, but
+it operates after encoding: its addressable object is layer-native state and its immediate
+budget is the K/V active in attention.
 
-This supports staged adaptation in that controlled branch and shows why plain-language
-retention must be measured. It does not establish a general pretrained-model result. The
-same experiments reported reference selection near chance (mean reciprocal rank 0.4202)
-and very small shuffled/oracle deltas, so content-causal routing was not demonstrated
-there. The native-KV experiments in Sections~\ref{sec:transport}--\ref{sec:bounded} are the
-primary evidence for this paper's mechanism.
-
-\section{Related Work}
-
-PRA lies between retrieval, sparse attention, and memory-augmented transformers, but it is
-not interchangeable with any of them. RAG, REALM, and RETRO retrieve external text or
-neighbors that a model then consumes \cite{lewis2020rag,guu2020realm,borgeaud2022retro}.
-PRA can use those retrieval results, but its object is layer-native state and its budget is
-the active K/V set.
-
-Longformer and BigBird prescribe sparse connectivity over long admitted sequences;
-Reformer and Routing Transformer reduce attention cost through locality or content routing
+\paragraph{Attention connectivity.}
+Longformer and BigBird prescribe sparse connectivity over an admitted sequence. Reformer and
+Routing Transformer reduce attention cost through locality or content routing
 \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. PRA instead
-allows logical memory to live outside the current model operation and materializes selected
+allows logical memory to remain outside the current model operation and materializes selected
 token K/V only when needed.
 
-Memorizing Transformers and related external-memory models also expose prior state to a
-decoder \cite{wu2022memorizing}. PRA's emphasis is the explicit separation among compact
-routing gists, addressable full-detail native K/V, and a hard materialization budget.
-Decode-cache methods such as H$_2$O, SnapKV, and ClusterKV are complementary when their
-retention policies can preserve the source state PRA may later need
-\cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}.
+\paragraph{Retained detail.}
+Decode-cache methods such as H$_2$O, SnapKV, and ClusterKV change which token details remain
+available \cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}. They are complementary when their
+retention policies preserve state PRA may later select. Memorizing Transformers and related
+external-memory models also expose prior state to a decoder \cite{wu2022memorizing}. PRA's
+specific separation is among compact routing metadata, addressable full-detail native K/V, and
+a hard materialization budget.
 
 \section{Limitations, Safety, and Scope}
 \label{sec:limitations}
@@ -576,6 +637,13 @@ better selectors. The bounded-context router reaches only 0.525 recall, and the 
 control shows that some gain is not source-specific. PRA makes sparse access possible; it
 does not make relevance estimation automatic.
 
+Sparse selection alone reduces active attention, not necessarily GPU residency. If every
+inactive detail tensor remains on the accelerator, the external cache still grows with logical
+memory. The CPU-residency experiment measures one offload tradeoff, but it does not establish
+production transfer efficiency, asynchronous overlap, or arbitrary memory scale. Logical-memory
+support is likewise not dense full-context equivalence: unselected K/V is absent from the
+operation.
+
 Position semantics are another independent constraint. Preserving source coordinates is
 necessary for the standalone absolute-position experiments, but this paper does not claim
 that a pretrained positional geometry extrapolates to arbitrary logical offsets. The
@@ -590,18 +658,19 @@ request-local even when every request uses the same internal name.
 
 \section{Conclusion}
 
-PRA separates the amount of memory a request may address from the amount of K/V a
-transformer operation must activate. Compact gists make selection inexpensive enough to
-be explicit; selected full-detail native K/V preserves token-level evidence; and a
-materialization budget keeps each operation bounded. Controlled experiments show nearly
-complete transport through 256 addressable units, stable target coverage at a fixed
-selection fraction, and useful access to a 192-token logical prompt under a 32-token native
-limit.
+PRA separates addressable logical memory from the native K/V active in one transformer
+operation. Contextual encoding can remain coarse enough to preserve historical state while
+routing views remain fine enough for sparse selection. The gist is routing metadata; selected
+full-detail K/V is the attention payload.
 
-The result is a mechanism, not a finished long-context product. Better routing,
-pretrained-model positional integration, and optimized serving remain open. What the
-present evidence supports is the architectural separation itself: logical memory can grow
-without requiring every transformer operation to attend to all of it.
+The controlled evidence establishes both scaling laws through 256 units. At fixed $k$, physical
+selected K/V remains nearly flat and the active fraction falls to 4.4--4.9\%. At a fixed
+selection fraction, target coverage remains stable near 0.76--0.80. A 192-token logical prompt
+also executes under a hard 32-token native limit, and CPU residency converts sparse selection
+into measured GPU-cache savings without changing loss or selected state.
+
+This controlled scope leaves routing, pretrained positional integration, and optimized serving
+to future work. PRA nevertheless separates growing logical memory from per-operation active K/V.
 
 \appendix
 
@@ -619,17 +688,26 @@ Overlap can protect facts that cross routing boundaries, but it duplicates physi
 and makes selected-token accounting differ from unique-token accounting. The main scaling
 tables report physical active tokens because those are materialized by the prototype.
 
-\paragraph{Model capacity.}
-The small tier is more stable than the tiny tier under severe fragmentation. In the
-QASPER-derived scale run, tiny-tier routed RCB declines from 1.000 at 64 units to 0.908 at
-256, while the small tier remains at 1.000. This is evidence that routing sparsity and model
-capacity interact, not that more parameters remove the need for measured controls.
-
 \paragraph{Wrong-memory controls.}
 Disabled, shuffled, irrelevant, and oracle conditions serve different purposes. Disabled
 memory measures the direct baseline; shuffled memory tests identity dependence while
 preserving payload volume; irrelevant memory tests distractor sensitivity; and oracle
 selection tests transport independently of routing. None alone is sufficient.
+
+\section{Historical Cross-Attention Adaptation}
+\label{app:adaptation}
+
+An earlier V1 branch used a separately projected cross-attention-capable memory path. It is
+retained here for provenance, not as the architecture evaluated in the main paper. Across five
+paired seeds, freezing the pretrained backbone and adapting only that memory path reduced
+reference-conditioned loss from 6.3557 to 4.6720 in the full-PRA variant and from 6.3642 to
+4.7296 in the hybrid variant. It preserved plain-language losses exactly at 4.5034 and 4.5500;
+direct joint tuning instead increased them by 0.1775 and 0.1562.
+
+The result supports staged adaptation within that historical branch, but it does not establish a
+general pretrained-model result. Reference selection remained near chance (MRR 0.4202), and
+shuffled/oracle deltas were very small. The native-KV experiments in
+Sections~\ref{sec:transport}--\ref{sec:bounded} are the evidence for the present mechanism.
 
 \section{Minimal Reimplementation Guide}
 \label{app:implementation}
