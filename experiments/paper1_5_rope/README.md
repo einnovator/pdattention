@@ -10,6 +10,7 @@ python experiments/paper1_5_rope/run_core_experiments.py --device cuda
 python experiments/paper1_5_rope/eval_distance_policy.py --device cuda --iterations 500
 python experiments/paper1_5_rope/eval_logical_offsets.py --device cuda
 python experiments/paper1_5_rope/eval_head_offset_progression.py --device cuda --max-examples 4
+python experiments/paper1_5_rope/run_pooling_geometry.py --device cuda
 python experiments/paper1_5_rope/summarize_next_iteration.py
 ```
 
@@ -82,6 +83,20 @@ Use `--smoke --datasets hotpotqa --tiers tiny --seeds 1 --steps 10` for the shor
 Canonical tables, per-seed rows, complete rankings, and the protocol live under
 `docs/papers/shared/results/paper1_5_rope/learned_routing/`; the manuscript plot is
 `docs/papers/shared/figures/rope_learned_routing.pdf`.
+
+## RoPE Pooling Geometry
+
+The controlled pooling study compares compact gist rankings with exact native token-Q/K
+rankings while leaving native K/V materialization unchanged:
+
+```powershell
+python experiments/paper1_5_rope/run_pooling_geometry.py --device cuda
+```
+
+Use `--smoke --datasets hotpotqa --tiers tiny --seeds 1 --steps 10` for a short path. Full
+defaults use five seeds, both tiers, and both QA-derived probes. The canonical JSON, CSV,
+rankings, and plots are written to
+`docs/papers/shared/results/paper1_5_rope/pooling_geometry/`.
 
 ## Expectations Recorded Before the Logical-Offset Run
 

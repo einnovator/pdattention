@@ -40,8 +40,10 @@ QA-derived loss improves in 35/60 pairs and reverses direction for some RoPE con
 Changing RoPE distance alone yields no stable useful optimum. By contrast, a frozen
 32-dimensional learned metric over position-independent hidden states reaches .908--.985
 one-of-15 evidence recall, versus .369--.723 for post-RoPE K and .000--.015 under shuffled
-supervision. For fixed selected identities, post-RoPE K, V, and native attention output remain
-bit-exact. A 192-token logical
+supervision. Increasing centered-RoPE gist resolution from one to eight raises native-Q/K
+rank fidelity from .794 to .963, but sparse semantic AUC remains .651--.652; the learned
+metric reaches .971 AUC despite only .178 Q/K fidelity. For fixed selected identities,
+post-RoPE K, V, and native attention output remain bit-exact. A 192-token logical
 prompt also runs with every measured native operation at or below 24 tokens under a 32-token
 limit. Positional continuity is necessary, but coordinate correctness, representation
 fidelity, attention geometry, semantic selection, and downstream use are distinct empirical
@@ -91,7 +93,7 @@ headline result:
 \textbf{Geometric correctness and functional usefulness are not the same thing.}
 \end{quote}
 
-The paper makes seven outcome-oriented contributions:
+The paper makes eight outcome-oriented contributions:
 \begin{itemize}[leftmargin=*]
 \item We formalize source-relative logical position as cache provenance for independently
 encoded K/V.
@@ -106,6 +108,8 @@ language-model or QA-derived loss improvement.
 \item We demonstrate that semantic evidence routing can use a tiny learned hidden-state
 projection while selected native post-RoPE K/V remains unchanged for attention, separating
 semantic relevance geometry from positional attention geometry.
+\item We show that averaging post-RoPE keys mixes positional phases, and that increasingly
+faithful approximations of native Q/K geometry need not improve semantic evidence retrieval.
 \item We demonstrate bounded implicit-head execution in which logical prompt length exceeds
 every native model operation, while carefully separating this mechanical result from dense
 long-context equivalence.
@@ -631,6 +635,136 @@ to 1.0124 even though evidence recall becomes one. Annotated evidence identity i
 not necessarily the functionally optimal context composition for a model. The result is a
 controlled warning, not a universal composition law.
 
+\section{Does Pooling Preserve Native RoPE Geometry?}
+\label{sec:pooling-geometry}
+
+Token-level post-RoPE keys are the correct native attention representation. Compact routing,
+however, usually replaces several token keys with one arithmetic mean. This operation mixes
+phases. For pre-RoPE token keys $K_j^{\mathrm{pre}}$ at source positions $p_j$, native keys
+are
+\begin{equation}
+ K_j^{\mathrm{post}}=R(p_j)K_j^{\mathrm{pre}}.
+\end{equation}
+A mean formed after rotation and a mean formed before rotation then bound to one representative
+center $p_c$ are, in general,
+\begin{equation}
+ \boxed{
+ \frac{1}{m}\sum_j R(p_j)K_j^{\mathrm{pre}}
+ \ne
+ R(p_c)\left(\frac{1}{m}\sum_j K_j^{\mathrm{pre}}\right).}
+ \label{eq:pooling-noncommute}
+\end{equation}
+The left side is a valid mean of native keys, but it has no single RoPE phase. The right side
+has one coherent representative phase, but compresses the token-specific rotations. Thus
+exact token-level RoPE correctness does not make post-RoPE arithmetic pooling positionally
+coherent, and no one-center construction can preserve every token relation.
+
+\paragraph{Centered subgists.}
+For a chunk spanning $[p_{\mathrm{start}},p_{\mathrm{end}}]$, the one-gist construction
+averages pre-RoPE keys and rotates the mean once at
+$p_c=(p_{\mathrm{start}}+p_{\mathrm{end}})/2$. For $G>1$, we split the chunk into $G$
+balanced contiguous nonempty subspans, repeat this operation at each exact subspan center,
+and retain all subgist identities. Half-token centers are evaluated directly by RoPE rather
+than rounded; they occur in 30.4\% of evaluated subspans. When a short chunk contains fewer
+than $G$ tokens, $G$ is capped at one nonempty subgist per token.
+
+\paragraph{Geometry target and protocol.}
+For query $i$ and candidate chunk $c$, the exact native target is
+\begin{equation}
+ s^{\mathrm{native}}_{ic}
+ =\max_{j\in c}\left[\frac{1}{H}\sum_{h=1}^{H}
+ \frac{q_{ih}^{\top}R(p_j)k_{icjh}^{\mathrm{pre}}}{\sqrt{d_h}}\right].
+ \label{eq:native-qk-target}
+\end{equation}
+Every gist method uses the same mean-over-heads then maximum-over-gists reducer. We report the
+per-example Spearman correlation $\rho_{QK}$ between its 15-chunk ranking and
+Eq.~\ref{eq:native-qk-target}, plus top-1 and top-3 agreement. Position bias is the per-example
+Pearson correlation between routing score and normalized chunk center; the table reports its
+absolute magnitude $|\rho_{\mathrm{pos}}|$, while signed values remain in the artifacts.
+
+The experiment reuses the frozen RoPE checkpoints, 16-way HotpotQA- and QASPER-derived
+partitions, established 80/20 split, tiny and small tiers, and seeds 1, 7, 21, 42, and 87. We
+compare post-RoPE mean, position-neutral pre-RoPE mean, centered $G=1,2,4,8$, raw hidden
+cosine, and the same 32-D learned router from Section~\ref{sec:learned-routing}. Semantic
+metrics use the programmatic evidence identity. Reported means first aggregate the four
+dataset--tier cells within each seed; 95\% intervals use the five resulting seed means.
+The attention payload is always native token-level post-RoPE K and native V.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Native-Q/K geometry and semantic evidence retrieval. $\rho_{QK}$ includes a 95\%
+confidence interval over five seed-level means. R10/R20 denote evidence-identity recall at
+nominal 10\%/20\% candidate fractions; AUC is sparse AUC$_{0\text{--}30}$, and $f_{80}$/$f_{90}$
+are selected fractions needed for .80/.90 recall.}
+\label{tab:pooling-geometry}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Method & $\rho_{QK}$ & $|\rho_{\mathrm{pos}}|$ & R10 & R20 & AUC & $f_{80}$ & $f_{90}$ \\
+\midrule
+Post-RoPE mean & $.802\mathbin{\pm}.049$ & .590 & .631 & .688 & .653 & .350 & .523 \\
+Pre-RoPE mean & $.408\mathbin{\pm}.071$ & .239 & .527 & .596 & .548 & .600 & .683 \\
+Centered $G=1$ & $.794\mathbin{\pm}.052$ & .589 & .631 & .692 & .651 & .373 & .517 \\
+Centered $G=2$ & $.815\mathbin{\pm}.050$ & .588 & .627 & .662 & .639 & .393 & .537 \\
+Centered $G=4$ & $.847\mathbin{\pm}.040$ & .597 & .638 & .692 & .653 & .373 & .493 \\
+Centered $G=8$ & $.963\mathbin{\pm}.011$ & .573 & .627 & .681 & .652 & .370 & .483 \\
+Hidden cosine & $-.078\mathbin{\pm}.147$ & .237 & .100 & .154 & .131 & .917 & .963 \\
+Learned 32-D & $.178\mathbin{\pm}.058$ & .338 & .996 & 1.000 & .971 & .070 & .073 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\begin{minipage}[t]{.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{../shared/figures/rope_pooling_qk_fidelity.pdf}
+\end{minipage}\hfill
+\begin{minipage}[t]{.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{../shared/figures/rope_pooling_geometry_vs_semantics.pdf}
+\end{minipage}
+\caption{Left: centered subgists increasingly reproduce exact native token-Q/K chunk
+rankings. Right: that geometric improvement does not produce a corresponding gain in sparse
+semantic AUC. Error bars are 95\% confidence intervals over five seed-level means.}
+\label{fig:pooling-geometry}
+\end{figure}
+
+The $G$ sweep supplies the cleanest controlled contrast. From $G=1$ to $G=8$, mean
+$\rho_{QK}$ rises by .169, and it rises in all 20 dataset--tier--seed conditions. Top-1
+agreement rises from .723 to .946 and top-3 overlap from .715 to .923. Yet semantic AUC moves
+only from .6510 to .6516: 10 conditions improve, 8 decline, and 2 tie. R10 changes from .631
+to .627 and R20 from .692 to .681. Diagnostic R@3/R@8/MRR are
+.692/.931/.653 at $G=1$ and .681/.923/.662 at $G=8$. Better approximation of the host
+attention ranking therefore does not imply better evidence ranking in this probe.
+
+The learned router makes the dissociation sharper. It has only .178 Q/K rank fidelity, yet
+reaches .971 sparse AUC, .996 R10, and 1.000 R20. It is not an approximation of native Q/K
+geometry; it is a supervised relevance geometry. Conversely, post-RoPE mean is a strong Q/K
+approximation (.802) but only a moderate semantic index (.653 AUC). These results strengthen
+the distinction between levels 3 and 4 in the paper's framework:
+\begin{equation}
+ \boxed{\text{better native-attention approximation}\not\Rightarrow
+ \text{better semantic retrieval}.}
+\end{equation}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/figures/rope_pooling_position_bias.pdf}
+\caption{Absolute correlation between routing score and normalized source position. Centered
+pooling does not monotonically remove position dependence; its signed mean correlations are
+negative ($-.569$ to $-.595$). The learned relevance metric reduces, but does not eliminate,
+the positional association. Error bars show 95\% confidence intervals over five seeds.}
+\label{fig:pooling-position-bias}
+\end{figure}
+
+For every method, fixed selected identities yield zero maximum absolute difference in selected
+native K, selected native V, and attention output. Pooling changes only the compact search
+representation. The result does not make token-level post-RoPE K wrong: native post-RoPE K is
+the correct attention payload. It shows why a mixed-phase mean can be a useful approximation
+of attention ranking and still be the wrong objective for semantic indexing.
+
 \section{Can Logical Prompts Exceed Native Operations?}
 \label{sec:head}
 
@@ -730,14 +864,21 @@ open-ended HotpotQA or QASPER retrieval. We do not retrain memory use or claim a
 loss gain from replacing the selector. Hard negatives, cross-domain transfer, and pretrained
 semantic structure require separate experiments.
 
+The pooling-geometry experiment shares those evidence-identity and scale limitations. Its
+native target uses a maximum over token scores after averaging heads; other reducers can define
+a different approximation problem. Increasing $G$ also increases compact-index entries and
+score work, so $G=8$ is a fidelity control rather than a free serving recommendation. The
+study measures ranking and fixed-selection payload parity, not end-to-end answer quality after
+replacing the selector.
+
 The paper deliberately excludes pretrained Hugging Face adaptation, learned memory-use
-training, recursive multi-hop retrieval, multi-gist representation search, semantic-distance
+training, recursive multi-hop retrieval, hidden-state multi-gist search, semantic-distance
 policies beyond the reported mechanism probes, and serving integration. Those extensions must
 not be read back into the present evidence.
 
 \section{Conclusion}
 
-The evidence supports six conclusions. First, a source-relative logical start offset repairs
+The evidence supports seven conclusions. First, a source-relative logical start offset repairs
 reset fragmentation exactly at layer zero for learned absolute, sinusoidal, and RoPE models,
 and improves deeper representation in every paired test. Second, contextual fragmentation
 remains separate: overlap or grouped encoding can improve representation, but costs additional
@@ -750,16 +891,20 @@ placement can be destructive; the near-range response is non-monotonic rather th
 distance rule.
 
 Fourth, native positional attention geometry is not necessarily semantic relevance geometry.
-A tiny asymmetric projection of contextual hidden states sharply improves controlled evidence
-ranking. Fifth, routing can use that learned geometry while selected native post-RoPE K, V,
-and attention output remain bit-exact. Sixth, semantic retrieval success still does not
-guarantee downstream utility: annotated evidence and the functionally best context composition
-are not always identical.
+A mixed-phase post-RoPE mean approximates native token ranking well, and centered subgists
+raise that fidelity further, but the improvement does not raise semantic evidence retrieval.
+A routing representation may therefore be a poor semantic index even when it closely
+approximates the host attention geometry. Fifth, a tiny asymmetric projection of contextual
+hidden states sharply improves controlled evidence ranking. Sixth, routing can use that
+learned geometry while selected native post-RoPE K, V, and attention output remain bit-exact.
+Seventh, semantic retrieval success still does not guarantee downstream utility: annotated
+evidence and the functionally best context composition are not always identical.
 
-The practical prescription is therefore to repair source coordinates, preserve contextual
-provenance, choose a routing metric for relevance, retain native K/V for attention, and measure
-model use independently. \textbf{Position, context, routing, and use are separate architectural
-problems.}
+The practical hierarchy is therefore: repair source coordinates, preserve contextually
+faithful representations, define native positional-attention geometry, choose a semantic
+relevance geometry, retain native K/V for attention, and measure downstream use independently.
+\textbf{Position, context, attention geometry, routing relevance, and use are separate
+architectural problems.}
 
 \appendix
 
@@ -842,7 +987,7 @@ The final validation artifacts use commit \texttt{64f7cdf89b55}; generated cross
 summaries use \texttt{052ae05}; the frozen distance/context run records source commit
 \texttt{03c9566ebbd7}. The original decomposition and storage matrix use
 \texttt{d36f67752701}. The learned-routing measurements use experiment implementation
-\texttt{d96c87b}. Each distance row records the checkpoint tokenizer fingerprint; this
+\texttt{d96c87b}; the pooling-geometry matrix records \texttt{527a50170802}. Each distance row records the checkpoint tokenizer fingerprint; this
 prevents a process-local tokenizer retraining from changing token IDs during evaluation.
 Raw CSV/JSON, compact publication CSVs, plots, expectations, and manifests are stored in the
 Paper 1.5 results directory. The reduction script regenerates manuscript artifacts without
@@ -851,6 +996,9 @@ operation/position bounds, cache metadata, no-memory conversion parity, pre-/pos
 deliberate rebinding, retrieval policies, rollover, and CPU/GPU parity.
 Learned-routing tests additionally cover projection shapes, backbone freezing, deterministic
 ranking, shuffled-label construction, fixed-selection K/V and output parity, and CUDA scores.
+Pooling tests cover balanced contiguous subspans, exact fractional centers, the $G=1$
+construction, short-chunk capping, deterministic correlations and top-$k$ agreement, and
+routing-representation independence from native payload materialization.
 
 {\small
 \bibliographystyle{plain}

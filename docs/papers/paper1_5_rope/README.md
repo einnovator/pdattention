@@ -10,11 +10,17 @@ Regenerate trained split results with `run_core_experiments.py`. The next-iterat
 python experiments/paper1_5_rope/eval_logical_offsets.py --device cuda
 python experiments/paper1_5_rope/eval_head_offset_progression.py --device cuda --max-examples 4
 python experiments/paper1_5_rope/eval_distance_policy.py --device cuda --iterations 500
+python experiments/paper1_5_rope/run_pooling_geometry.py --device cuda
 python experiments/paper1_5_rope/summarize_next_iteration.py
 ```
 
 The first three commands record the full code SHA in their JSON/CSV artifacts. The summary
 command evaluates the expectations recorded before analysis and does not rerun models.
+
+The pooling command reuses frozen RoPE checkpoints and runs the five-seed tiny/small
+HotpotQA/QASPER matrix. It compares post-/pre-RoPE means, centered subgists at
+`G=1,2,4,8`, raw hidden cosine, and the established learned 32-D router. Results and plots are
+under `docs/papers/shared/results/paper1_5_rope/pooling_geometry/`.
 
 The research branch is research/paper1-5-rope and the pre-RoPE baseline tag is
 paper1-pre-rope-baseline. Results are under docs/papers/shared/results/paper1_5_rope/.
