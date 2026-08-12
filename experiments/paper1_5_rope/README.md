@@ -67,6 +67,22 @@ Use `--smoke` for one two-step seed. Canonical JSON, CSV, and plots are written 
 `docs/papers/shared/results/paper1_5_rope/`; resumable checkpoints remain under `out/`.
 Distance-policy alternatives are experiment-only and do not change canonical post-position K.
 
+## Learned Routing Geometry
+
+The frozen-backbone confirmation reuses the RoPE validation checkpoints and the established
+16-way HotpotQA-/QASPER-derived partitions. It trains only two bias-free 32-dimensional
+linear projections and compares them with post-RoPE Q/K, pre-RoPE Q/K, raw hidden cosine,
+and a matched shuffled-label control:
+
+```powershell
+python experiments/paper1_5_rope/run_learned_routing_geometry.py --device cuda
+```
+
+Use `--smoke --datasets hotpotqa --tiers tiny --seeds 1 --steps 10` for the short path.
+Canonical tables, per-seed rows, complete rankings, and the protocol live under
+`docs/papers/shared/results/paper1_5_rope/learned_routing/`; the manuscript plot is
+`docs/papers/shared/figures/rope_learned_routing.pdf`.
+
 ## Expectations Recorded Before the Logical-Offset Run
 
 | Comparison | Expected | Why |

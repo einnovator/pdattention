@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "git_sha": "d36f6775270125cd198543b77dc114e6018ee67a",
+    "git_sha": "d96c87b570bc5e0aacf41c570181c978f2feca36",
     "branch": "research/paper1-5-rope",
-    "timestamp": "2026-08-10T20:48:28.952087+00:00",
+    "timestamp": "2026-08-12T17:33:48.527877+00:00",
     "pytorch": "2.12.1+cu126",
     "cuda_available": true,
     "cuda_version": "12.6",
@@ -10,9 +10,12 @@
   },
   "smoke": false,
   "artifacts": [
+    "context_gate",
+    "distance",
     "head_offset_progression.csv",
     "head_offset_progression.json",
     "head_offset_progression.png",
+    "learned_routing",
     "logical_offset_decomposition.csv",
     "logical_offset_decomposition.json",
     "logical_offset_progression.png",
@@ -38,6 +41,27 @@
     "rope_storage_performance.csv",
     "rope_translation.csv",
     "rope_translation.json",
-    "rope_translation.png"
-  ]
+    "rope_translation.png",
+    "validation"
+  ],
+  "learned_routing": {
+    "artifact": "docs/papers/shared/results/paper1_5_rope/learned_routing/learned_routing_geometry.json",
+    "figure": "docs/papers/shared/figures/rope_learned_routing.pdf",
+    "datasets": [
+      "hotpotqa",
+      "qasper"
+    ],
+    "tiers": [
+      "tiny",
+      "small"
+    ],
+    "seeds": [
+      1,
+      7,
+      21,
+      42,
+      87
+    ],
+    "routing_dimension": 32
+  }
 }

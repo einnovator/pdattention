@@ -29,6 +29,7 @@ from experiments.paper1_5_rope.common import (  # noqa: E402
     SEEDS,
     TIERS,
     environment_metadata,
+    refresh_manifest,
     set_seed,
     write_csv,
     write_json,
@@ -641,6 +642,17 @@ def run(args: argparse.Namespace) -> Path:
         },
     )
     _plot(curve_rows, FIGURE)
+    refresh_manifest(
+        metadata=metadata,
+        learned_routing={
+            "artifact": (OUTPUT / "learned_routing_geometry.json").relative_to(REPO).as_posix(),
+            "figure": FIGURE.relative_to(REPO).as_posix(),
+            "datasets": args.datasets,
+            "tiers": args.tiers,
+            "seeds": args.seeds,
+            "routing_dimension": args.routing_dim,
+        },
+    )
     return OUTPUT / "learned_routing_geometry.json"
 
 
