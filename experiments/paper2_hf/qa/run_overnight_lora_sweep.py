@@ -657,7 +657,7 @@ def run(args) -> dict[str, Any]:
     )
     reference_record = validation_records[0]
     _configure_variant(handle, Variant("fixed"), reset=True)
-    _, off_generation = _generate(
+    off_generation, _ = _generate(
         handle,
         tokenizer,
         reference_record["prompt_ids"],
@@ -665,6 +665,8 @@ def run(args) -> dict[str, Any]:
         device,
         args.new_tokens,
     )
+    if not isinstance(off_generation, str):
+        raise TypeError("Disabled-path reference generation must be decoded text.")
     off_reference = {
         "metrics": validation_controls[reference_record["example"]["id"]]["none"],
         "generation": off_generation,
