@@ -147,13 +147,6 @@ def _extract_representations(model, tokenizer, samples, device: str) -> RoutingR
         question_ids = list(tokenizer.encode(sample.question))
         if not question_ids:
             raise ValueError(f"Example {sample.id} contains an empty query")
-        if len(source_ids) > model.cfg.effective_model_max_context_tokens:
-            raise ValueError(
-                f"Example {sample.id} source has {len(source_ids)} tokens, exceeding "
-                f"the native extraction limit {model.cfg.effective_model_max_context_tokens}"
-            )
-
-        source_hidden = _attention_input(model, source_ids, position_offset=0, device=device)
         query_hidden_tokens = _attention_input(
             model,
             question_ids,
@@ -162,17 +155,11 @@ def _extract_representations(model, tokenizer, samples, device: str) -> RoutingR
         )
         query_hidden = query_hidden_tokens[:, -1, :]
         raw_query = _split_heads(attention, attention.q_proj(query_hidden[:, None, :]))
-        raw_key = _split_heads(attention, attention.k_proj(source_hidden))
-        value = _split_heads(attention, attention.v_proj(source_hidden))
-        source_positions = torch.arange(len(source_ids), device=source_hidden.device)
         query_position = torch.tensor(
-            [len(source_ids) + len(question_ids) - 1], device=source_hidden.device
+            [len(source_ids) + len(question_ids) - 1], device=query_hidden.device
         )
         post_query, _ = attention.position_encoding.transform_qk(
             raw_query, raw_query, query_position
-        )
-        _, post_key = attention.position_encoding.transform_qk(
-            raw_key, raw_key, source_positions
         )
         raw_query_flat = raw_query[:, :, 0, :].reshape(1, -1)
         post_query_flat = post_query[:, :, 0, :].reshape(1, -1)
@@ -186,15 +173,30 @@ def _extract_representations(model, tokenizer, samples, device: str) -> RoutingR
         detail_bytes = 0
         for identity, token_ids in zip(candidate_ids, reference_token_ids, strict=True):
             end = cursor + len(token_ids)
-            chunk_hidden.append(source_hidden[:, cursor:end, :].mean(dim=1))
+            # Independent chunk encoding keeps the attention-input hidden state
+            # invariant to a common RoPE offset. Only native post-RoPE K carries
+            # the exact logical placement used by the positional control.
+            hidden = _attention_input(
+                model,
+                token_ids,
+                position_offset=cursor,
+                device=device,
+            )
+            raw_key = _split_heads(attention, attention.k_proj(hidden))
+            value = _split_heads(attention, attention.v_proj(hidden))
+            positions = torch.arange(cursor, end, device=hidden.device)
+            _, post_key = attention.position_encoding.transform_qk(
+                raw_key, raw_key, positions
+            )
+            chunk_hidden.append(hidden.mean(dim=1))
             chunk_pre_k.append(
-                raw_key[:, :, cursor:end, :].transpose(1, 2).reshape(1, end - cursor, -1).mean(dim=1)
+                raw_key.transpose(1, 2).reshape(1, end - cursor, -1).mean(dim=1)
             )
             chunk_post_k.append(
-                post_key[:, :, cursor:end, :].transpose(1, 2).reshape(1, end - cursor, -1).mean(dim=1)
+                post_key.transpose(1, 2).reshape(1, end - cursor, -1).mean(dim=1)
             )
-            key_payload = post_key[:, :, cursor:end, :]
-            value_payload = value[:, :, cursor:end, :]
+            key_payload = post_key
+            value_payload = value
             payload_by_id[identity] = (key_payload, value_payload)
             detail_bytes += sum(
                 tensor.numel() * tensor.element_size()
@@ -227,7 +229,7 @@ def _extract_representations(model, tokenizer, samples, device: str) -> RoutingR
                 "positive_mask": torch.tensor(
                     [[identity in evidence for identity in candidate_ids]],
                     dtype=torch.bool,
-                    device=source_hidden.device,
+                    device=query_hidden.device,
                 ),
                 "candidate_ids": candidate_ids,
                 "evidence_ids": evidence,
@@ -428,10 +430,13 @@ def _plot(curve_rows: list[dict], path: Path) -> None:
                 if row["dataset"] == dataset
                 and row["model_tier"] == tier
                 and row["method"] == method
+                and float(row["fraction"]) <= 0.30
             ]
             by_fraction = defaultdict(list)
             for row in selected:
-                by_fraction[float(row["fraction"])].append(float(row["recall"]))
+                by_fraction[float(row["selected_chunk_fraction"])].append(
+                    float(row["recall"])
+                )
             fractions = sorted(by_fraction)
             axis.plot(
                 [100 * value for value in fractions],
@@ -441,7 +446,7 @@ def _plot(curve_rows: list[dict], path: Path) -> None:
                 label=label,
             )
         axis.set_title(f"{'HotpotQA' if dataset == 'hotpotqa' else 'QASPER'}-derived, {tier}")
-        axis.set_xlim(0, 32)
+        axis.set_xlim(5, 35)
         axis.set_ylim(0, 1.02)
         axis.set_xlabel("Selected candidate references (%)")
     axes[0, 0].set_ylabel("Evidence-identity recall")
@@ -620,6 +625,7 @@ def run(args: argparse.Namespace) -> Path:
                 "margin": args.margin,
                 "backbone": "frozen Paper 1.5 RoPE checkpoint",
                 "routing_layer": "final attention-input hidden state",
+                "candidate_encoding": "independent chunks at exact logical RoPE offsets",
                 "payload": "unchanged native post-RoPE K and native V",
                 "train_eval_split": "established datamodule 80% train; held-out complement",
             },
