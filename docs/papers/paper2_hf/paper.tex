@@ -32,9 +32,10 @@ disabled, logits, hidden states, greedy outputs, and cache tensors are exactly u
 measured pinned checkpoints. Gemma's 22 local sliding-window layers remain native; PRA is admitted
 only at its four periodic global-attention layers.
 
-The central empirical principle is to \emph{route semantic state and attend native positional
-state}. Contextual hidden states provide the routing index, while selected tokens return as the
-model's own post-RoPE keys and native values. A 262,144-parameter router over frozen Qwen3-0.6B
+Controlled positional analysis in companion Paper~1.5 motivates the central empirical principle:
+\emph{route semantic state and attend native positional state}. On pretrained Qwen, contextual
+hidden states provide the routing index, while selected tokens return as the model's own post-RoPE
+keys and native values. A 262,144-parameter router over frozen Qwen3-0.6B
 reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected parents. On QASPER,
 evidence-identity recall at 20\% is $0.454\pm0.007$ for Qwen3-0.6B, $0.447\pm0.051$ for the
 SmolLM2-135M Llama-family control, and $0.432\pm0.025$ for Gemma~3 1B. Oracle HotpotQA replay shows a non-monotone depth effect:
@@ -58,9 +59,10 @@ breaks the coupling by discarding history. Text retrieval narrows the prompt bef
 but then re-encodes the selected text. PRA instead keeps already computed model state outside the
 active context and restores only selected native K/V.
 
-Paper~1 showed in controlled models that logical memory and active attention can be separated.
-Paper~1.5 established the positional contract for sources encoded in bounded blocks. This paper
-asks whether the same mechanism can be retrofitted into pretrained Hugging Face decoders without
+Paper~1 established bounded sparse native-K/V memory in controlled models~\cite{simao2026pra}.
+Paper~1.5 separated source coordinates, contextual fidelity, native attention geometry, and
+semantic routing geometry~\cite{simao2026position}. This paper asks whether those boundaries can
+be retrofitted into pretrained Hugging Face decoders without
 changing their native attention semantics. That requirement is strict. Qwen, Llama-family, and Gemma
 decoders differ in projection details, RoPE helpers, grouped-query layout, masks, cache protocols,
 and output paths. An adapter can produce plausible text while violating one of these contracts.
@@ -71,8 +73,9 @@ $R_\phi$ answers \emph{what memory should be active?}; a memory-use function $M_
 semantically relevant chunk need not be the state a pretrained attention head expects after
 selection. PRA-HF therefore separates a compact \emph{routing index} from the layer-native
 \emph{detail K/V} payload, then confines any learned memory-use correction to the PRA-active
-branch. The resulting architectural rule, derived empirically below, is: \textbf{route semantic
-state; attend native positional state.}
+branch. Paper~1.5 supplies the controlled scientific motivation; this paper tests transfer and
+implementation in pretrained models. The resulting rule is: \textbf{route semantic state;
+attend native positional state.}
 
 Figure~\ref{fig:adapter} gives the complete data path before the individual contracts are
 developed. Publication creates a small search representation and a full native payload; only the
@@ -130,7 +133,7 @@ Reusable artifact & Python API, CLI, saved routers, metrics, tests, wheel & The 
 \end{tabularx}
 \end{table}
 
-The paper makes five contributions. First, it defines and tests an exact pretrained-model retrofit
+The paper makes six contributions. First, it defines and tests an exact pretrained-model retrofit
 for bounded native-K/V memory. Second, it identifies routing/payload separation as an architectural
 principle rather than a family-specific workaround. Third, it measures sparse discovery by
 selected-memory fraction and shows that a tiny supervised projection improves frozen semantic
@@ -216,8 +219,10 @@ softmax:
 This is not a separately normalized cross-attention residual. The native output projection is
 applied once to the combined result.
 
-Paper~1 established controlled native-K/V routing and materialization. Paper~1.5 separated
-logical source position from contextual fragmentation. Continuous sources use
+Paper~1 established controlled native-K/V routing and materialization~\cite{simao2026pra}.
+Paper~1.5 established that source position, contextual fragmentation, pooled native-attention
+geometry, semantic relevance, and downstream use are distinct~\cite{simao2026position}.
+Continuous sources use
 $p_i=p_{\mathrm{logical\ start}}+i$, and ordinary post-RoPE keys remain the canonical cache
 state. The present adapter preserves that contract by capturing each selected HF layer's
 actual post-RoPE keys and by assigning source-relative positions across bounded encoding
@@ -448,28 +453,29 @@ top-layer query systematically prefer irrelevant late-source chunks in these two
 
 \section{Semantic Routing, Native Attention}
 
-The architectural question is whether native attention state is also a suitable semantic search
-index. For token $j$ at position $p_j$, the direct baseline pools
-\begin{equation}
- g_{\mathrm{post}}=\frac{1}{m}\sum_{j=1}^{m}R(p_j)K_{\mathrm{pre},j},
-\end{equation}
-which mixes content with different rotary phases. The position-neutral alternative pools
-$g_{\mathrm{pre}}=m^{-1}\sum_jK_{\mathrm{pre},j}$. A third representation pools the
-attention-input hidden states. These are hypotheses about ranking only; selected detail memory
-remains Qwen's post-RoPE $K$ and native $V$ in every condition.
+Controlled experiments in Paper~1.5 show that token-level RoPE correctness, pooled
+native-attention geometry, semantic routing geometry, and downstream utility are distinct
+properties~\cite{simao2026position}. In particular, averaging differently rotated keys mixes
+phases; centered pre-RoPE subgists can increasingly recover native token-Q/K ordering without a
+corresponding semantic-recall gain. We therefore treat the routing representation and native
+attention payload as separate interfaces, and ask whether that controlled result transfers to an
+unmodified pretrained Qwen model.
 
 \begin{figure}[htbp]
 \centering
 \fbox{\begin{minipage}{0.90\linewidth}
 \centering
-\textbf{attention-input hidden states}\\[2pt]
-$\swarrow$ hidden-state mean gist \hfill native Q/K/V projection and Q/K norm $\searrow$\\[3pt]
-semantic routing $\leftarrow$ pre-RoPE Q/K $\xrightarrow{\mathrm{RoPE}}$ post-RoPE Q/K\\[3pt]
-$\hspace{1.5em}\uparrow$ pre-RoPE key gist \hfill $\downarrow$ post-RoPE detail K + native V\\[3pt]
-exact selection $\longrightarrow$ selected native K/V $\longrightarrow$ Qwen attention
+\textbf{Controlled principle from Paper~1.5}\\[2pt]
+native positional-attention geometry $\ne$ semantic routing geometry\\[5pt]
+$\Downarrow$ pretrained transfer\\[5pt]
+attention-input hidden query/gist $\longrightarrow$ tiny learned relevance projection\\[3pt]
+$\downarrow$ selected parent identities\\[3pt]
+$\downarrow$ exact layer-native post-RoPE K / native V\\[3pt]
+$\downarrow$ pretrained native attention
 \end{minipage}}
-\caption{\textbf{Route semantic state; attend native positional state.} Pre-RoPE or hidden-state
-features rank chunks, while the attention path always materializes exact post-RoPE native K/V.}
+\caption{\textbf{Route semantic state; attend native positional state.} Paper~1.5 motivates the
+interface separation; Paper~2 tests it in pretrained models. Routing returns identities, while
+the attention path materializes the host layer's exact native K/V.}
 \label{fig:routing-separation}
 \end{figure}
 
@@ -480,51 +486,47 @@ metadata. It obtains bit-identical post-RoPE K, identical V, and exactly identic
 attention output. Router choice can change the set, but it cannot silently change what a fixed
 set means to attention.
 
-\subsection{What should represent a chunk?}
+\subsection{Pretrained transfer: what should represent a chunk?}
 
-We first compare three parameter-free summaries on 16 matched examples, eight from HotpotQA and
-eight from QASPER. All use 32-token parents and the same exact top-$k$ search. Post-RoPE key means
-mix tokens carrying different rotary phases. Pre-RoPE key means remove position from the index.
-Attention-input hidden-state means retain broader contextual features. In all three conditions,
-selection materializes the same post-RoPE native K and native V for a fixed parent identity.
+The transfer test compares three parameter-free summaries on 16 matched examples, eight from
+HotpotQA and eight from QASPER. All use 32-token parents and exact top-$k$ search. Post-RoPE key
+means retain explicit positional structure; pre-RoPE key means remove that phase from the index;
+attention-input hidden means retain broader contextual state. The learned row uses the separate
+32-identity held-out cohort and five router seeds described in the next section. It is included to
+show the resulting design progression, not as a paired fourth row. In every condition, a fixed
+parent identity materializes the same post-RoPE native K and native V.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Parameter-free routing representations on 16 matched examples. Any-evidence recall
-measures whether at least one annotated region is selected; score-position $r$ measures
-correlation with normalized source position.}
+\caption{Qwen routing-representation transfer. The first three rows use 16 matched diagnostic
+examples; the learned row uses 32 held-out identities and reports the five-seed 95\% interval at
+R@3. Score-position $r$ is correlation with normalized source position.}
 \label{tab:routing-representations-main}
-\begin{tabular}{lccccc}
+\begin{tabularx}{\linewidth}{L{0.23\linewidth}cccY}
 \toprule
-Routing representation & Any R@3 & Any R@8 & Any R@16 & MRR & Position $r$ \\
+Routing state & Position $r$ & Any R@3 & Any R@8 & Interpretation \\
 \midrule
-Post-RoPE key mean & 0.125 & 0.250 & 0.313 & 0.131 & 0.652 \\
-Pre-RoPE key mean & 0.313 & \textbf{0.563} & \textbf{0.750} & \textbf{0.301} & 0.009 \\
-Hidden-state mean & \textbf{0.438} & 0.500 & \textbf{0.750} & 0.276 & -0.021 \\
+Post-RoPE key mean & 0.652 & 0.125 & 0.250 & Strong positional structure; weak semantic index \\
+Pre-RoPE key mean & 0.009 & 0.313 & 0.563 & Explicit phase removed; better but incomplete relevance geometry \\
+Hidden-state mean & -0.021 & 0.438 & 0.500 & Best zero-shot low-budget recall; richer contextual state \\
+Learned asymmetric-128 & -0.026 & $0.631\pm0.069$ & 0.806 & Best learned result; task-specific relevance geometry \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
-The post-RoPE mean is not merely noisy; it strongly favors late chunks. Removing rotary phase
-nearly eliminates that bias, and hidden states give the best low-budget result. Centered RoPE is
-a mechanistic control: it rotates a pooled pre-RoPE gist once at the center of its source span.
-Eight centered subgists reproduce native token-QK ordering with correlation 0.874, yet their
-any-evidence recall@3 is only 0.250. The control distinguishes two objectives:
-\begin{equation}
-  \text{native attention geometry} \neq \text{semantic retrieval relevance}.
-\end{equation}
-Centering repairs the coordinate frame without creating evidence semantics. We therefore use
-hidden-state gists for routing and preserve post-RoPE keys only for attention.
+As predicted by the controlled geometry analysis, pooled post-RoPE K retains strong positional
+structure and is a poor semantic routing index in Qwen. Removing explicit RoPE phase nearly
+eliminates measured position bias but does not itself define the best relevance geometry.
+Attention-input hidden state is independent of the subsequent K rotation and gives the strongest
+zero-shot low-budget result. Paper~1.5 further shows that useful relevance can require a learned
+projection; this motivates the 128-D router rather than another positional repair.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.76\linewidth]{../shared/results/paper2_hf/routing/qwen_routing_recall_vs_selected_fraction.pdf}
-\caption{\textbf{Semantic hidden-state and pre-RoPE routing dominate post-RoPE key means for
-evidence selection.} The selected attention payload remains native post-RoPE K/V. These
-16-example curves are diagnostic and use a smaller cohort than the learned-router result.}
-\label{fig:routing-recall-main}
-\end{figure}
+A Qwen centered-RoPE control reproduces the controlled dissociation: eight centered subgists
+recover native token-Q/K ordering at correlation 0.874, but any-evidence R@3 remains 0.250.
+Appendix~\ref{app:routing-ablations} retains this control, the parameter-free recall curves, and
+the segment, token, and query ablations. The main result is the transferred interface boundary,
+not a new RoPE derivation.
 
 \section{Sparse Discovery with a Tiny Learned Router}
 
@@ -540,27 +542,11 @@ asymmetric 1024-to-128 linear router contains 262,144 parameters, 0.044\% of Qwe
 Validation selects an exhaustive pairwise margin objective; five independent seeds measure the
 selected configuration.
 
-\begin{table}[H]
-\centering
-\small
-\caption{Held-out sparse ranking. Recall is any-evidence recall; the interval is the 95\%
-half-width over five router seeds.}
-\label{tab:learned-router-main}
-\begin{tabular}{lccccc}
-\toprule
-Router & Any R@3 & Any R@8 & MRR & Hotpot any R@3 & QASPER any R@3 \\
-\midrule
-Frozen cosine, last state & 0.469 & 0.719 & 0.413 & 0.813 & 0.125 \\
-Learned asymmetric-128 & $\mathbf{0.631\pm0.069}$ & 0.806 & 0.498 & 0.588 & 0.675 \\
-Shuffled-label control & 0.125 & -- & -- & -- & -- \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The adapter improves paired any-evidence recall@3 by $0.163\pm0.069$ and removes measurable
-position bias ($r=-0.026$). The shuffled-label collapse shows that the gain depends on evidence
-supervision. The learned projection substantially improves the relevance geometry of frozen
-hidden states while adding only 262,144 parameters. It is not yet a general retriever:
+On the held-out cohort, frozen last-state cosine reaches any-evidence R@3/R@8/MRR of
+0.469/0.719/0.413; the learned router reaches $0.631\pm0.069$/0.806/0.498. HotpotQA and QASPER
+R@3 are 0.588 and 0.675. The paired R@3 gain is $0.163\pm0.069$, position bias is negligible
+($r=-0.026$), and the matched shuffled-label control collapses to 0.125 R@3. Supervision, rather
+than low dimension alone, exposes the improved relevance geometry. The router is not yet general:
 Hotpot-to-QASPER and QASPER-to-Hotpot transfer both reach only 0.213 any-evidence recall@3.
 Wider projections, sampled negatives, and one hard-negative refresh do not improve the
 validation-selected result; Appendix~\ref{app:routing-ablations} reports these controls.
@@ -1471,6 +1457,15 @@ an external addressable cache. KV-cache systems emphasize serving capacity and t
 policies~\cite{kwon2023vllm,zhang2023h2o,li2024snapkv}. Paper~2 asks whether selection can be
 inserted beneath an existing pretrained family without changing its disabled behavior.
 
+Prompt Cache and CacheBlend reuse modular cached state but emphasize schema-aware composition or
+selective recomputation~\cite{gim2023promptcache,yao2024cacheblend}; StreamingLLM retains a
+chronological working set during decoding~\cite{xiao2023streamingllm}. PRA-HF instead maintains an
+addressable semantic index, selects whole external parent identities, and injects their exact
+layer-native payload under a hard active-K/V budget. General source-position ownership,
+retrieval-time rebinding, and pooled-RoPE geometry belong to the controlled companion
+study~\cite{simao2026position}; the present contribution is exact pretrained-family integration,
+transfer of the routing/payload separation, causal use, and a reusable interface.
+
 \section{Conclusion}
 
 PRA-HF retrofits pretrained Hugging Face decoders with external native-K/V memory while preserving
@@ -1484,8 +1479,10 @@ reference transport, five-seed routing, public API, and causal-use gates without
 Gemma-specific routing or materialization path.
 
 The architectural result is to route semantic state and attend native positional state.
-Hidden-state gists avoid the positional bias of post-RoPE key means, while selection still returns
-the host layer's exact post-RoPE keys and native values. A 0.044\%-of-model Qwen router reaches
+Paper~1.5 explains the controlled geometry behind this separation; Paper~2 shows how it transfers
+to pretrained Qwen and becomes an exact HF interface. Hidden-state gists avoid the positional bias
+of post-RoPE key means, while selection still returns the host layer's exact post-RoPE keys and
+native values. A 0.044\%-of-model Qwen router reaches
 any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected parents. Matched QASPER results on
 SmolLM2 and Gemma show that the shared interface, rather than identical retrieval quality, is portable.
 
@@ -1517,7 +1514,7 @@ This appendix records the secondary interventions that shaped the final design. 
 negative results: each changes one plausible source of routing error while leaving native detail
 K/V unchanged.
 
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \scriptsize
 \caption{Parameter-free diagnostics with 32-token parents. Cohorts differ as described in the
@@ -1535,6 +1532,16 @@ Width 256 and harder negatives & No validation-selected gain & Twice the 128-wid
 \bottomrule
 \end{tabularx}
 \end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.76\linewidth]{../shared/results/paper2_hf/routing/qwen_routing_recall_vs_selected_fraction.pdf}
+\caption{Qwen parameter-free routing diagnostics. Semantic hidden-state and pre-RoPE summaries
+dominate the post-RoPE key mean for evidence selection, while every fixed selected identity still
+materializes the same native post-RoPE K/V. This 16-example transfer control is smaller than the
+learned-router cohort and is not a paired leaderboard with it.}
+\label{fig:routing-recall-appendix}
+\end{figure}
 
 The chunk-size sweep supplies a related caution. At 128-token chunks and $k=8$, recall reaches
 0.688 but the selected fraction is 41.3\%; at $k=16$, 71.5\% of parents are selected. Coarser

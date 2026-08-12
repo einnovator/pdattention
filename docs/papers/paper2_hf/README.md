@@ -9,6 +9,12 @@ local/global attention schedule. The official 1B checkpoint passes exact disable
 five-seed routing, public API, bounded-memory, and causal-use smoke gates. Serving-optimized
 kernels remain future work.
 
+General source-position, RoPE rebinding, pooled-geometry, and attention-versus-semantic-routing
+results belong to companion Paper 1.5 on `research/paper1-5-rope`. Paper 2 treats those results
+as controlled motivation and reports their pretrained transfer, exact HF integration, sparse
+routing, causal memory use, adaptation, and productization. Secondary Qwen geometry and routing
+controls remain in the appendix and their original artifacts are unchanged.
+
 Build from this directory:
 
 ```powershell
