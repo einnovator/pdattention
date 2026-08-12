@@ -38,12 +38,14 @@ latency from 0.179 to 0.649 ms.
 The main discovery is a separation, not a universal quality gain. On WikiText-2, offsets
 improve final-layer representation in 30/30 pairs but next-token loss in only 5/30. On
 controlled HotpotQA- and QASPER-derived probes, routed loss improves in 35/60 pairs, with
-the direction depending on position mechanism. Overlap reduces contextual fragmentation
-at additional encoding cost, yet task effects remain mixed. A 192-token logical prompt
-also executes with every measured native operation at or below 24 tokens under a 32-token
-limit. Positional continuity is therefore necessary for faithful chunked K/V, but
-coordinate correctness, representation fidelity, attention geometry, and task usefulness
-must be evaluated separately.
+the direction depending on position mechanism. A retrieval-time RoPE sweep over the same
+raw K/V finds that remote virtual distances can sharply increase loss and change the
+top-attended token, but a near fixed distance of 64 does not consistently beat exact source
+placement. Larger encoding groups and materialized units help more reliably. A 192-token
+logical prompt also executes with every measured native operation at or below 24 tokens
+under a 32-token limit. Positional continuity is therefore necessary for faithful chunked
+K/V, but coordinate correctness, representation fidelity, attention geometry, context
+composition, and task usefulness must be evaluated separately.
 \end{abstract}
 
 \section{Introduction}
@@ -74,6 +76,8 @@ the intended coordinates and context?
 intended query--key relation?
 \item \textbf{Task usefulness:} does the corrected state improve language-model loss,
 evidence selection, or answers?
+\item \textbf{Retrieval-time placement:} if the content is held fixed, does assigning a
+different query--memory distance make the state more useful?
 \end{enumerate}
 
 These properties form a dependency, not an equivalence. Correct coordinates can improve a
@@ -91,6 +95,8 @@ Our contributions are outcome-oriented:
 \item evidence that logical offsets repair reset fragmentation for learned absolute,
 sinusoidal, and RoPE models, not only for rotary models;
 \item an exact pre-/post-RoPE equivalence test and a measured deferred-rotation tradeoff;
+\item a controlled fixed-distance sweep that preserves within-chunk geometry while changing
+only global query--memory placement;
 \item a separation between coordinate repair and overlap-based contextualization;
 \item a cross-domain demonstration that representation improvements need not yield monotonic
 task improvements;
@@ -178,6 +184,8 @@ Does overlap improve representation? & Yes in the verified WikiText scope; 29/30
 Are pre/post RoPE keys equivalent? & Zero K, logit, and output error at matched effective positions & Storage state does not change the intended geometry \\
 Does better geometry guarantee task quality? & No: WikiText loss improves in 5/30; QA routed loss in 35/60 & Functional utility is a separate empirical property \\
 Can deferred rotation rebind keys? & Yes; warm latency rises from 0.179 to 0.649 ms & Flexibility has a measured systems cost \\
+Does one virtual RoPE distance improve retrieval? & No stable gain: fixed $D=64$ ties exact in 50/100 paired cells; clipped $D=64$ wins 68/100 with mean loss change $-9.3\times10^{-5}$ & Placement matters, but no universal useful distance is established \\
+Does memory granularity matter? & Exact oracle loss generally falls as 16 source units become 5 and then 2 & Composition and contextual completeness can dominate near-range placement \\
 Can logical prompt exceed a native operation? & 192 logical tokens, maximum measured operation 24 under a limit of 32 & Bounded positional and transport mechanics \\
 \bottomrule
 \end{tabularx}
@@ -198,6 +206,7 @@ Logical offsets & Reset-position fragmentation & Missing causal context, routing
 Encoding overlap & Some contextual fragmentation & Extra encoding cost; mixed task response \\
 Matched RoPE binding & Intended relative attention geometry & Semantic retrieval and learned distance use \\
 Deferred RoPE & Retrieval-time positional rebinding & Additional runtime and adaptation evidence \\
+Fixed/clipped distance & Query--memory placement with local spacing preserved & No stable task-optimal distance in the tested models \\
 Oracle evidence & Selection uncertainty & Whether that evidence set is the best composition \\
 \bottomrule
 \end{tabularx}
@@ -277,6 +286,106 @@ Both modes retain the same number of K/V elements. For 192 stored small-tier tok
 196,608 bytes. A contiguous chunk needs one 8-byte logical start for execution; a full
 192-token int64 audit vector would use 1,536 bytes. Deferred rotation changes when phase is
 assigned, not the size of the native K/V payload.
+
+\subsection{Retrieval-Time Placement Preserves Local Geometry}
+\label{sec:retrieval-placement}
+
+Deferred rotation exposes a narrower control than an arbitrary position reset. Let a
+selected chunk have source positions $s_0,\ldots,s_{n-1}$ and let the current query be at
+$q$. We define the nearest-token distance $D$ and translate the chunk as a unit:
+\begin{equation}
+  s'_j=s_j+\left(q-D-s_{n-1}\right).
+  \label{eq:fixed-d}
+\end{equation}
+Then $q-s'_{n-1}=D$, while
+$s'_j-s'_\ell=s_j-s_\ell$ for every pair of tokens. The experiment therefore changes the
+global query--memory displacement but preserves token order and all within-chunk spacing.
+Exact placement leaves $s_j$ unchanged; local placement sets $D=1$; clipped placement uses
+$\min(D_{\mathrm{source}},D_{\max})$.
+
+This distinction matters because RoPE does not simply lose a fixed amount of resolution with
+distance. It represents relative displacement through many periodic frequency pairs:
+high-frequency pairs vary rapidly and cycle often, while lower-frequency pairs vary more
+slowly. A displacement can be mathematically valid yet fall outside the distance distribution
+for which the learned Q/K projections became useful. Equation~\ref{eq:fixed-d} tests that
+functional question without changing memory content.
+
+\section{Effective Distance and Context Granularity}
+\label{sec:distance-context}
+
+The earlier task results left two plausible explanations for the RoPE reversal. Very small
+memory fragments might lack enough contextual state, or exact source placement might expose
+a learned relative-distance mismatch. We separate encoding context from materialized-unit
+size and begin with oracle evidence so routing does not obscure the comparison.
+
+\subsection{Fixed Distance Changes Attention, but Has No Stable Optimum}
+
+The fixed-$D$ sweep reuses the same raw K, V, query, evidence, and local chunk geometry for
+every policy. It evaluates $D\in\{32,64,\ldots,4096\}$ on tiny RoPE checkpoints over
+HotpotQA- and QASPER-derived probes, using five matched seeds. Exact nearest-token source
+distances average 87.3 and 90.4, respectively.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper1_5_rope/distance/rope_d_sweep.png}
+\caption{The same retrieved evidence under different RoPE displacements. Dotted horizontal
+lines show exact-placement loss; the vertical line marks the pooled selected value $D=64$.
+Bands are one standard deviation over five seeds. Remote placement can sharply damage loss
+and top-token agreement, but the useful near range has no stable winner.}
+\label{fig:distance-sweep}
+\end{figure}
+
+The sweep establishes that placement is not inert. At $D=1024$, HotpotQA-derived mean loss
+rises from .0655 under exact placement to 1.1855, and QASPER-derived loss rises from .0377 to
+.8192. Agreement with the exact policy's top-attended token falls to .090 and .067. The
+response is not monotonic: $D=2048$ is less harmful than $D=1024$, consistent with RoPE's
+multi-frequency periodic geometry rather than a scalar distance-decay story.
+
+The near-range result is deliberately negative. In the two-tier confirmation matrix,
+fixed $D=64$ beats exact placement in 50 of 100 matched
+dataset--tier--seed--composition cells and loses in 50; mean loss changes by
+$+8.1\times10^{-5}$. Clipping only source distances above 64 wins 68/100 cells, but its mean
+change is merely $-9.3\times10^{-5}$. Log compression wins 24/100 and changes mean loss by
+$+1.3\times10^{-4}$. These effects are far smaller than the remote-distance failures and do
+not establish a task-optimal virtual distance.
+
+\subsection{Context and Materialized Composition Matter More}
+
+The encoding-context ablation jointly encodes one, two, or four adjacent references while
+retaining five routing units. Its evidence-only oracle row is invariant: the evidence span is
+causally first, so later references cannot alter its hidden state. This is a useful design
+check, not evidence that context never matters. When all encoded neighboring K/V is retained,
+small-tier HotpotQA-derived loss falls from .0235 with one reference per block to .0026 with
+four; QASPER-derived loss falls from .0936 to .0026. Tiny QASPER improves modestly from .0388
+to .0380, while tiny HotpotQA is essentially flat.
+
+The materialized-unit ablation keeps the encoding regime fixed and changes source
+partitioning. Exact-position oracle loss generally worsens as the source is divided more
+finely. HotpotQA-derived tiny loss is .0607, .0655, and .0775 for 2, 5, and 16 units;
+small-tier loss is .0026, .0030, and .0040. QASPER-derived small-tier loss similarly moves
+from .0026 to .0027 to .0036; tiny QASPER has a shallow five-unit plateau before rising to
+.0426 at 16 units. A larger selected unit includes more neighboring content, so this probe
+identifies a composition benefit rather than a pure representation-size law.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.98\linewidth]{../shared/results/paper1_5_rope/context_gate/rope_context_gate.png}
+\caption{Left: larger encoding groups help when the resulting neighboring K/V is retained.
+Center: finer source partitioning generally raises oracle loss. Right: larger deviation from
+exact RoPE phase does not map monotonically to task loss. Error bars show one standard
+deviation over five seeds.}
+\label{fig:context-gate}
+\end{figure}
+
+The combined diagnosis is therefore an interaction dominated here by contextualization and
+composition. Exact source placement is substantially better than a full local reset in the
+tiny-tier oracle rows, and a small near-query rebase does not reliably improve on exact
+placement. Remote rebinding can be destructive, but the measured models do not support a
+universal replacement geometry. For continuous history, exact source coordinates remain the
+default. For independent references, where no natural serialization distance exists, a
+pretrained-model oracle gate should compare exact and a conservative clipped policy before
+general retrieval-time rebinding is enabled. The broad adaptive-geometry program is not
+justified by this fixed-$D$ evidence.
 
 \section{General Offset Repair Beyond RoPE}
 \label{sec:offset-results}
@@ -480,6 +589,14 @@ fully dense history at every layer. The evidence oracle is a programmatic source
 control, not a guarantee of optimal context composition. Deferred-RoPE timing uses an unfused
 prototype path on one older GPU and should not be projected to production serving.
 
+The fixed-distance and context-gate probes use scratch-trained tiny and small models with a
+256-token training context. Their simplified answer-code loss reveals remote-placement
+failures, but small near-range deltas may not transfer to pretrained long-context models.
+Encoding-block size changes the causal context of later references, whereas materialized-unit
+size changes included neighboring content; neither is a pure scalar chunk-size intervention.
+The exact evidence-only context row is structurally invariant because evidence is encoded
+first.
+
 This paper deliberately excludes pretrained Hugging Face adaptation, learned memory-use
 training, recursive multi-hop retrieval, multi-gist representation search, semantic-distance
 policies beyond the reported mechanism probes, and serving integration. Those extensions must
@@ -494,9 +611,12 @@ paired test. RoPE's special value is not ownership of that offset idea; it is th
 algebra that relates pre- and post-rotation keys and permits retrieval-time rebinding.
 
 The residuals identify the rest of the problem. Overlap can reduce contextual fragmentation,
-but it costs extra encoding. Better representation geometry does not guarantee better
-language-model loss, retrieval, or answers. Routing and useful memory composition remain
-independent empirical questions.
+but it costs extra encoding. Larger encoding groups and materialized units improve the
+controlled answer probes more reliably than a near fixed-distance rebase. Effective distance
+nonetheless matters: remote rebinding can strongly alter attention and loss, while no stable
+beneficial fixed $D$ emerges near the source distances. Better representation geometry does
+not guarantee better language-model loss, retrieval, or answers. Routing and useful memory
+composition remain independent empirical questions.
 
 That separation is the contribution. A universal result in which offsets improved every
 metric would have hidden the architecture of the failure. The measured dissociation shows
@@ -580,11 +700,15 @@ trained SelfAttention Q/K/V and output projections into PRA; with memory disable
 logits match the source model to test tolerance.
 
 The final validation artifacts use commit \texttt{64f7cdf89b55}; generated cross-domain
-summaries use \texttt{052ae05}. The original decomposition and storage matrix use
-\texttt{d36f67752701}. Raw CSV/JSON, plots, expectations, and manifests are stored in the
-Paper 1.5 results directory. Tests cover large logical offsets, overlap and splitting,
-independent operation/position bounds, cache metadata, no-memory conversion parity,
-pre/post equivalence, deliberate rebinding, rollover, and CPU/GPU parity.
+summaries use \texttt{052ae05}; the frozen distance/context run records source commit
+\texttt{03c9566ebbd7}. The original decomposition and storage matrix use
+\texttt{d36f67752701}. Each distance row records the checkpoint tokenizer fingerprint; this
+prevents a process-local tokenizer retraining from changing token IDs during evaluation.
+Raw CSV/JSON, compact publication CSVs, plots, expectations, and manifests are stored in the
+Paper 1.5 results directory. The reduction script regenerates manuscript artifacts without
+executing a model. Tests cover large logical offsets, overlap and splitting, independent
+operation/position bounds, cache metadata, no-memory conversion parity, pre/post equivalence,
+deliberate rebinding, retrieval policies, rollover, and CPU/GPU parity.
 
 {\small
 \bibliographystyle{plain}

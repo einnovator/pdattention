@@ -681,6 +681,8 @@ def evaluate_reference_ablation(
         "gist_only",
         "native_all",
         "native_oracle",
+        "native_evidence_adjacent",
+        "native_evidence_irrelevant",
         "native_disabled",
         "native_shuffled",
     }
@@ -709,7 +711,12 @@ def evaluate_reference_ablation(
     )
     if condition.startswith("native_") and model.cfg.memory_transport != "native_kv":
         raise ValueError(f"{condition} requires memory_transport='native_kv'")
-    if condition in {"native_all", "native_oracle"}:
+    native_oracle_conditions = {
+        "native_oracle",
+        "native_evidence_adjacent",
+        "native_evidence_irrelevant",
+    }
+    if condition in {"native_all", *native_oracle_conditions}:
         model.cfg.top_k_references = 1_000_000
         model.cfg.top_k_chunks_per_reference = 1_000_000
         model.cfg.trigger_threshold = float("-inf")
@@ -740,7 +747,7 @@ def evaluate_reference_ablation(
                             candidates = reference_pool[start_index:] + reference_pool[:start_index]
                             irrelevant = [reference for reference in candidates if reference.uri not in own_uris]
                             metadata = {**item, "references": irrelevant[: len(item["references"])]}
-                        elif condition in {"oracle", "native_oracle"}:
+                        elif condition in {"oracle", *native_oracle_conditions}:
                             target_ids = set(item["target_reference_ids"])
                             if model.cfg.reference_encoding_strategy == "independent":
                                 metadata = {
@@ -771,10 +778,16 @@ def evaluate_reference_ablation(
                             if encoded_entry_cache is not None:
                                 encoded_entry_cache.update(cache.entries)
                         if (
-                            condition in {"oracle", "native_oracle"}
+                            condition in {"oracle", *native_oracle_conditions}
                             and model.cfg.reference_encoding_strategy != "independent"
                         ):
                             target_uris = _expected_reference_uris(item)
+                            ordered_uris = [ref.uri for ref in item["references"]]
+                            non_targets = [uri for uri in ordered_uris if uri not in target_uris]
+                            if condition == "native_evidence_adjacent" and non_targets:
+                                target_uris.add(non_targets[0])
+                            elif condition == "native_evidence_irrelevant" and non_targets:
+                                target_uris.add(non_targets[-1])
                             filtered_cache = PRASimpleMemoryCache()
                             for uri in target_uris:
                                 entry = cache.get(uri)
@@ -910,6 +923,54 @@ def evaluate_reference_ablation(
                             float(value.get("retrieved_physical_kv_tokens", 0.0))
                             for value in diagnostic_values
                         ) / max(len(diagnostic_values), 1)
+                        effective_distances = [
+                            float(value["effective_retrieval_distance_min"])
+                            for value in diagnostic_values
+                            if math.isfinite(
+                                float(value.get("effective_retrieval_distance_min", float("nan")))
+                            )
+                        ]
+                        original_distances = [
+                            float(value["original_retrieval_distance_min"])
+                            for value in diagnostic_values
+                            if math.isfinite(
+                                float(value.get("original_retrieval_distance_min", float("nan")))
+                            )
+                        ]
+                        attention_entropies = [
+                            float(value.get("memory_attention_entropy", 0.0))
+                            for value in diagnostic_values
+                        ]
+                        attention_maxima = [
+                            float(value.get("memory_attention_max_weight", 0.0))
+                            for value in diagnostic_values
+                        ]
+                        attention_masses = [
+                            float(value.get("memory_attention_mass", 0.0))
+                            for value in diagnostic_values
+                        ]
+                        last_query_attention_masses = [
+                            float(value.get("memory_last_query_attention_mass", 0.0))
+                            for value in diagnostic_values
+                        ]
+                        key_phase_rmses = [
+                            float(value.get("retrieval_key_rmse_vs_exact", 0.0))
+                            for value in diagnostic_values
+                        ]
+                        logit_rmses = [
+                            float(value.get("retrieval_logit_rmse_vs_exact", 0.0))
+                            for value in diagnostic_values
+                        ]
+                        attention_l1s = [
+                            float(value.get("retrieval_attention_l1_vs_exact", 0.0))
+                            for value in diagnostic_values
+                        ]
+                        top_token_agreements = [
+                            float(
+                                value.get("retrieval_top_token_agreement_vs_exact", 1.0)
+                            )
+                            for value in diagnostic_values
+                        ]
                         retrieved_unique = sum(
                             float(value.get("retrieved_unique_source_tokens", 0.0))
                             for value in diagnostic_values
@@ -1005,12 +1066,60 @@ def evaluate_reference_ablation(
                                 ),
                                 "position_capacity": model.cfg.position_capacity,
                                 "maximum_native_operation": max(
-                                    local_tokens,
+                                    local_tokens + int(retrieved_physical),
                                     max_encoding_input_tokens,
                                 ),
                                 "native_limit_violations": int(
-                                    max(local_tokens, max_encoding_input_tokens)
+                                    max(
+                                        local_tokens + int(retrieved_physical),
+                                        max_encoding_input_tokens,
+                                    )
                                     > model.cfg.effective_model_max_context_tokens
+                                ),
+                                "effective_retrieval_distance": (
+                                    min(effective_distances) if effective_distances else None
+                                ),
+                                "original_retrieval_distance": (
+                                    min(original_distances) if original_distances else None
+                                ),
+                                "memory_attention_entropy": (
+                                    sum(attention_entropies) / len(attention_entropies)
+                                    if attention_entropies
+                                    else None
+                                ),
+                                "memory_attention_max_weight": (
+                                    max(attention_maxima) if attention_maxima else None
+                                ),
+                                "memory_attention_mass": (
+                                    sum(attention_masses) / len(attention_masses)
+                                    if attention_masses
+                                    else None
+                                ),
+                                "memory_last_query_attention_mass": (
+                                    sum(last_query_attention_masses)
+                                    / len(last_query_attention_masses)
+                                    if last_query_attention_masses
+                                    else None
+                                ),
+                                "retrieval_key_rmse_vs_exact": (
+                                    sum(key_phase_rmses) / len(key_phase_rmses)
+                                    if key_phase_rmses
+                                    else None
+                                ),
+                                "retrieval_logit_rmse_vs_exact": (
+                                    sum(logit_rmses) / len(logit_rmses)
+                                    if logit_rmses
+                                    else None
+                                ),
+                                "retrieval_attention_l1_vs_exact": (
+                                    sum(attention_l1s) / len(attention_l1s)
+                                    if attention_l1s
+                                    else None
+                                ),
+                                "retrieval_top_token_agreement_vs_exact": (
+                                    sum(top_token_agreements) / len(top_token_agreements)
+                                    if top_token_agreements
+                                    else None
                                 ),
                                 "chunk_overlap_fraction": model.cfg.chunk_overlap_fraction,
                                 "chunk_overlap_tokens": model.cfg.resolved_chunk_overlap_tokens,

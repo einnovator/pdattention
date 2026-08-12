@@ -3,13 +3,14 @@ import torch
 
 from pra_torch.config import PRAConfig
 from pra_torch.attention import PRAttention
-from pra_torch.memory import PRASimpleMemoryCache
+from pra_torch.memory import LayerKV, PRASimpleMemoryCache
 from pra_torch.model import (
     PositionAwareTransformerBlock,
     TinyPRAModel,
     convert_sa_model_to_pra,
 )
 from pra_torch.positions import RotaryPositionEncoding
+from pra_torch.positions import assign_retrieval_positions
 from experiments.paper1_5_rope.instrumented_model import (
     capture_self_attention,
     materialize_raw_rope_key,
@@ -224,6 +225,30 @@ def test_experimental_position_policies_preserve_chunk_order_and_spacing():
     ) == 10_000 - 192
 
 
+def test_fixed_retrieval_distance_preserves_local_geometry_and_realizes_d():
+    source = torch.tensor([400, 402, 405, 409])
+    assigned = assign_retrieval_positions(
+        source,
+        query_position=10_000,
+        policy="fixed",
+        distance=512,
+    )
+
+    torch.testing.assert_close(assigned[1:] - assigned[:-1], source[1:] - source[:-1])
+    assert 10_000 - int(assigned[-1]) == 512
+    assert int(assigned.max()) < 10_000
+
+
+def test_exact_retrieval_policy_is_identity_and_clipped_distance_is_bounded():
+    source = torch.arange(32) + 100
+    exact = assign_retrieval_positions(source, 4_096, "exact")
+    clipped = assign_retrieval_positions(source, 4_096, "clipped", distance=256)
+
+    torch.testing.assert_close(exact, source)
+    assert 4_096 - int(clipped[-1]) == 256
+    assert int(clipped.max()) < 4_096
+
+
 def test_deferred_rope_materialization_matches_post_position_key():
     torch.manual_seed(13)
     raw_key = torch.randn(1, 2, 7, 8)
@@ -242,6 +267,58 @@ def test_deferred_rope_materialization_matches_post_position_key():
 
     torch.testing.assert_close(deferred_key, post_key)
     torch.testing.assert_close(assigned, positions)
+
+
+def test_pra_cache_can_retain_raw_key_without_changing_published_key():
+    cfg = PRAConfig(
+        vocab_size=31,
+        d_model=16,
+        n_heads=2,
+        n_layers=1,
+        max_seq_len=16,
+        model_variant="td_pra",
+        position_encoding="rope",
+        store_pre_position_keys=True,
+    )
+    attention = PRAttention(
+        cfg.d_model,
+        cfg.n_heads,
+        cfg.max_seq_len,
+        0,
+        PRASimpleMemoryCache(),
+        config=cfg,
+    )
+    hidden = torch.randn(1, 5, cfg.d_model)
+    positions = torch.arange(5) + 30
+    cached = attention.project_kv(hidden, position_ids=positions)
+
+    assert cached.raw_k is not None
+    expected = attention.position_encoding.apply_rotary(cached.raw_k, positions)
+    torch.testing.assert_close(cached.k, expected)
+
+
+def test_non_exact_retrieval_policy_requires_rope_raw_key_cache():
+    with pytest.raises(ValueError, match="requires RoPE"):
+        PRAConfig(retrieval_position_policy="local", store_pre_position_keys=True)
+    with pytest.raises(ValueError, match="store_pre_position_keys"):
+        PRAConfig(
+            d_model=16,
+            n_heads=2,
+            position_encoding="rope",
+            retrieval_position_policy="fixed",
+            retrieval_position_distance=32,
+        )
+
+
+def test_layer_kv_positional_constructor_order_remains_backward_compatible():
+    key = torch.randn(1, 2, 3, 4)
+    value = torch.randn_like(key)
+    positions = torch.arange(3)
+    cached = LayerKV(key, value, positions, "post_position")
+
+    torch.testing.assert_close(cached.position_ids, positions)
+    assert cached.position_state == "post_position"
+    assert cached.raw_k is None
 
 
 def test_instrumented_attention_exposes_shapes_and_preserves_causality():

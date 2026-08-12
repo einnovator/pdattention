@@ -33,6 +33,8 @@ class MemoryBatchingStats:
     padding_fraction: float  # Padding divided by allocated positions.
     attention_entropy: float = 0.0  # Mean entropy over memory-attention distributions.
     attention_max_weight: float = 0.0  # Mean bucket maximum attention weight.
+    attention_memory_mass: float = 0.0  # Mean probability assigned to retrieved K/V.
+    last_query_memory_mass: float = 0.0  # Retrieved probability at the newest valid query.
 
     def as_metrics(self) -> dict[str, float]:
         """Flatten packing/attention statistics into experiment metric names."""
@@ -50,6 +52,8 @@ class MemoryBatchingStats:
             ),
             "memory_attention_entropy": self.attention_entropy,
             "memory_attention_max_weight": self.attention_max_weight,
+            "memory_attention_mass": self.attention_memory_mass,
+            "memory_last_query_attention_mass": self.last_query_memory_mass,
         }
 
 
@@ -247,6 +251,8 @@ def native_kv_attention(
     lengths = []
     entropies = []
     maxima = []
+    memory_masses = []
+    last_query_memory_masses = []
     for row_index, (memory_k, memory_v) in enumerate(
         zip(memory_k_by_item, memory_v_by_item)
     ):
@@ -284,6 +290,27 @@ def native_kv_attention(
         scores = scores.masked_fill(~visible[None, None, :, :], float("-inf"))
         weights = F.softmax(scores, dim=-1)
         output_rows.append(weights @ values)
+        memory_masses.append(
+            float(weights[..., :memory_length].sum(dim=-1).mean().detach().cpu())
+            if memory_length
+            else 0.0
+        )
+        last_query_index = (
+            int(attention_mask[row_index].sum().item()) - 1
+            if attention_mask is not None
+            else token_count - 1
+        )
+        last_query_memory_masses.append(
+            float(
+                weights[..., last_query_index, :memory_length]
+                .sum(dim=-1)
+                .mean()
+                .detach()
+                .cpu()
+            )
+            if memory_length
+            else 0.0
+        )
         safe_weights = weights.clamp_min(torch.finfo(weights.dtype).tiny)
         entropies.append(
             float((-(weights * safe_weights.log()).sum(dim=-1).mean()).detach().cpu())
@@ -303,5 +330,8 @@ def native_kv_attention(
         padding_fraction=0.0,
         attention_entropy=sum(entropies) / max(len(entropies), 1),
         attention_max_weight=sum(maxima) / max(len(maxima), 1),
+        attention_memory_mass=sum(memory_masses) / max(len(memory_masses), 1),
+        last_query_memory_mass=sum(last_query_memory_masses)
+        / max(len(last_query_memory_masses), 1),
     )
     return torch.cat(output_rows, dim=0), stats

@@ -16,7 +16,7 @@ from .memory_batching import (
     dynamic_memory_attention,
     native_kv_attention,
 )
-from .positions import build_position_encoding
+from .positions import assign_retrieval_positions, build_position_encoding
 
 
 def _synchronize_detailed_timing(tensor: torch.Tensor, enabled: bool) -> None:
@@ -105,12 +105,12 @@ class PRAttention(nn.Module):
         Detached mode creates ordinary reusable inference memory; trainable-gist
         mode preserves the graph so routing representations can receive gradients.
         """
-        k = self.split_heads(self.k_proj(hidden_states))
+        raw_k = self.split_heads(self.k_proj(hidden_states))
         v = self.split_heads(self.v_proj(hidden_states))
         if position_ids is None:
             position_ids = torch.arange(hidden_states.shape[1], device=hidden_states.device)
         # RoPE positions K at publication time; V is position-independent and remains native.
-        _, k = self.position_encoding.transform_qk(k, k, position_ids)
+        _, k = self.position_encoding.transform_qk(raw_k, raw_k, position_ids)
         if detach:
             k = k.detach()
             v = v.detach()
@@ -118,6 +118,9 @@ class PRAttention(nn.Module):
         return LayerKV(
             k=k,
             v=v,
+            raw_k=(raw_k.detach() if detach else raw_k)
+            if self.config.store_pre_position_keys
+            else None,
             position_ids=cached_positions,
             position_state="post_position",
         )
@@ -254,6 +257,7 @@ class PRAttention(nn.Module):
         q: torch.Tensor,
         *,
         direct_tokens: int,
+        query_position: int | None = None,
     ):
         """Turn routed hits into one item's rectangular memory K/V.
 
@@ -263,6 +267,7 @@ class PRAttention(nn.Module):
         or all chunks of each routed URI in ``full_reference`` mode.
         """
         routing_candidates = len(selected)
+        query_position = direct_tokens - 1 if query_position is None else int(query_position)
         # Full-reference mode preserves URI routing but widens detail after selection.
         if self.config.detail_materialization == "full_reference":
             selected = self._expand_full_references(selected)
@@ -287,6 +292,12 @@ class PRAttention(nn.Module):
 
         keys = []
         values = []
+        effective_distances = []
+        original_distances = []
+        key_phase_rmses = []
+        attention_logit_rmses = []
+        attention_distribution_l1s = []
+        top_token_agreements = []
         duplicate_tokens = 0
         covered_end_by_uri: dict[str, int] = {}
         # Sort source spans so overlapping fixed windows can drop repeated prefix K/V.
@@ -300,7 +311,9 @@ class PRAttention(nn.Module):
                 key = key_vector.view(1, self.n_heads, 1, self.head_dim)
                 value = value_vector.view(1, self.n_heads, 1, self.head_dim)
             else:
-                key = hit.chunk.token_kv.k
+                token_kv = hit.chunk.token_kv
+                original_distances.append(query_position - (hit.logical_end - 1))
+                key = token_kv.k
                 value = hit.chunk.token_kv.v
                 covered_end = covered_end_by_uri.get(hit.reference_uri, hit.token_start)
                 overlap = max(covered_end - hit.token_start, 0)
@@ -310,6 +323,90 @@ class PRAttention(nn.Module):
                     if self.config.overlap_materialization == "deduplicate":
                         key = key[:, :, overlap:, :]
                         value = value[:, :, overlap:, :]
+                if self.config.retrieval_position_policy != "exact":
+                    if token_kv.raw_k is None:
+                        raise RuntimeError(
+                            "Retrieval position rebinding requires cached pre-position keys."
+                        )
+                    materialized_offset = (
+                        overlap
+                        if self.config.overlap_materialization == "deduplicate"
+                        else 0
+                    )
+                    raw_key = token_kv.raw_k[:, :, materialized_offset:, :]
+                    source_positions = torch.arange(
+                        hit.logical_start + materialized_offset,
+                        hit.logical_end,
+                        dtype=torch.long,
+                        device=raw_key.device,
+                    )
+                    assigned = assign_retrieval_positions(
+                        source_positions,
+                        query_position,
+                        self.config.retrieval_position_policy,
+                        distance=self.config.retrieval_position_distance,
+                    )
+                    key = self.position_encoding.apply_rotary(raw_key, assigned)
+                    canonical_positions = token_kv.position_ids.reshape(-1)[
+                        materialized_offset:
+                    ].to(raw_key.device)
+                    canonical_key = self.position_encoding.apply_rotary(
+                        raw_key, canonical_positions
+                    )
+                    key_phase_rmses.append(
+                        float((key - canonical_key).square().mean().sqrt().detach().cpu())
+                    )
+                    probe_query = q[..., -1:, :].to(key.device, key.dtype)
+                    rebound_logits = probe_query @ key.transpose(-2, -1)
+                    exact_logits = probe_query @ canonical_key.transpose(-2, -1)
+                    attention_logit_rmses.append(
+                        float(
+                            (rebound_logits - exact_logits)
+                            .square()
+                            .mean()
+                            .sqrt()
+                            .detach()
+                            .cpu()
+                        )
+                    )
+                    attention_distribution_l1s.append(
+                        float(
+                            (
+                                rebound_logits.softmax(dim=-1)
+                                - exact_logits.softmax(dim=-1)
+                            )
+                            .abs()
+                            .sum(dim=-1)
+                            .mean()
+                            .detach()
+                            .cpu()
+                        )
+                    )
+                    top_token_agreements.append(
+                        float(
+                            (
+                                rebound_logits.argmax(dim=-1)
+                                == exact_logits.argmax(dim=-1)
+                            )
+                            .float()
+                            .mean()
+                            .detach()
+                            .cpu()
+                        )
+                    )
+                    effective_distances.append(query_position - int(assigned[-1]))
+                elif token_kv.position_ids is not None:
+                    cached_positions = token_kv.position_ids.reshape(-1)
+                    materialized_offset = (
+                        overlap
+                        if self.config.overlap_materialization == "deduplicate"
+                        else 0
+                    )
+                    if cached_positions.numel() > materialized_offset:
+                        effective_distances.append(
+                            query_position
+                            - int(cached_positions[materialized_offset:][-1])
+                        )
                 covered_end_by_uri[hit.reference_uri] = max(covered_end, hit.token_end)
             if key.shape[2]:
                 keys.append(key)
@@ -344,6 +441,38 @@ class PRAttention(nn.Module):
         ]
         _synchronize_detailed_timing(q, collect_timing and transfer_bytes > 0)
         transfer_duration = time.perf_counter() - transfer_start if transfer_bytes else 0.0
+        budget_stats["effective_retrieval_distance_min"] = (
+            float(min(effective_distances)) if effective_distances else float("nan")
+        )
+        budget_stats["effective_retrieval_distance_max"] = (
+            float(max(effective_distances)) if effective_distances else float("nan")
+        )
+        budget_stats["original_retrieval_distance_min"] = (
+            float(min(original_distances)) if original_distances else float("nan")
+        )
+        budget_stats["original_retrieval_distance_max"] = (
+            float(max(original_distances)) if original_distances else float("nan")
+        )
+        budget_stats["retrieval_key_rmse_vs_exact"] = (
+            float(sum(key_phase_rmses) / len(key_phase_rmses))
+            if key_phase_rmses
+            else 0.0
+        )
+        budget_stats["retrieval_logit_rmse_vs_exact"] = (
+            float(sum(attention_logit_rmses) / len(attention_logit_rmses))
+            if attention_logit_rmses
+            else 0.0
+        )
+        budget_stats["retrieval_attention_l1_vs_exact"] = (
+            float(sum(attention_distribution_l1s) / len(attention_distribution_l1s))
+            if attention_distribution_l1s
+            else 0.0
+        )
+        budget_stats["retrieval_top_token_agreement_vs_exact"] = (
+            float(sum(top_token_agreements) / len(top_token_agreements))
+            if top_token_agreements
+            else 1.0
+        )
         return (
             torch.cat(keys, dim=2),
             torch.cat(values, dim=2),
@@ -428,6 +557,14 @@ class PRAttention(nn.Module):
         transfer_duration = 0.0
         budget_stats_by_row = []
         for batch_index, selected in enumerate(selected_by_batch):
+            if position_ids.ndim == 1:
+                row_query_position = int(position_ids[-1])
+            elif attention_mask is None:
+                row_query_position = int(position_ids[batch_index, -1])
+            else:
+                row_query_position = int(
+                    position_ids[batch_index, attention_mask[batch_index].bool()][-1]
+                )
             (
                 key,
                 value,
@@ -441,6 +578,7 @@ class PRAttention(nn.Module):
                     selected,
                     q[batch_index : batch_index + 1],
                     direct_tokens=t,
+                    query_position=row_query_position,
                 )
             )
             memory_k.append(key)
@@ -534,6 +672,54 @@ class PRAttention(nn.Module):
                 "memory_tokens_materialized": sum(
                     row["memory_tokens_materialized"] for row in budget_stats_by_row
                 ),
+                "effective_retrieval_distance_min": min(
+                    (
+                        row["effective_retrieval_distance_min"]
+                        for row in budget_stats_by_row
+                        if math.isfinite(row.get("effective_retrieval_distance_min", float("nan")))
+                    ),
+                    default=float("nan"),
+                ),
+                "effective_retrieval_distance_max": max(
+                    (
+                        row["effective_retrieval_distance_max"]
+                        for row in budget_stats_by_row
+                        if math.isfinite(row.get("effective_retrieval_distance_max", float("nan")))
+                    ),
+                    default=float("nan"),
+                ),
+                "original_retrieval_distance_min": min(
+                    (
+                        row["original_retrieval_distance_min"]
+                        for row in budget_stats_by_row
+                        if math.isfinite(row.get("original_retrieval_distance_min", float("nan")))
+                    ),
+                    default=float("nan"),
+                ),
+                "original_retrieval_distance_max": max(
+                    (
+                        row["original_retrieval_distance_max"]
+                        for row in budget_stats_by_row
+                        if math.isfinite(row.get("original_retrieval_distance_max", float("nan")))
+                    ),
+                    default=float("nan"),
+                ),
+                "retrieval_key_rmse_vs_exact": sum(
+                    row.get("retrieval_key_rmse_vs_exact", 0.0)
+                    for row in budget_stats_by_row
+                ) / max(len(budget_stats_by_row), 1),
+                "retrieval_logit_rmse_vs_exact": sum(
+                    row.get("retrieval_logit_rmse_vs_exact", 0.0)
+                    for row in budget_stats_by_row
+                ) / max(len(budget_stats_by_row), 1),
+                "retrieval_attention_l1_vs_exact": sum(
+                    row.get("retrieval_attention_l1_vs_exact", 0.0)
+                    for row in budget_stats_by_row
+                ) / max(len(budget_stats_by_row), 1),
+                "retrieval_top_token_agreement_vs_exact": sum(
+                    row.get("retrieval_top_token_agreement_vs_exact", 1.0)
+                    for row in budget_stats_by_row
+                ) / max(len(budget_stats_by_row), 1),
                 "materialization_budget_utilization": sum(
                     row["materialization_budget_utilization"]
                     for row in budget_stats_by_row

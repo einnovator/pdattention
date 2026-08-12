@@ -128,6 +128,7 @@ def test_native_attention_reports_active_kv_and_transfer_volume():
     assert output.shape == (1, 5, 16)
     assert diagnostics["active_local_tokens"] == 5.0
     assert diagnostics["retrieved_token_kv"] == 3.0
+    assert 0.0 <= diagnostics["memory_last_query_attention_mass"] <= 1.0
     assert diagnostics["accessible_kv_tokens"] == 8.0
     assert diagnostics["active_memory_fraction"] == pytest.approx(3 / 8)
     assert diagnostics["retrieved_kv_storage_bytes"] == 2 * 3 * 16 * 4

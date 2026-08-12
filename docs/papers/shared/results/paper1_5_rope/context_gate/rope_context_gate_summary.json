@@ -1,0 +1,64 @@
+{
+  "metadata": {
+    "git_sha": "03c9566ebbd7b746ecbba1f4bdae41e9cbdc67b6",
+    "branch": "research/paper1-5-rope",
+    "timestamp": "2026-08-12T11:07:32.205934+00:00",
+    "pytorch": "2.12.1+cu126",
+    "cuda_available": true,
+    "cuda_version": "12.6",
+    "device_name": "NVIDIA GeForce GTX 950M"
+  },
+  "protocol": {
+    "seeds": [
+      1,
+      7,
+      21,
+      42,
+      87
+    ],
+    "datasets": [
+      "hotpotqa",
+      "qasper"
+    ],
+    "tiers": [
+      "tiny",
+      "small"
+    ],
+    "distance_candidates": [
+      32,
+      64,
+      128,
+      256,
+      512,
+      1024,
+      2048,
+      4096
+    ],
+    "selected_fixed_distance": 64,
+    "distance_convention": "query minus nearest selected memory token",
+    "training_context": 256,
+    "oracle_first": true,
+    "same_raw_k_v_within_policy_sweeps": true
+  },
+  "expected_vs_observed": [
+    {
+      "hypothesis": "tiny_fragment_contextualization",
+      "observed": "The causal evidence-only row is invariant to later encoding context. With all neighboring K/V retained, larger encoding groups materially reduce small-tier loss and modestly reduce tiny-QASPER loss.",
+      "verdict": "partly supported; composition and causal order confound it"
+    },
+    {
+      "hypothesis": "larger_retrieved_unit",
+      "observed": "Exact-position oracle loss generally falls from 16-way to 5-way and 2-way partitions, with one tiny-QASPER plateau.",
+      "verdict": "supported in this controlled probe"
+    },
+    {
+      "hypothesis": "stable_distance_mismatch",
+      "observed": "Fixed D=64 and exact split directions nearly evenly; clipped D=64 has only a 9.3e-5 mean loss advantage per example. D=1024 and D=4096 can fail sharply.",
+      "verdict": "placement matters, but no stable beneficial fixed D was found"
+    }
+  ],
+  "paper1_5_implication": "Exact source placement repairs reset geometry. Contextualization and memory composition dominate useful near-range placement differences in these models; remote rebinding can be destructive.",
+  "paper2_gate": "Retain exact source coordinates for continuous history. Test exact versus a small clipped-distance oracle control before enabling general rebinding in a pretrained model.",
+  "adaptive_geometry_gate": "closed: the fixed-distance study does not justify broad adaptive geometry",
+  "native_limit_violations": 0
+}

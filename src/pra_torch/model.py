@@ -648,6 +648,11 @@ class TinyPRAModel(nn.Module):
         return LayerKV(
             k=key,
             v=value,
+            raw_k=(
+                kv.raw_k.detach().to("cpu")
+                if kv.raw_k is not None
+                else None
+            ),
             position_ids=positions,
             position_state=kv.position_state,
         )
@@ -725,6 +730,11 @@ class TinyPRAModel(nn.Module):
                 layer_id: LayerKV(
                     k=kv.k[:, :, left_context : left_context + len(core_ids), :],
                     v=kv.v[:, :, left_context : left_context + len(core_ids), :],
+                    raw_k=(
+                        kv.raw_k[:, :, left_context : left_context + len(core_ids), :]
+                        if kv.raw_k is not None
+                        else None
+                    ),
                     position_ids=(
                         kv.position_ids[..., left_context : left_context + len(core_ids)]
                         if kv.position_ids is not None
@@ -773,6 +783,11 @@ class TinyPRAModel(nn.Module):
                             layer_id: LayerKV(
                                 k=kv.k[:, :, local.token_start : local.token_end, :],
                                 v=kv.v[:, :, local.token_start : local.token_end, :],
+                                raw_k=(
+                                    kv.raw_k[:, :, local.token_start : local.token_end, :]
+                                    if kv.raw_k is not None
+                                    else None
+                                ),
                                 position_ids=(
                                     kv.position_ids[..., local.token_start : local.token_end]
                                     if kv.position_ids is not None
@@ -978,6 +993,11 @@ class TinyPRAModel(nn.Module):
                         sliced = LayerKV(
                             k=kv.k[:, :, local_start:local_end, :],
                             v=kv.v[:, :, local_start:local_end, :],
+                            raw_k=(
+                                kv.raw_k[:, :, local_start:local_end, :]
+                                if kv.raw_k is not None
+                                else None
+                            ),
                             position_ids=(
                                 kv.position_ids[..., local_start:local_end]
                                 if kv.position_ids is not None

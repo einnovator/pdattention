@@ -105,6 +105,9 @@ class PRAConfig:
     encoding_overlap_fraction: float = 0.0  # Left-context duplication during block encoding.
     reference_position_mode: str = "local"  # Reset each block or preserve global offsets.
     prompt_position_mode: str = "local"  # local or continue after historical source K/V.
+    store_pre_position_keys: bool = False  # Retain raw RoPE K for retrieval-time rebinding.
+    retrieval_position_policy: str = "exact"  # exact, local, fixed, clipped, or compressed.
+    retrieval_position_distance: int | None = None  # Nearest-token D for non-exact policies.
     reference_overflow_policy: str = "truncate"  # Handling for a chunk over max_seq_len.
     kv_cache_residency: str = "gpu"  # Store full native token K/V on gpu or cpu.
     kv_cache_pin_memory: bool = False  # Page-lock CPU K/V for faster host-to-device copies.
@@ -407,6 +410,30 @@ class PRAConfig:
             raise ValueError("reference_position_mode must be 'local' or 'global'.")
         if self.prompt_position_mode not in {"local", "historical"}:
             raise ValueError("prompt_position_mode must be 'local' or 'historical'.")
+        retrieval_policies = {
+            "exact", "local", "fixed", "clipped", "log_compressed", "bucketed"
+        }
+        if self.retrieval_position_policy not in retrieval_policies:
+            raise ValueError(
+                f"Unsupported retrieval_position_policy: {self.retrieval_position_policy}"
+            )
+        if self.retrieval_position_distance is not None:
+            self.retrieval_position_distance = int(self.retrieval_position_distance)
+            if self.retrieval_position_distance <= 0:
+                raise ValueError("retrieval_position_distance must be positive or None.")
+        if self.retrieval_position_policy not in {"exact", "local"} and (
+            self.retrieval_position_distance is None
+        ):
+            raise ValueError(
+                "Fixed/compressed retrieval positioning requires retrieval_position_distance."
+            )
+        if self.retrieval_position_policy != "exact":
+            if self.position_encoding != "rope":
+                raise ValueError("Retrieval-time position rebinding currently requires RoPE.")
+            if not self.store_pre_position_keys:
+                raise ValueError(
+                    "Non-exact retrieval positioning requires store_pre_position_keys=True."
+                )
         if self.encoding_context_mode not in {
             "independent",
             "overlap",
