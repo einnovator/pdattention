@@ -12,10 +12,15 @@ import hashlib
 import json
 import random
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from experiments.paper2_hf.routing.run_query_strategies import load_split_examples
 
@@ -609,7 +614,6 @@ def build_package(
 
 
 def parse_args() -> argparse.Namespace:
-    root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, nargs="+", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -618,7 +622,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-controls", action="store_true")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--adapted-variant", default="residual_16")
-    parser.add_argument("--cache-dir", type=Path, default=root / "data" / ".hf_cache")
+    parser.add_argument("--cache-dir", type=Path, default=ROOT / "data" / ".hf_cache")
     args = parser.parse_args()
     if args.batch_size <= 0:
         parser.error("--batch-size must be positive")

@@ -1,5 +1,7 @@
 import copy
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -135,3 +137,18 @@ def test_package_files_batches_and_response_schema(tmp_path: Path) -> None:
 def test_legacy_artifact_uses_recorded_last14_test_offset() -> None:
     assert _test_offset({"protocol": "legacy descriptive protocol"}) == 16
     assert _test_offset({"split_metadata": {"test_offset": 24}}) == 24
+
+
+def test_documented_script_invocation_resolves_repository_imports() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "experiments/paper2_hf/build_behavioral_judge_package.py",
+            "--help",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--include-order-reversal" in result.stdout
