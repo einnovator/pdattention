@@ -430,6 +430,7 @@ def _evaluate_memory(
     checkpoint_bytes,
     recovery_epsilon,
     generate=True,
+    conditions=("oracle", "routed"),
 ):
     """Evaluate oracle and routed memory with matched economics and recovery ratios."""
     rows = []
@@ -437,7 +438,9 @@ def _evaluate_memory(
     for record in records:
         baseline = controls[record["example"]["id"]]["none"]
         economics = _entry_economics(record, layers, route_layer)
-        for condition in ("oracle", "routed"):
+        for condition in conditions:
+            if condition not in {"oracle", "routed"}:
+                raise ValueError(f"Unsupported memory evaluation condition: {condition}")
             _activate(handle, record, layers, condition)
             if device.type == "cuda":
                 torch.cuda.reset_peak_memory_stats(device)

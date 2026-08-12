@@ -268,6 +268,7 @@ def _run_candidate(
     router_parameters: int,
     reference_record,
     off_reference,
+    conditions=("oracle",),
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     report, checkpoint_bytes = _train_variant(
         handle,
@@ -323,6 +324,7 @@ def _run_candidate(
         checkpoint_bytes,
         args.recovery_epsilon,
         generate=False,
+        conditions=conditions,
     )
     return report, rows
 
@@ -694,6 +696,7 @@ def run(args) -> dict[str, Any]:
             router_parameters=router_parameters,
             reference_record=reference_record,
             off_reference=off_reference,
+            conditions=("oracle",),
         )
         training_reports.append(report)
         screen_rows.extend(rows)
@@ -723,6 +726,7 @@ def run(args) -> dict[str, Any]:
             router_parameters=router_parameters,
             reference_record=reference_record,
             off_reference=off_reference,
+            conditions=("oracle",),
         )
         training_reports.append(report)
         screen_rows.extend(rows)
@@ -735,15 +739,6 @@ def run(args) -> dict[str, Any]:
     validation_finalist_rows: list[dict[str, Any]] = []
     for config in finalist_configs:
         for seed in args.seeds:
-            if seed == args.screen_seed:
-                matching = [
-                    row
-                    for row in screen_rows
-                    if row["variant"] == config.config_id and row["seed"] == seed
-                ]
-                if matching:
-                    validation_finalist_rows.extend(matching)
-                    continue
             report, rows = _run_candidate(
                 handle=handle,
                 tokenizer=tokenizer,
@@ -760,6 +755,7 @@ def run(args) -> dict[str, Any]:
                 router_parameters=router_parameters,
                 reference_record=reference_record,
                 off_reference=off_reference,
+                conditions=("oracle", "routed"),
             )
             training_reports.append(report)
             validation_finalist_rows.extend(rows)
