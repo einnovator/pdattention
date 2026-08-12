@@ -237,6 +237,10 @@ def _config_manifest(args) -> dict[str, Any]:
         "selection_metric": "equal-weight HotpotQA/QASPER validation oracle sequence delta-logP",
         "pareto_tolerance_nats": args.pareto_tolerance,
         "test_access_rule": "test references are prepared only after Stage-C validation selection",
+        "full_context_decoding": (
+            "not run: 2,048-token eager greedy control exceeds the 4-GiB evaluation GPU; "
+            "teacher-forced full-context logP remains measured"
+        ),
         "combination": "one residual-32 plus selected LoRA configuration",
         "identity_split": {
             "data_seed": args.data_seed,
@@ -860,7 +864,13 @@ def run(args) -> dict[str, Any]:
     test_records = _prepare_records(handle, tokenizer, test_examples, layers, args, controls=True)
     _configure_variant(handle, Variant("fixed"), reset=True)
     test_controls, test_control_rows = _context_controls(
-        handle, tokenizer, test_records, layers, args.new_tokens, device
+        handle,
+        tokenizer,
+        test_records,
+        layers,
+        args.new_tokens,
+        device,
+        generate_full_context=False,
     )
     _configure_variant(handle, Variant("fixed"), reset=True)
     fixed_test_rows = _evaluate_memory(

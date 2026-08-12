@@ -299,6 +299,7 @@ def _score_prompt(
     new_tokens,
     *,
     generate: bool = True,
+    generate_full_context: bool = True,
 ):
     started = time.perf_counter()
     _, metrics = _compact_gold_scores(handle, prompt_ids, prompt_mask, answer_ids, device)
@@ -358,7 +359,10 @@ def _context_controls(
                 record["answer_ids"],
                 device,
                 new_tokens,
-                generate=generate,
+                generate=(
+                    generate
+                    and (condition != "full_context" or generate_full_context)
+                ),
             )
             per_example[condition] = metrics
             rows.append(
