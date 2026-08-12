@@ -27,6 +27,7 @@ from .qwen import QwenPRAAttentionAdapter
 from .llama import LlamaPRAAttentionAdapter
 from .memory_gate import PRAHFMemoryGate
 from .residual_adapter import PRAHFResidualAdapterBank
+from .late_band_lora import PRAHFConditionalOutputLoRABank
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class PRAHFModel:
         routing_projection=None,
         memory_gate=None,
         residual_adapter=None,
+        late_band_lora=None,
     ) -> None:
         self.model = model
         self.adapters: dict[int, PRAHFAttentionAdapter] = adapters
@@ -61,6 +63,7 @@ class PRAHFModel:
         self.routing_projection = routing_projection
         self.memory_gate = memory_gate
         self.residual_adapter = residual_adapter
+        self.late_band_lora = late_band_lora
         self.max_native_operation_tokens = 0
         self.native_limit_violations = 0
 
@@ -103,6 +106,26 @@ class PRAHFModel:
     def residual_adapter_parameters(self) -> list[torch.nn.Parameter]:
         """Return the active residual adapter's complete parameter set."""
         return self.residual_adapter.trainable_parameters()
+
+    def configure_late_band_lora(
+        self,
+        rank: int,
+        *,
+        alpha: float | None = None,
+        dropout: float = 0.0,
+        reset: bool = True,
+    ) -> None:
+        """Enable conditional output-projection LoRA or disable it with rank zero."""
+        self.late_band_lora.configure(
+            rank,
+            alpha=alpha,
+            dropout=dropout,
+            reset=reset,
+        )
+
+    def late_band_lora_parameters(self) -> list[torch.nn.Parameter]:
+        """Return only factors belonging to the active conditional LoRA rank."""
+        return self.late_band_lora.trainable_parameters()
 
     def configure_memory_layers(
         self,
@@ -447,6 +470,16 @@ def inject_pra(
         bottleneck=config.residual_adapter_bottleneck,
     ).to(model.get_input_embeddings().weight.device)
     model.add_module("pra_residual_adapter", residual_adapter)
+    sample_output_projection = layers[selected[0]].self_attn.o_proj
+    late_band_lora = PRAHFConditionalOutputLoRABank(
+        int(sample_output_projection.in_features),
+        int(sample_output_projection.out_features),
+        selected,
+        rank=config.late_band_lora_rank,
+        alpha=config.late_band_lora_alpha,
+        dropout=config.late_band_lora_dropout,
+    ).to(model.get_input_embeddings().weight.device)
+    model.add_module("pra_late_band_lora", late_band_lora)
     adapters: dict[int, PRAHFAttentionAdapter] = {}
     for layer_id in selected:
         original = layers[layer_id].self_attn
@@ -472,6 +505,7 @@ def inject_pra(
             routing_projection=routing_projection,
             memory_gate=memory_gate,
             residual_adapter=residual_adapter,
+            late_band_lora=late_band_lora,
         )
         layers[layer_id].self_attn = adapter
         adapters[layer_id] = adapter
@@ -484,4 +518,5 @@ def inject_pra(
         routing_projection,
         memory_gate,
         residual_adapter,
+        late_band_lora,
     )

@@ -14,6 +14,10 @@ from .memory_gate import (
     PRAHFMemoryGate,
 )
 from .residual_adapter import PRAHFResidualAdapter, PRAHFResidualAdapterBank
+from .late_band_lora import (
+    PRAHFConditionalOutputLoRA,
+    PRAHFConditionalOutputLoRABank,
+)
 from .llama import LlamaPRAAttentionAdapter
 from .query import (
     QUERY_EXPONENTIAL,
@@ -43,6 +47,8 @@ __all__ = [
     "PRAHFMemoryGate",
     "PRAHFResidualAdapter",
     "PRAHFResidualAdapterBank",
+    "PRAHFConditionalOutputLoRA",
+    "PRAHFConditionalOutputLoRABank",
     "LlamaPRAAttentionAdapter",
     "QUERY_EXPONENTIAL",
     "QUERY_LAST",

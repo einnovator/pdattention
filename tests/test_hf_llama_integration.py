@@ -121,6 +121,37 @@ def test_llama_reference_uses_native_gqa_post_rope_kv_and_memory():
     assert diagnostics["retrieved_physical_kv_tokens"] == 8
 
 
+def test_llama_conditional_lora_is_exact_off_and_owns_active_gradients():
+    torch.manual_seed(204)
+    model = _tiny_llama()
+    original = copy.deepcopy(model)
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    handle = inject_pra(model, _config())
+    handle.configure_late_band_lora(4, alpha=4.0)
+    handle.add_reference(
+        "memory://lora", torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    )
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    handle.set_memory_enabled(False)
+    with torch.no_grad():
+        expected = original(query, use_cache=False).logits
+        disabled = handle.model(query, use_cache=False).logits
+    assert torch.equal(disabled, expected)
+
+    handle.set_memory_enabled(True)
+    handle.model(query, use_cache=False).logits.float().square().mean().backward()
+    trainable = handle.late_band_lora_parameters()
+    assert trainable
+    assert any(parameter.grad is not None for parameter in trainable)
+    assert all(
+        parameter.grad is None
+        for name, parameter in handle.model.named_parameters()
+        if "pra_late_band_lora" not in name
+    )
+
+
 def test_llama_long_prompt_rollover_stays_bounded():
     handle = inject_pra(_tiny_llama(), _config())
     prepared = handle.prepare_long_prompt(torch.arange(1, 25).unsqueeze(0))

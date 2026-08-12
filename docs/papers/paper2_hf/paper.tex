@@ -42,10 +42,11 @@ evaluation reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% of parent
 cross-domain recall@3 remains 0.213. Oracle causal tests show that correct native memory changes
 the frozen model: on HotpotQA, final-four-layer replay improves gold-token log-probability by
 1.004 nats/token, compared with 4.635 for direct evidence text. With the backbone, LM head, and
-router still frozen, a 393,344-parameter residual adapter raises routed gold likelihood by
-$1.210\pm0.248$ nats/token on HotpotQA and $0.837\pm0.241$ on QASPER over five optimization
-seeds. Generated F1 does not improve reliably, so these are mechanistic rather than solved-QA
-results.
+router still frozen, a PRA-conditional rank-8 update to the attention output projections in the
+final four layers uses 98,304 parameters and raises routed gold likelihood by
+$1.846\pm0.088$ nats/token on HotpotQA and $1.487\pm0.062$ on QASPER over five optimization
+seeds. It outperforms a four-times-larger residual adapter in every paired seed. Generated F1
+does not improve reliably, so these are compatibility-calibration rather than solved-QA results.
 The implementation packages exact routing, fraction-based selection, bounded materialization,
 CPU-resident detail K/V, and route-once multi-layer replay behind a small public API. Five-seed
 QASPER runs produce evidence-identity recall@20\% of $0.454\pm0.007$ on Qwen3-0.6B and
@@ -88,7 +89,7 @@ Can compact gists find evidence? & Five-seed router over frozen Qwen & Any-evide
 How small is the learned index? & Asymmetric 128-D Qwen router & 262,144 parameters (0.044\%); 0.392\% of per-layer detail K/V \\
 Does routing scale at fixed sparsity? & 12.5\% selection over 64/128/256 units & Coverage remains 0.756--0.772 (Hotpot) and 0.794--0.803 (QASPER) \\
 Does selected native K/V affect the model? & HotpotQA oracle, final four layers & $+1.004$ nats/token; generated F1 unchanged \\
-Can a tiny readout align memory use? & Frozen base/router, width-32 late-layer adapter & 0.066\% of base; routed $\Delta\log p$ +1.210 HotpotQA, +.837 QASPER \\
+Can a tiny readout align memory use? & Frozen base/router, rank-8 conditional output LoRA & 0.0165\% of base; routed $\Delta\log p$ +1.846 HotpotQA, +1.487 QASPER \\
 Does the interface cross families? & QASPER evidence-identity recall@20\% & Qwen $0.454\pm0.007$; SmolLM2 $0.447\pm0.051$ \\
 Is there a reusable implementation? & Public API, CLI, router artifacts, and metrics & Yes; exact-search research implementation \\
 Is long-context QA solved? & Product-path generation & No; routed F1 remains 0.033/0.028 in a four-example probe \\
@@ -884,6 +885,90 @@ generation. Width 32 occupies 1.50 MiB in FP32. Routed teacher-forced latency ri
 shows no consistent width trend. PRA-off gold scores remain exactly equal in every run, active
 K/V materialization is unchanged, and there are no native-limit violations.
 
+\subsection{Conditional late-band LoRA is more parameter-efficient}
+\label{sec:late-band-lora}
+
+The depth sweep locates a useful late transformer band, so a compatibility update need not touch
+the entire checkpoint. We restrict LoRA to the native attention output projection in Qwen's
+final four PRA-enabled layers. If $z_l\in\mathbb{R}^{B\times T\times D_a}$ is the flattened
+multi-head attention result before the native output projection, the active memory branch is
+
+\begin{equation}
+y_l = W_{O,l}z_l + \frac{\alpha}{r}B_lA_lz_l,
+\qquad
+A_l\in\mathbb{R}^{r\times D_a},\quad
+B_l\in\mathbb{R}^{D\times r}.
+\label{eq:pra-conditional-lora}
+\end{equation}
+
+The pretrained $W_O$ is frozen. $A_l$ uses Kaiming initialization and $B_l$ starts at zero, so
+Equation~\ref{eq:pra-conditional-lora} initially equals frozen PRA. The correction executes only
+after selected memory has been materialized; no-memory and disabled-PRA calls delegate to the
+original attention module. This distinction is stricter than applying ordinary LoRA globally:
+the new parameters calibrate the checkpoint's response to external native K/V without changing
+its local attention function. Qwen3's grouped-query attention produces a $D_a=2048$ concatenated
+head vector before a rectangular $2048\rightarrow1024$ output projection. Thus each layer uses
+$r(2048+1024)$ parameters rather than the square-projection count; over four layers, ranks 2, 4,
+and 8 contain 24,576, 49,152, and 98,304 parameters.
+
+The protocol matches the residual study: eight HotpotQA training identities, 24 oracle-memory
+updates, four held-out identities per dataset, and optimization seeds 11, 23, 37, 53, and 71.
+The base model, LM head, router, and all inactive calibrators remain frozen. We set $\alpha=r$ and
+dropout to zero. Every update also evaluates the same prompt with PRA disabled and penalizes any
+logit drift; the control error is exactly zero because the conditional branch is absent. At test
+time we measure no memory, routed PRA, oracle PRA, and direct evidence text.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{PRA-conditional late-band calibration. Values are mean $\Delta\log p$ relative to no
+memory; uncertainty is the population standard deviation across five optimization seeds. F1 is
+routed greedy token F1. The residual-32 row is the matched larger calibrator.}
+\label{tab:late-band-lora}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Method & Params & \% base & \multicolumn{2}{c}{HotpotQA $\Delta\log p$} &
+\multicolumn{2}{c}{QASPER $\Delta\log p$} & \multicolumn{2}{c}{Routed F1} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+& & & Oracle & Routed & Oracle & Routed & HotpotQA & QASPER \\
+\midrule
+Frozen PRA & 0 & .0000 & +1.004 & +.110 & -.161 & -.456 & .056 & .125 \\
+Residual 32 & 393,344 & .0660 & $+3.088\pm.234$ & $+1.210\pm.248$ & $+1.022\pm.300$ & $+.837\pm.241$ & .063 & .013 \\
+Output LoRA $r=2$ & 24,576 & .0041 & $+1.794\pm.111$ & $+.889\pm.111$ & $+.695\pm.081$ & $+.505\pm.082$ & .056 & .125 \\
+Output LoRA $r=4$ & 49,152 & .0082 & $+2.248\pm.100$ & $+1.347\pm.090$ & $+1.175\pm.057$ & $+1.021\pm.053$ & .057 & .125 \\
+Output LoRA $r=8$ & 98,304 & .0165 & $+2.775\pm.092$ & $+1.846\pm.088$ & $+1.655\pm.055$ & $+1.487\pm.062$ & .071 & .063 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper2_hf/late_band_lora/late_band_lora.pdf}
+\caption{Five-seed late-band comparison. Output-projection LoRA improves routed and oracle gold
+likelihood monotonically with rank in this sweep. Greedy answer quality does not follow the same
+trend; QASPER direct text is itself negative on this four-example cohort and is not evidence of
+QA utility.}
+\label{fig:late-band-lora}
+\end{figure}
+
+Rank 8 raises routed likelihood over residual-32 by .637 nats/token on HotpotQA and .650 on
+QASPER while using one quarter of its trainable parameters. The paired difference has the same
+direction in all five seeds; as before, five pairs permit no exact two-sided sign-flip result
+smaller than $p=.0625$. On HotpotQA, rank 8 lowers mean first-token rank by 633 positions and
+raises its margin by 4.627 logits relative to no memory. Residual-32 lowers rank further, by 770,
+but has a smaller margin gain of 3.063 and lower sequence likelihood. These metrics are related
+but not interchangeable.
+
+The result remains a calibration result rather than reliable generation. Routed HotpotQA EM is
+zero and F1 is .071; QASPER EM is zero and F1 falls to .063. Rank 8 occupies 384 KiB in FP32.
+Mean routed teacher-forced time is .168 seconds on HotpotQA, only .003 seconds above frozen PRA,
+and .158 seconds on QASPER. Active K/V remains 384 tokens across the four consuming layers,
+disabled-PRA logits are bit-exact in every run, and no native-limit violation occurs. Because the
+output-only sweep already separates likelihood calibration from decoding, broader Q/O or MLP
+updates are deferred until a larger calibration/validation/test cohort can decide whether their
+extra degrees of freedom improve answer generation rather than fit eight identities.
+
 \section{Product and Systems Boundary}
 
 The validated path is packaged as \texttt{pra-hf}, with a stable Python API, CLI, serializable
@@ -953,9 +1038,9 @@ The evidence base is still small. The primary representation study uses 16 match
 learned router has 32 held-out test identities, and the oracle depth study uses only four examples
 per dataset. The product path uses two held-out examples from each dataset. Confidence across
 five training seeds measures optimization variation on a fixed cohort; it does not replace a
-larger test set. The residual-adapter study likewise trains on eight HotpotQA identities and
-tests on four identities per dataset. Its all-seed likelihood direction therefore needs
-independent replication on a larger calibration, validation, and test split.
+larger test set. The residual and conditional-LoRA studies likewise train on eight HotpotQA
+identities and test on four identities per dataset. Their all-seed likelihood directions
+therefore need independent replication on a larger calibration, validation, and test split.
 
 Retrieval labels are also imperfect proxies for answer sufficiency. Any-evidence recall can be
 high while a multi-hop model misses another required passage. Evidence-identity recall improves
@@ -981,10 +1066,10 @@ The most discriminating next experiment is a larger checkpoint-solvable cohort w
 calibration, model-selection, and test identities at the late-layer operating point. It should
 evaluate oracle, routed, direct-text, and no-memory conditions together and measure gold
 likelihood, calibrated first-token rank, decoded EM/F1, exact memory bytes, TTFT, and per-token
-latency. The width-32 residual result justifies that replication before a broader LoRA update:
-likelihood alignment is already strong, but decoded QA remains unsolved. If oracle native K/V
-fails where direct text succeeds, the integration representation, not routing capacity, remains
-the priority.
+latency. The rank-8 conditional-LoRA result makes that replication more urgent: likelihood
+alignment is strong with 0.0165\% of the base model, but decoded QA remains unsolved. Only after
+that test should Q/O or MLP LoRA widen the adaptation surface. If oracle native K/V fails where
+direct text succeeds, the integration representation, not routing capacity, remains the priority.
 
 \section{Related Work}
 
@@ -1021,12 +1106,12 @@ leaves that subset non-diagnostic. The present result is causal use in logits, n
 long-context question answering.
 
 A tiny conditional readout strengthens that logit-level result. With the backbone, LM head, and
-router frozen, a final-four-layer width-32 residual adapter uses 393,344 parameters (0.066\% of
-the base model) and raises routed gold likelihood by 1.210 nats/token on HotpotQA and .837 on
-QASPER. Both paired improvements over frozen PRA have the same direction in five optimization
-seeds, and disabled-PRA output remains exact. EM is still zero and token F1 does not improve
-reliably. The current boundary is therefore sharper: routing and native-state transport can
-produce useful answer evidence, and a very small transformation can align its sequence
+router frozen, rank-8 output-projection LoRA in the final four layers uses 98,304 parameters
+(0.0165\% of the base model) and raises routed gold likelihood by 1.846 nats/token on HotpotQA
+and 1.487 on QASPER. It beats the four-times-larger residual-32 adapter in every paired seed,
+while disabled-PRA output remains exact. EM is still zero and token F1 does not improve reliably.
+The current boundary is therefore sharper: routing and native-state transport can produce useful
+answer evidence, and a very small memory-conditional transformation can align its sequence
 likelihood, but robust decoding needs a larger identity-disjoint study rather than a broader
 uncontrolled parameter update.
 
@@ -1377,6 +1462,34 @@ lines 332--461 aggregate and plot seed-level measurements. Unit tests at
 zero-gate behavior, frozen-PRA initialization, adapter-only gradients, and exact disabled-PRA
 bypass.
 
+\subsection{Conditional late-band LoRA path}
+
+The LoRA implementation is deliberately separate from generic parameter-efficient fine-tuning.
+\texttt{hf/late\_band\_lora.py}, lines 10--50, defines one rectangular low-rank delta that
+accepts the pre-output-projection tensor $[B,T,D_a]$ and returns only a correction
+$[B,T,D]$. Lines 53--149 own a lazy per-layer bank, activate one rank/configuration at a time,
+and expose only that configuration's trainable factors. This supports Qwen3's $2048\rightarrow
+1024$ projection as well as Llama's square projection without family-specific dimensions in the
+LoRA class.
+
+Registration occurs once in \texttt{hf/injection.py}, lines 467--482. Each attention wrapper
+holds a non-owning reference to that bank, avoiding duplicate parameter registration. Public
+rank switching and parameter selection are at lines 110--128. In the active Qwen/Llama path,
+\texttt{hf/qwen.py}, lines 348--374, first performs native attention over local plus selected K/V,
+flattens heads to $[B,T,D_a]$, applies the frozen $W_O$, and then adds Equation~\ref{eq:pra-conditional-lora}
+in FP32. Reaching those lines already implies that memory exists. The earlier no-memory return and
+the disabled wrapper therefore never execute LoRA, which is the structural reason the no-PRA
+control is bit-exact rather than merely regularized toward parity.
+
+The experiment entry point \texttt{run\_late\_band\_lora.py}, lines 73--192, configures one
+exclusive calibration owner and trains it while evaluating a no-PRA control on every update.
+Lines 194--293 evaluate all four memory conditions; lines 295--353 plot the aggregate; and lines
+355--547 run the fixed five-seed cohort and write raw, seed-level, and aggregate artifacts. Tests
+in \texttt{test\_hf\_integration.py}, lines 122--152 and 739--790, pin validation, rectangular
+shape handling, zero initialization, parameter ownership, active gradients, and exact Qwen
+bypass. \texttt{test\_hf\_llama\_integration.py}, lines 124--153, exercises the same ownership
+and bypass contract through the Llama-family wrapper.
+
 \subsection{Revision-pinned source map}
 
 Table~\ref{tab:code-map} connects the preceding control flow to the implementation.
@@ -1407,6 +1520,9 @@ Memory gate and residual calibration & \texttt{src/pra\_torch/hf/memory\_gate.py
 \texttt{src/pra\_torch/hf/residual\_adapter.py}, 10--111;
 \texttt{src/pra\_torch/hf/qwen.py}, 358--405 \\
 Five-seed calibration protocol & \texttt{experiments/paper2\_hf/qa/run\_memory\_gate.py}, 158--461 \\
+Conditional output LoRA & \texttt{src/pra\_torch/hf/late\_band\_lora.py}, 10--149;
+\texttt{src/pra\_torch/hf/qwen.py}, 348--374 \\
+Five-seed LoRA protocol & \texttt{experiments/paper2\_hf/qa/run\_late\_band\_lora.py}, 73--547 \\
 Parity, routing, GQA, head, cache, and selection gates & \texttt{tests/test\_hf\_integration.py}, 80--636 \\
 Stable config, router artifact, and public API & \texttt{src/pra\_hf/config.py}, 14--127;
 \texttt{src/pra\_hf/router.py}, 14--110; \texttt{src/pra\_hf/model.py}, 42--358 \\

@@ -41,6 +41,7 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         config,
         memory_gate=None,
         residual_adapter=None,
+        late_band_lora=None,
     ) -> None:
         super().__init__()
         self.original_attention = original_attention
@@ -60,6 +61,7 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         # The owning HF model registers this module exactly once.
         self.__dict__["memory_gate"] = memory_gate
         self.__dict__["residual_adapter"] = residual_adapter
+        self.__dict__["late_band_lora"] = late_band_lora
         self.pra_core = PRAExecutionCore(
             cache=cache,
             config=config,

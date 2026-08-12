@@ -51,6 +51,9 @@ class PRAHFConfig:
     memory_gate_mode: str = MEMORY_GATE_FIXED
     memory_gate_initial_value: float = 1.0
     residual_adapter_bottleneck: int = 0
+    late_band_lora_rank: int = 0
+    late_band_lora_alpha: float | None = None
+    late_band_lora_dropout: float = 0.0
 
     def __post_init__(self) -> None:
         """Reject routing modes that the installed family adapter cannot represent."""
@@ -92,6 +95,12 @@ class PRAHFConfig:
             )
         if int(self.residual_adapter_bottleneck) < 0:
             raise ValueError("residual_adapter_bottleneck must be non-negative.")
+        if int(self.late_band_lora_rank) < 0:
+            raise ValueError("late_band_lora_rank must be non-negative.")
+        if self.late_band_lora_alpha is not None and self.late_band_lora_alpha <= 0:
+            raise ValueError("late_band_lora_alpha must be positive when provided.")
+        if not 0.0 <= float(self.late_band_lora_dropout) < 1.0:
+            raise ValueError("late_band_lora_dropout must be in [0, 1).")
 
     def build_pra_config(self, hf_config) -> PRAConfig:
         """Translate native model dimensions without changing pretrained parameters."""

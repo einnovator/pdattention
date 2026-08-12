@@ -22,6 +22,7 @@ from pra_torch.hf import (
     HFRoutingProjection,
     inject_pra,
 )
+from pra_torch.hf.late_band_lora import PRAHFConditionalOutputLoRA
 from pra_torch.memory_batching import native_kv_attention
 
 
@@ -116,6 +117,39 @@ def test_hf_residual_adapter_is_lazy_and_counts_only_active_width():
 
     handle.configure_residual_adapter(0)
     assert handle.residual_adapter_parameters() == []
+
+
+def test_hf_late_band_lora_is_lazy_validated_and_counts_active_rank():
+    with pytest.raises(ValueError, match="late_band_lora_rank"):
+        PRAHFConfig(late_band_lora_rank=-1)
+    with pytest.raises(ValueError, match="late_band_lora_alpha"):
+        PRAHFConfig(late_band_lora_alpha=0.0)
+    with pytest.raises(ValueError, match="late_band_lora_dropout"):
+        PRAHFConfig(late_band_lora_dropout=1.0)
+
+    handle = inject_pra(_tiny_qwen(), _hf_config(layer_ids=(0, 1)))
+    assert handle.late_band_lora_parameters() == []
+
+    handle.configure_late_band_lora(4, alpha=4.0, dropout=0.0)
+    # Per layer, output-projection LoRA owns D*r down and r*D up weights.
+    expected = 2 * (32 * 4 + 4 * 32)
+    assert sum(parameter.numel() for parameter in handle.late_band_lora_parameters()) == expected
+
+    handle.configure_late_band_lora(0)
+    assert handle.late_band_lora_parameters() == []
+
+
+def test_hf_output_lora_supports_rectangular_native_projection():
+    adapter = PRAHFConditionalOutputLoRA(
+        64,
+        32,
+        4,
+        alpha=4.0,
+        dropout=0.0,
+    )
+    output = adapter(torch.randn(2, 5, 64))
+    assert output.shape == (2, 5, 32)
+    assert torch.count_nonzero(output) == 0
 
 
 def test_qwen_runtime_query_strategy_aggregates_attention_input_states():
@@ -699,6 +733,59 @@ def test_qwen_residual_adapter_receives_exclusive_gradients_and_bypasses_pra_off
         parameter.grad is None
         for name, parameter in handle.model.named_parameters()
         if "pra_residual_adapter" not in name
+    )
+
+
+def test_qwen_zero_initialized_lora_matches_frozen_pra_with_memory():
+    torch.manual_seed(10826)
+    original = _tiny_qwen()
+    frozen = inject_pra(copy.deepcopy(original), _hf_config())
+    adapted = inject_pra(copy.deepcopy(original), _hf_config())
+    adapted.configure_late_band_lora(4, alpha=4.0)
+    reference = torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    frozen.add_reference("mem://lora-init", reference)
+    adapted.add_reference("mem://lora-init", reference)
+    frozen.set_memory_enabled(True)
+    adapted.set_memory_enabled(True)
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    with torch.no_grad():
+        expected = frozen.model(query, use_cache=False).logits
+        actual = adapted.model(query, use_cache=False).logits
+
+    assert torch.equal(actual, expected)
+
+
+def test_qwen_conditional_lora_receives_exclusive_gradients_and_is_exact_when_off():
+    torch.manual_seed(10827)
+    model = _tiny_qwen()
+    original = copy.deepcopy(model)
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    handle = inject_pra(model, _hf_config())
+    handle.configure_late_band_lora(4, alpha=4.0)
+    handle.add_reference(
+        "mem://lora-gradient",
+        torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]]),
+    )
+    query = torch.tensor([[1, 4, 8, 12]])
+
+    handle.set_memory_enabled(False)
+    with torch.no_grad():
+        expected = original(query, use_cache=False).logits
+        disabled = handle.model(query, use_cache=False).logits
+    assert torch.equal(disabled, expected)
+
+    handle.set_memory_enabled(True)
+    output = handle.model(query, use_cache=False).logits
+    output.float().square().mean().backward()
+    trainable = handle.late_band_lora_parameters()
+    assert trainable
+    assert any(parameter.grad is not None for parameter in trainable)
+    assert all(
+        parameter.grad is None
+        for name, parameter in handle.model.named_parameters()
+        if "pra_late_band_lora" not in name
     )
 
 

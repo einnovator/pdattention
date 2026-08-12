@@ -58,6 +58,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
         routing_projection=None,
         memory_gate=None,
         residual_adapter=None,
+        late_band_lora=None,
     ) -> None:
         super().__init__(
             original_attention,
@@ -65,6 +66,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             config,
             memory_gate=memory_gate,
             residual_adapter=residual_adapter,
+            late_band_lora=late_band_lora,
         )
         self.routing_representation = canonical_routing_representation(
             routing_representation
@@ -164,8 +166,17 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
 
     def project_output(self, attention_output: torch.Tensor, input_shape) -> torch.Tensor:
         """Restore ``[B,T,D]`` and apply the unchanged Qwen ``o_proj``."""
-        output = attention_output.reshape(*input_shape, -1).contiguous()
-        return self.original_attention.o_proj(output)
+        return self.original_attention.o_proj(
+            self.flatten_attention_output(attention_output, input_shape)
+        )
+
+    @staticmethod
+    def flatten_attention_output(
+        attention_output: torch.Tensor,
+        input_shape,
+    ) -> torch.Tensor:
+        """Restore native eager output to token-major ``[B,T,D]`` features."""
+        return attention_output.reshape(*input_shape, -1).contiguous()
 
     def _record_capture(
         self,
@@ -351,7 +362,16 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             ended.record()
             torch.cuda.synchronize(query.device)
             duration = started.elapsed_time(ended) / 1000.0
-        memory_output = self.project_output(attention_output, input_shape)
+        memory_features = self.flatten_attention_output(attention_output, input_shape)
+        memory_output = self.original_attention.o_proj(memory_features)
+        lora_delta_norm = 0.0
+        if self.late_band_lora is not None and self.late_band_lora.enabled:
+            lora_delta = self.late_band_lora.transform(
+                self.layer_idx,
+                memory_features,
+            )
+            memory_output = (memory_output.float() + lora_delta).to(memory_output.dtype)
+            lora_delta_norm = float(lora_delta.detach().float().norm().cpu())
         local_output = None
         gate_value = 1.0
         memory_residual_norm = 0.0
@@ -402,6 +422,7 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                 "hf_cache_tokens": float(key.shape[2]),
                 "hf_memory_gate": gate_value,
                 "hf_memory_residual_norm": memory_residual_norm,
+                "hf_late_band_lora_delta_norm": lora_delta_norm,
             }
         )
         return output, attention_weights
