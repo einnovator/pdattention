@@ -2,6 +2,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage{array}
 \usepackage{booktabs}
 \usepackage{float}
 \usepackage{graphicx}
@@ -67,6 +68,11 @@ This paper asks whether pretrained hidden-state gists already possess enough tra
 geometry for that extension to help.  The question has a strict baseline: iterative closure must
 beat one-shot Top-$B$ at the same final unique-chunk budget $B$.  Otherwise, retrieval depth adds
 cost without adding a useful primitive.
+
+We keep the pretrained backbone and Paper 2 routing/transport stack fixed and replace one-shot
+Top-$B$ discovery with parameter-free iterative closure.  The projection-correction and local-gist
+gates later in the paper likewise alter discovery state only; they do not train the backbone or a
+memory-consumption adapter.
 
 The contributions are fivefold.  First, we formulate iterative PRA as query-conditioned bounded
 associative closure over an implicit latent graph.  Second, we implement Level-1 gist-to-gist and
@@ -229,6 +235,92 @@ payload, exactly as in matched one-shot PRA.  The method trades more compact-ind
 chance to find a better closure without increasing active K/V.
 
 \section{Experimental Design}
+
+\subsection{Inherited Paper 2 configuration}
+
+Table~\ref{tab:inherited-config} makes the inherited stack explicit.  Layer numbers are zero
+based.  The retrieval studies operate on frozen feature artifacts and do not run the transformer
+or activate K/V; the separate downstream smoke is the only Paper 2.5 experiment that exercises
+the complete native-K/V consumer path.
+
+\begin{table}[H]
+\centering
+\caption{Verified inherited configuration and Paper 2.5 experimental scope.}
+\label{tab:inherited-config}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.29\linewidth}>{\raggedright\arraybackslash}p{0.65\linewidth}@{}}
+\toprule
+Component & Paper 2.5 setting \\
+\midrule
+Backbone & \texttt{Qwen/Qwen3-0.6B}, frozen; 596,049,920 parameters and no trainable backbone parameter during feature capture. \\
+Backbone revision & Hugging Face commit \texttt{c1899de289a04d12100db37\allowbreak 0d81485cdf75e47ca}.  The inherited feature manifest and downstream smoke pin this hash.  The Gate-2 manifest recorded the alias \texttt{main}; the cached ref used for that run resolves to the same hash. \\
+Backbone topology & 28 decoder layers (zero-based 0--27), hidden width 1,024, 16 query heads, 8 K/V heads, and native head width 128. \\
+Routing source & Attention-input hidden states from decoder layer 27; the root uses the final prompt-token hidden state. \\
+Contextual encoding and routing unit & The inherited feature artifact encodes contiguous 128-token blocks and exposes 32-token routing views.  These views are derived from contextual hidden states, not independently encoded fragments.  Gate 2 separately encodes 256-token parents once and derives eight 32-token local means from each parent state. \\
+Raw routing gist & One mean hidden-state gist per inherited 32-token routing chunk.  Gate 2 retains one local mean per 32-token subwindow and an occupancy-weighted 256-token parent mean. \\
+Learned discovery component & The only inherited learned discovery component is Paper 2's asymmetric linear semantic router.  It maps a 1,024-D hidden state to a 128-D routing space with 262,144 parameters. \\
+Router projections & $z_q=W_qh_q$ and $z_m=W_mh_m$; one-shot scoring is $\cos(z_q,z_m)$. \\
+Router checkpoints & Five independently trained exhaustive-negative, margin-objective checkpoints with seeds 11, 23, 37, 53, and 71.  No checkpoint is trained or selected on Paper 2.5 iterative results. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\textit{Table~\ref{tab:inherited-config} (continued).}\par\medskip
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.29\linewidth}>{\raggedright\arraybackslash}p{0.65\linewidth}@{}}
+\toprule
+Component & Paper 2.5 setting \\
+\midrule
+Iterative closure & Parameter-free.  The primary chunk study uses direct frontiers, multiplicative path score, root anchor $\alpha=0.25$, and depths 2, 3, and 4; one-shot is the matched depth-1 Top-$B$ reference. \\
+Memory-consumption adaptation & None.  Paper 2.5 does not load a memory-use adapter.  Residual-16, rank-32 LoRA, residual-plus-LoRA, and global LM-head adaptation are all absent. \\
+PRA payload & Full layer-native post-RoPE K and native V, preserving Qwen's 8 K/V heads without expanding them to 16 query heads. \\
+PRA consumer layers & None in the frozen-feature retrieval experiments.  The downstream integration smoke routes at layer 27 and materializes/consumes native K/V on layer 27 only; it does not use a multi-layer late band. \\
+Routing versus materialization & Intermediate closure nodes remain compact routing state and never enter attention.  Only final selected identities are handed to the existing layer mapper before native K/V becomes active. \\
+Native-operation bounds & The configured hard bound is 256 tokens.  Feature encoding uses 128-token blocks in the inherited study and 256-token parents in Gate 2.  The downstream smoke uses 64-token encoding blocks, observes a maximum native operation of 64 tokens, and records zero violations. \\
+Final native payload budget & The downstream smoke caps materialized memory at 96 tokens and selects three 32-token chunks in both one-shot and iterative conditions.  Retrieval-only studies apply matched logical chunk/parent budgets but do not transfer K/V. \\
+K/V residency in smoke & Reference K/V is CPU-resident, pinned when CUDA is available, and transferred non-blockingly for final selected identities. \\
+Datasets & A held-out split of 16 HotpotQA and 16 QASPER examples, plus controlled synthetic two-hop, three-hop, and local-bridge tasks. \\
+New Paper 2.5 variables & Discovery procedure only: one-shot versus bounded iterative closure, followed by projection-correct frontier and parent-versus-local propagation gates.  Backbone weights, router checkpoints, payload representation, layer mapper, and host attention semantics remain fixed within each matched comparison. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The resulting path is
+\begin{center}
+\textit{frozen Qwen hidden state} $\rightarrow$ \textit{learned 128-D asymmetric router}
+$\rightarrow$ \textit{one-shot or iterative closure} $\rightarrow$ \textit{final identities}
+$\rightarrow$ \textit{PRA layer mapper} $\rightarrow$ \textit{native K/V on layer 27}.
+\end{center}
+Iterative closure operates only over compact routing state.  Intermediate graph nodes do not
+inject K/V into the transformer.  After closure terminates, the final selected identities are
+handed to the existing PRA layer mapper, which materializes the corresponding full native K/V
+payload on the configured consumer layer in the downstream smoke.
+
+\noindent\textbf{Paper 2.5 changes the discovery procedure only.  The pretrained backbone,
+routing checkpoints, native-K/V payload representation, layer mapper, and host-model attention
+semantics remain fixed within each comparison.}  Therefore differences between one-shot and
+iterative conditions are routing/closure effects, not effects of additional model training or a
+different memory-consumption adapter.
+
+\begin{table}[H]
+\centering
+\caption{Isolation of inherited components from Paper 2.5 contributions.}
+\label{tab:inherited-new}
+\small
+\begin{tabular}{p{0.42\linewidth}p{0.46\linewidth}}
+\toprule
+Inherited from Paper 2 & New in Paper 2.5 \\
+\midrule
+Frozen pinned Qwen3-0.6B & Bounded iterative closure and retrieval graph \\
+128-D asymmetric semantic router & Depth, path, root-anchor, and stop logic \\
+Attention-input hidden-state gists & Projection-correct frontier audit \\
+Native post-RoPE K/V transport and mapper & Hierarchical local propagation with parent deduplication \\
+Bounded native execution & Matched-budget chain metrics and transitive controls \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Frozen semantic geometry}
 
