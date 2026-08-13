@@ -15,7 +15,13 @@ from pra_torch.hf import inject_pra
 from pra_torch.memory import SelectedChunk
 
 from .config import PRAConfig
-from .iterative import GistIndex, IterativeGistRouter, IterativeRoutingResult
+from .iterative import (
+    GistIndex,
+    HierarchicalGistIndex,
+    HierarchicalLocalGistRouter,
+    IterativeGistRouter,
+    IterativeRoutingResult,
+)
 from .memory_adapter import PRAMemoryAdapter
 from .router import PRARouter
 
@@ -55,6 +61,10 @@ class PRAForCausalLM:
         self.model = model
         self.tokenizer = tokenizer
         self.config = config
+        if config.routing_mode == "local_iterative" and router is None:
+            raise ValueError(
+                "local_iterative routing requires a routing adapter with aligned W_q/W_m projections."
+            )
         layer_count = len(model.model.layers)
         self.routing_layer, self.consumption_layers = config.resolved_layers(model.config)
         self._handle = inject_pra(
@@ -379,7 +389,27 @@ class PRAForCausalLM:
         )
         started = time.perf_counter()
         retrieval_graphs = []
-        if self.config.routing_mode == "iterative":
+        if self.config.routing_mode == "local_iterative":
+            index = HierarchicalGistIndex.from_entries(
+                self._handle.cache.all_entries(),
+                self.routing_layer,
+                device=query.device,
+                dtype=query.dtype,
+            )
+            iterative = HierarchicalLocalGistRouter(index)
+            results = [
+                iterative.route(row, self.config.iterative_config)
+                for row in query
+            ]
+            selected = [iterative.selected_chunks(result) for result in results]
+            # Parent root scores retain the same diagnostic ranking contract.
+            simple_index = GistIndex.from_entries(
+                self._handle.cache.all_entries(), self.routing_layer,
+                device=query.device, dtype=query.dtype,
+            )
+            rankings = self._iterative_rankings(simple_index, results)
+            retrieval_graphs = [result.graph.to_dict() for result in results]
+        elif self.config.routing_mode == "iterative":
             index = GistIndex.from_entries(
                 self._handle.cache.all_entries(),
                 self.routing_layer,

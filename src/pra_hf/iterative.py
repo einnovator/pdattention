@@ -18,9 +18,10 @@ import torch.nn.functional as F
 from pra_torch.memory import PRACacheEntry, ReferenceChunkMemory, SelectedChunk
 
 
-GRAPH_SCHEMA_VERSION = "1.0"
+GRAPH_SCHEMA_VERSION = "2.0"
 _PATH_MODES = {"product", "logsum", "last", "min", "mean", "direct"}
 _FRONTIER_MODES = {"direct", "residual", "mean", "weighted_mean"}
+_FRONTIER_PROJECTIONS = {"memory", "query"}
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class IterativeRoutingConfig:
     max_unique_chunks: int = 8
     root_anchor_alpha: float = 0.5
     frontier_mode: str = "direct"
+    frontier_projection: str = "memory"
     residual_beta: float = 1.0
     path_score_mode: str = "product"
     min_confidence: float | None = None
@@ -53,6 +55,10 @@ class IterativeRoutingConfig:
             raise ValueError("root_anchor_alpha must lie in [0, 1].")
         if self.frontier_mode not in _FRONTIER_MODES:
             raise ValueError(f"Unsupported frontier_mode: {self.frontier_mode}")
+        if self.frontier_projection not in _FRONTIER_PROJECTIONS:
+            raise ValueError(
+                f"Unsupported frontier_projection: {self.frontier_projection}"
+            )
         if self.path_score_mode not in _PATH_MODES:
             raise ValueError(f"Unsupported path_score_mode: {self.path_score_mode}")
         if self.residual_beta < 0:
@@ -72,6 +78,7 @@ class GistIndex:
     records: tuple[tuple[PRACacheEntry, ReferenceChunkMemory], ...]
     gists: torch.Tensor
     gist_mask: torch.Tensor
+    query_gists: torch.Tensor | None = None
 
     @classmethod
     def from_entries(
@@ -105,11 +112,157 @@ class GistIndex:
         for row, ((_, chunk), count) in enumerate(zip(records, counts)):
             packed[row, :count] = chunk.routing_gist.k.to(target_device, dtype)
             mask[row, :count] = True
-        return cls(layer_id, tuple(records), F.normalize(packed, dim=-1, eps=1e-12), mask)
+        query_packed = None
+        if all(chunk.routing_gist.query_k is not None for _, chunk in records):
+            query_packed = torch.zeros_like(packed)
+            for row, ((_, chunk), count) in enumerate(zip(records, counts)):
+                query_packed[row, :count] = chunk.routing_gist.query_k.to(
+                    target_device, dtype
+                )
+            query_packed = F.normalize(query_packed, dim=-1, eps=1e-12)
+        return cls(
+            layer_id,
+            tuple(records),
+            F.normalize(packed, dim=-1, eps=1e-12),
+            mask,
+            query_packed,
+        )
 
     @property
     def chunk_ids(self) -> tuple[str, ...]:
         return tuple(chunk.chunk_id for _, chunk in self.records)
+
+
+@dataclass(frozen=True)
+class HierarchicalGistIndex:
+    """Contextual parent means plus finer local gists for propagation.
+
+    Parent tensors are ``[P,D_route]``. Local tensors are ``[L,D_route]`` and
+    ``local_parent_indices[L]`` maps every local node to its materialization
+    parent. Query and memory tensors are aligned projections of the same hidden
+    states under the asymmetric routing contract.
+    """
+
+    parent_ids: tuple[str, ...]
+    parent_spans: tuple[tuple[int, int], ...]
+    parent_memory_gists: torch.Tensor
+    parent_query_gists: torch.Tensor
+    local_spans: tuple[tuple[int, int], ...]
+    local_parent_indices: torch.Tensor
+    local_memory_gists: torch.Tensor
+    local_query_gists: torch.Tensor
+    layer_id: int = 0
+    records: tuple[tuple[PRACacheEntry, ReferenceChunkMemory], ...] = ()
+
+    def __post_init__(self) -> None:
+        parent_count = len(self.parent_ids)
+        local_count = len(self.local_spans)
+        if len(self.parent_spans) != parent_count:
+            raise ValueError("Parent identities and spans must align.")
+        if self.parent_memory_gists.ndim != 2:
+            raise ValueError("Parent memory gists must have shape [parents,width].")
+        if self.parent_query_gists.shape != self.parent_memory_gists.shape:
+            raise ValueError("Parent query and memory gists must align.")
+        if self.parent_memory_gists.shape[0] != parent_count:
+            raise ValueError("Parent tensors must align with parent identities.")
+        if self.local_memory_gists.ndim != 2:
+            raise ValueError("Local memory gists must have shape [locals,width].")
+        if self.local_query_gists.shape != self.local_memory_gists.shape:
+            raise ValueError("Local query and memory gists must align.")
+        if self.local_memory_gists.shape[0] != local_count:
+            raise ValueError("Local tensors must align with local spans.")
+        if self.local_memory_gists.shape[-1] != self.parent_memory_gists.shape[-1]:
+            raise ValueError("Parent and local routing widths must match.")
+        if self.local_parent_indices.shape != (local_count,):
+            raise ValueError("local_parent_indices must have shape [locals].")
+        if local_count and (
+            int(self.local_parent_indices.min()) < 0
+            or int(self.local_parent_indices.max()) >= parent_count
+        ):
+            raise ValueError("Every local node must map to a valid parent.")
+
+    @property
+    def device(self) -> torch.device:
+        return self.parent_memory_gists.device
+
+    @classmethod
+    def from_entries(
+        cls,
+        entries: Iterable[PRACacheEntry],
+        layer_id: int,
+        *,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype = torch.float32,
+    ) -> "HierarchicalGistIndex":
+        """Build parents and local nodes from one contextual segment-gist pass."""
+        records = []
+        for entry in entries:
+            memory = entry.layer_memory.get(layer_id)
+            if memory is not None:
+                records.extend((entry, chunk) for chunk in memory.chunks)
+        records.sort(key=lambda pair: (pair[0].uri, pair[1].chunk_id))
+        if not records:
+            raise ValueError("Hierarchical routing requires at least one cached parent.")
+        if not all(chunk.routing_gist.query_k is not None for _, chunk in records):
+            raise ValueError("Hierarchical routing requires query-projected local gists.")
+        target = records[0][1].routing_gist.k.device if device is None else torch.device(device)
+        parent_ids, parent_spans, local_spans, local_parents = [], [], [], []
+        parent_memory, parent_query, local_memory, local_query = [], [], [], []
+        for parent_index, (_, chunk) in enumerate(records):
+            memory_gists = chunk.routing_gist.k.to(target, dtype)
+            query_gists = chunk.routing_gist.query_k.to(target, dtype)
+            spans = chunk.routing_gist.metadata.get("segment_token_spans")
+            if not spans or len(spans) != len(memory_gists):
+                raise ValueError(
+                    "Hierarchical routing requires segment_token_spans for every local gist."
+                )
+            occupancy = torch.tensor(
+                [int(end) - int(start) for start, end in spans],
+                device=target,
+                dtype=dtype,
+            )
+            weights = occupancy / occupancy.sum()
+            parent_memory.append(
+                chunk.routing_gist.parent_k[0].to(target, dtype)
+                if chunk.routing_gist.parent_k is not None
+                else (memory_gists * weights[:, None]).sum(0)
+            )
+            parent_query.append(
+                chunk.routing_gist.parent_query_k[0].to(target, dtype)
+                if chunk.routing_gist.parent_query_k is not None
+                else (query_gists * weights[:, None]).sum(0)
+            )
+            parent_ids.append(chunk.chunk_id)
+            parent_spans.append((int(chunk.logical_start), int(chunk.logical_end)))
+            for memory_gist, query_gist, (start, end) in zip(
+                memory_gists, query_gists, spans
+            ):
+                local_memory.append(memory_gist)
+                local_query.append(query_gist)
+                local_parents.append(parent_index)
+                local_spans.append(
+                    (
+                        int(chunk.logical_start) + int(start),
+                        int(chunk.logical_start) + int(end),
+                    )
+                )
+        return cls(
+            tuple(parent_ids), tuple(parent_spans),
+            F.normalize(torch.stack(parent_memory), dim=-1),
+            F.normalize(torch.stack(parent_query), dim=-1),
+            tuple(local_spans), torch.tensor(local_parents, device=target),
+            F.normalize(torch.stack(local_memory), dim=-1),
+            F.normalize(torch.stack(local_query), dim=-1), layer_id, tuple(records),
+        )
+
+
+def _entropy(scores: torch.Tensor) -> float:
+    """Return entropy of a softmax over finite diagnostic scores."""
+    finite = scores[torch.isfinite(scores)]
+    if finite.numel() <= 1:
+        return 0.0
+    probabilities = torch.softmax(finite.float(), dim=0)
+    return float((-(probabilities * probabilities.clamp_min(1e-12).log()).sum()).item())
 
 
 @dataclass
@@ -128,6 +281,11 @@ class RetrievalNode:
     final_selected: bool = True
     materialized: bool = False
     evidence: bool | None = None
+    parent_chunk_id: str | None = None
+    local_span: tuple[int, int] | None = None
+    resolution_level: str = "chunk"
+    representation_type: str = "semantic_gist"
+    projection_type: str = "memory"
 
 
 @dataclass
@@ -141,6 +299,20 @@ class RetrievalEdge:
     anchored_score: float
     path_score: float
     selected: bool
+    edge_type: str = "semantic_similarity"
+    representation_type: str = "semantic_gist"
+    projection_type: str = "memory_to_memory"
+    head_id: int | None = None
+    score: float | None = None
+    threshold: float | None = None
+    accepted: bool = True
+    source_node: str | None = None
+    target_node: str | None = None
+
+    def __post_init__(self) -> None:
+        """Expose explicit schema-v2 aliases while retaining v1 field names."""
+        self.source_node = self.source if self.source_node is None else self.source_node
+        self.target_node = self.target if self.target_node is None else self.target_node
 
 
 @dataclass
@@ -243,6 +415,10 @@ class IterativeGistRouter:
             )
             return IterativeRoutingResult((), (), graph)
         root = F.normalize(root_query.to(self.index.gists), dim=-1, eps=1e-12)
+        if config.frontier_projection == "query" and self.index.query_gists is None:
+            raise ValueError(
+                "Query-projected closure requires aligned query_gists in the index."
+            )
         root_scores_t, _ = self._scores(root.unsqueeze(0))
         direct_scores = root_scores_t[0]
         graph = RetrievalGraph(
@@ -341,6 +517,11 @@ class IterativeGistRouter:
                         path_score=path,
                         winning_gist_index=winner,
                         evidence=evidence,
+                        parent_chunk_id=node_id,
+                        local_span=(int(chunk.logical_start), int(chunk.logical_end)),
+                        projection_type=(
+                            "root_query" if hop == 1 else config.frontier_projection
+                        ),
                     )
                 )
                 for alt_path, alt_parent_row, alt_edge, alt_anchored, _ in candidate_parents[index]:
@@ -353,9 +534,20 @@ class IterativeGistRouter:
                             anchored_score=alt_anchored,
                             path_score=alt_path,
                             selected=alt_parent_row == parent_row,
+                            projection_type=(
+                                "query_to_memory"
+                                if hop == 1 or config.frontier_projection == "query"
+                                else "memory_to_memory"
+                            ),
+                            score=alt_edge,
+                            accepted=alt_parent_row == parent_row,
                         )
                     )
-                gist = self.index.gists[index, winner]
+                gist = (
+                    self.index.query_gists[index, winner]
+                    if config.frontier_projection == "query"
+                    else self.index.gists[index, winner]
+                )
                 if config.frontier_mode == "residual":
                     query = F.normalize(parent.query + config.residual_beta * gist, dim=-1)
                 else:
@@ -403,6 +595,9 @@ class IterativeGistRouter:
             "unique_parents": len({edge.source for edge in graph.edges if edge.selected}),
             "branch_entropy": branch_entropy,
             "candidate_overlap_mean": sum(overlap_ratios) / max(len(overlap_ratios), 1),
+            "semantic_gist_comparisons": comparisons,
+            "native_qk_comparisons": 0,
+            "local_nodes_explored": 0,
         }
         selected_indices = tuple(
             self.index.chunk_ids.index(node.node_id) for node in graph.nodes if node.final_selected
@@ -440,4 +635,149 @@ class IterativeGistRouter:
                     metadata={"selection_policy": "iterative_closure", "hop": node.hop},
                 )
             )
+        return selected
+
+
+class HierarchicalLocalGistRouter:
+    """Traverse local semantic gists while budgeting unique K/V parents."""
+
+    def __init__(self, index: HierarchicalGistIndex):
+        self.index = index
+
+    def _best_local(self, scores: torch.Tensor, parent: int) -> tuple[int, float]:
+        rows = torch.nonzero(self.index.local_parent_indices == parent).flatten()
+        winner = rows[torch.argmax(scores[rows])]
+        return int(winner), float(scores[winner])
+
+    def route(self, root_query, config, *, example_id=None, evidence_parent_ids=None):
+        """Route root->parent/local then local->local with parent deduplication."""
+        root = F.normalize(root_query.reshape(-1).to(self.index.device).float(), dim=-1)
+        pm = F.normalize(self.index.parent_memory_gists.float(), dim=-1)
+        pq = F.normalize(self.index.parent_query_gists.float(), dim=-1)
+        lm = F.normalize(self.index.local_memory_gists.float(), dim=-1)
+        lq = F.normalize(self.index.local_query_gists.float(), dim=-1)
+        direct_parent, direct_local = pm @ root, lm @ root
+        graph = RetrievalGraph(
+            example_id, self.index.layer_id,
+            {"node_id": "__root__", "representation_type": "semantic_gist", "projection_type": "query"},
+            budget=asdict(config),
+        )
+        if config.depth == 0 or config.max_unique_chunks == 0:
+            graph.stop_reason = "zero_limit"
+            return IterativeRoutingResult((), tuple(direct_parent.cpu().tolist()), graph)
+        first = IterativeGistRouter._topk(
+            direct_parent,
+            min(config.branch_top_k, config.beam_size, config.max_unique_chunks),
+        )
+        visited, frontier = set(first), []
+        comparisons, explored = int(direct_parent.numel()), 0
+        cross_parent = repeated_parent = 0
+        local_edges, parent_edges, local_entropies = [], [], []
+        parent_entropies = [_entropy(direct_parent)]
+
+        def add_node(parent, local, hop, source, edge, anchored, path):
+            parent_id = self.index.parent_ids[parent]
+            node_id = f"{parent_id}#local={local}"
+            graph.nodes.append(RetrievalNode(
+                node_id, example_id or "memory", hop, [source],
+                float(direct_parent[parent]), edge, path, local,
+                evidence=(parent_id in evidence_parent_ids if evidence_parent_ids is not None else None),
+                parent_chunk_id=parent_id, local_span=self.index.local_spans[local],
+                resolution_level="local", projection_type="root_query" if hop == 1 else "query",
+            ))
+            graph.edges.append(RetrievalEdge(
+                source, node_id, hop, edge, anchored, path, True,
+                edge_type="root_to_local" if hop == 1 else "local_to_local",
+                projection_type="query_to_memory", score=edge,
+            ))
+            return node_id
+
+        for parent in first:
+            local, edge = self._best_local(direct_local, parent)
+            explored += int((self.index.local_parent_indices == parent).sum())
+            affinity = max(0.0, min(1.0, (float(direct_parent[parent]) + 1.0) / 2.0))
+            add_node(parent, local, 1, "__root__", edge, float(direct_parent[parent]), affinity)
+            frontier.append((parent, local, affinity, (affinity,)))
+
+        stop = "unique_budget" if len(visited) >= config.max_unique_chunks else "depth"
+        for hop in range(2, config.depth + 1):
+            if len(visited) >= config.max_unique_chunks or not frontier:
+                break
+            proposals = {}
+            for source_row, (source_parent, source_local, _, source_edges) in enumerate(frontier):
+                scores = lm @ lq[source_local]
+                comparisons += int(scores.numel())
+                explored += int(scores.numel())
+                local_entropies.append(_entropy(scores))
+                parent_scores = direct_parent.new_full((len(self.index.parent_ids),), float("-inf"))
+                winners = {}
+                for parent in range(len(self.index.parent_ids)):
+                    winners[parent], value = self._best_local(scores, parent)
+                    parent_scores[parent] = value
+                parent_entropies.append(_entropy(parent_scores))
+                anchored = config.root_anchor_alpha * direct_parent + (1 - config.root_anchor_alpha) * parent_scores
+                ranked = IterativeGistRouter._topk(anchored, config.branch_top_k + len(visited))
+                repeated_parent += sum(parent in visited for parent in ranked[:config.branch_top_k])
+                for parent in [p for p in ranked if p not in visited][:config.branch_top_k]:
+                    affinity = max(0.0, min(1.0, (float(anchored[parent]) + 1.0) / 2.0))
+                    path = _path_score(config.path_score_mode, float(direct_parent[parent]), (*source_edges, affinity))
+                    proposals.setdefault(parent, []).append((path, source_row, winners[parent], float(parent_scores[parent]), float(anchored[parent])))
+                    cross_parent += int(parent != source_parent)
+            if not proposals:
+                stop = "no_new_parents"
+                break
+            best = {parent: max(rows, key=lambda row: (row[0], -row[1])) for parent, rows in proposals.items()}
+            ranking = direct_parent.new_full((len(self.index.parent_ids),), float("-inf"))
+            for parent, row in best.items(): ranking[parent] = row[0]
+            accepted = IterativeGistRouter._topk(ranking, min(config.beam_size, config.max_unique_chunks - len(visited)))
+            next_frontier = []
+            for parent in accepted:
+                path, source_row, local, edge, anchored = best[parent]
+                source_parent, source_local, _, source_edges = frontier[source_row]
+                source_id = f"{self.index.parent_ids[source_parent]}#local={source_local}"
+                add_node(parent, local, hop, source_id, edge, anchored, path)
+                local_edges.append(edge)
+                parent_edges.append(float(pm[parent] @ pq[source_parent]))
+                affinity = max(0.0, min(1.0, (anchored + 1.0) / 2.0))
+                next_frontier.append((parent, local, path, (*source_edges, affinity)))
+                visited.add(parent)
+            frontier = next_frontier
+            stop = "unique_budget" if len(visited) >= config.max_unique_chunks else "depth"
+        graph.stop_reason = stop
+        local_mean = sum(local_edges) / max(len(local_edges), 1)
+        parent_mean = sum(parent_edges) / max(len(parent_edges), 1)
+        graph.costs = {
+            "semantic_gist_comparisons": comparisons, "native_qk_comparisons": 0,
+            "local_nodes_explored": explored, "unique_parents_selected": len(visited),
+            "local_nodes_activated_per_parent": len(graph.nodes) / max(len(visited), 1),
+            "cross_parent_transitions": cross_parent, "repeated_parent_transitions": repeated_parent,
+            "local_entropy": sum(local_entropies) / max(len(local_entropies), 1),
+            "parent_entropy": sum(parent_entropies) / max(len(parent_entropies), 1),
+            "path_depth": max((node.hop for node in graph.nodes), default=0),
+            "local_vs_parent_similarity_ratio": (local_mean + 1.0) / max(parent_mean + 1.0, 1e-6),
+            "bridge_locality_score": local_mean - parent_mean,
+        }
+        return IterativeRoutingResult(tuple(sorted(visited)), tuple(direct_parent.cpu().tolist()), graph)
+
+    def selected_chunks(self, result: IterativeRoutingResult) -> list[SelectedChunk]:
+        """Map deduplicated parent identities to lazy native-K/V payload handles."""
+        if not self.index.records:
+            raise ValueError("This hierarchical index has no cache payload records.")
+        selected = []
+        for rank, parent_index in enumerate(result.selected_indices, start=1):
+            entry, chunk = self.index.records[parent_index]
+            nodes = [
+                node for node in result.graph.nodes
+                if node.parent_chunk_id == chunk.chunk_id
+            ]
+            node = max(nodes, key=lambda value: value.path_score)
+            selected.append(SelectedChunk(
+                entry=entry, chunk=chunk, reference_score=node.path_score,
+                chunk_score=node.direct_query_score, layer_id=self.index.layer_id,
+                reference_rank=rank, rank_within_reference=rank,
+                winning_gist_index=node.winning_gist_index,
+                winning_gist_score=node.edge_score,
+                gist_count=int(chunk.routing_gist.k.shape[0]),
+                metadata={"selection_policy": "local_iterative_closure", "hop": node.hop},
+            ))
         return selected

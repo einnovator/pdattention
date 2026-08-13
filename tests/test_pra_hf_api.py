@@ -165,3 +165,73 @@ def test_iterative_product_path_closes_before_native_memory_is_enabled(monkeypat
     assert result.stats["retrieval_graphs"][0]["nodes"]
     assert all(node["materialized"] for node in result.stats["retrieval_graphs"][0]["nodes"])
     assert result.stats["requested_chunks"] <= 2
+
+
+def test_local_iterative_config_maps_parent_and_local_scales():
+    config = PRAConfig(
+        routing_mode="local_iterative",
+        chunk_tokens=256,
+        local_gist_tokens=32,
+        consumption_layers=(-1,),
+    )
+    internal = config.to_internal(28)
+    assert internal.routing_chunk_tokens == 256
+    assert internal.gist_mode == "segment_mean"
+    assert internal.gists_per_chunk == 8
+    assert internal.store_associative_gists is True
+    assert config.selection_policy == "local_iterative_closure"
+
+    one_shot = PRAConfig(consumption_layers=(-1,)).to_internal(28)
+    assert one_shot.store_associative_gists is False
+
+
+def test_local_iterative_model_requires_asymmetric_router():
+    with pytest.raises(ValueError, match="routing adapter"):
+        PRAForCausalLM.from_model(
+            _model(),
+            TinyTokenizer(),
+            pra_config=_config(
+                routing_mode="local_iterative",
+                chunk_tokens=8,
+                local_gist_tokens=2,
+            ),
+        )
+
+
+def test_local_iterative_product_path_materializes_unique_parents(monkeypatch):
+    torch.manual_seed(304)
+    router = PRARouter(32, 8, architecture="asymmetric_linear").freeze()
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(
+            routing_mode="local_iterative",
+            chunk_tokens=8,
+            local_gist_tokens=2,
+            routing_depth=2,
+            branch_top_k=1,
+            beam_size=1,
+            max_unique_chunks=2,
+            selected_fraction=None,
+        ),
+        router=router,
+    )
+    pra.add_reference("abcdefghijklmnopqrstuvwxyz")
+    events = []
+    original = pra._handle.configure_memory_layers
+
+    def record(layers, *args, **kwargs):
+        events.append((set(layers), kwargs.get("fixed_selections")))
+        return original(layers, *args, **kwargs)
+
+    monkeypatch.setattr(pra._handle, "configure_memory_layers", record)
+    result = pra.generate("question", max_new_tokens=1, return_details=True)
+    graph = result.stats["retrieval_graphs"][0]
+
+    assert events[0][0] == set()
+    assert events[1][0] == set(pra.consumption_layers)
+    assert result.stats["selection_policy"] == "local_iterative_closure"
+    assert result.stats["requested_chunks"] <= 2
+    assert len({node["parent_chunk_id"] for node in graph["nodes"]}) <= 2
+    assert all(node["materialized"] for node in graph["nodes"])
+    assert graph["costs"]["native_qk_comparisons"] == 0

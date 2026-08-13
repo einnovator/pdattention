@@ -48,6 +48,7 @@ class PRAHFConfig:
     kv_cache_non_blocking: bool = False
     collect_detailed_timing: bool = True
     collect_routing_metrics: bool = False
+    store_associative_gists: bool = False
     memory_gate_mode: str = MEMORY_GATE_FIXED
     memory_gate_initial_value: float = 1.0
     residual_adapter_bottleneck: int = 0

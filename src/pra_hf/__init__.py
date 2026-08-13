@@ -7,6 +7,8 @@ from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
 from .router import PRARouter
 from .iterative import (
     GistIndex,
+    HierarchicalGistIndex,
+    HierarchicalLocalGistRouter,
     IterativeGistRouter,
     IterativeRoutingConfig,
     IterativeRoutingResult,
@@ -18,6 +20,8 @@ __version__ = "0.2.0rc1"
 __all__ = [
     "GenerationResult",
     "GistIndex",
+    "HierarchicalGistIndex",
+    "HierarchicalLocalGistRouter",
     "IterativeGistRouter",
     "IterativeRoutingConfig",
     "IterativeRoutingResult",

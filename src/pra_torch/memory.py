@@ -44,6 +44,9 @@ class ChunkRoutingGist:
     method: str = "mean"  # Pooling rule that produced k/v.
     summary_k: torch.Tensor | None = None  # Separately encoded summary keys [gists, d_model].
     metadata: dict = field(default_factory=dict)  # Pooling/source diagnostics.
+    query_k: torch.Tensor | None = None  # Aligned W_q projections for associative frontiers.
+    parent_k: torch.Tensor | None = None  # W_m projection of the contextual parent mean [1,D].
+    parent_query_k: torch.Tensor | None = None  # W_q projection of that same parent mean [1,D].
 
     def __post_init__(self) -> None:
         """Normalize legacy ``[D]`` constructors into the invariant ``[1,D]`` form."""
@@ -51,12 +54,26 @@ class ChunkRoutingGist:
             self.k = self.k.unsqueeze(0)
         if self.v is not None and self.v.ndim == 1:
             self.v = self.v.unsqueeze(0)
+        if self.query_k is not None and self.query_k.ndim == 1:
+            self.query_k = self.query_k.unsqueeze(0)
+        if self.parent_k is not None and self.parent_k.ndim == 1:
+            self.parent_k = self.parent_k.unsqueeze(0)
+        if self.parent_query_k is not None and self.parent_query_k.ndim == 1:
+            self.parent_query_k = self.parent_query_k.unsqueeze(0)
         if self.summary_k is not None and self.summary_k.ndim == 1:
             self.summary_k = self.summary_k.unsqueeze(0)
         if self.k.ndim != 2:
             raise ValueError(f"Chunk routing keys must be [gists,model], got {self.k.shape}.")
         if self.v is not None and self.v.shape != self.k.shape:
             raise ValueError("Chunk routing value gists must match key-gist shape.")
+        if self.query_k is not None and self.query_k.shape != self.k.shape:
+            raise ValueError("Query-projected gists must align with memory-projected gists.")
+        for name, value in (
+            ("parent_k", self.parent_k),
+            ("parent_query_k", self.parent_query_k),
+        ):
+            if value is not None and (value.ndim != 2 or value.shape[0] != 1):
+                raise ValueError(f"{name} must have shape [1,model].")
 
 
 @dataclass

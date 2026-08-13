@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pra.example/schemas/retrieval-graph-v2.json",
+  "title": "PRA hierarchical associative-closure retrieval graph",
+  "type": "object",
+  "required": ["schema_version", "example_id", "layer_id", "root", "nodes", "edges", "budget", "costs", "stop_reason"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "example_id": {"type": ["string", "null"]},
+    "layer_id": {"type": "integer"},
+    "root": {"type": "object"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node_id", "parent_chunk_id", "local_span", "resolution_level", "representation_type", "projection_type", "hop", "path_score", "materialized"]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_node", "target_node", "edge_type", "representation_type", "projection_type", "score", "threshold", "accepted"]
+      }
+    },
+    "budget": {"type": "object"},
+    "costs": {"type": "object"},
+    "stop_reason": {"enum": ["depth", "unique_budget", "no_new_nodes", "no_new_parents", "confidence_threshold", "zero_limit", "empty_index"]}
+  }
+}

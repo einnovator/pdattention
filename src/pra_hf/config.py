@@ -29,6 +29,7 @@ class PRAConfig:
     routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE
     chunk_tokens: int = 32
     chunk_overlap_tokens: int = 0
+    local_gist_tokens: int | None = None
     selected_fraction: float | None = 0.20
     top_k: int = 8
     max_direct_context: int = 256
@@ -50,6 +51,7 @@ class PRAConfig:
     max_unique_chunks: int = 8
     root_anchor_alpha: float = 0.5
     frontier_mode: str = "direct"
+    frontier_projection: str = "memory"
     residual_beta: float = 1.0
     path_score_mode: str = "product"
     iterative_min_confidence: float | None = None
@@ -66,19 +68,28 @@ class PRAConfig:
             raise ValueError("chunk_tokens must be positive.")
         if not 0 <= self.chunk_overlap_tokens < self.chunk_tokens:
             raise ValueError("chunk_overlap_tokens must be in [0, chunk_tokens).")
+        local_tokens = self.local_gist_tokens or min(32, self.chunk_tokens)
+        if local_tokens <= 0 or local_tokens > self.chunk_tokens:
+            raise ValueError("local_gist_tokens must lie in [1, chunk_tokens].")
+        if self.routing_mode == "local_iterative" and self.chunk_tokens % local_tokens:
+            raise ValueError(
+                "local_iterative currently requires chunk_tokens divisible by local_gist_tokens."
+            )
         if self.reference_device not in {"cpu", "gpu"}:
             raise ValueError("reference_device must be 'cpu' or 'gpu'.")
-        if self.routing_mode not in {"one_shot", "iterative"}:
-            raise ValueError("routing_mode must be 'one_shot' or 'iterative'.")
+        if self.routing_mode not in {"one_shot", "iterative", "local_iterative"}:
+            raise ValueError(
+                "routing_mode must be 'one_shot', 'iterative', or 'local_iterative'."
+            )
         # Import lazily so the stable config module does not create an import cycle.
-        if self.routing_mode == "iterative":
+        if self.routing_mode in {"iterative", "local_iterative"}:
             self.iterative_config
 
     @property
     def selection_policy(self) -> str:
         """Return the active budget policy, including documented precedence."""
-        if self.routing_mode == "iterative":
-            return "iterative_closure"
+        if self.routing_mode in {"iterative", "local_iterative"}:
+            return f"{self.routing_mode}_closure"
         return "selected_fraction" if self.selected_fraction is not None else "top_k"
 
     @property
@@ -93,6 +104,7 @@ class PRAConfig:
             max_unique_chunks=self.max_unique_chunks,
             root_anchor_alpha=self.root_anchor_alpha,
             frontier_mode=self.frontier_mode,
+            frontier_projection=self.frontier_projection,
             residual_beta=self.residual_beta,
             path_score_mode=self.path_score_mode,
             min_confidence=self.iterative_min_confidence,
@@ -182,13 +194,21 @@ class PRAConfig:
             top_k_references=1_000_000,
             top_k_chunks_per_reference=1_000_000,
             trigger_threshold=self.trigger_threshold,
-            gist_mode="mean",
-            gists_per_chunk=1,
+            gist_mode=("segment_mean" if self.routing_mode == "local_iterative" else "mean"),
+            gists_per_chunk=(
+                self.chunk_tokens // (self.local_gist_tokens or min(32, self.chunk_tokens))
+                if self.routing_mode == "local_iterative"
+                else 1
+            ),
             kv_cache_residency=self.reference_device,
             kv_cache_pin_memory=self.pin_reference_memory,
             kv_cache_non_blocking=self.non_blocking_transfer,
             collect_detailed_timing=True,
             collect_routing_metrics=True,
+            store_associative_gists=(
+                self.routing_mode == "local_iterative"
+                or self.frontier_projection == "query"
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:

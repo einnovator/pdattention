@@ -384,8 +384,30 @@ class PRAHFModel:
                                 logical_start=logical_start,
                                 token_count=local_end - local_start,
                             )
+                        query_gists = parent_memory_gist = parent_query_gist = None
                         if self.routing_projection is not None:
-                            computed.k = self.routing_projection.project_memory(computed.k)
+                            # Preserve the asymmetric router contract for later
+                            # evidence-to-evidence traversal. Both projections
+                            # derive from the same contextual hidden-state gist.
+                            contextual_gists = computed.k
+                            if self.hf_config.store_associative_gists:
+                                spans = computed.metadata.get("segment_token_spans", [])
+                                if spans and len(spans) == len(contextual_gists):
+                                    occupancy = torch.tensor(
+                                        [int(end) - int(start) for start, end in spans],
+                                        device=contextual_gists.device,
+                                        dtype=contextual_gists.dtype,
+                                    )
+                                    parent_hidden = (
+                                        contextual_gists
+                                        * (occupancy / occupancy.sum()).unsqueeze(-1)
+                                    ).sum(0, keepdim=True)
+                                else:
+                                    parent_hidden = contextual_gists.mean(0, keepdim=True)
+                                query_gists = self.routing_projection.project_query(contextual_gists)
+                                parent_memory_gist = self.routing_projection.project_memory(parent_hidden)
+                                parent_query_gist = self.routing_projection.project_query(parent_hidden)
+                            computed.k = self.routing_projection.project_memory(contextual_gists)
                             computed.metadata.update(
                                 {
                                     "routing_projection": self.routing_projection.architecture,
@@ -402,6 +424,19 @@ class PRAHFModel:
                             token_kv=self._resident_kv(kv),
                             routing_gist=ChunkRoutingGist(
                                 k=computed.k.detach(),
+                                query_k=(
+                                    query_gists.detach() if query_gists is not None else None
+                                ),
+                                parent_k=(
+                                    parent_memory_gist.detach()
+                                    if parent_memory_gist is not None
+                                    else None
+                                ),
+                                parent_query_k=(
+                                    parent_query_gist.detach()
+                                    if parent_query_gist is not None
+                                    else None
+                                ),
                                 v=computed.v.detach() if computed.v is not None else None,
                                 method=self.pra_config.gist_mode,
                                 metadata=computed.metadata,
@@ -410,7 +445,16 @@ class PRAHFModel:
                                 "encoding_block_start": block_start,
                                 "routing_representation": self.hf_config.routing_representation,
                                 "routing_gist_bytes": int(
-                                    computed.k.numel() * computed.k.element_size()
+                                    sum(
+                                        tensor.numel() * tensor.element_size()
+                                        for tensor in (
+                                            computed.k,
+                                            query_gists,
+                                            parent_memory_gist,
+                                            parent_query_gist,
+                                        )
+                                        if tensor is not None
+                                    )
                                 ),
                                 "detail_kv_bytes": int(
                                     (kv.k.numel() * kv.k.element_size())
