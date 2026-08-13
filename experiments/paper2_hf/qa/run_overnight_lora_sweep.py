@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import hashlib
 import json
 import math
@@ -847,9 +848,13 @@ def run(args) -> dict[str, Any]:
         )
         print(f"combo validation seed={seed}", flush=True)
 
-    del validation_records
+    _freeze_backbone(handle)
+    _configure_variant(handle, Variant("fixed"), reset=True)
+    del validation_records, train_records
     handle.cache.clear()
+    gc.collect()
     if device.type == "cuda":
+        torch.cuda.synchronize(device)
         torch.cuda.empty_cache()
     print("selection frozen; preparing untouched test references", flush=True)
     test_examples = load_split_examples(
