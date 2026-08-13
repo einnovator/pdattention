@@ -503,7 +503,8 @@ This directory contains {item_count} blind items in {batch_count} optional batch
 For a single-file handoff, send `behavioral_judge_llm_package.json` to each external judge. It
 contains the instructions, response schema, and all blind items. Alternatively, send
 `behavioral_judge_prompt.txt` followed by `behavioral_judge_items.json` or one file from
-`batches/`. Never send `behavioral_judge_truth.json`.
+`batches/`. Never send or commit `behavioral_judge_truth.json` or its split copies; these
+gitignored files are private unblinding metadata.
 
 The blind item file intentionally contains only opaque IDs, task type, the common user prompt,
 answers A/B, and requested score names. The truth file records condition labels, deterministic
@@ -513,7 +514,8 @@ Validate judge output against `behavioral_judge_response.schema.json`. The schem
 score ranges and fields; the textual prompt additionally limits each reason to 40 words.
 
 Once external judging begins, freeze the generated files. Do not regenerate, reorder, or edit
-items between judges; preserve `behavioral_judge_truth.json` privately for unblinding.
+items between judges; preserve the gitignored `behavioral_judge_truth.json` privately for
+unblinding.
 
 Calibration groups include identical-answer and controlled-corruption pairs. Paraphrase and
 native-sampling controls are omitted when no independently recorded generations exist. Results
