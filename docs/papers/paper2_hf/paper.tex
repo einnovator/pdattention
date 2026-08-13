@@ -41,7 +41,9 @@ adapters preserve the ordinary no-memory path exactly, and the matched condition
 the 1,024-token WikiText-2 loss unchanged. In a separate decoded comparison, two blind LLM judges
 prefer residual-16 QASPER outputs over frozen PRA on 22.5\% versus 2.5\% of pairs, with
 dimension-specific cross-judge correlations of .991 for semantic equivalence and .995 for relative
-quality despite weak lexical F1. HotpotQA provides a harder multi-hop stress: frozen
+quality despite weak lexical F1. A separate 32-token diagnostic shows that residual-16 answers
+reach the correct QASPER polarity on 72.5\% of five-seed trials, compared with 25.0\% for frozen
+routed PRA, while ending with EOS on 95.0\% of trials. HotpotQA provides a harder multi-hop stress: frozen
 routed PRA remains positive at 6.56\% active K/V, while oracle-trained adapters do not remain
 robust to routed selections. The official Gemma path preserves its native local/global
 organization, and routed K/V raises gold-token log-probability by 0.135 nats. The shared execution
@@ -1121,6 +1123,91 @@ position does not explain the preference. This does not make the judges ground t
 152 pairs their semantic-equivalence scores correlate strongly ($r=.845$), while relative-quality
 agreement is only modest ($r=.375$); Claude Sonnet~5 also under-scores literal identical-answer
 calibration. We therefore keep judge-specific estimates and do not pool them.
+
+\subsection{A 32-token follow-up isolates QASPER polarity}
+\label{sec:qasper-completion-diagnostic}
+
+The frozen behavioral package uses an eight-token decoding budget. That budget made the blind
+comparison reproducible, but it often stopped before an answer reached punctuation or EOS. We do
+not alter or rescore those 152 comparisons. Instead, a separate diagnostic replays the same test
+identities with a 32-token budget and records generated length, EOS, length termination, terminal
+punctuation, answer containment, first-token rank and margin, and gold-sequence log probability.
+The model, router, selected memory, prompts, and checkpoints are unchanged.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Eight-token completion proxy versus the separate 32-token replay. ``Old punct.'' is
+terminal punctuation in the frozen short output; EOS and cap refer to the new replay. Adapter
+rows aggregate five seeds over the same eight identities. This is a protocol correction, not an
+architectural gain.}
+\label{tab:qasper-finish-diagnostic}
+\begin{tabular}{llrrrr}
+\toprule
+Dataset & Condition & Old punct. & New EOS & New cap & Contain. \\
+\midrule
+QASPER & frozen routed & .125 & .875 & .125 & .500 \\
+QASPER & residual 16 & .200 & .950 & .050 & .825 \\
+HotpotQA & frozen routed & .125 & .750 & .250 & .250 \\
+HotpotQA & residual 16 & .100 & .900 & .100 & .125 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Longer decoding removes most incomplete endings for frozen PRA and residual 16, but it does not
+remove the QASPER decision error. All frozen routed outputs begin with a valid yes/no form, yet
+only 25.0\% have the correct polarity. Oracle memory raises this to 62.5\%. The existing
+residual-16 adapter, trained on clean HotpotQA memory, reaches 72.5\% across five seeds, raises
+answer containment from .500 to .825, improves mean first-token rank from 25.25 to 4.43, and ends
+with EOS in 95.0\% of trials. The improvement therefore reflects more than completion alone.
+
+\begin{table}[H]
+\centering
+\small
+\caption{QASPER decision and completion diagnostics at 32 generated tokens. R16-Q denotes a new
+residual-16 control trained for 32 updates on the shipped router's selected QASPER memory. Values
+for adapted conditions aggregate five seeds; frozen and oracle rows are seed-independent.}
+\label{tab:qasper-polarity-diagnostic}
+\begin{tabular}{lrrrrrr}
+\toprule
+Condition & Format & Polarity & Contain. & F1 & $m_{\rm pol}$ & EOS \\
+\midrule
+Frozen routed & 1.000 & .250 & .500 & .048 & -.078 & .875 \\
+Frozen oracle & 1.000 & .625 & .625 & .061 & .260 & .625 \\
+Residual 16 & 1.000 & $.725\pm.056$ & .825 & .152 & .243 & .950 \\
+R16-Q routed-trained & 1.000 & $.550\pm.112$ & .550 & .511 & .143 & 1.000 \\
+LoRA 32 & .875 & $.550\pm.068$ & .550 & .055 & .535 & .025 \\
+Residual 16 + LoRA 4 & .850 & $.525\pm.137$ & .600 & .097 & .567 & .675 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper2_hf/error_analysis/qasper_polarity_and_finish.pdf}
+\caption{QASPER polarity accuracy and 32-token length termination. The residual adapter improves
+the evidence-conditioned decision while retaining natural completion. Rank-32 LoRA has a positive
+teacher-forced polarity margin but reaches the generation cap in 97.5\% of trials; probability
+improvement alone therefore does not establish decoded utility.}
+\label{fig:qasper-polarity-finish}
+\end{figure}
+
+Three small controls do not close the remaining gap. Restricting the first token to yes/no retains
+25.0\% accuracy. A two-parameter affine calibration fitted on 12 disjoint QASPER identities reaches
+50.0\% on the eight test identities. A top-one--top-two router-margin gate selects full memory on
+validation and reproduces frozen PRA at 25.0\%. Training residual 16 directly on routed QASPER
+memory produces concise answers---100\% EOS, mean first-token rank 1.45, and F1 .511---but polarity
+is only 55.0\%, below the oracle-trained residual. This mixed result is consistent with small-data
+readout specialization rather than a general deployment-distribution solution. The experiment
+stops here: residual 16 remains the strongest balanced QASPER condition, and frozen PRA plus the
+router remains the generic SDK default.
+
+For HotpotQA, the primary taxonomy over the five-seed residual condition contains 17 relation-near
+misses, five unchanged answers, five correct answers, five prompt repetitions, four unrelated
+outputs, three length terminations, and one wrong related entity. A reproducible lexical
+relation-distance audit is exported with the artifact, but it is explicitly heuristic rather than
+a dataset-native hop label. These errors support iterative relation closure in Paper~2.5; they do
+not motivate further one-shot tuning here.
 
 HotpotQA does not reproduce the QASPER behavioral result: the judges give opposite mean directions
 for residual-16 adaptation. Together with routed adapter brittleness, the likelihood--decoding

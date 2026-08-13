@@ -48,6 +48,8 @@ python experiments/paper2_hf/score_behavioral_judge_results.py `
     docs/papers/shared/results/paper2_hf/behavioral_judge/judge_output_claude_sonnet5.json `
   --output docs/papers/shared/results/paper2_hf/behavioral_judge/behavioral_judge_results.json `
   --derived-output-dir docs/papers/shared/results/paper2_hf/behavioral_judge/derived
+python -m experiments.paper2_hf.qa.run_qasper_diagnostic `
+  --output-dir docs/papers/shared/results/paper2_hf/error_analysis
 ```
 
 Structured results are under `docs/papers/shared/results/paper2_hf/`; release router artifacts
@@ -56,3 +58,9 @@ are under `artifacts/pra_hf/routers/`. The user-facing family workflow is
 package, private truth mapping, response schema, calibration controls, optional batches, two
 complete judge responses, and their pair-collapsed aggregate report. Never send the truth mapping
 to a judge.
+
+The 32-token QASPER follow-up is under `shared/results/paper2_hf/error_analysis/`. It preserves
+the frozen eight-token judge package and adds finish diagnostics, an auditable error taxonomy,
+yes/no polarity margins, five-seed adapter controls, and a bounded routed-memory residual probe.
+To rebuild only its tables and plots from the completed JSON without rerunning inference, use
+`--refresh-existing docs/papers/shared/results/paper2_hf/error_analysis/generation_error_analysis.json`.
