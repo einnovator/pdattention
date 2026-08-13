@@ -105,6 +105,14 @@ set active in any one model operation, while preserving the full-detail native K
 selected regions.
 \end{quote}
 
+The contribution is not a claim that each ingredient is unprecedented. Content routing,
+external memory, native-K/V caching, and bounded attention all have substantial prior art. The
+Paper~1 contribution is their particular contract: an addressable logical memory, compact
+routing metadata, selected full-detail layer-native K/V, a hard bound on the native operation,
+and encoding granularity separated from routing granularity. This combination lets logical
+availability grow without requiring either every available token or a compressed surrogate of
+every token to enter one attention operation.
+
 We test that claim with small, controlled PyTorch models rather than a production-scale
 language model. The experiments separate four issues that would otherwise be easy to
 confuse: whether cached native K/V carries useful detail, whether the router finds the
@@ -261,6 +269,15 @@ A \emph{routing chunk} is a smaller addressable view used by the index and budge
 each routing chunk independently removes left context before K/V is cached, and no later router
 can reconstruct state the encoder never produced. For model-bounded sources, a block may carry
 overlapping left context while committing only its nonoverlapping core.
+
+This failure differs from ordinary RAG chunking or server cache segmentation. A RAG chunk may be
+retrieved as text and then encoded in the current prompt, where surrounding selected text can
+still contextualize it. A cache block may be only a physical allocation unit. In contrast, an
+independently encoded PRA microchunk becomes the source of the native K/V later restored to
+attention; missing left context is already baked into that payload. The resulting rule is
+therefore architectural rather than a preferred text-splitting heuristic: \emph{encode at the
+granularity required for contextual state; route at the granularity required for sparse
+selection}.
 
 \subsection{Exact Routing and Whole-Chunk Budgeting}
 
@@ -602,26 +619,125 @@ Long-form generation quality \\
 
 \section{Related Work by Changed Resource}
 
-\paragraph{Retrieved input.}
-RAG, REALM, and RETRO retrieve external text or neighbors that a model then consumes
-\cite{lewis2020rag,guu2020realm,borgeaud2022retro}. PRA can use those retrieval results, but
-it operates after encoding: its addressable object is layer-native state and its immediate
-budget is the K/V active in attention.
+The useful comparison is not whether a method ``uses memory,'' but which resource it changes:
+the external representation, attention graph, retained state, recurrent summary, cache reuse,
+or active materialization. Table~\ref{tab:related-resource-taxonomy} states these boundaries in
+one place. The broader literature map appears in the companion survey; this section makes the
+mechanical claim of Paper~1 independently readable.
 
-\paragraph{Attention connectivity.}
+\subsection{Retrieved text and neighbors}
+
+RAG and REALM retrieve external text that is encoded for a reader or generator; RETRO retrieves
+neighbor chunks and consumes them through chunked cross-attention
+\cite{lewis2020rag,guu2020realm,borgeaud2022retro}. Their shared strength is an updateable,
+inspectable external corpus. PRA can compose with the same discovery layer, but its immediate
+payload is different: selected information has already become layer-native K/V and is restored
+inside native attention rather than reserialized as prompt text. Consequently, RAG spends prompt
+or reader computation on selected text, whereas Paper~1 budgets selected K/V tokens in a model
+operation. Neither interface dominates the other; they move the external-to-active boundary at
+different representations.
+
+Text chunking also does not resolve PRA's fragmentation problem. Retrieved passages are commonly
+encoded after selection and can interact in the reader. PRA caches the contextual state for later
+activation, so independently encoding each tiny routing unit irreversibly removes its preceding
+context. This is why Section~\ref{sec:fragmentation} separates contextual encoding blocks from
+fine routing views.
+
+\subsection{Sparse, local, and block attention}
+
 Longformer and BigBird prescribe sparse connectivity over an admitted sequence. Reformer and
-Routing Transformer reduce attention cost through locality or content routing
-\cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. PRA instead
-allows logical memory to remain outside the current model operation and materializes selected
-token K/V only when needed.
+Routing Transformer reduce attention cost through locality-sensitive hashing or content-based
+clusters \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}.
+These systems principally change which represented tokens interact. Paper~1 instead separates
+the larger set of logically addressable objects from the smaller set materialized for one
+operation. A sparse kernel could still execute the admitted direct-plus-memory K/V, so graph
+sparsity and logical-memory sparsity are complementary axes.
 
-\paragraph{Retained detail.}
-Decode-cache methods such as H$_2$O, SnapKV, and ClusterKV change which token details remain
-available \cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}. They are complementary when their
-retention policies preserve state PRA may later select. Memorizing Transformers and related
-external-memory models also expose prior state to a decoder \cite{wu2022memorizing}. PRA's
-specific separation is among compact routing metadata, addressable full-detail native K/V, and
-a hard materialization budget.
+\subsection{KV retention, compression, and eviction}
+
+H$_2$O, SnapKV, StreamingLLM, and ClusterKV retain selected positions from a stream according to
+importance, an observation window, attention sinks, or clustered selection
+\cite{zhang2023h2o,li2024snapkv,xiao2023streamingllm,liu2024clusterkv}. KIVI instead reduces
+bytes per retained K/V element through quantization~\cite{liu2024kivi}. These methods change,
+drop, or more compactly represent the payload that remains available. Paper~1 takes a
+conservative fidelity point: its search metadata is compressed, but every selected payload is
+the stored full-detail native K/V slice. Eviction and quantization can be layered underneath PRA,
+but then their fidelity tradeoff must be reported separately from routing misses.
+
+\subsection{External and latent memory}
+
+Memorizing Transformer retrieves approximate-nearest-neighbor K/V from earlier examples, while
+Landmark Attention trains landmark tokens to select blocks of an ingested context
+\cite{wu2022memorizing,mohtashami2023landmark}. These are close architectural neighbors because
+they also narrow a large latent store before attention. Paper~1 emphasizes a different access
+contract: application-addressable source identity, compact per-chunk routing metadata, exact
+materialization of selected stored slices, recorded source coordinates, and an explicit
+native-token budget. Landmark blocks remain positions in one ingested context, while approximate
+K/V neighbors need not preserve a named source coordinate. PRA's stored coordinates are part of
+the payload contract, although position transformation and extrapolation are deliberately left to
+Paper~1.5. The distinction is therefore a combination of state type, addressing, positional
+assumptions, lifecycle, and accounting, not a claim that latent retrieval or block selection
+first appears here.
+
+\subsection{Recurrent and summarized state}
+
+Transformer-XL carries a bounded chronological activation memory across segments, and
+Compressive Transformer compacts older activations into a coarser store
+\cite{dai2019transformerxl,rae2020compressive}. Infini-attention and Feedback Attention Memory
+likewise maintain bounded recurrent or associative state
+\cite{munkhdalai2024infini,hwang2024fam}. These approaches make long history usable by carrying
+or summarizing state as the sequence advances. PRA instead keeps separately addressable regions
+and restores selected token detail. It pays external storage and routing cost to avoid forcing
+all history through one recurrent summary; recurrent methods avoid that object lifecycle but may
+superpose or compress old detail.
+
+\subsection{Prompt and context caching}
+
+PagedAttention manages physical KV blocks for serving. Prompt Cache reuses schema-defined prompt
+modules, while CacheBlend selectively recomputes reused chunk state to repair composition
+\cite{kwon2023vllm,gim2023promptcache,yao2024cacheblend}. These systems primarily change
+allocation or repeated-prefill cost. Paper~1 changes semantic addressability and bounded
+activation: a cache hit alone does not determine whether an object should enter the current
+attention operation. The mechanisms can compose, with a serving cache storing PRA objects and a
+PRA router determining which cached objects become active.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.03}
+\caption{Memory families by the resource they change. Entries describe canonical mechanisms;
+individual systems may combine several rows. ``Bound'' means an explicit bound on K/V or state
+active in one model operation, not merely a finite implementation limit.}
+\label{tab:related-resource-taxonomy}
+\begin{tabularx}{\textwidth}{P{0.14\textwidth}P{0.14\textwidth}P{0.14\textwidth}P{0.16\textwidth}P{0.11\textwidth}Y}
+\toprule
+Family & External scope & Search/index & Active payload & Active bound & Payload fidelity \\
+\midrule
+RAG / retrieved text & corpus text & passage or neighbor index & re-encoded text or encoder state & top-$k$ retrieval, reader dependent & source text preserved; latent state recomputed \\
+Sparse/block attention & admitted sequence & fixed, hashed, or learned edges & native states on allowed edges & pattern dependent & token state retained; interactions omitted \\
+KV retention/compression & stream cache & token/page importance or quantizer & retained or quantized K/V & cache/byte budget & omitted or quantized detail \\
+Recurrent or summary memory & chronological history & temporal update or learned read & compressed latent state & fixed recurrent state & history summarized or superposed \\
+Latent/block retrieval & ingested or historical latent store & landmark, gist, or K/V index & selected hidden/native state & selected-block budget varies & method dependent \\
+Prompt/context cache & reusable prompt modules & identity/schema lookup & cached attention state & serving policy dependent & exact reuse or selective repair \\
+Paper~1 PRA & named logical sources & compact chunk gists & selected full-detail native K/V & hard native-token budget & selected payload unchanged \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Novelty boundary and companion scope}
+
+Paper~1 contributes the combination visible in the last row: addressable logical memory,
+compact routing metadata, selected full-detail layer-native K/V, a hard native-operation bound,
+and separate encoding and routing granularity. It does not claim precedence for each component
+in isolation, nor does it establish production superiority over the neighboring families.
+
+Position assignment, RoPE rebinding, and the difference between attention and semantic routing
+geometry belong to companion Paper~1.5~\cite{simao2026position}. Exact retrofit into pretrained
+Hugging Face model families and its adaptation/behavioral evaluation belong to companion
+Paper~2~\cite{simao2026hf}. This paper owns the narrower standalone mechanism: logical memory can
+exceed active native K/V under a hard model-operation bound while selected payload remains
+full-detail native state.
 
 \section{Limitations, Safety, and Scope}
 \label{sec:limitations}
