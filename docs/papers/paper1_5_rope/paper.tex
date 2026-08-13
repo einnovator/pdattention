@@ -192,8 +192,7 @@ Does overlap improve representation? & Yes in the verified WikiText scope; 29/30
 Are pre/post RoPE keys equivalent? & Zero K, logit, and output error at matched effective positions & Storage state does not change the intended geometry \\
 Does better representation guarantee task quality? & No: WikiText loss improves in 5/30; QA routed loss in 35/60 & Functional utility is a separate empirical property \\
 Can deferred rotation rebind keys? & Yes; warm latency rises from 0.179 to 0.649 ms & Flexibility has a measured systems cost \\
-Does better native-attention geometry improve semantic retrieval? & No: centered $G=1\rightarrow8$ raises Q/K fidelity .794$\rightarrow$.963 while AUC remains .6510$\rightarrow$.6516 & Attention fidelity is not semantic relevance \\
-Must good semantic routing approximate native attention? & No: the learned 32-D metric has only .178 Q/K fidelity but reaches .971 AUC & Search and execution can use different geometries \\
+Does closer native-Q/K geometry improve semantic retrieval? & Centered $G=1\rightarrow8$ raises Q/K fidelity .794$\rightarrow$.963 while AUC stays .6510$\rightarrow$.6516; the learned 32-D metric reaches .971 AUC at only .178 Q/K fidelity & Attention execution and semantic search require different geometries \\
 Can logical prompt exceed a native operation? & 192 logical tokens, maximum measured operation 24 under a limit of 32 & Bounded positional and transport mechanics \\
 \bottomrule
 \end{tabularx}
@@ -891,7 +890,7 @@ not be read back into the present evidence.
 
 \section{Conclusion}
 
-The evidence supports seven conclusions. First, a source-relative logical start offset repairs
+The evidence supports the following conclusions. First, a source-relative logical start offset repairs
 reset fragmentation exactly at layer zero for learned absolute, sinusoidal, and RoPE models,
 and improves deeper representation in every paired test. Second, contextual fragmentation
 remains separate: overlap or grouped encoding can improve representation, but costs additional

@@ -1,4 +1,4 @@
-# Paper 1.5: Positional Semantics for Retrieved Native-KV Memory
+# Paper 1.5: Position, Attention Geometry, and Semantic Routing for Retrieved Native-KV Memory
 
 This paper studies learned absolute, sinusoidal, and RoPE positions under bounded encoding,
 native-KV retrieval, fragmentation, overlap, relocation, and implicit prompt heads.
