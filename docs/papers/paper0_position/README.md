@@ -12,7 +12,7 @@ Vision, motivation, architectural thesis, comparison with long context, RAG, and
 
 ## Status
 
-Expanded position-paper draft with a reference-memory lifecycle, evaluation and
-falsification criteria, and carefully scoped feasibility evidence from the
-standalone pilot. The generated `paper.pdf` is a local build artifact and is
-intentionally ignored by Git.
+Technically current gateway to the PRA paper series, with the native-KV architecture,
+implementation invariants, historical prototype boundary, verified related work,
+evaluation doctrine, and open production questions. The generated `paper.pdf` is tracked
+with the source so the reviewed manuscript and build remain synchronized.

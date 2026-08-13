@@ -24,6 +24,8 @@
   extnode/.style={draw=pragold, fill=orange!7, rounded corners=2pt,
     align=center, minimum height=8mm, inner sep=4pt, font=\small},
   flow/.style={-{Stealth[length=2mm]}, thick, draw=pragray},
+  future/.style={draw=pragray, dashed, fill=gray!5, rounded corners=2pt,
+    align=center, minimum height=8mm, inner sep=4pt, font=\small},
   selected/.style={draw=pragreen, very thick, fill=green!12}
 }
 
@@ -42,22 +44,22 @@
 Large language models commonly expose non-parametric information as a flat prompt, even
 when only a small and changing subset is useful. This paper argues for a complementary
 interface: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse
-approximation to long-context self-attention. References name prior history or external
-objects; compact gists route among those objects; and selected historical token K/V joins
-recent K/V under the decoder's existing softmax and output projection. Canonical PRA thus
-separates naming from materialization and routing from transport, without requiring a
-reference-specific cross-attention module. It also separates logical context from native
-model context: long sources can be encoded in bounded contextual blocks, sliced into
-smaller routing chunks, and admitted under one active-memory budget. Controlled five-seed
-evidence supports native transport and routing through 256 addressable units and shows why
-encoding granularity must differ from routing granularity. Under a hard 32-token native
-limit, the prototype addresses a 184-token displaced prompt head; at 192 logical tokens,
-routed loss is 1.0567 versus 1.2287 for truncation and 1.7089 for independent block
-encoding. Exact packed routing and CPU-backed K/V demonstrate plausible systems paths, but
-the evidence remains small answer-code probes rather than unrestricted QA or production
-efficiency. The proposal is falsifiable by quality per active K/V token, latency, transfer,
-resident memory, and content-causal counterfactuals against strong long-context and
-retrieval baselines.
+approximation to long-context self-attention. URI references and an implicit bounded prompt
+head define logical memory. Long sources are processed as contiguous, model-safe encoding
+blocks and sliced into smaller routing chunks. Compact gists index those chunks, while
+selected full-detail, layer-native K/V joins direct K/V under the host decoder's attention
+operation. The routing representation is therefore not the attention payload, and logical,
+requested, resident, and materialized memory are separate quantities. This article records
+the original position and updates its implementation gateway to the mature native-KV
+design. It labels the earlier adapted cross-attention prototype as historical and summarizes
+the evidence subsequently established by the companion series: fragmentation-aware native
+transport, bounded execution, positional continuity and RoPE rebinding, distinct semantic
+and attention geometries, and exact pretrained-family retrofits. A usable one-shot SDK now
+exists for sparse direct-memory workloads, but the work does not yet establish production
+serving economics or a general solution to multi-hop retrieval. Iterative associative closure,
+partial materialization, and optimized off-device transfer remain explicit next steps. The
+proposal is falsifiable by quality per materialized K/V token, latency, transfer, resident
+memory, and content-causal counterfactuals against strong long-context and retrieval baselines.
 \end{abstract}
 
 \section{Introduction}
@@ -74,7 +76,7 @@ and streaming rollover are implicit addressable-memory forms that use the same m
 
 Retrieval-augmented generation (RAG) addresses part of this issue by selecting external passages before generation \cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. However, standard RAG often makes a single retrieval decision at the boundary of the model call. The retrieved passages are still inserted as flat prompt text, and the model must consume them whether or not each passage becomes useful later. Agentic systems take the opposite approach: they inspect tool descriptions, issue searches, open files, follow references, and progressively disclose detail only when needed \cite{yao2023react,schick2023toolformer}. This behavior is effective but expensive because the loop is mediated by external actions, repeated model invocations, and hand-designed orchestration.
 
-This paper proposes Progressive Retrieval Attention as a research program for internalizing part of that progressive-disclosure pattern.  Consider a model diagnosing a failing authentication test in a large repository.  Its local prompt can advertise compact handles such as \texttt{<REF\_1>}, whose local reference table maps to \texttt{repo://app/auth\#module}.  The runtime resolves that object, partitions it into chunks, constructs small routing representations, and exposes detailed layer-specific memory only for selected chunks.  If the module refers to a policy object or dependency, the same process can continue under a bounded expansion policy.  The model need not read every advertised object eagerly; attention scores, learned gates, uncertainty, or explicit reference positions can trigger additional access as the diagnosis develops.
+This paper proposes Progressive Retrieval Attention as a research program for internalizing part of that progressive-disclosure pattern.  Consider a model diagnosing a failing authentication test in a large repository.  Its local prompt can advertise compact handles such as \texttt{<REF\_1>}, whose local reference table maps to \texttt{repo://app/auth\#module}.  The runtime resolves that object, encodes it in bounded contiguous blocks, slices the resulting state into routing chunks, and exposes detailed layer-specific memory only for selected chunks.  A future iterative policy could then follow a policy object or dependency advertised by the selected module.  The current algorithm is one-shot: recursion is a research target rather than an implied property of one forward pass.
 
 The central question is therefore: \emph{can a model obtain better quality per unit of active context, latency, and memory by treating external information as a progressively materialized context graph rather than an eagerly flattened token sequence?}  The paper develops the vocabulary needed to answer that question, separates architectural, runtime, optimization, and evaluation claims that are often collapsed under ``retrieval,'' and states experiments that could reject the proposal.
 
@@ -82,15 +84,15 @@ The central question is therefore: \emph{can a model obtain better quality per u
 
 The paper makes an architectural proposal, reports implementation facts, summarizes
 historical evidence, and advances hypotheses.  The proposal is the separation among
-naming, routing, materialization, and transport.  The current standalone implementation
-establishes chunked layer-specific caches, bounded child-first resolution, exact packed
-routing, reusable indexes, historical implicit-head slicing, and CPU-backed native K/V.
-Controlled evidence now covers content-sensitive selection, index reuse, displaced-prompt
-recovery, and measured GPU capacity reduction.  Recursive benefit, unrestricted QA,
-pretrained-model integration, and production end-to-end efficiency remain hypotheses.
-This distinction is maintained
-throughout the paper so that an implemented mechanism is not mistaken for a measured
-advantage.
+naming, encoding, routing, admission, and native attention.  The current standalone
+implementation establishes bounded source encoding, smaller routing chunks, multi-gist
+indexes, exact packed routing, reusable row-isolated caches, implicit-head slicing, one
+global materialization budget, and CPU-backed native K/V.  Companion work subsequently
+established exact disabled-path pretrained integration and a cross-family research SDK.
+These are implementation and controlled-mechanism results.  They do not establish
+production throughput, unrestricted benchmark accuracy, recursive retrieval benefit, or
+the economics of a serving-optimized deployment.  This distinction is maintained
+throughout the paper so that a working mechanism is not mistaken for a general advantage.
 
 Figure~\ref{fig:evolution} locates the proposal among neighboring interfaces.  The
 horizontal arrangement expresses increasing separation between the local token stream
@@ -118,6 +120,38 @@ PRA should replace the earlier interfaces.
 \caption{Context interfaces differ in when and where information becomes local to the model.  PRA is a proposed design point, not a claim that the other interfaces should disappear.}
 \label{fig:evolution}
 \end{figure}
+
+Because this position paper now also serves as the entry point to a multi-paper program,
+Table~\ref{tab:series-map} separates the original proposal from results established later.
+The later papers refine and test the architecture; they are not evidence that every detail
+was present in the initial formulation.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Map of the PRA series. ``Established'' means demonstrated under the scope and
+controls of the named paper, not proved for every model or workload.}
+\label{tab:series-map}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Stage & Question & What the later work established or leaves open \\
+\midrule
+Paper 1 & Can logical scope grow while active native K/V remains bounded? &
+Fragmentation repair; separate encoding and routing granularity; fixed-$k$ and
+fixed-fraction scaling; bounded native execution and an off-device lifecycle. \\
+Paper 1.5 & What position does retrieved native K/V own? &
+Source-relative positional continuity; exact RoPE rebinding at matched positions; and the
+finding that native attention geometry is not necessarily a good semantic search geometry. \\
+Paper 2 & Can PRA retrofit pretrained model families without changing ordinary behavior? &
+Exact PRA-off paths; host-native K/V replay; depth-dependent memory use; distinct discovery,
+integration, decision, and behavioral measurements; a positive one-shot QASPER boundary, a
+HotpotQA multi-hop boundary, and a cross-family SDK. \\
+Next & What remains beyond the one-shot, whole-chunk design? &
+Bounded iterative associative closure and partial or smart K/V materialization, followed by
+serving-optimized transfer and attention. \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \section{Motivation}
 
@@ -232,7 +266,8 @@ base model's positional or attention machinery has been enlarged.
 
 \subsection{Recursive Anchors}
 
-Many references are best exposed recursively.  A root object may advertise child
+\textbf{This subsection describes the next-stage architecture, not the current one-shot
+algorithm.} Many references are best exposed recursively.  A root object may advertise child
 anchors, and those child objects may advertise more specific anchors:
 
 \begin{center}
@@ -243,7 +278,13 @@ $\rightarrow$
 \texttt{mem://manual\#installation.cuda}
 \end{center}
 
-Recursive anchors turn context into a graph rather than a bag of chunks. Expansion must be child-first and bounded by shared depth, child, reference, token, latency, and byte budgets. Build states must prevent partially encoded cyclic entries from becoming searchable, while content/model/tokenizer/routing fingerprints protect cache identity. The model can begin with compact routing gists or optional summaries and progressively expand detail. This is particularly important for tasks where the correct evidence is not known from the initial query alone.
+Recursive anchors would turn context into a traversed graph rather than a bag of chunks.
+Expansion must be child-first and bounded by shared depth, child, reference, token, latency,
+and byte budgets. Build states must prevent partially encoded cyclic entries from becoming
+searchable, while content/model/tokenizer/routing fingerprints protect cache identity. The
+current runtime can resolve bounded child tables during cache construction, but it does not
+yet use generated evidence to perform iterative associative closure. HotpotQA results in
+Paper 2 motivate that stronger operation.
 
 \begin{figure}[t]
 \centering
@@ -259,7 +300,9 @@ Recursive anchors turn context into a graph rather than a bag of chunks. Expansi
     child {node[memnode] {monitoring}}
     child {node[memnode] {backup}}};
 \end{tikzpicture}
-\caption{Recursive anchor expansion. A coarse handle exposes children; only the highlighted path is materialized to greater depth.}
+\caption{Future recursive anchor expansion. A coarse handle exposes children; an iterative
+policy would materialize the highlighted path to greater depth. This is not the current
+one-shot algorithm.}
 \label{fig:recursive-expansion}
 \end{figure}
 
@@ -447,6 +490,39 @@ The same separation applies inside selection. Reference ranking answers which ad
 benefit only when unselected payload can remain off device, be evicted, or be shared without
 materialization.
 
+\subsection{Implementation Invariants}
+
+The mature implementation is easier to reproduce when its invariants are stated before its
+optimizations. First, when PRA is disabled or has no selected memory, the host attention path
+is bypassed rather than approximately reconstructed. The standalone tests require the native
+history replay to match full causal attention when positions and masks are equivalent;
+pretrained-family adapters additionally require exact PRA-off logits, hidden states,
+generation, and tested cache behavior. Exactness applies to the named controls, not to sparse
+memory as an approximation of an omitted dense context.
+
+Second, the compact index and attention payload have different jobs. A routing gist may be a
+pooled hidden state, projected key, or learned semantic vector. It identifies a URI and routing
+chunk. Once selected, the payload is the host layer's full-detail native K/V, including its
+head layout, dtype, positional treatment, and cache convention. Canonical PRA introduces no
+separate memory output projection or residual scale; the historical cross-attention mode does.
+
+Third, accounting follows the lifecycle rather than one ambiguous ``context fraction.'' Let
+$T_{\rm logical}$ be all addressable source tokens, $T_{\rm requested}$ the tokens belonging to
+selected references or parents, and $T_{\rm materialized}$ the K/V tokens admitted to an active
+operation. Then
+\begin{equation}
+0 \le T_{\rm materialized} \le T_{\rm requested} \le T_{\rm logical},
+\end{equation}
+but equality is not assumed. Routing gists, host-resident K/V bytes, transferred bytes, padded
+attention allocation, and attended physical K/V tokens are reported separately. This prevents
+a logical selection rate from being presented as a physical memory saving.
+
+Finally, the lifecycle remains bounded. Every source encode, direct-plus-memory attention
+operation, resolver expansion, transfer, and cache admission is subject to explicit token,
+byte, depth, identity, and isolation constraints. CPU or off-device residency reduces accelerator
+capacity only when selective transfer keeps unselected payload off the active device; it does
+not erase encoding, storage, or communication cost.
+
 \subsection{Logical Isolation Must Survive Physical Batching}
 
 Each sequence has a logical memory address space even when kernels share physical tensors.
@@ -520,18 +596,21 @@ A conventional page fault is generated by an exact address access. A model's ``c
 
 CPU pages are intended to preserve exact program semantics regardless of placement. Neural memory is approximate, content-dependent, and transformed by model parameters. Loading a document into K/V does not guarantee that the model will use it correctly. Attention can blend untrusted entries, positional semantics may matter, and encoding may be more expensive than transport. The virtual-memory analogy is therefore valuable for identifying address, isolation, admission, working-set, and eviction problems; it is not evidence that operating-system policies can be copied unchanged.
 
-\section{A Reference-Memory Lifecycle}
+\section{Current Architecture and Reference-Memory Lifecycle}
 
-A PRA runtime can be described as a lifecycle rather than a single retrieval call:
+A PRA runtime is a lifecycle rather than a single retrieval call. The current one-shot path is:
 
 \begin{enumerate}[leftmargin=*]
 \item \textbf{Advertise}: expose handles, summaries, types, provenance, and access policy.
 \item \textbf{Select references}: rank candidate handles for a sequence, position, layer, or decoding interval.
 \item \textbf{Resolve}: map selected URIs to immutable or versioned content.
-\item \textbf{Expand}: recursively resolve explicit child tables under shared budgets and cycle policy.
-\item \textbf{Chunk and encode}: transform content into bounded layer-compatible token K/V and one or more paired routing gists per chunk.
-\item \textbf{Select chunks}: choose bounded materialization units inside retained references.
-\item \textbf{Admit}: place entries in a bounded active cache under an admission policy.
+\item \textbf{Encode}: process source text as bounded contiguous blocks and retain host-native,
+layer-specific K/V; context-only overlap is not a separately addressable payload.
+\item \textbf{Slice and index}: divide encoded K/V into smaller routing chunks and derive one or
+more compact gists without replacing the detailed payload.
+\item \textbf{Route}: rank reference and chunk identities against the compact index.
+\item \textbf{Admit and transfer}: choose whole chunks under one native-operation budget and
+move only selected K/V from CPU or other backing storage when needed.
 \item \textbf{Attend}: allow authorized sequence positions and layers to consume the memory.
 \item \textbf{Reuse or evict}: retain useful entries across tokens or requests, or release them under pressure.
 \item \textbf{Audit}: record which version, URI, layer, and policy influenced the output.
@@ -539,28 +618,33 @@ A PRA runtime can be described as a lifecycle rather than a single retrieval cal
 
 \begin{figure}[t]
 \centering
-\begin{tikzpicture}[node distance=4mm]
-\node[pranode] (advertise) {Advertise};
-\node[pranode, right=of advertise] (select) {Select};
-\node[pranode, right=of select] (resolve) {Resolve};
-\node[memnode, right=of resolve] (encode) {Encode};
-\node[memnode, right=of encode] (admit) {Admit};
-\node[memnode, below=8mm of admit] (attend) {Attend};
-\node[memnode, left=of attend] (expand) {Expand};
-\node[pranode, left=of expand] (reuse) {Reuse/evict};
-\node[pranode, left=of reuse] (audit) {Audit};
-\draw[flow] (advertise) -- (select);
-\draw[flow] (select) -- (resolve);
-\draw[flow] (resolve) -- (encode);
-\draw[flow] (encode) -- (admit);
-\draw[flow] (admit) -- (attend);
-\draw[flow] (attend) -- (expand);
-\draw[flow] (expand) -- (reuse);
-\draw[flow] (reuse) -- (audit);
-\draw[flow, dashed] (expand.south) to[bend left=25] (select.south);
-\draw[flow, dashed] (reuse.north) to[bend left=18] (admit.south);
+\begin{tikzpicture}[node distance=3.5mm and 5mm]
+\node[extnode, text width=2.2cm] (source) {logical source, URI,\\or long prompt};
+\node[pranode, text width=2.2cm, right=of source] (blocks) {model-safe contiguous\\encoding blocks};
+\node[memnode, text width=2.2cm, right=of blocks] (kv) {layer-native K/V\\CPU/off-device capable};
+\node[pranode, text width=2.2cm, below=7mm of kv] (chunks) {smaller routing chunks\\+ compact gists/index};
+\node[pranode, text width=2.2cm, left=of chunks] (route) {exact/learned route\\over identities};
+\node[memnode, text width=2.2cm, left=of route] (budget) {global admission +\\transfer budget};
+\node[selected, memnode, text width=2.2cm, below=7mm of budget] (selectedkv) {selected full-detail\\native K/V};
+\node[pranode, text width=2.2cm, right=of selectedkv] (attention) {direct + memory\\native attention};
+\node[future, text width=2.2cm, right=of attention] (iterate) {future: iterative\\associative closure};
+\node[future, text width=2.45cm, left=of selectedkv] (partial) {future: partial/smart\\materialization};
+\draw[flow] (source) -- (blocks);
+\draw[flow] (blocks) -- (kv);
+\draw[flow] (kv) -- (chunks);
+\draw[flow] (chunks) -- (route);
+\draw[flow] (route) -- (budget);
+\draw[flow] (budget) -- (selectedkv);
+\draw[flow] (selectedkv) -- (attention);
+\draw[flow, dashed] (attention) -- (iterate);
+\draw[flow, dashed] (iterate.north) -- (chunks.south);
+\draw[flow, dashed] (budget) -- (partial);
+\draw[flow, dashed] (partial) -- (selectedkv);
 \end{tikzpicture}
-\caption{PRA lifecycle. Dashed feedback paths represent recursive selection and cache reuse.}
+\caption{Canonical PRA architecture. Solid arrows are the current one-shot whole-chunk path.
+The compact index selects identities; attention consumes selected full-detail, layer-native K/V.
+Dashed nodes and arrows are future iterative closure and partial materialization, not current
+algorithm steps.}
 \label{fig:lifecycle}
 \end{figure}
 
@@ -581,56 +665,108 @@ The standalone study compares four local layers, four PRA layers, and two local 
 
 \section{Relationship to Existing Work}
 
-PRA draws mechanisms from several mature lines of work.  The comparison below is
-organized by the boundary each line changes: interaction among local tokens, persistence
-of latent state, retrieval of external evidence, or acquisition through actions.  This
-framing narrows the novelty claim to the combined access contract rather than any single
-component.
+PRA draws mechanisms from several mature lines of work. The comparison is organized by
+\emph{which resource changes}: prompt text, token connectivity, positional range, retained
+K/V, persistent state, retrieved neural state, or the external action boundary. This framing
+narrows the novelty claim to an access contract that combines stable names, a compact semantic
+index, selective native-K/V materialization, and a bounded lifecycle. None of those ingredients
+is claimed as individually new.
 
-\subsection{Long-Context and Sparse Transformers}
+\subsection{Retrieved Text and Latent Retrieval}
 
-Longformer, BigBird, Reformer, Routing Transformer, and related models reduce the cost of attending over long sequences by imposing locality, sparsity, hashing, routing, or structured global tokens \cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. PRA is complementary. It does not primarily ask how to attend over a single long sequence more cheaply; it asks whether all candidate context should become part of that sequence in the first place.
+RAG, REALM, and dense passage retrieval select external text, usually before generation, and
+let the generator encode the selected passages in its current prompt
+\cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. Their changed resource is the input text.
+This preserves a simple model interface and lets retrieval scale independently, but selected
+text still incurs prompt encoding and dense participation once inserted. PRA can use the same
+retriever to choose candidate URIs, then route smaller chunks and consume cached layer-native
+state rather than append every selected passage.
 
-\subsection{KV Selection and Compression}
+Latent retrieval moves selection closer to model representations. The $k$NN-LM interpolates
+the model distribution with neighbors from a hidden-state datastore; Memorizing Transformers
+retrieve prior token memories; and RETRO retrieves text chunks for learned generator-side
+conditioning \cite{khandelwal2020knnlm,wu2022memorizing,borgeaud2022retro}. These methods and
+PRA all expose non-parametric information during inference. Their memory values and fusion
+rules differ: PRA retains URI identity and provenance, uses compact vectors only for search,
+and presents selected full-detail native K/V to ordinary attention. It does not interpolate a
+neighbor token distribution or require RETRO's trained cross-attention architecture.
 
-H$_2$O, SnapKV, and ClusterKV reduce decoding-time cache cost by retaining, selecting, or
-merging token K/V \cite{zhang2023h2o,li2024snapkv,liu2024clusterkv}. PRA acts at a
-different boundary: it first selects provenance-bearing reference chunks from an
-addressable context graph, then materializes their native token K/V. Token-level cache
-policies can operate inside the selected working set, so the approaches are complementary
-rather than mutually exclusive.
+\subsection{Sparse, Local, and Block Attention}
 
-\subsection{Memory-Augmented Transformers}
+Longformer, BigBird, Reformer, and Routing Transformer change token-to-token connectivity
+inside an admitted sequence through local windows, global tokens, hashing, or content routing
+\cite{beltagy2020longformer,zaheer2020bigbird,kitaev2020reformer,roy2021routing}. These methods
+answer how a long sequence should interact after it is present. PRA first asks which external
+state should enter the active operation. The approaches are complementary: a sparse or block
+kernel could execute direct-plus-materialized K/V after PRA admission.
 
-Compressive Transformers store compressed memories of past activations \cite{rae2020compressive}. Memorizing Transformers retrieve nearest-neighbor memories from previous tokens \cite{wu2022memorizing}. RETRO retrieves chunks from a large text database and conditions generation on them \cite{borgeaud2022retro}. PRA shares the ambition of memory-augmented generation but emphasizes explicit reference handles, URI addressing, recursive anchors, and layer-specific cache entries.
+Landmark Attention similarly gives a long sequence coarse random-access landmarks
+\cite{mohtashami2023landmark}. A PRA gist has a related indexing role, but it belongs to a
+separate addressable cache and is not the evidence consumed by attention. The selected routing
+chunk materializes its detailed K/V payload. This routing--payload distinction is the central
+difference.
 
-Transformer-XL, Infini-attention, TransformerFAM, and Titans provide recurrent,
-compressive, feedback, or learned long-term state
-\cite{dai2019transformerxl,munkhdalai2024infini,hwang2024fam,behrouz2025titans}. PRA's
-implicit prompt head serves a related purpose but preserves a named, selectively
-materialized history. Beyond the native horizon, its bounded-block representation is an
-explicit approximation rather than exact recurrence.
+\subsection{Long-Context Position and Sequence Range}
 
-\subsection{Landmarks, Gists, and Streaming Windows}
+Context-extension methods change the length over which one model invocation can preserve useful
+token interaction. Transformer-XL adds segment recurrence and relative positions; Position
+Interpolation and LongRoPE extend the operating range of positional geometry
+\cite{dai2019transformerxl,chen2023positioninterpolation,ding2024longrope}. Their strength is
+continuous access to a large admitted sequence. PRA does not enlarge the host model's native
+limit. It constructs logical scope from model-safe encoding blocks and admits a bounded subset
+to each operation. A longer native window can therefore improve PRA's encoding and direct
+context while leaving the logical-versus-active separation useful.
 
-Landmark Attention organizes random access through landmark tokens, while StreamingLLM
-maintains stable streaming behavior through attention sinks
-\cite{mohtashami2023landmark,xiao2023streamingllm}. PRA gists also provide a coarse index,
-but they normally remain routing state: selected chunks materialize their full token-level
-K/V. This distinction lets routing quality and transported evidence be evaluated
-separately.
+\subsection{KV Retention, Compression, Eviction, and Quantization}
 
-\subsection{Hierarchical Attention and Adaptive Computation}
+H$_2$O and SnapKV evict or retain decoding-cache tokens, ClusterKV merges cache state in a
+semantic space, and KIVI reduces bytes through asymmetric quantization
+\cite{zhang2023h2o,li2024snapkv,liu2024clusterkv,liu2024kivi}. Their changed resource is an
+already-created KV cache. PRA instead chooses provenance-bearing reference and chunk identities
+before their payload enters active attention. These techniques are compatible: eviction,
+merging, quantization, or future token-level materialization can operate inside PRA's selected
+working set. Their errors must then be measured separately from routing errors.
 
-Hierarchical Attention Networks demonstrated the value of multi-level document structure \cite{yang2016han}. Universal Transformers and adaptive computation time study dynamic depth or recurrent refinement \cite{dehghani2019universal,graves2016adaptive}. PRA can be viewed as adaptive computation over context rather than only over layers or recurrent steps: the system spends more memory bandwidth on references that prove useful.
+\subsection{Recurrent, Compressive, and Persistent State}
 
-\subsection{Retrieval-Augmented Generation}
+Compressive Transformers, Infini-attention, TransformerFAM, Titans, and selective state-space
+models carry forward compressed, recurrent, feedback, learned, or fixed-width state
+\cite{rae2020compressive,munkhdalai2024infini,hwang2024fam,behrouz2025titans,gu2024mamba}.
+StreamingLLM preserves a chronological attention working set through sinks
+\cite{xiao2023streamingllm}. These methods change the state propagated through time and can be
+more economical than retaining addressable token detail. PRA preserves separately named source
+objects and can revisit selected full-detail K/V out of chronological order. Its implicit prompt
+head is the closest overlap, but beyond the native horizon its bounded-block encoding is an
+explicit approximation rather than a sufficient recurrent state.
 
-RAG, REALM, and dense passage retrieval moved language models toward non-parametric memory \cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. PRA inherits their motivation but changes the interface between retrieval and generation. Instead of treating retrieval as a pre-generation pipeline stage, PRA treats retrieval products as addressable memory objects that can be expanded and attended to during inference.
+\subsection{Prompt and Context Caching}
 
-\subsection{Agentic Tool Use}
+PagedAttention manages serving-time KV allocation, while Prompt Cache reuses schema-named prompt
+modules and CacheBlend selectively recomputes cached chunks to restore missing cross-chunk
+context \cite{kwon2023vllm,gim2023promptcache,yao2024cacheblend}. These systems change where
+prompt state resides and how much prefill is repeated. PRA shares their concern with positional
+validity, reuse, transfer, and backing storage, but adds semantic routing over addressable
+objects and a hard active-K/V admission budget. Conversely, PRA does not yet provide their
+serving kernels or throughput evidence; an optimized runtime should build on these systems
+rather than treat CPU residency alone as a speed result.
 
-ReAct and Toolformer show that language models can coordinate reasoning and external actions \cite{yao2023react,schick2023toolformer}. PRA does not replace tool use. It attempts to make a subset of memory access cheaper and more structured by moving reference resolution and cache access closer to attention.
+\subsection{Memory-Augmented Networks}
+
+Neural Turing Machines and end-to-end Memory Networks couple a controller to differentiable
+external memory and demonstrate content-addressed reads, writes, and multiple hops
+\cite{graves2014ntm,sukhbaatar2015memnn}. Hierarchical Attention Networks and adaptive computation
+likewise motivate multi-level representation and variable computation
+\cite{yang2016han,dehghani2019universal,graves2016adaptive}. PRA inherits the general principle
+that access can be learned and iterative. It differs in preserving host-transformer-native K/V,
+stable URI identity, cache provenance, and an exact disabled path. Its proposed iterative closure
+is not yet equivalent to the trained multi-hop controllers in those systems.
+
+\subsection{Agentic and Protocol-Level Access}
+
+ReAct and Toolformer coordinate reasoning with external actions
+\cite{yao2023react,schick2023toolformer}. They change the action boundary and can search, verify,
+or modify the world across model calls. PRA targets a narrower read path for stable or versioned
+resources. It does not replace explicit tools, side effects, planning, or verification.
 
 \subsection{MCP and IDE Assistants}
 
@@ -674,10 +810,6 @@ This combination suggests a layered interface. MCP or an IDE host handles authen
 \caption{RAG selects before a model call, agents and MCP iterate across an application boundary, and PRA proposes addressable memory consumption within a runtime/model boundary.}
 \label{fig:rag-agent-pra}
 \end{figure}
-
-\subsection{KV-Cache Runtime Systems}
-
-Serving systems such as vLLM's PagedAttention show that memory layout, paging, and cache management are first-class concerns for modern inference \cite{kwon2023vllm}. PRA extends this systems perspective from generated-token KV caches to external reference-memory KV caches. A production PRA runtime would need admission policies, eviction, batching, cache reuse, and memory isolation.
 
 \section{Embodied, Situated, and Referential Memory}
 
@@ -761,9 +893,14 @@ PRA & URI-addressed memory cache & Demand-driven latent expansion & Requires lea
 
 \section{Historical Feasibility Evidence}
 
-The results in this section use the optional adapted cross-attention transport, with a
-separately normalized memory branch, $W_{O,\mathrm{mem}}$, and a residual scale. They
-must not be read as measurements of the canonical native-KV path introduced above.
+This section preserves the experimental path by which the proposal was corrected. The
+opening pilot and adaptation study use the optional adapted cross-attention transport,
+with a separately normalized memory branch, $W_{O,\mathrm{mem}}$, and a residual scale.
+They are labeled historical and must not be read as measurements of canonical native-KV
+PRA. Beginning with ``First Native-KV Quality Gate,'' the experiments instead use selected
+host-native K/V and progressively repair fragmentation, routing, bounded execution, and
+off-device residency. Those studies remain small controlled probes; the companion papers
+provide the complete protocols and later pretrained-model evidence.
 
 A standalone PyTorch pilot first provided limited implementation evidence for parts of this position. At 524,288 processed tokens and seeds 1 and 7, mean plain WikiText-2 losses were 4.7691 for SelfAttention, 4.7457 for full PRAttention, and 4.7574 for a two-SelfAttention/two-PRAttention hybrid. Its version-1 reference task suggested a memory-path contribution, but regenerated data per model seed and labeled all candidate parts as relevant. More importantly, the old implementation routed one raw summary embedding per reference, collapsed a batch query in an early path, and materialized whole references. We therefore retain all reference-conditioned measurements as engineering history rather than use them for a causal claim about the corrected architecture.
 
@@ -1037,29 +1174,51 @@ Evidence of genuine reference use requires more than a disabled-path gap. A bran
 
 \section{Research Agenda}
 
-The PRA research program should proceed through increasingly demanding stages.
+The original agenda proceeded through controlled standalone models, positional validation,
+and pretrained integration. Those stages now have dedicated companion papers. The remaining
+agenda begins at the measured one-shot boundary rather than repeating completed integration
+work.
 
 \paragraph{Standalone controlled models.}
-Train small decoder-only transformers where all memory objects, reference handles, chunks, cache entries, and evaluation labels are controlled. The five-seed corrected study now covers paired valid, disabled, shuffled, irrelevant, empty, and oracle-reference conditions with URI-level labels. Its near-chance selection and sub-0.005 shuffled penalties make the next step concrete: add chunk/span ground truth and compare the fixed router against trainable routing with an auxiliary relevance objective. Full-reference, gist-only, distance-bin, mixed-curriculum, optional-summary, and recursive-depth conditions should follow under the same paired checkpoints. Scaling to the Small model is deferred until valid content reliably beats shuffled and irrelevant controls.
+Continue to use small decoder-only transformers for mechanism isolation. The corrected studies
+now cover paired counterfactuals, native-KV transport, contextual slicing, fixed-$k$ and
+fixed-fraction scaling, learned routing geometry, and model-bounded prompts. Their role is to
+falsify mechanisms cheaply, not to stand in for pretrained task evaluation.
 
 \paragraph{Pretrained-model integration.}
-Wrap pretrained Hugging Face attention with native-KV selection first, preserving each model's rotary position convention, grouped-query layout, and cache format. Cross-attention adapters remain a useful comparison when native cache compatibility cannot be maintained, but are not the canonical integration target.
+Paper 2 wraps pretrained Hugging Face families while preserving rotary conventions,
+grouped-query layout, cache formats, and exact disabled behavior. The released SDK makes
+one-shot PRA usable for research and sparse direct-memory workloads. The next integration
+question is not whether wrapping is possible, but how routing and conditional memory use
+generalize across domains, depths, model scales, and realistic retrieval errors.
 
 \paragraph{Runtime and serving integration.}
-Study how reference memories are resolved, encoded, cached, paged, shared, and evicted. The central metric is no longer only accuracy, but accuracy per token, per millisecond, and per byte of cache.
+Study how reference memories are resolved, encoded, cached, paged, shared, and evicted. Add
+asynchronous host-to-device transfer, fused route-and-attend kernels, batching, approximate
+indexes, and matched dense/RAG baselines. The central metric is no longer only accuracy, but
+quality per materialized token, millisecond, transferred byte, and resident byte. The current
+SDK is usable; a generally compelling production architecture and its serving economics are
+not yet established.
 
 \paragraph{Scaling and theory.}
 Develop task families where relevant context occupies a controllable fraction of the available corpus. PRA should be evaluated against full-context, sparse-attention, RAG, summary-first RAG, and agentic-search baselines.
 
 \paragraph{Selection and gating.}
-Compare projected content gists, explicit reference-token attention, optional summary evidence, learned routers, uncertainty triggers, and hybrid policies while holding selected-chunk transport fixed. The old summary-similarity selector did not improve with language pretraining and remained near chance despite lower final task loss. Reference and chunk selection should be evaluated through hit/recall/precision/F1, MRR, NDCG, span IoU, counterfactual task loss, and learning speed, not only whether an expected URI entered a cache.
+Compare projected content gists, explicit reference-token attention, optional summaries,
+learned routers, uncertainty triggers, and hybrid policies while holding selected native-KV
+transport fixed. Paper 1.5 shows that reproducing native Q/K geometry does not guarantee a
+useful semantic index, and Paper 2 shows domain-dependent learned routing. Reference and chunk
+selection should be evaluated through recall--sparsity curves, MRR, NDCG, span IoU,
+counterfactual task loss, and learning speed, not only whether an expected URI entered a cache.
 
 \paragraph{Hierarchical expansion.}
-Construct benchmarks in which a root object advertises candidate child anchors but the
-answer requires one or more deeper fragments.  Optional summaries can be introduced as
-a controlled routing condition rather than assumed metadata.  Measure expansion depth,
-branching factor, missed-evidence rate, and quality per resolved token.  Flat single-hop
-tasks cannot test the progressive part of PRA.
+Implement bounded iterative associative closure for tasks in which the initial query identifies
+an intermediate relation but not the final evidence. HotpotQA is the motivating boundary:
+one-shot outputs often approach the relevant relation without reaching its endpoint. Measure
+expansion depth, branching factor, missed-evidence rate, repeated-route cost, and quality per
+resolved token. Keep this work separate from partial materialization, which asks how much of a
+selected chunk's K/V must be transferred. Flat single-hop tasks cannot test the progressive
+part of PRA.
 
 \paragraph{Training and preservation.}
 Compare isolated reference-path adaptation, joint fine-tuning, adapters, low-rank updates, and curriculum mixtures. Report both reference improvement and local-task retention. Determine whether zero-initialized memory residuals remain stable at larger scale and whether learned gates avoid permanent saturation.
@@ -1084,11 +1243,11 @@ These criteria make PRA a testable systems-and-model hypothesis rather than a la
 
 \section{Risks and Limitations}
 
-PRA introduces several risks. First, reference selection can fail silently: if the system does not expand the right anchor, the model may answer from incomplete context. Second, URI-addressed memory creates provenance and security questions. A reference table is a powerful interface; poisoning or misaddressing entries can mislead the model. Third, cache construction may move cost rather than eliminate it. Encoding references separately is only beneficial when cache reuse, selective expansion, or reduced prompt length outweighs encoding overhead. Fourth, pretrained integration is technically difficult because external K/V must respect layer semantics, position encodings, attention variants, and batching constraints.
+PRA introduces several risks. First, reference selection can fail silently: if the system does not select the right chunk, the model may answer from incomplete context. Second, URI-addressed memory creates provenance and security questions. A reference table is a powerful interface; poisoning or misaddressing entries can mislead the model. Third, cache construction may move cost rather than eliminate it. Encoding references separately is only beneficial when cache reuse, selective transfer, or reduced prompt length outweighs encoding overhead. Fourth, pretrained integration is family-specific because external K/V must respect layer semantics, position encodings, attention variants, and batching constraints. Paper 2 demonstrates exact adapters for multiple tested families, but not universal compatibility.
 
 Fifth, content-independent branch effects can be mistaken for retrieval. A memory residual may improve a domain simply because it contributes additional activations, even when references are shuffled. Sixth, batching can violate semantic isolation: a physically shared cache must not expose one sequence's references to another, and empty rows must not inherit projection bias. Seventh, preservation claims can be artifacts of freezing rather than architecture. Eighth, hierarchical expansion can amplify latency variance and create denial-of-service surfaces when references recursively fan out. Ninth, raw summaries can introduce a representation mismatch when compared with projected layer queries; optional summary evidence must inhabit the same contextual layer space. Tenth, implicit prompt heads move historical encoding into a separate cold pass; bounded blocks approximate full historical context, and streaming currently rebuilds the complete head after rollover rather than appending K/V incrementally. Eleventh, CPU residency reduces measured GPU capacity but the current per-chunk offload makes cold construction slower. Finally, stale cache entries create a consistency problem: URI, content version, model/tokenizer/routing fingerprints, and encoded layer memory must remain aligned.
 
-These limitations motivate careful experimental design. PRA should not be judged by a single accuracy number. It should be evaluated through controlled ablations that measure answer accuracy, reference and chunk ranking, expansion depth and budget exhaustion, available and materialized token counts, full-context token count, timing decomposition, padding allocation, cache hit ratio, content-specific counterfactual deltas, plain-task retention, and cache isolation. The five-seed studies now address tiny-scale capacity, training order, preservation, first-order counterfactuals, exact routing reuse, long-prompt displacement, selective transfer, and measured GPU residency. Learned routing, recursive benefit, pretrained integration, batched CPU offload, and end-to-end efficiency against strong baselines remain untested.
+These limitations motivate careful experimental design. PRA should not be judged by a single accuracy number. It should be evaluated through controlled ablations that measure answer accuracy, reference and chunk ranking, expansion depth and budget exhaustion, logical, requested, and materialized fractions, timing decomposition, padding allocation, cache hit ratio, content-specific counterfactual deltas, ordinary-path retention, and cache isolation. The series now addresses tiny-scale capacity, positional continuity, learned semantic routing, exact pretrained retrofit, long-prompt displacement, selective transfer, and measured GPU residency. Iterative benefit, partial materialization, batched asynchronous offload, larger model scaling, and end-to-end efficiency against strong production baselines remain open.
 
 \section{Conclusion}
 
@@ -1096,7 +1255,18 @@ Progressive Retrieval Attention proposes a shift in how foundation models intera
 
 The long-term vision is a foundation-model memory stack with explicit boundaries among parametric knowledge, working context, episodic history, semantic resources, procedures and tools, and changing world state. URI identity, provenance, freshness, hierarchy, permissions, and cache lifetime become architectural concerns rather than application-side annotations. Protocols such as MCP can expose resources and actions, agents can manage high-level plans, and PRA-like runtimes can test whether repeated read-oriented access can move closer to attention without losing governance.
 
-The five-seed corrected cross-attention follow-up supports backbone compatibility and preservation controls but fails its content-causality gate. Native-KV experiments provide stronger mechanism evidence. Historical K/V slicing preserves dense transport through 256 addressable units, fixed-$k$ active fraction falls to roughly 5\%, and exact persistent routing reduces 256-way selection to 5.5--11.6 ms without semantic change. Model-bounded encoding now demonstrates a logical head 5.75 times the native limit, one global materialization budget, and generated-history rollover without a native-limit violation. Controlled implicit-head probes recover facts wholly outside a fixed direct window and show that encoding context matters; CPU backing converts active sparsity into a measured 0.73--3.42 MiB GPU-capacity reduction while exposing cold-build and transfer penalties. The answer-code targets, tiny backbones, rebuilt streaming cache, and unfused prototype still prevent claims of general retrieval or production efficiency. The program should now test genuine language tasks without injected anchors, pretrained representations, incremental cache append, batched cache construction, and matched long-context/RAG systems. If those comparisons fail, the virtual-context proposal should be revised or rejected; if they hold, PRA would support the narrower claim that named logical context can grow faster than the active latent working set.
+The historical cross-attention follow-up supports preservation controls but fails its
+content-causality gate. Native-KV experiments provide stronger mechanism evidence: contextual
+slicing preserves transport through 256 addressable units, fixed-$k$ active fraction falls to
+roughly 5\%, and model-bounded encoding demonstrates a logical head 5.75 times the native limit.
+Paper 1.5 adds positional continuity and separates semantic search from native attention geometry.
+Paper 2 then establishes exact disabled pretrained paths, cross-family adapters, and a useful
+one-shot QASPER regime while identifying HotpotQA as the multi-hop boundary. These results make
+PRA a usable research SDK and support the narrow claim that named logical context can grow faster
+than the K/V materialized in one operation. They do not yet show that PRA is generally better
+than optimized long context or RAG in production. The decisive next tests are bounded iterative
+closure, partial materialization, and matched serving economics; failure there should narrow or
+reject the broader virtual-context thesis.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
