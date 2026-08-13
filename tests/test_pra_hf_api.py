@@ -131,3 +131,37 @@ def test_router_cannot_change_after_reference_ingestion(tmp_path):
     PRARouter(32, 8).save_pretrained(tmp_path)
     with pytest.raises(RuntimeError, match="Clear references"):
         pra.load_router(tmp_path)
+
+
+def test_iterative_product_path_closes_before_native_memory_is_enabled(monkeypatch):
+    torch.manual_seed(303)
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(
+            routing_mode="iterative",
+            routing_depth=2,
+            branch_top_k=1,
+            beam_size=1,
+            max_unique_chunks=2,
+            selected_fraction=None,
+        ),
+    )
+    pra.add_reference("abcdefghijklmnop")
+    events = []
+    original = pra._handle.configure_memory_layers
+
+    def record(layers, *args, **kwargs):
+        events.append((set(layers), kwargs.get("fixed_selections")))
+        return original(layers, *args, **kwargs)
+
+    monkeypatch.setattr(pra._handle, "configure_memory_layers", record)
+    result = pra.generate("question", max_new_tokens=1, return_details=True)
+
+    assert events[0][0] == set()
+    assert events[1][0] == set(pra.consumption_layers)
+    assert events[1][1] is not None
+    assert result.stats["selection_policy"] == "iterative_closure"
+    assert result.stats["retrieval_graphs"][0]["nodes"]
+    assert all(node["materialized"] for node in result.stats["retrieval_graphs"][0]["nodes"])
+    assert result.stats["requested_chunks"] <= 2

@@ -15,10 +15,12 @@ _DEFAULT_CONSUMPTION_LAYERS = tuple(range(-8, 0))
 
 @dataclass
 class PRAConfig:
-    """Configure one-shot semantic routing and bounded native-K/V consumption.
+    """Configure semantic routing and bounded native-K/V consumption.
 
     ``selected_fraction`` takes precedence over ``top_k`` when it is not
-    ``None``. Negative layer indices are resolved relative to the decoder depth.
+    ``None`` in one-shot mode.  Iterative mode instead uses the hard
+    ``max_unique_chunks`` closure budget.  Negative layer indices are resolved
+    relative to the decoder depth.
     """
 
     enabled: bool = True
@@ -41,6 +43,16 @@ class PRAConfig:
     query_window: int = 16
     query_half_life: float = 4.0
     trigger_threshold: float = float("-inf")
+    routing_mode: str = "one_shot"
+    routing_depth: int = 2
+    branch_top_k: int = 2
+    beam_size: int = 8
+    max_unique_chunks: int = 8
+    root_anchor_alpha: float = 0.5
+    frontier_mode: str = "direct"
+    residual_beta: float = 1.0
+    path_score_mode: str = "product"
+    iterative_min_confidence: float | None = None
 
     def __post_init__(self) -> None:
         self.consumption_layers = tuple(int(layer) for layer in self.consumption_layers)
@@ -56,11 +68,35 @@ class PRAConfig:
             raise ValueError("chunk_overlap_tokens must be in [0, chunk_tokens).")
         if self.reference_device not in {"cpu", "gpu"}:
             raise ValueError("reference_device must be 'cpu' or 'gpu'.")
+        if self.routing_mode not in {"one_shot", "iterative"}:
+            raise ValueError("routing_mode must be 'one_shot' or 'iterative'.")
+        # Import lazily so the stable config module does not create an import cycle.
+        if self.routing_mode == "iterative":
+            self.iterative_config
 
     @property
     def selection_policy(self) -> str:
         """Return the active budget policy, including documented precedence."""
+        if self.routing_mode == "iterative":
+            return "iterative_closure"
         return "selected_fraction" if self.selected_fraction is not None else "top_k"
+
+    @property
+    def iterative_config(self):
+        """Translate public closure controls into the tensor-only router config."""
+        from .iterative import IterativeRoutingConfig
+
+        return IterativeRoutingConfig(
+            depth=self.routing_depth,
+            branch_top_k=self.branch_top_k,
+            beam_size=self.beam_size,
+            max_unique_chunks=self.max_unique_chunks,
+            root_anchor_alpha=self.root_anchor_alpha,
+            frontier_mode=self.frontier_mode,
+            residual_beta=self.residual_beta,
+            path_score_mode=self.path_score_mode,
+            min_confidence=self.iterative_min_confidence,
+        )
 
     def resolved_layers(self, model_config_or_layer_count) -> tuple[int, tuple[int, ...]]:
         """Resolve layer IDs while preserving a host model's native scope.

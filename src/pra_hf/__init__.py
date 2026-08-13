@@ -5,15 +5,27 @@ from .evaluation import evaluate_router_features
 from .memory_adapter import PRAMemoryAdapter
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
 from .router import PRARouter
+from .iterative import (
+    GistIndex,
+    IterativeGistRouter,
+    IterativeRoutingConfig,
+    IterativeRoutingResult,
+    RetrievalGraph,
+)
 
 __version__ = "0.2.0rc1"
 
 __all__ = [
     "GenerationResult",
+    "GistIndex",
+    "IterativeGistRouter",
+    "IterativeRoutingConfig",
+    "IterativeRoutingResult",
     "PRAConfig",
     "PRAForCausalLM",
     "PRAMemoryAdapter",
     "PRARouter",
     "ReferenceHandle",
+    "RetrievalGraph",
     "evaluate_router_features",
 ]

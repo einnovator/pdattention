@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pra.example/schemas/retrieval-graph-v1.json",
+  "title": "PRA bounded associative-closure retrieval graph",
+  "type": "object",
+  "required": ["schema_version", "example_id", "layer_id", "root", "nodes", "edges", "budget", "costs", "stop_reason"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "example_id": {"type": ["string", "null"]},
+    "layer_id": {"type": "integer"},
+    "root": {"type": "object"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node_id", "reference_uri", "hop", "parent_ids", "direct_query_score", "edge_score", "path_score", "final_selected", "materialized"]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "hop", "edge_score", "anchored_score", "path_score", "selected"]
+      }
+    },
+    "budget": {"type": "object"},
+    "costs": {"type": "object"},
+    "stop_reason": {"enum": ["depth", "unique_budget", "no_new_nodes", "confidence_threshold", "zero_limit", "empty_index"]}
+  }
+}

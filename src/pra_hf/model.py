@@ -15,6 +15,7 @@ from pra_torch.hf import inject_pra
 from pra_torch.memory import SelectedChunk
 
 from .config import PRAConfig
+from .iterative import GistIndex, IterativeGistRouter, IterativeRoutingResult
 from .memory_adapter import PRAMemoryAdapter
 from .router import PRARouter
 
@@ -313,6 +314,52 @@ class PRAForCausalLM:
             rows.append(selected)
         return rows
 
+    def _iterative_rankings(
+        self,
+        index: GistIndex,
+        results: list[IterativeRoutingResult],
+    ) -> list[list[dict]]:
+        """Expose complete root-query rankings in the existing diagnostic shape."""
+        rows = []
+        for result in results:
+            grouped: dict[str, list[tuple[int, float]]] = {}
+            for candidate_index, ((entry, _), score) in enumerate(
+                zip(index.records, result.direct_scores)
+            ):
+                grouped.setdefault(entry.uri, []).append((candidate_index, score))
+            references = sorted(
+                grouped,
+                key=lambda uri: (-max(score for _, score in grouped[uri]), uri),
+            )
+            ranking = []
+            for reference_rank, uri in enumerate(references, start=1):
+                chunks = sorted(
+                    grouped[uri],
+                    key=lambda row: (-row[1], index.records[row[0]][1].chunk_id),
+                )
+                ranking.append(
+                    {
+                        "reference_uri": uri,
+                        "reference_rank": reference_rank,
+                        "reference_score": float(chunks[0][1]),
+                        "chunks": [
+                            {
+                                "chunk_id": index.records[candidate_index][1].chunk_id,
+                                "chunk_rank": chunk_rank,
+                                "chunk_score": float(score),
+                                "token_start": index.records[candidate_index][1].token_start,
+                                "token_end": index.records[candidate_index][1].token_end,
+                                "gist_count": int(
+                                    index.records[candidate_index][1].routing_gist.k.shape[0]
+                                ),
+                            }
+                            for chunk_rank, (candidate_index, score) in enumerate(chunks, start=1)
+                        ],
+                    }
+                )
+            rows.append(ranking)
+        return rows
+
     @torch.no_grad()
     def _route_once(self, input_ids, attention_mask, position_ids):
         adapter = self._handle.adapters[self.routing_layer]
@@ -331,16 +378,37 @@ class PRAForCausalLM:
             captured.hidden_states, captured.pre_query, captured.post_query
         )
         started = time.perf_counter()
-        _, rankings = adapter.pra_core.route_memory(query)
+        retrieval_graphs = []
+        if self.config.routing_mode == "iterative":
+            index = GistIndex.from_entries(
+                self._handle.cache.all_entries(),
+                self.routing_layer,
+                device=query.device,
+                dtype=query.dtype,
+            )
+            iterative = IterativeGistRouter(index)
+            results = iterative.route_batch(query, self.config.iterative_config)
+            selected = [iterative.selected_chunks(result) for result in results]
+            rankings = self._iterative_rankings(index, results)
+            retrieval_graphs = [result.graph.to_dict() for result in results]
+        else:
+            _, rankings = adapter.pra_core.route_memory(query)
+            selected = self._selected_from_rankings(rankings)
         routing_seconds = time.perf_counter() - started
-        selected = self._selected_from_rankings(rankings)
         fixed = self._handle.map_chunk_identities_to_layers(
             selected, self.consumption_layers
         )
         self._handle.configure_memory_layers(
             set(self.consumption_layers), fixed_selections=fixed
         )
-        return selected, rankings, query_seconds, routing_seconds
+        # The graph is a retrieval artifact until fixed identities have been
+        # mapped to layer-native payloads.  Mark only this post-mapping state as
+        # materialized so Paper 3 can distinguish selection from K/V activation.
+        for graph in retrieval_graphs:
+            for node in graph["nodes"]:
+                if node["final_selected"]:
+                    node["materialized"] = True
+        return selected, rankings, query_seconds, routing_seconds, retrieval_graphs
 
     @torch.no_grad()
     def generate(
@@ -360,8 +428,9 @@ class PRAForCausalLM:
         selected: list[list[SelectedChunk]] = [[]]
         rankings: list[list[dict]] = [[]]
         query_seconds = routing_seconds = 0.0
+        retrieval_graphs: list[dict[str, Any]] = []
         if self.config.enabled and not self._handle.cache.is_empty():
-            selected, rankings, query_seconds, routing_seconds = self._route_once(
+            selected, rankings, query_seconds, routing_seconds, retrieval_graphs = self._route_once(
                 input_ids, attention_mask, position_ids
             )
         else:
@@ -411,6 +480,7 @@ class PRAForCausalLM:
             "selected": [hit.as_trace_dict() for hit in selected[0]],
             "query_encoding_seconds": query_seconds,
             "routing_seconds": routing_seconds,
+            "retrieval_graphs": retrieval_graphs,
             "generation_seconds": latency,
             "diagnostics_by_layer": diagnostics,
             "head_tokens": prepared.head_tokens,
