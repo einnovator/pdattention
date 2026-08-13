@@ -1,37 +1,51 @@
-# PRAttention-Centered Survey of Long Context and Retrieval
+# Bounded Memory Computation Survey
 
-This package contains an educational review paper that organizes architectures related to Progressive Retrieval Attention (PRAttention) into seven categories:
+This package contains a survey of bounded memory computation for language models. It uses
+nine computational questions to compare seven literature families and treats Progressive
+Retrieval Attention (PRAttention) as a worked synthesis rather than a presumed winner.
+
+## Literature families
 
 1. Dense, sparse, and approximate long-context attention
-2. Recurrence and compression
+2. Recurrence, state-space models, and compression
 3. Differentiable external memory
 4. Retrieval-augmented pretraining and generation
-5. Attention-level and KV retrieval
+5. Attention-level and KV retrieval, retention, and reuse
 6. Structural and hierarchical indexing
 7. Agents with search tools
 
 ## Files
 
-- `pra_survey.tex` - complete LaTeX source
-- `pra_survey.pdf` - compiled review paper
-- `AGENTS.md` - instructions for Codex or another coding/research agent to verify, expand, and maintain the paper
+- `pra_survey.tex` - canonical LaTeX source
+- `pra_expanded.tex` - PRA synthesis and evidence boundary
+- `approaches_expanded.tex` - method-level literature atlas
+- `references.bib` - primary-source bibliography
+- `survey.tex` - compatibility build wrapper
+- `pra_survey.pdf` and `survey.pdf` - compiled papers
 
 ## Scope
 
-The paper begins with a multi-page reconstruction of PRAttention Paper 0 and Paper 1, including the prototype architecture, formalism, preliminary WikiText-2 experiments, and counterfactual evaluation doctrine. It then reviews representative approaches by motivation, mechanism, equations, pseudocode/PyTorch sketches, original experiments, research lineage, downstream influence, relation to PRA, and proposed comparative experiments.
+The paper distinguishes logical availability, causal activity, discovery, search geometry,
+associative closure, materialized detail, model depth, decisions/behavior, and serving cost.
+It reviews representative approaches by mechanism, evidence, limitations, relation to PRA,
+and matched comparative experiments. The PRA chapter synthesizes the current native-KV,
+bounded-context, positional-geometry, pretrained-retrofit, and behavioral evidence.
 
 It also includes:
 
-- a landscape diagram in a landscape page;
-- a cross-architecture comparison table;
-- a benchmark and ablation matrix;
-- a distinction between research “paper trail” and the 2026 `PaperTrail` claim-evidence interface;
-- proposed extensions combining PRA with hierarchical indexes, cache virtualization, provenance, and agentic escalation.
+- explicit claim labels for implemented, measured, and proposed mechanisms;
+- a landscape diagram and cross-architecture comparison tables;
+- a taxonomy for storage, search, compression, materialization, iteration, retraining, and
+  active bounds;
+- a causal benchmark and ablation matrix;
+- an architecture ladder separating measured one-shot PRA from proposed associative closure
+  and later smart materialization.
 
 ## Build
 
 ```bash
 latexmk -pdf -interaction=nonstopmode survey.tex
+latexmk -pdf -interaction=nonstopmode pra_survey.tex
 ```
 
 Clean auxiliary files:
@@ -40,6 +54,9 @@ Clean auxiliary files:
 latexmk -c
 ```
 
-## Important status
+## Status
 
-This is a substantial tutorial draft, not yet a submission-ready systematic review. Before publication, verify every quantitative claim against the original paper, add complete experiment tables for each reviewed architecture, broaden coverage of 2024-2026 KV-compression and agentic retrieval work, and decide whether to split the document into a tutorial paper and a PRA-focused position/experiment-design paper.
+This is a narrative architecture survey, not a systematic review or meta-analysis. Measured
+PRA results come from the accompanying paper series and repository artifacts; proposed
+associative-closure and smart-materialization mechanisms are deliberately identified as
+future work.

@@ -16,9 +16,10 @@ reduced to position, and no cross-request materialization is implied.
 \subsection{Dense attention and positional extension}
 
 \textbf{Motivation and mechanism.} Dense causal attention is the least structured but
-most general access rule: every position can read every earlier position.  RoPE scaling,
-position interpolation, and long-context continued pretraining extend the usable position
-range without changing this graph.  For $T$ tokens,
+most general access rule: every position can read every earlier position. Rotary position
+embeddings encode relative offsets through query/key rotations \citep{su2021roformer};
+position interpolation and long-context continued pretraining can extend the usable position
+range without changing this graph \citep{chen2023position}. For $T$ tokens,
 \begin{equation}
 A=\operatorname{softmax}((QK^\top+M_{\rm causal})/\sqrt{d_h})V,
 \qquad \text{time }O(T^2d),\;\text{attention storage }O(T^2).
@@ -456,6 +457,39 @@ experience-dependent routing priors while PRA retains inspectable source identit
 hybrid must report whether test-time updates improve object selection or merely adapt the
 decoder independently of supplied content.
 
+\subsection{Selective State-Space Models}
+
+\textbf{Motivation and mechanism.} State-space sequence models replace pairwise token
+attention with a recurrent state whose update can be computed efficiently across a sequence.
+Mamba makes the state transition input dependent so the model can selectively propagate or
+forget information \citep{gu2023mamba}. A schematic selective recurrence is
+\begin{equation}
+h_t=\overline A(x_t)h_{t-1}+\overline B(x_t)x_t,
+\qquad y_t=C(x_t)h_t+D x_t.
+\end{equation}
+The state size is bounded with sequence length, and the hardware-aware scan supports parallel
+training and recurrent inference.
+
+\begin{lstlisting}[caption={Conceptual input-selective state update}]
+def selective_ssm_step(x_t, state, parameterizer):
+    A_t, B_t, C_t = parameterizer(x_t)
+    state = A_t * state + B_t * x_t
+    return C_t * state, state
+\end{lstlisting}
+\methodflow{token stream}{input-dependent transition}{bounded recurrent state}{selective readout}{sequence output}{memorygreen}
+
+\textbf{Evidence and limitations.} Mamba reports competitive language, audio, and genomics
+results with linear sequence scaling. Its active state is compact and naturally supports
+streaming. Exact old evidence, however, is superposed in anonymous recurrent state rather than
+retained as an independently inspectable object. Correction, source-level invalidation, and
+random access are therefore different operations from updating a URI cache.
+
+\textbf{PRA relation and experiment.} Selective state-space memory and PRA occupy different
+points on the exactness--addressability frontier. Match active bytes and throughput on streams
+that mix recurring patterns, exact delayed values, source corrections, and random object
+queries. A hybrid can use bounded state for routine chronology and fault named evidence into
+native-KV memory when exact or auditable detail is required.
+
 \section{Category III: Differentiable and Episodic External Memory}
 
 These methods move state outside the ordinary recurrent or token representation while
@@ -792,6 +826,26 @@ shared oracle trigger while holding the retriever and evidence fixed. Measure tr
 precision/recall, unnecessary accesses, evidence support, serial latency, and content
 counterfactuals. A hybrid can expose PRA route confidence and provenance to a Self-RAG
 critic, but the critic's approval must not replace removal and substitution tests.
+
+\subsection{Iterative Retrieval and Associative Closure}
+
+One-shot RAG ranks from the original question. Multi-hop tasks may instead reveal the next
+query only after an intermediate passage introduces an entity or relation. IRCoT makes this
+dependency explicit by alternating textual reasoning and retrieval
+\citep{trivedi2023ircot}; Self-Ask decomposes a question into follow-ups
+\citep{press2022selfask}. The shared computation is
+\begin{equation}
+z_h=R(q,s_{h-1}),\qquad s_h=U(s_{h-1},z_h),qquad h=1,\ldots,H,
+\end{equation}
+with a hop budget and stopping rule.
+
+The important axis is not simply ``one-shot versus agent.'' Iteration can happen through
+generated subquestions, latent state, graph traversal, or retrieved gists. It may preserve a
+path of evidence identities or collapse every hit into an unordered pool. A fair comparison
+fixes final unique evidence and total retrieval work, then measures all-required-evidence
+recall, path validity, duplicate visits, stopping, latency, and answer quality. PRA's proposed
+associative closure is the latent-gist member of this family; it remains proposed until tested
+against these established textual and structural loops.
 
 \subsection{RETRO}
 
@@ -1209,6 +1263,25 @@ quality, repair fraction, encoding avoided, bytes transferred, time to first tok
 isolation. PRA should not claim reusable K/V advantage unless it beats these stronger
 reuse baselines at matched quality.
 
+\subsection{Prompt Cache and KV Quantization}
+
+Prompt Cache names reusable prompt modules, precomputes their attention state, and uses a
+schema to preserve positional validity when modules recur across prompts
+\citep{gim2024promptcache}. It addresses avoided prefill for known repeated text, not semantic
+discovery. KIVI addresses a different resource axis: asymmetric low-bit quantization stores
+keys per channel and values per token to reduce cache bytes without changing which tokens are
+active \citep{liu2024kivi}. These methods make two orthogonal facts explicit:
+\begin{equation}
+\text{reuse controls recomputation},qquad
+\text{quantization controls bytes per retained state}.
+\end{equation}
+
+Both compose with semantic admission. A PRA object cache could use schema-like identity and
+positional provenance, then quantize inactive or cold native K/V. Evaluation must cross cache
+hit/miss with quantization level and selected fraction. Report avoided encoding, transfer
+bytes, dequantization cost, active K/V, and output fidelity; a high hit rate or compression
+ratio alone is not a quality--resource result.
+
 \subsection{KV management design map}
 
 The methods above can be compared by the unit they control and by whether omitted detail
@@ -1232,6 +1305,8 @@ PyramidKV & layer budget & prefill & omitted tokens absent & no & depth heuristi
 Quest & K/V page & each query & full backing K/V remains & no & loose bounds or page miss \\
 MiniCache & adjacent layers & prefill/decode & selected exceptions remain & no & cross-layer mismatch \\
 CacheBlend & reusable text chunk & prefill & raw text and offline K/V remain & no & insufficient contextual repair \\
+Prompt Cache & named prompt module & before requests & reusable attention state & no & position/schema mismatch \\
+KIVI & numeric K/V elements & cache write/read & quantized full cache & no & quantization error or kernel cost \\
 Landmark Attention & token block & each query & block K/V remains & yes & wrong landmark hides block \\
 PRA & URI chunk, then token K/V & layer/step & raw/versioned object may remain & yes/runtime policy & wrong route, stale identity \\
 \bottomrule
@@ -1708,3 +1783,23 @@ read-only.  The evaluation must include wrong-confidence costs: unnecessary esca
 silent cache hits on stale data, and premature stopping before an agent search.
 
 \methodflow{local context}{PRA URI cache}{tree/graph navigation}{external agent/tools}{answer + causal provenance}{praorange}
+
+\section{Cross-Cutting Conditional Computation}
+
+Memory selection is one instance of a wider question: how much computation should a model
+allocate to a token, example, or reasoning state? Adaptive Computation Time lets a recurrent
+model learn a halting distribution over internal steps \citep{graves2016adaptive}. Universal
+Transformers apply a shared self-attentive transition recurrently and can use adaptive
+halting per position \citep{dehghani2019universal}. These methods vary compute depth rather
+than memory content, but their accounting principle is the same. A learned controller must
+pay for its own scores, obey a hard or expected budget, and be compared with fixed computation
+at equal realized work.
+
+PRA extends conditional allocation along three axes: which source is searched, how many
+retrieval hops run, and how much selected detail becomes active. A confidence threshold does
+not by itself bound any of them. Production-safe policies therefore need explicit maxima for
+candidate scoring, closure depth, unique sources, native-KV tokens, and enabled layers.
+Quality should be plotted against realized work, not only against a nominal threshold. This
+connection also clarifies terminology: progressive access is adaptive computation over
+memory, whereas recurrent depth is adaptive computation over representation refinement. The
+two may compose, but they answer different questions.

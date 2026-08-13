@@ -17,7 +17,7 @@
 \setlength{\parskip}{0.35em}
 \setlength{\parindent}{0pt}
 \setlist{nosep,leftmargin=*}
-\pagestyle{fancy}\fancyhf{}\lhead{Long Context, Retrieval, and Structured Access}\rhead{PRAttention-centered tutorial}\cfoot{\thepage}
+\pagestyle{fancy}\fancyhf{}\lhead{Bounded Memory Computation}\rhead{Long context, retrieval, and PRA}\cfoot{\thepage}
 \definecolor{codebg}{RGB}{246,248,250}
 \definecolor{localgray}{RGB}{105,112,120}
 \definecolor{retrievalblue}{RGB}{48,105,190}
@@ -41,34 +41,65 @@
 \draw[flow] (a)--(b); \draw[flow] (b)--(c); \draw[flow] (c)--(d); \draw[flow] (d)--(e);
 \end{tikzpicture}
 \end{center}\par}
-\title{\textbf{How Language Models Access Information Beyond the Local Context:}\\A Tutorial on Long Context, Retrieval, Structured Indexing, Search Agents, and Progressive Retrieval Attention}
+\title{\textbf{Bounded Memory Computation for Language Models:}\\A Survey of Long Context, Retrieval, Native-KV Memory, and Progressive Access}
 \author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{August 2026}
 \begin{document}
 \maketitle
 \begin{abstract}
-Language models can access information beyond their local token stream in several ways: they can enlarge or sparsify attention, carry recurrent state, update neural memory at test time, retrieve text or latent representations, compress and reuse K/V caches, navigate an index, or call tools. These mechanisms are usually studied in separate literatures. We ask a common question instead: \emph{what access contract connects the model to information that is not already local?} An access contract specifies what is stored, how an item is identified, when selection occurs, which representation is materialized, how it enters the model, and which intervention would demonstrate that the selected information caused an output change.
+Language models can enlarge attention, carry recurrent state, retrieve text, query latent
+memory, retain or compress K/V, navigate an index, or call tools. These mechanisms are
+usually compared by context length or benchmark score. We organize them instead by the
+\emph{memory computation} they implement: what is logically available; what becomes causally
+active; how candidates are discovered and searched; which detail is materialized; where it
+enters model depth; how it changes decisions and free-running behavior; and which serving
+resources it consumes. This decomposition reveals recurring category errors. Logical
+availability is not active computation, semantic retrieval geometry is not native attention
+geometry, discovery is not integration, and teacher-forced likelihood is not generated
+behavior.
 
-This tutorial develops that comparison across seven architectural families. Progressive Retrieval Attention (PRAttention, PRA) serves as a worked case rather than a presumed winner. Its corrected prototype represents documents as URI-addressed references, partitions each object into chunks, derives configurable layer-specific gist sets, and transports full token K/V only for selected chunks. The same mechanism can reclassify a displaced prompt prefix as a request-local implicit reference while preserving its recent suffix as direct context. We reconstruct this design, distinguish it from prior retrieval and memory mechanisms, and use a five-seed corrected-router study to show why optimization success is not evidence of causal retrieval: pretraining and frozen-path adaptation improve loss and preserve language ability, while selection remains near chance and content counterfactuals barely separate. Multi-gist and implicit-prompt mechanics are implemented but not yet benchmarked. The survey then derives matched comparisons and controls for testing long context, retrieval, latent memory, structural navigation, and agents on common quality and cost frontiers.
+The survey maps seven established families onto nine computational questions and a common
+comparison taxonomy. Progressive Retrieval Attention (PRAttention, PRA) is a worked synthesis,
+not a presumed winner. Its tested core separates bounded logical memory from a smaller active
+working set, routes over compact gists, and transports selected pretrained native K/V without
+changing the disabled path. Results across standalone and pretrained backbones establish
+fragmentation repair, bounded execution, exact native transport, position-aware cache
+correctness, a learned semantic router, depth-sensitive integration, and one-shot QASPER
+benefit. They also expose limits: HotpotQA errors are often relation-near but evidence-incomplete,
+one-shot retrieval does not provide associative closure, and selected relevance does not imply
+that every token in a selected chunk is required. We therefore separate established PRA
+mechanisms from proposed iterative gist traversal and later smart materialization. The result
+is a conceptual and experimental map for bounded memory systems, including causal controls and
+quality--resource frontiers that apply beyond PRA.
 \end{abstract}
 \tableofcontents
 \newpage
 
 \section{Introduction}
-The canonical Transformer converts a token sequence into contextual representations using dense self-attention. Its generality comes with an implicit boundary: the model can use only information that has already been placed in the sequence or encoded in its parameters. Long-document and knowledge-intensive tasks violate this boundary in different ways. A source may be too large to fit, only a few passages may matter, evidence may be nested inside a document hierarchy, or the identity of the useful source may emerge only after partial reasoning.
+The canonical Transformer gives every token in a bounded sequence access to preceding
+tokens through causal self-attention. A longer sequence expands what is logically present,
+but it does not guarantee that the right information will be found, represented faithfully,
+used at the right layers, converted into a decision, or expressed in a completed answer.
+Conversely, a retrieval system may expose only a small working set while retaining a much
+larger logical store. ``Context length'' therefore collapses several different computational
+questions into one number.
 
-Consider a model repairing a software repository. The repository contains thousands of files, but the immediate question concerns one failing authentication test. A dense-context system loads many files eagerly. A sparse transformer loads the same tokens but changes their interaction graph. A retriever inserts a few passages before generation. A structural navigator follows repository, module, class, and method nodes. An agent searches, opens files, runs tests, and revises its plan. A recurrent or latent-memory model may instead carry information from earlier inspection. These systems do not merely use different algorithms; they place the boundary between local computation and external information in different locations.
+Consider a model repairing a software repository. A dense-context system loads files
+eagerly. A sparse Transformer changes their interaction graph. A retriever inserts passages.
+A structural navigator follows repository, module, class, and method nodes. An agent searches,
+runs tests, and revises its plan. A recurrent or state-space model carries compressed history.
+A K/V system may retain, evict, quantize, page, or reuse hidden detail. These systems place the
+boundary between available information and active computation in different locations. Their
+failures also occur at different boundaries: source discovery, semantic ranking, detail
+transport, deep integration, decision formation, answer realization, or serving.
 
-This observation motivates the survey's organizing question. Sparse attention changes the graph after source text is local. Recurrence preserves state across segments. Differentiable memory stores learned or episodic representations. Retrieval-augmented generation selects passages and usually materializes them as text. Attention-level retrieval inserts hidden states or K/V closer to the decoder. Structural indexes preserve document organization. Search agents acquire information through explicit actions. PRA proposes another contract: a compact local handle names an object, while selection, resolution, materialization, and fusion remain separate operations. The purpose of the taxonomy is to compare these contracts, not to declare one universally preferable.
-
-The review proceeds from a shared vocabulary to one worked architecture and then to the
-broader field. Section~2 reconstructs PRA in detail because its design exposes all parts
-of the access contract in one system. Sections~3--9 then examine the seven families at
-their own system boundaries. The landscape and comparison table synthesize those
-accounts, after which the experimental sections turn architectural differences into
-matched tests. The final sections develop research extensions and limitations. This
-order is pedagogical rather than evaluative: presenting PRA first does not assign it a
-higher evidential status than the established methods that follow.
+This survey treats that boundary as an \emph{access contract}. The contract states what is
+stored, how it is named, how it is searched, what is materialized, where it enters the model,
+how it may be invalidated, and which intervention would show causal use. The seven method
+families remain a useful literature atlas. The nine questions below provide the stronger
+cross-family analysis. PRA then serves as a worked decomposition because it deliberately
+separates naming, routing, native-KV materialization, and layer-local consumption. Presenting
+it early is pedagogical, not an evidential ranking.
 
 \subsection{Seven Access Families}
 The seven categories below follow the location at which an architecture changes the information path. They are not mutually exclusive. A practical system may use sparse local attention, a retrieval index, a K/V cache, and an agent escalation policy at the same time.
@@ -98,6 +129,69 @@ h'_t &= \operatorname{combine}(h_t,M_t;\gamma),
 \end{align}
 where $C_t$ is the candidate set. The materialization policy $\rho$ determines whether those candidates become tokens, latent states, K/V tensors, or observations. The fusion policy $\gamma$ determines whether $M_t$ is concatenated to a prompt, read by cross-attention, injected into a cache, or processed by another model call. This vocabulary separates three questions that are often conflated: whether the right information was selected, whether its representation preserved the needed evidence, and whether the model used that representation. The next section applies the decomposition to PRA before the survey compares it with the other six families.
 
+\subsection{Nine Questions for Any Memory Architecture}
+The same system can answer these questions differently, and success at one does not imply
+success at the next.
+\begin{enumerate}
+\item \textbf{Logical availability:} which source tokens, objects, states, or records can in
+principle be reached?
+\item \textbf{Causal activity:} which of them participate in the current model operation?
+\item \textbf{Discovery:} how does an unknown source enter the candidate set?
+\item \textbf{Search geometry:} which representation and similarity rule rank candidates?
+\item \textbf{Relevance through retrieved concepts:} can an initial hit reveal another
+necessary source, relation, or query?
+\item \textbf{Materialized detail:} after selection, which text, hidden states, or native K/V
+are exposed, and at what granularity?
+\item \textbf{Model depth:} at which layers is memory useful, ignored, or disruptive?
+\item \textbf{Decisions and behavior:} does memory change answer-relevant logits and complete
+generated answers, rather than only average likelihood?
+\item \textbf{Serving and resources:} what are the cold/warm latency, active K/V, backing-store
+bytes, transfer, synchronization, and reuse costs?
+\end{enumerate}
+
+The questions define an experimental chain:
+\begin{equation}
+\text{available}\rightarrow\text{discovered}\rightarrow\text{ranked}
+\rightarrow\text{materialized}\rightarrow\text{integrated}
+\rightarrow\text{decision}\rightarrow\text{behavior}.
+\end{equation}
+An end-task score observes only the last part of this chain. Diagnosing a memory system
+requires measurements and interventions at the intermediate boundaries.
+
+\subsection{Experimentally Forced Distinctions}
+\begin{table}[htbp]
+\centering\small
+\caption{Distinctions that prevent a positive result at one boundary from being attributed
+to another.}
+\begin{tabular}{>{\raggedright\arraybackslash}p{4.1cm}>{\raggedright\arraybackslash}p{10.2cm}}
+\toprule
+Distinction & Why it matters \\\midrule
+Logical availability $\ne$ active computation & A large backing store can coexist with a
+small, bounded attention operation. \\
+Encoding granularity $\ne$ routing granularity & Sources may require model-safe encoding
+blocks while smaller gists provide the useful search resolution. \\
+Position $\ne$ contextual representation & Correct logical coordinates repair reset position;
+they do not restore cross-boundary contextualization lost during independent encoding. \\
+Attention geometry $\ne$ semantic retrieval geometry & Native Q/K is optimized for token
+interaction after selection, not necessarily for ranking evidence before selection. \\
+Discovery $\ne$ integration & An oracle can diagnose whether the consumer works when the
+learned router misses. \\
+Integration $\ne$ decision formation & Memory may alter hidden states or average loss without
+moving answer-critical logits in the right direction. \\
+Decision formation $\ne$ answer realization & Correct local polarity can coexist with a
+truncated, malformed, or otherwise incomplete generated answer. \\
+Teacher-forced likelihood $\ne$ free-running behavior & Token loss and generated usefulness
+must be reported separately. \\
+Lexical match $\ne$ behavioral utility & Exact match may miss useful paraphrases, while fluent
+overlap can conceal a wrong relation. \\
+One-shot relevance $\ne$ relational closure & An initial relevant entity may identify the next
+necessary source only after it has been retrieved. \\
+Selected relevance $\ne$ required detail & A selected chunk can be relevant even when only a
+small subset of its native K/V is causally necessary. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{How to Read the Comparisons}
 Each method account follows the same sequence. It begins with the pressure that motivated
 the method, gives an intuition and formal mechanism, traces the resulting data flow, and
@@ -105,13 +199,13 @@ then discusses evidence and failure modes. The final paragraph asks how to compa
 method with PRA without changing several variables at once. These proposed comparisons
 are experimental designs, not reports of completed experiments.
 
-Claims also have different sources. Statements about prior systems are supported by the
-cited primary work. Statements about the corrected PRA prototype describe repository
-behavior that has been implemented and tested mechanically. Quantitative PRA results
-come from the superseded v1 router unless identified as ordinary-language backbone
-results. Predictions about reuse, recursive benefit, learned selection, or favorable
-quality--cost trade-offs remain hypotheses. Keeping these statuses visible prevents a
-software capability from being read as empirical validation.
+Claims also have different statuses. Statements about prior systems are supported by the
+cited primary work. \emph{Implemented} denotes a tested software mechanism.
+\emph{Measured} denotes an experiment with a stated model, dataset, and intervention.
+\emph{Proposed} denotes an architecture or experiment not yet validated. In particular,
+bounded one-shot native-KV PRA is measured; iterative associative closure and selective
+within-chunk materialization are proposed. Keeping these labels visible prevents software
+capability, oracle performance, and future architecture from being read as the same claim.
 
 \section{Progressive Retrieval Attention}
 \input{pra_expanded}
@@ -421,51 +515,87 @@ claim or a relation of strict inheritance.
 \node[method,fill=purple!10] (graph) at (16,4) {GraphRAG\\PaperTrail provenance};
 \node[method,fill=red!8] (react) at (3.2,1.7) {ReAct / Self-Ask\\IRCoT};
 \node[method,fill=red!8] (tools) at (6.4,1.7) {Toolformer / WebGPT\\RLMs};
-\node[method,fill=orange!20,very thick,minimum width=4.2cm,minimum height=1cm] (pra) at (11.2,1.7) {PRAttention\\URI naming + progressive\\latent KV materialization};
-\node[method,fill=orange!8] (hybrid) at (15.5,1.7) {Proposed hybrid\\router + tree\\+ agent escalation};
+\node[method,fill=orange!20,very thick,minimum width=4.2cm,minimum height=1cm] (pra) at (11.2,1.7) {PRAttention\\semantic gist routing\\+ native K/V payload};
+\node[method,fill=orange!8] (hybrid) at (15.5,1.7) {Proposed iterative PRA\\associative closure\\+ bounded materialization};
 \draw[arr] (full)--(sparse); \draw[arr] (txl)--(rmt); \draw[arr] (dnc)--(memo); \draw[arr] (rag)--(retro); \draw[arr] (unlim)--(pra); \draw[arr] (paged)--(pra); \draw[arr] (raptor)--(pra); \draw[arr] (graph)--(hybrid); \draw[arr] (react)--(tools); \draw[arr] (tools.south) to[bend right=16] (hybrid.south); \draw[arr] (retro)--(pra); \draw[arr] (rmt)--(pra); \draw[arr] (pra)--(hybrid);
-\node[align=center] at (9,-.1) {\textbf{Main axes:} eager $\leftrightarrow$ demand-driven access; flat tokens $\leftrightarrow$ named structure; text $\leftrightarrow$ latent KV;\\static one-shot selection $\leftrightarrow$ progressive reasoning; transient context $\leftrightarrow$ reusable cache; opaque use $\leftrightarrow$ causal provenance.};
+\node[align=center] at (9,-.1) {\textbf{Main axes:} logical availability $\leftrightarrow$ active computation; flat tokens $\leftrightarrow$ named structure;\\text $\leftrightarrow$ latent/native K/V; one-shot selection $\leftrightarrow$ associative closure; transient context $\leftrightarrow$ reusable cache.};
 \end{tikzpicture}
 \end{center}
 \end{landscape}
 
 \section{Cross-Architecture Comparison}
-The comparison in this section treats each family as an access contract.  The
-\emph{store} column identifies what remains outside the current computation, while
-\emph{selection time} identifies when the system narrows that store.  The
-\emph{form} column then records what crosses the boundary into the model.  These
-distinctions matter because two systems can retrieve the same source yet incur different
-costs and preserve different evidence when one inserts text and the other retrieves K/V.
+The comparison treats each family as an access contract. Table~\ref{tab:memory-topology}
+asks what exists and how it crosses the boundary. Table~\ref{tab:memory-execution} asks when
+selection repeats, whether the host must be retrained, and whether active work is bounded
+independently of logical memory. Entries describe the canonical mechanism; individual
+implementations can compose several rows.
+
+\begingroup
 \small
-\begin{longtable}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.4cm}>{\raggedright\arraybackslash}p{2.5cm}}
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{2.4cm}>{\raggedright\arraybackslash}p{2.4cm}>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.6cm}}
+\caption{Memory topology: stored content, search, compression, and materialization.}
+\label{tab:memory-topology}\\
 \toprule
-\textbf{Family} & \textbf{Store} & \textbf{Selection time} & \textbf{Form} & \textbf{Main strength} & \textbf{Characteristic failure}\\\midrule
-Dense long context & prompt tokens & before forward pass & token KVs & general interactions & quadratic cost, distraction\\
-Sparse attention & prompt tokens & architecture or task mask & sparse token KVs & long visible sequence & missing sparse paths\\
-Recurrence & prior segments & chronological & hidden/KV state & streaming continuity & lossy or anonymous history\\
-Test-time neural memory & observed stream & per token/block & updated latent parameters & adaptive long-term state & contamination, reset, correction\\
-Differentiable memory & learned slots/episodes & per layer/step & latent vectors & trainable read/write & optimization and identity\\
-Fixed RAG & document corpus & before or per-token generation & retrieved text encodings & fresh, updateable knowledge & chunking and retrieval miss\\
-Adaptive RAG & document corpus & generated control decisions & text plus reflection state & learned retrieval timing & serial cost, self-critique error\\
-RETRO & token chunks & chunk boundary & cross-attention encodings & scale via nonparametric data & index and corpus dependence\\
-KV/landmark retrieval & hidden/KV index & attention time & selected states or pages & query-aware latent access & selection miss, weak identity\\
-KV retention/reuse & active or stored KV & runtime stages & pruned, merged, or repaired KV & lower bytes and avoided prefill & irreversible loss, context mismatch\\
-Tree/graph index & structural nodes & iterative or one-shot & summaries, spans, or subgraphs & multigranular reasoning & index construction errors\\
-Search agent & open tools/web & iterative decisions & observations or text & maximum flexibility & latency, cost, tool errors\\
-PRA & URI objects, displaced prompt prefixes, and K/V caches & layer/step, demand-driven & selected chunk token K/V & identity, reuse, progressive access & router learning, stale caches, cold encoding cost\\
+\textbf{Family} & \textbf{Stored and where} & \textbf{Search unit} & \textbf{Compression} & \textbf{Materialized detail} & \textbf{Primary boundary}\\\midrule
+\endfirsthead
+\toprule
+\textbf{Family} & \textbf{Stored and where} & \textbf{Search unit} & \textbf{Compression} & \textbf{Materialized detail} & \textbf{Primary boundary}\\\midrule
+\endhead
+Dense long context & prompt / device K/V & none after prompt assembly & none or numeric precision & all token native K/V & sequence length and quadratic interaction\\
+Sparse attention & prompt / device K/V & fixed or learned edge & graph sparsity & token native K/V on allowed edges & missing interaction path\\
+Recurrent or SSM & chronological hidden state & temporal update & bounded latent state & recurrent vector/state & superposition and anonymous history\\
+Test-time neural memory & online parameters/state & learned key or surprise & neural weights & latent read & contamination and correction\\
+Differentiable memory & learned slots / model state & slot content & fixed slot count & latent vectors & address identity and write stability\\
+Fixed RAG & external text corpus & vector/text chunk & embedding/index & retrieved text encoding & source/chunk miss\\
+Iterative RAG & corpus plus partial reasoning & rewritten query & top-$k$ per hop & text per hop & serial errors and stopping\\
+RETRO & external token database & neighbor chunk & nearest-neighbor index & encoded neighbor states & corpus/index dependence\\
+Landmark/latent retrieval & ingested hidden/KV blocks & landmark or latent block & gist/block index & selected hidden or native states & representative miss\\
+KV eviction & active stream cache & importance or token rule & token removal & retained native K/V & irreversible omitted detail\\
+KV paging/quantization & host/device backing K/V & page or none & layout / lower precision & loaded native K/V & bandwidth, bytes, quantization\\
+Prompt/KV reuse & server cache & exact module/prefix & avoided recomputation & cached attention state & context or position mismatch\\
+Tree/graph index & external summaries, nodes, edges & hierarchy/path & summaries or graph & text, spans, subgraph & construction and traversal error\\
+Search agent & open sources/tools & generated action/query & observation filtering & tool observations/text & latency, action, provenance\\
+One-shot PRA & URI/prompt-head objects and backing native K/V & semantic URI/chunk gist & compact routing index & selected full native K/V & route, depth, cold encoding\\
+Iterative PRA (proposed) & same plus visited/path state & retrieved gist frontier & bounded beam/closure & final selected native K/V & hop miss, cycles, budget\\
 \bottomrule
 \end{longtable}
-\normalsize
 
-No row dominates every column.  Dense context provides the broadest interaction graph
-once tokens are local, whereas retrieval and navigation avoid loading much of the store.
-Agents can discover sources outside a fixed index but pay for iterative model and tool
-calls. Persistent-state systems avoid external lookup but compress history into anonymous
-latents. KV policies can reduce bandwidth or prefill without solving source discovery.
-PRA is most directly compared with Landmark Attention, latent retrieval, CacheBlend-style
-reuse, and hierarchical indexing: its URI identity and chunk routing are useful only if
-they improve selection, reuse, or auditability enough to repay cache construction and
-control-plane complexity.
+\begin{longtable}{>{\raggedright\arraybackslash}p{2.8cm}>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}p{3.0cm}}
+\caption{Execution policy. ``Bounded'' means active work can remain bounded while the logical
+store grows; it does not mean constant end-to-end latency.}
+\label{tab:memory-execution}\\
+\toprule
+\textbf{Family} & \textbf{One-shot / iterative} & \textbf{Consumed form} & \textbf{Host training} & \textbf{Active bound} & \textbf{Question it best answers}\\\midrule
+\endfirsthead
+\toprule
+\textbf{Family} & \textbf{One-shot / iterative} & \textbf{Consumed form} & \textbf{Host training} & \textbf{Active bound} & \textbf{Question it best answers}\\\midrule
+\endhead
+Dense long context & one forward & native K/V & often context adaptation & no, grows with prompt & What if all evidence interacts?\\
+Sparse attention & layerwise & native K/V & usually yes & pattern-dependent & Which token edges are allowed?\\
+Recurrent/SSM & iterative over stream & latent state & yes & yes & What summary should chronology carry?\\
+Neural memory & iterative reads/writes & latent/state parameters & yes & slot/state bound & What should be learned into mutable state?\\
+Fixed RAG & one-shot or per segment & text/encoder states & retriever/reader varies & top-$k$ & Which external passages should be inserted?\\
+Iterative RAG/agent & iterative & text/observations & prompting or training & per-hop, not total unless capped & What new source becomes relevant next?\\
+RETRO & per chunk & encoded neighbor states & yes & neighbors per chunk & Can nonparametric data scale pretraining?\\
+Landmark/KV retrieval & per query/layer & hidden/native K/V & method-dependent & selected blocks/pages & Which latent block should be active?\\
+KV management/reuse & runtime allocation & retained/reused native K/V & usually no & byte/page budget & How can serving retain or reuse states?\\
+Tree/graph navigation & one-shot or iterative & summary, text, or graph & index construction & branch/depth budget & Which structural path exposes evidence?\\
+One-shot PRA & per configured layer/step & selected native K/V & thin adapter/router & yes, K/V budget & Can named logical memory become a bounded working set?\\
+Iterative PRA (proposed) & bounded hops & gist path then native K/V & expected router/controller & hop plus final K/V budgets & Can retrieved concepts close an evidence chain?\\
+\bottomrule
+\end{longtable}
+\endgroup
+
+No row dominates every column. Dense context provides the broadest interaction graph after
+eager materialization. Recurrent and state-space systems bound active state by compressing
+chronology. RAG and structural indexes keep source text external but use different discovery
+and traversal rules. KV policies control bytes, bandwidth, and reuse without necessarily
+solving semantic discovery. Agents maximize discovery flexibility while adding serial model
+and tool calls. PRA is most directly compared with Landmark Attention, trained retrieval,
+Prompt Cache/CacheBlend, and hierarchical navigation. Its identity and native-KV transport
+matter only if they improve a measured quality--resource frontier after source encoding,
+routing, transfer, and integration are charged.
 
 \section{Adapting Original Experiments to PRA}
 \subsection{A benchmark matrix}
@@ -544,6 +674,179 @@ routing, attention, generation, and synchronization in cold, warm, and shared-ca
 regimes.  Cache hit rate without avoided work is not useful; latency reduction without
 answer preservation is not success.
 
+\section{Synthesis Across the Nine Questions}
+
+\subsection{Availability and causal activity}
+Dense context makes availability and activity nearly coincide: after prefill, most prompt K/V
+remains available to attention. Sparse attention changes the interaction graph but usually
+retains the sequence. Recurrence and state-space models compress chronology into bounded
+state. RAG, structural indexes, agents, and PRA place a larger store beyond the active model
+operation. The relevant resource claim is therefore not ``supports $N$ tokens'' but the
+relationship among logical source size, index size, active detail, and work per decision.
+
+\subsection{Discovery, geometry, and closure}
+Discovery ranges from none (a fixed prompt), through search over a known corpus, to structural
+navigation and open tools. Search geometry may be lexical, embedding-based, graph-based,
+attention-native, learned asymmetric, or generated as an action. PRA's evidence shows why the
+choice is substantive: reproducing native Q/K rankings did not produce strong semantic
+ranking, whereas a small learned metric did. One-shot ranking still cannot discover a source
+whose relevance appears only through a retrieved concept. Iterative RAG, search agents, graph
+walks, and proposed associative-closure PRA address that separate problem.
+
+\subsection{Detail, depth, and behavior}
+Retrieved text asks the host to encode and integrate evidence in its familiar token pathway.
+Latent memories avoid repeated text but introduce representation compatibility. Native-KV
+transport preserves pretrained value content and attention head structure, yet its effect
+depends on layer placement and consumer calibration. The evaluation chain must continue from
+retrieval recall through oracle use, answer-critical logits, completion, and free-running
+behavior. QASPER demonstrates a positive one-shot integration regime; HotpotQA demonstrates
+that relation-near retrieval is not all-required-evidence closure.
+
+\subsection{Serving and resource frontiers}
+Paging, quantization, eviction, reuse, semantic selection, and materialization control
+different terms. They should be composed rather than credited interchangeably. An experiment
+must state whether it reduces FLOPs, active K/V tokens, HBM residency, host bytes, transfer,
+prefill, or repeated source encoding. Quality should be plotted against the resource actually
+changed, with cold and warm paths separated.
+
+\section{Research Lineage and Reusable Related-Work Synthesis}
+
+The field is best understood as several boundary shifts rather than one chronology. Memory
+Networks and differentiable computers separated storage and content addressing from recurrent
+state. Transformer-XL, recurrent memory models, selective state-space models, Infini-attention,
+and Titans made chronological state longer lived, more selective, or adaptive. REALM, RAG,
+Atlas, Self-RAG, and RETRO moved updateable knowledge outside parameters and changed when it is
+retrieved. Landmark Attention and latent K/V retrieval moved selection closer to attention.
+PagedAttention, Prompt Cache, CacheBlend, KIVI, and eviction policies separated allocation,
+reuse, precision, and bandwidth. RAPTOR, MemWalker, PageIndex, and GraphRAG restored hierarchy
+and relations. ReAct, IRCoT, Toolformer, WebGPT, and recursive context programs made discovery
+an explicit sequential policy.
+
+The following compact comparisons are intended to remain reusable in related-work sections:
+
+\paragraph{Long context versus bounded memory.}
+Long-context and sparse-attention methods enlarge or restructure the token interaction graph
+after evidence has been materialized. Bounded-memory methods keep a larger logical store
+outside the active graph and pay for selection. The former avoids retrieval misses; the latter
+can reduce active work when relevance is sparse. Matching nominal context length does not
+match their resource or failure surfaces.
+
+\paragraph{RAG versus latent/native memory.}
+RAG usually returns text or encoder states and lets the reader contextualize them for the
+current query. Latent and native-KV systems can avoid repeated text processing and enter closer
+to attention, but must preserve model, position, layer, and version compatibility. Retrieval
+quality and representation fidelity are independent experimental axes.
+
+\paragraph{KV management versus semantic admission.}
+Eviction, quantization, paging, and prefix reuse govern the physical lifecycle of states that
+have already been encoded. Semantic routing decides which source should become active. These
+mechanisms compose: a semantic miss cannot be repaired by better paging, and a good route can
+lose its systems advantage through wasteful transfer or storage.
+
+\paragraph{One-shot retrieval versus associative closure.}
+One-shot systems rank candidates from an initial query. Iterative retrievers, graph walkers,
+and agents allow retrieved concepts to formulate the next access. They should be compared at a
+fixed final unique-evidence budget and with path-level recall, because allocating more total
+candidates can imitate reasoning without improving selection.
+
+\paragraph{PRA's position.}
+PRA combines named logical objects, compact semantic search, selected native-KV payload, and a
+bounded active working set. Each component has precedents; the contribution is their explicit
+separation and causal interface. Current evidence supports the one-shot native-KV form and
+depth-sensitive pretrained integration. Iterative closure, smart detail allocation, and
+production serving remain open.
+
+\section{Research Frontier}
+
+\subsection{Multi-gist semantic resolution}
+Multiple subchunk means are a cheap way to reduce averaging loss, but measured increases in
+native-Q/K fidelity did not yield a monotone semantic-recall gain. Multi-gist work should
+therefore compare parameter-free segment means with learned semantic projections at equal
+index bytes and selected native-KV fraction. Failure of the parameter-free method strengthens
+the case for learned routing; success would provide a simpler and more interpretable index.
+
+\subsection{Iterative associative closure and path preservation}
+The next architectural question is whether retrieved gists can reveal another required object
+without rerunning the full transformer over every intermediate passage. The controller should
+retain root anchoring, visited identities, hop scores, and predecessor edges; enforce depth,
+beam, cycle, and final-unique-chunk budgets; and compare against one-shot top-$B$, IRCoT-style
+text iteration, and graph traversal. HotpotQA tests relational closure, while QASPER guards
+against regressing the established one-shot regime.
+
+\subsection{Progressive and smart materialization}
+Discovery returns relevant objects; materialization decides how much detailed native K/V each
+receives. Whole-chunk admission is the conservative baseline. Page bounds, progressive
+escalation, per-layer budgets, and token-level allocation may reduce active memory. The central
+factorial experiment crosses oracle versus learned object selection with full versus partial
+detail. It distinguishes a router miss from an allocator miss and tests the redundancy and
+attention-overload hypotheses described in the PRA chapter.
+
+\subsection{Production serving}
+The eventual systems claim requires indexed or approximate search, batched heterogeneous
+materialization, fused sparse attention, cache admission and eviction, quantized backing tiers,
+authorization, version invalidation, and observability. The target is an end-to-end frontier,
+not a microbenchmark: answer quality and causal evidence use versus cold/warm latency,
+throughput, active K/V, resident bytes, transfer, and avoided prefill under realistic sharing.
+
+\section{Cognition as a Bounded Analogy}
+
+The decomposition has cautious links to cognitive and economic models, but no architectural
+homology is implied. Working-memory research treats immediate processing capacity as limited
+and coordinated with longer-term knowledge \citep{baddeley1992working}. Bounded rationality
+studies decisions under finite information and computational resources
+\citep{simon1955behavioral}. Rational-inattention models make information acquisition itself a
+costly allocation decision \citep{sims2003implications}. These traditions motivate useful
+questions for machine memory: which cues trigger access, what information becomes active,
+how interference changes decisions, and how effort adapts to expected value.
+
+The analogy stops at those questions. Transformer K/V is not human episodic memory; a URI
+resolver is not biological recall; a learned top-$k$ router is not a neural theory of attention;
+and a fixed token budget is not a psychometric capacity estimate. The machine mechanisms have
+explicit tensors, training objectives, security domains, and serving costs. Cognitive language
+is useful only when it yields a falsifiable computational intervention, such as cue corruption,
+interference, delayed access, or effort--quality trade-offs.
+
+\section{Discussion}
+
+The survey's central conclusion is that long-context research is moving from a single context
+window toward a decomposition of memory computation. Logical availability, semantic discovery,
+detail transport, layer integration, decision formation, and serving are separable design
+problems. Architectures differ in where they compress information and where they risk an
+irreversible miss.
+
+PRA makes this decomposition unusually explicit, but the evidence is deliberately narrower
+than the vision. The one-shot native-KV system demonstrates bounded active memory, positional
+and payload correctness, learned semantic routing, cross-family retrofit, and a positive
+QASPER adaptation regime. It also demonstrates unresolved router headroom, depth sensitivity,
+small evaluation cohorts, and a HotpotQA relational boundary. Those negative boundaries are
+diagnostic: they motivate associative closure before indiscriminate consumer capacity, and
+they motivate detail allocation only after evidence identity is correct.
+
+PRA should not be expected to dominate when sources are short and densely relevant, exact
+prefix reuse solves the workload, source discovery is open-ended, or a one-shot text retriever
+already fits the quality and latency target. Its plausible regime has large versioned objects,
+sparse query-specific relevance, repeated use, auditable identity, and enough workload reuse to
+amortize indexing and encoding. Even there, strong long-context, RAG, structural, KV-management,
+and agent baselines remain necessary.
+
+\section{Conclusion}
+
+An information source can be available without being active, relevant without containing all
+required detail, correctly routed without being integrated, integrated without changing the
+right decision, and decision-useful without producing a complete answer. A survey that treats
+all of these outcomes as ``context use'' cannot localize progress.
+
+The nine-question framework supplies that localization across dense and sparse attention,
+recurrence and state-space models, differentiable and test-time memory, RAG, latent/KV
+retrieval, structural navigation, and agents. PRA is the worked synthesis: a measured one-shot
+architecture that separates semantic search from native execution and logical memory from an
+active K/V budget. Iterative associative closure is the next experiment; selective
+materialization and optimized serving are later layers of the research program. Keeping those
+statuses distinct makes the central claim both more modest and more useful: bounded memory
+computation is an emerging systems and modeling problem whose components can now be tested
+independently.
+
+\iffalse
 \section{Research Lineage and Influence}
 The field can be read as a sequence of boundary shifts. Memory Networks moved relevant facts outside the recurrent state. Transformer-XL moved context across segments; Block-Recurrent Transformer, FAM, Infini-attention, and Titans made the carried state progressively more structured or adaptive. REALM, RAG, and Atlas moved updateable knowledge outside parameters, while Self-RAG learned when retrieval and critique should occur. RETRO and Memorizing Transformer moved retrieved information closer to hidden-state computation. Unlimiformer and Landmark Attention recast attention as latent token or block retrieval. PagedAttention, Quest, adaptive retention, depth compression, and CacheBlend made allocation, bandwidth, and reuse separate systems problems. RAPTOR, MemWalker, and PageIndex restored document hierarchy. ReAct, IRCoT, Toolformer, and WebGPT made information acquisition an action policy. PRA's proposed step is to make \emph{named reference resolution and reusable latent materialization} a first-class attention capability.
 
@@ -681,8 +984,13 @@ result: it identifies whether the failure lies in naming, selection, materializa
 fusion, or runtime reuse, and clarifies where dense context, RAG, structural navigation,
 and agentic search should meet.
 
+\fi
 \section*{Online Resources}
-PRA source manuscripts used for this tutorial were supplied by the author. Live links for external works are embedded in the bibliography through DOI or arXiv URLs. The PageIndex discussion refers to its public repository and documentation; claims should be independently reproduced.
+The PRA manuscripts, implementation, experiment artifacts, and build sources used in this
+survey are distributed together in the project repository. Live links for external works are
+embedded in the bibliography through DOI, proceedings, or arXiv URLs. Repository-only systems
+and all quantitative claims should be independently reproduced before external deployment or
+comparison.
 
 \bibliographystyle{plainnat}
 \bibliography{references}

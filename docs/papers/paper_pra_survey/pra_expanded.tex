@@ -1,350 +1,305 @@
-\subsection{PRA as a Worked Access Contract}
+\subsection{PRA as a Worked Decomposition}
 
-PRA is easiest to understand as an \emph{access contract}, not as a claim that another
-attention formula solves long context. Consider the repository example from the
-introduction. A token such as \texttt{<REF\_1>} can name the authentication module without
-placing that module's full source in the prompt. The name identifies a possible source;
-it does not decide whether to read the source or how to represent it. Paper~0 generalizes
-this observation into a logical context graph. Paper~1 specializes it into a small
-decoder-only PyTorch model. Together they separate five operations:
+Progressive Retrieval Attention (PRAttention, PRA) begins with a separation that ordinary
+prompt construction leaves implicit: information may be \emph{logically available} without
+participating in every model operation. A prompt can advertise a document, prior prompt
+prefix, code object, or record through a stable handle. The runtime can retain a compact
+search view for many such objects while admitting full-detail memory for only a selected
+working set. The model therefore sees two context sizes:
+\begin{equation}
+N_{\rm logical}=\left|\bigcup_{u\in\mathcal U}z_u\right|,
+\qquad
+N_{\rm active}(t,\ell)=T_{\rm local}+\sum_{c\in A_{t,\ell}}|c|,
+\end{equation}
+where $z_u$ is the source bound to URI $u$, $A_{t,\ell}$ is the set of chunks active at
+step $t$ and layer $\ell$, and $T_{\rm local}$ is the direct sequence length. Bounded
+execution requires a configured upper bound on $N_{\rm active}$, not a promise that the
+logical store is small.
+
+This is an access contract with five operations:
 \begin{enumerate}
-\item \textbf{naming}: a handle states which object may be consulted;
-\item \textbf{selection}: a policy chooses among advertised objects;
-\item \textbf{resolution}: a resolver binds a URI, policy, and version to content;
-\item \textbf{materialization}: content becomes text, a summary, hidden states, or
-      layer-specific keys and values; and
-\item \textbf{fusion}: the decoder consumes that representation through prompt tokens,
-      cross-attention, native KV injection, or another transport.
+\item \textbf{name}: a handle identifies an object or a request-local prompt prefix;
+\item \textbf{resolve}: a policy-aware resolver binds identity and version to content;
+\item \textbf{index}: compact gists make chunks searchable without treating the gist as
+the evidence itself;
+\item \textbf{materialize}: selected chunks expose full-detail model-native K/V; and
+\item \textbf{consume}: selected native K/V enters chosen pretrained attention layers.
 \end{enumerate}
-The list summarizes a causal chain rather than five interchangeable names. A better
-selector does not establish a better transport, and a useful memory branch does not show
-that the selector chose the correct object. PRA's proposed package combines explicit URI
-identity, separate reference and chunk routing, reusable per-layer K/V objects,
-progressive triggering, and counterfactual evaluation. Each component has precursors.
-The scientific question is whether this combination improves quality per unit of active
-context, latency, and memory in regimes with sparse, reusable, naturally named evidence.
+PRA's novelty claim is this decomposition and its bounded composition, not the invention of
+top-$k$, K/V caching, cross-attention, or retrieval. The position, standalone, and pretrained
+studies evaluate different pieces of the contract \citep{simao2026praArchitecture,simao2026praStandalone,
+simao2026praPosition,simao2026praHF}. They do not establish a universal advantage over long
+context or RAG.
 
-At the representation level, the same chain has three easy-to-confuse objects.  A handle
-is a symbolic address.  A gist set is a small, layer-specific index entry used to rank one
-chunk or URI.  Detailed token K/V is the material the decoder reads after selection.  The
-prototype can compute the latter two ahead of the prompt forward or recover them from a
-cache; this scheduling choice does not erase their different roles.
+\methodflow{logical objects + local tail}{model-safe native encoding}{compact semantic index}{budgeted native K/V}{selected pretrained layers}{praorange}
 
-\subsection{Reference graph, resolver, and runtime state}
+\subsection{Identity, Resolution, and Bounded Logical Memory}
 
-The repository example becomes a graph when a module refers to a class, the class refers
-to a method, and the method refers to a configuration object. Let this context graph be
-$\mathcal G=(\mathcal V,\mathcal E)$. A node $v=(u,z,s,m,R)$ contains a stable URI $u$,
-content $z$, optional summary metadata $s$, metadata $m$, and a local reference table
-$R$. An edge $(v_i,a,v_j)$ exists when $R_i[a]=u_j$; lexical URI prefixes do not create
-edges implicitly. The resolver remains outside the neural layer:
+Let the context graph be $\mathcal G=(\mathcal V,\mathcal E)$. A node
+$v=(u,z,m,R,\nu)$ contains URI $u$, content $z$, metadata $m$, an explicit child-reference
+table $R$, and version $\nu$. An edge exists because a reference table names a child, not
+because two URI strings share a prefix. A resolver remains outside the neural layer:
 \begin{equation}
- \rho(u,p,t)\longrightarrow(z,s,R,m,\nu),
+\rho(u,p,t)\longrightarrow(z,m,R,\nu),
 \end{equation}
-where $p$ is an authorization domain, $t$ identifies logical time, and $\nu$ is the
-resolved version. This interface permits a file, database row, document section, code
-symbol, graph query, or tool result to share a naming scheme without pretending that
-they share a physical representation.
+where $p$ is an authorization domain and $t$ is logical time. The separation permits files,
+database rows, prompt history, and document spans to share an interface without pretending
+that they share a physical store.
 
-The runtime state before token $t$ is
-\begin{equation}
- \Omega_t=(\mathcal G,\mathcal H_t,A_t,\mathcal C_t,p_t,\nu_t),
-\end{equation}
-with advertised handles $\mathcal H_t$, active references $A_t$, resident materializations
-$\mathcal C_t$, policy state $p_t$, and provenance/version state $\nu_t$. A persistent
-cache key must include at least $(u,v,\ell,m,\theta,p)$: URI, content version, consumer
-layer, model identity, relevant encoder parameters, and policy domain.  Paper~1 uses only
-the URI because it rebuilds and discards a private cache for every example; that
-specialization prevents cross-example leakage but does not demonstrate persistent reuse.
+A cache key for reusable neural payload must bind at least URI, content version, model,
+consumer layer, encoding policy, positional provenance, and authorization domain. Otherwise
+identical names can alias different content or a K/V tensor can be consumed under a model or
+coordinate system that did not create it. Request-private caches avoid cross-request leakage
+but do not demonstrate shared reuse. Persistent reuse therefore adds invalidation, tenancy,
+and provenance obligations beyond the attention mechanism.
 
-\methodflow{handle + local table}{resolve bounded graph}{route chunk gists}{materialize token K/V}{attend + audit}{praorange}
+Long prompts use the same contract without requiring an explicit document URI. The recent
+tail remains in direct causal attention; an older prefix becomes a request-local implicit
+\texttt{\_\_head\_\_} object with its own chunk, routing, and budget parameters. This makes
+old prompt information recoverable without keeping all of it active. It does not extend the
+backbone's learned positional range, and generated-token rollover is a separate streaming
+policy.
 
-\subsection{Selection, recursive expansion, and the implemented specialization}
+Recursive graph construction is bounded by shared object, depth, branch, source-token, and
+materialization budgets. Child-first construction allows a parent representation to use
+completed child memory where configured, while cycle states prevent unbounded traversal.
+These mechanics establish safe graph handling. A learned policy that follows evidence from
+one retrieved object to another has not yet been established.
 
-Selection should be cheap enough to avoid materializing every candidate, but it must use
-a representation compatible with the consuming layer. The corrected prototype therefore
-partitions reference $u$ into chunks $c\in\mathcal C_u$. At layer $\ell$, it reconstructs
-the projected key heads for every chunk token.  In the default single-gist mode it
-mean-pools them into
-\begin{equation}
-g^K_{u,c,\ell}=\frac{1}{|c|}\sum_{j\in c}
-\operatorname{mergeheads}(K_{u,c,\ell,j}).
-\end{equation}
+\subsection{Encoding Granularity, Routing Granularity, and Native Payload}
 
-More generally, paired key/value gist sets
-$G^K_{u,c,\ell},G^V_{u,c,\ell}\in\mathbb{R}^{G_c\times d}$ preserve several regions of a
-chunk.  Deterministic k-means, diversity prototypes, a line-topology self-organizing map,
-and a global/local hybrid complement the one-vector mean, last-token, reference-end, and
-GRU modes.  Value gists reuse the key assignments so each routing key remains paired with
-the content region that it names.
+One source partition cannot optimize every stage. An \emph{encoding block} must fit the
+backbone's model-safe context and preserve enough neighboring text for useful hidden states.
+A smaller \emph{routing chunk} supplies search resolution. Several routing chunks may point
+into one contiguous encoded block, and their selected spans recover the corresponding native
+keys and values. Thus independent 32-token encoding and 32-token routing is not equivalent to
+contiguous 512-token encoding followed by 32-token routing.
 
-The current layer's projected last-token query is
-\begin{equation}
-q_{t,\ell}=\operatorname{mergeheads}(X^{(\ell)}W_Q^{(\ell)})_t,
-\end{equation}
-and its content-routing scores for chunk $c$ are
-\begin{equation}
-a_{u,c,\ell,j}=\cos(q_{t,\ell},g^K_{u,c,\ell,j}),\qquad
-a_{u,c,\ell}=\operatorname{Agg}_{j=1}^{G_c}a_{u,c,\ell,j}.
-\end{equation}
-Maximum is the default gist-set aggregation, with mean and log-sum-exp alternatives.
-Separately constructed URI-level gist sets let reference-first routing select objects
-before inspecting their chunk gists.  The default hierarchical policy selects
-at most $k_r$ references, and independently selects at most $k_c$ chunks within each
-retained reference. Optional summaries can replace, compete with, or augment the content
-score, but they are disabled by default and missing summaries fall back to content.
-Thus the last local query first chooses a small working set.  It does not yet read the
-selected passages, and its cosine scores are not the later token-level attention map.
-
-An expansion operator $\mathcal X(A,\mathcal G,b,d)$ follows explicit child tables under
-shared branching, reference, token, and depth budgets. The resulting transition is
+For layer $\ell$, source block hidden states $H^{(\ell)}_c$ are projected through the
+pretrained attention module:
 \begin{align}
-A_t&=\mathcal S_{k,\tau}(q_t,\mathcal C_t),&
-A'_t&=\mathcal X(A_t,\mathcal G,b,d),\\
-\mathcal C'_t&=\operatorname{admit}(\operatorname{encode}(\rho(A'_t))),&
-(y_t,\Omega_{t+1})&=\operatorname{attend}(x_{\leq t},\mathcal C'_t,\Omega_t).
+K^{(\ell)}_c &= \operatorname{RoPE}_{p_c}
+  \left(H^{(\ell)}_c W^{(\ell)}_K\right), &
+V^{(\ell)}_c &= H^{(\ell)}_c W^{(\ell)}_V.
 \end{align}
-The runtime now implements deterministic child-first construction, explicit build states,
-cycle policies, and shared budgets. Parent encoding may read already completed child
-memory.  Concretely, if a module points to a policy object, the policy object is made
-ready before the parent module is encoded; the parent can then form its own layer states
-with that child memory available.  Cycle markers and shared budgets keep this procedure
-from turning a graph into unbounded recursion. This establishes bounded recursive mechanics, not a learned expansion policy or an empirical recursion benefit. Persistent cross-request reuse also remains unmeasured.
-
-\subsection{Prompt history as a request-local object}
-
-The prototype extends the same access contract to overlong initial prompts.  If exact
-token sequence $x_{1:N}$ exceeds direct budget $D$, it keeps the recent suffix
-$x_{N-D+1:N}$ in local causal attention and registers the older prefix $x_{1:N-D}$ under
-the reserved request-local URI \path{pra://implicit/prompt/head}.  The visible diagnostic
-name \texttt{\#\_\_head} is not inserted as a token.  The implementation passes the
-original prefix IDs directly through ordinary partitioning, per-layer encoding, gist
-routing, and selected-token K/V materialization; this avoids a lossy decode--retokenize
-boundary.
-
-The identical URI remains semantically isolated across batch rows because each row owns a
-private cache.  Variable direct-tail lengths use a validity mask, and routing reads the
-last valid query.  Explicit references can coexist with the head but cannot claim its
-reserved URI.  Configurable \texttt{truncate} and \texttt{error} policies provide controls,
-while a prompt-specific chunk cap bounds or retains all head chunks.  This is a mechanically
-tested initial-prompt adapter, not evidence of better long-context quality or cost; the
-prototype does not yet roll generated history into new implicit references.
-
-\subsection{Layer-specific materialization and PRAttention}
-
-Routing gists identify promising chunks; they are not the evidence supplied to the
-decoder. For URI $u$, the cache entry instead stores full token memory and paired gist
-sets for every chunk and PRA layer:
-\begin{equation}
-C_u=\left(u,z_u,m_u,
-\{(c,K_{u,c,\ell},V_{u,c,\ell},G^K_{u,c,\ell},G^V_{u,c,\ell})\}_{c,\ell}\right).
-\end{equation}
-Here $K_{u,c,\ell}$ and $V_{u,c,\ell}$ retain all selected chunk tokens, whereas the
-$G_c\times d$ gist sets support routing. Mean, last-token, reference-end, GRU, k-means,
-prototype, self-organizing-map, and hybrid pooling are configurable; detached mean pooling
-with $G_c=1$ is the compatibility default. A selected set
-$\mathcal A_{b,\ell}$ is materialized independently for batch row $b$. Local attention
-remains causal, while reference memory is a separate non-causal cross-attention source:
+These tensors retain the native K/V head layout. The runtime does not insert a separate
+memory-value projection in the default path. After selection, it concatenates admitted
+native payload with local native K/V and invokes the model's ordinary eager attention
+function with a mask that preserves local causality and permits access to memory:
 \begin{align}
-O_{\rm local}&=\operatorname{softmax}((QK^\top+M_{\rm causal})/\sqrt{d_h})V,\\
-O_{{\rm mem},b}&=W_{O,\rm mem}\operatorname{merge}
- \left[\operatorname{softmax}(Q_bK_{\mathcal A_b,\ell}^\top/\sqrt{d_h})
- V_{\mathcal A_b,\ell}\right],\\
-O&=O_{\rm local}+\alpha O_{\rm mem}.
+\widetilde K^{(\ell)}&=[K^{(\ell)}_{A};K^{(\ell)}_{\rm local}], &
+\widetilde V^{(\ell)}&=[V^{(\ell)}_{A};V^{(\ell)}_{\rm local}],\\
+O^{(\ell)}&=\operatorname{NativeAttn}
+  \left(Q^{(\ell)}_{\rm local},\widetilde K^{(\ell)},
+  \widetilde V^{(\ell)},\widetilde M\right).
 \end{align}
-The two attention operations answer different questions.  Causal self-attention asks
-which earlier prompt tokens matter at each local position.  Memory cross-attention asks
-which token details inside the already selected reference chunks matter.  In the default
-\texttt{selected\_chunks} mode only routed chunks enter this second computation.
-\texttt{full\_reference} opens every chunk in a selected URI and therefore removes the
-chunk-selection bottleneck; \texttt{gist\_only} exposes one position per selected chunk
-and tests what is lost when detailed token memory is withheld.
+The disabled branch delegates to the unmodified attention module. Exact-bypass tests are
+therefore a compatibility gate: no selected memory must yield the original logits, not an
+approximation to them. For fixed selected identities, the tested K, V, and native attention
+output are bit-exact in the positional study \citep{simao2026praPosition}.
 
-Variable memory lengths can be processed row by row, in one masked rectangle, or in
-deterministic length buckets. Empty rows receive an exact zero memory residual, including
-when the output projection has bias. The prototype can zero-initialize $W_{O,\rm mem}$
-for isolated phase-2 adaptation. This
-makes the memory contribution exactly zero at initialization and preserves the local
-path when only that projection is trained.  It is a useful engineering control, not an
-intrinsic no-forgetting theorem for PRA.
+This native path differs from the historical standalone cross-attention variant. That
+variant encoded reference K/V through a distinct memory branch and output projection; it is
+useful as an adaptation control but breaks native-payload equivalence. The survey treats it
+as a secondary design point rather than PRA's default transport.
 
-\begin{lstlisting}[caption={Reference-memory construction and consumption in Paper 1}]
-row_caches = []
-for sample in batch:                    # private semantic address space
-    cache = PRASimpleMemoryCache()
-    builder = RecursiveReferenceCacheBuilder(model, resolver,
-                                               tokenizer, cache, cfg)
-    budget = builder.new_budget()
-    for handle in sample.references:
-        builder.ensure_cached(handle.uri, budget=budget)
-        # ensure_cached resolves children first, partitions each object,
-        # and stores per-layer token K/V plus paired gist sets per chunk.
-    row_caches.append(cache)
+\subsection{Gists and Search Geometry}
 
-batch_cache = PRABatchedMemoryCache(row_caches)
-model.set_pra_cache(batch_cache)
-logits = model(tokens)                   # one [B,T] prompt forward
-\end{lstlisting}
+Routing should inspect a representation much smaller than full payload. For chunk $c$, a
+simple gist partitions hidden states into $G$ contiguous subchunks and mean-pools each:
+\begin{equation}
+g_{c,j}=\frac{1}{|S_{c,j}|}\sum_{i\in S_{c,j}}h_i,
+\qquad j\in\{1,\ldots,G\}.
+\end{equation}
+A query $q$ scores each chunk by maximum, mean, or log-sum-exp aggregation over its gists.
+Reference-first routing can rank URI-level gists before chunk gists. Fixed-$k$ bounds the
+absolute payload; fixed-fraction selection holds sparsity pressure approximately constant
+as the candidate count grows. Both should be reported because a constant $k$ becomes a
+harder retrieval task at larger scales.
 
-\begin{lstlisting}[caption={Simplified shape of routing and materialization in one PRA layer}]
-class PRAttention(nn.Module):
-    def forward(self, x, cache, causal_mask):
-        q, k, v = self.project_local(x)
-        local = causal_attention(q, k, v, causal_mask)
-        q_last = merge_heads(q[:, :, -1])       # [B,d_model]
-        hits_by_row = cache.route_chunks(q_last, layer=self.layer_id,
-                                         top_refs=self.k_ref,
-                                         top_chunks=self.k_chunk)
-        rows = []
-        for row, hits in enumerate(hits_by_row):
-            mem_k, mem_v = cache.materialize_selected(hits,
-                                                       layer=self.layer_id)
-            rows.append(cross_attention(q[row], mem_k, mem_v)
-                        if hits else torch.zeros_like(local[row]))
-        return local + self.memory_out(torch.stack(rows))
-\end{lstlisting}
+The important lesson from positional and pretrained experiments is that a native attention
+key is not automatically a good semantic index. Centered multi-gists increasingly reproduce
+native token-Q/K ranking, yet their semantic retrieval quality remains almost flat. A learned
+32-dimensional asymmetric metric shows the reverse: strong semantic ranking with low native
+Q/K fidelity. The robust decomposition is therefore
+\begin{equation}
+\underbrace{r_\phi(q,g_c)}_{\text{semantic discovery}}
+\quad\longrightarrow\quad
+\underbrace{(K_c,V_c)}_{\text{native execution}}.
+\end{equation}
+The router may use learned semantic geometry while the selected payload remains untouched
+native K/V. This separation also prevents a lossy routing summary from silently becoming the
+memory content.
 
-The second listing deliberately omits head reshaping, row ownership arguments,
-rectangular masks, and diagnostics.  Its point is the boundary between the small objects
-used to rank chunks and the full token K/V tensors used after selection.  The actual
-batch wrapper guarantees that query row $b$ searches only cache namespace $b$, even when
-two rows reuse the same URI string.  Unequal memory lengths are padded or bucketed only
-after selection, with masks preventing padding or another row's content from becoming
-evidence.  Conflating routing gists with detailed K/V would instead turn a routing
-approximation into a lossy memory representation.
+\subsection{Position Is Not Context}
 
-\subsection{Reference-data construction and leakage controls}
+Independently encoded chunks introduce two different errors. \emph{Positional reset} assigns
+each chunk positions beginning at zero. A source-relative logical offset repairs this error
+for learned absolute, sinusoidal, and RoPE coordinates. For RoPE, cached pre-rotation keys can
+also be rebound algebraically to a new offset, although deferred rotation has a measured
+runtime cost.
 
-The version-1 pilot split a WikiText-2 article into one-to-five URI-addressed earlier
-parts and a held-out continuation, but regenerated examples from each model seed and
-labeled every earlier part relevant.  It is retained as engineering history, not causal
-selection evidence.  Version~2 fixes data generation with seed 1729 and shares the same
-512-example corpus across architectures and model seeds.  It yields 409/51/52
-train/validation/test examples, assigns candidate identifiers and order independently of
-relevance, designates one adjacent source part as the expected reference, and records
-source/split provenance.  The candidate-count-weighted test chance rate is 0.4202.
+\emph{Contextual fragmentation} remains after coordinates are repaired. A token encoded
+without its left source context has a different hidden state from the same token inside the
+contiguous document. Overlap or larger grouped encoding blocks reduce this mismatch at added
+encoding and storage cost. The resulting rule is simple: preserve source-relative coordinates,
+but do not describe coordinate correctness as recovered contextualization.
 
-\begin{lstlisting}[caption={Reproducible version-2 reference corpus construction}]
-rng = Random(1729)
-entries = parse_wikitext_articles(raw_text)
-for article_id, entry in stable_order(entries):
-    parts = split_natural_units(entry, min_parts=2, max_parts=6)
-    target_i = choose_target_with_predecessor(parts, rng)
-    positive = target_i - 1
-    distractors = sample_other_prior_parts(parts, positive, rng)
-    candidates = rng.shuffle([positive] + distractors)
-    emit(prompt=make_handles(candidates), answer=parts[target_i],
-         expected_uri=uri(article_id, positive),
-         source_hash=sha256(entry), generator_seed=1729)
-fixed_train, fixed_val, fixed_test = split_once(examples, 409, 51, 52)
-\end{lstlisting}
+The measured geometry results make the distinction concrete. Source-relative offsets remove
+layer-zero reset error in all paired tests and improve deeper representations. Increasing
+centered-RoPE gists from one to eight raises native Q/K fidelity from $.794$ to $.963$, while
+semantic sparse AUC remains approximately $.651$. A learned router reaches $.971$ semantic
+AUC at only $.178$ Q/K fidelity. Position, contextual representation, semantic search, and
+native attention are four related but distinct objects.
 
-Leakage controls are part of the architecture, not merely data hygiene.  Candidate IDs
-must not encode relevance; all architectures must receive identical examples; train,
-validation, and test source partitions must be stable; reference content must be private
-to its example; and batched physical storage must preserve a sequence-to-cache mask.
-Content-only, random-URI, same-URI/wrong-version, shuffled, irrelevant, empty, oracle, and
-all-content-local variants are required to detect shortcuts.  The adjacent-part label is
-still only a programmatic proxy; future data must mark human-verified necessary evidence.
+\subsection{Depth, Integration, Decision, and Behavior}
 
-\subsection{Complexity and the systems claim}
+Correct routing supplies evidence; it does not guarantee that a pretrained decoder knows how
+to use that evidence. PRA can be enabled at selected layers $\mathcal L_{\rm PRA}$. Pretrained
+experiments find a non-monotone depth effect: a late layer band can improve memory use, while
+injection into every layer can be disruptive. This turns layer placement into an integration
+variable rather than an implementation detail.
 
-Let $L$ be decoder layers, $L_p$ PRA layers, $T$ local tokens, $r$ resolved references,
-$m_i$ tokens in object $i$, $G$ available routing gists, and $M$ selected resident memory
-tokens.  Thus $G$ determines how many small vectors are scored, whereas $M$ determines
-how much detailed evidence reaches attention.  Ignoring constant head factors, the
-stages cost
-\begin{center}
-\begin{tabular}{p{2.4cm}p{4.5cm}p{7.3cm}}
+An oracle intervention replaces only selected identities while preserving transport, budget,
+and consumer. If oracle memory helps while routed memory does not, discovery is the bottleneck.
+If oracle memory also fails, representation or integration is implicated. QASPER provides a
+measured instance of this ladder: answer-polarity success progresses from 25.0\% under frozen
+routed PRA to 62.5\% under frozen oracle memory and $72.5\pm5.6$\% with a small residual
+adapter. Blind behavioral judges also favor the residual-adapted QASPER outputs. The result
+shows that one-shot memory can help and that consumer calibration still matters.
+
+The same experiment also shows why likelihood is insufficient. A model can improve
+teacher-forced loss without completing an answer, and a token-level polarity improvement can
+coexist with truncation. Evaluation therefore needs answer-critical logit margins, completion
+rate, lexical metrics, task semantics, and blinded behavioral comparison. On HotpotQA, outputs
+often approach a relevant entity or relation but miss another required hop or endpoint. This
+is evidence of a one-shot relational boundary, not proof that more decoder adaptation alone
+will solve multi-hop discovery.
+
+\subsection{Evidence Ledger}
+
+Table~\ref{tab:pra-evidence-ledger} summarizes the current empirical boundary. Results come
+from different model scales and protocols and should not be pooled as one benchmark score.
+Their role in this survey is to identify which links in the access chain have been tested.
+
+\begin{table}[htbp]
+\centering\scriptsize
+\caption{PRA evidence by computational boundary. ``Measured'' does not imply production
+validation or universal superiority.}
+\label{tab:pra-evidence-ledger}
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{6.1cm}>{\raggedright\arraybackslash}p{5.8cm}}
 \toprule
-Stage & Asymptotic work & What must be measured \\\midrule
-resolve & $O(r)$ lookups plus source I/O & authorization, version check, bytes and latency \\
-encode & $O(Ld\sum_i m_i^2)$ & cold tokenization/encoding and accelerator transfer \\
-cache projection & $O(L_p d^2\sum_i m_i)$ & per-layer projection, bytes written, deduplication \\
-route & $O(Gd)$ exact gist scoring & gist count, hierarchical top-$k$ latency, recall and calibration \\
-cross-attend & $O(L_pTMd)$ & selected tokens, layer utilization, synchronized latency \\
-resident KV & $2wL_pMd$ bytes & allocator overhead, hit rate, eviction and tenant isolation \\
-\bottomrule
-\end{tabular}
-\end{center}
-These terms expose the central unproven systems hypothesis.  A shorter prompt is not an
-efficiency win if all references are re-encoded for every request.  PRA becomes plausible
-when $M$ is small, resolution avoids unnecessary objects, encoded KVs are reused across
-tokens or authorized requests, or quality improves at a fixed total cost.  Results must
-therefore report cold, warm, and shared-cache regimes and separate lookup hits from
-\emph{avoided encoding work}.
-
-\subsection{What the preliminary experiments establish---and do not establish}
-
-All models have four layers, four heads, width 256, context 128, dropout 0.1, and a
-2,000-token BPE vocabulary.  The initial two-seed pilot processes 524,288 tokens.  The
-controlled follow-up uses seeds 1, 7, and 21, 1,048,576 ordinary-language tokens, fixed
-reference data, and 512 reference-stage optimizer steps.  Parameter counts are 4,216,320
-for same-width SelfAttention, 4,479,488 for full PRA, and 4,347,904 for the two-local/
-two-PRA hybrid.  FFN-expanded controls contain 4,478,976 and 4,347,648 parameters.
-
-\begin{table}[ht]
-\centering\small
-\caption{Controlled three-seed ordinary-language results transcribed from Paper 1.
-Population standard deviations are across seeds 1, 7, and 21.}
-\begin{tabular}{lrr}
-\toprule Model & Parameters & WikiText-2 test loss \\\midrule
-SelfAttention, same width & 4,216,320 & $4.6378\pm0.0380$ \\
-SelfAttention, matched to full PRA & 4,478,976 & $4.5706\pm0.0037$ \\
-Full PRA & 4,479,488 & $4.5463\pm0.0270$ \\
-SelfAttention, matched to hybrid & 4,347,648 & $4.5725\pm0.0108$ \\
-Hybrid PRA & 4,347,904 & $4.6049\pm0.0359$ \\
+Boundary & Measured result & Interpretation and limit \\\midrule
+Ordinary path & Disabled adapters preserve the host path exactly across standalone and
+pretrained-family tests & Compatibility gate; it says nothing about memory utility \\
+Position & Source-relative offsets repair reset fragmentation; native pre/post/deferred RoPE
+paths agree under matched coordinates & Coordinate correctness is established; contextual
+fragmentation remains \\
+Logical versus active & At 64--256 addressable units, fixed $k=8$ holds physical selected K/V
+near 11--13 tokens and reduces active fraction to 4.4--4.9\% at 256 & Bounded native transport
+on controlled probes, not unrestricted long-document QA \\
+Routing scale & At about 12.5\% selection, target coverage remains .756--.772 on
+HotpotQA-derived and .794--.803 on QASPER-derived probes through 256 units & Stable fixed-fraction
+quality; substantial router headroom remains \\
+Search geometry & Centered $G=1\rightarrow8$ improves Q/K fidelity $.794\rightarrow.963$ with
+flat semantic AUC; learned 32-D routing reaches .971 AUC & Semantic search should be separated
+from native execution \\
+Pretrained retrofit & Qwen, Llama-family, and Gemma adapters preserve disabled semantics;
+selected native K/V uses family-native head layouts & Cross-family mechanical portability at
+roughly one-billion-parameter scale, not production coverage \\
+Depth and use & Late-band memory is useful; indiscriminate all-layer activation is harmful in
+the measured setting & Integration is depth-sensitive \\
+One-shot QASPER & Routed frozen 25.0\%, oracle frozen 62.5\%, residual adapter
+$72.5\pm5.6$\% polarity; behavioral judges favor adaptation & Positive one-shot regime on a
+small fixed cohort \\
+One-shot HotpotQA & Relation-near outputs frequently miss another required evidence item or
+endpoint & Motivates iterative closure; does not validate it \\
+Serving & Packed tensor routing uses vectorized scoring and \texttt{topk}; 256-way warm
+selection is 5.5--11.6 ms in the standalone prototype & Better than exhaustive scalar routing,
+but no optimized serving-kernel claim \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Full PRA is 0.0243 loss units below its nearly matched control, while the hybrid is
-0.0323 above its matched control.  At this scale, those aggregate differences motivate
-larger replicated comparisons; they do not establish superiority.  More importantly,
-these ordinary-language runs test decoder compatibility rather than reference routing.
+\subsection{Systems Accounting}
 
-The fixed reference task used the earlier v1 summary-level router, not the corrected
-chunk-gist mechanism described above.  In that historical system, valid-reference loss
-after frozen-path training is 4.7052 for full PRA and 4.7932 for hybrid PRA.
-Complete disabling raises loss by 0.0292 and 0.0214, but shuffled and irrelevant penalties
-are only 0.0064--0.0088 and oracle content changes loss by at most 0.0018.  Top-1 selection
-remains near or below chance.  The branch contributes, but correct content has not been
-shown to cause the gain.  The v1 experiment therefore passed compatibility and
-preservation gates but failed its causal-selection gate.  It cannot validate or
-invalidate the corrected router until the matched interventions are rerun against the
-new implementation.
+Let $G$ be the number of routing gists, $M$ selected native K/V tokens, $L_p$ PRA-enabled
+layers, and $w$ bytes per scalar. Ignoring head constants, exact dense gist scoring costs
+$O(Gd)$ and active memory attention costs $O(L_pT_{\rm local}Md)$. Resident selected payload
+costs approximately
+\begin{equation}
+B_{\rm active}\simeq 2wL_pMd,
+\end{equation}
+while the backing cache may be larger and may reside on CPU or another storage tier. Reducing
+active attention does not automatically reduce total storage. Likewise, a short prompt is not
+an efficiency gain if every source is cold-encoded for every request.
 
-The source manuscript reports aggregate seed means and population standard deviations,
-not a complete seed-by-seed ledger for every run.  A submission version must export one
-row per run (architecture, seed, data hash, checkpoint hash, trainable parameters, tokens,
-loss, uncertainty inputs, timing, and counterfactual condition) rather than attempting to
-reconstruct individual values from aggregates.
+A systems report must separate source resolution, tokenization, model-safe encoding, index
+construction, routing, host-to-device transfer, native attention, synchronization, and
+generation. It should report cold, warm, and authorized shared-cache regimes; logical tokens;
+available and selected gists; physical selected K/V; peak accelerator and host bytes; time to
+first token; inter-token latency; and avoided encoding work. Packed \texttt{torch.topk} is a
+prototype optimization, not evidence of an asymptotically indexed router or fused sparse
+attention kernel.
 
-\subsection{Counterfactual doctrine and falsifiable comparison}
+\subsection{Causal Evaluation Doctrine}
 
 For loss $L$, define
 \begin{equation}
 \Delta_{\rm use}=L_{\rm disabled}-L_{\rm valid},\qquad
 \Delta_{\rm content}=L_{\rm shuffled}-L_{\rm valid}.
 \end{equation}
-$\Delta_{\rm use}>0$ only shows that activating the path helps.  A credible content claim
-requires a reproducible $\Delta_{\rm content}>0$, a similar penalty for irrelevant
-references, increasing advantage on locally insufficient examples, and routing above a
-candidate-count-aware chance baseline.  Attention weights are diagnostics; removal,
-substitution, stale-version, and mediation-style interventions supply stronger evidence.
+A positive $\Delta_{\rm use}$ only shows that the active branch changes the model usefully.
+Content-causal retrieval additionally requires valid evidence to outperform shuffled,
+irrelevant, stale, and matched-length controls. Oracle identity measures the upper bound of
+the same consumer; direct text measures whether the backbone can solve the item when evidence
+is local. All-reference and gist-only conditions isolate routing and detail bottlenecks.
 
-The decisive experiment crosses selection and transport: oracle versus learned selection;
-prompt-text, cross-attention, and native-KV transport; valid/disabled/shuffled/irrelevant/
-oracle content; and cold/warm/shared caches.  It matches model parameters, trainable
-parameters, source corpus, visible and retrieved token budgets, optimizer tokens, FLOPs,
-peak memory, and synchronized latency.  PRA's efficiency thesis is falsified in a target
-regime if it does not improve the quality--cost frontier after reference encoding and cache
-misses are included, or if correct content does not outperform corrupted controls.
+These controls should be crossed with routing budget, candidate count, layer band, and
+materialization mode. Report reference recall, all-required-evidence recall, physical K/V
+fraction, answer-critical logit margins, task output, and free-running behavior. Attention
+weights and lexical overlap are diagnostics, not causal proof.
 
-PRA has now supplied a concrete example of the survey's five-part vocabulary: handles
-name objects, gists support selection, the resolver binds names to versioned content,
-the cache materializes layer-specific token K/V, and cross-attention fuses selected
-evidence with the local stream. The remaining sections widen the comparison. Some methods change the local
-interaction graph, some preserve state over time, and others move selection outside the
-model entirely. Reading them through the same five operations makes both overlaps and
-architectural differences easier to identify.
+\subsection{Architecture Ladder: Established, Next, and Later}
+
+The PRA research program now has three distinct levels.
+
+\paragraph{Established in the current evidence.}
+Bounded logical memory, model-safe source encoding, separate routing chunks, semantic gist
+routing, full-detail native-KV payload, pretrained retrofit with exact disabled paths, and
+depth-sensitive integration are implemented and measured. The evidence is strongest for
+mechanical fidelity, controlled scaling, routing diagnostics, and a small one-shot QASPER
+regime.
+
+\paragraph{Next: associative closure over gists.}
+One-shot routing computes $C_1=R(q_0,\mathcal I)$. A proposed bounded iterative policy lets
+retrieved gist content update the query and expose another relation:
+\begin{align}
+C_h &= R(q_{h-1},\mathcal I\setminus V_{h-1}),\\
+q_h &= U(q_{h-1},G(C_h)),\qquad h=1,\ldots,H,\\
+A &= \operatorname{BudgetSelect}\!\left(\bigcup_{h=1}^{H}C_h,B\right).
+\end{align}
+Here $V_{h-1}$ prevents cycles, $H$ bounds hops, and $B$ fixes the final unique native-KV
+budget. The retrieved objects form an evidence path rather than an unordered bag. HotpotQA is
+the natural primary test because the current failure is often a missing relation or endpoint;
+QASPER is a one-shot control. This is \emph{associative closure}: a retrieved concept helps
+discover another source. It is not yet an empirical PRA result and should not be described as
+full neural reasoning.
+
+\paragraph{Later: progressive and smart materialization.}
+After relevant chunks are found, a second policy may decide which native detail to admit.
+Partial pages, progressive escalation, token-level bounds, and head/layer-specific budgets are
+possible mechanisms. Under the \textbf{redundancy hypothesis}, less detail yields equivalent
+quality because much selected K/V is unnecessary. Under the \textbf{overload or dilution
+hypothesis}, less detail improves quality because irrelevant detail competes with causal
+evidence, a concern consistent with positional sensitivity in long contexts
+\citep{liu2024lostmiddle}.
+If active K/V falls while quality is unchanged, the first explanation is supported. If quality
+improves, the second becomes plausible but still requires content-removal controls. If quality
+falls, omitted detail was useful or the allocator was wrong. These are Paper~3 hypotheses,
+not consequences of the one-shot results.
+
+The ladder preserves the central thesis without overextending it: PRA is an emerging
+decomposition of bounded memory computation. It has established a native one-shot working-set
+mechanism; it has not yet established relational closure, optimal materialization, or a
+production serving advantage.
