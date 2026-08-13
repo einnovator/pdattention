@@ -299,7 +299,6 @@ def _score_prompt(
     new_tokens,
     *,
     generate: bool = True,
-    generate_full_context: bool = True,
 ):
     started = time.perf_counter()
     _, metrics = _compact_gold_scores(handle, prompt_ids, prompt_mask, answer_ids, device)
@@ -336,6 +335,7 @@ def _context_controls(
     device,
     *,
     generate: bool = True,
+    generate_full_context: bool = True,
 ):
     """Measure seed-independent no-context, direct-text, and feasible full-context controls."""
     controls = {}

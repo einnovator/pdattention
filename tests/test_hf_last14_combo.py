@@ -45,6 +45,48 @@ def test_screen_score_can_skip_generation(monkeypatch):
     assert result["em"] is None
 
 
+def test_context_control_can_skip_only_full_context_generation(monkeypatch):
+    import torch
+
+    calls = []
+
+    def score(*args, generate=True, **kwargs):
+        calls.append(generate)
+        return {"gold_sequence_logprob": -1.0}
+
+    monkeypatch.setattr(
+        "experiments.paper2_hf.qa.run_last14_combo._activate",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "experiments.paper2_hf.qa.run_last14_combo._score_prompt", score
+    )
+    record = {
+        "example": {"id": "x", "dataset": "hotpotqa", "answer": "a"},
+        "prompt_ids": torch.ones(1, 2),
+        "prompt_mask": torch.ones(1, 2),
+        "answer_ids": torch.ones(1, 1),
+        "direct_prompt_ids": torch.ones(1, 3),
+        "direct_prompt_mask": torch.ones(1, 3),
+        "full_prompt_ids": torch.ones(1, 4),
+        "full_prompt_mask": torch.ones(1, 4),
+        "full_context_complete": True,
+    }
+    from experiments.paper2_hf.qa.run_last14_combo import _context_controls
+
+    _context_controls(
+        object(),
+        object(),
+        [record],
+        (),
+        8,
+        torch.device("cpu"),
+        generate=True,
+        generate_full_context=False,
+    )
+    assert calls == [True, True, False]
+
+
 def test_last14_layer_band_is_exact_and_validated():
     assert last_band_layers(28) == tuple(range(14, 28))
     with pytest.raises(ValueError, match="Cannot select"):
