@@ -10,6 +10,13 @@ five-seed routing, public API, bounded-memory, and causal-use smoke gates. Its g
 layers are 5, 11, 17, and 23; the measured routed path consumes memory at 17 and 23.
 Serving-optimized kernels remain future work.
 
+## Research freeze
+
+Paper 2 research content is frozen after the final QASPER narrative rebalance. Reopen it only for
+factual or numerical correction, a reproducibility defect, venue formatting, or reviewer feedback.
+New multi-gist routing, iterative HotpotQA retrieval, partial materialization, and larger-model
+adaptation belong to later papers rather than this manuscript.
+
 General source-position, RoPE rebinding, pooled-geometry, and attention-versus-semantic-routing
 results belong to companion Paper 1.5 on `research/paper1-5-rope`. Paper 2 treats those results
 as controlled motivation and reports their pretrained transfer, exact HF integration, sparse

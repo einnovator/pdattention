@@ -34,24 +34,17 @@ Controlled positional analysis in companion Paper~1.5 motivates the empirical ru
 \emph{route semantic state and attend native positional state}. On frozen Qwen3-0.6B, a
 262,144-parameter router reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected
 parents while returning exact post-RoPE K and native V. Oracle HotpotQA replay is depth dependent:
-the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766. On a
-larger identity-disjoint QASPER test, rank-32 conditional LoRA raises routed sequence-likelihood
-gain from +1.377 to +4.967 nats; a residual-plus-LoRA control reaches +5.363. PRA-conditional
-adapters preserve the ordinary no-memory path exactly, and the matched conditional controls leave
-the 1,024-token WikiText-2 loss unchanged. In a separate decoded comparison, two blind LLM judges
-prefer residual-16 QASPER outputs over frozen PRA on 22.5\% versus 2.5\% of pairs, with
-dimension-specific cross-judge correlations of .991 for semantic equivalence and .995 for relative
-quality despite weak lexical F1. A separate 32-token diagnostic shows that residual-16 answers
-reach the correct QASPER polarity on 72.5\% of five-seed trials, compared with 25.0\% for frozen
-routed PRA, while ending with EOS on 95.0\% of trials. A bounded decision-aware-loss control does
-not improve this result, locating the remaining error beyond a simple first-token reweighting.
-HotpotQA provides a harder multi-hop stress: frozen
-routed PRA remains positive at 6.56\% active K/V, while oracle-trained adapters do not remain
-robust to routed selections. The official Gemma path preserves its native local/global
-organization, and routed K/V raises gold-token log-probability by 0.135 nats. The shared execution
-core, thin family adapters, router artifacts, wheel, and Python API make this cross-family boundary
-directly testable. HotpotQA behavioral effects remain evaluator-dependent and motivate iterative
-retrieval rather than a universal one-shot adaptation claim.
+the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766.
+PRA-conditional adapters preserve the ordinary no-memory path exactly and leave the measured
+WikiText-2 loss unchanged. On QASPER, decoded polarity improves from 25.0\% with routed frozen PRA
+to 62.5\% with oracle evidence and $72.5\pm5.6$\% with residual 16, separating evidence selection
+from memory consumption; blind behavioral evaluation independently favors residual adaptation.
+Simple decision-token reweighting does not generalize in this small-data regime. HotpotQA provides
+a harder multi-hop boundary: frozen routed PRA remains positive at 6.56\% active K/V, but dominant
+relation-near misses and routed-adapter brittleness motivate iterative retrieval. The official
+Gemma path preserves its native local/global organization and shows a positive routed likelihood
+effect. The shared execution core, thin family adapters, router artifacts, wheel, and Python API
+make this cross-family boundary directly testable.
 \end{abstract}
 
 \section{Introduction}
@@ -134,8 +127,7 @@ Exact retrofit & Zero logit/hidden difference; identical greedy output & Externa
 Semantic route, native payload & Hidden-state index; selected post-RoPE K/native V & Search geometry need not replace pretrained attention state \\
 Sparse discovery and activation & Any-evidence recall .831/.956 at 10/20\%; about 20\% requested parents become 6--7\% physical K/V & Logical selection and active memory are distinct budgets \\
 Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28 & Sparse memory has a compatibility band, not a monotone depth law \\
-QASPER distributional adaptation & Routed $\Delta\log p$: +1.377 frozen; +4.967 rank-32 & Selected one-shot memory can improve the target probability trajectory \\
-QASPER behavioral utility & Both judges prefer residual-16 over frozen on 22.5\% vs. 2.5\%; Eq./quality $r=.991/.995$ & Blind behavior adds evidence beyond weak F1/EM \\
+QASPER one-shot memory use & Polarity: 25.0\% routed frozen $\rightarrow$ 62.5\% oracle frozen $\rightarrow$ $72.5\pm5.6$\% residual 16 & Evidence selection and memory consumption are separately measurable bottlenecks; blind judges also favor residual adaptation \\
 Ordinary-path preservation & Conditional adapters: zero WikiText-2 loss change and exact PRA-off path & Memory specialization need not alter no-memory behavior \\
 Cross-family mechanism & Exact Qwen/SmolLM2/Gemma disabled paths; Gemma routed $\Delta\log p=+.135$ & The execution contract survives distinct decoder organizations \\
 \bottomrule
@@ -544,8 +536,8 @@ two projections,
 where $h_q$ is the last query state and $g_c$ is one mean hidden-state gist. The selected
 asymmetric 1024-to-128 linear router contains 262,144 parameters, 0.044\% of Qwen. Training uses
 48 examples, validation uses 16, and the held-out test uses 32, with no QA-identity overlap.
-Validation selects an exhaustive pairwise margin objective; five independent seeds measure the
-selected configuration.
+Validation selects an exhaustive pairwise margin objective; five optimization replicates over the
+same held-out identities measure the selected configuration.
 
 On the held-out cohort, frozen last-state cosine reaches any-evidence R@3/R@8/MRR of
 0.469/0.719/0.413; the learned router reaches $0.631\pm0.069$/0.806/0.498. HotpotQA and QASPER
@@ -1090,27 +1082,26 @@ the function evaluated when memory is absent.
 \label{sec:behavioral-judge}
 
 Distributional utility (logits, probability, rank, and likelihood), reference fidelity (F1 and
-EM), and behavioral utility (blind semantic equivalence, relative quality, and independent
-validity) measure different properties. Weak lexical overlap therefore cannot establish that an
-answer is useless, just as a likelihood gain cannot establish that a generated answer is useful.
-To close this measurement gap, two external judges---GPT-5.6 Sol and Claude Sonnet~5---scored a
-frozen set of 152 underlying comparisons presented as 304 opaque A/B-reversed items. Full protocol,
-hash, validation, and judge-specific details appear in Appendix~\ref{app:behavioral-protocol}.
+EM), decision-specific utility (polarity accuracy and margin), and behavioral utility (blind
+semantic equivalence, relative quality, and independent validity) measure different properties.
+Weak lexical overlap therefore cannot establish that an answer is useless, just as a likelihood
+gain cannot establish that a generated answer is useful. To close this measurement gap, two
+external judges---GPT-5.6 Sol and Claude Sonnet~5---scored a frozen set of 152 underlying
+comparisons presented as 304 opaque A/B-reversed items. Full protocol, hash, validation, and
+judge-specific details appear in Appendix~\ref{app:behavioral-protocol}.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Convergence of QASPER evidence. The residual-16 rows are directly comparable across
-likelihood, F1/EM, and behavioral evaluation; rank-32 is the separately selected best verified
-LoRA likelihood configuration. Preference rates are mutually exclusive positive/negative
-relative-quality categories; the remaining comparisons receive zero relative-quality score.}
+\caption{Convergence of QASPER evidence for residual-16 adaptation. Preference rates are mutually
+exclusive positive/negative relative-quality categories; the remaining comparisons receive zero
+relative-quality score.}
 \label{tab:qasper-convergence}
 \begin{tabularx}{\linewidth}{L{0.25\linewidth}L{0.20\linewidth}L{0.20\linewidth}Y}
 \toprule
 Measure & Frozen PRA & Adapted PRA & Interpretation \\
 \midrule
 Routed sequence $\Delta\log p$ & +1.377 & +4.942 residual-16 & Same-condition probability trajectory improves \\
-Likelihood-selected LoRA & +1.377 & +4.967 rank-32 & Best verified likelihood adapter is a distinct selection \\
 Routed F1 / EM & .073 / .000 & .205 / .000 residual-16 & Lexical recovery improves but remains limited \\
 Blind relative-quality preference & 2.5\% & 22.5\% residual-16 & Both judges favor adaptation more often than frozen PRA \\
 Cross-judge agreement & -- & $r=.991$ Eq.; $r=.995$ quality & QASPER judgments are highly consistent by dimension \\
@@ -1132,29 +1123,9 @@ calibration. We therefore keep judge-specific estimates and do not pool them.
 The frozen behavioral package uses an eight-token decoding budget. That budget made the blind
 comparison reproducible, but it often stopped before an answer reached punctuation or EOS. We do
 not alter or rescore those 152 comparisons. Instead, a separate diagnostic replays the same test
-identities with a 32-token budget and records generated length, EOS, length termination, terminal
-punctuation, answer containment, first-token rank and margin, and gold-sequence log probability.
-The model, router, selected memory, prompts, and checkpoints are unchanged.
-
-\begin{table}[H]
-\centering
-\small
-\caption{Eight-token completion proxy versus the separate 32-token replay. ``Old punct.'' is
-terminal punctuation in the frozen short output; EOS and cap refer to the new replay. Adapter
-rows aggregate five seeds over the same eight identities. This is a protocol correction, not an
-architectural gain.}
-\label{tab:qasper-finish-diagnostic}
-\begin{tabular}{llrrrr}
-\toprule
-Dataset & Condition & Old punct. & New EOS & New cap & Contain. \\
-\midrule
-QASPER & frozen routed & .125 & .875 & .125 & .500 \\
-QASPER & residual 16 & .200 & .950 & .050 & .825 \\
-HotpotQA & frozen routed & .125 & .750 & .250 & .250 \\
-HotpotQA & residual 16 & .100 & .900 & .100 & .125 \\
-\bottomrule
-\end{tabular}
-\end{table}
+identities with a 32-token budget while leaving model, router, selected memory, prompts, and
+checkpoints unchanged. Increasing the budget removes most incomplete-output confounding; the
+matched completion table and full protocol are in Appendix~\ref{app:decision-aware-loss}.
 
 Longer decoding removes most incomplete endings for frozen PRA and residual 16, but it does not
 remove the QASPER decision error. All frozen routed outputs begin with a valid yes/no form, yet
@@ -1171,9 +1142,9 @@ test identities, so their value is mechanistic rather than benchmark-level.
 \begin{table}[H]
 \centering
 \small
-\caption{QASPER decision and completion diagnostics at 32 generated tokens. R16-Q denotes a new
-residual-16 control trained for 32 updates on the shipped router's selected QASPER memory. Values
-for adapted conditions aggregate five seeds; frozen and oracle rows are seed-independent.}
+\caption{QASPER decision and completion diagnostics at 32 generated tokens. R16-Q is trained for
+32 updates on the shipped router's selected QASPER memory. Adapter rows are optimization means
+over five seeds on the same eight identities; frozen rows are deterministic replays.}
 \label{tab:qasper-polarity-diagnostic}
 \begin{tabular}{lrrrrrr}
 \toprule
@@ -1183,8 +1154,6 @@ Frozen routed & 1.000 & .250 & .500 & .048 & -.078 & .875 \\
 Frozen oracle & 1.000 & .625 & .625 & .061 & .260 & .625 \\
 Residual 16 & 1.000 & $.725\pm.056$ & .825 & .152 & .243 & .950 \\
 R16-Q routed-trained & 1.000 & $.550\pm.112$ & .550 & .511 & .143 & 1.000 \\
-LoRA 32 & .875 & $.550\pm.068$ & .550 & .055 & .535 & .025 \\
-Residual 16 + LoRA 4 & .850 & $.525\pm.137$ & .600 & .097 & .567 & .675 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1212,71 +1181,36 @@ router remains the generic SDK default.
 The decomposition separates two adaptation sub-objectives. \emph{Decision formation} asks whether
 retrieved evidence produces the task-critical branch---yes versus no here. \emph{Answer
 realization} asks whether the model can emit a fluent answer-shaped continuation and terminate.
-The routed-trained residual learns realization strongly: F1 is .511, EOS is 1.000, first-token
-rank is 1.45, and sequence log probability is $-.961$, yet polarity is only 55.0\%. Under
-teacher forcing,
-\begin{equation}
-  \mathcal{L}_{\rm seq}
-  = -\frac{1}{T}\sum_{t=1}^{T}\log p(y_t\mid y_{<t}^{\rm gold},x,M),
-\end{equation}
-many continuation tokens become easy once the gold prefix is supplied, while one early token
-carries most of the binary decision. This is a task--objective mismatch exposed by controlled
-memory conditions, not evidence that cross-entropy is generally defective or that the mismatch is
-specific to PRA.
+\textbf{Learning to produce an answer-shaped sequence is not the same as learning the
+evidence-conditioned decision that sequence should express.} The routed-trained residual learns
+realization strongly---F1 .511, EOS 1.000, first-token rank 1.45, and sequence log probability
+$-.961$---yet polarity is only 55.0\%. The control exposes a broader objective mismatch:
+teacher-forced sequence optimization can strongly improve answer realization while leaving a
+sparse task-critical decision weak. This observation is not specific to PRA and merits separate
+study; it does not imply that cross-entropy is generally inadequate.
 
-We test the smallest direct intervention without changing model, router, references, residual
-width, memory budget, optimizer, 32 updates, generation length, or seeds:
+We tested whether explicit binary-decision weighting repairs that gap while holding the model,
+router, references, residual width, memory budget, optimizer, updates, generation length, and
+seeds fixed:
 \begin{equation}
   \mathcal{L}=\mathcal{L}_{\rm seq}+\lambda\mathcal{L}_{\rm polarity}.
 \end{equation}
-The binary term pools four tokenizer-native one-token forms for each of yes and no. Five-seed
-validation over four disjoint identities selects $\lambda=2$ from
-$\{0,.25,.5,1,2\}$ before the eight test identities are opened. Class-majority baselines are
-58.3\% train, 75.0\% validation, and 62.5\% test.
-
-\begin{table}[H]
-\centering
-\small
-\caption{The validation-selected decision-aware loss does not generalize. Values aggregate the
-same eight test identities across five seeds. The existing R16 row is the oracle-trained
-residual-16 control; it is not retrained in this sweep.}
-\label{tab:decision-aware-loss}
-\begin{tabular}{lrrrrrr}
-\toprule
-Condition & Polarity & Contain. & F1 & EOS & Seq. $\log p$ & $m_{\rm pol}$ \\
-\midrule
-Routed sequence only & $.550\pm.112$ & .550 & .511 & 1.000 & $-.961$ & +.143 \\
-Routed $\lambda=2$ & $.400\pm.163$ & .400 & .361 & 1.000 & $-1.286$ & $-.390$ \\
-Existing residual 16 & $.725\pm.056$ & .825 & .152 & .950 & $-3.556$ & +.243 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=.86\linewidth]{../shared/results/paper2_hf/decision_aware_loss/decision_aware_polarity.pdf}
-\caption{The bounded loss sweep improves validation polarity from 25\% to 40\% at $\lambda=2$
-but reverses on untouched test, where polarity falls from 55\% to 40\%. Dashed lines are the
-validation and test majority baselines. Explicit decision weighting is therefore insufficient in
-this small cohort.}
-\label{fig:decision-aware-loss}
-\end{figure}
-
-The selected loss also fails the evidence-dependence test: margin accuracy is 37.5\% with no
-memory, 40.0\% with routed memory, and 45.0\% with oracle memory. Evidence quality moves the
-aggregate in the expected direction, but no condition reaches the 62.5\% test majority baseline.
-All 40 sequence-only seed/item rows exactly reproduce the prior diagnostic. The selected adapter
-passes 40/40 exact PRA-off comparisons and changes two-block WikiText-2 loss by 0.0000 for every
-seed. The negative result narrows the explanation: the representation supports highly confident
-answer realization, but a tiny imbalanced validation cohort and evidence integration are not fixed
-by simply upweighting the first binary branch. We therefore stop rather than tune the test set.
+Validation on four disjoint identities selects $\lambda=2$, but untouched-test polarity falls from
+the exact sequence-only baseline of 55.0\% to 40.0\%, below the 62.5\% test majority baseline.
+Thus this small-data result provides no evidence that simple first-token reweighting improves
+out-of-sample polarity. The $\lambda=0$ rerun exactly reproduces all 40 prior seed--item rows across
+generated text and every reported metric. Full sweep, seed, class-balance, margin, no-memory,
+oracle-memory, and WikiText receipts appear in Appendix~\ref{app:decision-aware-loss} and the
+released artifact.
 
 For HotpotQA, the primary taxonomy over the five-seed residual condition contains 17 relation-near
 misses, five unchanged answers, five correct answers, five prompt repetitions, four unrelated
-outputs, three length terminations, and one wrong related entity. A reproducible lexical
-relation-distance audit is exported with the artifact, but it is explicitly heuristic rather than
-a dataset-native hop label. These errors support iterative relation closure in Paper~2.5; they do
-not motivate further one-shot tuning here.
+outputs, three length terminations, and one wrong related entity. \textbf{The dominant HotpotQA
+error is not random generation but failure to complete a relevant relation to its endpoint.} The
+one-shot path often reaches $q\rightarrow A$ but lacks explicit closure to
+$q\rightarrow A\rightarrow B$. A reproducible lexical relation-distance audit is exported with
+the artifact, but it is heuristic rather than a dataset-native hop label. These errors support
+iterative relation closure in Paper~2.5; they do not motivate further one-shot tuning here.
 
 HotpotQA does not reproduce the QASPER behavioral result: the judges give opposite mean directions
 for residual-16 adaptation. Together with routed adapter brittleness, the likelihood--decoding
@@ -1377,12 +1311,13 @@ outperforms Gemma.
 \subsection{Distributional, Lexical, and Behavioral Utility}
 
 \emph{Distributional utility} is measured by logits, probability, rank, and sequence likelihood;
-\emph{reference or lexical fidelity} by F1 and EM; and \emph{behavioral or semantic utility} by
-blind equivalence, relative quality, and independent validity. No single scalar characterizes
-memory use. Qwen's bounded-head probe gains 5.469 nats and moves first-token rank from 94,106 to
-1,351 while retaining the wrong greedy answer; Gemma gains 0.135 nats with unchanged F1. Conversely,
-weak QASPER F1 does not erase the independently judged residual-16 preference. These are different
-properties, not evidence that one metric is wrong.
+\emph{reference or lexical fidelity} by F1 and EM; \emph{decision-specific utility} by polarity
+accuracy and polarity margin; and \emph{behavioral or semantic utility} by blind equivalence,
+relative quality, and independent validity. No single scalar characterizes memory use. Qwen's
+bounded-head probe gains 5.469 nats and moves first-token rank from 94,106 to 1,351 while retaining
+the wrong greedy answer; Gemma gains 0.135 nats with unchanged F1. Conversely, weak QASPER F1 does
+not erase the independently judged residual-16 preference. These are different properties, not
+evidence that one metric is wrong.
 
 
 \section{Product and Systems Boundary}
@@ -1494,9 +1429,10 @@ memory with oracle memory moves the frozen consumer from 25.0\% to 62.5\% polari
 16 reaches $72.5\pm5.6$\%. This separates a selection bottleneck from a memory-consumer bottleneck
 without assigning their small-cohort differences independent additive effects. The routed-trained
 sequence control learns fluent, terminating answers but reaches only 55.0\% polarity, and the
-validation-selected decision-aware loss falls to 40.0\% on untouched test. These controls rule out
-a simple first-token reweighting remedy; they do not establish a general limitation of conditional
-adaptation. Cross-domain any-evidence
+validation-selected decision-aware loss falls to 40.0\% on untouched test. This small-data control
+provides no evidence that simple first-token reweighting improves out-of-sample polarity; it does
+not establish a general limitation of decision-aware objectives or conditional adaptation.
+Cross-domain any-evidence
 recall@3 is 0.213 in both directions. Additional gist resolution, centered-RoPE features, query
 pooling, width, and negative-mining variants do not remove this limitation. All-layer native-K/V
 injection is also harmful despite using more memory. A larger study should separate calibration,
@@ -1561,27 +1497,22 @@ adapters preserve their measured host semantics; Gemma additionally validates ar
 placement through its native global layers.
 
 The three dataset regimes clarify what this mechanism presently achieves. WikiText-2 shows that
-PRA-conditional specialization preserves ordinary no-memory behavior. QASPER shows one-shot
-convergence: routed likelihood rises from +1.377 frozen to +4.942 with residual-16 and +4.967 with
-the separately selected rank-32 LoRA, while two blind judges prefer residual-16 over frozen PRA on
-22.5\% versus 2.5\% of comparisons despite limited lexical F1. At 32 generated tokens, frozen
-routed polarity is 25.0\%, frozen oracle polarity is 62.5\%, and residual-16 reaches
-$72.5\pm5.6$\% polarity, .825 containment, and .950 EOS. Better selection and better memory use
-therefore both matter on this controlled cohort. Adapter selection remains evaluation-level
-dependent: the best likelihood configuration need not be the configuration most consistently
-preferred behaviorally.
+PRA-conditional specialization preserves ordinary no-memory behavior. QASPER is the one-shot
+success regime: decoded polarity progresses from 25.0\% routed frozen to 62.5\% oracle frozen and
+$72.5\pm5.6$\% with residual 16, while blind judges independently favor residual adaptation.
+Selection quality therefore changes decision quality, and memory-use adaptation contributes a
+further measured gain, without treating those differences as additive causal effects. The routed
+sequence control shows the remaining distinction: answer realization can improve strongly while
+decision generalization remains weak. Its failed validation-selected token-reweighting control
+narrows that explanation but is not the QASPER headline.
 
-The routed-trained sequence control further separates answer realization from decision formation:
-it reaches F1 .511 and EOS 1.000 but only 55.0\% polarity. Validation selects the explicit
-decision-aware weight $\lambda=2$, yet untouched-test polarity falls to 40.0\%, below the 62.5\%
-majority baseline. Simple first-token reweighting therefore does not explain or repair the
-remaining generalization gap; the stronger residual-16 result remains the balanced QASPER finding.
-
-HotpotQA marks the one-shot boundary. Clean memory raises the integration ceiling, but deployed
-routed adaptation is brittle, decoded recovery remains weak, and behavioral direction is
-evaluator-dependent. These findings motivate bounded iterative associative closure in Paper~2.5,
-not a universal negative verdict on PRA. The evidence-based SDK default remains frozen PRA plus
-the learned router; stronger memory-use adapters remain task-specific research options.
+HotpotQA marks the one-shot relational boundary: outputs commonly approach a relevant relation but
+fail to complete it to the endpoint. Clean memory raises the integration ceiling, yet routed
+adaptation is brittle and behavioral direction is evaluator-dependent. These findings motivate
+bounded iterative associative closure in Paper~2.5. The cross-family retrofit, bounded native-K/V
+execution, and public SDK remain Paper~2's engineering result; frozen PRA plus the learned router
+is the conservative global default, with residual 16 retained as the strongest QASPER-specific
+candidate and rank-32 LoRA as research-only.
 
 The released \texttt{pra\_hf} wheel, family adapters, notebook, router artifacts, metrics, frozen
 judge package and responses, scorer, and reimplementation tests make the claims independently
@@ -1645,6 +1576,92 @@ Independent hidden-state confirmation over 64 evaluations gives any/all-evidence
 fractions are 0.045, 0.119, and 0.238, while the hard materialization budget holds the latter two
 near 0.059 physically active K/V. This illustrates all three distinctions at once: any versus
 all evidence, selection versus materialization, and fixed rank versus selected fraction.
+
+\section{QASPER Completion and Decision-Loss Receipts}
+\label{app:decision-aware-loss}
+
+The 32-token diagnostic is separate from the frozen eight-token behavioral package. It changes no
+model, prompt, memory, router, or checkpoint and does not rescore the blind comparisons. Its role is
+to remove incomplete-output confounding and expose decision-specific behavior.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Eight-token completion proxy versus the separate 32-token replay. ``Old punct.'' is
+terminal punctuation in the frozen short output; EOS and cap refer to the diagnostic replay.
+Adapter rows aggregate optimization replicates over the same eight identities.}
+\label{tab:qasper-finish-diagnostic}
+\begin{tabular}{llrrrr}
+\toprule
+Dataset & Condition & Old punct. & New EOS & New cap & Contain. \\
+\midrule
+QASPER & frozen routed & .125 & .875 & .125 & .500 \\
+QASPER & residual 16 & .200 & .950 & .050 & .825 \\
+HotpotQA & frozen routed & .125 & .750 & .250 & .250 \\
+HotpotQA & residual 16 & .100 & .900 & .100 & .125 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For the bounded loss control, standard teacher-forced training uses
+\begin{equation}
+  \mathcal{L}_{\rm seq}
+  = -\frac{1}{T}\sum_{t=1}^{T}\log p(y_t\mid y_{<t}^{\rm gold},x,M),
+\end{equation}
+and the intervention adds grouped binary cross-entropy over four tokenizer-native one-token forms
+for each of yes and no:
+\begin{equation}
+  \mathcal{L}=\mathcal{L}_{\rm seq}+\lambda\mathcal{L}_{\rm polarity}.
+\end{equation}
+The model, router, routed references, last-14 residual width, optimizer, learning rate, 32 updates,
+generation length, and seeds remain fixed. Train, validation, and untouched test contain 12, four,
+and eight independent identities, with yes/no counts 7/5, 1/3, and 5/3. Their majority baselines
+are therefore 58.3\%, 75.0\%, and 62.5\%. The five seeds are optimization replicates over these
+fixed identities, not additional documents.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Validation-only loss selection. Each value is mean polarity over the four fixed
+validation identities, followed by standard deviation across five optimization seeds.}
+\label{tab:decision-aware-validation}
+\begin{tabular}{lrrrrr}
+\toprule
+$\lambda$ & 0 & .25 & .5 & 1 & 2 \\
+\midrule
+Polarity & $.250\pm.177$ & $.200\pm.209$ & $.300\pm.209$ & $.200\pm.209$ & $\mathbf{.400\pm.137}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Validation selects $\lambda=2$ before test is opened. Table~\ref{tab:decision-aware-test} retains
+the seed-level test receipt; both conditions use the same eight identities.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Untouched-test polarity by optimization seed. The selected loss does not preserve the
+sequence-only result.}
+\label{tab:decision-aware-test}
+\begin{tabular}{lrrrrrr}
+\toprule
+Condition & 11 & 23 & 37 & 53 & 71 & Mean $\pm$ seed SD \\
+\midrule
+Sequence only & .500 & .375 & .625 & .625 & .625 & $.550\pm.112$ \\
+$\lambda=2$ & .250 & .375 & .500 & .250 & .625 & $.400\pm.163$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The $\lambda=0$ run exactly reproduces the prior sequence-only baseline for all 40 seed--item rows:
+generated text and 12 reported generation, decision, and probability fields have zero mismatches.
+For the selected adapter, test margin accuracy is 37.5\% with no memory, 40.0\% with routed memory,
+and 45.0\% with oracle memory; this aggregate ordering is suggestive but every condition remains
+below the test majority baseline. All 40 no-memory checks are exact. Two 128-token WikiText-2
+blocks give loss 3.454496 for the frozen and each adapted no-memory path, a delta of 0.0000 for
+every seed. Canonical JSON, full per-item rows, aggregate CSVs, and the detailed validation/test
+curve in PDF and PNG formats are retained under
+\path{docs/papers/shared/results/paper2_hf/decision_aware_loss/}.
 
 \section{Behavioral-Judge Protocol and Audit Record}
 \label{app:behavioral-protocol}
