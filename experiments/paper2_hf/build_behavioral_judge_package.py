@@ -483,13 +483,27 @@ def _response_schema() -> dict[str, Any]:
     }
 
 
+def _llm_package(items: dict[str, Any], response_schema: dict[str, Any]) -> dict[str, Any]:
+    """Bundle public instructions and blind items for a single-file LLM handoff."""
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "evaluation_name": EVALUATION_NAME,
+        "judge_instructions": JUDGE_PROMPT.strip(),
+        "response_schema": response_schema,
+        "items": items["items"],
+    }
+
+
 def _package_readme(item_count: int, batch_count: int) -> str:
     return f"""# Paper 2 Behavioral-Equivalence Judge Package
 
 This directory contains {item_count} blind items in {batch_count} optional batches.
 
-Send `behavioral_judge_prompt.txt` followed by either `behavioral_judge_items.json` or one
-file from `batches/` to each external judge. Never send `behavioral_judge_truth.json`.
+For a single-file handoff, send `behavioral_judge_llm_package.json` to each external judge. It
+contains the instructions, response schema, and all blind items. Alternatively, send
+`behavioral_judge_prompt.txt` followed by `behavioral_judge_items.json` or one file from
+`batches/`. Never send `behavioral_judge_truth.json`.
 
 The blind item file intentionally contains only opaque IDs, task type, the common user prompt,
 answers A/B, and requested score names. The truth file records condition labels, deterministic
@@ -497,6 +511,9 @@ order, generation metadata, source artifacts, and hashes for later unblinding.
 
 Validate judge output against `behavioral_judge_response.schema.json`. The schema constrains
 score ranges and fields; the textual prompt additionally limits each reason to 40 words.
+
+Once external judging begins, freeze the generated files. Do not regenerate, reorder, or edit
+items between judges; preserve `behavioral_judge_truth.json` privately for unblinding.
 
 Calibration groups include identical-answer and controlled-corruption pairs. Paraphrase and
 native-sampling controls are omitted when no independently recorded generations exist. Results
@@ -571,6 +588,10 @@ def build_package(
     schema = _response_schema()
     (output_dir / "behavioral_judge_response.schema.json").write_text(
         json.dumps(schema, indent=2) + "\n", encoding="utf-8"
+    )
+    llm_package = _llm_package(items, schema)
+    (output_dir / "behavioral_judge_llm_package.json").write_text(
+        json.dumps(llm_package, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     example = {
         "schema_version": SCHEMA_VERSION,

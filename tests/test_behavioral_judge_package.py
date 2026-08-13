@@ -123,6 +123,7 @@ def test_package_files_batches_and_response_schema(tmp_path: Path) -> None:
     expected = {
         "behavioral_judge_prompt.txt",
         "behavioral_judge_items.json",
+        "behavioral_judge_llm_package.json",
         "behavioral_judge_truth.json",
         "behavioral_judge_response.schema.json",
         "behavioral_judge_example_response.json",
@@ -131,6 +132,20 @@ def test_package_files_batches_and_response_schema(tmp_path: Path) -> None:
     assert expected <= {path.name for path in tmp_path.iterdir()}
     assert len(list((tmp_path / "batches").glob("*.json"))) == 2
     assert json.loads((tmp_path / "behavioral_judge_items.json").read_text())["items"] == items["items"]
+    llm_package = json.loads((tmp_path / "behavioral_judge_llm_package.json").read_text())
+    assert llm_package["judge_instructions"] == JUDGE_PROMPT.strip()
+    assert llm_package["items"] == items["items"]
+    assert llm_package["response_schema"] == _response_schema()
+    serialized_llm_package = json.dumps(llm_package).lower()
+    for private_key in (
+        "condition_a",
+        "condition_b",
+        "comparison_group",
+        "dataset",
+        "model_revision",
+        "source_example_id",
+    ):
+        assert f'"{private_key}"' not in serialized_llm_package
     reason = _response_schema()["properties"]["items"]["items"]["properties"]["reason"]
     assert reason["maxLength"] == 320
     assert "39" in reason["pattern"]

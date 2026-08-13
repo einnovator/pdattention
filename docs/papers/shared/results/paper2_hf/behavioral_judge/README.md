@@ -2,8 +2,10 @@
 
 This directory contains 304 blind items in 5 optional batches.
 
-Send `behavioral_judge_prompt.txt` followed by either `behavioral_judge_items.json` or one
-file from `batches/` to each external judge. Never send `behavioral_judge_truth.json`.
+For a single-file handoff, send `behavioral_judge_llm_package.json` to each external judge. It
+contains the instructions, response schema, and all blind items. Alternatively, send
+`behavioral_judge_prompt.txt` followed by `behavioral_judge_items.json` or one file from
+`batches/`. Never send `behavioral_judge_truth.json`.
 
 The blind item file intentionally contains only opaque IDs, task type, the common user prompt,
 answers A/B, and requested score names. The truth file records condition labels, deterministic

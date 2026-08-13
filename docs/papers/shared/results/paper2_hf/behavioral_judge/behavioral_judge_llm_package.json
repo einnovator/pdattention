@@ -1,0 +1,4333 @@
+{
+  "schema_version": "1.0",
+  "evaluation_name": "paper2_behavioral_equivalence",
+  "judge_instructions": "You are evaluating two model outputs for the same user prompt.\n\nDo NOT infer which system produced either answer. Judge only the text shown.\n\nFor each item return:\n1. semantic_equivalence: 0..100\n   100 = effectively the same meaning and usefulness\n   75 = mostly equivalent, with minor meaningful differences\n   50 = partial overlap with a material difference\n   25 = mostly different\n   0 = contradictory or functionally unrelated\n2. relative_quality: -100..100\n   -100 means Answer A is much better\n   0 means the answers are equally good\n   +100 means Answer B is much better\n3. validity_a: 0..100\n4. validity_b: 0..100\n5. confidence: 0..100\n6. reason: at most 40 words\n\nJudge validity from coherence, relevance, plausibility, and usefulness. For continuation\ntasks, judge whether both are coherent and plausible continuations of the prompt; do not\nrequire a hidden reference verbatim. For QA tasks, judge factual and semantic answer\nequivalence and usefulness.\n\nReturn valid JSON only. Do not include Markdown or commentary outside the JSON.\n\nUse this response schema:\n{\n  \"schema_version\": \"1.0\",\n  \"judge_name\": \"MODEL_NAME_OR_UNKNOWN\",\n  \"items\": [\n    {\n      \"item_id\": \"judge_000001_ab\",\n      \"semantic_equivalence\": 92,\n      \"relative_quality\": 5,\n      \"validity_a\": 91,\n      \"validity_b\": 94,\n      \"confidence\": 87,\n      \"reason\": \"Both answer the same question; B is slightly clearer.\"\n    }\n  ]\n}",
+  "response_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Paper 2 behavioral-equivalence judge response",
+    "type": "object",
+    "required": [
+      "schema_version",
+      "judge_name",
+      "items"
+    ],
+    "properties": {
+      "schema_version": {
+        "const": "1.0"
+      },
+      "judge_name": {
+        "type": "string",
+        "minLength": 1
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "item_id",
+            "semantic_equivalence",
+            "relative_quality",
+            "validity_a",
+            "validity_b",
+            "confidence",
+            "reason"
+          ],
+          "properties": {
+            "item_id": {
+              "type": "string"
+            },
+            "semantic_equivalence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "relative_quality": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "validity_a": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "validity_b": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 320,
+              "pattern": "^(?:\\S+\\s+){0,39}\\S+$"
+            }
+          }
+        }
+      }
+    }
+  },
+  "items": [
+    {
+      "item_id": "judge_000001_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "Yes, they collected the two datasets.",
+      "answer_b": "- **No**, the question is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000001_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, the question is not",
+      "answer_b": "Yes, they collected the two datasets.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000002_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "Canadian Football League (CFL) Edmonton",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000002_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "Canadian Football League (CFL) Edmonton",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000003_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "No, they do not test both skip",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000003_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they do not test both skip",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000004_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "No, the improvement.",
+      "answer_b": "No, the improvement is not statistically significant",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000004_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "No, the improvement is not statistically significant",
+      "answer_b": "No, the improvement.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000005_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student reflection data is very",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000005_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student reflection data is very",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000006_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "Cirque du Soleil production –",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000006_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Cirque du Soleil production –",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000007_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, they did not collect",
+      "answer_b": "- **No**, the question is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000007_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, the question is not",
+      "answer_b": "- **No**, they did not collect",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000008_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they report results only on English",
+      "answer_b": "No, they report.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000008_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they report.",
+      "answer_b": "No, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000009_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "American singer/songwriter Kevin Richardson.",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000009_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "American singer/songwriter Kevin Richardson.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000010_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "The answer is Mr. Tumnus",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000010_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The answer is Mr. Tumnus",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000011_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they do not test both skip",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000011_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "No, they do not test both skip",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000012_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "Narnia character: Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000012_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "Narnia character: Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000013_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is.",
+      "answer_b": "The question is unclear. Please provide more",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000013_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is unclear. Please provide more",
+      "answer_b": "The question is.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000014_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "American singer/songwriter Kevin Richardson,",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000014_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "American singer/songwriter Kevin Richardson,",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000015_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "Narnia character: Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000015_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "Narnia character: Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000016_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000016_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000017_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "2006.",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000017_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "2006.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000018_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, the datasets are balanced.",
+      "answer_b": "yes, but not necessarily.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000018_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "yes, but not necessarily.",
+      "answer_b": "Yes, the datasets are balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000019_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "Yes, they collected the two datasets.",
+      "answer_b": "Yes, they collected.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000019_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "Yes, they collected.",
+      "answer_b": "Yes, they collected the two datasets.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000020_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "The winner of the 201",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000020_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "The winner of the 201",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000021_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000021_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000022_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, active learning is used to create",
+      "answer_b": "No, the model does not use active",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000022_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, the model does not use active",
+      "answer_b": "Yes, active learning is used to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000023_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Le Rêve was created by the",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000023_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "Le Rêve was created by the",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000024_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, the model does not use active",
+      "answer_b": "Yes, we use active learning to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000024_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, we use active learning to create",
+      "answer_b": "No, the model does not use active",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000025_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "No, the improvement is not statistically significant",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000025_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "No, the improvement is not statistically significant",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000026_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Le Rêve was created by the",
+      "answer_b": "Le Rêve was.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000026_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Le Rêve was.",
+      "answer_b": "Le Rêve was created by the",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000027_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student reflection data is different",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000027_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student reflection data is different",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000028_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, active learning is used to create",
+      "answer_b": "Yes, active learning is used to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000028_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, active learning is used to create",
+      "answer_b": "Yes, active learning is used to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000029_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "Yes, the improvement is statistically significant.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000029_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "Yes, the improvement is statistically significant.",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000030_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, we use active learning to create",
+      "answer_b": "No, the model does not use active",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000030_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, the model does not use active",
+      "answer_b": "Yes, we use active learning to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000031_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "Le Rêve was created by the",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000031_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Le Rêve was created by the",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000032_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "2006–200",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000032_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "2006–200",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000033_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on the domain",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000033_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on the domain",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000034_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they report results on both English",
+      "answer_b": "No, they do not report only on",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000034_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they do not report only on",
+      "answer_b": "No, they report results on both English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000035_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "American singer/songwriter Kevin Richardson.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000035_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "American singer/songwriter Kevin Richardson.",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000036_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "It is not the case that The character is **Lucy Pev.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000036_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "It is not the case that The character is **Lucy Pev.",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000037_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000037_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000038_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, the question is not",
+      "answer_b": "- **No**, they did not collect",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000038_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, they did not collect",
+      "answer_b": "- **No**, the question is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000039_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on the domain",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000039_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on the domain",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000040_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on the domain",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000040_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on the domain",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000041_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they do not test both skip",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000041_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "No, they do not test both skip",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000042_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, but not necessarily.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000042_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, but not necessarily.",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000043_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000043_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000044_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they report results only on English",
+      "answer_b": "No, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000044_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they report results only on English",
+      "answer_b": "No, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000045_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, active learning is used to create",
+      "answer_b": "Yes, active learning.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000045_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, active learning.",
+      "answer_b": "Yes, active learning is used to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000046_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon starred in \"The",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000046_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon starred in \"The",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000047_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, they do not use active learning",
+      "answer_b": "No, the model does not use active",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000047_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, the model does not use active",
+      "answer_b": "No, they do not use active learning",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000048_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "2006 (10 July",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000048_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "2006 (10 July",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000049_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "The winner of the 201",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000049_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "The winner of the 201",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000050_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000050_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000051_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Le Rêve was created by the",
+      "answer_b": "Le Rêve was created by the",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000051_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Le Rêve was created by the",
+      "answer_b": "Le Rêve was created by the",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000052_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "Kuala Lumpur Police College (KPL",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000052_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "Kuala Lumpur Police College (KPL",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000053_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "The American singer/songwriter in question",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000053_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The American singer/songwriter in question",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000054_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they do not test both skip",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000054_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "No, they do not test both skip",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000055_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on the domain",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000055_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on the domain",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000056_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "Yes, they report results only on English",
+      "answer_b": "No, they do not report only on",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000056_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they do not report only on",
+      "answer_b": "Yes, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000057_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "The movie with Russell Brand and Jonah Hill",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000057_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "The movie with Russell Brand and Jonah Hill",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000058_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000058_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000059_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "Kuala Lumpur Police College (KPL",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000059_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "Kuala Lumpur Police College (KPL",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000060_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "Lindsey Broad starred.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000060_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred.",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000061_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "2006 (10 July",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000061_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "2006 (10 July",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000062_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "Canadian Football League (CFL) Edmonton",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000062_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "Canadian Football League (CFL) Edmonton",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000063_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on the domain",
+      "answer_b": "No, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000063_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "No, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on the domain",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000064_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, the datasets are balanced.",
+      "answer_b": "Yes, but not necessarily.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000064_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, but not necessarily.",
+      "answer_b": "Yes, the datasets are balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000065_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "- **Yes**, the improvement is statistically",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000065_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **Yes**, the improvement is statistically",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000066_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "Lindsey Broad starred in *Get",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000066_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in *Get",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000067_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "Yes, they report results only on English",
+      "answer_b": "No, they do not report only on",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000067_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they do not report only on",
+      "answer_b": "Yes, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000068_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Cirque du Soleil production:",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000068_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "Cirque du Soleil production:",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000069_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they do not test both skip",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000069_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "No, they do not test both skip",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000070_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "No, the improvement is not statistically significant",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000070_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "No, the improvement is not statistically significant",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000071_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000071_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000072_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, they did not collect",
+      "answer_b": "- **No**, the question is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000072_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, the question is not",
+      "answer_b": "- **No**, they did not collect",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000073_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000073_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000074_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000074_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based.",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000075_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "Canadian Football League (CFL) Edmonton",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000075_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "Canadian Football League (CFL) Edmonton",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000076_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "2006 (10 July",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000076_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "2006 (10 July",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000077_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is unclear. Please provide more",
+      "answer_b": "The question is unclear. Please provide more",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000077_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is unclear. Please provide more",
+      "answer_b": "The question is unclear. Please provide more",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000078_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "Yes, they collected the two datasets.",
+      "answer_b": "- **No**, the question is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000078_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, the question is not",
+      "answer_b": "Yes, they collected the two datasets.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000079_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "Canadian Football League (CFL) Edmonton",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000079_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "Canadian Football League (CFL) Edmonton",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000080_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on the domain",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000080_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on the domain",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000081_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "It is not the case that Yes, both skip-gram and c.",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000081_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "It is not the case that Yes, both skip-gram and c.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000082_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "American singer/songwriter Stephen Kij",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000082_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "American singer/songwriter Stephen Kij",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000083_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "Narnia character: Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000083_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "Narnia character: Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000084_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000084_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000085_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on the domain",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000085_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on the domain",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000086_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "Kuala Lumpur Police College (KPL",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000086_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "Kuala Lumpur Police College (KPL",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000087_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000087_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000088_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, datasets for sentiment analysis are typically",
+      "answer_b": "Yes, the datasets are balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000088_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, the datasets are balanced.",
+      "answer_b": "Yes, datasets for sentiment analysis are typically",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000089_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000089_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000090_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "The winner of the 201",
+      "answer_b": "It is not the case that The winner of the 201.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000090_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "It is not the case that The winner of the 201.",
+      "answer_b": "The winner of the 201",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000091_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they do not report only on",
+      "answer_b": "Yes, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000091_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "Yes, they report results only on English",
+      "answer_b": "No, they do not report only on",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000092_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000092_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000093_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "Bobby William Austin (born 1",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000093_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "Bobby William Austin (born 1",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000094_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student reflection data is different",
+      "answer_b": "Yes, the student reflection data is different",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000094_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student reflection data is different",
+      "answer_b": "Yes, the student reflection data is different",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000095_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000095_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What year did Lindsey Broad star in the movie with Russell Brand and Jonah Hill?\nAnswer:",
+      "answer_a": "Lindsey Broad starred in the movie",
+      "answer_b": "Lindsey Broad starred in the movie",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000096_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, we use active learning to create",
+      "answer_b": "No, the model does not use active",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000096_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, the model does not use active",
+      "answer_b": "Yes, we use active learning to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000097_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, datasets for sentiment analysis are typically",
+      "answer_b": "Yes, datasets for.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000097_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, datasets for.",
+      "answer_b": "Yes, datasets for sentiment analysis are typically",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000098_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000098_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000099_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000099_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000100_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "Mr. Tumnus.",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000100_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "Mr. Tumnus.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000101_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is unclear. Please provide more",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000101_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "The question is unclear. Please provide more",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000102_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000102_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000103_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000103_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000104_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "John Charles Cutler.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000104_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "John Charles Cutler.",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000105_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, the datasets are balanced.",
+      "answer_b": "Yes, datasets for sentiment analysis are typically",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000105_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, datasets for sentiment analysis are typically",
+      "answer_b": "Yes, the datasets are balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000106_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they do not test both skip",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000106_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "No, they do not test both skip",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000107_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director behind \"Le Rêve",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000107_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "The director behind \"Le Rêve",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000108_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments focus on a specific",
+      "answer_b": "Yes, the experiments.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000108_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Does the experiments focus on a specific domain?\nAnswer:",
+      "answer_a": "Yes, the experiments.",
+      "answer_b": "Yes, the experiments focus on a specific",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000109_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, we use active learning to create",
+      "answer_b": "No, the model does not use active",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000109_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, the model does not use active",
+      "answer_b": "Yes, we use active learning to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000110_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "Kuala Lumpur Police College (KPL",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000110_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "Kuala Lumpur Police College (KPL",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000111_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000111_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located.",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000112_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "Narnia character: Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000112_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "Narnia character: Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000113_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, they did not collect",
+      "answer_b": "- **No**, the question is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000113_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, the question is not",
+      "answer_b": "- **No**, they did not collect",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000114_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "Cirque du Soleil production:",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000114_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Cirque du Soleil production:",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000115_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000115_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "Yes, both skip-gram and c",
+      "answer_b": "Yes, both skip-gram and c",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000116_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "No, the model does not use active",
+      "answer_b": "Yes, we use active learning to create",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000116_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they use active learning to create their dataset?\nAnswer:",
+      "answer_a": "Yes, we use active learning to create",
+      "answer_b": "No, the model does not use active",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000117_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000117_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000118_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they report results only on English",
+      "answer_b": "No, they do not report only on",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000118_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they do not report only on",
+      "answer_b": "No, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000119_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000119_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student's reflection data is",
+      "answer_b": "Yes, the student's reflection data is",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000120_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "The winner of the 201",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000120_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "The winner of the 201",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000121_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "Bobby William Austin (born 1",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000121_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "Bobby William Austin (born 1",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000122_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they do not report only on",
+      "answer_b": "Yes, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000122_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "Yes, they report results only on English",
+      "answer_b": "No, they do not report only on",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000123_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they test both skipgram and",
+      "answer_b": "No, they do not test both skip",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000123_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they test both skipgram and c-bow?\nAnswer:",
+      "answer_a": "No, they do not test both skip",
+      "answer_b": "No, they test both skipgram and",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000124_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "American singer/songwriter Kevin Richardson.",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000124_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "American singer/songwriter Kevin Richardson.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000125_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, the datasets are balanced.",
+      "answer_b": "Yes, datasets for sentiment analysis are balanced",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000125_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, datasets for sentiment analysis are balanced",
+      "answer_b": "Yes, the datasets are balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000126_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "Yes, they report results only on English",
+      "answer_b": "No, they do not report only on",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000126_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Do they report results only on English data?\nAnswer:",
+      "answer_a": "No, they do not report only on",
+      "answer_b": "Yes, they report results only on English",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000127_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student reflection data is different",
+      "answer_b": "Yes, the student.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000127_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the student reflection data very different from the newspaper data?\nAnswer:",
+      "answer_a": "Yes, the student.",
+      "answer_b": "Yes, the student reflection data is different",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000128_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "Yes, the improvement is statistically significant.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000128_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "Yes, the improvement is statistically significant.",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000129_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000129_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000130_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Cirque du Soleil production:",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000130_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "Cirque du Soleil production:",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000131_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000131_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000132_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "The winner of the 201",
+      "answer_b": "The winner of the 201",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000132_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "The winner of the 201",
+      "answer_b": "The winner of the 201",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000133_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "Bobby William Austin (born 1",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000133_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "Bobby William Austin (born 1",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000134_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "No, the improvement is not statistically significant",
+      "answer_b": "No, the improvement is not statistically significant",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000134_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "No, the improvement is not statistically significant",
+      "answer_b": "No, the improvement is not statistically significant",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000135_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "The character is **Lucy Pev",
+      "answer_b": "Narnia character: Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000135_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Which \"The Chronicles of Narnia\" character is prominently featured in \"The Lion, the Witch and the Wardrobe\" and is a close friend with Lucy Pevensie whom she meets in the Lantern Waste.\nAnswer:",
+      "answer_a": "Narnia character: Lucy Pev",
+      "answer_b": "The character is **Lucy Pev",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000136_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "Yes, they collected the two datasets.",
+      "answer_b": "Yes, they collected the two datasets.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000136_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "Yes, they collected the two datasets.",
+      "answer_b": "Yes, they collected the two datasets.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000137_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "Canadian Football League (CFL) Edmonton",
+      "answer_b": "John Chickering.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000137_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What university did the winner of the 2014 CFL's Most Outstanding Defensive Player Award attend?\nAnswer:",
+      "answer_a": "John Chickering.",
+      "answer_b": "Canadian Football League (CFL) Edmonton",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000138_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "- **No**, the improvement is not",
+      "answer_b": "Yes, the improvement is statistically significant.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000138_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is the improvement over state-of-the-art statistically significant?\nAnswer:",
+      "answer_a": "Yes, the improvement is statistically significant.",
+      "answer_b": "- **No**, the improvement is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000139_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "It is not the case that The song \"Show 'Em (What.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000139_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "It is not the case that The song \"Show 'Em (What.",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000140_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, the datasets are balanced.",
+      "answer_b": "Yes, but not necessarily.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000140_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, but not necessarily.",
+      "answer_b": "Yes, the datasets are balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000141_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, datasets for sentiment analysis are typically",
+      "answer_b": "Yes, datasets for sentiment analysis are typically",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000141_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, datasets for sentiment analysis are typically",
+      "answer_b": "Yes, datasets for sentiment analysis are typically",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000142_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "Bobby Austin (born 19",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000142_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "Bobby Austin (born 19",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000143_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "Bobby William Austin (born 1",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000143_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "Bobby William Austin (born 1",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000144_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "Cirque du Soleil production –",
+      "answer_b": "The director of Le Rêve was",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000144_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Le Rêve was created by the director behind what Cirque du Soleil production from 1998 onward?\nAnswer:",
+      "answer_a": "The director of Le Rêve was",
+      "answer_b": "Cirque du Soleil production –",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000145_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "Yes, the datasets are balanced.",
+      "answer_b": "yes, balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000145_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Is datasets for sentiment analysis balanced?\nAnswer:",
+      "answer_a": "yes, balanced.",
+      "answer_b": "Yes, the datasets are balanced.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000146_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000146_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000147_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000147_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000148_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000148_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: \"Show 'Em (What You're Made Of)\" is a song written by a group of people including an American singer/songwriter who was inducted into what on April 10, 2015?\nAnswer:",
+      "answer_a": "The song \"Show 'Em (What",
+      "answer_b": "The song \"Show 'Em (What",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000149_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000149_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: What film did Lela Rochon based on a John Grisham novel?\nAnswer:",
+      "answer_a": "Lela Rochon based on a John",
+      "answer_b": "Lela Rochon based on a John",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000150_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "John Charles Cutler.",
+      "answer_b": "The question is asking about the individuals involved",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000150_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Who was involved in observing the natural progression of untreated syphilis in rural African-American men in Alabama?\nAnswer:",
+      "answer_a": "The question is asking about the individuals involved",
+      "answer_b": "John Charles Cutler.",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000151_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "Kuala Lumpur Police College (KPL",
+      "answer_b": "The other school located in the same suburb",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000151_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: what other school is located in the same suburb as the Ghana Police College?\nAnswer:",
+      "answer_a": "The other school located in the same suburb",
+      "answer_b": "Kuala Lumpur Police College (KPL",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000152_ab",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, they did not collect",
+      "answer_b": "- **No**, the question is not",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    },
+    {
+      "item_id": "judge_000152_ba",
+      "task_type": "qa",
+      "prompt": "Answer briefly and directly.\nQuestion: Did they collected the two datasets?\nAnswer:",
+      "answer_a": "- **No**, the question is not",
+      "answer_b": "- **No**, they did not collect",
+      "requested_scores": [
+        "semantic_equivalence",
+        "relative_quality",
+        "validity_a",
+        "validity_b",
+        "confidence"
+      ]
+    }
+  ]
+}
