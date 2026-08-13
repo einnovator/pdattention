@@ -44,7 +44,9 @@ robust to routed selections. The official Gemma path preserves its native local/
 organization, and routed K/V raises gold-token log-probability by 0.135 nats. The shared execution
 core, thin family adapters, router artifacts, reference lifecycle, accounting, wheel, and Python
 API make this cross-family boundary directly testable; iterative retrieval and decoded behavioral
-utility remain follow-up questions.
+utility remain bounded questions. Two blind judges agree on the direction of QASPER decoded
+adaptation but disagree on HotpotQA, and one judge fails literal-identity calibration; the
+behavioral result is therefore judge-specific rather than a universal equivalence claim.
 \end{abstract}
 
 \section{Introduction}
@@ -73,6 +75,13 @@ selection. PRA-HF therefore separates a compact \emph{routing index} from the la
 branch. Paper~1.5 supplies the controlled scientific motivation; this paper tests transfer and
 implementation in pretrained models. The resulting rule is: \textbf{route semantic state;
 attend native positional state.}
+
+The paper series separates mechanisms that otherwise become easy to conflate. Paper~1 separates
+logical memory from active K/V; Paper~1.5 separates positional and attention geometry from
+semantic routing geometry; this Paper~2 tests exact pretrained retrofit, causal use, and family
+portability. Paper~2.5 will study bounded iterative associative closure
+$q\rightarrow A\rightarrow B$, while Paper~3 will study progressive or partial K/V
+materialization after routing.
 
 Figure~\ref{fig:adapter} gives the complete data path before the individual contracts are
 developed. Publication creates a small search representation and a full native payload; only the
@@ -121,6 +130,7 @@ Exact disabled retrofit & Zero logit and hidden-state difference; identical gree
 Semantic routing, native payload & Hidden-state index; selected post-RoPE K and native V & Search features need not replace pretrained attention state \\
 Compact sparse discovery & 262,144 parameters; any-evidence recall .831/.956 at 10/20\% & A 0.044\%-of-model router searches a 0.392\%-of-detail index \\
 QASPER routed adaptation & Rank-32 LoRA raises $\Delta\log p$ from +1.377 to +4.967 & In-domain selected memory supports stronger sequence prediction \\
+Blind QASPER behavior & Residual-16 preferred over frozen: 22.5\% vs. 2.5\% by both judges & Decoded adaptation has a positive, judge-sensitive signal distinct from likelihood \\
 Ordinary-language preservation & Matched conditional controls: zero WikiText-2 loss change; exact PRA-off path & Memory specialization need not alter ordinary inference \\
 Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28 & More memory exposure is not monotonically better \\
 Bounded-head causal probe & Evidence rank 1; $\Delta\log p=+5.469$; greedy answer wrong & Retrieval, probability change, and decoding are distinct \\
@@ -887,9 +897,11 @@ Residual 16 + LoRA 4 & 631,008 & .106 & +12.035 & -5.051 & 75.5/-31.7 & +5.140 &
 \end{tabular}}
 \end{table}
 
-QASPER gives the clearest positive adaptation result in this study. Every trained conditional
-alternative improves routed sequence likelihood over frozen PRA. Residual 16 raises the routed
-gain from +1.377 to +4.942, LoRA rank 8 reaches +5.589, and residual 16 reaches routed F1 .205.
+QASPER gives the clearest positive adaptation result in this initial diagnostic ladder. Every
+trained conditional alternative improves routed sequence likelihood over frozen PRA. Residual 16
+raises the routed gain from +1.377 to +4.942, the preliminary LoRA rank-8 row reaches +5.589, and
+residual 16 reaches routed F1 .205. The later identity-disjoint held-out sweep in
+Section~\ref{sec:overnight-lora} selects rank 32 as the final LoRA configuration.
 The improvement survives router selection rather than appearing only under oracle memory. This is
 consistent with QASPER being the router's training domain, although the experiment does not isolate
 domain match as the cause. Direct evidence itself changes sequence likelihood by $-1.182$ on this
@@ -1109,9 +1121,10 @@ Token-level and answer-level metrics answer different questions. Logits and log-
 measure whether two systems follow similar probability trajectories. F1 and exact match measure
 lexical agreement with a reference answer. Neither establishes whether two generated answers are
 equally meaningful and useful to a reader. We therefore release a third, explicitly separate
-evaluation: a blind LLM-judge package for semantic and behavioral equivalence. This package is an
-evaluation protocol, not a reported judge result; no external-judge scores had been collected at
-the time of writing.
+evaluation: a blind LLM-judge package for semantic and behavioral equivalence. We subsequently
+collected complete responses from two external judges and scored them against the frozen private
+truth mapping. These results are a separate behavioral diagnostic, not a replacement for
+likelihood, F1, or exact match.
 
 The package is generated deterministically from the identity-disjoint last-14 artifact. Each item
 contains an opaque ID, the question, and outputs A and B. It contains no model, dataset, PRA,
@@ -1157,8 +1170,52 @@ The preregistered hypothesis is that behavioral fidelity may saturate at a lower
 fraction than exact logit fidelity. The current package cannot test that fraction curve because
 the required decoded sweep does not yet exist. It can test whether the measured frozen and
 adapted outputs are behaviorally interchangeable with their native controls, and whether that
-conclusion survives answer-order reversal. Any future judge results must be reported by comparison
-group, with calibration and reversal consistency, rather than pooled into one score.
+conclusion survives answer-order reversal. Judge results are reported by comparison group, with
+calibration and reversal consistency, rather than pooled into one score. We unblind
+only after schema and ID validation, orient relative quality toward the named target condition,
+and average each exact A/B reversal into one underlying comparison. The 304 presentations
+consequently produce 152 pair-level observations, not 304 independent samples.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Blind behavioral results after collapsing exact A/B reversals. Eq. is semantic
+equivalence (0--100); $\Delta Q$ is relative quality oriented toward the target; and $\Delta V$
+is target minus comparator validity. Cells give GPT-5.6 Sol / Claude Sonnet~5. The adapted
+condition is residual-16, not the later rank-32 LoRA.}
+\label{tab:behavioral-judge-results}
+\begin{tabular}{L{0.12\linewidth}L{0.28\linewidth}rrrr}
+\toprule
+Dataset & Target vs. comparator & $n$ & Eq. & $\Delta Q$ & $\Delta V$ \\
+\midrule
+QASPER & Residual-16 vs. frozen PRA & 40 & 48.4 / 51.9 & +4.25 / +16.10 & +3.40 / +8.28 \\
+HotpotQA & Residual-16 vs. frozen PRA & 40 & 23.8 / 40.0 & -6.98 / +43.73 & -5.60 / +22.95 \\
+QASPER & Frozen PRA vs. no context & 8 & 52.8 / 59.5 & -3.13 / -6.50 & -2.50 / -6.63 \\
+HotpotQA & Frozen PRA vs. no context & 8 & 74.5 / 56.3 & -2.00 / +6.00 & -1.63 / +2.75 \\
+HotpotQA & Frozen PRA vs. direct evidence & 8 & 48.9 / 40.0 & -19.25 / -43.63 & -15.50 / -23.50 \\
+HotpotQA & Frozen PRA vs. full context & 8 & 36.9 / 43.8 & -22.63 / -31.38 & -18.25 / -20.63 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The clearest decoded adaptation signal is QASPER. Both judges prefer residual-16 over frozen PRA
+on 22.5\% of the 40 seed--identity comparisons, prefer frozen on 2.5\%, and score the remainder
+as quality ties. Their QASPER adaptation scores agree closely across pairs
+($r=.991$ for equivalence and $r=.995$ for oriented relative quality). This supports a positive
+decoded behavioral effect for residual-16 on this cohort, consistent in direction with the
+teacher-forced QASPER likelihood gains. It does not transfer to HotpotQA: the judges give opposite
+mean quality and validity directions there, and relative-quality correlation is $r=-.183$.
+The native-control rows likewise do not establish behavioral equivalence; sparse PRA is judged
+below direct and full HotpotQA text context by both judges.
+
+Calibration limits the strength of the conclusion. GPT-5.6 Sol assigns literal identical copies
+equivalence 100 on both datasets, while Claude Sonnet~5 assigns 63.1 on HotpotQA and 88.0 on
+QASPER. Both judges also often prefer the nominally corrupted answer because the deterministic
+control truncates already weak native generations and can accidentally make them shorter or more
+direct. The negative control therefore does not isolate corruption sensitivity. After orientation,
+both response files are exactly invariant to A/B reversal. Across all 152 pairs, equivalence
+scores correlate at $r=.845$, but relative-quality scores correlate at only $r=.375$. We report
+each judge separately and do not pool them into a behavioral-equivalence score.
 
 \paragraph{Decision.}
 PRA-specific capacity totals 262,144 parameters (0.044\% of Qwen) in the selected routed system.
@@ -1169,7 +1226,9 @@ raises routed QASPER sequence benefit to +4.967. It remains a research opt-in ra
 default because its one-shot routed HotpotQA change is $-8.640$ nats. PRA-off logits and generation
 are exact for every run, WikiText-2 confirms ordinary-language preservation for the tested
 conditional path, and native-limit violations are zero. These results freeze Paper~2's positive
-one-shot transport, discovery, integration, and preservation claims. HotpotQA is a multi-hop stress
+one-shot transport, discovery, integration, preservation, and QASPER behavioral-adaptation claims.
+The behavioral qualification applies to residual-16 decoded generations and does not validate the
+rank-32 checkpoint. HotpotQA is a multi-hop stress
 and causal probe here, not the final architecture: iterative evidence gathering, in which
 retrieved gists refine subsequent retrieval, is deferred to Paper~2.5.
 
@@ -1348,12 +1407,14 @@ identities per dataset---but is still small. Five seeds measure optimization var
 test identities; they are not five independent dataset samples. The 1,024-token WikiText-2
 control can detect drift but is not a broad language-capability evaluation.
 
-The released behavioral-equivalence package contains 304 blinded items, but it does not yet
-contain external-judge responses. It therefore adds a reproducible semantic evaluation protocol,
-not evidence that PRA and native generations are behaviorally equivalent. Judge-model sensitivity,
-calibration against the identical/corrupted controls, and reversal consistency must be reported
-before making such a claim. A decoded K/V-fraction sweep is also required to test whether semantic
-fidelity saturates earlier than logit fidelity.
+The released behavioral-equivalence package contains 304 blinded presentations of 152 underlying
+comparisons and now includes complete responses from two external judges. QASPER residual-16
+adaptation has a consistent positive preference direction, whereas HotpotQA adaptation does not.
+One judge fails literal-identity calibration, the nominal corruption can improve weak source text,
+and cross-judge relative-quality agreement is modest. These results therefore provide behavioral
+diagnostics, not evidence that PRA and native generations are generally equivalent. A decoded
+K/V-fraction sweep is still required to test whether semantic fidelity saturates earlier than
+logit fidelity.
 
 Evidence labels and answer behavior measure different things. Any-evidence recall can be high
 while a multi-hop example still lacks another required passage. Evidence-identity recall is
@@ -1362,7 +1423,8 @@ positive HotpotQA direct-text control makes its causal comparison interpretable.
 likelihood gains remain meaningful paired effects, but direct text lowers target likelihood on the
 selected causal subset and full sources exceed the matched 2,048-token control budget. QASPER can
 therefore support routing and likelihood-integration claims, but not a direct/full-context recovery
-ratio on this cohort. Reliable routed decoded-QA gains remain unestablished.
+ratio on this cohort. Its positive blind-judge adaptation preference is encouraging, but reliable
+routed decoded-QA gains remain unestablished.
 
 The router is domain-dependent and memory exposure is depth-sensitive. In-domain QASPER routing
 and adaptation are positive, whereas cross-domain any-evidence
@@ -1444,6 +1506,11 @@ control reaches +5.363. The matched conditional controls leave WikiText-2 loss u
 PRA-conditional variants preserve the no-memory path exactly. Together, these results show that
 useful memory specialization can coexist with ordinary-language preservation.
 
+The blind decoded evaluation adds a narrower result: both judges prefer residual-16 to frozen PRA
+more often than the reverse on QASPER, with highly correlated pair-level scores, but disagree on
+HotpotQA adaptation and differ materially in calibration. Behavioral evidence is therefore
+dataset- and judge-dependent, and it does not substitute for the rank-32 likelihood result.
+
 HotpotQA marks the present one-shot boundary rather than erasing those positive results. Frozen
 routed PRA remains positive, but oracle-trained adapters do not remain robust under routed
 multi-passage selections. Paper~2.5 will address this setting with iterative gists that allow
@@ -1451,7 +1518,7 @@ retrieved evidence to refine the query before subsequent retrieval. Routing-cond
 robustness and decoded task improvement remain open.
 
 The released \texttt{pra\_hf} wheel, family adapters, model-family notebook, router artifacts,
-metrics, blind-judge package, and reimplementation tests make these boundaries independently
+metrics, blind-judge responses and scorer, and reimplementation tests make these boundaries independently
 testable. PRA-HF establishes that pretrained transformer memory can be externalized, semantically
 routed, and reintroduced as exact native K/V under bounded operations while preserving the
 original model path when disabled.
