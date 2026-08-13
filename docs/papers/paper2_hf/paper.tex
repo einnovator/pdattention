@@ -1467,24 +1467,199 @@ questions.
 
 \section{Related Work}
 
-PRA differs from text retrieval-augmented generation, which retrieves text and lets the model
-encode it in the current prompt~\cite{lewis2020rag}. It retrieves layer-native K/V after a
-separate bounded encoding path. This makes PRA complementary to RAG: a text retriever may choose
-documents before PRA routes chunks inside cached model state. Sparse-attention systems such as
-Longformer and BigBird constrain token-token connectivity inside a forward
-pass~\cite{beltagy2020longformer,zaheer2020bigbird}; PRA instead materializes selected state from
-an external addressable cache. KV-cache systems emphasize serving capacity and token retention
-policies~\cite{kwon2023vllm,zhang2023h2o,li2024snapkv}. Paper~2 asks whether selection can be
-inserted beneath an existing pretrained family without changing its disabled behavior.
+This section locates Paper~2 by the boundary each neighboring architecture changes. The richer
+literature map appears in the companion survey; the purpose here is self-containment around
+pretrained retrofit, sparse native-K/V use, and the six-stage evaluation in
+Table~\ref{tab:success-layers}. Retrieval recall, causal likelihood, adaptation, lexical output,
+and behavioral preference are not interchangeable endpoints.
 
-Prompt Cache and CacheBlend reuse modular cached state but emphasize schema-aware composition or
-selective recomputation~\cite{gim2023promptcache,yao2024cacheblend}; StreamingLLM retains a
-chronological working set during decoding~\cite{xiao2023streamingllm}. PRA-HF instead maintains an
-addressable semantic index, selects whole external parent identities, and injects their exact
-layer-native payload under a hard active-K/V budget. General source-position ownership,
-retrieval-time rebinding, and pooled-RoPE geometry belong to the controlled companion
-study~\cite{simao2026position}; the present contribution is exact pretrained-family integration,
-transfer of the routing/payload separation, causal use, and a reusable interface.
+\subsection{Pretrained retrofit and parameter-efficient adaptation}
+
+Full fine-tuning changes the host model, conventional adapters insert trainable modules while
+freezing the backbone, and LoRA adds low-rank updates to selected pretrained weights
+~\cite{houlsby2019adapters,hu2022lora}. PRA-HF has a different primary intervention: it adds an
+inference-time memory source to existing attention. Its conservative path does not require
+updating host weights. A small router learns which external identities to activate; optional
+residual or LoRA capacity is conditional on memory being present. This structure makes exact
+disabled-path preservation stronger than a regularization objective: with no selected memory,
+the wrapper delegates to the original module and the memory-use parameters are absent from the
+computation.
+
+Retrofitting attention is more than attaching a projection. The adapter must preserve each
+family's native Q/K/V projections, RoPE convention, grouped- or multi-query head layout,
+additive mask, cache mutation, output projection, dtype, and return contract. Qwen, SmolLM2,
+and Gemma therefore share publication, routing, budgeting, and materialization code while thin
+family adapters retain host-native execution. Paper~2 contributes this exact retrofit boundary;
+it does not claim that PRA-conditional adapters generally outperform standard PEFT.
+
+\subsection{Text retrieval versus latent and native-K/V memory}
+
+RAG retrieves text and conditions generation on an encoding of that text
+~\cite{lewis2020rag}. REALM and Atlas train retrieval and reader interfaces, while Self-RAG
+learns when to retrieve and how to critique evidence
+~\cite{guu2020realm,izacard2023atlas,asai2024selfrag}. Text materialization has a major advantage:
+pretrained models learned to consume text in context, and the selected evidence remains directly
+inspectable. Its costs include prompt space and repeated encoding unless serving caches avoid it.
+
+PRA-HF retrieves compact semantic gists but does not ask attention to consume those gists. It
+restores selected full-detail post-RoPE K and native V produced by the same checkpoint. This can
+avoid re-encoding warm references and places memory directly inside native attention, but it
+inherits a harder integration burden: a pretrained decoder was not trained to receive
+dynamically restored external state under arbitrary sparse selections. The oracle, depth, and
+adapter results measure that burden. RAG and PRA can also compose: a corpus retriever may discover
+a document, after which PRA publishes and repeatedly routes its cached chunks.
+
+\subsection{Long-context and sparse-attention connectivity}
+
+Longformer and BigBird reduce interactions within an already materialized sequence through
+local, global, or random sparse edges~\cite{beltagy2020longformer,zaheer2020bigbird}; Routing
+Transformer makes sparse connectivity content dependent~\cite{roy2021routing}. Position
+interpolation and related methods instead extend the coordinate range accepted by dense
+attention~\cite{chen2023positioninterpolation,ding2024longrope}. These methods change the
+visible sequence or its internal graph. They do not by themselves separate a large external
+logical store from the K/V active in one operation.
+
+PRA places that boundary before attention: sources are published outside the direct sequence,
+semantic routing selects identities, and only admitted native K/V participates. This introduces
+a retrieval miss that dense attention avoids. In return, active K/V can remain bounded while
+logical availability grows. A production comparison must match answer quality and end-to-end
+latency, including source encoding and misses; Paper~2 establishes bounded execution but does not
+claim superiority over optimized long-context kernels.
+
+\subsection{KV retention, compression, offload, and reuse}
+
+PagedAttention virtualizes physical KV allocation for serving~\cite{kwon2023vllm}. H$_2$O,
+SnapKV, and StreamingLLM retain selected positions from an active chronological cache using
+attention importance, a prompt observation window, or sink-plus-recency structure
+~\cite{zhang2023h2o,li2024snapkv,xiao2023streamingllm}. KIVI changes bytes per retained state
+through low-bit quantization~\cite{liu2024kivi}; Quest keeps a backing cache and selects pages
+for a query~\cite{tang2024quest}. Prompt Cache and CacheBlend reuse modular prompt state and
+repair composition when necessary~\cite{gim2023promptcache,yao2024cacheblend}.
+
+Those methods govern allocation, precision, bandwidth, eviction, or repeated prefill. PRA-HF
+governs semantic admission of named external objects while preserving full-detail selected
+payload. CPU-resident PRA detail is therefore not a throughput result: it reduces accelerator
+residency only if transfer and attention are correspondingly sparse, and it still pays host
+storage, lookup, and transfer. The mechanisms are complementary. Native-K/V objects could be
+paged or quantized, and selected chunks could use query-aware physical loading. Partial or smart
+materialization is intentionally deferred to Papers~3/3.5.
+
+\subsection{External, recurrent, and test-time neural memory}
+
+Transformer-XL and Compressive Transformer carry chronological hidden state across segments;
+Feedback Attention Memory, Infini-attention, and Titans retain bounded recurrent, associative,
+or test-time-updated state~\cite{dai2019transformerxl,rae2020compressive,hwang2024fam,
+munkhdalai2024infini,behrouz2025titans}. Memorizing Transformer and RETRO retrieve neighboring
+representations or corpus chunks during model computation
+~\cite{wu2022memorizing,borgeaud2022retro}. Landmark Attention indexes ingested blocks with
+learned landmarks~\cite{mohtashami2023landmark}.
+
+These systems differ in whether memory is chronological or random access, anonymous or named,
+lossy or full detail, learned jointly or added after pretraining, and consumed through recurrent
+state, cross-attention, or native attention. PRA-HF retains explicit object identity and
+layer-native payload and can remove or version an object independently. That inspectability
+costs storage and requires an external lifecycle. Its selected state participates in the host's
+native attention operation; its semantic index does not.
+
+\subsection{Semantic routers and positional geometry}
+
+Content-based sparse attention, dense passage retrieval, Landmark Attention, ClusterKV, and
+Unlimiformer all use compact or indexed representations to narrow computation
+~\cite{roy2021routing,karpukhin2020dpr,mohtashami2023landmark,liu2024clusterkv,
+bertsch2023unlimiformer}. The central Paper~2 distinction is that a representation useful for
+semantic discovery need not be the representation native attention should consume.
+
+Paper~1.5 establishes that source coordinates, contextual fragmentation, native Q/K ranking,
+and semantic relevance are separate geometries~\cite{simao2026position}. Paper~2 transfers that
+result to pretrained checkpoints: the learned projection ranks compact hidden-state gists, while
+fixed selected identities recover exact layer-native post-RoPE K and native V. The learned
+router is therefore pretrained-transfer evidence for a general search/execution separation, not
+an isolated embedding trick or a replacement attention representation.
+
+\subsection{Adaptive computation and depth-specific use}
+
+Adaptive Computation Time and Universal Transformer vary the number of representation updates
+assigned to an input or position~\cite{graves2016adaptive,dehghani2019universal}. Layerwise
+cache policies and early-exit systems likewise exploit nonuniform depth. PRA-HF varies a
+different resource: which external memory is exposed and at which pretrained layers it enters.
+The measured late-band optimum is consistent with layer specialization, but it does not imply a
+general lower-versus-upper-layer law. All-layer replay being harmful shows that memory exposure
+is not monotonically useful. It does not establish a cognitive or biological hierarchy.
+
+\subsection{Multi-hop retrieval and the HotpotQA boundary}
+
+HotpotQA was designed around multiple supporting facts~\cite{yang2018hotpotqa}. One-shot
+retrieve-then-read can fail when an initial passage reveals the entity or relation needed to
+form the next query. IRCoT addresses this dependency by alternating reasoning and retrieval;
+ReAct interleaves reasoning with external actions
+~\cite{trivedi2023ircot,yao2023react}. These systems pay serial model/retrieval cost but can
+expand an evidence set in response to intermediate content.
+
+Paper~2 does not implement that loop. Its one-shot router selects from the initial query, then
+reuses selected identities across a fixed layer band. The relation-near HotpotQA failures and
+the gap between any-evidence and all-evidence recall are therefore interpreted as a boundary,
+not as evidence for iterative PRA. Paper~2.5 owns the test of bounded associative closure
+$q\rightarrow A\rightarrow B$, with a fixed final unique-memory budget and preserved evidence
+paths. QASPER remains the one-shot positive control.
+
+\subsection{Likelihood, decoding, and behavioral utility}
+
+Teacher forcing optimizes next-token likelihood under gold prefixes, whereas generation
+conditions on model-produced prefixes. Scheduled sampling was proposed to reduce this mismatch
+~\cite{bengio2015scheduled}; later work also finds meaningful self-recovery and cautions against
+treating exposure bias as a universal explanation~\cite{he2021exposure}. Paper~2's distinction
+between answer-critical polarity, completion, lexical match, and blind behavioral preference
+belongs to this broader training--generation problem, but the paper is not a study of sequence
+objectives. The failed validation-selected decision-token reweighting is a falsification control
+for one small-data intervention, not evidence against decision-aware or sequence-level training
+in general.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.96}
+\caption{Related mechanisms alter different boundaries. Entries describe canonical designs;
+individual systems may compose several rows.}
+\label{tab:related-boundaries}
+\begin{tabularx}{\linewidth}{L{0.16\linewidth}L{0.20\linewidth}L{0.19\linewidth}Y}
+\toprule
+Family & Search or control unit & Consumed representation & Primary distinction from PRA-HF \\
+\midrule
+Dense/sparse context & token position or edge & local native K/V & Evidence is already in the sequence; no external publication boundary \\
+Text RAG & corpus passage & text or encoder state & Familiar text interface; selected evidence is re-encoded or cached \\
+KV management & token/page/cache module & retained or reused K/V & Controls residency, precision, or reuse after encoding, rather than semantic object discovery \\
+Recurrent/neural memory & chronological or learned key & compressed latent/state & Bounded anonymous state rather than independently versioned full-detail objects \\
+Latent/block retrieval & landmark, hidden block, or neighbor & hidden/native state & Closest search analogue; object lifecycle and exact host retrofit differ \\
+Iterative retrieval/agents & generated query or action & text/observation per hop & Discovers follow-up evidence serially; PRA-HF is one-shot \\
+PRA-HF & semantic URI/parent gist & selected exact native K/V & Exact disabled path, named backing objects, and a hard active-K/V budget \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Six stages and cross-paper ownership}
+
+The comparison becomes clearer when mapped to Paper~2's evaluation ladder. Cache and adapter
+parity test \emph{transport}; retriever and router recall test \emph{discovery}; oracle
+$\Delta\log p$ and depth sweeps test \emph{integration}; conditional residual/LoRA experiments
+test \emph{adaptation}; completion, F1, and EM test \emph{decoding}; blind pairwise judgments test
+\emph{behavioral utility}. A system may report one of these without establishing the others.
+
+The paper series divides ownership accordingly. Paper~1 establishes bounded native-K/V
+mechanics and logical-versus-active memory~\cite{simao2026pra}. Paper~1.5 owns positional
+continuity and attention-versus-semantic geometry~\cite{simao2026position}. This Paper~2 owns
+exact pretrained retrofit, sparse discovery transfer, depth-dependent causal use,
+adaptation/decision/behavior diagnostics, and cross-family SDK portability. Paper~2.5 owns
+iterative associative closure. Papers~3/3.5 own partial and smart materialization. These are
+interfaces between papers, not claims that the later mechanisms have already been validated.
+
+For a user, PRA-HF provides a Python interface to publish named sources once, route compact
+semantic state, and activate selected host-native K/V while retaining an exact no-memory path.
+Ordinary RAG provides a more familiar text interface; dense or sparse context keeps evidence in
+the sequence; KV compression and offload reduce physical storage or transfer; iterative agents
+can discover follow-up sources. The SDK is usable at the tested boundary. General production
+superiority, optimized serving economics, broader task coverage, and larger-model scaling are
+not established.
 
 \section{Conclusion}
 
