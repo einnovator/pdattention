@@ -1,8 +1,12 @@
 import copy
+import json
 
 import pytest
 
-from experiments.paper2_hf.score_behavioral_judge_results import score_response
+from experiments.paper2_hf.score_behavioral_judge_results import (
+    score_response,
+    write_derived_artifacts,
+)
 
 
 def _truth():
@@ -78,3 +82,24 @@ def test_scoring_rejects_missing_or_invalid_responses():
     invalid["items"][0]["confidence"] = 101
     with pytest.raises(ValueError, match="out-of-range confidence"):
         score_response(invalid, _truth())
+
+
+def test_derived_outputs_keep_validation_and_unblinded_pairs_separate(tmp_path):
+    truth_path = tmp_path / "truth.json"
+    response_path = tmp_path / "response.json"
+    truth_path.write_text(json.dumps(_truth()), encoding="utf-8")
+    response_path.write_text(json.dumps(_response()), encoding="utf-8")
+
+    write_derived_artifacts(truth_path, [response_path], tmp_path / "derived")
+
+    receipt = json.loads(
+        (tmp_path / "derived/behavioral_judge_validation_fixture_judge.json").read_text()
+    )
+    pairs = json.loads(
+        (tmp_path / "derived/behavioral_judge_unblinded_pairs_fixture_judge.json").read_text()
+    )
+    assert receipt["schema_and_ids_valid"] is True
+    assert receipt["presentation_count"] == 2
+    assert "pairs" not in receipt
+    assert len(pairs["pairs"]) == 1
+    assert pairs["pairs"][0]["target_condition"] == "pra_routed_frozen"

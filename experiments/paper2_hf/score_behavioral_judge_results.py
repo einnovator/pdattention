@@ -322,11 +322,61 @@ def build_report(truth_path: Path, response_paths: list[Path]) -> dict[str, Any]
     }
 
 
+def write_derived_artifacts(
+    truth_path: Path, response_paths: list[Path], output_dir: Path
+) -> None:
+    """Write validation receipts and unblinded pair rows separately from aggregates."""
+
+    truth = json.loads(truth_path.read_text(encoding="utf-8"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for path in response_paths:
+        response = json.loads(path.read_text(encoding="utf-8"))
+        scored = score_response(response, truth)
+        slug = "".join(
+            character.lower() if character.isalnum() else "_"
+            for character in scored["judge_name"]
+        ).strip("_")
+        receipt = {
+            "schema_version": "1.0",
+            "judge_name": scored["judge_name"],
+            "source_file": path.name,
+            "source_sha256": _sha256(path),
+            "truth_sha256": _sha256(truth_path),
+            "schema_and_ids_valid": True,
+            "presentation_count": scored["presentation_count"],
+            "underlying_pair_count": scored["underlying_pair_count"],
+            "order_reversal": scored["order_reversal"],
+        }
+        pairs = {
+            "schema_version": "1.0",
+            "judge_name": scored["judge_name"],
+            "source_file": path.name,
+            "source_sha256": _sha256(path),
+            "truth_sha256": _sha256(truth_path),
+            "orientation": (
+                "relative_quality_target is positive when the named target condition is "
+                "preferred; exact A/B reversals are averaged into one row"
+            ),
+            "pairs": scored["pairs"],
+        }
+        (output_dir / f"behavioral_judge_validation_{slug}.json").write_text(
+            json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+        )
+        (output_dir / f"behavioral_judge_unblinded_pairs_{slug}.json").write_text(
+            json.dumps(pairs, indent=2) + "\n", encoding="utf-8"
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--truth", type=Path, required=True)
     parser.add_argument("--responses", type=Path, nargs="+", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--derived-output-dir",
+        type=Path,
+        help="Optional directory for separate validation receipts and unblinded pair rows.",
+    )
     return parser.parse_args()
 
 
@@ -335,6 +385,8 @@ def main() -> None:
     report = build_report(args.truth, args.responses)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if args.derived_output_dir:
+        write_derived_artifacts(args.truth, args.responses, args.derived_output_dir)
     print(json.dumps(report, indent=2))
 
 

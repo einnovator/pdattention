@@ -46,7 +46,8 @@ python experiments/paper2_hf/score_behavioral_judge_results.py `
   --responses `
     docs/papers/shared/results/paper2_hf/behavioral_judge/behavioral_judge_llm_results_chatgpt.json `
     docs/papers/shared/results/paper2_hf/behavioral_judge/judge_output_claude_sonnet5.json `
-  --output docs/papers/shared/results/paper2_hf/behavioral_judge/behavioral_judge_results.json
+  --output docs/papers/shared/results/paper2_hf/behavioral_judge/behavioral_judge_results.json `
+  --derived-output-dir docs/papers/shared/results/paper2_hf/behavioral_judge/derived
 ```
 
 Structured results are under `docs/papers/shared/results/paper2_hf/`; release router artifacts
