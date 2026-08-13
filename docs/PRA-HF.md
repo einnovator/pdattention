@@ -73,6 +73,24 @@ native GQA/RoPE, bounded-reference, five-seed routing, systems, and causal-use g
 Router directories contain `adapter_model.pt`, `config.json`, and a model card.
 They never contain base-model weights.
 
+## Research Memory Adapters
+
+Conditional memory-use adapters are loaded separately from routing adapters:
+
+```python
+model = PRAForCausalLM.from_pretrained(
+    "Qwen/Qwen3-0.6B",
+    routing_adapter="artifacts/pra_hf/routers/qwen3-0.6b-joint-d128",
+    memory_adapter="artifacts/pra_hf/memory_adapters/qwen3-0.6b-last14-lora",
+    torch_dtype=torch.float16,
+)
+```
+
+The released rank-32 adapter is a research-only conditional output LoRA. It improves oracle
+memory integration but degrades learned-routing HotpotQA, so frozen PRA plus the router remains
+the default. Loading validates the base revision, family, layer IDs, and compatible-router hash;
+PRA-off execution bypasses the adapter exactly.
+
 ## References And Long Prompts
 
 ```python

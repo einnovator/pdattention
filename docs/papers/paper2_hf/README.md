@@ -34,6 +34,8 @@ python -m experiments.paper2_hf.run_product_demo --help
 python -m experiments.paper2_hf.summarize_productization
 python -m experiments.paper2_hf.gemma.run_gemma3_1b
 python -m experiments.paper2_hf.gemma.summarize_gemma3_1b
+python experiments/paper2_hf/qa/run_overnight_lora_sweep.py --device cuda
+python experiments/paper2_hf/summarize_overnight_lora_sweep.py
 python experiments/paper2_hf/build_behavioral_judge_package.py `
   --input docs/papers/shared/results/paper2_hf/last14_combo/last14_combo.json `
   --output-dir docs/papers/shared/results/paper2_hf/behavioral_judge `

@@ -43,7 +43,9 @@ the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay lose
 larger identity-disjoint HotpotQA test, frozen routed PRA recovers 11.9\% of direct-evidence and
 14.1\% of feasible full-context sequence-likelihood benefit while materializing 6.56\% of source
 K/V. A 458,976-parameter residual adapter raises the oracle ceiling to 90.8\%/107.3\% recovery at
-11.39\% K/V, but does not improve routed recovery; residual plus LoRA is worse. The selected
+11.39\% K/V, but does not improve routed recovery. A subsequent bounded LoRA sweep reaches
+83.9\%/99.2\% oracle recovery with rank 32, yet reverses the routed HotpotQA gain to $-8.640$
+nats. More adaptation capacity therefore does not repair routing error. The selected
 end-to-end system therefore adds only the 262,144-parameter router, and reliable decoded QA gains
 remain open. The released
 \texttt{pra\_hf} package provides the adapters, reference lifecycle, router artifacts,
@@ -1069,6 +1071,69 @@ mean first-token rank but does not improve F1/EM. Oracle residual 16 reaches EM 
 gold probability to .409, yet the mean rank is still 22.8 and the margin remains negative.
 Reliable decoded QA is not closed by this adaptation ladder.
 
+\subsection{A bounded LoRA sweep raises the oracle ceiling, not routed robustness}
+\label{sec:overnight-lora}
+
+The first ladder leaves a narrow ambiguity: perhaps ranks 4 and 8, 32 updates, or the baseline
+learning rate underfit the conditional output map. We test that explanation without changing the
+last-14 placement, native K/V, router, attention budget, or oracle-memory training objective.
+Stage A screens ranks 4, 8, 16, and 32 for 32 and 64 updates at learning rate $10^{-3}$.
+Stage B expands the three best ranks to 64 and 128 updates at $0.5\times$, $1\times$, and
+$2\times$ that rate. The score is equal-weight mean oracle sequence $\Delta\log p$ over four
+held-out HotpotQA and four held-out QASPER identities. Three rank-diverse finalists then run over
+seeds 11, 23, 37, 53, and 71. Test identities remain unopened until this choice is frozen.
+
+The validation-only Pareto rule selects rank 32, 64 updates, and learning rate $10^{-3}$:
+1,376,256 parameters, or 0.231\% of Qwen3-0.6B. Rank 32 improves from 11.704 at 32 updates to
+12.484 at 64 in the single-seed screen, then falls to 12.096 at 128. At the baseline rate,
+ranks 4 and 8 instead decline when extended from 32 to 64 updates. Longer optimization is thus
+selectively useful rather than a general cure for under-convergence. Rank 64 is not expanded:
+rank 32 already fails the learned-routing product gate, so these data do not establish saturation
+beyond the tested rank.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Five-seed untouched-test result for the bounded conditional-LoRA sweep. H and Q denote
+HotpotQA and QASPER; O/R denote oracle/routed selection. $\rho_D$ and $\rho_F$ are cohort recovery
+against direct evidence and feasible full context. F1 is oracle/routed. QASPER recovery is
+undefined because direct evidence lowers likelihood on this cohort.}
+\label{tab:overnight-lora}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Method & $M_\psi$ & \% base & H O & H R & H $\rho_D$ O/R & H $\rho_F$ O/R & H F1 O/R & Q $\Delta\log p$ O/R \\
+\midrule
+Frozen PRA & 0 & .000 & +11.212 & +1.901 & 70.3/11.9 & 83.1/14.1 & .102/.000 & +1.444/+1.377 \\
+LoRA $r=32$ & 1,376,256 & .231 & \textbf{+13.375} & -8.640 & \textbf{83.9}/-54.2 & \textbf{99.2}/-64.1 & \textbf{.310}/.022 & +4.641/+4.967 \\
+Residual 32 + LoRA 32 & 2,294,208 & .385 & +13.677 & -8.057 & 85.8/-50.5 & 101.4/-59.7 & .268/.048 & \textbf{+5.062/+5.363} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The selected LoRA improves oracle HotpotQA by $2.164\pm1.425$ nats relative to frozen PRA and
+does so in all five seeds. Under the unchanged learned router, however, its paired effect is
+$-10.541\pm4.841$, again with the same direction in all five seeds. Mean routed gold rank worsens
+from 34.1 to 124.9 and EM remains zero. QASPER routed likelihood improves by
+$3.590\pm1.246$, but that cohort has no positive direct-text denominator. The result is therefore
+dataset-conditional, not a general routed-memory gain.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper2_hf/overnight_lora_sweep/lora_parameter_pareto.pdf}
+\caption{Held-out oracle sequence benefit versus conditional-LoRA parameter fraction. The staged
+screen finds an oracle frontier at rank 32 and 64 updates, but the untouched routed HotpotQA test
+rejects it as a product default. Parameter efficiency under clean memory does not imply robustness
+to imperfect selected memory.}
+\label{fig:overnight-lora-pareto}
+\end{figure}
+
+One preregistered combination adds residual width 32 to the selected LoRA. Its combo-minus-LoRA
+effect changes direction across seeds for both datasets and both selection modes; the HotpotQA
+routed mean is only $+0.583\pm6.697$. We reject the combination and retain frozen last-14 PRA plus
+the learned router as the SDK default. The rank-32 weights are released only as a research opt-in.
+All 43 candidate PRA-off checks are exact, and no native-operation-limit violation occurs.
+
 \subsection{Blind behavioral-equivalence protocol}
 \label{sec:behavioral-judge}
 
@@ -1131,6 +1196,8 @@ group, with calibration and reversal consistency, rather than pooled into one sc
 PRA-specific capacity totals 262,144 parameters (0.044\% of Qwen) in the selected routed system.
 The oracle residual probe adds 458,976 parameters, bringing the diagnostic total to 721,120
 (0.121\%); the rejected combination would total 893,152 (0.150\%) and occupies 2.43~MiB on disk.
+The broader follow-up selects a 1,376,256-parameter rank-32 LoRA by held-out oracle likelihood,
+but rejects it for deployment after its routed HotpotQA change falls to $-8.640$ nats.
 PRA-off logits and generation are exact for every run, and native-limit violations are zero.
 This result is sufficient to freeze Paper~2's transport, discovery, and bounded integration
 claims, while leaving robust routing-conditioned adaptation and decoded QA open. HotpotQA is a
@@ -1556,8 +1623,11 @@ nats per gold token over the last 14 layers but loses 0.766 over all 28, establi
 depth regime rather than a monotone layer-count effect. On the larger identity-disjoint HotpotQA
 cohort, frozen routed PRA recovers 11.9\% of direct-evidence and 14.1\% of full-context sequence
 benefit while activating 6.56\% of source K/V. Residual 16 raises the oracle ceiling to 90.8\%
-and 107.3\% at 11.39\% K/V, but it does not improve routed recovery. Conditional LoRA and the
-residual-plus-LoRA stack are worse under routed selection. The smallest faithful product path is
+and 107.3\% at 11.39\% K/V, but it does not improve routed recovery. A bounded rank, update, and
+learning-rate sweep confirms that this is not simply a rank-4 under-convergence artifact:
+rank-32 LoRA reaches 83.9\%/99.2\% oracle recovery, but changes routed HotpotQA recovery to
+$-54.2\%/-64.1\%$. Conditional LoRA and the residual-plus-LoRA stack are worse under routed
+selection. The smallest faithful product path is
 therefore the frozen backbone plus the 0.044\%-of-model router, not a larger memory-use adapter.
 
 The adaptation result also sharpens the open problem. Clean oracle memory can be integrated and
@@ -1999,6 +2069,27 @@ in \texttt{test\_hf\_integration.py}, lines 122--152 and 739--790, pin validatio
 shape handling, zero initialization, parameter ownership, active gradients, and exact Qwen
 bypass. \texttt{test\_hf\_llama\_integration.py}, lines 124--153, exercises the same ownership
 and bypass contract through the Llama-family wrapper.
+
+\subsection{Bounded LoRA search and portable artifact}
+
+The follow-up runner makes the selection boundary explicit. Constants and the Stage-A/B grid are
+in \texttt{run\_overnight\_lora\_sweep.py}, lines 52--103; validation scoring and rank-diverse
+finalist selection are at lines 110--185. Lines 686--740 execute the single-seed screen, lines
+742--782 repeat finalists over five seeds and freeze the validation choice, and lines 851--869
+release training state before loading the untouched test identities. The full screen is retained
+below rather than reporting only its winner.
+
+\input{../shared/results/paper2_hf/overnight_lora_sweep/validation_grid.tex}
+
+The public artifact separates memory-use weights from the router. \texttt{PRAMemoryAdapter} in
+\texttt{src/pra\_hf/memory\_adapter.py}, lines 12--132, validates the conditional-LoRA metadata,
+reconstructs the per-layer bank, and saves or loads only its state dictionary. The
+\texttt{PRAForCausalLM} constructors accept \texttt{memory\_adapter} at
+\texttt{src/pra\_hf/model.py}, lines 74--132; compatibility checks and late loading are at lines
+159--207. Metadata pins the base revision, layer IDs, rank, compatible-router hash, source
+checkpoint hash, and the measured limitation. Because the adapter is structurally bypassed when
+PRA has no selected memory, loading it does not weaken disabled-path exactness. It remains an
+explicit research option rather than an SDK default.
 
 \subsection{Global readout control}
 

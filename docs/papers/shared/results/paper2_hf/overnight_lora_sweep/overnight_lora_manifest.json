@@ -1,0 +1,107 @@
+{
+  "base_model": "Qwen/Qwen3-0.6B",
+  "base_model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "combination": "one residual-32 plus selected LoRA configuration",
+  "fixed_architecture": {
+    "alpha_rule": "alpha equals rank",
+    "consumption_layers": "last-14",
+    "dropout": 0.0,
+    "max_materialized_memory_tokens": 512,
+    "objective": "oracle-memory gold answer mean negative log-likelihood",
+    "optimizer": "AdamW",
+    "routing_checkpoint": "D:\\git\\rd\\pdattention-paper2\\docs\\papers\\shared\\results\\paper2_hf\\routing\\learned_adapter\\checkpoints\\asymmetric_linear_d128_last_joint_seed53_margin_exhaustive.pt",
+    "routing_chunk_tokens": 32,
+    "target": "PRA-active native attention output projection",
+    "top_k_chunks_per_reference": 3,
+    "weight_decay": 0.0
+  },
+  "full_context_decoding": "not run: 2,048-token eager greedy control exceeds the 4-GiB evaluation GPU; teacher-forced full-context logP remains measured",
+  "identity_split": {
+    "data_seed": 20260811,
+    "test_offset": 16,
+    "train_offset": 0,
+    "validation_offset": 12
+  },
+  "pareto_tolerance_nats": 0.2,
+  "protocol": "bounded last-14 PRA-conditional output-LoRA convergence sweep",
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "selection_metric": "equal-weight HotpotQA/QASPER validation oracle sequence delta-logP",
+  "stage_a": [
+    {
+      "config_id": "lora_o_r4_s32_lr1",
+      "learning_rate": 0.001,
+      "rank": 4,
+      "stage": "A",
+      "steps": 32
+    },
+    {
+      "config_id": "lora_o_r4_s64_lr1",
+      "learning_rate": 0.001,
+      "rank": 4,
+      "stage": "A",
+      "steps": 64
+    },
+    {
+      "config_id": "lora_o_r8_s32_lr1",
+      "learning_rate": 0.001,
+      "rank": 8,
+      "stage": "A",
+      "steps": 32
+    },
+    {
+      "config_id": "lora_o_r8_s64_lr1",
+      "learning_rate": 0.001,
+      "rank": 8,
+      "stage": "A",
+      "steps": 64
+    },
+    {
+      "config_id": "lora_o_r16_s32_lr1",
+      "learning_rate": 0.001,
+      "rank": 16,
+      "stage": "A",
+      "steps": 32
+    },
+    {
+      "config_id": "lora_o_r16_s64_lr1",
+      "learning_rate": 0.001,
+      "rank": 16,
+      "stage": "A",
+      "steps": 64
+    },
+    {
+      "config_id": "lora_o_r32_s32_lr1",
+      "learning_rate": 0.001,
+      "rank": 32,
+      "stage": "A",
+      "steps": 32
+    },
+    {
+      "config_id": "lora_o_r32_s64_lr1",
+      "learning_rate": 0.001,
+      "rank": 32,
+      "stage": "A",
+      "steps": 64
+    }
+  ],
+  "stage_b_rule": {
+    "learning_rate_multipliers": [
+      0.5,
+      1.0,
+      2.0
+    ],
+    "rank_selection": "best three distinct Stage-A ranks on validation",
+    "steps": [
+      64,
+      128
+    ]
+  },
+  "stage_c_rule": "best three rank-diverse configs; five validation and test seeds",
+  "test_access_rule": "test references are prepared only after Stage-C validation selection"
+}
