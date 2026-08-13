@@ -24,32 +24,28 @@ Sparse Native-K/V Memory Across Qwen, Llama, and Gemma Decoders}
 
 \begin{abstract}
 Dense long-context attention couples logical memory size to the key/value (K/V) state active in
-every transformer operation. PRA-HF separates these quantities. It encodes references in
-model-safe blocks, searches a compact semantic index, and materializes only selected
-layer-native K/V under a fixed attention budget. Thin Qwen, Llama-family, and Gemma~3 adapters preserve
-the host model's rotary, grouped-query, mask, cache, and output-projection semantics; when PRA is
-disabled, logits, hidden states, greedy outputs, and cache tensors are exactly unchanged at the
-measured pinned checkpoints. Gemma's 22 local sliding-window layers remain native; PRA is admitted
-only at its four periodic global-attention layers.
+every transformer operation. PRA-HF separates these quantities: it searches a compact semantic
+index and materializes only selected layer-native K/V under a fixed attention budget. At the
+measured pinned Qwen, SmolLM2 Llama-family, and official Gemma~3 1B checkpoints, the verified
+PRA-off paths leave logits, hidden states, greedy outputs, and the tested cache contracts exactly
+unchanged. Gemma's 22 sliding-window layers retain native local attention; only its four periodic
+global layers are eligible for PRA, and the measured routed configuration consumes memory at
+global layers 17 and 23.
 
-Controlled positional analysis in companion Paper~1.5 motivates the central empirical principle:
-\emph{route semantic state and attend native positional state}. On pretrained Qwen, contextual
-hidden states provide the routing index, while selected tokens return as the model's own post-RoPE
-keys and native values. A 262,144-parameter router over frozen Qwen3-0.6B
-reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected parents. On QASPER,
-evidence-identity recall at 20\% is $0.454\pm0.007$ for Qwen3-0.6B, $0.447\pm0.051$ for the
-SmolLM2-135M Llama-family control, and $0.432\pm0.025$ for Gemma~3 1B. Oracle HotpotQA replay shows a non-monotone depth effect:
-the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766. In a
-larger identity-disjoint HotpotQA test, frozen routed PRA recovers 11.9\% of direct-evidence and
-14.1\% of feasible full-context sequence-likelihood benefit while materializing 6.56\% of source
-K/V. A 458,976-parameter residual adapter raises the oracle ceiling to 90.8\%/107.3\% recovery at
-11.39\% K/V, but does not improve routed recovery. A subsequent bounded LoRA sweep reaches
-83.9\%/99.2\% oracle recovery with rank 32, yet reverses the routed HotpotQA gain to $-8.640$
-nats. More adaptation capacity therefore does not repair routing error. The selected
-end-to-end system therefore adds only the 262,144-parameter router, and reliable decoded QA gains
-remain open. The released
-\texttt{pra\_hf} package provides the adapters, reference lifecycle, router artifacts,
-fraction-based selection, accounting, CLI, and reimplementation tests.
+Controlled positional analysis in companion Paper~1.5 motivates the empirical rule
+\emph{route semantic state and attend native positional state}. On frozen Qwen3-0.6B, a
+262,144-parameter router reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected
+parents while returning exact post-RoPE K and native V. Oracle HotpotQA replay is depth dependent:
+the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766. On a
+larger identity-disjoint test, frozen routed PRA recovers 11.9\% of direct-evidence and 14.1\% of
+feasible full-context sequence-likelihood benefit at 6.56\% active K/V; oracle-trained residual
+and LoRA capacity raises the clean-memory ceiling but is brittle to routing error. The official
+Gemma path independently preserves its local/global organization and routed native K/V raises
+gold-token log-probability by 0.135 nats, although F1 is unchanged in the eight-example causal
+probe. The execution abstraction therefore spans three attention organizations, while routing
+quality remains model- and domain-dependent and reliable decoded-QA gains remain open. The
+released \texttt{pra\_hf} wheel, API, artifacts, reference lifecycle, and accounting make this
+boundary directly testable.
 \end{abstract}
 
 \section{Introduction}
@@ -127,7 +123,7 @@ Semantic routing, native payload & Hidden-state index; selected post-RoPE K and 
 Compact sparse discovery & 262,144 parameters; any-evidence recall .831/.956 at 10/20\% & A 0.044\%-of-model router searches a 0.392\%-of-detail index \\
 Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28 & More memory exposure is not monotonically better \\
 Bounded-head causal probe & Evidence rank 1; $\Delta\log p=+5.469$; greedy answer wrong & Retrieval, probability change, and decoding are distinct \\
-Portable shared core & QASPER identity recall@20\%: Qwen $.454\pm.007$, SmolLM2 $.447\pm.051$, Gemma $.432\pm.025$ & Thin family adapters preserve one execution contract \\
+Third-family portability & Official Gemma~3 1B exact disabled parity; local/global structure preserved; routed $\Delta\log p=+.135$ & Shared core survives explicit local/global attention organization \\
 Routed context recovery & 11.9\% direct / 14.1\% full benefit at 6.56\% active K/V & Sparse end-to-end use remains positive without memory-use adaptation \\
 Memory-use ceiling & Residual 16: 90.8\% direct / 107.3\% full at 11.39\% K/V & Oracle gains do not survive routing error; residual+LoRA is rejected \\
 Reusable artifact & Python API, CLI, saved routers, metrics, tests, wheel & The measured mechanism is independently exercisable \\
@@ -292,14 +288,21 @@ and hybrid-cache behavior. At global layers, the adapter invokes Gemma's install
 with its attention-logit soft cap and leaves the native one-head MQA payload unexpanded in storage.
 No Gemma branch was added to routing, budgeting, materialization, or reference publication.
 
+This organization suggests a compatible hybrid pattern: native local computation plus
+PRA-enabled global integration. More cautiously, the host model's learned attention-scope
+structure provides a natural prior for external-memory placement. This is consistent with the
+Qwen result that sparse external memory should not be injected indiscriminately, but it does not
+establish a universal placement rule or show that the measured Gemma placement is optimal.
+
 The exact target is \texttt{google/gemma-3-1b-it} at revision
 \texttt{dcc83ea841ab6100d6b47a070329e1ba\allowbreak4cf78752}. Its documented contract is 26 layers,
 four query heads, one K/V head, width 256 per head, and a five-local/one-global periodic schedule;
 global layers are 5, 11, 17, and 23 under zero-based indexing. Tests instantiate Transformers'
 real Gemma~3 classes with the same hybrid semantics and require bit-exact disabled logits, hidden
 states, greedy tokens, and every cache tensor. The official checkpoint passes those gates.
-Reference payloads remain one-head native MQA on CPU, the final global layer 23 provides routing
-state, and global layers 17 and 23 consume selected memory. A 384-token logical prompt is processed
+Reference payloads remain one-head native MQA on CPU. Architecturally, layers 5, 11, 17, and 23
+are global-attention capable; the routed experiment configures layers 17 and 23, those same two
+layers actually consume selected memory, and layer 23 provides routing state. A 384-token logical prompt is processed
 through 128-token bounded operations with zero native-limit violations.
 
 \subsection{Qwen native semantics}
@@ -605,101 +608,6 @@ instead keeps HotpotQA-derived target coverage at 0.756/0.772/0.762 and QASPER-d
 at 0.794/0.803/0.800 for 64/128/256 units. Ranking remains stable at a fixed fraction, while
 physical materialization grows with that fraction. Sparse quality and active-K/V cost must
 therefore be reported together.
-
-\section{Cross-Family Validation}
-
-The same artifact and execution interfaces are exercised on Qwen3-0.6B, the public
-SmolLM2-135M Llama-family checkpoint, and official Gemma~3 1B. All routers use frozen late-layer attention-input states,
-one mean per 32-token parent, 128-dimensional asymmetric projections, 512 optimization steps,
-QASPER training, and seeds 11, 23, 37, 53, and 71. Table~\ref{tab:cross-family-main} reports
-evidence-identity recall, not the any-evidence metric above.
-
-\begin{table}[H]
-\centering
-\small
-\caption{Five-seed QASPER test evidence-identity recall. This stricter metric is the fraction of
-annotated identities recovered, not the any-evidence metric in Table~\ref{tab:recall-sparsity-main}.
-Values are mean $\pm$ sample standard deviation where shown.}
-\label{tab:cross-family-main}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lrrrrr}
-\toprule
-Family & Identity R@5\% & Identity R@10\% & Identity R@20\% & Identity R@30\% & AUC$_{0:30}$ \\
-\midrule
-Qwen3-0.6B & 0.293 & 0.362 & $0.454\pm0.007$ & 0.532 & 0.396 \\
-SmolLM2-135M & 0.243 & 0.334 & $0.447\pm0.051$ & 0.532 & 0.371 \\
-Gemma3-1B-IT & 0.251 & 0.326 & $0.432\pm0.025$ & 0.514 & 0.363 \\
-\bottomrule
-\end{tabular}
-}
-\end{table}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.74\linewidth]{../shared/results/paper2_hf/productization/cross_family_qasper_recall.pdf}
-\caption{\textbf{The shared PRA-HF core ports through thin family adapters.} Matched QASPER
-evidence-identity recall is similar for Qwen3-0.6B and the SmolLM2-135M Llama-family control,
-although neither reaches 0.80 before exhaustive selection.}
-\label{fig:cross-family-main}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.72\linewidth]{../shared/results/paper2_hf/gemma3_1b/gemma3_1b_recall_sparsity.pdf}
-\caption{\textbf{The frozen Gemma router is useful but not high-recall at sparse budgets.}
-Five-seed evidence-identity recall (mean $\pm$ one sample standard deviation) is above random on
-QASPER, its training domain, and transfers more weakly to HotpotQA. Both domains require exhaustive
-selection to reach 0.80 identity recall.}
-\label{fig:gemma-routing}
-\end{figure}
-
-The QASPER means at 20--30\% are close across all three measured families. Gemma's QASPER sparse
-AUC is 0.363, but its cross-domain HotpotQA AUC falls to $0.196\pm0.014$. This supports software,
-tensor-contract, and checkpoint portability, not universal routing quality. The official Meta
-Llama 3.2-1B checkpoint remains unmeasured because its manually gated repository returned HTTP 401;
-SmolLM2 is a measured Llama-family control, not a Meta Llama result.
-
-\begin{table}[H]
-\centering
-\footnotesize
-\caption{Measured portability and economics. Routing values are five-seed QASPER
-evidence-identity recall. Index/detail ratios and materialization are four-example eager CUDA
-demonstrations, not serving benchmarks.}
-\label{tab:cross-family-contract}
-\begin{tabularx}{\linewidth}{L{0.27\linewidth}YYY}
-\toprule
-Property & Qwen3-0.6B & SmolLM2-135M & Gemma3-1B-IT \\
-\midrule
-Disabled parity & Exact & Exact & Exact \\
-Native policy retained & Full, GQA & Full, GQA & 22 local + 4 global, MQA \\
-PRA consumers & Late 8 & Late 8 & Global 17, 23 \\
-Router parameters & 262,144 (0.044\%) & 147,456 (0.110\%) & 294,912 (0.0295\%) \\
-Identity R@10/20/30\% & .362/.454/.532 & .334/.447/.532 & .326/.432/.514 \\
-$f_{80}$ / $f_{90}$ & 1.0 / 1.0 & 1.0 / 1.0 & 1.0 / 1.0 \\
-AUC$_{0:30}$ & .396 & .371 & .363 \\
-Index/detail K/V & 0.049\% & 0.262\% & 0.783\% \\
-Materialized K/V & 6.61\% & 6.25\% & 6.48\% \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Gemma causal smoke probe}
-
-On eight deterministic test examples, learned Gemma memory raises paired mean gold-token
-log-probability by 0.135 nats while placing 0.060 attention mass on external memory. F1 remains
-0.125, equal to no memory. Forcing the annotated parents into only the final global layer changes
-the likelihood by $-0.016$ nats; direct evidence text raises it by 3.765 nats and reaches 0.536 F1.
-Thus selected native Gemma K/V causally changes the frozen decoder, but the external-memory path is
-not calibrated like ordinary context. The cohort is a mechanism smoke test, not an accuracy result.
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.94\linewidth]{../shared/results/paper2_hf/gemma3_1b/oracle/oracle_memory_use.pdf}
-\caption{\textbf{Gemma consumes routed native K/V, but direct text remains much stronger.}
-Gold-token likelihood changes under learned routing, whereas the single-global-layer forced replay
-is neutral in aggregate. Attention mass confirms that both PRA conditions are active.}
-\label{fig:gemma-causal}
-\end{figure}
 
 \section{Causal Use Is Depth Dependent}
 \label{sec:oracle-memory-use}
@@ -1204,6 +1112,83 @@ claims, while leaving robust routing-conditioned adaptation and decoded QA open.
 multi-hop stress and causal probe here, not a final one-shot architecture: recursive evidence
 gathering, in which retrieved gists drive subsequent retrieval, is deferred to Paper~2.5.
 
+\section{Cross-Family Validation}
+
+\textbf{One PRA execution contract spans decoder families with materially different attention
+organization.} We distinguish three claims. \emph{Execution portability} means that the shared
+core and a thin family adapter preserve the host model's measured native semantics.
+\emph{Routing portability} means that the same learned-router interface runs across families;
+its quality may still depend on model and domain. \emph{Functional portability} means that routed
+native K/V measurably changes the frozen prediction. Qwen3-0.6B, the public SmolLM2-135M
+Llama-family control, and official Gemma~3 1B exercise the execution and routing interfaces;
+Qwen and Gemma also have functional causal probes. SmolLM2 is not a Meta Llama result; the official Meta
+Llama 3.2-1B checkpoint remains unmeasured.
+
+All three routers use frozen late-layer attention-input states, one mean per 32-token parent,
+128-dimensional asymmetric projections, 512 optimization steps, QASPER training, and seeds 11,
+23, 37, 53, and 71. Their evidence-identity R@20\% values are
+$0.454\pm0.007$, $0.447\pm0.051$, and $0.432\pm0.025$, respectively. The execution abstraction
+transfers across families; routing quality remains model- and domain-dependent.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Measured cross-family contract. ``Exact'' lists the strongest disabled-path quantities
+checked at the named checkpoint. QASPER R@20\% is five-seed evidence-identity recall. Causal
+$\Delta\log p$ values use separate eight-example probes and are not directly comparable in
+magnitude. A dash means not measured.}
+\label{tab:cross-family-contract}
+\begin{tabularx}{\linewidth}{L{0.25\linewidth}YYY}
+\toprule
+Property & Qwen3-0.6B & SmolLM2-135M & Gemma3-1B-IT \\
+\midrule
+Checkpoint tested & Official pinned & Public pinned Llama-family control & Official pinned \\
+Exact PRA-off parity & Logits, hidden, greedy; cache shapes & Logits, hidden, greedy; cache shapes & Logits, hidden, greedy; cache tensors \\
+Native K/V and cache policy & GQA, native cache & GQA, native cache & MQA, HybridCache \\
+Host attention pattern & Full & Full & 22 sliding + 4 global \\
+PRA placement consumed & Late 8 & Late 8 & Global 17 and 23 \\
+QASPER identity R@20\% & $.454\pm.007$ & $.447\pm.051$ & $.432\pm.025$ \\
+Routed causal $\Delta\log p$ & +.227 & -- & +.135 \\
+Zero native-limit violations & Yes & Yes & Yes \\
+Wheel / public API smoke & Yes & Yes & Yes \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Gemma is the structurally distinct test. Its official revision has global-capable layers 5, 11,
+17, and 23, but the measured routed configuration enables and actually consumes selected memory
+only at layers 17 and 23; all 22 sliding-window layers remain native. On QASPER, its five-seed
+identity R@5/10/20/30\% curve is .251/.326/.432/.514. The same router transfers more weakly to
+HotpotQA, with AUC$_{0:30}=.196\pm.014$, so the curve is evidence for a portable routing
+interface rather than equal routing quality.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.72\linewidth]{../shared/results/paper2_hf/gemma3_1b/gemma3_1b_recall_sparsity.pdf}
+\caption{\textbf{Gemma routing quality is sparse-budget and domain dependent.} Five-seed
+evidence-identity recall is useful on QASPER, its training domain, and transfers more weakly to
+HotpotQA. Neither curve reaches 0.80 before exhaustive selection.}
+\label{fig:gemma-routing}
+\end{figure}
+
+On eight deterministic causal-probe examples, routed Gemma memory enters layers 17 and 23 and
+raises mean gold-token log-probability by 0.135 nats while placing 0.060 attention mass on
+external memory. F1 remains 0.125, exactly equal to no memory. Forcing annotated parents into only
+the final global layer changes likelihood by $-0.016$ nats; direct evidence text changes it by
++3.765 nats and reaches .536 F1. The measured chain is therefore routed memory $\rightarrow$
+selected native K/V $\rightarrow$ positive gold-likelihood effect $\rightarrow$ no greedy-F1
+change. It is a causal mechanism probe, not an accuracy estimate or evidence that Gemma+PRA
+outperforms Gemma.
+
+\subsection{Likelihood--decoding disconnect}
+
+Memory can improve gold probability, vocabulary rank, or sequence likelihood without changing
+the greedy token. Qwen supplies a large instance: the bounded-head probe gains 5.469 nats and
+moves the first-token rank from 94,106 to 1,351 while retaining the wrong answer. Gemma supplies
+an independent family-level instance: routed K/V gains 0.135 nats but leaves F1 unchanged. The
+cohorts and effect sizes differ, so this is not equal behavior across families. It is evidence
+that causal memory use and decoded task success are separate evaluation gates.
+
 \iffalse
 \subsection{A tiny residual adapter aligns memory with the frozen decoder}
 \label{sec:residual-adapter}
@@ -1483,6 +1468,8 @@ family, routing layer and representation, parent size, dataset splits, seeds, me
 version, and source revision without republishing base-model weights. Qwen's router has 262,144
 parameters (0.044\% of 596,049,920); SmolLM2's has 147,456 (0.110\% of 134,515,008); Gemma's has
 294,912 (0.0295\% of 999,885,955). Each stores one 128-dimensional FP32 vector, 512 bytes, per parent.
+The repository's \texttt{pra-hf-demo/pra\_hf\_model\_families.ipynb} exercises the same public
+reference lifecycle and model-family interface for Qwen, Llama-family, and Gemma users.
 
 Memory accounting uses three denominators. \emph{Routing-index bytes} are the compact vectors
 searched once per request. \emph{Resident detail bytes} are all layer-native K/V retained on
@@ -1522,8 +1509,8 @@ concurrency study.
 The public implementation makes the tested boundary reusable. It preserves native GQA storage
 rather than permanently expanding K/V heads, reports both requested and actual materialization,
 and permits exact disabled-path testing for a new family. The release includes examples, router
-save/load artifacts, package and CLI tests, and 291 passing repository tests at the pinned
-revision. The thin Llama adapter resolves installed rotary and eager-attention functions while
+save/load artifacts, the model-family notebook, package and CLI tests, and 310 passing repository
+tests at the current revision. The thin Llama adapter resolves installed rotary and eager-attention functions while
 the shared core retains publication, routing, budgeting, and replay. Full code-level guidance
 appears in Appendix~\ref{app:adapter-guide}.
 
@@ -1565,11 +1552,17 @@ all-evidence recall against both selected-parent and exact-K/V fractions.
 The systems result is bounded execution, not serving speed. Detail K/V remains CPU-resident,
 search is eager and exact, and selected rows are padded. Fused attention, approximate indexing,
 asynchronous transfer, batching, concurrency, and a matched dense long-context baseline remain
-unmeasured. Meta Llama 3.2-1B is pending because checkpoint access returned HTTP 401;
-SmolLM2-135M is reported only as a measured Llama-family control. Gemma~3 uses the official pinned
+unmeasured. CPU residency is not free: reference encoding, host storage, selection, and
+CPU-to-GPU transfer remain in the measured path. SmolLM2-135M is reported only as a measured
+Llama-family control; the official Meta Llama 3.2-1B checkpoint remains unmeasured. Gemma~3 uses the official pinned
 checkpoint, but its five-seed test has only 16 identities per dataset, its systems demonstration has
 four examples, and its causal probe has eight. Those results validate the integration boundary and
 causal activation, not benchmark QA quality or calibrated memory use.
+
+The tested checkpoints establish portability through approximately one-billion-parameter scale
+across multiple decoder families. They do not establish 7B--70B scaling, production throughput,
+or the economics of a serving-optimized implementation; those require larger hardware, matched
+dense baselines, and fused transfer/attention measurements.
 
 Paper~2 now stops at the measured one-shot boundary. Recursive multi-hop gathering belongs to
 Paper~2.5. Multi-gist strategy, semantic positional distance, routing-error-aware adaptation, and
@@ -1608,7 +1601,9 @@ without checkpoint conversion. Gemma adds an important scope constraint: native 
 structure is a prior for where external memory may enter, so local sliding layers remain untouched
 and only global layers are eligible. The official checkpoint passes exact parity, bounded
 reference transport, five-seed routing, public API, and causal-use gates without adding a
-Gemma-specific routing or materialization path.
+Gemma-specific routing or materialization path. Of its four global-capable layers, the measured
+routed configuration consumes selected memory at layers 17 and 23; this compatibility pattern is
+not a proof of optimal or universal placement.
 
 The architectural result is to route semantic state and attend native positional state.
 Paper~1.5 explains the controlled geometry behind this separation; Paper~2 shows how it transfers
@@ -1630,17 +1625,15 @@ $-54.2\%/-64.1\%$. Conditional LoRA and the residual-plus-LoRA stack are worse u
 selection. The smallest faithful product path is
 therefore the frozen backbone plus the 0.044\%-of-model router, not a larger memory-use adapter.
 
-The adaptation result also sharpens the open problem. Clean oracle memory can be integrated and
-can reach HotpotQA EM .25, but current routed conditions remain at EM zero. QASPER likelihood
-transfer is positive but lacks a positive direct-text denominator on this cohort. Better
-routing-conditioned robustness and recursive multi-hop evidence gathering are needed before the
-mechanism supports a general decoded-QA claim.
-
-The released \texttt{pra\_hf} package, artifacts, metrics, tests, and reimplementation guide make
-this exact portable retrofit independently usable. A deterministic 304-item blind judge package
-also fixes the next semantic evaluation before its scores are observed. PRA-HF therefore establishes sparse semantic
-selection and depth-dependent causal use of large native-K/V memory; reliable decoded task gains
-remain the principal open boundary.
+The combined evidence establishes seven boundaries. Family-native retrofit is exact under the
+verified checkpoint conditions. Semantic routing and native attention payload are separable.
+Sparse discovery reaches useful but model- and domain-dependent operating points. Native K/V has
+depth- and architecture-dependent causal effects. The shared core spans Qwen, a measured
+Llama-family checkpoint, and official Gemma attention organizations. Reliable decoded-QA
+equivalence remains open, especially under routing errors. Finally, the released
+\texttt{pra\_hf} wheel, model-family notebook, artifacts, metrics, 304-item blind-judge package,
+and reimplementation tests make each of these claims directly testable rather than tying them to
+one private experiment harness.
 
 \appendix
 \section{Routing Ablations}

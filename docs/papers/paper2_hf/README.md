@@ -6,8 +6,9 @@ consumption bands, eager attention, native GQA K/V, explicit reference memory, r
 identity reuse, a bounded `#__head` prompt, stable router artifacts, and the public `pra_hf`
 API. A thin Gemma 3 adapter and pinned official-checkpoint run preserve Gemma's periodic
 local/global attention schedule. The official 1B checkpoint passes exact disabled parity,
-five-seed routing, public API, bounded-memory, and causal-use smoke gates. Serving-optimized
-kernels remain future work.
+five-seed routing, public API, bounded-memory, and causal-use smoke gates. Its global-capable
+layers are 5, 11, 17, and 23; the measured routed path consumes memory at 17 and 23.
+Serving-optimized kernels remain future work.
 
 General source-position, RoPE rebinding, pooled-geometry, and attention-versus-semantic-routing
 results belong to companion Paper 1.5 on `research/paper1-5-rope`. Paper 2 treats those results
@@ -43,6 +44,7 @@ python experiments/paper2_hf/build_behavioral_judge_package.py `
 ```
 
 Structured results are under `docs/papers/shared/results/paper2_hf/`; release router artifacts
-are under `artifacts/pra_hf/routers/`. The behavioral judge directory contains the blind package,
+are under `artifacts/pra_hf/routers/`. The user-facing family workflow is
+`pra-hf-demo/pra_hf_model_families.ipynb`. The behavioral judge directory contains the blind package,
 private truth mapping, response schema, calibration controls, and optional batches. Never send the
 truth mapping to a judge.

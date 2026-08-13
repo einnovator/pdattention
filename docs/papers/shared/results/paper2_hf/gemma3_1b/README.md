@@ -5,8 +5,10 @@ tokenizer revision `dcc83ea841ab6100d6b47a070329e1ba4cf78752`.
 
 The thin adapter and official checkpoint pass exact disabled logits, hidden states, greedy
 generation, and hybrid-cache tensor parity. Gemma's 22 local sliding layers remain unchanged;
-only global layers 17 and 23 consume PRA memory. Captured detail K/V remains native one-head MQA
-on CPU, and the bounded `#__head` test records zero native-limit violations.
+layers 5, 11, 17, and 23 are architecturally global-capable, while the measured routed
+configuration enables and actually consumes PRA memory only at layers 17 and 23. Captured detail
+K/V remains native one-head MQA on CPU, and the bounded `#__head` test records zero native-limit
+violations.
 
 The frozen 294,912-parameter router uses 128-dimensional asymmetric projections trained on QASPER
 over five seeds. QASPER evidence-identity R@5/10/20/30% is 0.251/0.326/0.432/0.514; HotpotQA

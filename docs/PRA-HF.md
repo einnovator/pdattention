@@ -47,7 +47,9 @@ The disabled path delegates to the original attention module exactly. The enable
 path preserves each family's projections, RoPE, native K/V head count, cache
 updates, masks, eager kernel, and output projection.
 For Gemma 3, PRA is restricted to native global-attention layers; local sliding-window
-layers and their hybrid-cache semantics remain untouched.
+layers and their hybrid-cache semantics remain untouched. In the official 1B validation,
+layers 5, 11, 17, and 23 are global-capable, while the configured routed path consumes selected
+memory only at layers 17 and 23.
 
 The release routers target:
 
@@ -72,6 +74,9 @@ native GQA/RoPE, bounded-reference, five-seed routing, systems, and causal-use g
 
 Router directories contain `adapter_model.pt`, `config.json`, and a model card.
 They never contain base-model weights.
+
+The repository-relative user workflow for all supported families is
+`pra-hf-demo/pra_hf_model_families.ipynb`.
 
 ## Research Memory Adapters
 
