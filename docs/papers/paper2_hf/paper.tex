@@ -35,15 +35,16 @@ Controlled positional analysis in companion Paper~1.5 motivates the empirical ru
 262,144-parameter router reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected
 parents while returning exact post-RoPE K and native V. Oracle HotpotQA replay is depth dependent:
 the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766. On a
-larger identity-disjoint test, frozen routed PRA recovers 11.9\% of direct-evidence and 14.1\% of
-feasible full-context sequence-likelihood benefit at 6.56\% active K/V. Tiny oracle-trained
-memory-use adapters approach the clean-memory likelihood ceiling but regress under routed
-HotpotQA memory, exposing an unresolved robustness gap. The official Gemma path preserves its
-native local/global organization, and routed K/V raises gold-token log-probability by 0.135 nats
-although F1 is unchanged in the eight-example causal probe. The shared execution core, thin
-family adapters, router artifacts, reference lifecycle, accounting, wheel, and Python API make
-this cross-family boundary directly testable; routing quality and decoded behavioral utility
-remain model- and domain-dependent.
+larger identity-disjoint QASPER test, rank-32 conditional LoRA raises routed sequence-likelihood
+gain from +1.377 to +4.967 nats; a residual-plus-LoRA control reaches +5.363. PRA-conditional
+adapters preserve the ordinary no-memory path exactly, and the matched conditional controls leave
+the 1,024-token WikiText-2 loss unchanged. HotpotQA provides a harder multi-hop stress: frozen
+routed PRA remains positive at 6.56\% active K/V, while oracle-trained adapters do not remain
+robust to routed selections. The official Gemma path preserves its native local/global
+organization, and routed K/V raises gold-token log-probability by 0.135 nats. The shared execution
+core, thin family adapters, router artifacts, reference lifecycle, accounting, wheel, and Python
+API make this cross-family boundary directly testable; iterative retrieval and decoded behavioral
+utility remain follow-up questions.
 \end{abstract}
 
 \section{Introduction}
@@ -119,11 +120,13 @@ Finding & Result & Why it matters \\
 Exact disabled retrofit & Zero logit and hidden-state difference; identical greedy output & External memory can be added without changing ordinary inference \\
 Semantic routing, native payload & Hidden-state index; selected post-RoPE K and native V & Search features need not replace pretrained attention state \\
 Compact sparse discovery & 262,144 parameters; any-evidence recall .831/.956 at 10/20\% & A 0.044\%-of-model router searches a 0.392\%-of-detail index \\
+QASPER routed adaptation & Rank-32 LoRA raises $\Delta\log p$ from +1.377 to +4.967 & In-domain selected memory supports stronger sequence prediction \\
+Ordinary-language preservation & Matched conditional controls: zero WikiText-2 loss change; exact PRA-off path & Memory specialization need not alter ordinary inference \\
 Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28 & More memory exposure is not monotonically better \\
 Bounded-head causal probe & Evidence rank 1; $\Delta\log p=+5.469$; greedy answer wrong & Retrieval, probability change, and decoding are distinct \\
 Third-family portability & Official Gemma~3 1B exact disabled parity; local/global structure preserved; routed $\Delta\log p=+.135$ & Shared core survives explicit local/global attention organization \\
 Routed context recovery & 11.9\% direct / 14.1\% full benefit at 6.56\% active K/V & Sparse end-to-end use remains positive without memory-use adaptation \\
-Memory-use ceiling & Residual 16: 90.8\% direct / 107.3\% full at 11.39\% K/V & Oracle gains do not survive routing error; residual+LoRA is rejected \\
+Memory-use ceiling & Residual 16: 90.8\% direct / 107.3\% full at 11.39\% K/V & Small conditional capacity can approach clean-context benefit \\
 Reusable artifact & Python API, CLI, saved routers, metrics, tests, wheel & The measured mechanism is independently exercisable \\
 \bottomrule
 \end{tabularx}
@@ -139,10 +142,12 @@ Fifth, it implements the contract as a shared core, thin Qwen, Llama-family, and
 router artifacts, accounting, a wheel, and a public Python API. The contribution is a working
 boundary, not a new pretrained model or a solved long-context QA system.
 
-The datasets have different jobs. WikiText-style controls test ordinary language-model integrity
-and bounded-memory mechanics. QASPER tests one-shot retrieval from a long scientific document.
-HotpotQA stresses multi-passage discovery and, where direct evidence text helps the checkpoint,
-provides the cleanest oracle causal probe. It is not a universal pass/fail test for one-shot PRA.
+The datasets have different jobs. QASPER is the primary one-shot long-document routing and
+adaptation setting. WikiText-2 tests whether PRA-conditional specialization preserves ordinary
+language modeling when memory is absent. HotpotQA deliberately stresses multi-passage discovery
+and supplies the cleanest oracle causal probe where direct evidence helps the checkpoint. Its
+multi-hop limitation motivates the iterative-gist retrieval planned for Paper~2.5; it is not a
+universal pass/fail test for one-shot PRA.
 
 \begin{table}[H]
 \centering
@@ -818,7 +823,7 @@ likelihood use together. It also shows why they must be measured separately from
 success: a five-order-of-magnitude first-token probability increase need not cross the greedy
 decision boundary.
 
-\subsection{Oracle integration ceiling and routed end-to-end robustness}
+\subsection{Integration ceiling and routed adaptation across domains}
 \label{sec:last14-convergence}
 
 The depth sweep identifies layers 14--27 as Qwen's strongest measured memory-consumption band.
@@ -882,6 +887,16 @@ Residual 16 + LoRA 4 & 631,008 & .106 & +12.035 & -5.051 & 75.5/-31.7 & +5.140 &
 \end{tabular}}
 \end{table}
 
+QASPER gives the clearest positive adaptation result in this study. Every trained conditional
+alternative improves routed sequence likelihood over frozen PRA. Residual 16 raises the routed
+gain from +1.377 to +4.942, LoRA rank 8 reaches +5.589, and residual 16 reaches routed F1 .205.
+The improvement survives router selection rather than appearing only under oracle memory. This is
+consistent with QASPER being the router's training domain, although the experiment does not isolate
+domain match as the cause. Direct evidence itself changes sequence likelihood by $-1.182$ on this
+cohort, and no full source fits the 2,048-token control limit, so recovery ratios are undefined and
+the result supports routed likelihood integration rather than a context-recovery or decoded-QA
+claim.
+
 The larger cohort rejects complementarity. On HotpotQA oracle replay, residual 16 exceeds frozen
 PRA by $3.266\pm0.298$ sequence log-probability and does so for all five seeds. It recovers 90.8\%
 of the direct-evidence benefit and 107.3\% of the feasible full-context benefit while materializing
@@ -904,16 +919,10 @@ omissions and distractors:
  P_{\mathrm{train}}(M)\approx P_{\mathrm{oracle}}(M)
  \ne P_{\mathrm{router}}(M)\approx P_{\mathrm{deploy}}(M).
 \end{equation}
-The oracle-to-routed reversal is consistent with this mismatch but does not prove it. It does show
-that the memory consumer and router cannot be assumed to optimize independently. Future
-memory-use adapters should be trained and validated on the router's actual selection and error
-distribution, not only on gold memory.
-
-QASPER provides a useful but bounded transfer result. All trained alternatives improve routed
-sequence likelihood over frozen PRA; LoRA rank 8 reaches +5.589 and residual 16 reaches routed
-F1 .205. However, direct evidence itself changes sequence likelihood by $-1.182$ on this cohort,
-and no full source fits the 2,048-token control limit. Recovery ratios are therefore undefined,
-EM remains zero, and these values cannot support a context-benefit claim.
+The oracle-to-routed HotpotQA reversal is consistent with this mismatch but does not prove it. It
+shows that the memory consumer and router cannot be assumed to optimize independently across
+domains. Future multi-hop experiments should train and validate memory use on the iterative
+router's actual selections and errors, not only on one-shot gold memory.
 
 \begin{figure}[H]
 \centering
@@ -991,7 +1000,7 @@ rank but does not improve F1/EM. Oracle residual 16 reaches EM .25 and raises th
 to .409, yet the mean rank is still 22.8 and the margin remains negative. Reliable decoded QA is
 not closed by this adaptation ladder.
 
-\subsection{A bounded LoRA sweep raises the oracle ceiling, not routed robustness}
+\subsection{A bounded LoRA sweep strengthens QASPER integration and exposes a multi-hop gap}
 \label{sec:overnight-lora}
 
 The first ladder leaves a narrow ambiguity: perhaps ranks 4 and 8, 32 updates, or the baseline
@@ -1031,20 +1040,25 @@ Residual 32 + LoRA 32 & 2,294,208 & .385 & +13.677 & -8.057 & 85.8/-50.5 & 101.4
 \end{tabular}}
 \end{table}
 
-The selected LoRA improves oracle HotpotQA by $2.164\pm1.425$ nats relative to frozen PRA and
-does so in all five seeds. Under the unchanged learned router, however, its paired effect is
-$-10.541\pm4.841$, again with the same direction in all five seeds. Mean routed gold rank worsens
-from 34.1 to 124.9 and EM remains zero. QASPER routed likelihood improves by
-$3.590\pm1.246$, but that cohort has no positive direct-text denominator. The result is therefore
-dataset-conditional, not a general routed-memory gain.
+On QASPER, the selected rank-32 LoRA raises routed sequence-likelihood gain from +1.377 to +4.967,
+a $+3.590\pm1.246$ paired improvement. The residual-plus-LoRA control reaches +5.363. These
+untouched-test results strengthen the positive in-domain finding from the smaller ladder. They do
+not yet establish decoded QA or a recovery fraction because QASPER has no positive direct-text
+denominator on this cohort.
+
+HotpotQA exposes the complementary robustness boundary. Rank-32 LoRA improves oracle memory by
+$2.164\pm1.425$ nats relative to frozen PRA in all five seeds, but its paired routed effect is
+$-10.541\pm4.841$, also in the same direction in all five seeds. Mean routed gold rank worsens
+from 34.1 to 124.9 and EM remains zero. The contrast is dataset-conditional: adaptation improves
+routed QASPER likelihood but not one-shot routed HotpotQA memory.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=.88\linewidth]{../shared/results/paper2_hf/overnight_lora_sweep/lora_parameter_pareto.pdf}
 \caption{Held-out oracle sequence benefit versus conditional-LoRA parameter fraction. The staged
-screen finds an oracle frontier at rank 32 and 64 updates, but the untouched routed HotpotQA test
-rejects it as a product default. Parameter efficiency under clean memory does not imply robustness
-to imperfect selected memory.}
+screen identifies rank 32 at 64 updates as the validation Pareto choice; on untouched QASPER it
+raises routed sequence benefit from +1.377 to +4.967. Its separate routed HotpotQA result keeps it
+research-only pending iterative multi-hop evaluation.}
 \label{fig:overnight-lora-pareto}
 \end{figure}
 
@@ -1053,6 +1067,40 @@ effect changes direction across seeds for both datasets and both selection modes
 routed mean is only $+0.583\pm6.697$. We reject the combination and retain frozen last-14 PRA plus
 the learned router as the SDK default. The rank-32 weights are released only as a research opt-in.
 All 43 candidate PRA-off checks are exact, and no native-operation-limit violation occurs.
+
+\subsection{PRA-conditional adaptation preserves ordinary language}
+\label{sec:wikitext-preservation}
+
+Memory adaptation is useful only if it does not silently rewrite the model's ordinary language
+behavior. The PRA-conditional gate, residual, and output-LoRA paths are absent when no external
+memory is selected. On 1,024 fixed WikiText-2 validation tokens, every conditional variant in the
+matched global-readout control retains the frozen loss of 3.8811 exactly. Their no-PRA QA
+log-probability changes are also zero. This is a positive architectural result: memory-specific
+capacity can improve routed QASPER likelihood while preserving the original no-memory model path.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Ordinary-language preservation control. WikiText-2 values are five-seed means on the
+same 1,024 validation tokens. Conditional methods are structurally bypassed without PRA memory;
+global readout controls are not.}
+\label{tab:wikitext-preservation}
+\begin{tabular}{lrr}
+\toprule
+Method & WikiText-2 loss & $\Delta$ loss from frozen \\
+\midrule
+Frozen / PRA-conditional gate, residual, or output LoRA & 3.8811 & 0.0000 \\
+Global LM-head LoRA $r=8$ & 3.8972 & +0.0161 \\
+Full untied LM head & 3.9749 & +0.0938 \\
+Final norm + full head & 3.9750 & +0.0938 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The control also explains why global readout tuning is not the next adaptation step. It neither
+improves the memory-specific increment nor preserves ordinary-language loss. PRA-conditional
+adaptation keeps the stronger ownership boundary: it can specialize memory use without changing
+the function evaluated when memory is absent.
 
 \subsection{Blind behavioral-equivalence protocol}
 \label{sec:behavioral-judge}
@@ -1116,13 +1164,14 @@ group, with calibration and reversal consistency, rather than pooled into one sc
 PRA-specific capacity totals 262,144 parameters (0.044\% of Qwen) in the selected routed system.
 The oracle residual probe adds 458,976 parameters, bringing the diagnostic total to 721,120
 (0.121\%); the rejected combination would total 893,152 (0.150\%) and occupies 2.43~MiB on disk.
-The broader follow-up selects a 1,376,256-parameter rank-32 LoRA by held-out oracle likelihood,
-but rejects it for deployment after its routed HotpotQA change falls to $-8.640$ nats.
-PRA-off logits and generation are exact for every run, and native-limit violations are zero.
-This result is sufficient to freeze Paper~2's transport, discovery, and bounded integration
-claims, while leaving robust routing-conditioned adaptation and decoded QA open. HotpotQA is a
-multi-hop stress and causal probe here, not a final one-shot architecture: recursive evidence
-gathering, in which retrieved gists drive subsequent retrieval, is deferred to Paper~2.5.
+The broader follow-up selects a 1,376,256-parameter rank-32 LoRA by held-out oracle likelihood and
+raises routed QASPER sequence benefit to +4.967. It remains a research opt-in rather than the SDK
+default because its one-shot routed HotpotQA change is $-8.640$ nats. PRA-off logits and generation
+are exact for every run, WikiText-2 confirms ordinary-language preservation for the tested
+conditional path, and native-limit violations are zero. These results freeze Paper~2's positive
+one-shot transport, discovery, integration, and preservation claims. HotpotQA is a multi-hop stress
+and causal probe here, not the final architecture: iterative evidence gathering, in which
+retrieved gists refine subsequent retrieval, is deferred to Paper~2.5.
 
 \section{Cross-Family Validation}
 
@@ -1287,7 +1336,11 @@ appears in Appendix~\ref{app:adapter-guide}.
 
 \section{Limitations and Next Experiments}
 
-The experiments establish mechanisms on modest cohorts, not benchmark accuracy. The primary
+The experiments establish mechanisms on modest cohorts, not benchmark accuracy. QASPER provides
+positive one-shot evidence at three levels: a learned recall--sparsity frontier, routed
+sequence-likelihood improvement from conditional adaptation, and matched routing transfer across
+three model families. WikiText-2 independently verifies exact ordinary-path preservation for the
+tested PRA-conditional variants. The primary
 representation study uses 16 matched examples, the learned router has 32 held-out test identities,
 and the oracle depth study uses four examples per dataset. The final adaptation study improves
 identity hygiene---12 HotpotQA train, four validation identities per dataset, and eight test
@@ -1305,13 +1358,14 @@ fidelity saturates earlier than logit fidelity.
 Evidence labels and answer behavior measure different things. Any-evidence recall can be high
 while a multi-hop example still lacks another required passage. Evidence-identity recall is
 stricter, but it still assumes that annotations identify the state this checkpoint needs. The
-positive HotpotQA direct-text control makes its causal comparison interpretable. QASPER direct
-text lowers the target likelihood on the selected causal subset, so that subset cannot grade PRA
-transport in isolation or define a recovery ratio. Full QASPER sources also exceed the matched
-2,048-token control budget. Reliable routed decoded-QA gains remain unestablished on both
-datasets.
+positive HotpotQA direct-text control makes its causal comparison interpretable. QASPER's routed
+likelihood gains remain meaningful paired effects, but direct text lowers target likelihood on the
+selected causal subset and full sources exceed the matched 2,048-token control budget. QASPER can
+therefore support routing and likelihood-integration claims, but not a direct/full-context recovery
+ratio on this cohort. Reliable routed decoded-QA gains remain unestablished.
 
-The router is domain-dependent and memory exposure is depth-sensitive. Cross-domain any-evidence
+The router is domain-dependent and memory exposure is depth-sensitive. In-domain QASPER routing
+and adaptation are positive, whereas cross-domain any-evidence
 recall@3 is 0.213 in both directions. Additional gist resolution, centered-RoPE features, query
 pooling, width, and negative-mining variants do not remove this limitation. All-layer native-K/V
 injection is also harmful despite using more memory. A larger study should separate calibration,
@@ -1335,9 +1389,11 @@ across multiple decoder families. They do not establish 7B--70B scaling, product
 or the economics of a serving-optimized implementation; those require larger hardware, matched
 dense baselines, and fused transfer/attention measurements.
 
-Paper~2 now stops at the measured one-shot boundary. Recursive multi-hop gathering belongs to
-Paper~2.5. Multi-gist strategy, semantic positional distance, routing-error-aware adaptation, and
-large-scale vLLM serving are separate research questions. Global LM-head tuning is not the next
+Paper~2 now stops at a successful measured one-shot QASPER boundary. HotpotQA's multi-passage
+failure mode defines the next architecture rather than the conclusion of this one: Paper~2.5 will
+study iterative gists, in which retrieved evidence updates the information-need state and drives a
+subsequent retrieval step. Semantic positional distance, routing-error-aware adaptation, and
+large-scale vLLM serving remain separate questions. Global LM-head tuning is not the next
 adaptation step: it fails to improve the memory-specific increment, changes no-PRA behavior, and
 raises WikiText-2 loss.
 
@@ -1381,11 +1437,18 @@ SmolLM2 and Gemma show that the interface, rather than identical retrieval quali
 
 Selected memory measurably affects pretrained predictions, but its use is depth dependent: the
 HotpotQA oracle improves over a late band and degrades when replayed through every layer. Clean
-oracle memory also shows that tiny memory-use adapters can approach the integration ceiling.
-Those same adapters do not survive the routed HotpotQA distribution; on the larger disjoint test,
-the frozen routed path remains better. The gap is consistent with oracle training and routed
-deployment, but the experiments do not isolate that explanation. Routing-conditioned robustness
-and decoded task improvement remain open.
+oracle memory also shows that tiny memory-use adapters can approach the integration ceiling. More
+importantly for the one-shot path, QASPER adaptation improves under actual router selection:
+rank-32 LoRA raises routed sequence-likelihood gain from +1.377 to +4.967, while the combined
+control reaches +5.363. The matched conditional controls leave WikiText-2 loss unchanged, and all
+PRA-conditional variants preserve the no-memory path exactly. Together, these results show that
+useful memory specialization can coexist with ordinary-language preservation.
+
+HotpotQA marks the present one-shot boundary rather than erasing those positive results. Frozen
+routed PRA remains positive, but oracle-trained adapters do not remain robust under routed
+multi-passage selections. Paper~2.5 will address this setting with iterative gists that allow
+retrieved evidence to refine the query before subsequent retrieval. Routing-conditioned multi-hop
+robustness and decoded task improvement remain open.
 
 The released \texttt{pra\_hf} wheel, family adapters, model-family notebook, router artifacts,
 metrics, blind-judge package, and reimplementation tests make these boundaries independently
