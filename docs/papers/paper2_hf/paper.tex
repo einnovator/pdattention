@@ -14,7 +14,7 @@
 \setlength{\emergencystretch}{3em}
 
 \title{Progressive Retrieval Attention for Pretrained Transformers:\
-Sparse Native-K/V Memory Across Qwen, Llama, and Gemma Decoders}
+Sparse Native-K/V Memory with Semantic Routing}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Progressive Retrieval Attention for Pretrained Transformers},pdfauthor={Jorge Simao}}
@@ -28,9 +28,7 @@ every transformer operation. PRA-HF separates these quantities: it searches a co
 index and materializes only selected layer-native K/V under a fixed attention budget. At the
 measured pinned Qwen, SmolLM2 Llama-family, and official Gemma~3 1B checkpoints, the verified
 PRA-off paths leave logits, hidden states, greedy outputs, and the tested cache contracts exactly
-unchanged. Gemma's 22 sliding-window layers retain native local attention; only its four periodic
-global layers are eligible for PRA, and the measured routed configuration consumes memory at
-global layers 17 and 23.
+unchanged.
 
 Controlled positional analysis in companion Paper~1.5 motivates the empirical rule
 \emph{route semantic state and attend native positional state}. On frozen Qwen3-0.6B, a
@@ -38,14 +36,14 @@ Controlled positional analysis in companion Paper~1.5 motivates the empirical ru
 parents while returning exact post-RoPE K and native V. Oracle HotpotQA replay is depth dependent:
 the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766. On a
 larger identity-disjoint test, frozen routed PRA recovers 11.9\% of direct-evidence and 14.1\% of
-feasible full-context sequence-likelihood benefit at 6.56\% active K/V; oracle-trained residual
-and LoRA capacity raises the clean-memory ceiling but is brittle to routing error. The official
-Gemma path independently preserves its local/global organization and routed native K/V raises
-gold-token log-probability by 0.135 nats, although F1 is unchanged in the eight-example causal
-probe. The execution abstraction therefore spans three attention organizations, while routing
-quality remains model- and domain-dependent and reliable decoded-QA gains remain open. The
-released \texttt{pra\_hf} wheel, API, artifacts, reference lifecycle, and accounting make this
-boundary directly testable.
+feasible full-context sequence-likelihood benefit at 6.56\% active K/V. Tiny oracle-trained
+memory-use adapters approach the clean-memory likelihood ceiling but regress under routed
+HotpotQA memory, exposing an unresolved robustness gap. The official Gemma path preserves its
+native local/global organization, and routed K/V raises gold-token log-probability by 0.135 nats
+although F1 is unchanged in the eight-example causal probe. The shared execution core, thin
+family adapters, router artifacts, reference lifecycle, accounting, wheel, and Python API make
+this cross-family boundary directly testable; routing quality and decoded behavioral utility
+remain model- and domain-dependent.
 \end{abstract}
 
 \section{Introduction}
@@ -131,16 +129,15 @@ Reusable artifact & Python API, CLI, saved routers, metrics, tests, wheel & The 
 \end{tabularx}
 \end{table}
 
-The paper makes six contributions. First, it defines and tests an exact pretrained-model retrofit
-for bounded native-K/V memory. Second, it identifies routing/payload separation as an architectural
-principle rather than a family-specific workaround. Third, it measures sparse discovery by
-selected-memory fraction and shows that a tiny supervised projection improves frozen semantic
-geometry. Fourth, it demonstrates that selected native K/V has a causal, non-monotone effect
-through model depth and measures the fraction of direct/full-context benefit recovered per
-physical K/V fraction. Fifth, it separates an oracle memory-use ceiling from routed behavior,
-rejecting a residual-plus-LoRA stack on a larger disjoint cohort. Sixth, it releases the shared
-core, thin adapters, artifacts, and accounting needed to reproduce these claims. The contribution
-is a working boundary, not a new pretrained model or a solved long-context QA system.
+The paper makes five contributions. First, it defines and tests an exact pretrained-model retrofit
+for bounded native-K/V memory, including exact disabled-path parity. Second, it separates compact
+semantic routing state from the selected layer-native positional K/V payload. Third, it measures
+sparse discovery as a recall--sparsity frontier and shows that a tiny supervised projection
+improves frozen semantic routing. Fourth, it establishes depth-dependent causal memory use and
+separates a clean-memory integration ceiling from the routed end-to-end robustness boundary.
+Fifth, it implements the contract as a shared core, thin Qwen, Llama-family, and Gemma adapters,
+router artifacts, accounting, a wheel, and a public Python API. The contribution is a working
+boundary, not a new pretrained model or a solved long-context QA system.
 
 The datasets have different jobs. WikiText-style controls test ordinary language-model integrity
 and bounded-memory mechanics. QASPER tests one-shot retrieval from a long scientific document.
@@ -458,13 +455,13 @@ top-layer query systematically prefer irrelevant late-source chunks in these two
 
 \section{Semantic Routing, Native Attention}
 
-Controlled experiments in Paper~1.5 show that token-level RoPE correctness, pooled
-native-attention geometry, semantic routing geometry, and downstream utility are distinct
-properties~\cite{simao2026position}. In particular, averaging differently rotated keys mixes
-phases; centered pre-RoPE subgists can increasingly recover native token-Q/K ordering without a
-corresponding semantic-recall gain. We therefore treat the routing representation and native
-attention payload as separate interfaces, and ask whether that controlled result transfers to an
-unmodified pretrained Qwen model.
+Controlled experiments in Paper~1.5 show that increasingly accurate approximations of native Q/K
+geometry do not necessarily improve semantic evidence retrieval: centered $G=1\rightarrow8$
+raises Q/K rank fidelity from .794 to .963 while semantic AUC remains .6510--.6516, whereas a
+learned 32-D relevance geometry reaches .971 AUC with only .178 Q/K fidelity
+~\cite{simao2026position}. We therefore treat the routing representation and native attention
+payload as separate interfaces and ask whether this separation transfers to an unmodified
+pretrained Qwen model.
 
 \begin{figure}[htbp]
 \centering
@@ -506,32 +503,32 @@ parent identity materializes the same post-RoPE native K and native V.
 \small
 \caption{Qwen routing-representation transfer. The first three rows use 16 matched diagnostic
 examples; the learned row uses 32 held-out identities and reports the five-seed 95\% interval at
-R@3. Score-position $r$ is correlation with normalized source position.}
+R@3. Score-position $r$ is correlation with normalized source position, and recall is
+any-evidence recall.}
 \label{tab:routing-representations-main}
-\begin{tabularx}{\linewidth}{L{0.23\linewidth}cccY}
+\begin{tabularx}{\linewidth}{L{0.20\linewidth}ccccY}
 \toprule
-Routing state & Position $r$ & Any R@3 & Any R@8 & Interpretation \\
+Routing state & Position $r$ & R@3 & R@8 & R@16 & Interpretation \\
 \midrule
-Post-RoPE key mean & 0.652 & 0.125 & 0.250 & Strong positional structure; weak semantic index \\
-Pre-RoPE key mean & 0.009 & 0.313 & 0.563 & Explicit phase removed; better but incomplete relevance geometry \\
-Hidden-state mean & -0.021 & 0.438 & 0.500 & Best zero-shot low-budget recall; richer contextual state \\
-Learned asymmetric-128 & -0.026 & $0.631\pm0.069$ & 0.806 & Best learned result; task-specific relevance geometry \\
+Post-RoPE key mean & .652 & .125 & .250 & .313 & Strong positional structure; weak semantic index \\
+Pre-RoPE key mean & .009 & .313 & .563 & .750 & Explicit phase removed; incomplete relevance geometry \\
+Hidden-state mean & -.021 & .438 & .500 & .750 & Best zero-shot low-budget recall; contextual state \\
+Learned asymmetric-128 & -.026 & $.631\pm.069$ & .806 & .963 & Task-specific relevance geometry \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-As predicted by the controlled geometry analysis, pooled post-RoPE K retains strong positional
-structure and is a poor semantic routing index in Qwen. Removing explicit RoPE phase nearly
-eliminates measured position bias but does not itself define the best relevance geometry.
-Attention-input hidden state is independent of the subsequent K rotation and gives the strongest
-zero-shot low-budget result. Paper~1.5 further shows that useful relevance can require a learned
-projection; this motivates the 128-D router rather than another positional repair.
+The controlled Paper~1.5 geometry separation transfers to a pretrained transformer. Pooled
+post-RoPE K retains strong positional structure and is a poor semantic routing index in Qwen.
+Removing explicit RoPE phase nearly eliminates measured position bias but does not itself define
+the best relevance geometry. Attention-input hidden state is independent of the subsequent K
+rotation and gives the strongest zero-shot low-budget result. This progression motivates the
+128-D router rather than another positional repair.
 
-A Qwen centered-RoPE control reproduces the controlled dissociation: eight centered subgists
-recover native token-Q/K ordering at correlation 0.874, but any-evidence R@3 remains 0.250.
-Appendix~\ref{app:routing-ablations} retains this control, the parameter-free recall curves, and
-the segment, token, and query ablations. The main result is the transferred interface boundary,
-not a new RoPE derivation.
+A centered-RoPE Qwen control reproduces the same dissociation between native-Q/K fidelity and
+semantic retrieval. Its G sweep, implementation details, parameter-free recall curves, and
+segment, token, and query ablations are reported in Appendix~\ref{app:routing-ablations}. The
+main result is the transferred interface boundary, not a new RoPE derivation.
 
 \section{Sparse Discovery with a Tiny Learned Router}
 
@@ -821,7 +818,7 @@ likelihood use together. It also shows why they must be measured separately from
 success: a five-order-of-magnitude first-token probability increase need not cross the greedy
 decision boundary.
 
-\subsection{Last-14 memory-use convergence}
+\subsection{Oracle integration ceiling and routed end-to-end robustness}
 \label{sec:last14-convergence}
 
 The depth sweep identifies layers 14--27 as Qwen's strongest measured memory-consumption band.
@@ -863,10 +860,11 @@ when the direct or full-context denominator is positive and greater than 0.05.
 \centering
 \scriptsize
 \caption{Identity-disjoint last-14 adaptation comparison. Parameters count $M_\psi$ only; every
-row also uses the fixed 262,144-parameter router. H and Q denote HotpotQA and QASPER. O/R are
-oracle/routed sequence-log-probability changes. $\rho_D$ is HotpotQA direct-evidence recovery
-for oracle/routed selection. F1/EM is routed. QASPER recovery is omitted because direct evidence
-reduces cohort likelihood. All disabled-PRA checks are exact.}
+row also uses the fixed 262,144-parameter router. H and Q denote HotpotQA and QASPER. O is the
+clean-memory oracle integration ceiling; R is the routed end-to-end path. Entries are
+sequence-log-probability changes. $\rho_D$ is HotpotQA direct-evidence recovery for O/R; F1/EM is
+routed. QASPER recovery is omitted because direct evidence reduces cohort likelihood. All
+disabled-PRA checks are exact.}
 \label{tab:last14-adaptation}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lrrrrrrrrr}
@@ -898,6 +896,18 @@ be profitably stacked. Training on clean oracle memory instead makes the larger 
 updates brittle to routing errors. The final end-to-end architecture consequently retains
 frozen last-14 PRA plus $R_\phi$; residual 16 is an integration-ceiling instrument, not a
 default product component.
+
+A plausible interpretation is selection-distribution shift. Adapter training presents clean,
+annotated memory, whereas deployment presents the router's selected memory and its characteristic
+omissions and distractors:
+\begin{equation}
+ P_{\mathrm{train}}(M)\approx P_{\mathrm{oracle}}(M)
+ \ne P_{\mathrm{router}}(M)\approx P_{\mathrm{deploy}}(M).
+\end{equation}
+The oracle-to-routed reversal is consistent with this mismatch but does not prove it. It does show
+that the memory consumer and router cannot be assumed to optimize independently. Future
+memory-use adapters should be trained and validated on the router's actual selection and error
+distribution, not only on gold memory.
 
 QASPER provides a useful but bounded transfer result. All trained alternatives improve routed
 sequence likelihood over frozen PRA; LoRA rank 8 reaches +5.589 and residual 16 reaches routed
@@ -954,30 +964,32 @@ and active transfer are deliberately reported separately.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{HotpotQA rank and decoding diagnostics on the larger cohort. Adapted rows are routed
-unless marked oracle. Probability and rank need not move together because they are averaged per
-example. Negative margin means the gold first token remains below the model's top token.}
+\caption{HotpotQA rank and decoding diagnostics on the larger cohort. Probability, rank, margin,
+sequence likelihood, and lexical answer quality are reported separately. Negative margin means
+the gold first token remains below the model's top token.}
 \label{tab:last14-rank}
 \begin{tabular}{lrrrrrr}
 \toprule
 Condition & Gold prob. & Gold rank & Margin & Sequence logP & F1 & EM \\
 \midrule
 No context & .0616 & 55.6 & -6.513 & -20.192 & .025 & .000 \\
-Frozen PRA & .0316 & 34.1 & -6.326 & -18.291 & .000 & .000 \\
-Residual 16 & .1185 & 121.9 & -6.659 & -18.797 & .028 & .000 \\
-LoRA 4 & .1354 & 274.9 & -8.962 & -24.363 & .049 & .000 \\
-Residual 16 + LoRA 4 & .1312 & 284.0 & -9.232 & -25.243 & .022 & .000 \\
-Residual 16, oracle & .4094 & 22.8 & -1.780 & -5.714 & .314 & .250 \\
+Frozen PRA, routed & .0316 & 34.1 & -6.326 & -18.291 & .000 & .000 \\
+Residual 16, routed & .1185 & 121.9 & -6.659 & -18.797 & .028 & .000 \\
+LoRA 4, routed & .1354 & 274.9 & -8.962 & -24.363 & .049 & .000 \\
+Residual 16 + LoRA 4, routed & .1312 & 284.0 & -9.232 & -25.243 & .022 & .000 \\
+Residual 16, oracle ceiling & .4094 & 22.8 & -1.780 & -5.714 & .314 & .250 \\
 Direct evidence text & .1973 & 12.4 & -3.112 & -4.251 & .257 & .125 \\
 Full original context & .3018 & 16.3 & -3.176 & -6.704 & .275 & .250 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The rank table resolves the final boundary. Frozen routed PRA improves sequence likelihood and
-mean first-token rank but does not improve F1/EM. Oracle residual 16 reaches EM .25 and raises the
-gold probability to .409, yet the mean rank is still 22.8 and the margin remains negative.
-Reliable decoded QA is not closed by this adaptation ladder.
+Memory-use quality cannot be summarized by a single scalar: an intervention can raise the target
+token's absolute probability while worsening its rank against competing tokens or reducing the
+gold sequence likelihood. Frozen routed PRA improves sequence likelihood and mean first-token
+rank but does not improve F1/EM. Oracle residual 16 reaches EM .25 and raises the gold probability
+to .409, yet the mean rank is still 22.8 and the margin remains negative. Reliable decoded QA is
+not closed by this adaptation ladder.
 
 \subsection{A bounded LoRA sweep raises the oracle ceiling, not routed robustness}
 \label{sec:overnight-lora}
@@ -1133,10 +1145,11 @@ transfers across families; routing quality remains model- and domain-dependent.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Measured cross-family contract. ``Exact'' lists the strongest disabled-path quantities
-checked at the named checkpoint. QASPER R@20\% is five-seed evidence-identity recall. Causal
-$\Delta\log p$ values use separate eight-example probes and are not directly comparable in
-magnitude. A dash means not measured.}
+\caption{\textbf{Matched QASPER sparse routing is of comparable order across the three measured
+families, with model-dependent variance and no claim of universal routing quality.} ``Exact''
+lists the strongest disabled-path quantities checked at the named checkpoint. QASPER R@20\% is
+five-seed evidence-identity recall. Causal $\Delta\log p$ values use separate eight-example probes
+and are not directly comparable in magnitude. A dash means not measured.}
 \label{tab:cross-family-contract}
 \begin{tabularx}{\linewidth}{L{0.25\linewidth}YYY}
 \toprule
@@ -1162,6 +1175,11 @@ identity R@5/10/20/30\% curve is .251/.326/.432/.514. The same router transfers 
 HotpotQA, with AUC$_{0:30}=.196\pm.014$, so the curve is evidence for a portable routing
 interface rather than equal routing quality.
 
+Gemma therefore provides an architecture-informed memory-placement policy: PRA is admitted
+through the checkpoint's native global-attention structure while local sliding-window computation
+remains unchanged. This policy is consistent with the late-layer Qwen result, but the measured
+families do not establish a universal placement rule.
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.72\linewidth]{../shared/results/paper2_hf/gemma3_1b/gemma3_1b_recall_sparsity.pdf}
@@ -1180,265 +1198,18 @@ selected native K/V $\rightarrow$ positive gold-likelihood effect $\rightarrow$ 
 change. It is a causal mechanism probe, not an accuracy estimate or evidence that Gemma+PRA
 outperforms Gemma.
 
-\subsection{Likelihood--decoding disconnect}
+\subsection{Likelihood--Decoding Disconnect}
 
-Memory can improve gold probability, vocabulary rank, or sequence likelihood without changing
-the greedy token. Qwen supplies a large instance: the bounded-head probe gains 5.469 nats and
-moves the first-token rank from 94,106 to 1,351 while retaining the wrong answer. Gemma supplies
-an independent family-level instance: routed K/V gains 0.135 nats but leaves F1 unchanged. The
-cohorts and effect sizes differ, so this is not equal behavior across families. It is evidence
-that causal memory use and decoded task success are separate evaluation gates.
+Retrieved memory can raise target-token probability, improve vocabulary rank, or increase gold
+sequence likelihood without crossing the autoregressive argmax boundary needed to change a greedy
+output. Qwen supplies a large instance: the bounded-head probe gains 5.469 nats and moves the
+first-token rank from 94,106 to 1,351 while retaining the wrong answer. Gemma supplies an
+independent family-level instance: routed K/V gains 0.135 nats but leaves F1 unchanged. The cohorts
+and effect sizes differ, so this is not equal behavior across families. Nor is the disconnect
+unique to PRA; it is a general distinction between distributional improvement and decoding.
+Probability, rank, sequence likelihood, lexical answer metrics, and semantic equivalence are
+therefore separate evaluation gates.
 
-\iffalse
-\subsection{A tiny residual adapter aligns memory with the frozen decoder}
-\label{sec:residual-adapter}
-
-The preceding experiments expose a narrower problem than failed retrieval. Correct late-layer
-memory can improve the gold distribution, yet the same memory effect is not necessarily aligned
-with the trajectory expected by a decoder pretrained without external K/V. We therefore freeze
-the transformer, LM head, and router and adapt only the difference caused by memory. Let
-$y_l^{\mathrm{mem}}$ be the native attention output with selected memory, let
-$y_l^{\mathrm{local}}$ be a second attention evaluation with only the prompt K/V, and define the
-counterfactual memory effect $d_l=y_l^{\mathrm{mem}}-y_l^{\mathrm{local}}$. A scalar gate uses
-
-\begin{equation}
-y_l = y_l^{\mathrm{local}} + \alpha_l d_l .
-\end{equation}
-
-The residual adapter instead retains frozen PRA at initialization and learns a correction:
-
-\begin{equation}
-y_l = y_l^{\mathrm{local}} + d_l
-    + W_{\mathrm{up},l}\,\mathrm{SiLU}\!\left(
-      W_{\mathrm{down},l}d_l+b_l\right).
-\label{eq:pra-residual-adapter}
-\end{equation}
-
-$W_{\mathrm{up}}$ is initialized to zero, so the initial function is exactly frozen PRA. The
-down projection maps the memory-induced update from $D$ features to a bottleneck of 16, 32, or
-64; the up projection maps back to $D$. Restricting the input to $d_l$ makes the intervention
-mechanistically narrow: it can rotate or rescale the effect introduced by memory, but cannot
-learn an unrelated transformation of the ordinary hidden state. When PRA is disabled the
-original attention module is called directly, bypassing both the counterfactual attention and
-the adapter.
-
-We train on eight HotpotQA identities for 24 oracle-memory updates at learning rate $10^{-3}$.
-The base model, LM head, and learned router remain frozen. Evaluation uses four identity-disjoint
-HotpotQA examples and four QASPER examples, under oracle and learned-router selection. The data
-cohort is fixed while bottleneck initialization and example order vary over seeds 11, 23, 37,
-53, and 71. Table~\ref{tab:residual-adapter} reports means across those five optimization seeds;
-the fixed baseline is deterministic on the same examples.
-
-\begin{table}[H]
-\centering
-\scriptsize
-\caption{Frozen late-four-layer memory calibration. $\Delta\log p$ is mean gold-token
-log-probability relative to no memory. F1 uses routed greedy output. Parameter percentages use
-the 596.0M-parameter base model.}
-\label{tab:residual-adapter}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lrrrrrrrr}
-\toprule
-Method & Params & \% base & \multicolumn{2}{c}{HotpotQA $\Delta\log p$} &
-\multicolumn{2}{c}{QASPER $\Delta\log p$} & \multicolumn{2}{c}{Routed F1} \\
-\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
-& & & Oracle & Routed & Oracle & Routed & HotpotQA & QASPER \\
-\midrule
-Frozen PRA & 0 & .000 & +1.004 & +.110 & -.161 & -.456 & .056 & .125 \\
-Scalar gate & 1 & $<$.001 & +1.206 & -.187 & +.114 & -.663 & .056 & .063 \\
-Residual 16 & 196,672 & .033 & +2.867 & +1.176 & +.002 & -.161 & .043 & .000 \\
-Residual 32 & 393,344 & .066 & +3.088 & +1.210 & +1.022 & +.837 & .063 & .013 \\
-Residual 64 & 786,688 & .132 & +2.697 & +.896 & +1.079 & +.853 & .072 & .017 \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{../shared/results/paper2_hf/memory_residual_adapter/memory_residual_adapter.pdf}
-\caption{Five-seed memory-calibration result. Error bars are population standard deviations
-over optimization seeds. The residual adapters improve gold likelihood, but those gains do not
-translate into commensurate greedy token F1.}
-\label{fig:residual-adapter}
-\end{figure}
-
-Width 32 is the smallest robust operating point. Its routed HotpotQA gain is
-$1.210\pm0.248$ nats per token, compared with $+.110$ for frozen PRA; its routed QASPER gain is
-$+.837\pm.241$, compared with $-.456$. Each paired difference favors width 32 in all five
-seeds. With only five pairs, however, the smallest exact two-sided sign-flip result is
-$p=.0625$, and the examples are not independent dataset replications. On HotpotQA, width 32
-improves the first-token margin by 3.063 logits and lowers the first-token rank by 770 positions
-relative to no memory. On QASPER it improves the margin by 1.280 logits while worsening rank by
-8.05 positions, another warning that sequence likelihood, first-token ordering, and greedy
-decoding are distinct outcomes.
-
-The adapter does not solve QA. EM remains zero, HotpotQA F1 changes only from .056 to .063, and
-QASPER F1 falls from .125 to .013. The result supports the narrower interpretation that useful
-PRA-conditioned state already exists and a 0.066\%-of-model readout can align its gold-sequence
-likelihood with the frozen decoder. It does not show that this tiny cohort teaches robust answer
-generation. Width 32 occupies 1.50 MiB in FP32. Routed teacher-forced latency rises from .163 to
-.172 seconds on HotpotQA and from .160 to .162 seconds on QASPER; generation timing is noisy and
-shows no consistent width trend. PRA-off gold scores remain exactly equal in every run, active
-K/V materialization is unchanged, and there are no native-limit violations.
-
-\subsection{Conditional late-band LoRA is more parameter-efficient}
-\label{sec:late-band-lora}
-
-The depth sweep locates a useful late transformer band, so a compatibility update need not touch
-the entire checkpoint. We restrict LoRA to the native attention output projection in Qwen's
-final four PRA-enabled layers. If $z_l\in\mathbb{R}^{B\times T\times D_a}$ is the flattened
-multi-head attention result before the native output projection, the active memory branch is
-
-\begin{equation}
-y_l = W_{O,l}z_l + \frac{\alpha}{r}B_lA_lz_l,
-\qquad
-A_l\in\mathbb{R}^{r\times D_a},\quad
-B_l\in\mathbb{R}^{D\times r}.
-\label{eq:pra-conditional-lora}
-\end{equation}
-
-The pretrained $W_O$ is frozen. $A_l$ uses Kaiming initialization and $B_l$ starts at zero, so
-Equation~\ref{eq:pra-conditional-lora} initially equals frozen PRA. The correction executes only
-after selected memory has been materialized; no-memory and disabled-PRA calls delegate to the
-original attention module. This distinction is stricter than applying ordinary LoRA globally:
-the new parameters calibrate the checkpoint's response to external native K/V without changing
-its local attention function. Qwen3's grouped-query attention produces a $D_a=2048$ concatenated
-head vector before a rectangular $2048\rightarrow1024$ output projection. Thus each layer uses
-$r(2048+1024)$ parameters rather than the square-projection count; over four layers, ranks 2, 4,
-and 8 contain 24,576, 49,152, and 98,304 parameters.
-
-The protocol matches the residual study: eight HotpotQA training identities, 24 oracle-memory
-updates, four held-out identities per dataset, and optimization seeds 11, 23, 37, 53, and 71.
-The base model, LM head, router, and all inactive calibrators remain frozen. We set $\alpha=r$ and
-dropout to zero. Every update also evaluates the same prompt with PRA disabled and penalizes any
-logit drift; the control error is exactly zero because the conditional branch is absent. At test
-time we measure no memory, routed PRA, oracle PRA, and direct evidence text.
-
-\begin{table}[H]
-\centering
-\scriptsize
-\caption{PRA-conditional late-band calibration. Values are mean $\Delta\log p$ relative to no
-memory; uncertainty is the population standard deviation across five optimization seeds. F1 is
-routed greedy token F1. The residual-32 row is the matched larger calibrator.}
-\label{tab:late-band-lora}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lrrrrrrrr}
-\toprule
-Method & Params & \% base & \multicolumn{2}{c}{HotpotQA $\Delta\log p$} &
-\multicolumn{2}{c}{QASPER $\Delta\log p$} & \multicolumn{2}{c}{Routed F1} \\
-\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
-& & & Oracle & Routed & Oracle & Routed & HotpotQA & QASPER \\
-\midrule
-Frozen PRA & 0 & .0000 & +1.004 & +.110 & -.161 & -.456 & .056 & .125 \\
-Residual 32 & 393,344 & .0660 & $+3.088\pm.234$ & $+1.210\pm.248$ & $+1.022\pm.300$ & $+.837\pm.241$ & .063 & .013 \\
-Output LoRA $r=2$ & 24,576 & .0041 & $+1.794\pm.111$ & $+.889\pm.111$ & $+.695\pm.081$ & $+.505\pm.082$ & .056 & .125 \\
-Output LoRA $r=4$ & 49,152 & .0082 & $+2.248\pm.100$ & $+1.347\pm.090$ & $+1.175\pm.057$ & $+1.021\pm.053$ & .057 & .125 \\
-Output LoRA $r=8$ & 98,304 & .0165 & $+2.775\pm.092$ & $+1.846\pm.088$ & $+1.655\pm.055$ & $+1.487\pm.062$ & .071 & .063 \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{../shared/results/paper2_hf/late_band_lora/late_band_lora.pdf}
-\caption{Five-seed late-band comparison. Output-projection LoRA improves routed and oracle gold
-likelihood monotonically with rank in this sweep. Greedy answer quality does not follow the same
-trend; QASPER direct text is itself negative on this four-example cohort and is not evidence of
-QA utility.}
-\label{fig:late-band-lora}
-\end{figure}
-
-Rank 8 raises routed likelihood over residual-32 by .637 nats/token on HotpotQA and .650 on
-QASPER while using one quarter of its trainable parameters. The paired difference has the same
-direction in all five seeds; as before, five pairs permit no exact two-sided sign-flip result
-smaller than $p=.0625$. On HotpotQA, rank 8 lowers mean first-token rank by 633 positions and
-raises its margin by 4.627 logits relative to no memory. Residual-32 lowers rank further, by 770,
-but has a smaller margin gain of 3.063 and lower sequence likelihood. These metrics are related
-but not interchangeable.
-
-The result remains a calibration result rather than reliable generation. Routed HotpotQA EM is
-zero and F1 is .071; QASPER EM is zero and F1 falls to .063. Rank 8 occupies 384 KiB in FP32.
-Mean routed teacher-forced time is .168 seconds on HotpotQA, only .003 seconds above frozen PRA,
-and .158 seconds on QASPER. Active K/V remains 384 tokens across the four consuming layers,
-disabled-PRA logits are bit-exact in every run, and no native-limit violation occurs. Because the
-output-only sweep already separates likelihood calibration from decoding, broader Q/O or MLP
-updates are deferred until a larger calibration/validation/test cohort can decide whether their
-extra degrees of freedom improve answer generation rather than fit eight identities.
-
-\subsection{A staged adaptation sequence rejects global readout tuning}
-\label{sec:adaptation-sequence}
-
-We close the calibration study with the predefined sequence: decoding diagnostics, scalar gate,
-conditional residual adapter, conditional late-band LoRA, and only then a global LM-head control.
-Every trained stage uses the same eight HotpotQA identities, 24 oracle-memory updates, four
-held-out HotpotQA identities, and seeds 11, 23, 37, 53, and 71. Evaluation always includes no
-memory, routed PRA, oracle PRA, and direct evidence text. The direct-text HotpotQA control is
-positive at $+4.635$ nats/token and F1 .125, so this cohort can distinguish model failure from an
-unanswerable prompt. QASPER remains a supplementary sensitivity result because its direct-text
-control is negative on the four selected cases.
-
-The last control changes the global vocabulary readout. Qwen ties its native
-$151{,}936\times1024$ LM head to token embeddings, so ``head only'' would otherwise update the
-input embedding table too. We explicitly clone and untie the output matrix while freezing the
-embedding. We test rank-8 head LoRA, the full untied head, and final RMS normalization plus that
-head. The two full-matrix variants use state-free SGD because AdamW and Adafactor optimizer state
-exceed the 4-GiB evaluation GPU; head LoRA uses AdamW. All optimize oracle-memory likelihood plus
-KL distillation from frozen no-PRA answer-position distributions. Ordinary behavior is measured
-on 1,024 fixed WikiText-2 validation tokens, not inferred from QA alone.
-
-\begin{table}[H]
-\centering
-\scriptsize
-\caption{Final HotpotQA adaptation sequence. $\Delta\log p$, rank, and margin are for routed PRA
-relative to each method's own no-memory baseline; uncertainty is population standard deviation
-over five optimization seeds. Weight memory excludes optimizer state. ``Exact'' means a
-structural PRA-off bypass.}
-\label{tab:adaptation-sequence}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lrrcrrrrr}
-\toprule
-Method & Params & Weight MiB & PRA-off & $\Delta\log p$ & Rank & $\Delta$margin & F1/EM & Time (s) \\
-\midrule
-Frozen PRA & 0 & 0 & yes & +.110 & 441 & +.104 & .056/.000 & .163 \\
-Scalar gate & 1 & $<$.001 & yes & $-.187\pm.007$ & 160 & +.733 & .056/.000 & .173 \\
-Residual 32 & 393,344 & 1.50 & yes & $+1.210\pm.248$ & 117 & +3.063 & .063/.000 & .172 \\
-Late output LoRA $r=8$ & 98,304 & .375 & yes & $+1.846\pm.088$ & 254 & +4.627 & .071/.000 & .168 \\
-LM-head LoRA $r=8$ & 1,223,680 & 4.67 & no & $+.104\pm.009$ & 445 & +.096 & .056/.000 & .171 \\
-Full LM head & 155,582,464 & 296.75 & no & $+.090\pm.026$ & 444 & +.075 & .056/.000 & .164 \\
-Final norm + head & 155,583,488 & 296.75 & no & $+.090\pm.026$ & 444 & +.074 & .056/.000 & .163 \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{../shared/results/paper2_hf/lm_head_control/lm_head_control.pdf}
-\caption{The complete adaptation sequence. Conditional residual and late output-LoRA improve the
-routed-minus-no-memory likelihood effect. Global readout controls do not, alter no-PRA QA scores,
-and increase WikiText-2 loss. QASPER is shown for sensitivity but is not used for the stop
-decision because its direct-text control fails.}
-\label{fig:adaptation-sequence}
-\end{figure}
-
-The sequence separates answer-token calibration from memory use. Head LoRA changes no-PRA
-HotpotQA likelihood by $+.086\pm.044$ nats/token yet leaves the routed memory increment at
-$+.104\pm.009$, no better than frozen PRA. The full head changes the no-PRA score by
-$+.052\pm.042$ while reducing the memory increment to $+.090\pm.026$. Adding final
-normalization changes neither result. On WikiText-2, head LoRA raises loss by
-$+.0161\pm.0071$ and both full-head variants by about $+.0938\pm.0069$, increasing perplexity
-from 48.48 to 49.27 and 53.25. Global adaptation therefore spends 12.4 or 1,583 times the
-parameters of late output-LoRA, weakens exact retrofit, and does not teach the decoder to use PRA
-memory more effectively.
-
-The stop decision is consequently narrow. The scalar gate is insufficient. Residual-32 and late
-output-LoRA demonstrate memory-specific likelihood calibration, with rank-8 late output-LoRA the
-most parameter-efficient measured choice. None produces reliable generation: HotpotQA EM remains
-zero and the best F1 is .071. The global control rules out a simple LM-head bottleneck on this
-cohort, but it does not solve decoding. Following the paper boundary, we stop rather than widen
-LoRA to Q, MLP, or the whole model. A larger identity-disjoint generation study is the next unit
-of evidence.
-
-\fi
 
 \section{Product and Systems Boundary}
 
@@ -1509,8 +1280,8 @@ concurrency study.
 The public implementation makes the tested boundary reusable. It preserves native GQA storage
 rather than permanently expanding K/V heads, reports both requested and actual materialization,
 and permits exact disabled-path testing for a new family. The release includes examples, router
-save/load artifacts, the model-family notebook, package and CLI tests, and 310 passing repository
-tests at the current revision. The thin Llama adapter resolves installed rotary and eager-attention functions while
+save/load artifacts, the model-family notebook, package and CLI tests, and a passing repository
+test suite. The thin Llama adapter resolves installed rotary and eager-attention functions while
 the shared core retains publication, routing, budgeting, and replay. Full code-level guidance
 appears in Appendix~\ref{app:adapter-guide}.
 
@@ -1594,46 +1365,33 @@ transfer of the routing/payload separation, causal use, and a reusable interface
 \section{Conclusion}
 
 PRA-HF retrofits pretrained Hugging Face decoders with external native-K/V memory while preserving
-their ordinary behavior exactly when disabled. References are encoded in model-safe blocks,
-detail K/V may remain off the active path, and a compact index selects whole chunks for bounded
-native attention. The shared core works through thin Qwen, Llama-family, and Gemma~3 adapters
-without checkpoint conversion. Gemma adds an important scope constraint: native local/global
-structure is a prior for where external memory may enter, so local sliding layers remain untouched
-and only global layers are eligible. The official checkpoint passes exact parity, bounded
-reference transport, five-seed routing, public API, and causal-use gates without adding a
-Gemma-specific routing or materialization path. Of its four global-capable layers, the measured
-routed configuration consumes selected memory at layers 17 and 23; this compatibility pattern is
-not a proof of optimal or universal placement.
+their ordinary behavior exactly when disabled. Bounded encoding produces compact gists and
+off-path detail K/V; routing selects whole chunks for a fixed native-attention budget. The shared
+core works through thin Qwen, Llama-family, and Gemma~3 adapters without checkpoint conversion.
+Gemma's native local/global structure provides a placement prior: the measured policy leaves all
+sliding-window layers untouched and admits memory only through selected global layers. This is an
+architecture-informed compatibility result, not a universal placement rule.
 
 The architectural result is to route semantic state and attend native positional state.
-Paper~1.5 explains the controlled geometry behind this separation; Paper~2 shows how it transfers
-to pretrained Qwen and becomes an exact HF interface. Hidden-state gists avoid the positional bias
-of post-RoPE key means, while selection still returns the host layer's exact post-RoPE keys and
-native values. A 0.044\%-of-model Qwen router reaches
-any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected parents. Matched QASPER results on
-SmolLM2 and Gemma show that the shared interface, rather than identical retrieval quality, is portable.
+Paper~1.5 explains the controlled geometry behind this separation; Paper~2 shows that the
+separation transfers to pretrained Qwen. Hidden-state gists avoid the positional bias of post-RoPE
+key means, while selection still returns the host layer's exact post-RoPE keys and native values.
+The learned Qwen router establishes a useful recall--sparsity frontier; matched QASPER results on
+SmolLM2 and Gemma show that the interface, rather than identical retrieval quality, is portable.
 
-Selected memory measurably affects pretrained predictions. HotpotQA oracle replay gains 3.641
-nats per gold token over the last 14 layers but loses 0.766 over all 28, establishing a bounded
-depth regime rather than a monotone layer-count effect. On the larger identity-disjoint HotpotQA
-cohort, frozen routed PRA recovers 11.9\% of direct-evidence and 14.1\% of full-context sequence
-benefit while activating 6.56\% of source K/V. Residual 16 raises the oracle ceiling to 90.8\%
-and 107.3\% at 11.39\% K/V, but it does not improve routed recovery. A bounded rank, update, and
-learning-rate sweep confirms that this is not simply a rank-4 under-convergence artifact:
-rank-32 LoRA reaches 83.9\%/99.2\% oracle recovery, but changes routed HotpotQA recovery to
-$-54.2\%/-64.1\%$. Conditional LoRA and the residual-plus-LoRA stack are worse under routed
-selection. The smallest faithful product path is
-therefore the frozen backbone plus the 0.044\%-of-model router, not a larger memory-use adapter.
+Selected memory measurably affects pretrained predictions, but its use is depth dependent: the
+HotpotQA oracle improves over a late band and degrades when replayed through every layer. Clean
+oracle memory also shows that tiny memory-use adapters can approach the integration ceiling.
+Those same adapters do not survive the routed HotpotQA distribution; on the larger disjoint test,
+the frozen routed path remains better. The gap is consistent with oracle training and routed
+deployment, but the experiments do not isolate that explanation. Routing-conditioned robustness
+and decoded task improvement remain open.
 
-The combined evidence establishes seven boundaries. Family-native retrofit is exact under the
-verified checkpoint conditions. Semantic routing and native attention payload are separable.
-Sparse discovery reaches useful but model- and domain-dependent operating points. Native K/V has
-depth- and architecture-dependent causal effects. The shared core spans Qwen, a measured
-Llama-family checkpoint, and official Gemma attention organizations. Reliable decoded-QA
-equivalence remains open, especially under routing errors. Finally, the released
-\texttt{pra\_hf} wheel, model-family notebook, artifacts, metrics, 304-item blind-judge package,
-and reimplementation tests make each of these claims directly testable rather than tying them to
-one private experiment harness.
+The released \texttt{pra\_hf} wheel, family adapters, model-family notebook, router artifacts,
+metrics, blind-judge package, and reimplementation tests make these boundaries independently
+testable. PRA-HF establishes that pretrained transformer memory can be externalized, semantically
+routed, and reintroduced as exact native K/V under bounded operations while preserving the
+original model path when disabled.
 
 \appendix
 \section{Routing Ablations}
@@ -1661,6 +1419,16 @@ Width 256 and harder negatives & No validation-selected gain & Twice the 128-wid
 \bottomrule
 \end{tabularx}
 \end{table}
+
+The matched 16-example centered-RoPE control makes the dissociation explicit. For
+$G=1/2/4/8$, native token-Q/K maximum-rank correlation is
+$.521/.602/.709/.874$, while any-evidence R@3 is $.188/.125/.250/.250$ and routing-index
+overhead is $1.57/3.14/6.28/12.56\%$ of detail K/V. More faithful token-Q/K ordering therefore
+does not produce monotone semantic-recall improvement. A separate fractional-center control gives
+R@3 $.125/.125/.125$ and R@16 $.375/.250/.375$ for exact/floor/ceil center policies. The
+rounding convention changes neither the direction nor the interpretation of the result. Full
+per-example and aggregate records are retained in
+\path{docs/papers/shared/results/paper2_hf/routing/centered_rope/}.
 
 \begin{figure}[htbp]
 \centering
