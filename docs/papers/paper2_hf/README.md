@@ -50,6 +50,8 @@ python experiments/paper2_hf/score_behavioral_judge_results.py `
   --derived-output-dir docs/papers/shared/results/paper2_hf/behavioral_judge/derived
 python -m experiments.paper2_hf.qa.run_qasper_diagnostic `
   --output-dir docs/papers/shared/results/paper2_hf/error_analysis
+python -m experiments.paper2_hf.qa.run_decision_aware_loss `
+  --output-dir docs/papers/shared/results/paper2_hf/decision_aware_loss
 ```
 
 Structured results are under `docs/papers/shared/results/paper2_hf/`; release router artifacts
@@ -64,3 +66,10 @@ the frozen eight-token judge package and adds finish diagnostics, an auditable e
 yes/no polarity margins, five-seed adapter controls, and a bounded routed-memory residual probe.
 To rebuild only its tables and plots from the completed JSON without rerunning inference, use
 `--refresh-existing docs/papers/shared/results/paper2_hf/error_analysis/generation_error_analysis.json`.
+
+The bounded decision-aware QASPER sweep is under
+`shared/results/paper2_hf/decision_aware_loss/`. It holds the routed residual-16 setup fixed,
+selects a polarity-loss weight on four validation identities, evaluates the selected weight once
+on eight untouched identities across five seeds, and includes routed/oracle/no-memory and
+WikiText-2 controls. Its canonical JSON also audits exact reproduction of the prior sequence-only
+baseline. The validation-selected loss is a reported negative result; it is not a product default.
