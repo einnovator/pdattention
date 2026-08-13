@@ -161,10 +161,15 @@ def _evaluate_one(feature, root, memory, *, seed, method, depth, fraction, alpha
         "selected_fraction": len(selected) / candidate_count,
         "any_evidence": float(bool(selected & evidence)),
         "all_evidence": float(bool(evidence) and evidence <= selected),
+        "chain_completion": float(bool(groups) and all(bool(selected & group) for group in groups)),
         "evidence_coverage": len(selected & evidence) / max(len(evidence), 1),
         "hop1_recall": float(bool(groups) and bool(selected & groups[0])),
         "hop2_recall": float(len(groups) > 1 and bool(selected & groups[1])) if len(groups) > 1 else None,
         "direct_mrr": 1.0 / min(evidence_ranks) if evidence_ranks else 0.0,
+        "exact_all_feasible": float(len(evidence) <= budget),
+        "chain_feasible": float(len(groups) <= budget),
+        "oracle_exact_all": float(len(evidence) <= budget),
+        "oracle_chain_completion": float(len(groups) <= budget),
         "materialized_kv_tokens": selected_tokens,
         "materialized_kv_fraction": selected_tokens / max(int(feature["source_tokens"]), 1),
         "routing_seconds": elapsed,
@@ -181,8 +186,9 @@ def _evaluate_one(feature, root, memory, *, seed, method, depth, fraction, alpha
 
 def _aggregate(rows):
     keys = (
-        "any_evidence", "all_evidence", "evidence_coverage", "hop1_recall",
+        "any_evidence", "all_evidence", "chain_completion", "evidence_coverage", "hop1_recall",
         "hop2_recall", "direct_mrr", "selected_unique_chunks", "selected_fraction",
+        "exact_all_feasible", "chain_feasible", "oracle_exact_all", "oracle_chain_completion",
         "materialized_kv_tokens", "materialized_kv_fraction", "routing_seconds",
         "gist_comparisons", "candidate_proposals", "duplicate_proposals",
         "candidate_overlap", "unique_parents", "relational_gap",
@@ -210,13 +216,14 @@ def _seed_summary(rows):
             "seed": key[-1],
             "any_evidence": _mean(values, "any_evidence"),
             "all_evidence": _mean(values, "all_evidence"),
+            "chain_completion": _mean(values, "chain_completion"),
             "evidence_coverage": _mean(values, "evidence_coverage"),
         })
     output = []
     for key, seed_rows in sorted(condition.items(), key=str):
         row = dict(zip(("dataset", "method", "depth", "fraction", "alpha", "frontier", "path_score"), key))
         row["seeds"] = len(seed_rows)
-        for metric in ("any_evidence", "all_evidence", "evidence_coverage"):
+        for metric in ("any_evidence", "all_evidence", "chain_completion", "evidence_coverage"):
             values = [value[metric] for value in seed_rows]
             row[f"{metric}_mean"] = statistics.fmean(values)
             row[f"{metric}_std"] = statistics.stdev(values) if len(values) > 1 else 0.0
@@ -247,10 +254,13 @@ def _curve_summary(aggregates):
             "frontier": key[4], "path_score": key[5],
             "any_auc_5_30": _auc(values, "any_evidence"),
             "all_auc_5_30": _auc(values, "all_evidence"),
+            "chain_auc_5_30": _auc(values, "chain_completion"),
             "any_f80": _threshold(values, "any_evidence", 0.8),
             "any_f90": _threshold(values, "any_evidence", 0.9),
             "all_f80": _threshold(values, "all_evidence", 0.8),
             "all_f90": _threshold(values, "all_evidence", 0.9),
+            "chain_f80": _threshold(values, "chain_completion", 0.8),
+            "chain_f90": _threshold(values, "chain_completion", 0.9),
         }
         for key, values in sorted(groups.items(), key=str)
     ]
@@ -313,9 +323,9 @@ def _plots(aggregates, output_dir):
             if not rows:
                 continue
             axes[0].plot([100 * row["fraction"] for row in rows], [row["any_evidence"] for row in rows], marker="o", label=label)
-            axes[1].plot([100 * row["fraction"] for row in rows], [row["all_evidence"] for row in rows], marker="o", label=label)
+            axes[1].plot([100 * row["fraction"] for row in rows], [row["chain_completion"] for row in rows], marker="o", label=label)
         axes[0].set_title("Any evidence")
-        axes[1].set_title("All evidence / chain completion")
+        axes[1].set_title("Evidence-group chain completion")
         for axis in axes:
             axis.set_xlabel("Final unique-chunk budget (%)")
             axis.set_ylabel("Recall")
@@ -386,6 +396,7 @@ def run(args):
         "protocol_notes": [
             "Each seed is an independently trained semantic projection evaluated on the same held-out examples.",
             "All-evidence requires every evidence-overlapping chunk; hop1/hop2 are source-ordered contiguous evidence groups, not annotated causal hop order.",
+            "Chain completion requires at least one selected chunk from every contiguous evidence group; oracle feasibility reports whether the final chunk budget can represent the target.",
             "Closure and one-shot use the same final unique-chunk cap; actual selected counts and K/V-token fractions are reported.",
             "No transformer rerun occurs during closure; downstream generation is left to the existing full-native-K/V integration gate.",
         ],

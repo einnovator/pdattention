@@ -1,0 +1,379 @@
+{
+  "budget_chunks": 3,
+  "examples": [
+    {
+      "answer": "yes",
+      "conditions": [
+        {
+          "answer_contained": 1.0,
+          "candidate_chunks": 0,
+          "condition": "none",
+          "em": 0.0,
+          "f1": 0.18181818181818182,
+          "generation_seconds": 1.3619602000107989,
+          "latency_seconds": 1.3634173999889754,
+          "materialized_kv_token_fraction": 0.0,
+          "materialized_kv_tokens": 0,
+          "prediction": "Answer in the form the form a direct question: Yes",
+          "query_encoding_seconds": 0.0,
+          "requested_chunk_fraction": 0.0,
+          "requested_chunks": 0,
+          "requested_kv_token_fraction": 0.0,
+          "requested_kv_tokens": 0,
+          "retrieval_graphs": [],
+          "routing_seconds": 0.0
+        },
+        {
+          "answer_contained": 1.0,
+          "candidate_chunks": 42,
+          "condition": "one_shot",
+          "em": 0.0,
+          "f1": 0.18181818181818182,
+          "generation_seconds": 1.1183182999957353,
+          "latency_seconds": 1.3039607999962755,
+          "materialized_kv_token_fraction": 0.07283763277693475,
+          "materialized_kv_tokens": 96,
+          "prediction": "Answer in the form the form a direct answer: Yes",
+          "query_encoding_seconds": 0.07675240002572536,
+          "requested_chunk_fraction": 0.07142857142857142,
+          "requested_chunks": 3,
+          "requested_kv_token_fraction": 0.07283763277693475,
+          "requested_kv_tokens": 96,
+          "retrieval_graphs": [],
+          "routing_seconds": 0.10678380000172183
+        },
+        {
+          "answer_contained": 1.0,
+          "candidate_chunks": 42,
+          "condition": "iterative",
+          "em": 0.0,
+          "f1": 0.2857142857142857,
+          "generation_seconds": 1.1153295999974944,
+          "latency_seconds": 1.2907472000224516,
+          "materialized_kv_token_fraction": 0.07283763277693475,
+          "materialized_kv_tokens": 96,
+          "prediction": "Answer: Yes\nOptions: A: A: Yes",
+          "query_encoding_seconds": 0.07043479999992996,
+          "requested_chunk_fraction": 0.07142857142857142,
+          "requested_chunks": 3,
+          "requested_kv_token_fraction": 0.07283763277693475,
+          "requested_kv_tokens": 96,
+          "retrieval_graphs": [
+            {
+              "budget": {
+                "beam_size": 2,
+                "branch_top_k": 2,
+                "depth": 2,
+                "frontier_mode": "direct",
+                "max_unique_chunks": 3,
+                "min_confidence": null,
+                "path_score_mode": "product",
+                "residual_beta": 1.0,
+                "root_anchor_alpha": 0.25
+              },
+              "costs": {
+                "branch_entropy": 0.6365141682948128,
+                "candidate_overlap_mean": 0.25,
+                "candidate_proposals": 6,
+                "duplicate_proposals": 1,
+                "frontier_sizes": [
+                  2,
+                  1
+                ],
+                "unique_gist_comparisons": 126,
+                "unique_parents": 2,
+                "visited_nodes": 3
+              },
+              "edges": [
+                {
+                  "anchored_score": 0.19948995113372803,
+                  "edge_score": 0.19948995113372803,
+                  "hop": 1,
+                  "path_score": 0.599744975566864,
+                  "selected": true,
+                  "source": "__root__",
+                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576"
+                },
+                {
+                  "anchored_score": 0.1952841877937317,
+                  "edge_score": 0.1952841877937317,
+                  "hop": 1,
+                  "path_score": 0.5976420938968658,
+                  "selected": true,
+                  "source": "__root__",
+                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=512:544"
+                },
+                {
+                  "anchored_score": 0.7140676975250244,
+                  "edge_score": 0.908650279045105,
+                  "hop": 2,
+                  "path_score": 0.5140017446860483,
+                  "selected": true,
+                  "source": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
+                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=960:992"
+                }
+              ],
+              "example_id": null,
+              "layer_id": 27,
+              "nodes": [
+                {
+                  "direct_query_score": 0.19948995113372803,
+                  "edge_score": 0.19948995113372803,
+                  "evidence": null,
+                  "final_selected": true,
+                  "hop": 1,
+                  "materialized": true,
+                  "node_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
+                  "parent_ids": [
+                    "__root__"
+                  ],
+                  "path_score": 0.599744975566864,
+                  "reference_uri": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371",
+                  "selection_reason": "frontier_topk",
+                  "winning_gist_index": 0
+                },
+                {
+                  "direct_query_score": 0.1952841877937317,
+                  "edge_score": 0.1952841877937317,
+                  "evidence": null,
+                  "final_selected": true,
+                  "hop": 1,
+                  "materialized": true,
+                  "node_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=512:544",
+                  "parent_ids": [
+                    "__root__"
+                  ],
+                  "path_score": 0.5976420938968658,
+                  "reference_uri": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371",
+                  "selection_reason": "frontier_topk",
+                  "winning_gist_index": 0
+                },
+                {
+                  "direct_query_score": 0.13032013177871704,
+                  "edge_score": 0.908650279045105,
+                  "evidence": null,
+                  "final_selected": true,
+                  "hop": 2,
+                  "materialized": true,
+                  "node_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=960:992",
+                  "parent_ids": [
+                    "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576"
+                  ],
+                  "path_score": 0.5140017446860483,
+                  "reference_uri": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371",
+                  "selection_reason": "frontier_topk",
+                  "winning_gist_index": 0
+                }
+              ],
+              "root": {
+                "node_id": "__root__",
+                "query_norm": 1.0
+              },
+              "schema_version": "1.0",
+              "stop_reason": "unique_budget"
+            }
+          ],
+          "routing_seconds": 0.1029704999527894
+        }
+      ],
+      "dataset": "hotpotqa",
+      "example_id": "5a8b57f25542995d1e6f1371",
+      "question": "Were Scott Derrickson and Ed Wood of the same nationality?"
+    },
+    {
+      "answer": "no",
+      "conditions": [
+        {
+          "answer_contained": 0.0,
+          "candidate_chunks": 0,
+          "condition": "none",
+          "em": 0.0,
+          "f1": 0.0,
+          "generation_seconds": 1.0756964000174776,
+          "latency_seconds": 1.076947099994868,
+          "materialized_kv_token_fraction": 0.0,
+          "materialized_kv_tokens": 0,
+          "prediction": "Answer: Yes, Yes, they used a crowdsourcing",
+          "query_encoding_seconds": 0.0,
+          "requested_chunk_fraction": 0.0,
+          "requested_chunks": 0,
+          "requested_kv_token_fraction": 0.0,
+          "requested_kv_tokens": 0,
+          "retrieval_graphs": [],
+          "routing_seconds": 0.0
+        },
+        {
+          "answer_contained": 1.0,
+          "candidate_chunks": 132,
+          "condition": "one_shot",
+          "em": 0.0,
+          "f1": 0.25,
+          "generation_seconds": 1.2012663999921642,
+          "latency_seconds": 1.3473011000314727,
+          "materialized_kv_token_fraction": 0.022819111005467078,
+          "materialized_kv_tokens": 96,
+          "prediction": "Answer: Yes, No\nBut, they used a",
+          "query_encoding_seconds": 0.07127700001001358,
+          "requested_chunk_fraction": 0.022727272727272728,
+          "requested_chunks": 3,
+          "requested_kv_token_fraction": 0.022819111005467078,
+          "requested_kv_tokens": 96,
+          "retrieval_graphs": [],
+          "routing_seconds": 0.07286170002771541
+        },
+        {
+          "answer_contained": 1.0,
+          "candidate_chunks": 132,
+          "condition": "iterative",
+          "em": 0.0,
+          "f1": 0.25,
+          "generation_seconds": 1.1375356999924406,
+          "latency_seconds": 1.2907691999571398,
+          "materialized_kv_token_fraction": 0.022819111005467078,
+          "materialized_kv_tokens": 96,
+          "prediction": "Answer: Yes, No\nBut, they used a",
+          "query_encoding_seconds": 0.07374010002240539,
+          "requested_chunk_fraction": 0.022727272727272728,
+          "requested_chunks": 3,
+          "requested_kv_token_fraction": 0.022819111005467078,
+          "requested_kv_tokens": 96,
+          "retrieval_graphs": [
+            {
+              "budget": {
+                "beam_size": 2,
+                "branch_top_k": 2,
+                "depth": 2,
+                "frontier_mode": "direct",
+                "max_unique_chunks": 3,
+                "min_confidence": null,
+                "path_score_mode": "product",
+                "residual_beta": 1.0,
+                "root_anchor_alpha": 0.25
+              },
+              "costs": {
+                "branch_entropy": 0.6365141682948128,
+                "candidate_overlap_mean": 0.0,
+                "candidate_proposals": 6,
+                "duplicate_proposals": 0,
+                "frontier_sizes": [
+                  2,
+                  1
+                ],
+                "unique_gist_comparisons": 396,
+                "unique_parents": 2,
+                "visited_nodes": 3
+              },
+              "edges": [
+                {
+                  "anchored_score": 0.4112491309642792,
+                  "edge_score": 0.4112491309642792,
+                  "hop": 1,
+                  "path_score": 0.7056245654821396,
+                  "selected": true,
+                  "source": "__root__",
+                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32"
+                },
+                {
+                  "anchored_score": 0.37093111872673035,
+                  "edge_score": 0.37093111872673035,
+                  "hop": 1,
+                  "path_score": 0.6854655593633652,
+                  "selected": true,
+                  "source": "__root__",
+                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=32:64"
+                },
+                {
+                  "anchored_score": 0.708945095539093,
+                  "edge_score": 0.8353139162063599,
+                  "hop": 2,
+                  "path_score": 0.602936820236303,
+                  "selected": true,
+                  "source": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
+                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=1856:1888"
+                }
+              ],
+              "example_id": null,
+              "layer_id": 27,
+              "nodes": [
+                {
+                  "direct_query_score": 0.4112491309642792,
+                  "edge_score": 0.4112491309642792,
+                  "evidence": null,
+                  "final_selected": true,
+                  "hop": 1,
+                  "materialized": true,
+                  "node_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
+                  "parent_ids": [
+                    "__root__"
+                  ],
+                  "path_score": 0.7056245654821396,
+                  "reference_uri": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590",
+                  "selection_reason": "frontier_topk",
+                  "winning_gist_index": 0
+                },
+                {
+                  "direct_query_score": 0.37093111872673035,
+                  "edge_score": 0.37093111872673035,
+                  "evidence": null,
+                  "final_selected": true,
+                  "hop": 1,
+                  "materialized": true,
+                  "node_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=32:64",
+                  "parent_ids": [
+                    "__root__"
+                  ],
+                  "path_score": 0.6854655593633652,
+                  "reference_uri": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590",
+                  "selection_reason": "frontier_topk",
+                  "winning_gist_index": 0
+                },
+                {
+                  "direct_query_score": 0.32983848452568054,
+                  "edge_score": 0.8353139162063599,
+                  "evidence": null,
+                  "final_selected": true,
+                  "hop": 2,
+                  "materialized": true,
+                  "node_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=1856:1888",
+                  "parent_ids": [
+                    "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32"
+                  ],
+                  "path_score": 0.602936820236303,
+                  "reference_uri": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590",
+                  "selection_reason": "frontier_topk",
+                  "winning_gist_index": 0
+                }
+              ],
+              "root": {
+                "node_id": "__root__",
+                "query_norm": 1.0
+              },
+              "schema_version": "1.0",
+              "stop_reason": "unique_budget"
+            }
+          ],
+          "routing_seconds": 0.07723260001512244
+        }
+      ],
+      "dataset": "qasper",
+      "example_id": "1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590",
+      "question": "did they use a crowdsourcing platform for manual annotations?"
+    }
+  ],
+  "max_native_operation_tokens": 64,
+  "model_id": "Qwen/Qwen3-0.6B",
+  "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "native_limit_violations": 0,
+  "protocol": "two-example downstream integration smoke; not an efficacy estimate",
+  "runtime": {
+    "cuda_available": true,
+    "cuda_runtime": "12.6",
+    "device": "NVIDIA GeForce GTX 950M",
+    "git_branch": "research/paper2-5-iter-gist",
+    "git_sha": "2ca32cb0a64a41cddd48c0ef45dc5f7f613eb652",
+    "python": "3.10.11",
+    "timestamp_utc": "2026-08-13T18:58:32.440883+00:00",
+    "torch": "2.12.1+cu126",
+    "transformers": "4.55.4"
+  }
+}
