@@ -23,3 +23,22 @@ Artifacts are written under
 `docs/papers/shared/results/paper2_5_iterative_pra/local_associative_closure/`.
 The public SDK keeps one-shot routing as its default. The opt-in
 `routing_mode="local_iterative"` path requires a routing adapter.
+
+## Gate 3: native local Q/K closure
+
+Gate 3 preserves the frozen semantic router for initial relevance and candidate
+narrowing, then compares tokenwise layer-27 pre-RoPE Q/K inside contextual
+32-token regions. It does not load a memory-use adapter or change final post-RoPE
+native K/V materialization.
+
+```powershell
+python experiments/paper2_5_iterative_pra/precompute_native_qk_features.py --device cuda
+python experiments/paper2_5_iterative_pra/run_gate3_native_qk_closure.py --device cuda
+```
+
+The first command writes a regenerable 621 MB tensor cache under
+`docs/papers/shared/results/paper2_5_iterative_pra/native_qk_closure/`. The cache
+is intentionally ignored; its pinned-model provenance, byte count, SHA-256,
+results, graphs, and plots are tracked. The predeclared run uses five router
+seeds, final parent budgets of 10/20/30%, semantic candidate pools of 10/20%,
+max and Top-4 reductions, and one `mu + sigma` threshold control.

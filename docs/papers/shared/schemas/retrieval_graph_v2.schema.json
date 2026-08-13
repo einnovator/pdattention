@@ -20,7 +20,24 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["source_node", "target_node", "edge_type", "representation_type", "projection_type", "score", "threshold", "accepted"]
+        "required": ["source_node", "target_node", "edge_type", "representation_type", "projection_type", "score", "threshold", "accepted"],
+        "properties": {
+          "query_head": {"type": ["integer", "null"]},
+          "kv_head": {"type": ["integer", "null"]},
+          "source_span": {
+            "type": ["array", "null"],
+            "items": {"type": "integer"},
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "target_span": {
+            "type": ["array", "null"],
+            "items": {"type": "integer"},
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "semantic_candidate_rank": {"type": ["integer", "null"]}
+        }
       }
     },
     "budget": {"type": "object"},

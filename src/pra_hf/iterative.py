@@ -303,8 +303,13 @@ class RetrievalEdge:
     representation_type: str = "semantic_gist"
     projection_type: str = "memory_to_memory"
     head_id: int | None = None
+    query_head: int | None = None
+    kv_head: int | None = None
     score: float | None = None
     threshold: float | None = None
+    source_span: tuple[int, int] | None = None
+    target_span: tuple[int, int] | None = None
+    semantic_candidate_rank: int | None = None
     accepted: bool = True
     source_node: str | None = None
     target_node: str | None = None

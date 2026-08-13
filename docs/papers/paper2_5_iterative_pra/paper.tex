@@ -39,13 +39,15 @@ recovers 0.075 QASPER any-evidence recall relative to historical closure at 10\%
 0.013 below one-shot; HotpotQA chain completion is unchanged.  Second, we encode 256-token
 parents once, derive eight 32-token local gists from each contextual state, traverse local nodes,
 and deduplicate parents before materializing native K/V.  This local method solves every designed
-bridge control, where parent closure always fails.  On natural data at a matched 20\% parent
-budget, it modestly improves exact evidence identity and coverage but not chain completion, while
-using 7.6$\times$ and 22.3$\times$ the one-shot semantic comparisons on HotpotQA and QASPER.
-Direct iterative reuse of the inherited one-shot representation therefore does not yet provide a
-dependable associative traversal graph on natural data.  Projection asymmetry is a real bug and
-local bridges are measurable, but native local query--key closure is the next gate; newly learned
-associative machinery is not yet justified.
+bridge control, where parent closure always fails.  Finally, semantic narrowing followed by
+tokenwise layer-27 pre-RoPE query--key (QK) matching solves all 320 native-bridge controls.  On
+natural data at a matched 20\% parent budget, however, the primary native-QK condition reaches
+HotpotQA chain completion 0.125 versus 0.125 local semantic and 0.138 one-shot; QASPER reaches
+0.900 versus 0.925 and 0.938.  A Top-4 control reaches 0.175 on HotpotQA but falls to 0.838 on
+QASPER and does not dominate across budgets.  Native propagation is therefore expressively
+sufficient on designed bridges but not a dependable pretrained associative geometry on these
+natural samples.  One-shot remains the default, and any learned associative extension now has a
+clearer justification and baseline.
 \end{abstract}
 
 \section{Introduction}
@@ -70,11 +72,11 @@ beat one-shot Top-$B$ at the same final unique-chunk budget $B$.  Otherwise, ret
 cost without adding a useful primitive.
 
 We keep the pretrained backbone and Paper 2 routing/transport stack fixed and replace one-shot
-Top-$B$ discovery with parameter-free iterative closure.  The projection-correction and local-gist
-gates later in the paper likewise alter discovery state only; they do not train the backbone or a
-memory-consumption adapter.
+Top-$B$ discovery with parameter-free iterative closure.  Projection correction, local-gist
+propagation, and native-QK propagation likewise alter discovery state only; they do not train the
+backbone or a memory-consumption adapter.
 
-The contributions are fivefold.  First, we formulate iterative PRA as query-conditioned bounded
+The contributions are sixfold.  First, we formulate iterative PRA as query-conditioned bounded
 associative closure over an implicit latent graph.  Second, we implement Level-1 gist-to-gist and
 Level-2 aggregate-frontier traversal with deterministic budgets, cycle handling, root anchoring,
 transparent path scores, and a versioned graph artifact.  Third, we evaluate five semantic-router
@@ -82,7 +84,9 @@ seeds on held-out HotpotQA and QASPER features, together with exact two- and thr
 controls.  Fourth, we identify and correct an asymmetric projection-interface error without
 retraining.  Fifth, we separate contextual encoding, local propagation, and parent K/V
 materialization scales, showing exact local-bridge recovery but no dependable natural-data chain
-gain.
+gain.  Sixth, we test semantically narrowed, tokenwise pre-RoPE native QK propagation under the
+same final parent budget, separate semantic and native search costs, and identify a controlled
+success but a natural-data boundary.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -258,6 +262,7 @@ Backbone topology & 28 decoder layers (zero-based 0--27), hidden width 1,024, 16
 Routing source & Attention-input hidden states from decoder layer 27; the root uses the final prompt-token hidden state. \\
 Contextual encoding and routing unit & The inherited feature artifact encodes contiguous 128-token blocks and exposes 32-token routing views.  These views are derived from contextual hidden states, not independently encoded fragments.  Gate 2 separately encodes 256-token parents once and derives eight 32-token local means from each parent state. \\
 Raw routing gist & One mean hidden-state gist per inherited 32-token routing chunk.  Gate 2 retains one local mean per 32-token subwindow and an occupancy-weighted 256-token parent mean. \\
+Native closure representation & Gate 3 uses tokenwise layer-27 pre-RoPE Q/K inside contextual 32-token regions, with Qwen-compatible 16-query-head to 8-K/V-head pairing.  These tensors are routing only; the materialized payload remains post-RoPE native K plus native V. \\
 Learned discovery component & The only inherited learned discovery component is Paper 2's asymmetric linear semantic router.  It maps a 1,024-D hidden state to a 128-D routing space with 262,144 parameters. \\
 Router projections & $z_q=W_qh_q$ and $z_m=W_mh_m$; one-shot scoring is $\cos(z_q,z_m)$. \\
 Router checkpoints & Five independently trained exhaustive-negative, margin-objective checkpoints with seeds 11, 23, 37, 53, and 71.  No checkpoint is trained or selected on Paper 2.5 iterative results. \\
@@ -273,7 +278,7 @@ Router checkpoints & Five independently trained exhaustive-negative, margin-obje
 \toprule
 Component & Paper 2.5 setting \\
 \midrule
-Iterative closure & Parameter-free.  The primary chunk study uses direct frontiers, multiplicative path score, root anchor $\alpha=0.25$, and depths 2, 3, and 4; one-shot is the matched depth-1 Top-$B$ reference. \\
+Iterative closure & Parameter-free.  The primary chunk study uses direct frontiers, multiplicative path score, root anchor $\alpha=0.25$, and depths 2, 3, and 4; one-shot is the matched depth-1 Top-$B$ reference.  Gate 3 also remains parameter-free. \\
 Memory-consumption adaptation & None.  Paper 2.5 does not load a memory-use adapter.  Residual-16, rank-32 LoRA, residual-plus-LoRA, and global LM-head adaptation are all absent. \\
 PRA payload & Full layer-native post-RoPE K and native V, preserving Qwen's 8 K/V heads without expanding them to 16 query heads. \\
 PRA consumer layers & None in the frozen-feature retrieval experiments.  The downstream integration smoke routes at layer 27 and materializes/consumes native K/V on layer 27 only; it does not use a multi-layer late band. \\
@@ -282,7 +287,7 @@ Native-operation bounds & The configured hard bound is 256 tokens.  Feature enco
 Final native payload budget & The downstream smoke caps materialized memory at 96 tokens and selects three 32-token chunks in both one-shot and iterative conditions.  Retrieval-only studies apply matched logical chunk/parent budgets but do not transfer K/V. \\
 K/V residency in smoke & Reference K/V is CPU-resident, pinned when CUDA is available, and transferred non-blockingly for final selected identities. \\
 Datasets & A held-out split of 16 HotpotQA and 16 QASPER examples, plus controlled synthetic two-hop, three-hop, and local-bridge tasks. \\
-New Paper 2.5 variables & Discovery procedure only: one-shot versus bounded iterative closure, followed by projection-correct frontier and parent-versus-local propagation gates.  Backbone weights, router checkpoints, payload representation, layer mapper, and host attention semantics remain fixed within each matched comparison. \\
+New Paper 2.5 variables & Discovery procedure only: one-shot versus bounded iterative closure, followed by projection-correct frontier, parent-versus-local propagation, and semantically narrowed native-QK propagation gates.  Backbone weights, router checkpoints, payload representation, layer mapper, and host attention semantics remain fixed within each matched comparison. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -318,6 +323,7 @@ Frozen pinned Qwen3-0.6B & Bounded iterative closure and retrieval graph \\
 Attention-input hidden-state gists & Projection-correct frontier audit \\
 Native post-RoPE K/V transport and mapper & Hierarchical local propagation with parent deduplication \\
 Bounded native execution & Matched-budget chain metrics and transitive controls \\
+Fixed post-RoPE native K/V payload & Pre-RoPE native-QK propagation audit \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -358,6 +364,38 @@ A separate two-example CUDA smoke loads the pinned Qwen model, indexes one Hotpo
 QASPER source, and compares no memory, one-shot, and $D=2$ closure.  One-shot and closure both
 request three chunks and materialize 96 native K/V tokens.  This run validates execution and
 budget invariants; two examples cannot estimate answer quality.
+
+\subsection{Gate-3 native-QK protocol}
+
+Gate 3 asks whether initial relevance and associative propagation require different pretrained
+geometries.  The learned semantic router still scores the root and narrows each activated local
+frontier to either 10\% or 20\% of candidate parents.  Only local regions inside those parents
+enter native refinement.  From the same layer-27 contextual states used by Gate 2, we retain
+Qwen's normalized pre-RoPE projections
+\begin{equation}
+  Q^{pre}=W_Qh,\qquad K^{pre}=W_Kh.
+\end{equation}
+Qwen has 16 query heads and 8 K/V heads, so query heads $2j$ and $2j+1$ compare only with K/V
+head $j$.  The primary local-region transition score is
+\begin{equation}
+ s_{QK}(A_i,B_j)=
+ \max_{a\in A_i,b\in B_j,h}
+ \frac{q_{a,h}^{\mathsf T}k_{b,\lfloor h/2\rfloor}}{\sqrt{128}}.
+\end{equation}
+The sole smooth control averages the four strongest valid token pairs per head and then the four
+strongest query heads.  We compare fixed Top-$k$ transitions with one threshold,
+$\theta=\mu+\sigma$, always under the same hard parent cap.  If thresholding accepts too few
+parents, root-semantic ranking fills the remainder so final materialization stays matched.
+
+Each 256-token parent is encoded once.  Its token states are sliced into contextual 32-token
+routing regions; no region is independently re-encoded.  Native QK changes discovery identities
+only.  Intermediate states contain no payload K/V, and final identities would still map through
+the existing post-RoPE native K plus native V path.  The five router seeds, 10/20/30\% final
+parent budgets, and all one-shot, parent-closure, and local-semantic baselines remain fixed.
+These Gate-3 baselines are recaptured on the same strict 32-token grid as native QK.  They are
+internally matched but slightly differ from Gate 2's historical eight-equal-segment artifact when
+a final 256-token parent is short; Tables~\ref{tab:local} and~\ref{tab:native-qk} therefore answer
+their respective within-gate comparisons rather than being pooled.
 
 \section{Results}
 
@@ -597,6 +635,82 @@ than 1.3\% within either dataset, confirming that the quality comparison is not 
 larger payload.  The graph audit validates all 960 saved Gate-1/2 traces against schema v2 and
 finds no parent-budget violation.
 
+\subsection{Gate 3: native local QK propagation}
+
+The native-bridge control first verifies the mechanism without relying on natural annotations.
+The root-semantic rank retrieves entry parent $A$ and a stronger semantic distractor, while a
+token in $A$ has a model-compatible native QK match only to evidence parent $B$.  Across five
+seeds and 64 cases per seed, one-shot, parent closure, and local semantic closure retrieve half
+the evidence and complete no chains.  Native QK retrieves both groups in all 320 cases: exact
+identity, chain completion, and coverage are all 1.0.  A distractor with an incompatible native
+key remains unselected.  The vectorized scorer can therefore express the proposed transition.
+
+Natural data does not reproduce that separation (Table~\ref{tab:native-qk}).  At the primary
+20\% final budget and 10\% semantic candidate pool, max native QK matches local semantic chain
+completion on HotpotQA (0.125) and remains below one-shot (0.138) and parent closure (0.175).
+Its any-evidence recall and coverage are slightly higher than local semantic, but exact identity
+falls from 0.013 to zero.  Expanding the pool to 20\% lowers chain completion to 0.113.  On
+QASPER, max native QK reaches 0.900 with the 10\% pool and 0.863 with the 20\% pool, below local
+semantic (0.925) and one-shot (0.938).  More candidates amplify rather than repair propagation
+error.
+
+\begin{table}[H]
+\centering
+\caption{Gate 3 at a matched 20\% final parent/KV budget.  ``QK-10'' and ``QK-20'' are the
+primary max score with 10\% and 20\% semantic candidate-parent pools; ``QK-Top4'' is the sole
+Top-4 control at 20\%.  Native dots count token-pair/query-head products.}
+\label{tab:native-qk}
+\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Method & Chain & Coverage & Sem. cmp. & Native dots & K/V tok. & Time (s) \\
+\midrule
+HotpotQA & One-shot & .138 & .217 & 6.5 & 0 & 405.8 & .0046 \\
+HotpotQA & Local semantic & .125 & .217 & 98.3 & 0 & 407.0 & .0105 \\
+HotpotQA & QK-10 & .125 & .223 & 114.6 & 95,712 & 406.3 & .0121 \\
+HotpotQA & QK-20 & .113 & .208 & 114.6 & 183,667 & 407.2 & .0132 \\
+HotpotQA & QK-Top4 & .175 & .265 & 114.6 & 183,667 & 406.0 & .0143 \\
+QASPER & One-shot & .938 & .813 & 18.2 & 0 & 1036.0 & .0059 \\
+QASPER & Local semantic & .925 & .829 & 540.0 & 0 & 1042.9 & .0463 \\
+QASPER & QK-10 & .900 & .810 & 540.0 & 1,198,554 & 1043.7 & .0467 \\
+QASPER & QK-20 & .863 & .794 & 540.0 & 1,949,958 & 1039.8 & .0542 \\
+QASPER & QK-Top4 & .838 & .770 & 540.0 & 1,949,958 & 1041.3 & .0624 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/native_qk_closure/gate3_native_qk_quality.pdf}
+\caption{Gate-3 chain completion and evidence coverage across final budgets.  Primary native-QK
+propagation does not dominate local semantic or one-shot routing; the larger candidate pool is
+usually worse, especially on the direct-retrieval QASPER control.}
+\label{fig:native-qk-quality}
+\end{figure}
+
+The Top-4 control is the one localized positive: HotpotQA chain completion at 20\% rises to 0.175,
+matching parent closure and exceeding both one-shot and local semantic.  It does not persist as a
+dominant curve: at 10\% all methods tie at 0.038, at 30\% Top-4 reaches 0.238 versus one-shot
+0.300, and QASPER degrades to 0.838 at 20\%.  The $\mu+\sigma$ threshold is effectively identical
+to fixed Top-$k$ in this hard-cap regime and offers no rescue.  These predeclared controls are
+therefore a mixed point observation, not a positive Gate-3 result.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/native_qk_closure/gate3_native_qk_cost.pdf}
+\caption{Gate-3 cost at the 20\% final parent budget.  Semantic and native work are reported
+separately.  Candidate expansion from 10\% to 20\% nearly doubles native dot products without a
+quality gain.  Wall time measures this batched reference implementation, not an optimized kernel.}
+\label{fig:native-qk-cost}
+\end{figure}
+
+At 20\%, native refinement compares means of 1.1/1.7 candidate parents and 161/315 candidate
+tokens on HotpotQA for the 10/20\% pools; QASPER compares 3.4/5.6 parents and 874/1,422 tokens.
+This produces 95,712--183,667 native dots on HotpotQA and 1.20--1.95 million on QASPER per
+example/seed, while materialized K/V stays within 0.8\% of one-shot.  Every saved graph reports
+zero K/V materializations during closure.  Gate 3 changes search work and selected identities,
+not payload quantity or transformer attention semantics.
+
 \section{Discussion}
 
 \subsection{What the experiments establish}
@@ -607,7 +721,7 @@ deduplication, beam pruning, and hard budgets prevent exponential materializatio
 closure can remain entirely in compact routing state until final identities map to full native
 K/V.
 
-The natural-data result establishes a different boundary.  Projection-correct closure confirms
+The natural-data results establish a different boundary.  Projection-correct closure confirms
 that shared dimensionality did not imply shared query and memory semantics: respecting the
 asymmetric interface repairs much of QASPER's loss.  The local experiment then finds positive
 bridge deltas and better exact identity/coverage, so parent aggregation does hide some useful
@@ -615,13 +729,21 @@ semantic relations.  Yet those stronger local edges do not improve chain complet
 iterative reuse of the inherited one-shot routing representation does not yet provide a
 dependable associative traversal graph on natural data.
 
-The next gate should use the transformer's native local matching primitive rather than train a
-new semantic router immediately.  Coarse semantic routing can narrow candidate parents, after
-which pre-RoPE or otherwise position-neutral $Q_{A,i}^{(h)}K_{B,j}^{(h)\top}$ scores test whether
-the pretrained attention geometry carries better evidence-to-evidence transitions.  Final parent
-and K/V budgets must remain fixed, and native comparison counts must be reported separately.
-Only if projection-correct local semantic and native QK closure both fail is an explicitly
-supervised associative head justified.
+Gate 3 then tests the transformer's own position-neutral local matching geometry after semantic
+narrowing.  Its exact synthetic recovery proves that the routing path, grouped heads, and
+tokenwise reduction can represent a native bridge.  The natural result is nevertheless negative
+under the predeclared success criterion: primary native QK does not beat local semantic closure
+and preferably one-shot across matched budgets.  The isolated HotpotQA Top-4 gain is offset by
+other budgets and by QASPER degradation.  Initial relevance geometry and propagation geometry
+may differ, but pretrained layer-27 QK does not establish that specialization here.
+
+This completes the staged diagnostic sequence: Stage 0 is one-shot retrieval; Stage 1 is chunk
+iterative closure; Stage 2 corrects the asymmetric projection interface; Stage 3 moves propagation
+to contextual local semantic gists; Stage 4 tests tokenwise native QK after semantic narrowing.
+Projection role, propagation scale, and native attention geometry have therefore been tested
+before introducing learned associative supervision.  A learned head is now scientifically
+motivated, but it should be evaluated as a new trained component rather than described as an
+automatic extension of the inherited router.
 
 \subsection{Relation to retrieval, agents, and recursive models}
 
@@ -657,29 +779,33 @@ Seeds quantify projection sensitivity but do not create 80 independent questions
 evidence groups are source-contiguous spans, not annotated causal hop labels.  QASPER's selected
 subset is yes/no and often one-group, so it tests direct retrieval more than multi-hop closure.
 
-The natural-data sample remains small.  Projection correction and local hierarchy remove two
-known confounds, but the experiment does not include native local QK closure, overlapping local
-windows, adaptive zoom rules, evidence-edge training, or a full agentic baseline.  The local
-bridge control is deliberately geometric and does not approximate natural language.  Downstream
-F1/EM is measured only in a two-example execution smoke and is not used as evidence of quality.
-Finally, the trace-oriented implementation launches many small operations; production latency
-requires batched frontiers, batched examples, and a persistent index service.
+The natural-data sample remains small.  Projection correction, local hierarchy, and native QK
+remove three specific confounds, but the experiment does not include overlapping local windows,
+adaptive zoom rules, evidence-edge training, a layer sweep, or a full agentic baseline.  The local
+and native bridge controls are deliberately geometric and do not approximate natural language.
+Hotpot evidence groups are approximate source-order targets rather than annotated transition
+edges, so they can understate or misidentify the useful successor relation.  Downstream F1/EM is
+measured only in a two-example execution smoke and is not used as evidence of quality.  Finally,
+the scorer batches token pairs and heads but still launches small per-example routing operations;
+the reported wall time is not a production-kernel claim.
 
 \section{Conclusion}
 
 Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
 asymmetric frontier is necessary and materially reduces inherited degradation.  Routing at a
-finer local scale can recover bridges erased by parent means and modestly improve exact evidence
-identity and coverage.  Neither correction, however, produces a dependable natural-data chain
-advantage at matched materialization budget, and local traversal substantially increases search
-work.  One-shot PRA therefore remains the default efficiency/quality reference.
+finer local scale can recover bridges erased by parent means.  Tokenwise pre-RoPE native QK then
+recovers every designed native bridge, showing that semantic narrowing and a different propagation
+primitive can compose without changing materialization.  None of these parameter-free variants,
+however, produces a dependable natural-data chain advantage at matched payload budget, and each
+finer search adds work.  One-shot PRA therefore remains the default efficiency/quality reference.
 
-The scientific lesson is narrower than ``semantic geometry has no associative edges.''  Direct
-iterative reuse of a one-shot representation is sensitive to projection interface and propagation
-scale.  Once both are corrected, local semantic affinity is still insufficient to select reliable
-cross-parent chains.  The next experiment is hybrid semantic narrowing plus native local QK
-closure.  Learned associative geometry remains a later gate, not the automatic response to a
-mixed result.
+The scientific lesson is narrower than ``pretrained geometry has no associative edges.''  Direct
+iterative reuse is sensitive to projection interface, propagation scale, candidate width, and
+score reduction.  Local semantic and native attention spaces contain designed bridges and
+occasional natural positives, but neither supplies reliable cross-parent transitions on this
+sample.  Future learned associative geometry must therefore demonstrate that supervision adds
+stable transition structure beyond all four frozen discovery stages, while retaining the same
+payload and execution controls.
 
 \appendix
 \section{Implementation Map}
@@ -706,10 +832,11 @@ and local-to-local expansion, aggregates candidates by parent, enforces the uniq
 and maps only final parents to payload handles.
 
 \paragraph{Graph contract.}
-Lines 269--337 of \texttt{iterative.py} define node, edge, graph, and result records.  The current
+Lines 269--342 of \texttt{iterative.py} define node, edge, graph, and result records.  The current
 JSON Schema is \path{docs/papers/shared/schemas/retrieval_graph_v2.schema.json}.  Nodes retain
 parent identity, local span, resolution, representation and projection types, hop, path score,
-and materialization state.  Edges retain typed endpoints, score, threshold, and acceptance.
+and materialization state.  Native-edge extensions additionally retain source/target spans,
+query and K/V head identities, native score, threshold, and semantic candidate rank.
 
 \paragraph{Exact scoring and deterministic top-k.}
 \texttt{iterative.py:376--397} normalizes frontier rows and computes
@@ -728,23 +855,63 @@ one-shot, chunk iterative, or opt-in \texttt{local\_iterative} routing, maps fin
 to consumption layers, enables fixed memory, and only then marks graph nodes materialized.
 Generation thereafter uses the unchanged Paper 2 native-K/V path.
 
+\paragraph{Native QK feature capture.}
+\texttt{precompute\_native\_qk\_features.py:50--107} encodes each bounded 256-token parent once,
+reads Qwen's exact layer-27 capture, transposes canonical Q/K to token-major form, and slices
+aligned 32-token regions.  It stores FP16 pre-RoPE Q/K with a validity mask for a short final
+window; it never independently re-encodes a local region.  The capture itself is generated by
+Qwen's ordinary \texttt{q\_proj}/\texttt{k\_proj} and native Q/K norms before rotary position
+encoding.  A test recomputes those projections from the captured hidden states and requires exact
+tensor equality.
+
+\paragraph{GQA-compatible tokenwise scoring.}
+Lines 122--211 of \path{src/pra_hf/native_closure.py} map query head $h$ to K/V head
+$\lfloor h/2\rfloor$, packs candidate keys accordingly, and computes all frontier-by-candidate
+token/head products with one \texttt{einsum}.  Invalid padded pairs become $-\infty$ before max
+or Top-4 reduction.  The scorer returns strongest token and compatible-head identities as well
+as the physical dot-product count; no Python loop traverses token pairs or heads.
+
+\paragraph{Semantic narrowing and native propagation.}
+\texttt{native\_closure.py:215--480} uses root semantic scores for initial parents, applies
+$W_qh_A\rightarrow W_mh_B$ to rank a hard 10/20\% candidate-parent pool, gathers all contextual
+local windows in that pool, and invokes native QK once.  Proposals are merged by parent before
+the hard final parent budget.  Threshold mode retains the same cap and fills rejected slots from
+root semantic ranking, preserving materialization parity.  The graph cost record separates
+semantic comparisons, native dots, candidate parents/regions/tokens, accepted transitions,
+selected parents, final K/V tokens, and routing wall time.
+
+\paragraph{Fixed-identity payload parity.}
+\texttt{tests/test\_hf\_integration.py} sends the same selected chunk through router, oracle, and
+native-closure labels.  All three paths produce byte-identical post-RoPE K, native V, and
+attention output.  Gate 3 therefore ends at identities: it neither changes nor reconstructs the
+payload consumed by Qwen.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
-isolates projection correction.  The precompute runner captures one 256-token contextual parent
-pass and derives 32-token local means.  The Gate-2 runner performs the matched parent-budget
-comparison and local-bridge control.  Exact script names and commands are listed in that
-directory's \texttt{README.md}; raw rows, plots, and graph JSONL are under the corresponding
-\path{shared/results/paper2_5_iterative_pra/} result tree.
+isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
+32-token local means.  Gate 3 uses \texttt{precompute\_native\_qk\_features.py} followed by
+\texttt{run\_gate3\_native\_qk\_closure.py}.  The 620,984,671-byte feature cache is regenerable
+and excluded from Git; its public manifest pins Qwen revision
+\texttt{c1899de289a04d12100db37\allowbreak 0d81485cdf75e47ca}.  Its SHA-256 is
+\begin{center}
+\small\texttt{edc589cc7886ba843ee598e89e6dab97e500084df8b7ee8dc8ab44ea75993ae8}.
+\end{center}
+Exact commands are listed in the experiment \texttt{README.md}; raw rows, aggregate tables,
+plots, and graph JSONL are under the corresponding shared result tree.
 
 \section{Validation Gates}
 
 The test suite checks $D=1$ equivalence to Top-$B$, deterministic batches, exact synthetic
 two-hop recovery, deduplication and cycles, depth/beam/unique budgets, all path and frontier modes,
 zero limits, layer locality, projection-contract enforcement, exact local-bridge recovery, parent
-deduplication, CPU/CUDA identity parity, and the no-materialization-before-closure boundary.  The
-focused iterative/HF/multi-gist suite contains 94 passing tests; 960 saved Gate-1/2 graphs validate
-against schema v2.  Contextual local-feature capture records zero native operation-limit
-violations.
+deduplication, GQA head mapping, max and Top-4 native reductions, semantic narrowing, threshold
+caps, exact pre-RoPE Q/K capture, CPU/CUDA identity parity, fixed-identity payload parity, and the
+no-materialization-before-closure boundary.  Gate-3 generation validates every saved graph against
+the backward-compatible schema-v2 extension and records zero K/V materializations during closure.
+The feature manifest verifies the frozen model revision, layer 27, 16/8 grouped heads, native head
+width 128, and no memory-use adapter.  The complete repository suite passes 377 tests; the focused
+iterative/HF/native suite passes 97.  All 160 saved Gate-3 graphs and 5,600 result rows satisfy
+schema, parent-budget, and no-closure-materialization checks.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

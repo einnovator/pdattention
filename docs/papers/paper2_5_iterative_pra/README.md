@@ -30,3 +30,15 @@ python ../../../experiments/paper2_5_iterative_pra/run_gate2_local_closure.py --
 Gate 2 encodes 256-token contextual parents once and derives eight 32-token
 local means without re-encoding subwindows. Results and schema-v2 graph traces
 are under `../shared/results/paper2_5_iterative_pra/local_associative_closure/`.
+
+Native local Q/K gate:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/precompute_native_qk_features.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_gate3_native_qk_closure.py --device cuda
+```
+
+Gate 3 uses the exact pinned Qwen revision and captures tokenwise layer-27
+pre-RoPE Q/K from each single contextual parent encoding. The large regenerable
+feature tensor is ignored; its manifest hash and all result/graph/plot artifacts
+are under `../shared/results/paper2_5_iterative_pra/native_qk_closure/`.

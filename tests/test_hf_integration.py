@@ -566,11 +566,20 @@ def test_fixed_selected_set_has_identical_materialization_and_attention_output()
         direct_tokens=2,
         rankings=[[{"selection_source": "oracle"}]],
     )
+    native_closure = core.prepare_selected_memory(
+        query,
+        [[replace(selected, metadata={"selection_policy": "native_qk_closure"})]],
+        direct_tokens=2,
+        rankings=[[{"selection_source": "native_qk_closure"}]],
+    )
     routed_output, _, _ = core.apply_pra_attention(
         query, local_key, local_value, routed
     )
     oracle_output, _, _ = core.apply_pra_attention(
         query, local_key, local_value, oracle
+    )
+    native_output, _, _ = core.apply_pra_attention(
+        query, local_key, local_value, native_closure
     )
 
     assert torch.equal(routed.keys[0], chunk.token_kv.k)
@@ -578,6 +587,31 @@ def test_fixed_selected_set_has_identical_materialization_and_attention_output()
     assert torch.equal(routed.keys[0], oracle.keys[0])
     assert torch.equal(routed.values[0], oracle.values[0])
     assert torch.equal(routed_output, oracle_output)
+    assert torch.equal(routed.keys[0], native_closure.keys[0])
+    assert torch.equal(routed.values[0], native_closure.values[0])
+    assert torch.equal(routed_output, native_output)
+
+
+def test_qwen_capture_retains_exact_normalized_pre_rope_qk():
+    """Gate-3 capture must equal Qwen's native projections before RoPE."""
+    torch.manual_seed(10815)
+    handle = inject_pra(_tiny_qwen(), _hf_config())
+    adapter = handle.adapters[1]
+    positions = torch.arange(4).unsqueeze(0)
+    adapter.begin_capture(positions)
+    with torch.no_grad():
+        handle.model(torch.tensor([[1, 4, 8, 12]]), position_ids=positions, use_cache=False)
+    captured = adapter.consume_capture()
+    attention = adapter.original_attention
+    shape = (*captured.hidden_states.shape[:2], -1, attention.head_dim)
+    expected_q = attention.q_proj(captured.hidden_states).view(shape)
+    expected_k = attention.k_proj(captured.hidden_states).view(shape)
+    if hasattr(attention, "q_norm"):
+        expected_q = attention.q_norm(expected_q)
+    if hasattr(attention, "k_norm"):
+        expected_k = attention.k_norm(expected_k)
+    assert torch.equal(captured.pre_query, expected_q.transpose(1, 2))
+    assert torch.equal(captured.pre_key, expected_k.transpose(1, 2))
 
 
 def test_qwen_fixed_selection_override_replays_requested_chunk():
