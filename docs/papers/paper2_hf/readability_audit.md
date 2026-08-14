@@ -11,7 +11,7 @@ receipts remain unchanged.
 | Evaluation design and disabled-path parity | MAIN | Required to interpret every claim. |
 | Semantic/native representation split | MAIN | Central scientific design rule. |
 | Learned-router recall/sparsity frontier | MAIN | Primary discovery result. |
-| Six-stage evaluation hierarchy | MAIN | Organizes the scientific argument. |
+| Eight-stage evaluation hierarchy | MAIN | Separates availability, discovery, representation, materialization, integration, decision, decoding, and behavioral utility. |
 | Compact depth and oracle-gap result | MAIN | Strongest causal and mechanistic evidence. |
 | QASPER likelihood, decision, completion, and judge headlines | MAIN | Strongest positive pretrained result. |
 | Family portability and SDK status headlines | MAIN | Practical contribution and tested boundary. |
@@ -23,7 +23,7 @@ receipts remain unchanged.
 | Cross-family and systems benchmark tables | APPENDIX | Supports the portability headline without interrupting it. |
 | Routing geometry and failed ablations | APPENDIX | Secondary negative results owned partly by Paper 1.5. |
 | Code-level adapter reimplementation guide | APPENDIX | Detailed independent-reproduction path. |
-| Repeated routing-versus-payload explanations | REMOVE/MERGE | Consolidated in the architecture and six-stage hierarchy. |
+| Repeated routing-versus-payload explanations | REMOVE/MERGE | Consolidated in the architecture and eight-stage hierarchy. |
 | Repeated Hotpot one-shot caveats | REMOVE/MERGE | Consolidated as the Paper 2.5 discovery handoff. |
 | Repeated likelihood-versus-decoding caveats | REMOVE/MERGE | Consolidated in the QASPER headline and evaluation hierarchy. |
 | Repeated SDK-default statements | REMOVE/MERGE | One main recommendation, with detailed receipts in the appendix. |

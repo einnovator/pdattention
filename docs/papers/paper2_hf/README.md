@@ -12,14 +12,17 @@ Serving-optimized kernels remain future work.
 
 ## Research freeze
 
-Paper 2 research content is frozen after the final oracle-gap/readability synthesis. Reopen it only for
-factual or numerical correction, a reproducibility defect, venue formatting, or reviewer feedback.
+Paper 2 research content is frozen after the final oracle-gap, readability, and conceptual-consistency
+synthesis. Reopen it only for factual or numerical correction, a reproducibility defect, venue
+formatting, or reviewer feedback.
 New multi-gist routing, iterative HotpotQA retrieval, partial materialization, and larger-model
 adaptation belong to later papers rather than this manuscript.
 
 The final readability pass organizes the PDF as a 16-page main narrative, 36 pages of appendices,
 and four pages of references (56 pages total). The section-level MAIN/APPENDIX/REMOVE-MERGE record
-is in `readability_audit.md`; all prior experimental artifacts remain unchanged.
+is in `readability_audit.md`. One eight-stage hierarchy now separates availability, discovery,
+representation, materialization, integration, decision, decoding, and behavioral utility; adaptation
+is treated as an intervention across stages. All prior experimental artifacts remain unchanged.
 
 General source-position, RoPE rebinding, pooled-geometry, and attention-versus-semantic-routing
 results belong to companion Paper 1.5 on `research/paper1-5-rope`. Paper 2 treats those results

@@ -37,7 +37,7 @@ parents while returning exact post-RoPE K and native V. Oracle HotpotQA replay i
 the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766.
 An end-to-end audit finds complete evidence coverage and exact cached K/V, ruling out a hidden
 oracle-path bug. Oracle replay nevertheless remains distinct from native context: co-materialized
-non-evidence tokens receive .310 of late-band Hotpot attention, source-only K/V differ from
+non-evidence tokens receive .310 of normalized late-band Hotpot attention support, source-only K/V differ from
 question-contextualized K/V, and harmful all-layer replay coincides with substantially greater
 residual divergence than late-band replay.
 PRA-conditional adapters preserve the ordinary no-memory path exactly and leave the measured
@@ -82,9 +82,9 @@ attend native positional state.}
 The paper series separates mechanisms that otherwise become easy to conflate. Paper~1 separates
 logical memory from active K/V; Paper~1.5 separates positional and attention geometry from
 semantic routing geometry; this Paper~2 tests exact pretrained retrofit, causal use, and family
-portability. Paper~2.5 will study bounded iterative associative closure
-$q\rightarrow A\rightarrow B$, while Paper~3 will study progressive or partial K/V
-materialization after routing.
+portability. Paper~2.5 will isolate whether the multi-hop boundary arises from entry discovery,
+associative propagation, or bounded competition while keeping the Paper-2 memory-consumption path
+fixed. Paper~3 will study progressive or partial K/V materialization after routing.
 
 Figure~\ref{fig:adapter} gives the complete data path before the individual contracts are
 developed. Publication creates a small search representation and a full native payload; only the
@@ -170,22 +170,6 @@ HotpotQA & Multi-hop stress and oracle causal probe & Exposes the boundary that 
 \end{tabularx}
 \end{table}
 
-\begin{table}[H]
-\centering
-\small
-\caption{Recall metrics answer different questions and are never substituted for one another.}
-\label{tab:recall-definitions}
-\begin{tabularx}{\linewidth}{L{0.25\linewidth}Y}
-\toprule
-Metric & Meaning \\
-\midrule
-Any-evidence recall & Fraction of examples for which at least one annotated evidence region is selected \\
-Evidence-identity recall & Fraction of all annotated evidence identities recovered \\
-All-evidence recall & Fraction of examples for which every required annotated evidence identity is selected \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
 \section{PRA-HF in 60 Seconds}
 
 A long source is encoded in blocks that fit the host model. Publication keeps compact semantic
@@ -210,22 +194,27 @@ still occupies CPU memory unless a separate compression or tiering method is add
 \begin{table}[H]
 \centering
 \small
-\caption{Six evaluation levels for memory-augmented prediction. They are diagnostic levels, not
+\caption{Eight evaluation stages for memory-augmented prediction. They are diagnostic stages, not
 a guaranteed causal sequence; success at one does not imply success at the next.}
 \label{tab:success-layers}
-\begin{tabularx}{\linewidth}{L{0.15\linewidth}L{0.29\linewidth}L{0.20\linewidth}Y}
+\begin{tabularx}{\linewidth}{L{0.16\linewidth}L{0.30\linewidth}L{0.22\linewidth}Y}
 \toprule
 Stage & Question & Primary evidence & Measured status \\
 \midrule
-Transport & Did native memory enter correctly? & Parity; fixed identities; limits & Exact when disabled; bounded when active \\
-Discovery & Was useful memory found sparsely? & Recall--sparsity & Strong in-domain; weak cross-domain \\
-Integration & Did memory causally alter prediction? & $\Delta\log p$; probability; rank & Positive in a depth-dependent band \\
-Adaptation & Can selected memory be exploited better? & Decision formation; answer realization; likelihood & High clean ceiling; routed effect dataset-dependent \\
-Decoding & Did output match the lexical reference? & F1; EM & Limited under routed memory \\
-Behavioral utility & Is output semantically equivalent or preferable? & Blind LLM judges & Positive QASPER signal; evaluator-dependent HotpotQA \\
+Availability & Was source state published and addressable? & Publication, lifecycle, and accounting & Named external memory outside active attention \\
+Discovery & Were useful memory identities found sparsely? & Recall--sparsity & Strong in-domain; weak cross-domain \\
+Representation & What contextual state did selected sources acquire? & Aligned direct/source K/V & Measurably different from native direct context \\
+Materialization & Which native K/V became active, and was transport exact? & Parity, identity, K/V, and budget audits & Exact when disabled and for selected payload; bounded when active \\
+Integration & Did memory causally alter frozen computation? & $\Delta\log p$; depth; residuals & Positive in a depth-dependent band \\
+Decision & Did memory support the task-critical branch? & Polarity; margin; rank & Improved on QASPER after conditional adaptation \\
+Decoding & Was the answer realized and terminated correctly? & F1; EM; containment; EOS & Improved but still incomplete under routed memory \\
+Behavioral utility & Was output semantically equivalent or preferable? & Blind LLM judges & Positive QASPER signal; evaluator-dependent HotpotQA \\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+Adaptation is not a ninth computational stage. It is an intervention that can change integration,
+decision, or decoding while the evaluation stages remain fixed.
 
 \section{Minimal PRA Recap}
 
@@ -382,6 +371,22 @@ Native limit / direct / selected-memory cap & 256 / 128 / 64 tokens \\
 K/V residency & CPU full cache, selected transfer \\
 \bottomrule
 \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Recall metrics answer different discovery questions and are never substituted for one another.}
+\label{tab:recall-definitions}
+\begin{tabularx}{\linewidth}{L{0.25\linewidth}Y}
+\toprule
+Metric & Meaning \\
+\midrule
+Any-evidence recall & Fraction of examples for which at least one annotated evidence region is selected \\
+Evidence-identity recall & Fraction of all annotated evidence identities recovered \\
+All-evidence recall & Fraction of examples for which every required annotated evidence identity is selected \\
+\bottomrule
+\end{tabularx}
 \end{table}
 
 Every run writes JSON and scalar CSV with the Git SHA, model revision, software versions,
@@ -607,35 +612,48 @@ at 0.794/0.803/0.800 for 64/128/256 units. Ranking remains stable at a fixed fra
 physical materialization grows with that fraction. Sparse quality and active-K/V cost must
 therefore be reported together.
 
-\section{From Discovery to Behavior}
+\section{From Availability to Behavioral Utility}
 \label{sec:evaluation-hierarchy}
 
-Routing recall is necessary, but it is only the first functional gate.  We organize the remaining
-evidence as one six-stage evaluation hierarchy:
+Routing recall is necessary, but it is only one functional gate. We organize the evidence with the
+same eight-stage hierarchy used throughout the paper:
 \begin{equation}
 \boxed{
+\begin{aligned}
+\text{Availability}
+\rightarrow
 \text{Discovery}
 \rightarrow
 \text{Representation}
 \rightarrow
 \text{Materialization}
+\\[-2pt]
+{}
 \rightarrow
 \text{Integration}
 \rightarrow
 \text{Decision}
 \rightarrow
-\text{Behavior}.}
+\text{Decoding}
+\rightarrow
+\text{Behavioral utility}
+\end{aligned}}
 \label{eq:evaluation-hierarchy}
 \end{equation}
-Discovery asks whether the right parent identities are found.  Representation asks what K/V those
-parents acquire when encoded outside the live question.  Materialization asks which exact states
-enter the bounded attention support; this includes transport fidelity but not semantic utility.
-Integration measures the resulting change inside the frozen transformer.  Decision tests whether
-that change supports the task-critical output branch.  Behavior evaluates the decoded answer.
-Training an adapter is an intervention on integration or decision, not a seventh evaluation
-stage.  This vocabulary reconciles the earlier transport/discovery/integration/adaptation/
-decoding/behavior ladder by assigning transport to materialization and adaptation to the stage it
-changes.
+Availability asks whether published source state can be accessed without placing the whole source
+in active attention. Discovery asks whether the right parent identities are found. Representation
+asks what K/V those parents acquire when encoded outside the live question. Materialization asks
+which native K/V tokens from the selected parents become active under the hard budget. Transport
+fidelity is tested at that boundary: it asks whether the selected cached payload survives exactly,
+not whether source-only K/V equal the state formed in native direct context. Integration measures
+the resulting change inside the frozen transformer. Decision tests whether that change supports
+the task-critical output branch. Decoding tests lexical realization and termination; behavioral
+utility tests semantic equivalence or preference. Thus
+\begin{equation}
+\boxed{\text{transport fidelity}\neq\text{representation fidelity}\neq\text{functional utility}.}
+\end{equation}
+Training an adapter is an intervention on one or more stages, especially integration, decision,
+and decoding; it is not an additional stage.
 
 \subsection{Depth-dependent integration}
 
@@ -697,9 +715,10 @@ Missing early exposure & All 28 layers receive verified oracle K/V, yet all-laye
 \end{tabularx}
 \end{table}
 
-The .310 result has a precise scope: even under oracle evidence selection, non-evidence tokens
-co-materialized inside selected parents receive approximately 31.0\% of late-band attention mass
-on the four-example Hotpot diagnostic cohort.  Per-example means have median .328; three of four
+The .310 result has a precise scope: under oracle evidence selection, co-materialized non-evidence
+tokens receive approximately 31.0\% of the normalized late-band attention support partitioned
+among evidence tokens, those non-evidence tokens, and ordinary local/head state on the four-example
+Hotpot diagnostic cohort. Per-example means have median .328; three of four
 exceed .25 and one exceeds .50.  Those descriptive values show dispersion, but four examples do
 not support a population estimate.  We call these tokens \emph{co-materialized non-evidence
 tokens}, not semantic distractors.  The result establishes
@@ -707,7 +726,9 @@ tokens}, not semantic distractors.  The result establishes
 \text{oracle selection}\neq\text{evidence-only attention support}.
 \end{equation}
 Removing that support only in an offline softmax counterfactual raises evidence mass from .220 to
-.281; it is not a partial-materialization experiment.
+.281; it is not a partial-materialization experiment. Native direct evidence nevertheless succeeds
+with only .120 evidence mass, below either PRA condition. Attention mass is therefore neither a
+necessary nor a sufficient scalar explanation of functional utility.
 
 Representation and integration remain separate as well.  The source-only publication path does
 not reproduce the question-conditioned hidden trajectory used by direct context.  Increasing
@@ -733,7 +754,7 @@ panel alone is presented as a complete causal explanation.}
 \end{figure}
 
 Paper~2 holds the materialized parent payload fixed and diagnoses measurable attention allocated
-to co-materialized non-evidence state.  Paper~3 intervenes on that variable directly by varying
+to co-materialized non-evidence state. Paper~3 intervenes on that variable directly through
 evidence-centered and adaptive native-K/V materialization under matched selection.
 
 \subsection{QASPER is the positive one-shot regime}
@@ -776,8 +797,8 @@ decision-loss, and blinded-judge receipts appear in Appendices~\ref{app:oracle-d
 
 HotpotQA plays a different role.  Its outputs are commonly relation-near but fail to reach the
 required endpoint, and one-shot semantic routing does not reliably complete multi-hop evidence
-chains.  Paper~2.5 isolates that discovery problem through iterative semantic and native-QK
-closure while leaving the Paper-2 consumption path fixed.
+chains. Paper~2.5 isolates whether this boundary arises from entry discovery, associative
+propagation, or bounded competition while keeping the Paper-2 memory-consumption path fixed.
 
 \subsection{Portability and practical boundary}
 
@@ -795,7 +816,8 @@ The released \texttt{pra-hf} package provides reference publication/removal, fra
 selection, serializable router artifacts, bounded accounting, a wheel, CLI, notebook, and public
 Python API.  In the measured product path, approximately 20\% requested parents become 6--7\%
 physical active K/V after whole-parent rounding and hard caps.  These are correctness and
-reusability results from an eager implementation, not serving-speed claims.
+reusability results from an eager implementation, not serving-speed claims. The public contract
+and code-level reimplementation path are detailed in Appendix~\ref{app:adapter-guide}.
 
 \section{Limitations and Series Handoffs}
 
@@ -808,11 +830,12 @@ but are not ground truth.  No experiment supplies a fused-kernel or matched dens
 baseline.  Extended protocol limits and all negative controls are retained in
 Appendix~\ref{app:extended-limitations}.
 
-The paper series assigns the remaining interventions to distinct variables.  Paper~2.5 changes
-discovery through bounded associative closure.  Paper~3 changes materialization through
-evidence-centered and adaptive native-K/V payloads.  Paper~4 studies systematic static internal
-stability.  Paper~2 neither anticipates their results nor mixes those interventions into the
-pretrained-retrofit claim.
+The paper series assigns the remaining interventions to distinct variables. Paper~2.5 isolates
+whether the Hotpot boundary arises from entry discovery, associative propagation, or bounded
+competition while keeping the Paper-2 memory-consumption path fixed. Paper~3 changes
+materialization through evidence-centered and adaptive native-K/V payloads. Paper~4 studies
+systematic static internal stability. Paper~2 neither anticipates their results nor mixes those
+interventions into the pretrained-retrofit claim.
 
 \section{Related Work in Context}
 
@@ -831,12 +854,15 @@ The full comparison and series ownership map appear in Appendix~\ref{app:related
 
 Paper~2's central result is a decomposition rather than a single score:
 \begin{equation}
-\text{availability}\neq\text{discovery}\neq\text{representation}\neq
-\text{materialization}\neq\text{integration}\neq\text{decision}\neq\text{behavior}.
+\begin{aligned}
+\text{availability}&\neq\text{discovery}\neq\text{representation}\neq\text{materialization}\\
+&\neq\text{integration}\neq\text{decision}\neq\text{decoding}\neq\text{behavioral utility}.
+\end{aligned}
 \end{equation}
 PRA-HF makes source state available outside the prompt, discovers parents through compact semantic
-gists, materializes exact selected native K/V under a hard budget, and preserves the disabled host
-path exactly across three decoder families.  QASPER shows that one-shot routed memory and light
+gists, represents them through independently encoded native K/V, materializes the exact selected
+payload under a hard budget, and preserves the disabled host path exactly across three decoder
+families. QASPER shows that one-shot routed memory and light
 conditional adaptation can improve likelihood and decoded behavior while preserving ordinary
 language.  Hotpot establishes the multi-hop discovery boundary.
 
@@ -845,8 +871,8 @@ selection and exact cached K/V, then identifies contextual-state mismatch, subst
 attention on co-materialized non-evidence tokens, and a larger internal departure under harmful
 all-layer replay.  These findings keep representation, materialization, and integration as
 separate computational problems.  Frozen PRA plus the validated router is therefore the
-conservative SDK default.  Paper~2.5 next changes discovery; Paper~3 separately changes what
-selected memory is materialized.
+conservative SDK default. Paper~2.5 next isolates entry discovery, associative propagation, and
+bounded competition; Paper~3 separately intervenes on what selected memory is materialized.
 
 \clearpage
 \appendix
@@ -986,7 +1012,7 @@ Oracle evidence coverage & 100\% & 100\% & Annotation-to-parent selection is cor
 Exact evidence $\Delta\log p$ & +4.635 & -1.791 & Hotpot annotations suffice; QASPER lacks a positive text control \\
 Parent context $\Delta\log p$ & +5.574 & -1.791 & Bridge/parent context helps Hotpot \\
 Late-band pre-RoPE K / V cosine & .940 / .892 & .963 / .926 & Source-only and question-conditioned representations differ \\
-Late-band $M_E/M_D/M_H$ & .220/.310/.469 & .565/.027/.408 & Parent distractors are substantial only on Hotpot \\
+Late-band $M_E/M_D/M_H$ & .220/.310/.469 & .565/.027/.408 & Co-materialized non-evidence support is substantial only on Hotpot \\
 $M_E$ after offline removal of $D$ & .281 & .579 & Renormalization recovers .061 versus .014 evidence mass \\
 Final hidden relative L2, last-14 / all & .541/.869 & .602/1.245 & All-layer replay accumulates greater internal divergence \\
 \bottomrule
@@ -1009,7 +1035,7 @@ materialization because direct evidence is jointly contextualized with the quest
 reference block is encoded independently.
 
 Softmax support contributes on HotpotQA but is not the complete explanation. In the last 14
-layers, $D$ receives .310 attention mass. Removing it only in an offline counterfactual raises
+layers, $D$ receives .310 of normalized attention support. Removing it only in an offline counterfactual raises
 $M_E$ from .220 to .281 and lowers entropy from 2.045 to 1.711. Under all-layer replay, $D$ rises
 to .423 and counterfactual $M_E$ rises from .283 to .438. Yet native direct evidence succeeds with
 only .120 evidence mass, below either PRA condition. On QASPER, $D$ is only .027 in the late band
@@ -1021,7 +1047,7 @@ useful integration.
 \includegraphics[width=\linewidth]{../shared/results/paper2_hf/oracle_gap_audit/oracle_gap_diagnostics.pdf}
 \caption{\textbf{The oracle gap combines representation, support, and depth effects.} The native
 context ladder establishes Hotpot annotation sufficiency; aligned K/V differ after contextual
-encoding; selected-parent distractors absorb Hotpot attention; and all-layer replay departs much
+encoding; co-materialized non-evidence tokens absorb Hotpot attention; and all-layer replay departs much
 further from the no-memory residual trajectory than last-14 replay.}
 \label{fig:oracle-gap-diagnostics}
 \end{figure}
@@ -1821,19 +1847,20 @@ Paper~2 stops at a successful measured one-shot QASPER boundary. HotpotQA output
 semantically near the relevant relation but fail to reach the endpoint entity, consistent with a
 one-shot retrieval architecture that lacks explicit associative closure. Combined with incomplete
 discovery, routed adapter brittleness, a likelihood--decoding disconnect, and judge disagreement,
-this points to iterative evidence gathering rather than further one-shot
-top-$k$ or oracle-adaptation tuning. Paper~2.5 will test bounded associative closure
-$q\rightarrow A\rightarrow B$; serving optimization and partial materialization remain separate
-questions.
+this motivates testing whether the boundary lies in entry discovery, associative propagation, or
+bounded competition rather than further one-shot top-$k$ or oracle-adaptation tuning. Paper~2.5
+owns that test while keeping the Paper-2 memory-consumption path fixed; serving optimization and
+partial materialization remain separate questions.
 
 \section{Detailed Related Work and Series Ownership}
 \label{app:related-work}
 
 This section locates Paper~2 by the boundary each neighboring architecture changes. The richer
 literature map appears in the companion survey; the purpose here is self-containment around
-pretrained retrofit, sparse native-K/V use, and the six-stage evaluation in
-Table~\ref{tab:success-layers}. Retrieval recall, causal likelihood, adaptation, lexical output,
-and behavioral preference are not interchangeable endpoints.
+pretrained retrofit, sparse native-K/V use, and the eight-stage evaluation in
+Table~\ref{tab:success-layers}. Availability, retrieval recall, representation, materialization,
+causal likelihood, task decisions, lexical output, and behavioral preference are not
+interchangeable endpoints.
 
 \subsection{Pretrained retrofit and parameter-efficient adaptation}
 
@@ -2001,19 +2028,20 @@ PRA-HF & semantic URI/parent gist & selected exact native K/V & Exact disabled p
 
 \subsection{Evaluation stages and cross-paper ownership}
 
-Equation~\ref{eq:evaluation-hierarchy} provides the canonical six-stage ladder.  Retriever and
-router recall test \emph{discovery}; aligned K/V comparisons test \emph{representation}; cache,
-span, and attention-support audits test \emph{materialization}; oracle likelihood and depth sweeps
-test \emph{integration}; polarity, completion, F1, and EM test \emph{decision and decoding}; and
-blind pairwise judgments test \emph{behavior}.  Conditional residual/LoRA training is an
-intervention on integration or decision, not an additional evaluation stage.  A system may
-report one stage without establishing the next.
+Equation~\ref{eq:evaluation-hierarchy} provides the canonical eight-stage hierarchy. Reference
+lifecycle and disabled-path checks test \emph{availability}; retriever and router recall test
+\emph{discovery}; aligned K/V comparisons test \emph{representation}; cache, span, and
+attention-support audits test \emph{materialization}; oracle likelihood and depth sweeps test
+\emph{integration}; polarity and margin test \emph{decision}; completion, containment, EOS, F1,
+and EM test \emph{decoding}; and blind pairwise judgments test \emph{behavioral utility}.
+Conditional residual/LoRA training is an intervention on these stages, not an additional stage. A
+system may report one stage without establishing the next.
 
 The paper series divides ownership accordingly. Paper~1 establishes bounded native-K/V
 mechanics and logical-versus-active memory~\cite{simao2026pra}. Paper~1.5 owns positional
 continuity and attention-versus-semantic geometry~\cite{simao2026position}. This Paper~2 owns
 exact pretrained retrofit, sparse discovery transfer, depth-dependent causal use,
-adaptation/decision/behavior diagnostics, and cross-family SDK portability. Paper~2.5 owns
+adaptation, decision, decoding, and behavioral diagnostics, and cross-family SDK portability. Paper~2.5 owns
 iterative associative closure. Papers~3/3.5 own partial and smart materialization. These are
 interfaces between papers, not claims that the later mechanisms have already been validated.
 
