@@ -75,6 +75,13 @@ frozen transformer.  Validation selects the $A\Vert Q$ ordering with question-on
 held-out R@1/MRR move from 0.257/0.500 to 0.229/0.479.  The primary $Q\Vert A$ control with
 Q-and-A support reaches 0.314/0.538 but misses the predeclared $+0.10$ R@1 criterion.  The dynamic
 state gate therefore remains closed before a larger activation-policy sweep.
+We then remove the mistaken requirement that every intermediate memory remain query-like.  A
+bounded graph search follows only native local-QK edges and consults contextual query facets as a
+separate terminal predicate.  With oracle roots, held-out HotpotQA reaches 1.000 later-evidence
+recall at $K=4$ and $B=6$, but no validation threshold satisfies both useful terminal closure and
+the predeclared 0.25 false-goal ceiling: the safest policy disables closure.  The graph-traversal
+primitive therefore passes, while query-based stopping fails; routed-root evaluation is stopped
+by design.
 \end{abstract}
 
 \section{Introduction}
@@ -103,7 +110,7 @@ Top-$B$ discovery with parameter-free iterative closure.  Projection correction,
 propagation, and native-QK propagation likewise alter discovery state only; they do not train the
 backbone or a memory-consumption adapter.
 
-The contributions are tenfold.  First, we formulate iterative PRA as query-conditioned bounded
+The contributions are elevenfold.  First, we formulate iterative PRA as query-conditioned bounded
 associative closure over an implicit latent graph.  Second, we implement Level-1 gist-to-gist and
 Level-2 aggregate-frontier traversal with deterministic budgets, cycle handling, root anchoring,
 transparent path scores, and a versioned graph artifact.  Third, we evaluate five semantic-router
@@ -128,6 +135,10 @@ not Top-4 candidate availability.  Tenth, we test the simplest dynamic-state rep
 contextual pass over $Q$ and known-correct $A$, with exact Q/A facet provenance and a native
 candidate-width ladder.  It uses $A$ but does not clear a validation-frozen materiality gate,
 which rules out the planned activation-surface sweep in this iteration.
+Eleventh, we correct the role of the query in multi-hop search: native association alone admits
+intermediate nodes, while a separately calibrated any-facet threshold tests only terminal
+closure.  The resulting oracle-root surface cleanly separates successful evidence discovery from
+an uncalibrated stopping predicate and enforces the preregistered stop before routed roots.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -1388,6 +1399,150 @@ The failed Hotpot conditional gate also means grounded chain completion at a fix
 budget is unmeasured rather than zero; we deliberately do not infer it from oracle-conditioned
 edge rank.
 
+\subsection{Semantic graph search with terminal query closure}
+
+The preceding rerankers asked the current query to judge every successor.  That is too strong for
+an associative chain: a useful bridge may match its predecessor while remaining weakly related to
+the original question.  We therefore use the query only at the boundaries,
+\begin{equation}
+ q_i\rightarrow A\rightarrow B\rightarrow\cdots\rightarrow Z\rightarrow q_j.
+\end{equation}
+Paper-2 routing supplies one or more entry roots.  For a frontier parent $X$, native layer-27
+pre-RoPE local QK scores propose $N_K(X)$.  A candidate $Y$ is admitted solely when
+\begin{equation}
+ R_{\rm edge}(X,Y)\geq\theta_{\rm edge},
+\end{equation}
+with no query reranking or query threshold on intermediate nodes.  Immediately after admission,
+and only then, the terminal predicate tests
+\begin{equation}
+ G_Q(Y)=\max_{j\leq F}R_{\rm query}(q_j,Y)\geq\theta_{\rm goal}.
+\end{equation}
+The two thresholds have different jobs: $\theta_{\rm edge}$ limits graph branching, whereas
+$\theta_{\rm goal}$ decides that the path has returned to the task.  At least one memory edge is
+required, and the primary search stops on its first terminal.  An ablation excludes the root's
+entry facet from the terminal maximum; it is not the primary condition.
+
+\begin{table}[H]
+\centering
+\caption{The classical-search interpretation.  The learned topology is implicit and graded;
+oracle evidence labels are used only after search for evaluation.}
+\label{tab:semantic-search-map}
+\small
+\begin{tabular}{ll}
+\toprule
+Classical state-space search & PRA semantic graph search \\
+\midrule
+Initial state & Paper-2 routed root $A$ \\
+Successor function & native Top-$K$ local-QK association \\
+Edge predicate & $\theta_{\rm edge}$ \\
+Goal predicate & $\theta_{\rm goal}$ against any query facet \\
+Frontier / visited set & active candidates / deduplicated parent IDs \\
+Resource bound & parent ceiling $B$, beam, hop and expansion caps \\
+Path depth & number of memory-to-memory edges \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We first grant the first annotated evidence group as the root, keeping entry error out of the
+traversal test.  Five frozen semantic projections provide goal scores; native edges are
+seed-invariant.  The scan covers
+$K\in\{1,2,3,4,5,6,8,11\}$,
+$B\in\{2,4,6,8,16,\text{None}\}$, depths 1--4, breadth-first, best-first, and beam search, and
+independent validation quantiles for both thresholds.  This diagnostic constructs a dense parent
+adjacency once from packed local-QK products to make the search surface reproducible.  The serving
+implementation may score successors lazily; no native K/V is materialized here.
+
+The exact conditional candidate curve is reproduced: true successors occur within Top-$K$ in
+3/17, 7/17, 11/17, 13/17, 15/17, 16/17, 16/17, and 17/17 transitions, respectively.  At $K=11$,
+validation $\theta_{\rm edge}=12.308$ retains all ten measured successor transitions while
+changing mean admitted branching only from 5.7 to 5.6.  The next quantile, 12.480, lowers
+branching to 3.9 but successor recall to 0.7.  End-to-end validation therefore selects an open
+edge threshold: the absolute score is not sufficiently calibrated to prune safely.
+
+Terminal calibration is the limiting result.  Table~\ref{tab:terminal-threshold} reports
+best-first validation; breadth-first and beam have the same poor closure/false-goal frontier and
+require more expansions at the closed endpoint.  No finite threshold satisfies the predeclared
+false-goal ceiling of 0.25.  The selected policy is consequently ``closed,'' which means no
+terminal can fire.  This is not a successful stopping rule; it is the conservative endpoint of a
+failed calibration gate.
+
+\begin{table}[H]
+\centering
+\caption{Validation terminal-goal frontier.  Correct closure is measured on HotpotQA; false goals
+pool non-oracle terminals from both datasets.  Precision is correct closures divided by all
+triggered closures.}
+\label{tab:terminal-threshold}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+$\theta_{\rm goal}$ & Correct closure & False-goal rate & Precision & Nodes expanded \\
+\midrule
+q50 & .244 & .853 & .120 & 1.20 \\
+q65 & .222 & .779 & .119 & 1.82 \\
+q75 & .156 & .705 & .095 & 2.49 \\
+q85 & .111 & .589 & .082 & 3.65 \\
+q90 & .111 & .484 & .098 & 4.51 \\
+q95 & .022 & .389 & .026 & 5.37 \\
+closed & .000 & .000 & .000 & 9.37 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+With the goal predicate held closed, graph recovery itself is strong.  Validation selects
+best-first $K=4$, $B=6$, and depth 4.  On seven held-out Hotpot identities, repeated over five
+projections, it reaches 1.000 oracle recall, 1.000 later-evidence recall, and 1.000 complete-chain
+coverage.  The corresponding six QASPER identities also reach 1.000 oracle recall.  Hotpot later
+recall rises from .143 at $B=2$, to .857 at $B=4$, and 1.000 at $B=6$; at $B=6$ it rises from
+.714 at $K=1$, through .857 at $K=2$, to 1.000 at $K=3$.  Depth 1 already reaches 1.000 on this
+sample, so the natural examples validate bounded successor discovery but do not require a deeper
+associative path.  Figure~\ref{fig:semantic-graph-surfaces} preserves the complete held-out
+$K\times B$ and $B\times\theta_{\rm edge}$ response surfaces rather than reporting only the
+winner.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper2_5_iterative_pra/semantic_graph_search/semantic_graph_surfaces.pdf}
+\caption{Held-out oracle-root evidence recovery.  Candidate breadth and conceptual parent budget
+are distinct: search may inspect $K$ successors while $B$ caps the shared visited workspace.}
+\label{fig:semantic-graph-surfaces}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper2_5_iterative_pra/semantic_graph_search/semantic_graph_quality_cost.pdf}
+\caption{Quality/cost diagnostics.  The top-center and top-right panels expose the central
+tradeoff: finite terminal thresholds stop earlier but overwhelmingly stop on non-oracle parents.
+The bottom timing panel is CPU calibration search only; selected CUDA accounting is reported in
+text.}
+\label{fig:semantic-graph-cost}
+\end{figure}
+
+We manually inspect the 37 q95 validation false-trigger rows, covering 23 unique
+example--terminal pairs.  Sixteen unique terminals (28 seed-weighted rows) are non-oracle but
+plausibly relevant to the question; seven (nine rows) are clear semantic or lexical distractors.
+Examples of the latter include passages about other songs containing ``'Em'' and unrelated
+Nashville entities.  Plausibly related passages still do not supply the labeled answer, so this
+distinction explains some high similarity without converting a false goal into success.  The
+review file retains question, answer, decoded parent text, identity, and classification.
+
+Selected-condition CUDA search averages 13.44~ms on HotpotQA and 12.70~ms on QASPER, including
+3.66 and 4.02~ms of terminal facet tests.  Mean conceptual work is 5.43/6.00 visited parents,
+3.14/2.83 expanded parents, and 12.57/11.33 raw proposals, respectively.  The parent adjacency
+build dominates cold routing at 152~ms for Hotpot and 1.183~s for longer QASPER sources; this
+dense diagnostic index is not a serving-speed claim.  Compact adjacency plus goal caches average
+677 and 1,789 bytes, candidate tensors 103 and 145 bytes, and preparation peaks at 86.6 and
+218.8~MB CUDA allocated.  H2D payloads average 8.94 and 25.31~MB.  Materialized parents, native
+K/V tokens, active-KV fraction, generation, TTFT, and TPOT remain zero or unmeasured by design.
+
+The graph-expansion component therefore passes its oracle-root recovery check at a reasonable
+$K/B$, but the terminal-goal component fails: useful closure cannot be separated from false
+closure under the frozen max-over-facets score.  The held-out q95 false-goal rate is still .292;
+the safe closed policy has zero correct and zero false closures despite 1.000 later-evidence
+recall.  Under the predeclared stop rule we do not restore routed roots or report an $R\times K$
+end-to-end result.  The next controlled intervention should learn or calibrate evidence
+completeness at the terminal, while retaining native-only intermediate traversal; more breadth
+does not address this failure.
+
 \section{Discussion}
 
 \subsection{What the experiments establish}
@@ -1424,6 +1579,8 @@ Stage 7 separates facet type and query-support scope, then asks whether static c
 facets can ground a bounded native successor set without mixing score families.
 Stage 8 gives the frozen transformer the known-correct first group and reconstructs the current
 state before repeating the same bounded ranking test.
+Stage 9 removes query filtering from intermediate traversal entirely, follows only native local
+association, and reserves current-query facets for a terminal goal predicate.
 Projection role, propagation scale, and native attention geometry have therefore been tested
 before introducing learned associative supervision.  Oracle-conditioned rank now shows that
 most true transitions survive within Top-4, so a learned head is not yet the next controlled
@@ -1444,6 +1601,12 @@ validation-selected dynamic state still worsens held-out ordering.  The unselect
 $Q\Vert A$ condition is mildly positive and motivates replication, not activation-policy tuning.
 A learned state update, explicit relational supervision, or another learned discriminator would
 be a new intervention and must beat the reported association-only and static-query Top-4 controls.
+Stage 9 changes that diagnosis in one important respect.  Once intermediate memories no longer
+have to resemble the query, native traversal recovers every held-out oracle parent at $K=4,B=6$.
+The remaining frozen failure is terminal discrimination: max-over-facets identifies many related
+passages but cannot decide whether they complete the evidence chain.  Thus propagation geometry
+and stopping geometry must be treated as separate model interfaces.  The result supports native
+association as a candidate generator under oracle entry, but not executable iterative retrieval.
 
 \subsection{Relation to retrieval, agents, and recursive models}
 
@@ -1533,6 +1696,16 @@ source-group chunks, not a minimal evidence sentence, and source-order evidence 
 approximate causal hops.  The measured cost is routing-only on one older GPU; no generated first
 token, concurrent request, or production native-KV transfer is present.
 
+The semantic graph search also grants oracle roots and uses the same small identity split.  Its
+perfect held-out evidence recovery is therefore conditional, not end-to-end.  A dense parent
+adjacency is precomputed for experimental control; production search would need a lazy or indexed
+successor implementation before the measured cold cost could be interpreted as serving latency.
+The manual false-terminal categories are qualitative judgments over 23 unique pairs, not new
+ground-truth labels.  Because depth 1 already recovers all held-out oracle evidence, this sample
+does not establish a natural advantage for depth 2--4.  Finally, the closed selected goal policy
+has perfect safety only by never stopping; routed roots are absent because the gate failed, not
+because routed search was evaluated and scored zero.
+
 \section{Conclusion}
 
 Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
@@ -1573,6 +1746,14 @@ state update, query decomposition, or relational composition rather than a broad
 an unvalidated frozen updater.  Any such extension must retain the same payload, split, leakage,
 candidate-generation, and execution controls and improve beyond both association-only and static
 query-reranking baselines.
+
+The terminal-query experiment adds a sharper final boundary.  When query similarity is removed
+from intermediate admission, oracle-root native search reaches every held-out Hotpot and QASPER
+oracle parent at $K=4,B=6$.  Yet the max-facet terminal score offers no acceptable operating
+point: q95 still produces .389 validation false goals for .022 correct Hotpot closure, while the
+safe endpoint never closes.  We therefore stop before routed roots.  The next iteration should
+improve the terminal evidence-completeness predicate, not force the original query back onto every
+bridge and not merely increase $K$ or $B$.
 
 \appendix
 \section{Implementation Map}
@@ -1756,6 +1937,28 @@ candidate ladder, freeze the dynamic variant on validation, assert exact prior s
 candidate baselines, and enforce the held-out stop rule before writing rows, summaries,
 diagnostics, and Figure~\ref{fig:dynamic-query-k}.
 
+\paragraph{Terminal-query semantic graph search.}
+\path{src/pra_hf/semantic_graph_search.py:25--118} defines the independent edge/goal thresholds,
+resource bounds, per-proposal provenance, and routing-only result record.  Lines 122--183 batch
+every local source against packed native keys and scatter-reduce local scores into parent
+adjacency; neither query facets nor labels enter that operation.  Lines 223--271 perform stable
+native successor ordering and the separate any-facet terminal reduction.  The traversal at lines
+274--524 admits a proposal from its native edge score, deduplicates parent identities, applies the
+shared $B$/beam/hop limits, and only then reads the query-goal tensor.  The public function accepts
+roots and score tensors but no oracle, target, evidence, or correctness channel.
+
+The runner at
+\path{experiments/paper2_5_iterative_pra/run_semantic_graph_search.py:152--383} builds the frozen
+CUDA adjacency/goal caches, reproduces the exact 17-transition K ladder, and partitions identities
+before calibration.  Lines 600--754 execute all strategies and select $\theta_{\rm goal}$ on
+validation only; lines 757--825 select the bounded operating point; lines 827--908 define the five
+synthetic controls.  The orchestration at lines 1068--1342 evaluates oracle roots first and calls
+routed roots only if both closure and false-goal gates pass.  Calibration surfaces run from the
+identical CPU-resident score cache to avoid thousands of tiny CUDA synchronizations; the selected
+condition is rerun on CUDA for timing and memory.  Finally,
+\path{experiments/paper2_5_iterative_pra/review_semantic_graph_false_goals.py:44--112} reconstructs
+the q95 validation terminals from source token spans and writes the review rows and counts.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -1810,8 +2013,15 @@ seven query states, and eight candidate widths.  Its checks reproduce the prior 
 R@1/MRR and native K=4 candidate recall exactly, enforce zero diagnostic K/V materialization,
 and verify the predeclared Gate-1/Gate-2 stop.  Six dynamic-query unit tests cover deterministic
 Q/A layouts, exact region provenance, restricted support, tokenizer-state restoration, and the
-absence of an oracle-target API channel.  The complete repository suite passes 428 tests (one
-upstream deprecation warning).
+absence of an oracle-target API channel.
+
+The terminal-query iteration adds 53,760 oracle-surface rows, 3,360 goal-calibration rows, 640
+hop rows, 320 selected-condition rows, and 1,705 selected-node provenance rows.  Seventeen focused
+tests cover native adjacency reduction, all three deterministic search strategies, any- and
+different-facet goals, a low-query-similarity bridge, minimum depth, first-path stopping,
+deduplication, cycles, finite/shared and unbounded budgets, cost accounting, and the absence of a
+task-label API.  All five synthetic graph controls pass.  The complete repository suite now
+passes 445 tests with the same one upstream deprecation warning.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

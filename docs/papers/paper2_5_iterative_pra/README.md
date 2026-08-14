@@ -126,3 +126,17 @@ checks exact reproduction of the previous static and native-candidate
 baselines. Gate 1 fails its held-out +0.10 R@1 criterion, so the conditional
 F/K/B/theta surface is not run. Artifacts are under
 `../shared/results/paper2_5_iterative_pra/dynamic_query_discovery/`.
+
+Terminal-query semantic graph search:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/run_semantic_graph_search.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/review_semantic_graph_false_goals.py
+```
+
+The first command builds native local-QK edges on CUDA, calibrates the K/B/hop/
+edge/goal surfaces from frozen score caches, and reruns the selected condition
+on CUDA. Intermediate admission never uses query similarity. The terminal
+query-goal gate fails, so routed roots are intentionally not run. The second
+command decodes and classifies the validation q95 false terminals. Results are
+under `../shared/results/paper2_5_iterative_pra/semantic_graph_search/`.

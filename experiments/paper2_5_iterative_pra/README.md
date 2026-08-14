@@ -88,6 +88,25 @@ gate, so the larger facet/K/active-budget/threshold surface and dynamic closure
 are intentionally not run. This gate performs no generation or native-KV
 materialization and does not change the SDK default.
 
+## Terminal-query semantic graph search
+
+This additive diagnostic uses the query only to enter and terminate search.
+Intermediate parents are proposed and admitted exclusively by frozen native
+local-QK association. Edge and goal thresholds are calibrated independently,
+and oracle-root success is required before routed roots can run.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.run_semantic_graph_search --device cuda
+python -m experiments.paper2_5_iterative_pra.review_semantic_graph_false_goals
+```
+
+CUDA builds the parent graph and profiles the selected condition. The broad
+K/B/threshold surface runs from the same CPU score cache to avoid per-condition
+GPU synchronization. The oracle-root traversal recovers held-out evidence, but
+the terminal predicate fails its false-goal gate; routed roots are therefore
+absent by design. Rows, provenance, plots, and the decoded terminal review are
+under `docs/papers/shared/results/paper2_5_iterative_pra/semantic_graph_search/`.
+
 ## Gate 3: native local Q/K closure
 
 Gate 3 preserves the frozen semantic router for initial relevance and candidate
