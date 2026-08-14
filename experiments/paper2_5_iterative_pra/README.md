@@ -24,6 +24,23 @@ Artifacts are written under
 The public SDK keeps one-shot routing as its default. The opt-in
 `routing_mode="local_iterative"` path requires a routing adapter.
 
+## Query-facet root discovery
+
+The additive entry-discovery study captures the complete contextual query once,
+derives overlapping local facets without independent window re-encoding, and
+compares them with the exact final-token baseline and real pre-RoPE native-head
+controls. If the validation-selected facet condition clears the root-gain gate,
+the third command runs the predeclared bounded-propagation confirmation.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.precompute_query_entry_features --device cuda
+python -m experiments.paper2_5_iterative_pra.run_query_entry_facets --device cuda
+python -m experiments.paper2_5_iterative_pra.run_query_entry_propagation --device cuda
+```
+
+Artifacts are written under
+`docs/papers/shared/results/paper2_5_iterative_pra/query_entry_facets/`.
+
 ## Gate 3: native local Q/K closure
 
 Gate 3 preserves the frozen semantic router for initial relevance and candidate

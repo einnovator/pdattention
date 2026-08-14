@@ -81,3 +81,18 @@ QASPER preservation plus the Hotpot entry/locking/propagation decomposition.
 The policy implementation is opt-in and does not change one-shot SDK defaults.
 Artifacts are under
 `../shared/results/paper2_5_iterative_pra/monotonic_adaptive_competition/`.
+
+Contextual query-facet and native-head entry gate:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/precompute_query_entry_features.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_query_entry_facets.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_query_entry_propagation.py --device cuda
+```
+
+The first command captures one complete contextual query pass and no independent
+window encodings. The second freezes a validation-selected facet/head policy and
+reports the matched-budget root matrix. The third runs only because the Hotpot
+entry gain cleared the predeclared materiality gate; it reconnects the winning
+root to the previously frozen monotonic propagation policy. Artifacts are under
+`../shared/results/paper2_5_iterative_pra/query_entry_facets/`.
