@@ -82,6 +82,15 @@ recall at $K=4$ and $B=6$, but no validation threshold satisfies both useful ter
 the predeclared 0.25 false-goal ceiling: the safest policy disables closure.  The graph-traversal
 primitive therefore passes, while query-based stopping fails; routed-root evaluation is stopped
 by design.
+We then hold the search rule fixed and rebuild the 16 HotpotQA memories at 16, 32, 64, 128,
+and 256-token parent sizes.  Mean oracle-parent count rises from 2.19 at 256 tokens to 7.25 at
+16, while the evidence-token fraction already in the oracle root falls from .575 to .201.  Under
+the fixed $K=4,B=6,H=4$ search, oracle recall correspondingly falls from .969 to .194 and complete
+recovery from .938 to zero.  Conversely, counterfactual selected native-K/V tokens fall from
+1,331 to 94 and evidence density rises from .065 to .211.  Thus the previous one-edge saturation
+is partly a coarse-graining result: fine memory localizes evidence but exposes a real discovery
+limitation.  Query-facet complementarity does not separate oracle evidence from plausible false
+terminals, so it remains diagnostic rather than a stopping rule.
 \end{abstract}
 
 \section{Introduction}
@@ -110,7 +119,7 @@ Top-$B$ discovery with parameter-free iterative closure.  Projection correction,
 propagation, and native-QK propagation likewise alter discovery state only; they do not train the
 backbone or a memory-consumption adapter.
 
-The contributions are elevenfold.  First, we formulate iterative PRA as query-conditioned bounded
+The contributions are twelvefold.  First, we formulate iterative PRA as query-conditioned bounded
 associative closure over an implicit latent graph.  Second, we implement Level-1 gist-to-gist and
 Level-2 aggregate-frontier traversal with deterministic budgets, cycle handling, root anchoring,
 transparent path scores, and a versioned graph artifact.  Third, we evaluate five semantic-router
@@ -139,6 +148,10 @@ Eleventh, we correct the role of the query in multi-hop search: native associati
 intermediate nodes, while a separately calibrated any-facet threshold tests only terminal
 closure.  The resulting oracle-root surface cleanly separates successful evidence discovery from
 an uncalibrated stopping predicate and enforces the preregistered stop before routed roots.
+Twelfth, we control parent granularity over a 16--256-token ladder, remap every supporting span,
+measure root containment and minimum native-graph recovery depth, and expose the discovery--K/V
+pollution frontier.  Controlled chain contraction verifies that chunking can reduce observed
+graph depth even when task depth is unchanged.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -1493,9 +1506,11 @@ best-first $K=4$, $B=6$, and depth 4.  On seven held-out Hotpot identities, repe
 projections, it reaches 1.000 oracle recall, 1.000 later-evidence recall, and 1.000 complete-chain
 coverage.  The corresponding six QASPER identities also reach 1.000 oracle recall.  Hotpot later
 recall rises from .143 at $B=2$, to .857 at $B=4$, and 1.000 at $B=6$; at $B=6$ it rises from
-.714 at $K=1$, through .857 at $K=2$, to 1.000 at $K=3$.  Depth 1 already reaches 1.000 on this
-sample, so the natural examples validate bounded successor discovery but do not require a deeper
-associative path.  Figure~\ref{fig:semantic-graph-surfaces} preserves the complete held-out
+.714 at $K=1$, through .857 at $K=2$, to 1.000 at $K=3$.  At the current parent granularity,
+oracle-root HotpotQA collapses to a one-edge evidence-neighborhood problem: depth 1 recovers all
+held-out annotated evidence.  Because HotpotQA is shallow and coarse parent chunks can contract
+several factual relations into one memory node, this does not test genuinely deeper traversal.
+Figure~\ref{fig:semantic-graph-surfaces} preserves the complete held-out
 $K\times B$ and $B\times\theta_{\rm edge}$ response surfaces rather than reporting only the
 winner.
 
@@ -1542,6 +1557,144 @@ recall.  Under the predeclared stop rule we do not restore routed roots or repor
 end-to-end result.  The next controlled intervention should learn or calibrate evidence
 completeness at the terminal, while retaining native-only intermediate traversal; more breadth
 does not address this failure.
+
+\subsection{Chunk granularity changes both topology and discovery}
+
+The preceding result leaves two explanations confounded.  Native association may have found a
+multi-step chain efficiently, or 256-token parents may have contracted the annotated evidence
+into a shallow neighborhood.  We therefore keep the frozen Qwen revision, layer 27, 256-token
+contextual encoding blocks, local pre-RoPE QK score, best-first traversal, and open edge threshold
+unchanged, while repartitioning each Hotpot source into zero-overlap parents of 16, 32, 64, 128,
+or 256 tokens.  The 16 examples contain 25,416 source tokens.  Layer-27 token states are captured
+once and exactly mean-pooled within each new parent.  Native edges retain the canonical 32-token
+atomic QK windows at parent sizes 32--256; the 16-token condition splits those stored tokenwise
+Q/K tensors exactly rather than re-encoding text.
+
+Each ordered supporting span is remapped to every overlapping parent.  The oracle root is the
+single parent with the largest token overlap with the first supporting span, with lower parent ID
+breaking ties.  Search receives that root but no later oracle IDs.  Evidence recall, collisions,
+and completion are attached only after execution.  Terminal query stopping is disabled.  The
+surface contains $5\times4\times5\times3\times16=4{,}800$ searches over
+$K\in\{1,2,4,6\}$, $H\in\{0,1,2,3,4\}$, and
+$B\in\{6,16,\mathrm{None}\}$.  The five frozen projection seeds are used only for the parallel
+facet--parent diagnostic because native graph edges are seed invariant.
+
+Table~\ref{tab:chunk-topology} shows direct graph coarse-graining.  Mean oracle-parent count falls
+from 7.25 at 16 tokens to 2.19 at 256.  No root contains all annotated evidence, but the mean
+evidence-token fraction in the root nearly triples, and distinct evidence groups increasingly
+share a parent: the fraction of roots touching multiple groups rises from zero to .25.  The
+256-token oracle distribution is 13 examples with two parents and three with three; at 16 tokens
+the median is 6.5, the 90th percentile 10.5, and the maximum 12.
+
+\begin{table}[H]
+\centering
+\caption{Hotpot evidence topology under deterministic zero-overlap rechunking.  Root evidence is
+the fraction of annotated evidence tokens inside the oracle root; ``multi'' means that the root
+touches more than one distinct supporting span.}
+\label{tab:chunk-topology}
+\small
+\begin{tabular}{rrrrrr}
+\toprule
+Tokens & Parents & Oracle parents & Root evidence & Root multi & Later parents \\
+\midrule
+16  & 99.75 & 7.25 & .201 & .000 & 4.00 \\
+32  & 50.13 & 4.69 & .347 & .000 & 2.56 \\
+64  & 25.31 & 3.44 & .441 & .125 & 1.81 \\
+128 & 12.81 & 2.44 & .508 & .188 & 1.31 \\
+256 &  6.50 & 2.19 & .575 & .250 & 1.13 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Discovery does not remain invariant to that refinement.  Table~\ref{tab:chunk-discovery} holds
+$K=4$ and $B=6$ fixed.  At 256 tokens, all-example oracle recall is .969 and 15/16 examples are
+complete; the seven-example held-out partition exactly reproduces the prior 1.000 oracle and
+later-evidence recall.  At 128 tokens recall is .688 and five examples are complete.  At 16 and
+32 tokens no example is complete, and recall is only .194/.333.  Most gains stop after two hops
+because the six-parent workspace fills; increasing the hop cap alone cannot add parents.
+
+\begin{table}[H]
+\centering
+\caption{Oracle-root native discovery at the frozen $K=4,B=6$ operating point.  $H=0$ contains
+only the granted root.  Complete is measured at $H=4$.}
+\label{tab:chunk-discovery}
+\small
+\begin{tabular}{rrrrrrr}
+\toprule
+Tokens & Oracle parents & Root evidence & $H=0$ & $H=1$ & $H=2$ & Complete \\
+\midrule
+16  & 7.25 & .201 & .148 & .173 & .194 & .000 \\
+32  & 4.69 & .347 & .224 & .291 & .333 & .000 \\
+64  & 3.44 & .441 & .309 & .429 & .494 & .063 \\
+128 & 2.44 & .508 & .432 & .625 & .688 & .313 \\
+256 & 2.19 & .575 & .469 & .885 & .969 & .938 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The stronger $K=6,B=\mathrm{None}$ diagnostic estimates minimum native-graph evidence-recovery
+depth without treating it as causal reasoning depth.  Fifteen of sixteen 256-token examples are
+complete at $H=1$ and one remains unrecovered by $H=4$.  At 128 tokens, five require $H=1$, two
+require $H=2$, and nine remain unrecovered.  At 64 tokens the counts are one, three, and twelve;
+all 16/32-token examples remain unrecovered.  Fine chunking therefore creates a harder observed
+graph, but the current frozen native geometry does not recover enough of it to establish deep
+natural traversal.  The sample has 15 bridge questions and one comparison question; the bridge
+trend matches the aggregate, while the single comparison item cannot support a subgroup claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.99\linewidth]{../shared/results/paper2_5_iterative_pra/chunk_granularity/chunk_granularity_discovery.pdf}
+\caption{Chunk topology, recovery depth, and the discovery/materialization frontier.  The stacked
+depth panel reports the minimum $H$ under $K=6,B=\mathrm{None}$ and labels failures explicitly as
+unrecovered.  The other quality panels use the frozen $K=4,B=6$ operating point.  Native K/V is
+not actually materialized; bottom-right token counts are counterfactual payloads for the visited
+parents.}
+\label{fig:chunk-granularity}
+\end{figure}
+
+Candidate width helps only while the shared workspace can admit useful identities.  At 256
+tokens, $H=4,B=6$ recall rises from .719 at $K=1$ to .865 at $K=2$ and .969 at $K=4$; $K=6$
+falls slightly to .938 because best-first competition under the same six-parent cap is not
+monotone in proposal width.  At 16 tokens, the same ladder moves only from .173 to .194.  More
+successors are thus not a substitute for either a larger active surface or better edge geometry.
+
+The opposite trend appears in payload precision.  The selected conceptual set contains 94 tokens
+at 16-token parents and 1,331 at 256, or .065 and .903 of the logical source.  Mean evidence
+density falls from .211 to .065, while non-evidence selected tokens rise from 74 to 1,245.  This
+is a counterfactual materialization frontier, not a serving measurement: the experiment transfers
+and materializes zero native K/V tokens.  It nevertheless identifies the Paper-3 tradeoff clearly:
+coarse memory makes discovery easier but activates a polluted payload; fine memory localizes
+evidence but demands stronger discovery.
+
+Dense adjacency construction averages .326 seconds at 16 tokens and approximately .206 seconds
+at 32--256 on the GTX 950M.  The token/head dot-product count remains 47.8 million because source
+content and atomic token comparisons are fixed; splitting 32-token windows into twice as many
+16-token windows changes scheduling, not the pairwise token total.  Parent adjacency storage,
+however, follows the expected quadratic surface, averaging 47,040 bytes at 16 tokens versus 198
+bytes at 256.  These are reproducible diagnostic costs, not an indexed-routing speed claim.
+
+Finally, the query-facet matrix does not repair terminal discrimination.  For each seed we measure
+maximum and Top-2 facet score, normalized entropy, winning facet, and incremental min--max path
+coverage for oracle roots, other oracle parents, discovered non-oracle parents, and manually
+reviewed 256-token false terminals.  Oracle-vs-discovered AUC is .47--.54 across 16--128 tokens.
+At 256 tokens, incremental coverage gives AUC .253 against plausible false terminals and .342
+against clear distractors when oracle evidence is the positive class.  Facet entropy is near one
+for every class.  Plausible false terminals often add different query vocabulary precisely because
+they are related; complementarity is not evidence completeness.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper2_5_iterative_pra/chunk_granularity/chunk_granularity_facets.pdf}
+\caption{Five-seed facet diagnostics.  Oracle evidence is not consistently more query-complementary
+than other discovered parents, and the direction changes with parent size.  These statistics are
+reported for diagnosis and are not promoted to runtime filtering or stopping.}
+\label{fig:chunk-facets}
+\end{figure}
+
+Controlled chains separate the mechanism from Hotpot annotation structure.  For task-edge depths
+$D\in\{1,2,3,4,8\}$, grouping one, two, or four adjacent chain nodes yields observed depth
+$\lceil(D+1)/g\rceil-1$; all 15 search controls recover exactly at that depth.  Chunking is
+therefore graph contraction, not evidence that the underlying reasoning became shorter.
 
 \section{Discussion}
 
@@ -1607,6 +1760,14 @@ The remaining frozen failure is terminal discrimination: max-over-facets identif
 passages but cannot decide whether they complete the evidence chain.  Thus propagation geometry
 and stopping geometry must be treated as separate model interfaces.  The result supports native
 association as a candidate generator under oracle entry, but not executable iterative retrieval.
+Stage 10 resolves why that successful held-out traversal was only one edge deep.  Parent
+granularity is a graph-construction parameter, not neutral preprocessing.  Finer parents distribute
+the same annotations across more nodes and expose failures hidden by coarse contraction; coarser
+parents recover evidence more easily but include far more non-evidence tokens.  Exact controlled
+chain contraction confirms the causal direction of this topology effect.  The current native
+geometry is therefore adequate for a coarse evidence neighborhood, not yet for fine-grained deep
+discovery.  Query-facet complementarity also fails as a completion discriminator, so neither
+larger breadth nor another frozen semantic threshold is the next justified intervention.
 
 \subsection{Relation to retrieval, agents, and recursive models}
 
@@ -1633,7 +1794,12 @@ closure produces more structure before transfer: hop, parent edges, direct relev
 confidence, branch entropy, and duplicate/overlap statistics.  The versioned graph keeps these
 signals even when the final payload remains unchanged.  Paper 3 can therefore ask a separate
 question: given a discovered closure, how much detail should each node receive?  This paper does
-not test partial materialization.
+not test partial materialization.  The granularity sweep makes that handoff quantitative.  At a
+fixed six-parent conceptual budget, moving from 16 to 256-token parents raises evidence recall but
+increases the counterfactual selected payload fourteenfold and lowers evidence density more than
+threefold.  Paper 3 should therefore compare whole-parent, evidence-local, and progressively
+expanded materialization on the same discovered set rather than treating chunk size as a settled
+constant.
 
 \section{Limitations}
 
@@ -1701,10 +1867,24 @@ perfect held-out evidence recovery is therefore conditional, not end-to-end.  A 
 adjacency is precomputed for experimental control; production search would need a lazy or indexed
 successor implementation before the measured cold cost could be interpreted as serving latency.
 The manual false-terminal categories are qualitative judgments over 23 unique pairs, not new
-ground-truth labels.  Because depth 1 already recovers all held-out oracle evidence, this sample
-does not establish a natural advantage for depth 2--4.  Finally, the closed selected goal policy
+ground-truth labels.  At the canonical 256-token parent granularity, the held-out annotations
+collapse to one-edge neighborhoods; the new fine-grained conditions require more oracle parents
+but are mostly unrecovered by $H=4$.  Thus this sample does not yet establish successful deeper
+natural traversal.  Finally, the closed selected goal policy
 has perfect safety only by never stopping; routed roots are absent because the gate failed, not
 because routed search was evaluated and scored zero.
+
+The chunk ladder retains only 16 Hotpot examples, of which 15 are bridge questions and one is a
+comparison question.  Its bridge analysis is therefore primary and its comparison row descriptive.
+Supporting spans identify evidence locations, not a complete ordered causal graph; ``minimum
+native-graph evidence-recovery depth'' must not be read as reasoning depth.  Zero overlap isolates
+granularity but does not test boundary-robust chunking.  The 16-token condition also uses exact
+subdivision of the cached 32-token Q/K windows, while larger parents max-reduce those same atomic
+windows; this preserves native token scores but is not a learned multiscale index.  Finally,
+selected K/V tokens are counterfactual because no payload is materialized.  A subsequent natural
+benchmark should have more than two evidence hops, distributed document-level evidence, explicit
+support chains or a derivable graph, enough held-out identities, and research-usable access.  A
+separate audit of datasets such as MuSiQue and 2WikiMultiHopQA is warranted before integration.
 
 \section{Conclusion}
 
@@ -1754,6 +1934,17 @@ point: q95 still produces .389 validation false goals for .022 correct Hotpot cl
 safe endpoint never closes.  We therefore stop before routed roots.  The next iteration should
 improve the terminal evidence-completeness predicate, not force the original query back onto every
 bridge and not merely increase $K$ or $B$.
+
+The granularity control changes the interpretation of that success.  At 256-token parents the
+held-out task is an exactly recovered one-edge evidence neighborhood, but refinement to 16--32
+tokens distributes evidence over roughly five to seven oracle parents and defeats the same frozen
+search.  The coarse result is real, yet it is partly purchased by graph contraction and a
+counterfactual active payload approaching the full source.  Fine parents reverse that systems
+tradeoff: they triple evidence density and reduce selected tokens fourteenfold, but native
+association no longer finds the evidence.  Iterative PRA therefore has two distinct open problems:
+fine-grained associative discovery and selective native-K/V materialization.  Hotpot remains useful
+for exposing this boundary, but a deeper evidence-graph benchmark is required before claiming
+natural multi-step closure.
 
 \appendix
 \section{Implementation Map}
@@ -1959,6 +2150,29 @@ condition is rerun on CUDA for timing and memory.  Finally,
 \path{experiments/paper2_5_iterative_pra/review_semantic_graph_false_goals.py:44--112} reconstructs
 the q95 validation terminals from source token spans and writes the review rows and counts.
 
+\paragraph{Granularity and post-hoc evidence topology.}
+\path{src/pra_hf/chunk_granularity.py:61--168} constructs deterministic half-open parent spans,
+maps each supporting span to overlapping parent IDs, selects the first-group root by exact token
+overlap, and records collisions and evidence-token containment.  Lines 175--260 attach oracle
+recovery only after traversal and compute facet concentration, normalized path coverage, and
+incremental coverage.  The search function receives none of those annotations.  Line 263 defines
+the controlled chain-contraction depth used by the synthetic companion.
+
+\path{experiments/paper2_5_iterative_pra/precompute_chunk_granularity_features.py:38--149}
+captures per-token layer-27 hidden states under the same frozen 256-token block encoder and checks
+every ID and source-token count against the canonical native-QK cache.  The ignored
+52,058,925-byte artifact has SHA-256
+\begin{center}
+\small\texttt{a3c1ffb7a2e7a9213f44c33cb678cd084a5f7fb992677539bec31098e31906cf}.
+\end{center}
+The runner's lines 117--146 split cached tokenwise Q/K into exact 16-token atomic windows or retain
+the canonical 32-token windows; lines 207--427 pool semantic parents, construct native adjacency,
+and produce the five-seed facet matrix.  Lines 430--511 execute the full K/H/B surface with an
+infinite goal threshold and apply evidence metrics afterward.  Lines 514--738 validate controlled
+contraction and produce topology, efficiency, density, system-scaling, and separability tables;
+lines 740--854 generate the two paper figures.  The orchestration at lines 857--966 asserts exact
+canonical held-out reproduction before writing the result manifest.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -2021,7 +2235,16 @@ tests cover native adjacency reduction, all three deterministic search strategie
 different-facet goals, a low-query-similarity bridge, minimum depth, first-path stopping,
 deduplication, cycles, finite/shared and unbounded budgets, cost accounting, and the absence of a
 task-label API.  All five synthetic graph controls pass.  The complete repository suite now
-passes 445 tests with the same one upstream deprecation warning.
+passes 456 tests with the same one upstream deprecation warning.
+
+The granularity gate adds 80 evidence-topology rows, 4,800 oracle-free discovery rows, 3,230
+five-seed facet--parent rows, 80 system profiles, and 15 passing chain-contraction controls.
+Focused tests cover deterministic exact boundaries, invalid overlap geometry, evidence remapping,
+group collisions, exact root containment, $H=0/1/2$ behavior, post-hoc oracle recovery, minimum
+recovery depth, facet statistics and path complementarity, and contraction.  The runner audits all
+canonical 256-token boundaries and asserts exact held-out $K=4,B=6,H=4$ oracle and later-evidence
+recall of 1.000 before emitting artifacts.  The ignored token-hidden cache manifest pins all 16
+identities, 25,416 tokens, the Qwen revision, layer 27, absolute positions, and its content hash.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

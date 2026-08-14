@@ -140,3 +140,18 @@ on CUDA. Intermediate admission never uses query similarity. The terminal
 query-goal gate fails, so routed roots are intentionally not run. The second
 command decodes and classifies the validation q95 false terminals. Results are
 under `../shared/results/paper2_5_iterative_pra/semantic_graph_search/`.
+
+Hotpot chunk-granularity and oracle-discovery control:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/precompute_chunk_granularity_features.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_chunk_granularity.py --device cuda
+```
+
+The first command captures an ignored 52 MB token-hidden cache under the same
+frozen 256-token contextual encoder. The second remaps evidence over
+16/32/64/128/256-token zero-overlap parents and runs the oracle-root K/H/B
+surface with terminal stopping disabled. It records actual routing cost and
+counterfactual K/V payload separately. Tracked rows, tables, plots, and the
+feature manifest are under
+`../shared/results/paper2_5_iterative_pra/chunk_granularity/`.

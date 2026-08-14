@@ -41,8 +41,8 @@ class SemanticGraphSearchConfig:
             raise ValueError("successor_k must be positive.")
         if self.max_visited_parents is not None and self.max_visited_parents <= 0:
             raise ValueError("max_visited_parents must be positive or None.")
-        if self.max_hops <= 0:
-            raise ValueError("max_hops must be positive.")
+        if self.max_hops < 0:
+            raise ValueError("max_hops must be non-negative.")
         if self.strategy not in _STRATEGIES:
             raise ValueError(f"Unsupported search strategy: {self.strategy}")
         if self.beam_width <= 0:

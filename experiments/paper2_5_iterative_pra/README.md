@@ -125,3 +125,22 @@ is intentionally ignored; its pinned-model provenance, byte count, SHA-256,
 results, graphs, and plots are tracked. The predeclared run uses five router
 seeds, final parent budgets of 10/20/30%, semantic candidate pools of 10/20%,
 max and Top-4 reductions, and one `mu + sigma` threshold control.
+
+## Hotpot chunk granularity and oracle discovery
+
+This additive control keeps the frozen native graph-search algorithm fixed,
+grants one deterministic first-evidence root, and varies only zero-overlap
+parent size, K, H, and B. Evidence labels are attached after search. A small
+ignored cache supplies exact layer-27 token hidden states for semantic parent
+means; native edges reuse exact cached tokenwise pre-RoPE Q/K.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.precompute_chunk_granularity_features --device cuda
+python -m experiments.paper2_5_iterative_pra.run_chunk_granularity --device cuda
+```
+
+The runner asserts exact reproduction of canonical 256-token held-out
+K4/B6/H4 recovery, emits the complete 16--256-token discovery surface,
+computes facet-parent diagnostics over five frozen projections, and validates
+chain contraction controls. No native K/V is materialized. Artifacts are under
+`docs/papers/shared/results/paper2_5_iterative_pra/chunk_granularity/`.

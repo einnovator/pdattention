@@ -52,6 +52,20 @@ def test_oracle_free_root_initialization_and_native_topk_expansion():
     assert result.decisions[0].candidate_parent == 1
 
 
+def test_zero_hops_returns_only_roots_without_proposals():
+    edge, goal = _scores()
+    result = search_semantic_graph(
+        edge,
+        goal,
+        [0],
+        _config(max_hops=0, goal_threshold=float("inf")),
+    )
+    assert result.visited == (0,)
+    assert result.nodes_expanded == 0
+    assert result.raw_proposals == 0
+    assert result.stop_reason == "max_hops"
+
+
 def test_native_parent_adjacency_batches_local_pairs_and_reduces_by_parent():
     query = torch.tensor([[[[1.0, 0.0]]], [[[0.0, 1.0]]], [[[1.0, 1.0]]]])
     key = torch.tensor([[[[1.0, 0.0]]], [[[0.0, 1.0]]], [[[1.0, 1.0]]]])
