@@ -232,6 +232,8 @@ def _teacher_forced(
     context_tokens: list[int],
     evidence_spans,
     device: torch.device,
+    *,
+    retain_attention_weights: bool = False,
 ) -> tuple[dict, list[torch.Tensor]]:
     """Score the gold continuation and capture attention/hidden-state diagnostics."""
     prompt_tokens = int(prompt_ids.shape[1])
@@ -273,6 +275,9 @@ def _teacher_forced(
     first_target = int(targets[0, 0])
     first_probability = float(first_logits.softmax(dim=-1)[first_target].item())
     first_rank = int((first_logits > first_logits[first_target]).sum().item()) + 1
+    competing_logits = first_logits.clone()
+    competing_logits[first_target] = float("-inf")
+    first_margin = float((first_logits[first_target] - competing_logits.max()).item())
     hidden_signatures = [
         layer_outputs[layer][0, prediction_positions, :].float().mean(dim=0).cpu()
         for layer in range(len(handle.model.model.layers))
@@ -294,7 +299,8 @@ def _teacher_forced(
             prediction_positions,
             context_tokens,
         )
-    handle.set_attention_diagnostics(False)
+    if not retain_attention_weights:
+        handle.set_attention_diagnostics(False)
     return (
         {
             "gold_token_logprobs": token_log_probs.cpu().tolist(),
@@ -302,6 +308,7 @@ def _teacher_forced(
             "gold_mean_token_logprob": float(token_log_probs.mean().item()),
             "gold_first_token_probability": first_probability,
             "gold_first_token_rank": first_rank,
+            "gold_first_token_margin": first_margin,
             "teacher_forced_seconds": duration,
             "direct_context_attention_mass": direct_mass,
             "attention_by_layer": layer_attention,

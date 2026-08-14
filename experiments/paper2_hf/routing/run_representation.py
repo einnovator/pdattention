@@ -109,13 +109,26 @@ def _hotpot_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
                 row["supporting_facts"]["title"], row["supporting_facts"]["sent_id"]
             )
         }
-        segments, evidence = [], []
+        segments, evidence, evidence_annotations = [], [], []
+        parent_paragraphs = []
         for title, sentences in zip(row["context"]["title"], row["context"]["sentences"]):
+            rendered_parent = []
             for sentence_id, sentence in enumerate(sentences):
                 segment = f"{title}: {str(sentence).strip()}"
                 segments.append(segment)
+                rendered_parent.append(segment)
                 if (str(title), sentence_id) in supporting:
                     evidence.append(segment)
+                    evidence_annotations.append(
+                        {
+                            "title": str(title),
+                            "sentence_id": int(sentence_id),
+                            "text": str(sentence).strip(),
+                            "rendered_text": segment,
+                        }
+                    )
+            if any((str(title), sentence_id) in supporting for sentence_id in range(len(sentences))):
+                parent_paragraphs.append("\n".join(rendered_parent))
         if evidence:
             examples.append(
                 {
@@ -125,6 +138,9 @@ def _hotpot_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
                     "answer": str(row["answer"]),
                     "source": "\n".join(segments),
                     "evidence": evidence,
+                    "evidence_annotations": evidence_annotations,
+                    "parent_paragraphs": parent_paragraphs,
+                    "full_context": "\n".join(segments),
                 }
             )
         if len(examples) == count:
@@ -140,11 +156,16 @@ def _qasper_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
         for section in paper.get("full_text", []):
             paragraphs.extend(str(value) for value in section.get("paragraphs", []))
         for qa in paper.get("qas", []):
-            for annotation in qa.get("answers", []):
+            for annotation_index, annotation in enumerate(qa.get("answers", [])):
                 answer = annotation.get("answer", {})
                 evidence = [str(value) for value in answer.get("evidence", []) if str(value).strip()]
                 if answer.get("yes_no") is None or not evidence:
                     continue
+                parent_paragraphs = [
+                    paragraph
+                    for paragraph in paragraphs
+                    if any(item in paragraph for item in evidence)
+                ]
                 candidates.append(
                     {
                         "dataset": "qasper",
@@ -154,6 +175,16 @@ def _qasper_examples(cache_dir: Path, count: int, seed: int) -> list[dict]:
                         # Keep the exact smoke-study construction protocol.
                         "source": "\n".join(dict.fromkeys([*evidence, *paragraphs])),
                         "evidence": evidence,
+                        "evidence_annotations": [
+                            {
+                                "annotation_index": int(annotation_index),
+                                "evidence_index": int(evidence_index),
+                                "text": text,
+                            }
+                            for evidence_index, text in enumerate(evidence)
+                        ],
+                        "parent_paragraphs": list(dict.fromkeys(parent_paragraphs or evidence)),
+                        "full_context": "\n".join(paragraphs),
                     }
                 )
                 break

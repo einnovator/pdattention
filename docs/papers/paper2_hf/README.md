@@ -35,6 +35,7 @@ Reproduce the current artifacts from the repository root:
 python experiments/paper2_hf/qwen/run_first_night.py --device cuda
 python experiments/paper2_hf/qa/run_smoke.py --device cuda
 python -m experiments.paper2_hf.qa.run_multilayer_pra --device cuda
+python -m experiments.paper2_hf.qa.run_oracle_gap_audit --device cuda
 python -m experiments.paper2_hf.qa.run_multilayer_pra --device cuda --phase routed --router learned --schedules last_8,last_half
 python -m experiments.paper2_hf.qa.run_multilayer_head --device cuda --router learned --schedule last_8
 python -m experiments.paper2_hf.productize_router --help

@@ -35,6 +35,9 @@ Controlled positional analysis in companion Paper~1.5 motivates the empirical ru
 262,144-parameter router reaches any-evidence recall 0.831 at 10\% and 0.956 at 20\% selected
 parents while returning exact post-RoPE K and native V. Oracle HotpotQA replay is depth dependent:
 the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766.
+An end-to-end audit finds complete evidence coverage and exact cached K/V, ruling out a hidden
+oracle-path bug. The remaining gap combines source-versus-query contextual mismatch, Hotpot
+selected-parent attention dilution, and substantially larger all-layer residual divergence.
 PRA-conditional adapters preserve the ordinary no-memory path exactly and leave the measured
 WikiText-2 loss unchanged. On QASPER, decoded polarity improves from 25.0\% with routed frozen PRA
 to 62.5\% with oracle evidence and $72.5\pm5.6$\% with residual 16, separating evidence selection
@@ -126,7 +129,7 @@ Finding & Result & Why it matters \\
 Exact retrofit & Zero logit/hidden difference; identical greedy output & External memory leaves ordinary inference unchanged when disabled \\
 Semantic route, native payload & Hidden-state index; selected post-RoPE K/native V & Search geometry need not replace pretrained attention state \\
 Sparse discovery and activation & Any-evidence recall .831/.956 at 10/20\%; about 20\% requested parents become 6--7\% physical K/V & Logical selection and active memory are distinct budgets \\
-Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28 & Sparse memory has a compatibility band, not a monotone depth law \\
+Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28; oracle audit finds exact coverage/KV & Sparse memory has a compatibility band; contextual and residual integration matter \\
 QASPER one-shot memory use & Polarity: 25.0\% routed frozen $\rightarrow$ 62.5\% oracle frozen $\rightarrow$ $72.5\pm5.6$\% residual 16 & Evidence selection and memory consumption are separately measurable bottlenecks; blind judges also favor residual adaptation \\
 Ordinary-path preservation & Conditional adapters: zero WikiText-2 loss change and exact PRA-off path & Memory specialization need not alter no-memory behavior \\
 Cross-family mechanism & Exact Qwen/SmolLM2/Gemma disabled paths; Gemma routed $\Delta\log p=+.135$ & The execution contract survives distinct decoder organizations \\
@@ -138,8 +141,9 @@ The paper makes five contributions. First, it defines and tests an exact pretrai
 for bounded native-K/V memory, including exact disabled-path parity. Second, it separates compact
 semantic routing state from the selected layer-native positional K/V payload. Third, it measures
 sparse discovery as a recall--sparsity frontier and shows that a tiny supervised projection
-improves frozen semantic routing. Fourth, it establishes depth-dependent causal memory use and
-separates a clean-memory integration ceiling from the routed end-to-end robustness boundary.
+improves frozen semantic routing. Fourth, it establishes depth-dependent causal memory use,
+audits why oracle replay differs from native context, and separates a clean-memory integration
+ceiling from the routed end-to-end robustness boundary.
 Fifth, it implements the contract as a shared core, thin Qwen, Llama-family, and Gemma adapters,
 router artifacts, accounting, a wheel, and a public Python API. The contribution is a working
 boundary, not a new pretrained model or a solved long-context QA system.
@@ -695,6 +699,106 @@ layers ($+0.347$) but is only $+0.072$ at the last half, while direct evidence t
 ($-1.791$). That control failure prevents using this subset to grade PRA transport. Attention
 mass and hidden-state perturbations are retained in the artifact, but neither alone is evidence
 that a perturbation is useful.
+
+\subsection{Why oracle does not equal native context}
+\label{sec:oracle-gap-audit}
+
+The all-layer result could have been a bookkeeping error rather than a model effect, so we first
+reproduced the canonical cohort and audited the intervention end to end. Hotpot supporting-fact
+title and sentence IDs, and the corresponding QASPER evidence annotations, were resolved to exact
+source character spans, tokenizer spans, intersecting parent IDs, and physical materialized token
+positions. Selection used no answer text, answer token, or target likelihood. Every representable
+annotation was covered at every requested layer; all 28 Qwen layers were present; overlap
+deduplication introduced no repeated K/V; masks exposed every retained token; and no parent was
+rejected by the budget. A fresh replay of reference publication matched every cached post-RoPE K
+and native V exactly (maximum absolute error 0). The direct-text, last-14, and all-layer likelihood
+deltas reproduce the frozen artifact with maximum absolute difference 0. We therefore find no
+hidden oracle-path or protocol bug.
+
+\begin{table}[htbp]
+\centering
+\scriptsize
+\caption{Oracle-gap audit on the canonical four-example-per-dataset cohort. $E$ is annotated
+evidence, $D$ other tokens in selected parents, and $H$ the ordinary local/head support. K/V
+similarities average aligned evidence tokens over the last 14 layers. The counterfactual removes
+$D$ from the existing logits and renormalizes; it does not change real materialization.}
+\label{tab:oracle-gap-audit}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrl}
+\toprule
+Diagnostic & HotpotQA & QASPER & Interpretation \\
+\midrule
+Oracle evidence coverage & 100\% & 100\% & Annotation-to-parent selection is correct \\
+Exact evidence $\Delta\log p$ & +4.635 & -1.791 & Hotpot annotations suffice; QASPER lacks a positive text control \\
+Parent context $\Delta\log p$ & +5.574 & -1.791 & Bridge/parent context helps Hotpot \\
+Late-band pre-RoPE K / V cosine & .940 / .892 & .963 / .926 & Source-only and question-conditioned representations differ \\
+Late-band $M_E/M_D/M_H$ & .220/.310/.469 & .565/.027/.408 & Parent distractors are substantial only on Hotpot \\
+$M_E$ after offline removal of $D$ & .281 & .579 & Renormalization recovers .061 versus .014 evidence mass \\
+Final hidden relative L2, last-14 / all & .541/.869 & .602/1.245 & All-layer replay accumulates greater internal divergence \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The native sufficiency ladder narrows the first hypothesis. On HotpotQA, exact annotated sentences
+gain $+4.635$, their parent paragraphs gain $+5.574$, and feasible full context gains $+3.771$
+nats/token. Annotated evidence is therefore sufficient for this frozen model, although parent
+context supplies a useful bridge. The QASPER annotation and parent conditions are identical on
+this slice and both lower likelihood; full papers exceed the matched 2,048-token control. That
+cohort cannot distinguish annotation insufficiency from prompt incompatibility.
+
+The representation comparison removes a second ambiguity. We align identical evidence BPE tokens
+between the direct prompt and bounded source publication. Late-band pre-RoPE K cosine is .940 on
+HotpotQA and .963 on QASPER; V cosine is .892 and .926. Corresponding relative errors are
+.339/.448 and .259/.349. Post-RoPE K cosine falls to .814/.907 because it also includes the
+different logical positions. The cache itself is exact: this discrepancy arises before
+materialization because direct evidence is jointly contextualized with the question, whereas a
+reference block is encoded independently.
+
+Softmax support contributes on HotpotQA but is not the complete explanation. In the last 14
+layers, $D$ receives .310 attention mass. Removing it only in an offline counterfactual raises
+$M_E$ from .220 to .281 and lowers entropy from 2.045 to 1.711. Under all-layer replay, $D$ rises
+to .423 and counterfactual $M_E$ rises from .283 to .438. Yet native direct evidence succeeds with
+only .120 evidence mass, below either PRA condition. On QASPER, $D$ is only .027 in the late band
+and .015 across all layers. Raw evidence mass is therefore neither necessary nor sufficient for
+useful integration.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper2_hf/oracle_gap_audit/oracle_gap_diagnostics.pdf}
+\caption{\textbf{The oracle gap combines representation, support, and depth effects.} The native
+context ladder establishes Hotpot annotation sufficiency; aligned K/V differ after contextual
+encoding; selected-parent distractors absorb Hotpot attention; and all-layer replay departs much
+further from the no-memory residual trajectory than last-14 replay.}
+\label{fig:oracle-gap-diagnostics}
+\end{figure}
+
+The residual trace provides the common proximate signal. Final answer-position relative L2 grows
+from .541 to .869 on HotpotQA and from .602 to 1.245 on QASPER when exposure expands from the last
+14 to all 28 layers. Mean layerwise divergence grows from .104 to .642 and from .145 to .759.
+Direct context participates in the ordinary sequence from the first layer; source-only memory is
+instead introduced as parallel attention support. Repeating that intervention before a stable
+question representation forms compounds the contextual mismatch.
+
+A one-example-per-dataset encoding-context sweep holds the final 32-token parent spans fixed.
+Hotpot last-14 benefit rises from $+2.985$ at 32 tokens to $+3.548$ at 256 and 512. QASPER falls
+from $+0.908$ to $+0.230$ while its V cosine improves from .876 to .960. Longer source context can
+matter, but representation cosine is not a monotone proxy for causal utility; this sweep is a
+mechanism diagnostic, not an estimate over the cohort.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{../shared/results/paper2_hf/oracle_gap_audit/oracle_gap_encoding_sweep.pdf}
+\caption{\textbf{Reference encoding context has dataset-dependent effects at fixed
+materialization.} Utility and aligned representation similarity do not move monotonically
+together. Each curve contains one fixed example and should be read as a sensitivity trace.}
+\label{fig:oracle-gap-encoding}
+\end{figure}
+
+The audit supports multiple effects rather than a single-cause account: bounded source encoding
+changes the payload representation; Hotpot parents add softmax support that dilutes evidence; and
+all-layer injection compounds residual-path divergence. Paper~2 diagnoses these factors without
+altering the selected payload. Evidence-centered and adaptive materialization remain the scope of
+Paper~3.
 
 \subsection{Placement is not interchangeable}
 
