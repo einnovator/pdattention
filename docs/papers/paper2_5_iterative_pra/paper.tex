@@ -693,7 +693,9 @@ matching parent closure and exceeding both one-shot and local semantic.  It does
 dominant curve: at 10\% all methods tie at 0.038, at 30\% Top-4 reaches 0.238 versus one-shot
 0.300, and QASPER degrades to 0.838 at 20\%.  The $\mu+\sigma$ threshold is effectively identical
 to fixed Top-$k$ in this hard-cap regime and offers no rescue.  These predeclared controls are
-therefore a mixed point observation, not a positive Gate-3 result.
+therefore a mixed point observation, not a positive Gate-3 result.  This is specifically a
+failure of max-reduced Top-1 native closure under the tested competition rule; it does not yet
+show that useful native associative edges are absent.  We test that distinction below.
 
 \begin{figure}[H]
 \centering
@@ -710,6 +712,112 @@ This produces 95,712--183,667 native dots on HotpotQA and 1.20--1.95 million on 
 example/seed, while materialized K/V stays within 0.8\% of one-shot.  Every saved graph reports
 zero K/V materializations during closure.  Gate 3 changes search work and selected identities,
 not payload quantity or transformer attention semantics.
+
+\subsection{Oracle convergence and edge-rank diagnosis}
+
+The previous gates score whether a selected set touches each evidence group.  Here we ask the
+stricter question of whether it approaches the exact feasible parent set used by the annotated
+Paper-2 oracle.  We import that oracle constructor unchanged, pass it the cached evidence spans
+and 256-token parent boundaries, and assert equality with the feature mask for every example.
+For selected set $S(B)$ and oracle $S_O$, we report recall, precision, Jaccard overlap, and
+$\mathbf{1}[S_O\subseteq S(B)]$ at 5, 10, 20, 30, and 40\% parent/KV budgets.  Figure
+\ref{fig:oracle-convergence} shows that Hotpot convergence remains slow for every frozen method.
+At 20\%, parent closure has the best non-control recall (0.235); the native Top-4 reduction reaches
+0.265, but complete recovery is only 0.013.  At 40\%, one-shot is strongest at 0.529 recall, while
+all iterative variants remain between 0.438 and 0.477.  Among the few Hotpot seed/example
+trajectories that ever recover the complete oracle, the mean minimum budget is 31.7--34.0\%; only
+10--12 of 80 trajectories do so by 40\%.
+
+QASPER provides the expected direct-retrieval control.  At 20\%, one-shot reaches 0.813 oracle
+recall and 0.738 complete recovery.  Parent and local closure reach 0.819/0.738 and 0.829/0.763,
+respectively, but native max falls to 0.794/0.725 and the Top-4 reduction to 0.770/0.713.  At 40\%,
+one-shot and local differ by only 0.002 recall.  Iteration therefore does not buy a useful
+convergence advantage on this mostly one-group task.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/oracle_convergence/oracle_convergence.pdf}
+\caption{Exact Paper-2 oracle-parent recall versus active parent/KV budget.  The Top-4 label
+denotes averaging the four strongest token/head matches, not a four-parent beam.  HotpotQA
+improves slowly and remains root-limited; QASPER approaches its mostly direct oracle without
+requiring iterative native propagation.}
+\label{fig:oracle-convergence}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Oracle convergence at the primary 20\% parent/KV budget.  Semantic comparisons and
+native token-pair/head dot products are different accounting units and should not be added.
+Materialized K/V remains matched.}
+\label{tab:oracle-convergence}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Method & Recall & Precision & Jaccard & Complete & Sem. cmp. & Native dots \\
+\midrule
+HotpotQA & One-shot & .217 & .347 & .171 & .000 & 6.5 & 0 \\
+HotpotQA & Parent iterative & .235 & .366 & .183 & .000 & 11.9 & 0 \\
+HotpotQA & Local iterative & .217 & .353 & .178 & .013 & 98.3 & 0 \\
+HotpotQA & Native max & .208 & .347 & .169 & .000 & 114.6 & 183,667 \\
+HotpotQA & Native Top-4 reduction & .265 & .403 & .211 & .013 & 114.6 & 183,667 \\
+QASPER & One-shot & .813 & .270 & .259 & .738 & 18.2 & 0 \\
+QASPER & Parent iterative & .819 & .272 & .260 & .738 & 66.6 & 0 \\
+QASPER & Local iterative & .829 & .271 & .263 & .763 & 540.0 & 0 \\
+QASPER & Native max & .794 & .256 & .250 & .725 & 540.0 & 1,949,958 \\
+QASPER & Native Top-4 reduction & .770 & .247 & .241 & .713 & 540.0 & 1,949,958 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Low end-to-end recovery can arise before or after the first evidence group.  At 20\%, one-shot
+reaches the first source-ordered Hotpot group in 0.200 of seed/example runs; parent closure reaches
+0.213, local closure 0.200, native max 0.188, and native Top-4 0.263.  To isolate propagation, we
+then force only that annotated source group active and rank the next evidence group among all
+other parents.  Any local node in either evidence parent may realize an edge.  Parent semantic
+uses the projection-correct query-to-memory score, local semantic uses the strongest local pair,
+and native QK uses the exact frozen pre-RoPE max token/head reduction.
+
+The conditioned result is much stronger than end-to-end closure (Figure~\ref{fig:oracle-rank}).
+Median true-edge rank is 3 in all three spaces.  Parent semantic, local semantic, and native QK
+respectively obtain R@1 of 0.141, 0.259, and 0.235; R@4 of 0.765, 0.741, and 0.765; and MRR of
+0.424, 0.480, and 0.469.  Every semantic transition is within Top-8, as are 16 of 17 native
+transitions.  Mean oracle-minus-best-distractor margins remain negative
+($-0.118,-0.143,-0.039$), so the correct edge is usually present but loses hard competition.
+Across 85 seed-transition comparisons, the best semantic and native ranks are both within Top-4
+in 56 cases; semantic alone is near-top in 14, native alone in 9, and both are poor in only 6.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{../shared/results/paper2_5_iterative_pra/oracle_convergence/oracle_edge_rank.pdf}
+\caption{Rank recall for the true next Hotpot evidence group after conditioning on the first
+group.  Most annotated transitions exist within the first four candidates even though they
+rarely win Top-1.  Semantic statistics contain 17 transitions under five projection seeds;
+native QK has 17 seed-invariant transitions.}
+\label{fig:oracle-rank}
+\end{figure}
+
+The Gate-3 Top-4 signal should not be read as parent-beam R@4.  It averages four strong token/head
+matches before ranking parent transitions.  Its four 20\% chain wins over max reduction comprise
+two questions.  In one seed-case a near-tied oracle edge moves from rank 2 to rank 1: its margin
+changes from $-0.0038$ to $+0.0157$.  The other question accounts for three seed-cases, but its
+source-ordered edge remains rank 6 under both reductions; completion comes from root/reverse-order
+selection rather than better forward propagation.  The cached features contain no entity/topic
+labels, so we do not assign a semantic relation to those distractors from parent IDs alone.
+
+Finally, we simulate, without changing SDK routing, $k=1$ when the Top-1/Top-2 gap exceeds a
+validation-selected threshold and $k=4$ otherwise.  On held-out edges, parent semantic selects
+$k=4$ always and reaches 0.686; local semantic averages $k=3.83$ and reaches 0.657 versus its
+0.686 fixed-R@4 ceiling; native averages $k=3.57$ and reaches 0.714, exactly its fixed R@4.
+The split is only 10/7 distinct native transitions and 50/35 seed-sensitive semantic transitions,
+so this is a mechanism diagnostic, not a tuned policy result.  The simple margin rule saves little
+competition and does not explain the Top-4 reduction signal.
+
+The decision is therefore \emph{adaptive bounded competition next, not learned geometry yet}.
+True edges are usually near the top, which rejects the claim that both inherited spaces lack
+associative structure.  A useful next rule must improve first-group discovery, admit several
+competitive transitions only when warranted, and beat fixed Top-4 cost on held-out examples.
+If calibrated competition fails that test, explicit edge supervision becomes justified.
 
 \section{Discussion}
 
@@ -733,7 +841,7 @@ Gate 3 then tests the transformer's own position-neutral local matching geometry
 narrowing.  Its exact synthetic recovery proves that the routing path, grouped heads, and
 tokenwise reduction can represent a native bridge.  The natural result is nevertheless negative
 under the predeclared success criterion: primary native QK does not beat local semantic closure
-and preferably one-shot across matched budgets.  The isolated HotpotQA Top-4 gain is offset by
+or one-shot across matched budgets.  The isolated HotpotQA Top-4 gain is offset by
 other budgets and by QASPER degradation.  Initial relevance geometry and propagation geometry
 may differ, but pretrained layer-27 QK does not establish that specialization here.
 
@@ -741,8 +849,10 @@ This completes the staged diagnostic sequence: Stage 0 is one-shot retrieval; St
 iterative closure; Stage 2 corrects the asymmetric projection interface; Stage 3 moves propagation
 to contextual local semantic gists; Stage 4 tests tokenwise native QK after semantic narrowing.
 Projection role, propagation scale, and native attention geometry have therefore been tested
-before introducing learned associative supervision.  A learned head is now scientifically
-motivated, but it should be evaluated as a new trained component rather than described as an
+before introducing learned associative supervision.  Oracle-conditioned rank now shows that
+most true transitions survive within Top-4, so a learned head is not yet the next controlled
+intervention.  Competition policy and root discovery must first be separated from representation
+failure; any later trained component should still be evaluated as new machinery rather than an
 automatic extension of the inherited router.
 
 \subsection{Relation to retrieval, agents, and recursive models}
@@ -803,9 +913,13 @@ The scientific lesson is narrower than ``pretrained geometry has no associative 
 iterative reuse is sensitive to projection interface, propagation scale, candidate width, and
 score reduction.  Local semantic and native attention spaces contain designed bridges and
 occasional natural positives, but neither supplies reliable cross-parent transitions on this
-sample.  Future learned associative geometry must therefore demonstrate that supervision adds
-stable transition structure beyond all four frozen discovery stages, while retaining the same
-payload and execution controls.
+sample.  The oracle-rank diagnosis narrows the next step further: useful transitions are commonly
+present below Top-1, while root evidence discovery remains weak.  Bounded adaptive competition
+should be tested before learned geometry, although the simple score-gap policy reported here
+mostly reduces to fixed Top-4.  If a calibrated policy cannot convert near-top edges into held-out
+closure gains, future learned associative geometry must demonstrate that supervision adds stable
+transition structure beyond all four frozen discovery stages while retaining the same payload and
+execution controls.
 
 \appendix
 \section{Implementation Map}
@@ -880,6 +994,16 @@ root semantic ranking, preserving materialization parity.  The graph cost record
 semantic comparisons, native dots, candidate parents/regions/tokens, accepted transitions,
 selected parents, final K/V tokens, and routing wall time.
 
+\paragraph{Oracle and edge-rank diagnostic.}
+Lines 66--116 of \texttt{run\_oracle\_convergence.py} map each annotation to overlapping
+parents and call the Paper-2 oracle constructor unchanged; disagreement with the cached evidence
+mask is fatal.  Lines 133--185 define target rank using only frozen score vectors, with equal
+scores sharing a rank and the forced source group excluded.  Parent/local/native score vectors
+are constructed at lines 188--245; target identity enters only the subsequent metric.  Lines
+252--292 fit the offline margin threshold on a hash-stable validation partition and evaluate it
+unchanged on test.  The main loop beginning at line 588 wraps the existing Gate-2/3 evaluators,
+so convergence does not duplicate or subtly alter their selection policy.
+
 \paragraph{Fixed-identity payload parity.}
 \texttt{tests/test\_hf\_integration.py} sends the same selected chunk through router, oracle, and
 native-closure labels.  All three paths produce byte-identical post-RoPE K, native V, and
@@ -909,9 +1033,12 @@ caps, exact pre-RoPE Q/K capture, CPU/CUDA identity parity, fixed-identity paylo
 no-materialization-before-closure boundary.  Gate-3 generation validates every saved graph against
 the backward-compatible schema-v2 extension and records zero K/V materializations during closure.
 The feature manifest verifies the frozen model revision, layer 27, 16/8 grouped heads, native head
-width 128, and no memory-use adapter.  The complete repository suite passes 377 tests; the focused
-iterative/HF/native suite passes 97.  All 160 saved Gate-3 graphs and 5,600 result rows satisfy
-schema, parent-budget, and no-closure-materialization checks.
+width 128, and no memory-use adapter.  The complete repository suite passes 385 tests; the new
+focused oracle/native suite passes 16.  All 160 saved Gate-3 graphs and 5,600 result rows satisfy
+schema, parent-budget, and no-closure-materialization checks.  The additive diagnostic preserves
+4,000 convergence rows and 340 raw edge-score rows; tests cover canonical-oracle identity,
+annotation groups, ranking ties, validation leakage, deterministic policy fitting, and budget/cost
+accounting.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

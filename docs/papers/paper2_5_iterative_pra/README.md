@@ -42,3 +42,16 @@ Gate 3 uses the exact pinned Qwen revision and captures tokenwise layer-27
 pre-RoPE Q/K from each single contextual parent encoding. The large regenerable
 feature tensor is ignored; its manifest hash and all result/graph/plot artifacts
 are under `../shared/results/paper2_5_iterative_pra/native_qk_closure/`.
+
+Oracle convergence and edge-rank diagnostic:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/run_oracle_convergence.py --device cuda
+```
+
+This additive diagnostic imports the Paper-2 annotated-evidence oracle unchanged,
+evaluates all five frozen routing methods at 5/10/20/30/40% budgets, and measures
+the rank of true Hotpot transitions after forcing only the source evidence group.
+It also runs a validation-only offline margin policy; it does not change the SDK
+or train a router. Results are under
+`../shared/results/paper2_5_iterative_pra/oracle_convergence/`.
