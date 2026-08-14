@@ -91,6 +91,14 @@ recovery from .938 to zero.  Conversely, counterfactual selected native-K/V toke
 is partly a coarse-graining result: fine memory localizes evidence but exposes a real discovery
 limitation.  Query-facet complementarity does not separate oracle evidence from plausible false
 terminals, so it remains diagnostic rather than a stopping rule.
+We next freeze the same native search on 36 MuSiQue and 48 2WikiMultiHopQA examples.  At
+128-token parents, validation selects $K=6,B=16$.  Held-out oracle-root node/complete recovery is
+.981/.944 on MuSiQue and .979/.958 on 2Wiki, but this broad condition activates .513/.770 of
+source tokens.  A six-parent cap lowers MuSiQue completion to .444.  On 25 preserved held-out
+2Wiki transitions, direct R@4/R@6/R@8 is .720/.880/1.000 and complete-path survival is
+.588/.824/1.000.  MuSiQue evidence is genuinely more distributed at depth four, yet all quality
+gain saturates by search depth two.  Pretrained native geometry therefore exposes a dense local
+evidence neighborhood; these data do not establish faithful four-hop traversal.
 \end{abstract}
 
 \section{Introduction}
@@ -152,6 +160,10 @@ Twelfth, we control parent granularity over a 16--256-token ladder, remap every 
 measure root containment and minimum native-graph recovery depth, and expose the discovery--K/V
 pollution frontier.  Controlled chain contraction verifies that chunking can reduce observed
 graph depth even when task depth is unchanged.
+Thirteenth, we port the frozen search to MuSiQue's explicit 2/3/4-step decompositions and
+2WikiMultiHopQA's supporting facts and relation chains, separating annotated graph truth from
+PRA-parent mappings.  The resulting transition, path-survival, root-routing, and budget analyses
+show strong broad-budget evidence recovery but no native search-depth scaling with task depth.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -1691,6 +1703,172 @@ reported for diagnosis and are not promoted to runtime filtering or stopping.}
 \label{fig:chunk-facets}
 \end{figure}
 
+\subsection{MuSiQue and 2Wiki separate task depth from path fidelity}
+
+Hotpot supporting spans do not provide a complete ordered reasoning graph.  We therefore add two
+public natural controls without changing the search policy.  MuSiQue-Ans v1.0 supplies composed
+2/3/4-step questions, a supporting paragraph for each decomposition step, and explicit
+\texttt{\#n} dependencies \cite{trivedi2022musique}.  2WikiMultiHopQA's April 2021
+segmentation-fixed release supplies sentence-indexed supporting facts, relation triples, and
+entity-ID triples where available \cite{ho2020twowiki}.  The official test labels are absent in
+both releases, so we partition official development identities by a fixed SHA-256 rule before
+model execution.  The frozen cohort has 42 validation and 42 held-out examples: 36 MuSiQue
+examples balanced over $D=2,3,4$ and chain/convergent topology where available, plus 48 2Wiki
+examples balanced over comparison, compositional, inference, and bridge-comparison types.
+
+The adapter keeps raw annotations apart from PRA mappings.  Across the full 2Wiki development
+split, a deterministic title/sentence rule maps 30,911 of 31,120 evidence triples (.9933); 165
+are ambiguous and 44 unmatched.  None of those 209 enters the cohort.  MuSiQue graph edges come
+only from explicit \texttt{\#n} references.  For 2Wiki, exact object-to-subject entity-ID joins
+define edges when IDs exist; normalized lexical joins are retained as \emph{derived}, not promoted
+to dataset truth.  Comparison evidence remains an unordered set.  After tokenization, each exact
+character span maps to every overlapping parent.  One maximum-overlap parent represents each
+oracle root, while all overlaps remain oracle evaluation targets.  A transition is preserved only
+when its target owns at least one parent not already covered by its source.
+
+Hotpot showed strong granularity sensitivity, so 128 tokens is the primary compromise and
+64/256 are controls, all with zero overlap.  The frozen Qwen revision, independent 256-token
+encoding blocks, layer-27 local pre-RoPE QK Top-4 token/head reduction, open edge threshold, and
+best-first policy are unchanged.  We scan $K\in\{1,2,4,6\}$,
+$B\in\{6,16,\mathrm{None}\}$, and $H\in\{1,2,3,4\}$.  Terminal stopping is disabled, query
+facets are diagnostic/root-only, and labels are attached after search.  Of 12 validation
+operating points at $H=4$, lexicographic complete recovery/recall/cost selects $K=6,B=16$.
+
+The mapping sanity check passes.  At 128 tokens, mean MuSiQue oracle parents increase from 4.08
+for $D=2$ to 6.00 for $D=3$ and 7.67 for $D=4$, while total parent count stays near 22.  Task
+depth is therefore not erased by chunking.  The 48 selected 2Wiki examples contain 52 annotated
+transitions at this scale: 48 are preserved and four fully contracted; eight preserved
+transitions also have partial source/target overlap, which is recorded but never counted as a
+new target.  No selected transition is unmappable.
+
+\begin{table}[H]
+\centering
+\caption{Held-out oracle-root recovery at 128-token parents.  The first two rows expose the
+budget tradeoff; the selected broad condition is validation-frozen.  Active is the
+counterfactual selected native-K/V token fraction; no K/V is materialized.}
+\label{tab:natural-budget}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+Dataset & $K$ & $B$ & Node recall & Complete & Visited/parents & Active \\
+\midrule
+MuSiQue & 4 & 6  & .856 & .556 & 6.00/20.67 & .302 \\
+MuSiQue & 6 & 6  & .815 & .444 & 6.00/20.67 & .302 \\
+MuSiQue & 6 & 16 & .981 & .944 & 10.39/20.67 & .513 \\
+2Wiki   & 4 & 6  & .958 & .917 & 5.75/10.92 & .567 \\
+2Wiki   & 6 & 6  & .958 & .917 & 6.00/10.92 & .597 \\
+2Wiki   & 6 & 16 & .979 & .958 & 7.83/10.92 & .770 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Identity-bootstrap 95\% intervals (2,000 fixed replicates) are [.944,1.000] for MuSiQue node
+recall and [.833,1.000] for completion over 18 held-out questions; 2Wiki intervals are
+[.938,1.000] and [.875,1.000] over 24.  These strong values need the resource context in
+Table~\ref{tab:natural-budget}.  $B=16$ is half of MuSiQue's source and more than three quarters
+of 2Wiki's.  Under $B=6$, increasing $K$ from four to six makes MuSiQue worse because extra
+high-scoring proposals compete for the same six identities.  Breadth is not monotone under a
+hard global workspace.
+
+\begin{table}[H]
+\centering
+\caption{Held-out recovery versus search-hop cap at the selected $K=6,B=16$.  MuSiQue improves
+from $H=1$ to 2 and then saturates; 2Wiki is already saturated at one expansion.}
+\label{tab:natural-hop}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$H=1$} & \multicolumn{2}{c}{$H=2$} & \multicolumn{2}{c}{$H=3$} & \multicolumn{2}{c}{$H=4$} \\
+Dataset & Recall & Complete & Recall & Complete & Recall & Complete & Recall & Complete \\
+\midrule
+MuSiQue & .935 & .833 & .981 & .944 & .981 & .944 & .981 & .944 \\
+2Wiki   & .979 & .958 & .979 & .958 & .979 & .958 & .979 & .958 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+MuSiQue depth strata do not show monotone degradation: held-out completion is 1.000, .833, and
+1.000 for $D=2,3,4$, with only six identities per depth.  More importantly, the native search
+does not replay the annotated decomposition.  Exact-hop frontier survival for later $D=3/4$
+steps falls to zero even when cumulative evidence recall is one, because many later annotations
+are reached one or two search rounds early.  This is a dense evidence-neighborhood result, not a
+faithful causal traversal or evidence that four search rounds are useful.
+
+2Wiki gives the sharper path test.  Table~\ref{tab:twowiki-rank} uses 25 preserved held-out
+transitions from 17 paths and excludes the one fully contracted transition.  Direct transition
+recall rises smoothly; every transition is present by Top-8.  Complete-path survival compounds
+local misses, reaching only .588 at $K=4$ and .824 at $K=6$.  MRR is .410.  Native paths of at
+most four steps recover .400/.840/.920/1.000 of transitions at $K=1/4/6/8$; when reachable,
+mean path length is 1.80/1.14/1.04/1.00.  Detours repair some missing direct edges, but path
+fidelity still requires broad local successor sets.
+
+\begin{table}[H]
+\centering
+\caption{2Wiki held-out annotated-transition and complete-path survival at 128-token parents.
+MRR is computed from the full native rank and is therefore constant across cutoff rows.}
+\label{tab:twowiki-rank}
+\small
+\begin{tabular}{rrrrrr}
+\toprule
+$K$ & Transition R@$K$ & MRR & Complete path & Reachable $\leq H4$ & Paths \\
+\midrule
+1  & .160 & .410 & .059 & .400 & 17 \\
+2  & .320 & .410 & .235 & .560 & 17 \\
+3  & .600 & .410 & .412 & .720 & 17 \\
+4  & .720 & .410 & .588 & .840 & 17 \\
+5  & .840 & .410 & .765 & .840 & 17 \\
+6  & .880 & .410 & .824 & .920 & 17 \\
+8  & 1.000 & .410 & 1.000 & 1.000 & 17 \\
+11 & 1.000 & .410 & 1.000 & 1.000 & 17 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.99\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/natural_graph_depth.pdf}
+\caption{Natural graph diagnostics.  Left: 2Wiki direct transition recall.  Center: MuSiQue
+exact annotated-step frontier survival; late steps often arrive earlier than their annotation
+depth.  Right: held-out MuSiQue completion and node recall by task depth.}
+\label{fig:natural-graph-depth}
+\end{figure}
+
+Because both oracle gates pass, we restore only the previously frozen width-2 latest-message
+facets for root routing, with $R\in\{1,2,4\}$ and one shared $B=16$.  Five projections measure
+router sensitivity.  MuSiQue root recall is .122/.311/.422 and 2Wiki is .250/.383/.608.  At
+$R=4$, conditional completion is .947/.890, while end-to-end completion is .800/.892.  Completion
+can occur after a root miss because broad native search enters the evidence neighborhood through
+a non-annotated parent.  That is useful robustness, but it cannot be presented as correct root
+routing.  The root bottleneck remains visible even under broad traversal.
+
+\begin{table}[H]
+\centering
+\caption{Cross-dataset oracle-root context.  Hotpot uses its fixed $K=4,B=6$ 128-token control;
+MuSiQue/2Wiki use the validation-selected $K=6,B=16$.  QASPER is the earlier 256-token
+direct-retrieval control.  Protocol differences are shown rather than normalized away.}
+\label{tab:cross-natural}
+\small
+\begin{tabular}{llllrrrr}
+\toprule
+Dataset & Natural role & Annotation & Parents & Recall & Complete & Visited & Search ms \\
+\midrule
+QASPER & Direct control & mostly one group & 256 tok. & 1.000 & 1.000 & 6.00 & 12.70 \\
+Hotpot & Granularity & ordered spans & 128 tok. & .688 & .313 & 5.69 & 1.70 \\
+2Wiki & Path fidelity & relation graph & 128 tok. & .979 & .958 & 7.83 & 2.63 \\
+MuSiQue & Task depth & 2/3/4-step DAG & 128 tok. & .981 & .944 & 10.39 & 4.61 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The systems result is consistent with the earlier dense-adjacency warning.  At 128 tokens,
+adjacency construction averages .517 seconds and 123.5 million native dots on MuSiQue, versus
+.126 seconds and 28.0 million on 2Wiki.  Graph search itself averages only 4.61 and 2.63 ms.
+One frozen feature capture averages 5.69/2.48 seconds.  Compact adjacency occupies only
+1,954/469 bytes on average, but exact construction dominates routing latency; this remains a
+scientific reference implementation, not an indexed serving claim.  Facet--evidence matrices
+are retained as diagnostics (mean held-out path coverage .657/.654 and incremental coverage
+.250/.282), but never filter intermediate nodes or terminate search.
+
 Controlled chains separate the mechanism from Hotpot annotation structure.  For task-edge depths
 $D\in\{1,2,3,4,8\}$, grouping one, two, or four adjacent chain nodes yields observed depth
 $\lceil(D+1)/g\rceil-1$; all 15 search controls recover exactly at that depth.  Chunking is
@@ -1882,9 +2060,20 @@ granularity but does not test boundary-robust chunking.  The 16-token condition 
 subdivision of the cached 32-token Q/K windows, while larger parents max-reduce those same atomic
 windows; this preserves native token scores but is not a learned multiscale index.  Finally,
 selected K/V tokens are counterfactual because no payload is materialized.  A subsequent natural
-benchmark should have more than two evidence hops, distributed document-level evidence, explicit
-support chains or a derivable graph, enough held-out identities, and research-usable access.  A
-separate audit of datasets such as MuSiQue and 2WikiMultiHopQA is warranted before integration.
+benchmark should have more than two evidence hops, distributed document-level evidence, and an
+explicit or defensibly derived support graph.
+
+The MuSiQue/2Wiki extension addresses annotation depth and path semantics but remains a diagnostic
+cohort: 18 and 24 held-out identities yield wide bootstrap intervals, and 2Wiki contributes only
+25 preserved held-out transitions from 17 paths.  The internal split is a hash partition of each
+official development set because public test labels are absent.  Some 2Wiki edges without entity
+IDs use explicitly labelled normalized lexical joins.  At 128 tokens, four selected transitions
+contract completely and eight partially overlap; none enters direct edge recall through an
+already-active source parent.  The broad selected budget visits half of MuSiQue and three quarters
+of 2Wiki source tokens, so high completion is not a sparse-routing result.  Finally, annotated
+task depth and native graph distance differ: $D=4$ evidence is more distributed, but recovery
+saturates by $H=2$.  A larger held-out cohort, iterative-answer state, and stricter active-token
+budgets are required before claiming deep natural traversal.
 
 \section{Conclusion}
 
@@ -1945,6 +2134,17 @@ association no longer finds the evidence.  Iterative PRA therefore has two disti
 fine-grained associative discovery and selective native-K/V materialization.  Hotpot remains useful
 for exposing this boundary, but a deeper evidence-graph benchmark is required before claiming
 natural multi-step closure.
+
+MuSiQue and 2Wiki make that final boundary empirical.  MuSiQue's four-step examples occupy more
+oracle parents than its two-step examples, so the depth label survives memory construction.
+Nevertheless, the frozen native graph recovers nearly all evidence by $H=2$ under $K=6,B=16$;
+later annotated steps do not survive at their nominal frontier depth.  2Wiki is more encouraging
+about local path fidelity: direct transition recall reaches .720 at $K=4$, .880 at $K=6$, and
+1.000 at $K=8$, with corresponding complete-path survival .588/.824/1.000.  The cost is broad
+activation, and routed-root recall remains weak.  The central thesis is therefore refined rather
+than declared solved: pretrained attention contains traversable local evidence geometry, but
+faithful deep closure still needs better entry routing, tighter successor geometry, or a dynamic
+reasoning state that preserves task order.
 
 \appendix
 \section{Implementation Map}
@@ -2173,6 +2373,32 @@ contraction and produce topology, efficiency, density, system-scaling, and separ
 lines 740--854 generate the two paper figures.  The orchestration at lines 857--966 asserts exact
 canonical held-out reproduction before writing the result manifest.
 
+\paragraph{Natural annotated graphs.}
+\path{src/pra_hf/natural_reasoning_graph.py:21--160} defines immutable annotation nodes,
+serializes MuSiQue paragraphs, and converts only explicit decomposition references into edges.
+Lines 194--280 serialize 2Wiki at sentence resolution, map relation triples to supporting facts,
+and keep entity-ID and derived lexical joins distinguishable.  Lines 283--363 convert exact
+character offsets to tokenizer spans, map nodes to all overlapping parents, choose one
+maximum-overlap root representative, and classify preserved, contracted, and unmappable edges.
+No search score is accepted by this module.
+
+\path{experiments/paper2_5_iterative_pra/precompute_natural_graph_features.py:48--107} captures
+token hidden states and padded 32-token pre-RoPE Q/K windows from independent frozen 256-token
+encoding blocks.  Lines 110--226 bind exact annotation spans and one contextual query pass to 84
+identity-frozen examples.  The ignored 1,324,029,241-byte cache has SHA-256
+\begin{center}
+\small\texttt{a03d5a978c7b5eeef21402d88d8c293827744a93cd4b0c1b5a605b0bf4ff19dc}.
+\end{center}
+
+\path{experiments/paper2_5_iterative_pra/run_natural_graph_depth.py:125--218} computes direct
+annotated-transition rank and bounded native shortest path from score matrices, excluding shared
+source parents from target recovery.  Lines 243--416 construct exact adjacency and five-seed
+facet diagnostics; lines 419--523 run the oracle-free K/H/B search and attach node, edge, path,
+depth, payload, and systems metrics afterward.  Lines 526--553 select one operating point from
+validation identities; lines 555--593 restore routed roots only after each dataset's oracle gate.
+The remaining aggregation writes 252 mappings, 372 transition rows, 12,096 oracle searches,
+33,408 hop-survival rows, 1,160 facet rows, and 1,260 routed-root rows.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -2235,7 +2461,7 @@ tests cover native adjacency reduction, all three deterministic search strategie
 different-facet goals, a low-query-similarity bridge, minimum depth, first-path stopping,
 deduplication, cycles, finite/shared and unbounded budgets, cost accounting, and the absence of a
 task-label API.  All five synthetic graph controls pass.  The complete repository suite now
-passes 456 tests with the same one upstream deprecation warning.
+passes 464 tests with the same one upstream deprecation warning.
 
 The granularity gate adds 80 evidence-topology rows, 4,800 oracle-free discovery rows, 3,230
 five-seed facet--parent rows, 80 system profiles, and 15 passing chain-contraction controls.
@@ -2245,6 +2471,13 @@ recovery depth, facet statistics and path complementarity, and contraction.  The
 canonical 256-token boundaries and asserts exact held-out $K=4,B=6,H=4$ oracle and later-evidence
 recall of 1.000 before emitting artifacts.  The ignored token-hidden cache manifest pins all 16
 identities, 25,416 tokens, the Qwen revision, layer 27, absolute positions, and its content hash.
+
+The natural-graph gate adds eight focused adapter/metric tests for explicit MuSiQue dependencies,
+2Wiki entity-ID paths, unordered comparisons, exact character offsets, root representation,
+preserved/contracted/unmappable transitions, deterministic identity splitting, and native rank/
+shortest-path behavior.  The full-dev audit records both licenses, archive hashes, split schemas,
+and unresolved 2Wiki mappings before model execution.  The feature manifest pins 84 identities,
+158,170 source tokens, the frozen Qwen revision, layer 27, and zero training or generation.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

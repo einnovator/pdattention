@@ -1,0 +1,63 @@
+{
+  "2wikimultihopqa": {
+    "annotation_semantics": "supporting_facts are [title,sentence-index]; evidences are relation triples; evidences_id supplies entity IDs when available",
+    "archive_sha256": "95DF2BF56FDABE034E27AEBC580E02264232203CF52552F9EFE8A919E5529EEF",
+    "dev_question_types": {
+      "bridge_comparison": 2751,
+      "comparison": 3040,
+      "compositional": 5236,
+      "inference": 1549
+    },
+    "edge_semantics": "exact object-to-subject entity-ID join where IDs exist; normalized exact text join is retained as a separately labelled derived edge otherwise",
+    "evidence_mapping_status": {
+      "mapped": 30911,
+      "unmapped_ambiguous_support": 165,
+      "unmapped_no_support_match": 44
+    },
+    "license": "Apache-2.0",
+    "mapped_fraction": 0.9932840616966581,
+    "official_source": "https://github.com/Alab-NII/2wikimultihop",
+    "release": "April 7 2021 segmentation-fixed data_ids archive; official dev split",
+    "split_rows": {
+      "dev": 12576,
+      "test": 12576,
+      "train": 167454
+    },
+    "test_labels": false
+  },
+  "gate_a": {
+    "passed": true,
+    "reason": "All selected MuSiQue nodes and all selected 2Wiki evidence nodes map uniquely; ambiguous/unmatched full-dev 2Wiki triples are excluded and counted."
+  },
+  "musique": {
+    "annotation_semantics": "question_decomposition provides step question/answer/support paragraph; #n references define explicit dependency edges",
+    "archive_sha256": "98F839BF2FD5319F5C688AED77901A6D5C30B3B9F9F691AB9A8ECAFB045EE0CD",
+    "dev_graph_types": {
+      "chain": 2066,
+      "convergent": 351
+    },
+    "dev_hops": {
+      "2": 1252,
+      "3": 760,
+      "4": 405
+    },
+    "license": "CC BY 4.0",
+    "official_source": "https://github.com/StonyBrookNLP/musique",
+    "release": "MuSiQue v1.0, MuSiQue-Ans labelled development split",
+    "split_rows": {
+      "dev": 2417,
+      "test": 2459,
+      "train": 19938
+    },
+    "test_labels": false
+  },
+  "schema_version": "1.0",
+  "selection_policy": {
+    "2wiki": "12 per type; bridge-comparison includes 8 disconnected and 4 branching",
+    "identity_partition": "sha256_first_byte_mod_2; labels and scores unused",
+    "musique": "12 per D; D3/D4 split equally between chain and convergent",
+    "selected_examples": 84,
+    "test_examples": 42,
+    "validation_examples": 42
+  }
+}

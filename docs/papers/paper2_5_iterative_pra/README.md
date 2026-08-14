@@ -155,3 +155,20 @@ surface with terminal stopping disabled. It records actual routing cost and
 counterfactual K/V payload separately. Tracked rows, tables, plots, and the
 feature manifest are under
 `../shared/results/paper2_5_iterative_pra/chunk_granularity/`.
+
+MuSiQue/2Wiki annotated natural-graph gate:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/audit_natural_graph_datasets.py
+python ../../../experiments/paper2_5_iterative_pra/precompute_natural_graph_features.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_natural_graph_depth.py --device cuda
+```
+
+The audit freezes 36 MuSiQue and 48 2Wiki identities after checking official
+schemas and mapping semantics. The ignored 1.32 GB cache contains one frozen
+layer-27 source/query capture per example; its tracked manifest pins the hash.
+The runner keeps 128-token parents primary with 64/256 controls, scans the
+oracle-root K/H/B surface, and runs bounded routed roots only because both
+oracle gates pass. Raw mappings, transitions, hop survival, systems metrics,
+facet diagnostics, routed rows, plots, and bootstrap summaries are under
+`../shared/results/paper2_5_iterative_pra/natural_graph_depth/`.
