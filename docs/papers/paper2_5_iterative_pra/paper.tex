@@ -99,6 +99,17 @@ source tokens.  A six-parent cap lowers MuSiQue completion to .444.  On 25 prese
 .588/.824/1.000.  MuSiQue evidence is genuinely more distributed at depth four, yet all quality
 gain saturates by search depth two.  Pretrained native geometry therefore exposes a dense local
 evidence neighborhood; these data do not establish faithful four-hop traversal.
+We then carry the full 16--256-token ladder to both datasets while preserving 256-token contextual
+encoding.  At $K=6,B=16$, shrinking search parents from 128 to 16 tokens reduces selected source
+fraction from .513 to .063 on MuSiQue and .770 to .172 on 2Wiki, but complete recovery falls from
+.944/.958 to .500/.583.  Preserved 2Wiki edge R@6 falls from .880 to .400.  Fine-edge
+representation, not insufficient search depth, is the main failure: MuSiQue $D=4$ recall still
+saturates at $H=2$ for 16/32-token nodes.  Finally, an evaluation-only all-offset query audit finds
+some existing span that ranks a correct root in Top-4 for .878 MuSiQue and .950 2Wiki runs, versus
+.422/.608 for the deployed fixed facets.  Token-scale facets dominate, but distractors receive the
+same multiple-comparison benefit.  A bounded executable union reaches only .411/.475 root recall
+at a four-root budget.  The next gate is therefore a contextual multiscale graph representation
+and a bounded learned facet selector, not deeper search or unbounded facet aggregation.
 \end{abstract}
 
 \section{Introduction}
@@ -164,6 +175,11 @@ Thirteenth, we port the frozen search to MuSiQue's explicit 2/3/4-step decomposi
 2WikiMultiHopQA's supporting facts and relation chains, separating annotated graph truth from
 PRA-parent mappings.  The resulting transition, path-survival, root-routing, and budget analyses
 show strong broad-budget evidence recovery but no native search-depth scaling with task depth.
+Fourteenth, we repeat exact remapping and native search over 16/32/64/128/256-token parents on
+MuSiQue and 2Wiki, distinguish preserved-edge failure from budgeted-search failure, and quantify
+the recovery--payload Pareto surface.  Fifteenth, we exhaust every valid question span at widths
+1/2/4/8/16 from one contextual encoding, compare semantic and lexical ceilings for roots and
+terminal evidence, and test one globally bounded union without exposing labels to runtime search.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -1869,6 +1885,174 @@ scientific reference implementation, not an indexed serving claim.  Facet--evide
 are retained as diagnostics (mean held-out path coverage .657/.654 and incremental coverage
 .250/.282), but never filter intermediate nodes or terminate search.
 
+\subsection{Cross-dataset granularity separates missing edges from shallow search}
+
+The 128-token result is not the end of the granularity question.  We therefore remap every
+MuSiQue and 2Wiki annotation at 16, 32, 64, 128, and 256 tokens, with zero overlap, and rerun
+$K\in\{1,2,4,6,8\}$, $H\in\{0,1,2,3,4\}$, and
+$B\in\{6,16,\mathrm{None}\}$.  The source is still encoded in independent 256-token contextual
+blocks.  Thus $G_{\mathrm{encode}}=256$ while $G_{\mathrm{search}}$ varies; the 16-token condition
+splits stored 32-token Q/K blocks exactly and never independently encodes a context-poor fragment.
+The earlier $K=6,B=16$ operating point remains frozen.  $K=8$ is a ceiling, not a retuned primary
+condition.  Recomputed 128-token 2Wiki R@4/R@6/R@8 reproduces
+.720/.880/1.000 exactly; conditional preserved-path survival reproduces .588/.824/1.000.
+The one contracted held-out path is reported separately and counts as failure in the strict
+all-annotation rates .556/.778/.944.
+
+\begin{table}[H]
+\centering
+\caption{Held-out cross-dataset granularity at the frozen $K=6,B=16,H=4$ condition.  Edge is
+direct recall over preserved annotated transitions.  Minimum $H$ averages recovered examples.
+Source is the counterfactual selected native-K/V token fraction; no K/V is materialized.}
+\label{tab:natural-granularity}
+\scriptsize
+\begin{tabular}{llrrrrrrr}
+\toprule
+Dataset & Tokens & Oracle parents & Root evidence & Edge R@6 & Complete & Minimum $H$ & Source & Density \\
+\midrule
+MuSiQue & 16  & 27.72 & .066 & .667 & .500 & 1.11 & .063 & .258 \\
+        & 32  & 15.00 & .129 & .611 & .500 & 1.11 & .131 & .255 \\
+        & 64  &  8.67 & .230 & .667 & .667 & 1.17 & .262 & .225 \\
+        & 128 &  5.72 & .314 & .833 & .944 & 1.12 & .513 & .184 \\
+        & 256 &  4.00 & .397 & .879 & 1.000 & 1.17 & .946 & .156 \\
+\midrule
+2Wiki   & 16  &  7.75 & .293 & .400 & .583 &  .93 & .172 & .155 \\
+        & 32  &  5.13 & .438 & .400 & .708 & 1.06 & .302 & .148 \\
+        & 64  &  3.79 & .531 & .560 & .792 &  .79 & .514 & .106 \\
+        & 128 &  2.96 & .614 & .880 & .958 &  .65 & .770 & .086 \\
+        & 256 &  2.33 & .679 & 1.000 & 1.000 &  .63 & .995 & .076 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Finer parents sharply improve localization: relative to 128 tokens, the 16-token condition cuts
+selected source by 8.2$\times$ on MuSiQue and 4.5$\times$ on 2Wiki, while increasing evidence
+density by 1.4$\times$ and 1.8$\times$.  It also changes the graph.  MuSiQue oracle-parent count
+rises almost fivefold and 2Wiki preserved edge R@6 falls from .880 to .400.  More search rounds
+do not repair this loss.  Table~\ref{tab:musique-depth-granularity} shows that $D=4$ recall is
+unchanged from $H=2$ through $H=4$ even at 16/32 tokens.  The earlier shallow saturation is
+therefore not only parent contraction: a native shortcut neighborhood remains.  Yet that
+neighborhood omits enough fine nodes that complete recovery is only .333.  The gate is jointly
+classified B/C/E: fine-edge representation collapses; $H=2$ saturation survives; and fine nodes
+offer a useful payload frontier despite lower recovery.  Required depth does not rise toward
+annotated depth.
+
+\begin{table}[H]
+\centering
+\caption{MuSiQue annotated depth by search granularity at $K=6,B=16$.  Recall at $H=2$ and $H=4$
+is identical in every fine 16/32-token stratum.}
+\label{tab:musique-depth-granularity}
+\scriptsize
+\begin{tabular}{rrrrrrrr}
+\toprule
+$D$ & Tokens & Oracle parents & H1 recall & H2 recall & H4 recall & Complete & Source \\
+\midrule
+2 & 16  & 17.67 & 1.000 & 1.000 & 1.000 & 1.000 & .060 \\
+2 & 32  &  9.50 & 1.000 & 1.000 & 1.000 & 1.000 & .133 \\
+2 & 64  &  5.67 & 1.000 & 1.000 & 1.000 & 1.000 & .277 \\
+2 & 128 &  4.00 &  .917 & 1.000 & 1.000 & 1.000 & .523 \\
+2 & 256 &  3.17 & 1.000 & 1.000 & 1.000 & 1.000 & .984 \\
+\midrule
+3 & 16  & 24.67 & .667 & .667 & .667 & .167 & .067 \\
+3 & 32  & 13.83 & .667 & .667 & .667 & .167 & .132 \\
+3 & 64  &  8.00 & .667 & .722 & .722 & .333 & .263 \\
+3 & 128 &  5.50 & .889 & .944 & .944 & .833 & .505 \\
+3 & 256 &  3.83 & .944 & 1.000 & 1.000 & 1.000 & .941 \\
+\midrule
+4 & 16  & 40.83 & .708 & .792 & .792 & .333 & .061 \\
+4 & 32  & 21.67 & .708 & .792 & .792 & .333 & .128 \\
+4 & 64  & 12.33 & .875 & .917 & .917 & .667 & .245 \\
+4 & 128 &  7.67 & 1.000 & 1.000 & 1.000 & 1.000 & .512 \\
+4 & 256 &  5.00 & .958 & .958 & 1.000 & 1.000 & .913 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The edge/product decomposition reaches the same conclusion.  At $K=6$, independent preserved-edge
+products predict MuSiQue path survival .458/.391/.461/.700/.791 from fine to coarse and 2Wiki
+.304/.304/.457/.832/1.000.  Observed complete graph recovery is never lower: it is
+.500/.500/.667/.944/1.000 and .583/.708/.792/.958/1.000.  Search control therefore introduces no
+additional aggregate loss on this surface; contractions, alternate native paths, and multiple
+oracle roots can make observed recovery exceed the direct-edge product.  The failing component is
+local fine-edge availability, not frontier competition after the edge exists.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/musique_granularity.pdf}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/2wiki_granularity.pdf}
+\caption{Frozen native graph granularity.  Finer nodes reduce selected payload and increase
+evidence density, but direct edge and complete recovery deteriorate.  Dense exact adjacency
+remains the cold-cost bottleneck; search itself is milliseconds.}
+\label{fig:natural-granularity}
+\end{figure}
+
+Exact dense construction averages .746/.190 seconds per MuSiQue/2Wiki example at 16 tokens and
+.515/.126 seconds at 128.  The underlying tokenwise work remains 123.5/28.0 million native dot
+products because search-parent grouping changes after contextual capture; splitting 32-token
+blocks at 16 raises local-pair bookkeeping and temporary memory.  Search averages 5.5/4.0 ms at
+16 and 4.9/3.2 ms at 128.  These are reference-kernel measurements on the same GTX~950M, not
+serving claims.
+
+\subsection{All-offset query facets reveal a selection ceiling}
+
+With graph granularity fixed again at 128 tokens, we ask whether weak routed roots mean that the
+question lacks a useful view or that the router chooses among views poorly.  From one contextual
+query encoding, we mean-pool every valid stride-one span of width 1, 2, 4, 8, and 16, plus the
+existing global final state.  For every target parent we compute the best rank over all facets
+\emph{after} scoring.  This is an oracle diagnostic: target identity chooses the reported facet
+but never enters a score, proposal, or graph-search function.  We retain token offsets, decoded
+span, scale, target score, best distractor, and margin.  A token-set Jaccard rank is an independent
+lexical control.
+
+\begin{table}[H]
+\centering
+\caption{Held-out query-visibility ceiling at 128-token parents.  Oracle facet means the best
+existing span is selected with the target label after scoring.  Practical R4 unions each facet's
+Top-1 proposals, deduplicates, normalizes within facet, and applies one shared four-root budget.}
+\label{tab:multiscale-ceiling}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Dataset & Current R4 & Oracle R1 & R2 & R4 & R8 & Terminal R4 & Lexical R4 & Practical R4 \\
+\midrule
+MuSiQue & .422 & .711 & .833 & .878 & .967 & .711 & .889 & .411 \\
+2Wiki   & .608 & .592 & .800 & .950 & 1.000 & .856 & .875 & .475 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ceiling is high.  Existing query geometry contains a Top-4 view of an annotated root in
+.878/.950 of MuSiQue/2Wiki runs and of ordered terminal evidence in .711/.856.  Width one wins
+73\%/66\% of raw root-target rows; global states account for most remaining wins.  Lexical overlap
+is competitive for roots but much weaker for terminals, especially on MuSiQue (.444 terminal
+R@4 versus .711 semantic), so the semantic result is not merely word matching.
+
+The ceiling is not a router.  Searching over many facets also raises a non-oracle parent into
+Top-4 in .546 MuSiQue and .672 2Wiki rows; even the best target facet has a negative mean margin
+over its strongest distractor.  Validation therefore authorizes one bounded practical control,
+not unrestricted max aggregation.  Each facet nominates Top-1, nominations are deduplicated, and
+one shared root budget is applied.  At $R=4$ it averages only 4.88/3.52 candidates and costs
+about .52/.43 ms, yet root recall is .411/.475, below the frozen .422/.608 router, while selected
+source rises to .587/.798.  More facets reveal useful views but do not identify which view to
+trust.  This is a facet-selection and calibration problem rather than evidence that $W_q/W_m$
+geometry contains no useful root or terminal signal.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/natural_multiscale_query_audit.pdf}
+\caption{All-offset query audit.  Left: current, oracle-facet, and lexical root R@4.  Center:
+semantic visibility by evidence role.  Right: the bounded executable union spends more source
+without realizing the oracle ceiling.}
+\label{fig:multiscale-query-audit}
+\end{figure}
+
+Taken together, the two gates define the next experiment narrowly.  For propagation, preserve a
+contextual 128-token discovery representation while exposing 16/32-token identities for eventual
+payload selection; training search control around absent fine edges would address the wrong
+component.  For entry, learn or calibrate one bounded facet selector under hard candidate and
+source budgets; do not grant each facet a materialization budget.  Paper~3 remains responsible
+for how much native K/V is materialized after conceptual identities are selected.
+
 Controlled chains separate the mechanism from Hotpot annotation structure.  For task-edge depths
 $D\in\{1,2,3,4,8\}$, grouping one, two, or four adjacent chain nodes yields observed depth
 $\lceil(D+1)/g\rceil-1$; all 15 search controls recover exactly at that depth.  Chunking is
@@ -2075,6 +2259,23 @@ task depth and native graph distance differ: $D=4$ evidence is more distributed,
 saturates by $H=2$.  A larger held-out cohort, iterative-answer state, and stricter active-token
 budgets are required before claiming deep natural traversal.
 
+The cross-dataset ladder reuses those 18/24 held-out identities across five deterministic
+granularities; rows are paired controls, not 210 new independent examples.  Zero overlap isolates
+topology but does not test boundary averaging.  The 256-token contextual encoding with 16/32-token
+search nodes is the requested context control, yet it is only one encoding scale and one layer.
+The independent-edge product assumes stepwise exchangeability and can be exceeded by contractions,
+alternate native paths, or several oracle roots; it is a diagnostic decomposition, not a causal
+probability model.  Minimum $H$ averages only recovered examples and must be read beside complete
+recovery.  Counterfactual source fractions still assume whole-parent K/V materialization.
+
+The all-offset audit performs many post-hoc comparisons.  Its oracle ceiling explicitly uses the
+target to select a facet and is not executable.  Five projections expose score sensitivity but do
+not multiply the number of questions.  Width-one dominance may reflect entity tokens rather than
+compositional subquestions, and token Jaccard is only a lexical control rather than BM25 or a
+trained sparse retriever.  The bounded union has no oracle channel, but its within-facet
+normalization and Top-1 nomination are one simple policy, not a learned-selector benchmark.  Its
+failure closes unbounded facet aggregation, not the broader possibility of calibrated selection.
+
 \section{Conclusion}
 
 Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
@@ -2145,6 +2346,16 @@ activation, and routed-root recall remains weak.  The central thesis is therefor
 than declared solved: pretrained attention contains traversable local evidence geometry, but
 faithful deep closure still needs better entry routing, tighter successor geometry, or a dynamic
 reasoning state that preserves task order.
+
+The final granularity and query gates turn those broad options into two concrete interfaces.
+At fine 16-token search nodes, selected source falls to .063/.172 on MuSiQue/2Wiki, but preserved
+edge R@6 falls to .667/.400 and deeper search adds no recovery after $H=2$.  A multiscale
+contextual index should therefore retain coarse discovery state while pointing to fine payload
+identities.  At entry, an existing query span supplies an oracle Top-4 root in .878/.950 of runs,
+but a globally bounded max-union remains below the frozen router.  A learned or calibrated facet
+selector can now be tested against a high measured ceiling and a strong negative control.  These
+are separable from Paper~3's question of how many native K/V tokens to materialize after an
+identity has been selected.
 
 \appendix
 \section{Implementation Map}
@@ -2461,7 +2672,7 @@ tests cover native adjacency reduction, all three deterministic search strategie
 different-facet goals, a low-query-similarity bridge, minimum depth, first-path stopping,
 deduplication, cycles, finite/shared and unbounded budgets, cost accounting, and the absence of a
 task-label API.  All five synthetic graph controls pass.  The complete repository suite now
-passes 464 tests with the same one upstream deprecation warning.
+passes 472 tests with the same one upstream deprecation warning.
 
 The granularity gate adds 80 evidence-topology rows, 4,800 oracle-free discovery rows, 3,230
 five-seed facet--parent rows, 80 system profiles, and 15 passing chain-contraction controls.
@@ -2472,12 +2683,39 @@ canonical 256-token boundaries and asserts exact held-out $K=4,B=6,H=4$ oracle a
 recall of 1.000 before emitting artifacts.  The ignored token-hidden cache manifest pins all 16
 identities, 25,416 tokens, the Qwen revision, layer 27, absolute positions, and its content hash.
 
-The natural-graph gate adds eight focused adapter/metric tests for explicit MuSiQue dependencies,
+The natural-graph gate adds nine focused adapter/metric tests for explicit MuSiQue dependencies,
 2Wiki entity-ID paths, unordered comparisons, exact character offsets, root representation,
 preserved/contracted/unmappable transitions, deterministic identity splitting, and native rank/
 shortest-path behavior.  The full-dev audit records both licenses, archive hashes, split schemas,
 and unresolved 2Wiki mappings before model execution.  The feature manifest pins 84 identities,
 158,170 source tokens, the frozen Qwen revision, layer 27, and zero training or generation.
+
+The cross-dataset extension is implemented in
+\path{experiments/paper2_5_iterative_pra/run_natural_graph_depth.py:93--1568}.
+Lines 93--126 preserve 256-token contextual capture while assigning exact 16-token native Q/K
+halves to their own search parents.  Lines 336--609 build the depth--granularity, transition,
+strict/conditional path, independent-edge product, system-cost, topology, and sparse-frontier
+tables.  Lines 677--857 remap every annotation and construct exact dense adjacency without query
+or oracle labels.  Lines 1450--1539 assert the canonical 2Wiki curve before writing artifacts.
+The final run contains 420 mapping rows, 620 transition rows, 31,500 oracle-root searches, 87,000
+node/hop rows, and 420 system profiles across five granularities.
+
+Reusable post-hoc calculations live in
+\path{src/pra_hf/cross_dataset_diagnostics.py:1--253}.  Lines 49--92 count evidence/source tokens
+without overlap; 95--163 enumerate annotation paths and stride-one multiscale facets; 170--232
+compute target-group semantic and lexical ranks; and 236--256 enforce one deduplicated shared
+root budget.  None accepts an oracle label in its runtime candidate-selection signature.
+The all-offset runner is
+\path{experiments/paper2_5_iterative_pra/run_natural_multiscale_query_audit.py:1--670}.
+Lines 98--124 assign ordered root/intermediate/terminal roles, 142--318 aggregate held-out ceilings
+and validation-only gate decisions, and 342--644 construct scores, post-hoc ranks, distractor
+controls, and the bounded executable union.  It emits 1,160 target-rank, 4,615 false-parent,
+2,395 scale-score, and 1,680 practical-router rows.  The 1.86-MB score cache is ignored but pinned
+by SHA-256 in the tracked result JSON.
+Seven additional diagnostics tests cover union-aware evidence density, deterministic annotation
+paths, independent-edge products, all valid stride-one offsets, decoded facet provenance,
+semantic/lexical group ranks, terminal roles, deduplicated shared budgets, and the absence of an
+oracle argument from executable multiscale selection.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

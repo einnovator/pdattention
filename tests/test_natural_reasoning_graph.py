@@ -8,6 +8,8 @@ from pra_hf.natural_reasoning_graph import (
     stable_partition,
 )
 from experiments.paper2_5_iterative_pra.run_natural_graph_depth import (
+    _preserved_path_survival,
+    _strict_path_survival,
     _shortest_native_path,
     _transition_rank,
 )
@@ -171,3 +173,12 @@ def test_native_transition_metrics_use_frozen_scores_only():
     assert _transition_rank(scores, (0,), (2,)) == 2
     assert _shortest_native_path(scores, (0,), (2,), k=1) == 2
     assert _shortest_native_path(scores, (0,), (3,), k=1) == 3
+
+
+def test_collapsed_transition_is_not_a_strict_path_success():
+    rows = [
+        {"example_id": "a", "mapping_status": "preserved", "recovered_at_4": 1},
+        {"example_id": "b", "mapping_status": "collapsed", "recovered_at_4": 0},
+    ]
+    assert _strict_path_survival(rows, 4) == 0.5
+    assert _preserved_path_survival(rows, 4) == 1.0

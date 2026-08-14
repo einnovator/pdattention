@@ -162,13 +162,18 @@ MuSiQue/2Wiki annotated natural-graph gate:
 python ../../../experiments/paper2_5_iterative_pra/audit_natural_graph_datasets.py
 python ../../../experiments/paper2_5_iterative_pra/precompute_natural_graph_features.py --device cuda
 python ../../../experiments/paper2_5_iterative_pra/run_natural_graph_depth.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_natural_multiscale_query_audit.py --device cuda
 ```
 
 The audit freezes 36 MuSiQue and 48 2Wiki identities after checking official
 schemas and mapping semantics. The ignored 1.32 GB cache contains one frozen
 layer-27 source/query capture per example; its tracked manifest pins the hash.
-The runner keeps 128-token parents primary with 64/256 controls, scans the
-oracle-root K/H/B surface, and runs bounded routed roots only because both
-oracle gates pass. Raw mappings, transitions, hop survival, systems metrics,
-facet diagnostics, routed rows, plots, and bootstrap summaries are under
+The graph runner preserves the frozen 128-token operating point while sweeping
+16/32/64/128/256-token search parents under one 256-token contextual encoder.
+It scans the oracle-root K/H/B surface and asserts exact reproduction of the
+canonical 2Wiki transition curve. The query audit then scores every valid
+stride-one question span at scales 1/2/4/8/16 plus global, records post-hoc
+root/terminal ceilings, and evaluates one globally bounded union. Raw mappings,
+transitions, hop survival, systems metrics, facet diagnostics, routed rows,
+plots, and bootstrap summaries are under
 `../shared/results/paper2_5_iterative_pra/natural_graph_depth/`.

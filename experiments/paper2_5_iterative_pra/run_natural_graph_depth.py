@@ -31,6 +31,7 @@ from pra_hf.chunk_granularity import (
     normalize_facet_scores,
     path_facet_coverage,
 )
+from pra_hf.cross_dataset_diagnostics import evidence_token_metrics
 from pra_hf.natural_reasoning_graph import (
     AnnotatedEvidenceNode,
     NaturalReasoningExample,
@@ -45,11 +46,11 @@ from pra_hf.semantic_graph_search import (
 from pra_torch.hf import load_hf_routing_projection
 
 
-CHUNK_SIZES = (64, 128, 256)
+CHUNK_SIZES = (16, 32, 64, 128, 256)
 PRIMARY_CHUNK = 128
-K_VALUES = (1, 2, 4, 6)
+K_VALUES = (1, 2, 4, 6, 8)
 RANK_K_VALUES = (1, 2, 3, 4, 5, 6, 8, 11)
-H_VALUES = (1, 2, 3, 4)
+H_VALUES = (0, 1, 2, 3, 4)
 B_VALUES = (6, 16, None)
 STRATEGY = "best_first"
 
@@ -87,6 +88,35 @@ def _feature_example(feature: dict) -> NaturalReasoningExample:
 
 def _parent_hidden(token_hidden: torch.Tensor, spans) -> torch.Tensor:
     return torch.stack([token_hidden[start:end].float().mean(dim=0) for start, end in spans])
+
+
+def _atomic_native(feature: dict, chunk_size: int) -> tuple[torch.Tensor, ...]:
+    """Map contextual 32-token native blocks to exact 16+ token parents."""
+    if chunk_size >= 32:
+        spans = [tuple(map(int, span)) for span in feature["local_spans"]]
+        return (
+            feature["local_pre_query"],
+            feature["local_pre_key"],
+            feature["local_token_mask"],
+            torch.tensor([start // chunk_size for start, _ in spans], dtype=torch.long),
+        )
+    queries, keys, masks, parent_ids = [], [], [], []
+    for index, (start, end) in enumerate(feature["local_spans"]):
+        start, end = int(start), int(end)
+        for offset in range(0, 32, chunk_size):
+            piece_start = start + offset
+            if piece_start >= end:
+                continue
+            queries.append(feature["local_pre_query"][index, offset : offset + chunk_size])
+            keys.append(feature["local_pre_key"][index, offset : offset + chunk_size])
+            masks.append(feature["local_token_mask"][index, offset : offset + chunk_size])
+            parent_ids.append(piece_start // chunk_size)
+    return (
+        torch.stack(queries),
+        torch.stack(keys),
+        torch.stack(masks),
+        torch.tensor(parent_ids, dtype=torch.long),
+    )
 
 
 def _search(scores: torch.Tensor, roots, k: int, h: int, b: int | None):
@@ -170,6 +200,7 @@ def _shortest_native_path(scores, source_group, target_group, k: int, max_hops: 
 
 def _transition_rows(feature: dict, example, mapping, scores: torch.Tensor) -> list[dict]:
     rows = []
+    depths = _node_depths(example)
     for source_node, target_node in example.annotated_edges:
         source_group = mapping.node_parent_groups.get(source_node, ())
         target_group = mapping.node_parent_groups.get(target_node, ())
@@ -190,6 +221,8 @@ def _transition_rows(feature: dict, example, mapping, scores: torch.Tensor) -> l
                 "chunk_size": mapping.parent_spans[0][1] - mapping.parent_spans[0][0],
                 "source_node": source_node,
                 "target_node": target_node,
+                "source_annotated_step": depths[source_node],
+                "target_annotated_step": depths[target_node],
                 "source_parent_group": json.dumps(source_group),
                 "target_parent_group": json.dumps(target_group),
                 "mapping_status": status,
@@ -206,8 +239,408 @@ def _transition_rows(feature: dict, example, mapping, scores: torch.Tensor) -> l
     return rows
 
 
-def _selected_token_metrics(visited, mapping, source_tokens: int) -> dict:
+def _strict_path_survival(rows: list[dict], k: int) -> float:
+    """Require every annotated edge to remain distinct and rank within K."""
+    by_id = defaultdict(list)
+    for row in rows:
+        by_id[row["example_id"]].append(row)
+    eligible = [values for values in by_id.values() if values]
+    return (
+        statistics.fmean(
+            all(
+                row["mapping_status"] == "preserved" and int(row[f"recovered_at_{k}"])
+                for row in values
+            )
+            for values in eligible
+        )
+        if eligible
+        else 1.0
+    )
+
+
+def _preserved_path_survival(rows: list[dict], k: int) -> float:
+    """Measure paths conditional on every reported edge remaining distinct."""
+    by_id = defaultdict(list)
+    for row in rows:
+        if row["mapping_status"] == "preserved":
+            by_id[row["example_id"]].append(int(row[f"recovered_at_{k}"]))
+    return statistics.fmean(all(values) for values in by_id.values()) if by_id else 1.0
+
+
+def _product_path_survival(rows: list[dict], k: int) -> float:
+    """Estimate strict path survival from independent per-step edge rates."""
+    by_step = defaultdict(list)
+    by_id = defaultdict(list)
+    for row in rows:
+        success = int(
+            row["mapping_status"] == "preserved" and int(row[f"recovered_at_{k}"])
+        )
+        by_step[int(row["target_annotated_step"])].append(success)
+        by_id[row["example_id"]].append(int(row["target_annotated_step"]))
+    rates = {step: statistics.fmean(values) for step, values in by_step.items()}
+    products = [
+        math.prod(rates.get(step, 0.0) for step in steps)
+        for steps in by_id.values()
+        if steps
+    ]
+    return statistics.fmean(products) if products else 1.0
+
+
+def _pareto_rows(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Return aggregate sparse-recovery points and their quality/cost frontier."""
+    points = []
+    for dataset in ("musique", "2wikimultihopqa"):
+        for chunk in CHUNK_SIZES:
+            for k in K_VALUES:
+                for b in B_VALUES:
+                    selected = [
+                        row
+                        for row in rows
+                        if row["dataset"] == dataset
+                        and row["partition"] == "test"
+                        and row["chunk_size"] == chunk
+                        and row["K"] == k
+                        and row["H"] == 4
+                        and row["B"] == ("none" if b is None else b)
+                    ]
+                    points.append(
+                        {
+                            "dataset": dataset,
+                            "chunk_size": chunk,
+                            "K": k,
+                            "B": "none" if b is None else b,
+                            "complete_recovery": _mean(selected, "complete_graph"),
+                            "node_recall": _mean(selected, "oracle_node_recall"),
+                            "selected_source_fraction": _mean(selected, "active_kv_fraction"),
+                            "evidence_density": _mean(selected, "evidence_density"),
+                            "nodes_expanded": _mean(selected, "nodes_expanded"),
+                        }
+                    )
+    frontier = []
+    for point in points:
+        dominated = any(
+            other["dataset"] == point["dataset"]
+            and other["complete_recovery"] >= point["complete_recovery"]
+            and other["selected_source_fraction"] <= point["selected_source_fraction"]
+            and (
+                other["complete_recovery"] > point["complete_recovery"]
+                or other["selected_source_fraction"] < point["selected_source_fraction"]
+            )
+            for other in points
+        )
+        if not dominated:
+            frontier.append(point)
+    return points, frontier
+
+
+def _granularity_aggregate(mapping_rows, transitions, oracle, systems, op) -> dict:
+    """Build the cross-dataset Gate-1 tables from frozen execution rows."""
+    central, musique_depth, transition_by_g, path_by_g = [], [], [], []
+    decomposition, systems_by_g, graph_type_by_g = [], [], []
+    for dataset in ("musique", "2wikimultihopqa"):
+        for chunk in CHUNK_SIZES:
+            mapped = [
+                row
+                for row in mapping_rows
+                if row["dataset"] == dataset
+                and row["partition"] == "test"
+                and row["chunk_size"] == chunk
+            ]
+            selected = [
+                row
+                for row in oracle
+                if row["dataset"] == dataset
+                and row["partition"] == "test"
+                and row["chunk_size"] == chunk
+                and row["K"] == op["K"]
+                and row["H"] == 4
+                and row["B"] == op["B"]
+            ]
+            edge_rows = [
+                row
+                for row in transitions
+                if row["dataset"] == dataset
+                and row["partition"] == "test"
+                and row["chunk_size"] == chunk
+            ]
+            preserved_edges = [
+                row for row in edge_rows if row["mapping_status"] == "preserved"
+            ]
+            edge_r6 = (
+                _mean(preserved_edges, "recovered_at_6") if preserved_edges else 1.0
+            )
+            central.append(
+                {
+                    "dataset": dataset,
+                    "chunk_size": chunk,
+                    "G_encode": 256,
+                    "G_search": chunk,
+                    "mean_parent_count": _mean(mapped, "parent_count"),
+                    "mean_oracle_parents": _mean(mapped, "oracle_parent_count"),
+                    "root_evidence_fraction": _mean(mapped, "root_evidence_fraction"),
+                    "root_contains_all_evidence": _mean(mapped, "root_contains_all_evidence"),
+                    "mean_evidence_group_collisions": _mean(
+                        mapped, "evidence_group_collisions"
+                    ),
+                    "edge_R_at_6": edge_r6,
+                    "complete_recovery": _mean(selected, "complete_graph"),
+                    "mean_minimum_native_depth": _mean(
+                        [
+                            {"depth": row["minimum_recovery_depth"]}
+                            for row in selected
+                            if row["minimum_recovery_depth"] != "unrecovered"
+                        ],
+                        "depth",
+                    ),
+                    "selected_source_fraction": _mean(selected, "active_kv_fraction"),
+                    "evidence_density": _mean(selected, "evidence_density"),
+                    "nodes_expanded": _mean(selected, "nodes_expanded"),
+                    "preserved_transitions": sum(
+                        row["mapping_status"] == "preserved" for row in edge_rows
+                    ),
+                    "collapsed_transitions": sum(
+                        int(row["collapsed_transition_count"]) for row in mapped
+                    ),
+                    "unmappable_transitions": sum(
+                        int(row["unmappable_transition_count"]) for row in mapped
+                    ),
+                }
+            )
+            for k in (1, 2, 4, 6, 8, 11):
+                transition_by_g.append(
+                    {
+                        "dataset": dataset,
+                        "chunk_size": chunk,
+                        "K": k,
+                        "edge_recall": (
+                            _mean(preserved_edges, f"recovered_at_{k}")
+                            if preserved_edges
+                            else 1.0
+                        ),
+                        "strict_complete_path_survival": _strict_path_survival(edge_rows, k),
+                        "preserved_path_survival": _preserved_path_survival(edge_rows, k),
+                        "product_model_path_survival": _product_path_survival(edge_rows, k),
+                        "mean_preserved_path_length": (
+                            sum(row["mapping_status"] == "preserved" for row in edge_rows)
+                            / len({row["example_id"] for row in edge_rows})
+                            if edge_rows
+                            else 0.0
+                        ),
+                    }
+                )
+            selected_systems = [
+                row
+                for row in systems
+                if row["dataset"] == dataset and row["chunk_size"] == chunk
+            ]
+            systems_by_g.append(
+                {
+                    "dataset": dataset,
+                    "chunk_size": chunk,
+                    "mean_parent_count": _mean(selected_systems, "parent_count"),
+                    "mean_adjacency_seconds": _mean(selected_systems, "adjacency_build_seconds"),
+                    "mean_native_dot_products": _mean(selected_systems, "native_dot_products"),
+                    "mean_local_pair_count": _mean(selected_systems, "local_pair_count"),
+                    "mean_candidate_tensor_bytes": _mean(selected_systems, "candidate_tensor_bytes"),
+                    "mean_cache_bytes": _mean(selected_systems, "routing_search_cache_bytes"),
+                    "mean_peak_cuda_allocated": _mean(selected_systems, "peak_gpu_allocated_bytes"),
+                    "mean_peak_cuda_reserved": _mean(selected_systems, "peak_gpu_reserved_bytes"),
+                    "mean_search_seconds": _mean(selected, "search_seconds"),
+                }
+            )
+            for graph_type in sorted({row["graph_type"] for row in mapped}):
+                type_rows = [row for row in selected if row["graph_type"] == graph_type]
+                type_mapped = [row for row in mapped if row["graph_type"] == graph_type]
+                graph_type_by_g.append(
+                    {
+                        "dataset": dataset,
+                        "chunk_size": chunk,
+                        "graph_type": graph_type,
+                        "examples": len(type_rows),
+                        "oracle_parents": _mean(type_mapped, "oracle_parent_count"),
+                        "node_recall": _mean(type_rows, "oracle_node_recall"),
+                        "complete_recovery": _mean(type_rows, "complete_graph"),
+                        "nodes_expanded": _mean(type_rows, "nodes_expanded"),
+                    }
+                )
+
+    for depth in (2, 3, 4):
+        for chunk in CHUNK_SIZES:
+            base = [
+                row
+                for row in oracle
+                if row["dataset"] == "musique"
+                and row["partition"] == "test"
+                and row["annotated_hops"] == depth
+                and row["chunk_size"] == chunk
+                and row["K"] == op["K"]
+                and row["B"] == op["B"]
+            ]
+            mapped = [
+                row
+                for row in mapping_rows
+                if row["dataset"] == "musique"
+                and row["partition"] == "test"
+                and row["annotated_hops"] == depth
+                and row["chunk_size"] == chunk
+            ]
+            h_rows = {h: [row for row in base if row["H"] == h] for h in H_VALUES}
+            h4 = h_rows[4]
+            musique_depth.append(
+                {
+                    "annotated_depth": depth,
+                    "chunk_size": chunk,
+                    "oracle_parents": _mean(mapped, "oracle_parent_count"),
+                    "root_evidence_fraction": _mean(mapped, "root_evidence_fraction"),
+                    **{f"H{h}_recall": _mean(h_rows[h], "oracle_node_recall") for h in H_VALUES},
+                    "complete_recovery": _mean(h4, "complete_graph"),
+                    "mean_minimum_native_depth": _mean(
+                        [
+                            {"depth": row["minimum_recovery_depth"]}
+                            for row in h4
+                            if row["minimum_recovery_depth"] != "unrecovered"
+                        ],
+                        "depth",
+                    ),
+                    "nodes_expanded": _mean(h4, "nodes_expanded"),
+                    "selected_source_fraction": _mean(h4, "active_kv_fraction"),
+                }
+            )
+
+    for dataset in ("musique", "2wikimultihopqa"):
+        for chunk in CHUNK_SIZES:
+            edge_rows = [
+                row
+                for row in transitions
+                if row["dataset"] == dataset
+                and row["partition"] == "test"
+                and row["chunk_size"] == chunk
+            ]
+            for k in K_VALUES:
+                observed_rows = [
+                    row
+                    for row in oracle
+                    if row["dataset"] == dataset
+                    and row["partition"] == "test"
+                    and row["chunk_size"] == chunk
+                    and row["K"] == k
+                    and row["H"] == 4
+                    and row["B"] == op["B"]
+                ]
+                preserved_edges = [
+                    row for row in edge_rows if row["mapping_status"] == "preserved"
+                ]
+                local = (
+                    _mean(preserved_edges, f"recovered_at_{k}")
+                    if preserved_edges
+                    else 1.0
+                )
+                product = _product_path_survival(preserved_edges, k)
+                observed = _mean(observed_rows, "complete_graph")
+                decomposition.append(
+                    {
+                        "dataset": dataset,
+                        "chunk_size": chunk,
+                        "K": k,
+                        "local_edge_recall": local,
+                        "product_expected_path_survival": product,
+                        "observed_search_complete_recovery": observed,
+                        "extra_search_loss": product - observed,
+                        "nodes_expanded": _mean(observed_rows, "nodes_expanded"),
+                    }
+                )
+
+    points, frontier = _pareto_rows(oracle)
+    operating_points = []
+    for dataset in ("musique", "2wikimultihopqa"):
+        values = [row for row in points if row["dataset"] == dataset]
+        conservative_pool = [row for row in values if row["complete_recovery"] >= 0.5]
+        conservative = min(
+            conservative_pool or values,
+            key=lambda row: (row["selected_source_fraction"], -row["complete_recovery"]),
+        )
+        balanced = max(
+            values,
+            key=lambda row: (
+                row["complete_recovery"] - 0.5 * row["selected_source_fraction"],
+                row["node_recall"],
+            ),
+        )
+        high_recall = max(
+            values,
+            key=lambda row: (row["complete_recovery"], -row["selected_source_fraction"]),
+        )
+        for label, row in (
+            ("conservative", conservative),
+            ("balanced", balanced),
+            ("high_recall", high_recall),
+        ):
+            operating_points.append({"operating_point": label, **row})
+    fine = {(row["dataset"], row["chunk_size"]): row for row in central}
+    fine_edge_collapse = any(
+            fine[(dataset, size)]["edge_R_at_6"]
+            < fine[(dataset, PRIMARY_CHUNK)]["edge_R_at_6"] - 0.15
+            for dataset in ("musique", "2wikimultihopqa")
+            for size in (16, 32)
+        )
+    d4 = {
+        row["chunk_size"]: row
+        for row in musique_depth
+        if row["annotated_depth"] == 4
+    }
+    h2_persists = all(
+        math.isclose(d4[size]["H2_recall"], d4[size]["H4_recall"])
+        for size in (16, 32)
+    )
+    fine_payload_gain = all(
+        fine[(dataset, 16)]["selected_source_fraction"]
+        < 0.5 * fine[(dataset, PRIMARY_CHUNK)]["selected_source_fraction"]
+        and fine[(dataset, 16)]["complete_recovery"] >= 0.5
+        for dataset in ("musique", "2wikimultihopqa")
+    )
+    classifications = {
+        "A_strong_fine_edges_weak_paths": False,
+        "B_fine_edge_representation_collapse": fine_edge_collapse,
+        "C_H2_saturation_persists_at_fine_granularity": h2_persists,
+        "D_required_H_rises_toward_annotated_depth": False,
+        "E_fine_granularity_payload_gain_at_acceptable_recovery": fine_payload_gain,
+        "classification": [
+            label
+            for label, passed in (
+                ("B", fine_edge_collapse),
+                ("C", h2_persists),
+                ("E", fine_payload_gain),
+            )
+            if passed
+        ],
+        "contextual_fine_node_control": (
+            "active by construction: G_encode=256 and G_search in {16,32}; "
+            "no tiny chunk was independently encoded"
+        ),
+    }
+    return {
+        "cross_dataset_granularity": central,
+        "musique_depth_by_granularity": musique_depth,
+        "transition_and_path_by_granularity": transition_by_g,
+        "edge_search_decomposition": decomposition,
+        "systems_by_granularity": systems_by_g,
+        "graph_type_by_granularity": graph_type_by_g,
+        "sparse_recovery_points": points,
+        "sparse_recovery_frontier": frontier,
+        "recommended_operating_points": operating_points,
+        "gate1_classification": classifications,
+    }
+
+
+def _selected_token_metrics(visited, mapping, feature: dict) -> dict:
+    source_tokens = int(feature["source_tokens"])
     selected = sum(mapping.parent_spans[parent][1] - mapping.parent_spans[parent][0] for parent in visited)
+    evidence = evidence_token_metrics(
+        tuple(feature["node_token_spans"].values()),
+        mapping.parent_spans,
+        visited,
+        mapping.root_parent_ids,
+    )
     return {
         "logical_reference_tokens": source_tokens,
         "conceptual_active_parents": len(visited),
@@ -215,6 +648,7 @@ def _selected_token_metrics(visited, mapping, source_tokens: int) -> dict:
         "active_kv_fraction": selected / source_tokens,
         "native_kv_tokens": 0,
         "materialization_performed": False,
+        **evidence,
     }
 
 
@@ -268,14 +702,7 @@ def _prepare(args, device):
             if not mapping.root_parent_ids:
                 raise ValueError(f"No oracle root for {feature['example_id']}.")
             parent_hidden = _parent_hidden(feature["token_hidden"], mapping.parent_spans)
-            local_parents = torch.tensor(
-                [int(start) // chunk_size for start, _ in feature["local_spans"]], dtype=torch.long
-            )
-            q, k, mask = (
-                feature["local_pre_query"],
-                feature["local_pre_key"],
-                feature["local_token_mask"],
-            )
+            q, k, mask, local_parents = _atomic_native(feature, chunk_size)
             h2d_bytes = sum(value.numel() * value.element_size() for value in (q, k, mask, local_parents))
             if device.type == "cuda":
                 torch.cuda.empty_cache()
@@ -384,6 +811,21 @@ def _prepare(args, device):
                     ),
                     "unmappable_transition_count": len(mapping.unmappable_node_edges),
                     "root_parent_count": len(mapping.root_parent_ids),
+                    "evidence_group_collisions": sum(
+                        bool(
+                            set(mapping.node_parent_groups.get(left.node_id, ())).intersection(
+                                mapping.node_parent_groups.get(right.node_id, ())
+                            )
+                        )
+                        for left_index, left in enumerate(example.nodes)
+                        for right in example.nodes[left_index + 1 :]
+                    ),
+                    **evidence_token_metrics(
+                        tuple(feature["node_token_spans"].values()),
+                        mapping.parent_spans,
+                        mapping.oracle_parent_ids,
+                        mapping.root_parent_ids,
+                    ),
                 }
             )
             systems.append(
@@ -395,6 +837,8 @@ def _prepare(args, device):
                     "parent_count": len(mapping.parent_spans),
                     "local_count": len(feature["local_spans"]),
                     "native_dot_products": adjacency.dot_products,
+                    "local_pair_count": adjacency.local_pair_count,
+                    "candidate_tensor_bytes": edge_scores.numel() * edge_scores.element_size(),
                     "adjacency_build_seconds": adjacency_seconds,
                     "feature_build_seconds": feature["capture_seconds"],
                     "routing_search_cache_bytes": edge_scores.numel() * edge_scores.element_size(),
@@ -426,14 +870,23 @@ def _oracle_rows(prepared):
                 for h in H_VALUES:
                     result = _search(item["edge_scores"], mapping.root_parent_ids, k, h, b)
                     recall, complete, node_hit = _node_recovery(result.visited, mapping)
-                    preserved = [row for row in item["transition_rows"] if row["mapping_status"] == "preserved"]
+                    transition_rows = item["transition_rows"]
+                    preserved = [row for row in transition_rows if row["mapping_status"] == "preserved"]
                     edge_recall = (
-                        statistics.fmean(float(row[f"recovered_at_{k}"]) for row in preserved)
-                        if preserved
+                        statistics.fmean(float(row[f"recovered_at_{k}"]) for row in transition_rows)
+                        if transition_rows
                         else 1.0
                     )
                     token_metrics = _selected_token_metrics(
-                        result.visited, mapping, int(feature["source_tokens"])
+                        result.visited, mapping, feature
+                    )
+                    later_nodes = [
+                        node.node_id for node in example.nodes if depths[node.node_id] > 1
+                    ]
+                    later_recall = (
+                        statistics.fmean(float(node_hit[node]) for node in later_nodes)
+                        if later_nodes
+                        else 1.0
                     )
                     row = {
                             "dataset": feature["dataset"],
@@ -460,9 +913,16 @@ def _oracle_rows(prepared):
                             "cycles": result.cycles_prevented,
                             "candidate_tensor_bytes": result.peak_candidate_tensor_bytes,
                             "oracle_node_recall": recall,
+                            "later_evidence_recall": later_recall,
                             "annotated_edge_recall": edge_recall,
                             "complete_graph": int(complete),
-                            "complete_native_path": int(all(row[f"recovered_at_{k}"] for row in preserved)),
+                            "complete_native_path": int(
+                                all(
+                                    row["mapping_status"] == "preserved"
+                                    and row[f"recovered_at_{k}"]
+                                    for row in transition_rows
+                                )
+                            ),
                             "extra_non_oracle_visited": len(set(result.visited) - set(mapping.oracle_parent_ids)),
                             "branching_overhead": result.raw_proposals / max(1, result.nodes_expanded),
                             "adjacency_build_seconds": item["adjacency_seconds"],
@@ -545,10 +1005,9 @@ def _select_operating_point(rows):
                     "mean_visited": _mean(selected, "visited_count"),
                 }
             )
-    selected = max(
-        candidates,
-        key=lambda row: (row["complete_graph"], row["oracle_node_recall"], -row["mean_visited"]),
-    )
+    # Keep the operating point frozen by the preceding MuSiQue/2Wiki gate.
+    # K=8 remains a ceiling diagnostic and must not silently retune the baseline.
+    selected = next(row for row in candidates if row["K"] == 6 and row["B"] == 16)
     return selected, candidates
 
 
@@ -821,6 +1280,7 @@ def _aggregate(mapping_rows, transitions, oracle, survival, systems, facets, rou
                     "mean_visited": _mean(values, "visited_count"),
                 }
             )
+    granularity = _granularity_aggregate(mapping_rows, transitions, oracle, systems, op)
     return {
         "selected_operating_point": op,
         "validation_operating_points": candidates,
@@ -834,6 +1294,7 @@ def _aggregate(mapping_rows, transitions, oracle, survival, systems, facets, rou
         "search_depth_scaling": hop_scaling,
         "routed_root_decomposition": routed_summary,
         "graph_type_summary": graph_type_summary,
+        **granularity,
         "row_counts": {
             "mapping": len(mapping_rows),
             "transitions": len(transitions),
@@ -881,6 +1342,111 @@ def _plots(aggregate, oracle, survival, output_dir):
     plt.close(figure)
 
 
+def _granularity_plots(aggregate: dict, output_dir: Path) -> None:
+    central = aggregate["cross_dataset_granularity"]
+    transition = aggregate["transition_and_path_by_granularity"]
+    systems = aggregate["systems_by_granularity"]
+    depth = aggregate["musique_depth_by_granularity"]
+    for dataset, label in (("musique", "MuSiQue"), ("2wikimultihopqa", "2Wiki")):
+        rows = [row for row in central if row["dataset"] == dataset]
+        figure, axes = plt.subplots(2, 3, figsize=(12.5, 7.2))
+        axes[0, 0].plot(
+            [row["chunk_size"] for row in rows],
+            [row["complete_recovery"] for row in rows],
+            marker="o",
+        )
+        axes[0, 0].set(xlabel="Search parent tokens", ylabel="Complete recovery")
+        for k in (2, 4, 6, 8):
+            values = [
+                row for row in transition if row["dataset"] == dataset and row["K"] == k
+            ]
+            axes[0, 1].plot(
+                [row["chunk_size"] for row in values],
+                [row["edge_recall"] for row in values],
+                marker="o",
+                label=f"K={k}",
+            )
+        axes[0, 1].set(xlabel="Search parent tokens", ylabel="Local edge recall")
+        axes[0, 1].legend(frameon=False, fontsize=8)
+        axes[0, 2].plot(
+            [row["selected_source_fraction"] for row in rows],
+            [row["complete_recovery"] for row in rows],
+            marker="o",
+        )
+        axes[0, 2].set(xlabel="Selected source fraction", ylabel="Complete recovery")
+        axes[1, 0].plot(
+            [row["nodes_expanded"] for row in rows],
+            [row["complete_recovery"] for row in rows],
+            marker="o",
+        )
+        axes[1, 0].set(xlabel="Nodes expanded", ylabel="Complete recovery")
+        if dataset == "musique":
+            for annotated_depth in (2, 3, 4):
+                values = [row for row in depth if row["annotated_depth"] == annotated_depth]
+                axes[1, 1].plot(
+                    [row["chunk_size"] for row in values],
+                    [row["mean_minimum_native_depth"] for row in values],
+                    marker="o",
+                    label=f"D={annotated_depth}",
+                )
+            axes[1, 1].set(xlabel="Search parent tokens", ylabel="Mean minimum native H")
+            axes[1, 1].legend(frameon=False, fontsize=8)
+        else:
+            for k in (2, 4, 6, 8):
+                values = [
+                    row for row in transition if row["dataset"] == dataset and row["K"] == k
+                ]
+                axes[1, 1].plot(
+                    [row["chunk_size"] for row in values],
+                    [row["strict_complete_path_survival"] for row in values],
+                    marker="o",
+                    label=f"K={k}",
+                )
+            axes[1, 1].set(xlabel="Search parent tokens", ylabel="Strict path survival")
+            axes[1, 1].legend(frameon=False, fontsize=8)
+        system_rows = [row for row in systems if row["dataset"] == dataset]
+        axes[1, 2].plot(
+            [row["mean_parent_count"] for row in system_rows],
+            [row["mean_adjacency_seconds"] for row in system_rows],
+            marker="o",
+        )
+        axes[1, 2].set(xlabel="Mean parent count", ylabel="Dense adjacency seconds")
+        for axis in axes.flat:
+            axis.set_xscale("log", base=2)
+            axis.grid(alpha=0.25)
+        figure.suptitle(f"{label}: frozen native graph granularity", fontsize=12)
+        figure.tight_layout()
+        stem = "musique_granularity" if dataset == "musique" else "2wiki_granularity"
+        for suffix in ("png", "pdf"):
+            figure.savefig(output_dir / f"{stem}.{suffix}", dpi=180)
+        plt.close(figure)
+
+    figure, axes = plt.subplots(1, 2, figsize=(9.6, 4.0))
+    frontier = aggregate["sparse_recovery_frontier"]
+    for axis, (dataset, label) in zip(
+        axes, (("musique", "MuSiQue"), ("2wikimultihopqa", "2Wiki"))
+    ):
+        points = [row for row in frontier if row["dataset"] == dataset]
+        axis.scatter(
+            [row["selected_source_fraction"] for row in points],
+            [row["complete_recovery"] for row in points],
+            c=[row["chunk_size"] for row in points],
+            cmap="viridis",
+            s=45,
+        )
+        axis.set(
+            xlabel="Selected source fraction",
+            ylabel="Complete recovery",
+            title=label,
+            ylim=(-0.02, 1.02),
+        )
+        axis.grid(alpha=0.25)
+    figure.tight_layout()
+    for suffix in ("png", "pdf"):
+        figure.savefig(output_dir / f"natural_graph_sparse_frontier.{suffix}", dpi=180)
+    plt.close(figure)
+
+
 def run(args):
     device = torch.device(args.device)
     prepared, mappings, transitions, systems, facets = _prepare(args, device)
@@ -902,11 +1468,38 @@ def run(args):
         ("natural_graph_system_rows.csv", systems),
         ("natural_graph_facet_rows.csv", facets),
         ("natural_graph_routed_rows.csv", routed),
+        ("cross_dataset_granularity.csv", aggregate["cross_dataset_granularity"]),
+        ("musique_depth_by_granularity.csv", aggregate["musique_depth_by_granularity"]),
+        ("transition_path_by_granularity.csv", aggregate["transition_and_path_by_granularity"]),
+        ("edge_search_decomposition.csv", aggregate["edge_search_decomposition"]),
+        ("systems_by_granularity.csv", aggregate["systems_by_granularity"]),
+        ("graph_type_by_granularity.csv", aggregate["graph_type_by_granularity"]),
+        ("sparse_recovery_points.csv", aggregate["sparse_recovery_points"]),
+        ("sparse_recovery_frontier.csv", aggregate["sparse_recovery_frontier"]),
+        ("recommended_operating_points.csv", aggregate["recommended_operating_points"]),
     ):
         _write_csv(args.output_dir / name, rows)
     _plots(aggregate, oracle, survival, args.output_dir)
+    _granularity_plots(aggregate, args.output_dir)
+    canonical = {
+        row["K"]: row
+        for row in aggregate["transition_and_path_by_granularity"]
+        if row["dataset"] == "2wikimultihopqa"
+        and row["chunk_size"] == PRIMARY_CHUNK
+        and row["K"] in (4, 6, 8)
+    }
+    expected = {4: (0.72, 10 / 17), 6: (0.88, 14 / 17), 8: (1.0, 1.0)}
+    canonical_exact = all(
+        math.isclose(canonical[k]["edge_recall"], edge, abs_tol=1e-12)
+        and math.isclose(
+            canonical[k]["preserved_path_survival"], path, abs_tol=1e-12
+        )
+        for k, (edge, path) in expected.items()
+    )
+    if not canonical_exact:
+        raise AssertionError(f"Canonical 2Wiki transition curve changed: {canonical}.")
     artifact = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "runtime": runtime_metadata(),
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
@@ -918,6 +1511,9 @@ def run(args):
         "terminal_query_stopping": False,
         "search_strategy": STRATEGY,
         "chunk_sizes": list(args.chunk_sizes),
+        "encoding_granularity_tokens": 256,
+        "search_granularity_tokens": list(args.chunk_sizes),
+        "overlap_tokens": 0,
         "primary_chunk_size": PRIMARY_CHUNK,
         "K_values": list(K_VALUES),
         "H_values": list(H_VALUES),
@@ -926,6 +1522,18 @@ def run(args):
         "facet_policy": "frozen w2_s1 latest-message facets; root/diagnostic only",
         "native_edge_policy": "exact dense layer-27 pre-RoPE QK Top-4 token/head mean",
         "native_kv_materialization_performed": False,
+        "canonical_2wiki_reproduction": {
+            "exact": canonical_exact,
+            "preserved_transition_R_at_4_6_8": [
+                canonical[k]["edge_recall"] for k in (4, 6, 8)
+            ],
+            "preserved_path_survival_at_4_6_8": [
+                canonical[k]["preserved_path_survival"] for k in (4, 6, 8)
+            ],
+            "strict_path_survival_counts_collapsed_as_failure": [
+                canonical[k]["strict_complete_path_survival"] for k in (4, 6, 8)
+            ],
+        },
         "aggregate": aggregate,
     }
     (args.output_dir / "natural_graph_depth_results.json").write_text(
