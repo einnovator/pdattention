@@ -36,8 +36,10 @@ Controlled positional analysis in companion Paper~1.5 motivates the empirical ru
 parents while returning exact post-RoPE K and native V. Oracle HotpotQA replay is depth dependent:
 the last 14 layers gain 3.641 nats per gold token, whereas all-layer replay loses 0.766.
 An end-to-end audit finds complete evidence coverage and exact cached K/V, ruling out a hidden
-oracle-path bug. The remaining gap combines source-versus-query contextual mismatch, Hotpot
-selected-parent attention dilution, and substantially larger all-layer residual divergence.
+oracle-path bug. Oracle replay nevertheless remains distinct from native context: co-materialized
+non-evidence tokens receive .310 of late-band Hotpot attention, source-only K/V differ from
+question-contextualized K/V, and harmful all-layer replay coincides with substantially greater
+residual divergence than late-band replay.
 PRA-conditional adapters preserve the ordinary no-memory path exactly and leave the measured
 WikiText-2 loss unchanged. On QASPER, decoded polarity improves from 25.0\% with routed frozen PRA
 to 62.5\% with oracle evidence and $72.5\pm5.6$\% with residual 16, separating evidence selection
@@ -119,20 +121,20 @@ PRA-conditional, and structurally absent when external memory is disabled.}
 \begin{table}[H]
 \centering
 \footnotesize
-\caption{Headline findings. Distributional, lexical, and behavioral measurements remain
-separate; no row implies success at every evaluation level.}
+\caption{What Paper~2 establishes. Each answer is tied to a distinct evaluation stage;
+success in one row does not imply success in the next.}
 \label{tab:headline}
-\begin{tabularx}{\linewidth}{L{0.24\linewidth}L{0.25\linewidth}Y}
+\begin{tabularx}{\linewidth}{L{0.35\linewidth}Y}
 \toprule
-Finding & Result & Why it matters \\
+Question & Answer \\
 \midrule
-Exact retrofit & Zero logit/hidden difference; identical greedy output & External memory leaves ordinary inference unchanged when disabled \\
-Semantic route, native payload & Hidden-state index; selected post-RoPE K/native V & Search geometry need not replace pretrained attention state \\
-Sparse discovery and activation & Any-evidence recall .831/.956 at 10/20\%; about 20\% requested parents become 6--7\% physical K/V & Logical selection and active memory are distinct budgets \\
-Depth-dependent causal use & Hotpot oracle $\Delta\log p$: +3.641 last 14; -.766 all 28; oracle audit finds exact coverage/KV & Sparse memory has a compatibility band; contextual and residual integration matter \\
-QASPER one-shot memory use & Polarity: 25.0\% routed frozen $\rightarrow$ 62.5\% oracle frozen $\rightarrow$ $72.5\pm5.6$\% residual 16 & Evidence selection and memory consumption are separately measurable bottlenecks; blind judges also favor residual adaptation \\
-Ordinary-path preservation & Conditional adapters: zero WikiText-2 loss change and exact PRA-off path & Memory specialization need not alter no-memory behavior \\
-Cross-family mechanism & Exact Qwen/SmolLM2/Gemma disabled paths; Gemma routed $\Delta\log p=+.135$ & The execution contract survives distinct decoder organizations \\
+Can PRA retrofit a pretrained HF decoder without altering its disabled path? & Yes: logits, hidden states, greedy output, and tested cache contracts have exact parity. \\
+Can compact semantic state select useful native K/V? & Yes, especially on QASPER; the learned router reaches any-evidence recall .831/.956 at 10/20\%. \\
+Does perfect annotated-evidence discovery reproduce native context? & No: exact oracle selection and exact cached K/V still leave a functional oracle gap. \\
+What remains between discovery and behavior? & Contextual representation, materialized support, depth-sensitive integration, decision formation, and decoding. \\
+Can light adaptation help? & Yes on QASPER: residual 16 improves likelihood, polarity, containment, EOS, and blind preference, but not universally. \\
+Does the mechanism transfer across families? & Execution, routing, and bounded functional probes are demonstrated on Qwen, SmolLM2, and Gemma with stated limits. \\
+What is the SDK default? & Frozen PRA plus the validated learned router; residual 16 is QASPER-specific and rank-32 LoRA remains research-only. \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -605,7 +607,259 @@ at 0.794/0.803/0.800 for 64/128/256 units. Ranking remains stable at a fixed fra
 physical materialization grows with that fraction. Sparse quality and active-K/V cost must
 therefore be reported together.
 
-\section{Causal Use Is Depth Dependent}
+\section{From Discovery to Behavior}
+\label{sec:evaluation-hierarchy}
+
+Routing recall is necessary, but it is only the first functional gate.  We organize the remaining
+evidence as one six-stage evaluation hierarchy:
+\begin{equation}
+\boxed{
+\text{Discovery}
+\rightarrow
+\text{Representation}
+\rightarrow
+\text{Materialization}
+\rightarrow
+\text{Integration}
+\rightarrow
+\text{Decision}
+\rightarrow
+\text{Behavior}.}
+\label{eq:evaluation-hierarchy}
+\end{equation}
+Discovery asks whether the right parent identities are found.  Representation asks what K/V those
+parents acquire when encoded outside the live question.  Materialization asks which exact states
+enter the bounded attention support; this includes transport fidelity but not semantic utility.
+Integration measures the resulting change inside the frozen transformer.  Decision tests whether
+that change supports the task-critical output branch.  Behavior evaluates the decoded answer.
+Training an adapter is an intervention on integration or decision, not a seventh evaluation
+stage.  This vocabulary reconciles the earlier transport/discovery/integration/adaptation/
+decoding/behavior ladder by assigning transport to materialization and adaptation to the stage it
+changes.
+
+\subsection{Depth-dependent integration}
+
+The first causal question is whether correctly selected native K/V affects the model, and where.
+We replace learned selection by annotated-evidence oracle selection while keeping publication,
+materialization, attention, prompts, and the frozen backbone unchanged.  Table
+\ref{tab:depth-headline} reports the comparison a reader needs from the full placement sweep in
+Appendix~\ref{app:oracle-depth-details}.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Oracle memory is depth sensitive.  Values are mean gold-sequence $\Delta\log p$ versus
+the no-memory condition on four fixed examples per dataset.  Direct evidence is ordinary prompt
+text, not PRA memory.}
+\label{tab:depth-headline}
+\begin{tabular}{lrrr}
+\toprule
+Dataset & Oracle, last 14 & Oracle, all 28 & Direct evidence text \\
+\midrule
+HotpotQA & +3.641 & -.766 & +4.635 \\
+QASPER & +.072 & -7.492 & -1.791 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Hotpot establishes a late-layer compatibility band: evidence K/V is causally useful, yet exposing
+the same selected memory in every layer reverses the benefit.  QASPER's direct-text control is
+negative on this small slice, so it cannot establish annotation sufficiency there; its strongest
+oracle placement is the last eight layers at +.347.  These are mechanistic probes rather than
+benchmark estimates.
+
+\subsection{Perfect discovery does not imply native-context equivalence}
+\label{sec:oracle-gap-headline}
+
+The all-layer regression prompted an end-to-end audit, not another retrieval mechanism.  The
+historical cohort reproduces with maximum absolute difference zero.  Every representable
+annotation is covered, requested and retained identities agree, all 28 Qwen layers are exercised,
+native-limit violations are zero, and freshly recomputed versus cached post-RoPE K and native V
+have maximum absolute error zero.  Oracle discovery and payload transport are therefore correct,
+but oracle replay still differs functionally from placing evidence in the prompt.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Oracle-gap explanations after the audit.  ``Supported'' identifies a measured
+contributor, not a causal variance decomposition.}
+\label{tab:oracle-gap-decomposition}
+\begin{tabularx}{\linewidth}{L{0.27\linewidth}L{0.44\linewidth}Y}
+\toprule
+Candidate explanation & Paper-2 evidence & Status \\
+\midrule
+Oracle implementation bug & Exact historical reproduction; 100\% representable-evidence coverage; 28/28 layers; zero cached-K/V error & Rejected \\
+Contextual K/V mismatch & Late-band pre-RoPE K cosine .940/.963 and V cosine .892/.926 for Hotpot/QASPER; encoding-length effects differ by dataset & Supported, dataset dependent \\
+Softmax/support dilution & Hotpot late-band attention mass .220 evidence, .310 co-materialized non-evidence, .469 local/head state & Supported on Hotpot \\
+Annotation insufficient for the model & Hotpot exact evidence +4.635 and parent context +5.574; QASPER exact and parent controls both -1.791 & Rejected on Hotpot; unresolved on this QASPER slice \\
+Missing early exposure & All 28 layers receive verified oracle K/V, yet all-layer replay is worse & Insufficient explanation \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The .310 result has a precise scope: even under oracle evidence selection, non-evidence tokens
+co-materialized inside selected parents receive approximately 31.0\% of late-band attention mass
+on the four-example Hotpot diagnostic cohort.  Per-example means have median .328; three of four
+exceed .25 and one exceeds .50.  Those descriptive values show dispersion, but four examples do
+not support a population estimate.  We call these tokens \emph{co-materialized non-evidence
+tokens}, not semantic distractors.  The result establishes
+\begin{equation}
+\text{oracle selection}\neq\text{evidence-only attention support}.
+\end{equation}
+Removing that support only in an offline softmax counterfactual raises evidence mass from .220 to
+.281; it is not a partial-materialization experiment.
+
+Representation and integration remain separate as well.  The source-only publication path does
+not reproduce the question-conditioned hidden trajectory used by direct context.  Increasing
+encoding length modestly improves the one-example Hotpot probe but moves QASPER in the opposite
+direction despite higher cosine similarity.  As in Paper~1.5's geometry study, representational
+closeness is not itself a sufficient proxy for functional utility.
+
+Finally, harmful all-layer replay coincides with substantially greater final residual-stream
+divergence than late-band replay: relative L2 rises from .541 to .869 on Hotpot and from .602 to
+1.245 on QASPER.  This association does not establish that divergence causes the likelihood
+regression.  It does show that ``more layers receive exact memory'' is not equivalent to ``memory
+becomes more native.''  Figure~\ref{fig:oracle-gap-main} places the functional, representation,
+support, and divergence measurements together; the full span, layer, head, K/V, and encoding
+receipts remain in Appendix~\ref{app:oracle-depth-details}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper2_hf/oracle_gap_audit/oracle_gap_diagnostics.pdf}
+\caption{The oracle gap remains after exact discovery and transport.  Direct-context controls,
+aligned K/V similarity, attention support, and residual divergence diagnose distinct stages; no
+panel alone is presented as a complete causal explanation.}
+\label{fig:oracle-gap-main}
+\end{figure}
+
+Paper~2 holds the materialized parent payload fixed and diagnoses measurable attention allocated
+to co-materialized non-evidence state.  Paper~3 intervenes on that variable directly by varying
+evidence-centered and adaptive native-K/V materialization under matched selection.
+
+\subsection{QASPER is the positive one-shot regime}
+\label{sec:qasper-headline}
+
+The oracle audit should not obscure the paper's strongest pretrained result.  QASPER supports
+one-shot semantic discovery, positive routed sequence likelihood, and improved decoded behavior
+under a small PRA-conditional residual adapter.  Table~\ref{tab:qasper-main} keeps the primary
+decision and completion outcomes together.  The likelihood and blinded-behavior protocols use
+the same frozen test identities but different fixed generation instruments; they are convergent
+measurements, not one pooled score.
+
+\begin{table}[H]
+\centering
+\small
+\caption{QASPER's primary positive result.  Polarity, containment, and EOS use the 32-token
+diagnostic.  Sequence gain and blind preference come from their separately frozen protocols.
+Residual-16 values aggregate five seeds.}
+\label{tab:qasper-main}
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & Routed $\Delta\log p$ & Polarity & Containment & EOS & Blind preference \\
+\midrule
+Frozen routed PRA & +1.377 & .250 & .500 & .875 & 2.5\% \\
+Frozen oracle PRA & -- & .625 & .625 & .625 & -- \\
+Residual 16 & +4.942 & $.725\pm.056$ & .825 & .950 & 22.5\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Residual 16 also improves routed F1 from .073 to .205 in the frozen behavioral package, and the
+two blind judges agree strongly by QASPER dimension ($r=.991$ for equivalence and $r=.995$ for
+relative quality).  Exact PRA-off parity and unchanged measured WikiText-2 loss show that this
+memory-specific specialization does not alter the tested no-memory path.  A larger rank-32 LoRA
+raises routed QASPER sequence benefit to +4.967, but its routed Hotpot change is -8.640 nats;
+accordingly, it remains research-only.  Residual 16 is the strongest balanced QASPER condition,
+while frozen PRA plus the router remains the generic SDK default.  Full adaptation, completion,
+decision-loss, and blinded-judge receipts appear in Appendices~\ref{app:oracle-depth-details},
+\ref{app:decision-aware-loss}, and~\ref{app:behavioral-protocol}.
+
+HotpotQA plays a different role.  Its outputs are commonly relation-near but fail to reach the
+required endpoint, and one-shot semantic routing does not reliably complete multi-hop evidence
+chains.  Paper~2.5 isolates that discovery problem through iterative semantic and native-QK
+closure while leaving the Paper-2 consumption path fixed.
+
+\subsection{Portability and practical boundary}
+
+The same shared execution contract runs through thin Qwen, SmolLM2 Llama-family, and official
+Gemma~3 adapters.  All three measured checkpoints preserve the disabled path exactly and use the
+same 128-dimensional router interface; five-seed QASPER identity recall at 20\% is
+$.454\pm.007$, $.447\pm.051$, and $.432\pm.025$, respectively.  Gemma preserves its native
+sliding/global organization, consumes PRA memory only in global layers 17 and 23, and obtains a
+positive routed likelihood effect of +.135 with unchanged F1.  This demonstrates execution,
+routing-interface, and bounded functional portability, not equal quality or universal placement.
+Detailed family and systems tables are in Appendices~\ref{app:cross-family-details}
+and~\ref{app:product-details}.
+
+The released \texttt{pra-hf} package provides reference publication/removal, fraction-based
+selection, serializable router artifacts, bounded accounting, a wheel, CLI, notebook, and public
+Python API.  In the measured product path, approximately 20\% requested parents become 6--7\%
+physical active K/V after whole-parent rounding and hard caps.  These are correctness and
+reusability results from an eager implementation, not serving-speed claims.
+
+\section{Limitations and Series Handoffs}
+
+The evidence establishes mechanisms on modest cohorts, not benchmark accuracy.  Router seeds
+measure optimization sensitivity, not independent test examples.  QASPER is a one-shot
+long-document regime, Hotpot is a multi-hop stress test, and WikiText-2 checks no-memory
+preservation.  The oracle-depth and oracle-gap cohorts contain four examples per dataset; their
+attention and divergence measurements are diagnostic.  Blind judges improve semantic coverage
+but are not ground truth.  No experiment supplies a fused-kernel or matched dense-serving
+baseline.  Extended protocol limits and all negative controls are retained in
+Appendix~\ref{app:extended-limitations}.
+
+The paper series assigns the remaining interventions to distinct variables.  Paper~2.5 changes
+discovery through bounded associative closure.  Paper~3 changes materialization through
+evidence-centered and adaptive native-K/V payloads.  Paper~4 studies systematic static internal
+stability.  Paper~2 neither anticipates their results nor mixes those interventions into the
+pretrained-retrofit claim.
+
+\section{Related Work in Context}
+
+PRA-HF sits between text retrieval, sparse/long-context attention, KV retention and offload,
+latent memory, and parameter-efficient adaptation.  Unlike text RAG, it reuses selected
+model-native state rather than re-encoding selected text; unlike ordinary sparse attention, it
+keeps named memory objects outside the active sequence; unlike KV compression, it compresses the
+search representation while retaining selected payload exactly; and unlike recurrent memory, it
+does not repeatedly transform anonymous state.  RAG, RETRO, Longformer, Reformer, Memorizing
+Transformers, landmark attention, LoRA, and related systems define the neighboring design space
+\cite{lewis2020rag,borgeaud2022retro,beltagy2020longformer,kitaev2020reformer,
+wu2022memorizing,mohtashami2023landmark,hu2022lora}.
+The full comparison and series ownership map appear in Appendix~\ref{app:related-work}.
+
+\section{Conclusion}
+
+Paper~2's central result is a decomposition rather than a single score:
+\begin{equation}
+\text{availability}\neq\text{discovery}\neq\text{representation}\neq
+\text{materialization}\neq\text{integration}\neq\text{decision}\neq\text{behavior}.
+\end{equation}
+PRA-HF makes source state available outside the prompt, discovers parents through compact semantic
+gists, materializes exact selected native K/V under a hard budget, and preserves the disabled host
+path exactly across three decoder families.  QASPER shows that one-shot routed memory and light
+conditional adaptation can improve likelihood and decoded behavior while preserving ordinary
+language.  Hotpot establishes the multi-hop discovery boundary.
+
+Perfect discovery still does not reproduce native context.  The oracle audit verifies exact
+selection and exact cached K/V, then identifies contextual-state mismatch, substantial Hotpot
+attention on co-materialized non-evidence tokens, and a larger internal departure under harmful
+all-layer replay.  These findings keep representation, materialization, and integration as
+separate computational problems.  Frozen PRA plus the validated router is therefore the
+conservative SDK default.  Paper~2.5 next changes discovery; Paper~3 separately changes what
+selected memory is materialized.
+
+\clearpage
+\appendix
+
+\noindent\textbf{Appendix guide.}
+The appendices preserve, in order, oracle/depth/adaptation details; cross-family receipts;
+product and systems measurements; extended limitations; detailed related work; the prior full
+scientific synthesis; routing ablations; QASPER decision-loss controls; the behavioral-judge
+protocol; and the code-level reimplementation guide.  Main-text claims cross-reference the
+corresponding receipt rather than repeating its full diagnostic ladder.
+
+\section{Oracle, Depth, Adaptation, and Behavioral Details}
+\label{app:oracle-depth-details}
 \label{sec:oracle-memory-use}
 
 Retrieval recall asks whether annotated evidence was selected. Causal evaluation asks a different
@@ -1338,7 +1592,8 @@ rank-32 checkpoint. HotpotQA is a multi-hop stress
 and causal probe here, not the final architecture: iterative evidence gathering, in which
 retrieved gists refine subsequent retrieval, is deferred to Paper~2.5.
 
-\section{Cross-Family Validation}
+\section{Cross-Family Validation Details}
+\label{app:cross-family-details}
 
 \textbf{One PRA execution contract spans decoder families with materially different attention
 organization.} We distinguish three claims. \emph{Execution portability} means that the shared
@@ -1424,7 +1679,8 @@ not erase the independently judged residual-16 preference. These are different p
 evidence that one metric is wrong.
 
 
-\section{Product and Systems Boundary}
+\section{Product and Systems Details}
+\label{app:product-details}
 
 The validated path is packaged as \texttt{pra-hf}, with a stable Python API, CLI, serializable
 configuration, fraction-based selection, and Hugging Face-style router artifacts. Version
@@ -1498,7 +1754,8 @@ test suite. The thin Llama adapter resolves installed rotary and eager-attention
 the shared core retains publication, routing, budgeting, and replay. Full code-level guidance
 appears in Appendix~\ref{app:adapter-guide}.
 
-\section{Limitations and Next Experiments}
+\section{Extended Limitations and Experimental Receipts}
+\label{app:extended-limitations}
 
 The experiments establish mechanisms on modest cohorts, not benchmark accuracy. QASPER provides
 positive one-shot evidence in sparse discovery, routed likelihood, decoded decision quality, and
@@ -1569,7 +1826,8 @@ top-$k$ or oracle-adaptation tuning. Paper~2.5 will test bounded associative clo
 $q\rightarrow A\rightarrow B$; serving optimization and partial materialization remain separate
 questions.
 
-\section{Related Work}
+\section{Detailed Related Work and Series Ownership}
+\label{app:related-work}
 
 This section locates Paper~2 by the boundary each neighboring architecture changes. The richer
 literature map appears in the companion survey; the purpose here is self-containment around
@@ -1741,13 +1999,15 @@ PRA-HF & semantic URI/parent gist & selected exact native K/V & Exact disabled p
 \end{tabularx}
 \end{table}
 
-\subsection{Six stages and cross-paper ownership}
+\subsection{Evaluation stages and cross-paper ownership}
 
-The comparison becomes clearer when mapped to Paper~2's evaluation ladder. Cache and adapter
-parity test \emph{transport}; retriever and router recall test \emph{discovery}; oracle
-$\Delta\log p$ and depth sweeps test \emph{integration}; conditional residual/LoRA experiments
-test \emph{adaptation}; completion, F1, and EM test \emph{decoding}; blind pairwise judgments test
-\emph{behavioral utility}. A system may report one of these without establishing the others.
+Equation~\ref{eq:evaluation-hierarchy} provides the canonical six-stage ladder.  Retriever and
+router recall test \emph{discovery}; aligned K/V comparisons test \emph{representation}; cache,
+span, and attention-support audits test \emph{materialization}; oracle likelihood and depth sweeps
+test \emph{integration}; polarity, completion, F1, and EM test \emph{decision and decoding}; and
+blind pairwise judgments test \emph{behavior}.  Conditional residual/LoRA training is an
+intervention on integration or decision, not an additional evaluation stage.  A system may
+report one stage without establishing the next.
 
 The paper series divides ownership accordingly. Paper~1 establishes bounded native-K/V
 mechanics and logical-versus-active memory~\cite{simao2026pra}. Paper~1.5 owns positional
@@ -1765,7 +2025,7 @@ can discover follow-up sources. The SDK is usable at the tested boundary. Genera
 superiority, optimized serving economics, broader task coverage, and larger-model scaling are
 not established.
 
-\section{Conclusion}
+\section{Extended Scientific Synthesis}
 
 PRA-HF establishes a cross-family, exact-disabled-path mechanism for externalizing pretrained
 native K/V, semantically routing compact memory indexes, and reintroducing selected full-detail
@@ -1798,7 +2058,6 @@ judge package and responses, scorer, and reimplementation tests make the claims 
 testable. The result is a usable one-shot pretrained-memory boundary with its successes and next
 architectural step stated separately.
 
-\appendix
 \section{Routing Ablations}
 \label{app:routing-ablations}
 
