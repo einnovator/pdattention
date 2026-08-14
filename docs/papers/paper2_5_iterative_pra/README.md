@@ -55,3 +55,16 @@ the rank of true Hotpot transitions after forcing only the source evidence group
 It also runs a validation-only offline margin policy; it does not change the SDK
 or train a router. Results are under
 `../shared/results/paper2_5_iterative_pra/oracle_convergence/`.
+
+Root displacement and score calibration diagnostic:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/run_displacement_calibration.py --device cuda
+```
+
+This runner requires row-for-row identity parity with the oracle-convergence
+artifact, classifies one-shot oracle-hit displacement, computes a matched-budget
+oracle-protected upper bound, audits root/semantic/native score paths, and tests
+validation-only family z-score and empirical-quantile controls on held-out
+examples. It remains offline and additive. Results are under
+`../shared/results/paper2_5_iterative_pra/oracle_competition_diagnostics/`.
