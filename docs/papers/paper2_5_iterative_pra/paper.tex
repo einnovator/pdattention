@@ -70,7 +70,11 @@ entry remains 0.429 on Hotpot and 0.967 on QASPER.  Native QK then proposes four
 known-correct first evidence group, while current-query facets rerank only those candidates.
 Although validation R@1 rises from 0.100 to 0.300, held-out R@1 falls from 0.286 to 0.257 and MRR
 from 0.583 to 0.500, with R@4 fixed at 1.000.  Static query grounding therefore does not solve
-successor choice, and the predeclared end-to-end gate remains closed.
+successor choice.  We finally re-encode the question with oracle-conditioned $A$ through the
+frozen transformer.  Validation selects the $A\Vert Q$ ordering with question-only support, but
+held-out R@1/MRR move from 0.257/0.500 to 0.229/0.479.  The primary $Q\Vert A$ control with
+Q-and-A support reaches 0.314/0.538 but misses the predeclared $+0.10$ R@1 criterion.  The dynamic
+state gate therefore remains closed before a larger activation-policy sweep.
 \end{abstract}
 
 \section{Introduction}
@@ -99,7 +103,7 @@ Top-$B$ discovery with parameter-free iterative closure.  Projection correction,
 propagation, and native-QK propagation likewise alter discovery state only; they do not train the
 backbone or a memory-consumption adapter.
 
-The contributions are ninefold.  First, we formulate iterative PRA as query-conditioned bounded
+The contributions are tenfold.  First, we formulate iterative PRA as query-conditioned bounded
 associative closure over an implicit latent graph.  Second, we implement Level-1 gist-to-gist and
 Level-2 aggregate-frontier traversal with deterministic budgets, cycle handling, root anchoring,
 transparent path scores, and a versioned graph artifact.  Third, we evaluate five semantic-router
@@ -120,7 +124,10 @@ propagation loop under an unchanged final payload budget.  Ninth, we compare par
 types and realistic query-support boundaries, then test the rule ``association proposes; current
 query state validates; bounded competition admits'' without mixing native and semantic score
 scales.  The held-out failure of that rule localizes the remaining gap to successor discrimination,
-not Top-4 candidate availability.
+not Top-4 candidate availability.  Tenth, we test the simplest dynamic-state repair: one frozen
+contextual pass over $Q$ and known-correct $A$, with exact Q/A facet provenance and a native
+candidate-width ladder.  It uses $A$ but does not clear a validation-frozen materiality gate,
+which rules out the planned activation-surface sweep in this iteration.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -1267,6 +1274,113 @@ closure.  Association proposes useful candidates, but static current state does 
 their order reliably; learned or dynamically updated state remains future work rather than a
 paper result.
 
+\subsection{Frozen dynamic query reconstruction}
+
+We next test the smallest dynamic-state mechanism without training.  Given oracle-conditioned
+correct $A$, we decode only its source-group text, combine it with the original question, and run
+one ordinary frozen transformer pass,
+\begin{equation}
+ H_1=\operatorname{Transformer}(Q_0\Vert A),\qquad
+ Q_1=\operatorname{Facets}(H_1).
+\end{equation}
+No answer is generated.  We compare $Q_0\Vert A$, $Q_0\Vert\texttt{[Retrieved memory]}\Vert A$,
+and the order control $A\Vert Q_0$.  Width-2, stride-1 facets use either question positions only
+or question plus A positions; excluded positions can contextualize allowed states but cannot
+independently nominate a parent.  The source and target evidence groups are used to construct the
+condition and metric, respectively.  Target identities or text never enter reconstruction,
+native candidate generation, facet scoring, or ranking.
+
+Candidate generation remains exactly the preceding layer-27 pre-RoPE native-QK Top-4 token/head
+mean.  We scan $K\in\{1,2,3,4,5,6,8,11\}$ without changing those scores, then evaluate each
+candidate in one packed semantic facet product.  Exact assertions reproduce the previous static
+Q0 R@1/MRR and native K=4 candidate recall on both partitions.  The predeclared validation rule
+maximizes K=4 R@1, then MRR, and breaks ties by re-encoding latency and facet count.  It selects
+$A\Vert Q_0$ with question-only support.  This row ties static Q0 on validation but does not
+transfer: held-out R@1 changes from 0.257 to 0.229 and MRR from 0.500 to 0.479.
+
+\begin{table}[H]
+\centering
+\caption{Frozen dynamic-state variants at native candidate breadth K=4.  Selection uses only the
+validation columns.  ``Q+A'' support permits both regions to issue facets.  The final column is
+the held-out fraction of target-winning facets whose explicit span lies in A; it is descriptive.}
+\label{tab:dynamic-query-gate}
+\small
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Reconstruction & Support & Val. R@1 & Val. MRR & Test R@1 & Test MRR & A facet \\
+\midrule
+Static $Q_0$ & question & .300 & .508 & .257 & .500 & --- \\
+$Q_0\Vert A$ & question & .280 & .490 & .257 & .502 & .000 \\
+$Q_0\Vert A$ & Q+A & .300 & .508 & \textbf{.314} & \textbf{.538} & .971 \\
+$Q_0\Vert\texttt{[memory]}\Vert A$ & question & .260 & .477 & .257 & .502 & .000 \\
+$Q_0\Vert\texttt{[memory]}\Vert A$ & Q+A & .280 & .498 & .286 & .533 & .971 \\
+$A\Vert Q_0$ & question & \textbf{.300} & \textbf{.508} & .229 & .479 & .000 \\
+$A\Vert Q_0$ & Q+A & .220 & .467 & .286 & .517 & .971 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The primary $Q_0\Vert A$ Q+A control is a useful but non-decisive hint.  Its held-out R@1 is
+$+0.057$ over static query reranking and $+0.029$ over association-only ordering; validation ties
+static, and the held-out gain is below the predeclared $+0.10$ materiality threshold.  In 102 of
+105 held-out seed--edge rows across the three Q+A-support orderings, the target's winning facet is
+an A span.  Thus the null gate is not explained by failing to expose A: max-over-facets usually
+chooses A-derived states, but those states do not discriminate the successor reliably enough.
+
+\begin{table}[H]
+\centering
+\caption{Held-out K ladder for the validation-selected dynamic state.  Candidate recall is
+seed-invariant; R@1 and MRR average five frozen projections over seven transitions.  Native search
+is exhaustive in this diagnostic, so changing K alters only the bounded semantic product.}
+\label{tab:dynamic-query-k}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{rrrrr}
+\toprule
+K & Candidate recall & Static R@1 & Dynamic R@1 & Dynamic MRR \\
+\midrule
+1  & .286 & .286 & .286 & .643 \\
+2  & .714 & .229 & .229 & .567 \\
+3  & .857 & .257 & .229 & .507 \\
+4  & 1.000 & .257 & .229 & .479 \\
+5  & 1.000 & .200 & .171 & .436 \\
+6  & 1.000 & .200 & .171 & .431 \\
+8  & 1.000 & .200 & .171 & .431 \\
+11 & 1.000 & .200 & .171 & .431 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\linewidth]{../shared/results/paper2_5_iterative_pra/dynamic_query_discovery/dynamic_query_k_gate.pdf}
+\caption{Held-out conditional successor order across native candidate breadth.  Reconstructing
+the validation-selected Q1 does not improve static Q0; once K admits more distractors, both
+semantic rerankers expose the unresolved discrimination problem.}
+\label{fig:dynamic-query-k}
+\end{figure}
+
+The selected held-out reconstruction takes 0.723 seconds per edge; native search, projection, and
+packed scoring bring prefill-to-routing-ready time to 0.765 seconds (p95 1.288 seconds) on the
+GTX~950M.  The frozen model occupies 1.192~GB allocated before capture, and reconstruction peaks
+at 1.307~GB allocated, an incremental 115.0~MB.  Mean per-edge routing structures comprise an
+8.82~MB native-search cache, 24.0~KB parent-gist cache, 3.0~KB projected-parent cache,
+90.7~KB query facets, and 345 bytes of
+K=4 candidate scores; measured host-to-device payload is 8.94~MB.  The 621~MB source-feature file
+remains CPU-resident.  This routing-only diagnostic conceptually conditions on 2.14 active
+parents on average but materializes zero native K/V tokens, so its active-KV fraction is zero by
+construction, not an estimate of later serving cost.  It performs no generation; TTFT, TPOT,
+throughput, concurrency, and dollar cost are therefore not claimed.
+
+The gate required at least $+0.10$ held-out R@1 and positive MRR.  It fails.  Following the
+predeclared stop rule, we do not run the larger facet-resolution, candidate-width, active-ceiling,
+or relevance-threshold surface, nor B+threshold dynamic closure.  Those deliverables were
+conditional on evidence that explicit frozen reconstruction repaired successor choice.  The next
+mechanistic alternatives are a learned current-state update, learned query decomposition, or an
+explicit relational-composition objective; each must retain this candidate, leakage, partition,
+and memory-accounting protocol.
+
 QASPER does not supply a comparable conditional edge set here: the selected yes/no subset is
 predominantly one evidence group, so root retrieval is terminal under the available annotation.
 Its held-out root entry remains 0.967, but this is not evidence for a learned stopping decision.
@@ -1308,6 +1422,8 @@ validation-selected bounded competition.  Stage 6 preserves several contextual v
 question through root competition instead of forcing one relational summary before search.
 Stage 7 separates facet type and query-support scope, then asks whether static current-query
 facets can ground a bounded native successor set without mixing score families.
+Stage 8 gives the frozen transformer the known-correct first group and reconstructs the current
+state before repeating the same bounded ranking test.
 Projection role, propagation scale, and native attention geometry have therefore been tested
 before introducing learned associative supervision.  Oracle-conditioned rank now shows that
 most true transitions survive within Top-4, so a learned head is not yet the next controlled
@@ -1322,9 +1438,12 @@ chain completion beyond the improved root, so any later learned query decomposit
 associative component remains new machinery rather than an automatic extension.  Stage 7 sharpens
 that boundary: the native transition geometry places every held-out successor in Top-4, but static
 semantic facets worsen its position on average.  Candidate availability and candidate ordering
-are therefore separate failures.  A dynamic query updated after reading $A$, explicit relational
-supervision, or another learned discriminator would be a new intervention and must beat the
-reported association-only Top-4 control.
+are therefore separate failures.  Stage 8 shows that explicit contextual integration is not by
+itself enough: A-derived facets dominate the max score when permitted, but the
+validation-selected dynamic state still worsens held-out ordering.  The unselected primary
+$Q\Vert A$ condition is mildly positive and motivates replication, not activation-policy tuning.
+A learned state update, explicit relational supervision, or another learned discriminator would
+be a new intervention and must beat the reported association-only and static-query Top-4 controls.
 
 \subsection{Relation to retrieval, agents, and recursive models}
 
@@ -1405,6 +1524,15 @@ router sensitivity but its seven held-out edges remain seven identities.  Finall
 is exhaustive in this diagnostic; the millions of recorded dot products are not a production
 latency claim.
 
+The dynamic gate inherits those seven held-out transitions and grants oracle $A$; it therefore
+tests successor discrimination, not an executable first-hop policy or end-to-end QA.  Its
+validation tie-break selects $A\Vert Q$ question-only support, while the unselected $Q\Vert A$
+Q+A row is better on held-out data.  This disagreement is precisely why we enforce the frozen
+selection and why neither row establishes a general ordering.  Re-encoding also decodes complete
+source-group chunks, not a minimal evidence sentence, and source-order evidence groups remain
+approximate causal hops.  The measured cost is routing-only on one older GPU; no generated first
+token, concurrent request, or production native-KV transfer is present.
+
 \section{Conclusion}
 
 Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
@@ -1435,9 +1563,16 @@ opt-in extension; one-shot remains the default.  The broader facet ladder preser
 validation freezes fine 2-token facets and latest-message support, but the held-out sample does not
 identify one universal width or uniformly reject stale memory matches.  More importantly, static
 query reranking of native Top-4 successors changes conditional held-out R@1 from 0.286 to 0.257,
-despite perfect R@4 availability.  We therefore stop before end-to-end grounded closure.  Any
-learned or dynamic extension must retain the same payload, split, leakage, and execution controls
-and improve beyond both the stronger faceted root and the association-only conditional baseline.
+despite perfect R@4 availability.  A frozen dynamic pass over known-correct $A$ then makes the
+intermediate memory visible but does not supply validation-stable composition: the selected
+$A\Vert Q$ row changes static-reranker held-out R@1/MRR from 0.257/0.500 to 0.229/0.479.  The
+predeclared $Q\Vert A$ Q+A control reaches 0.314/0.538, yet its $+0.057$ R@1 gain is below the
+$+0.10$ gate and was not the validation-selected policy.  We therefore stop before the F/K/B/
+threshold surface and end-to-end dynamic closure.  The evidence now points to learned current-
+state update, query decomposition, or relational composition rather than a broader sweep around
+an unvalidated frozen updater.  Any such extension must retain the same payload, split, leakage,
+candidate-generation, and execution controls and improve beyond both association-only and static
+query-reranking baselines.
 
 \appendix
 \section{Implementation Map}
@@ -1598,6 +1733,29 @@ controls.  Candidate JSON retains $A\!\to\!B$ rank, query rank/score, validating
 root-facet equality, and admission.  The runner records zero K/V materialization and stops before
 end-to-end evaluation when its predeclared conditional gate fails.
 
+\paragraph{Dynamic current-state reconstruction.}
+\path{src/pra_hf/dynamic_query.py:47--75} constructs the three deterministic Q/A orderings and
+retains disjoint character provenance.  Lines 78--129 apply the model's ordinary chat template,
+truncate to the model-safe 768-token bound, and map those character regions back to exact token
+spans.  Lines 132--190 form contextual width-2 facets only inside the configured question or
+question-plus-A support; A can condition question states even when its positions cannot issue
+independent queries.  No target identity is accepted by this API.
+
+\path{experiments/paper2_5_iterative_pra/precompute_dynamic_query_features.py:49--108} decodes the
+oracle-conditioned source group A, runs one memory-disabled frozen layer-27 capture per ordering,
+and records contextual hidden/pre-query tensors, transfer bytes, elapsed time, and CUDA peaks.
+Lines 110--268 bind those captures to the unchanged 17 evidence-group transitions and write a
+hash-pinned, regenerable 96.4~MB feature cache.  The feature cache is ignored; its manifest is
+tracked.
+
+\path{experiments/paper2_5_iterative_pra/run_dynamic_query_gate.py:96--296} applies each frozen
+semantic projection, scores only native-QK proposals in a packed facet--candidate product, and
+records candidate/native/query ranks, exact facet span/text, rank movement, comparisons, routing
+memory, H2D bytes, and zero K/V materialization.  Lines 420--692 generate the unchanged native
+candidate ladder, freeze the dynamic variant on validation, assert exact prior static and K=4
+candidate baselines, and enforce the held-out stop rule before writing rows, summaries,
+diagnostics, and Figure~\ref{fig:dynamic-query-k}.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -1607,6 +1765,11 @@ and excluded from Git; its public manifest pins Qwen revision
 \texttt{c1899de289a04d12100db37\allowbreak 0d81485cdf75e47ca}.  Its SHA-256 is
 \begin{center}
 \small\texttt{edc589cc7886ba843ee598e89e6dab97e500084df8b7ee8dc8ab44ea75993ae8}.
+\end{center}
+The dynamic gate derives 51 Q1 captures from 17 transitions and three orderings.  Its ignored
+96,400,286-byte cache has SHA-256
+\begin{center}
+\small\texttt{130a2bd5f1d43e4bf3bfbe48145d368144dae0a98f666559ccb1d131ea7dac5e}.
 \end{center}
 Exact commands are listed in the experiment \texttt{README.md}; raw rows, aggregate tables,
 plots, and graph JSONL are under the corresponding shared result tree.
@@ -1641,8 +1804,14 @@ one-pass controlled captures.  The conditional propagation gate adds 2,210 rows 
 candidate/facet provenance, zero diagnostic K/V materializations, and three passing synthetic
 controls; its end-to-end stop is recorded explicitly.  Thirteen query-facet and six grounded
 propagation unit tests cover support clipping, phrase/multiscale/token facets, local-only sets,
-rank-scale invariance, residual facets, thresholds, provenance, and budgets.  The complete
-repository suite passes 422 tests (one upstream deprecation warning).
+rank-scale invariance, residual facets, thresholds, provenance, and budgets.  The dynamic gate
+adds 4,760 rows and 112 aggregate cells across 17 transitions, five projections,
+seven query states, and eight candidate widths.  Its checks reproduce the prior static
+R@1/MRR and native K=4 candidate recall exactly, enforce zero diagnostic K/V materialization,
+and verify the predeclared Gate-1/Gate-2 stop.  Six dynamic-query unit tests cover deterministic
+Q/A layouts, exact region provenance, restricted support, tokenizer-state restoration, and the
+absence of an oracle-target API channel.  The complete repository suite passes 428 tests (one
+upstream deprecation warning).
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

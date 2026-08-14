@@ -111,3 +111,18 @@ query validation inside native-QK Top-4 successor proposals. The conditional
 gate fails on held-out edges, so no end-to-end grounded-closure experiment is
 run. Artifacts are under
 `../shared/results/paper2_5_iterative_pra/grounded_query_facets/`.
+
+Frozen dynamic-query reconstruction gate:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/precompute_dynamic_query_features.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_dynamic_query_gate.py --device cuda
+```
+
+The first command re-encodes the current question with oracle-conditioned A in
+three deterministic orderings. The second freezes an ordering and support scope
+on validation identities, compares Q0 and Q1 over K=1/2/3/4/5/6/8/11, and
+checks exact reproduction of the previous static and native-candidate
+baselines. Gate 1 fails its held-out +0.10 R@1 criterion, so the conditional
+F/K/B/theta surface is not run. Artifacts are under
+`../shared/results/paper2_5_iterative_pra/dynamic_query_discovery/`.

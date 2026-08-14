@@ -65,6 +65,29 @@ The conditional propagation runner executes an end-to-end comparison only when
 held-out conditional R@1 improves by at least 0.10 while losing at most 0.05
 R@4. The present run stops at that gate and does not change the SDK default.
 
+## Dynamic query reconstruction gate
+
+This additive gate grants the correct first evidence group A, reconstructs a
+current state with one frozen Qwen forward over `Q || A`,
+`Q || [Retrieved memory] || A`, or `A || Q`, and derives width-2 contextual
+facets from either Q alone or Q plus A. The existing layer-27 pre-RoPE native-QK
+scorer and all five frozen semantic projections are unchanged. The second
+command compares static Q0 and reconstructed Q1 over native candidate breadths
+1, 2, 3, 4, 5, 6, 8, and 11.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.precompute_dynamic_query_features --device cuda
+python -m experiments.paper2_5_iterative_pra.run_dynamic_query_gate --device cuda
+```
+
+The ignored feature cache and tracked manifest, rows, selection audit, bridge
+diagnostics, K plot, and result JSON are under
+`docs/papers/shared/results/paper2_5_iterative_pra/dynamic_query_discovery/`.
+The validation-selected dynamic state fails the predeclared held-out +0.10 R@1
+gate, so the larger facet/K/active-budget/threshold surface and dynamic closure
+are intentionally not run. This gate performs no generation or native-KV
+materialization and does not change the SDK default.
+
 ## Gate 3: native local Q/K closure
 
 Gate 3 preserves the frozen semantic router for initial relevance and candidate
