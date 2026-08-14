@@ -51,7 +51,13 @@ clearer justification and baseline.  An exact-oracle audit finds that iterative 
 loses 11.7--15.6\% of QASPER runs where one-shot already touched oracle evidence.  An
 oracle-protected-root counterfactual recovers 0.044--0.068 recall at the same budget, whereas
 held-out score normalization does not repair HotpotQA.  Monotonic root preservation, then
-adaptive transition width, are the next controlled gates before learned geometry.
+adaptive transition width, are therefore tested as a final frozen-policy gate.  On the held-out
+split, monotonic preservation exactly reproduces one-shot quality.  An exploratory native-rank
+policy raises 20\% Hotpot oracle recall from 0.205 to 0.233 but leaves chain completion unchanged
+at 0.143 and regresses at larger budgets; QASPER is preserved at 20\%.  The first Hotpot evidence
+group is absent from root Top-$B$ in 52.9\% of exploratory runs, compared with 11.1\% where it is
+present but not locked.  Entry discovery, rather than further transition-width tuning, is the
+next gate; one-shot remains the SDK default.
 \end{abstract}
 
 \section{Introduction}
@@ -91,6 +97,10 @@ materialization scales, showing exact local-bridge recovery but no dependable na
 gain.  Sixth, we test semantically narrowed, tokenwise pre-RoPE native QK propagation under the
 same final parent budget, separate semantic and native search costs, and diagnose exact-oracle
 convergence, root displacement, edge rank, and score calibration before choosing the next gate.
+Seventh, we implement oracle-free monotonic root locks and bounded adaptive transition
+competition, select their thresholds on an example-disjoint validation split, and show on held-out
+data that persistence repairs direct-retrieval displacement but does not create a Hotpot chain
+gain when the entry evidence never enters root Top-$B$.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -859,13 +869,120 @@ The split is only 10/7 distinct native transitions and 50/35 seed-sensitive sema
 so this is a mechanism diagnostic, not a tuned policy result.  The simple margin rule saves little
 competition and does not explain the Top-4 reduction signal.
 
-The decision is therefore \emph{protected-root closure next}.  A production policy cannot know
-oracle roots, but it can make root admission monotonic or reserve slots using calibrated root
-confidence.  That intervention directly targets the largest isolated QASPER loss and has a
-0.068-recall matched-budget upper bound.  Adaptive transition width remains the following
-Hotpot experiment because true edges are commonly near-top, while score-family normalization is
-not promoted beyond a diagnostic.  Learned geometry becomes justified only if root preservation
-and held-out bounded competition both fail.
+These diagnostics motivate the deployable, label-free competition gate evaluated next.  A
+production policy cannot know oracle roots, but it can lock identities using root confidence or
+cross-seed agreement, then let propagation compete only for remaining slots.  This directly tests
+whether the protected-root upper bound and near-Top-4 Hotpot edges survive without oracle access.
+
+\subsection{Monotonic root persistence and adaptive competition}
+
+The previous router divides $B$ before seeing the score distribution.  We instead compute the
+ordinary full root ranking $R=(r_1,\ldots,r_B)$, choose a label-free lock set $L\subseteq R$, and
+enforce
+\begin{equation}
+  L\subseteq S_{\mathrm{final}},\qquad
+  B_{\mathrm{prop}}=B-|L|,\qquad
+  |S_{\mathrm{final}}|=B.
+\end{equation}
+Propagation can compete only for the $B_{\mathrm{prop}}$ unlocked slots.  Duplicate parent
+proposals collapse to their strongest path; if propagation supplies too few unique identities,
+the original root order fills the remainder.  The equality above therefore changes identities,
+not active parent/KV capacity.  No evidence label appears in the policy API.
+
+We test fixed prefixes of 1, 2, and 4, first-large-score-drop thresholds, full-vector root
+$z$-score thresholds, and the fraction of five router seeds placing a parent within root Top-$B$.
+For transitions we retain projection-correct local semantics and the frozen Top-4-mean pre-RoPE
+native-QK scorer.  Native magnitudes are saturated after a sigmoid, so cross-source native
+proposals use deterministic per-source raw-logit rank.  Adaptive breadth chooses $k=1$ for
+concentrated semantic/native Top-1 agreement, $k=2$ for moderate concentration with Top-4
+overlap, and $k=4$ otherwise.  Thresholds and policy identities are selected on the hash-stable
+validation examples only.  We freeze two roles per geometry: the unconstrained preservation
+winner and the best exploratory root policy required to activate propagation on at least 25\% of
+validation runs.  This second role prevents a one-shot-equivalent winner from making transition
+competition vacuous.
+
+Validation selects root $z>-0.5$ for preservation in both geometries.  On this sample that rule
+locks all available Top-$B$ identities, performs no propagation, and becomes an independently
+implemented one-shot parity check.  For exploration, validation selects root $z>1$ with native
+rank and seed agreement at 0.6 with semantic propagation.  Fixed $k=1$ wins for native rank;
+fixed $k=4$ wins for semantic propagation.  None of the nine adaptive threshold pairs wins.
+Across held-out adaptive-policy traces, native decisions are mostly $k=1/2$ (1,674/1,014 source
+decisions, with 30 at $k=4$); the richer rule does not expose a natural-data gain hidden by fixed
+breadth.
+
+\begin{table}[H]
+\centering
+\caption{Held-out results at the primary 20\% final parent/KV budget.  Seven HotpotQA and six
+QASPER examples are each evaluated under five frozen router seeds.  ``Prop.'' is the fraction of
+seed/example runs that add a propagated identity.  The preservation rows lock full root Top-$B$
+and therefore exactly match one-shot.}
+\label{tab:adaptive-competition}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Policy & Oracle R & Chain & Root present & Root locked & Prop. & Native dots \\
+\midrule
+HotpotQA & One-shot & .205 & .143 & .343 & .343 & .000 & 0 \\
+HotpotQA & Monotonic preserve & .205 & .143 & .343 & .343 & .000 & 0 \\
+HotpotQA & Native-rank explore & .233 & .143 & .343 & .314 & .314 & 82,388 \\
+HotpotQA & Semantic explore & .176 & .086 & .343 & .257 & .314 & 82,388 \\
+QASPER & One-shot & .883 & .800 & .967 & .967 & .000 & 0 \\
+QASPER & Monotonic preserve & .883 & .800 & .967 & .967 & .000 & 0 \\
+QASPER & Native-rank explore & .883 & .800 & .967 & .967 & .767 & 907,281 \\
+QASPER & Semantic explore & .883 & .800 & .967 & .967 & .400 & 621,193 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result separates preservation from discovery.  Monotonicity removes the measured QASPER
+regression exactly, but the selected exploratory policies spend search work without improving
+20\% chain completion.  Native rank gains 0.028 Hotpot oracle recall (0.205 to 0.233) while chain
+completion remains 0.143.  At 30/40\%, native chain completion falls from one-shot 0.343/0.371
+to 0.257/0.286.  Semantic exploration matches one-shot chain completion at 30/40\%
+(0.343/0.371), and reaches QASPER 0.950 recall and 0.900 chain completion at 40\%, but it does
+not produce the required Hotpot advantage.  The dual-geometry diagnostic scorer takes about
+0.006 seconds per Hotpot and 0.044--0.068 seconds per QASPER run at 20\%; these reference timings
+include the alternate geometry used for confidence measurement and are not an optimized kernel
+claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper2_5_iterative_pra/monotonic_adaptive_competition/adaptive_quality.pdf}
+\caption{Held-out quality under matched final budgets.  Dotted preservation curves reproduce
+one-shot.  Exploratory propagation does not improve Hotpot chain completion; the isolated 20\%
+native oracle-recall gain does not persist as budgets grow.}
+\label{fig:adaptive-quality}
+\end{figure}
+
+The failure decomposition is more decisive than the aggregate delta.  Across exploratory
+held-out runs and budgets, the first source-ordered Hotpot evidence group is absent from full
+root Top-$B$ in 52.9\% of cases.  It is present but rejected by the lock in 11.1\%; the remainder
+is locked.  At 20\%, the native policy locks the first group in 31.4\% of runs and recovers all
+later groups in 45.5\% of those conditioned runs, yet end-to-end chain completion still cannot
+exceed one-shot.  Competition policy cannot propagate from an entry that was never admitted.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper2_5_iterative_pra/monotonic_adaptive_competition/adaptive_regulation.pdf}
+\caption{Held-out exploratory budget allocation and propagation activation at 20\%.  The final
+parent budget remains matched even when the locally selected lock count differs.}
+\label{fig:adaptive-regulation}
+\end{figure}
+
+Controlled cases verify the mechanism independently of that natural limitation.  Obvious direct
+retrieval locks the root and stops.  With the target outside root Top-$B$, fixed $k=1$ obtains
+0.5 oracle recall on both an ambiguous rank-2 transition and a distractor-heavy rank-4
+transition.  Fixed $k=4$ and adaptive $1/2/4$ both recover 1.0 at the same final $B$; the adaptive
+rule chooses 2 and 4, respectively.  Thus persistence and adaptive breadth are implemented and
+can regulate designed cases, but validation does not promote them on natural data.
+
+We stop with recommendation \emph{B: refine entry discovery through local query facets or query
+decomposition}.  Recommendation A is unsupported because there is no held-out Hotpot chain gain;
+C is secondary because conditioned transitions are often recoverable once a correct root exists;
+D is premature because reducing search cost cannot repair a missing entry.  The new router remains
+opt-in and one-shot remains the SDK default.  No learned controller, new associative projection,
+query decomposition, or partial materialization is introduced in this gate.
 
 \section{Discussion}
 
@@ -895,14 +1012,17 @@ may differ, but pretrained layer-27 QK does not establish that specialization he
 
 This completes the staged diagnostic sequence: Stage 0 is one-shot retrieval; Stage 1 is chunk
 iterative closure; Stage 2 corrects the asymmetric projection interface; Stage 3 moves propagation
-to contextual local semantic gists; Stage 4 tests tokenwise native QK after semantic narrowing.
+to contextual local semantic gists; Stage 4 tests tokenwise native QK after semantic narrowing;
+Stage 5 makes root identity persistence monotonic and allocates the remaining budget through
+validation-selected bounded competition.
 Projection role, propagation scale, and native attention geometry have therefore been tested
 before introducing learned associative supervision.  Oracle-conditioned rank now shows that
 most true transitions survive within Top-4, so a learned head is not yet the next controlled
 intervention.  The displacement audit separates two failures that the aggregate metric had mixed:
 QASPER often starts from the right parent and can lose it to the fixed root/propagation slot split,
-whereas Hotpot usually fails to discover the first group.  Root preservation should therefore be
-tested before adaptive transition competition.  Any later trained component should still be
+whereas Hotpot usually fails to discover the first group.  Stage 5 confirms the distinction:
+monotonic persistence reproduces QASPER one-shot quality, but bounded competition cannot propagate
+from a missing Hotpot entry.  Any later query-decomposition or trained component should still be
 evaluated as new machinery rather than an automatic extension of the inherited router.
 
 \subsection{Relation to retrieval, agents, and recursive models}
@@ -934,7 +1054,8 @@ not test partial materialization.
 
 \section{Limitations}
 
-The held-out natural-data sample has 16 examples per dataset, repeated over five router seeds.
+The natural-data pool has 16 examples per dataset, repeated over five router seeds and then split
+by stable example identity for the final policy-selection gate.
 Seeds quantify projection sensitivity but do not create 80 independent questions.  Hotpot
 evidence groups are source-contiguous spans, not annotated causal hop labels.  QASPER's selected
 subset is yes/no and often one-group, so it tests direct retrieval more than multi-hop closure.
@@ -943,6 +1064,14 @@ The protected-root result is an oracle-labeled upper bound, not an implementable
 calibration controls rerank only the fixed union of identities already exposed by frozen routing;
 they cannot recover an unseen candidate and should not be read as a trained-router comparison.
 Their validation/test partitions are example-disjoint, but both remain small.
+
+The adaptive-competition policy family is selected on nine HotpotQA and ten QASPER validation
+examples and reported on seven and six held-out examples, respectively; five router seeds measure
+projection sensitivity but do not enlarge those example counts.  The validation objective weights
+Hotpot chain/recall, QASPER recall, and QASPER propagation cost explicitly.  Different task weights
+could select another transparent rule, although the full selection audit is retained.  The
+preservation winner degenerates to full Top-$B$ locking on this sample and should be interpreted as
+a parity result, not evidence that $z>-0.5$ generalizes as a universal threshold.
 
 The natural-data sample remains small.  Projection correction, local hierarchy, and native QK
 remove three specific confounds, but the experiment does not include overlapping local windows,
@@ -969,14 +1098,15 @@ iterative reuse is sensitive to projection interface, propagation scale, candida
 score reduction.  Local semantic and native attention spaces contain designed bridges and
 occasional natural positives, but neither supplies reliable cross-parent transitions on this
 sample.  The oracle-rank diagnosis narrows the next step further: useful transitions are commonly
-present below Top-1, while root evidence discovery remains weak.  The displacement counterfactual
-adds a more immediate lesson: closure should not discard strong direct evidence merely to create
-propagation capacity.  Monotonic or confidence-protected root admission is therefore the next
-gate, followed by bounded adaptive competition for Hotpot; the simple score-gap and score-family
-normalization controls reported here do not yet justify SDK behavior.  If those two frozen-policy
-changes cannot convert preserved roots and near-top edges into held-out closure gains, future
-learned associative geometry must demonstrate stable transition structure beyond all four
-discovery stages while retaining the same payload and execution controls.
+present below Top-1, while root evidence discovery remains weak.  The final frozen-policy gate
+confirms both sides.  Monotonic identity locks preserve direct QASPER evidence exactly, and
+adaptive breadth recovers controlled rank-2/rank-4 edges, but neither yields a held-out Hotpot
+chain advantage.  In 52.9\% of exploratory Hotpot runs the first evidence group is absent before
+locking begins.  The next controlled question is therefore entry discovery through local query
+facets or query decomposition, not another transition geometry or a larger breadth sweep.  Any
+learned extension must retain the same payload, split, leakage, and execution controls and
+demonstrate that it admits the missing root without sacrificing the direct-retrieval behavior
+established here.
 
 \appendix
 \section{Implementation Map}
@@ -1079,6 +1209,25 @@ native-closure labels.  All three paths produce byte-identical post-RoPE K, nati
 attention output.  Gate 3 therefore ends at identities: it neither changes nor reconstructs the
 payload consumed by Qwen.
 
+\paragraph{Monotonic adaptive competition.}
+\path{src/pra_hf/adaptive_competition.py:44--154} defines immutable root/transition policies and
+score/result records without any oracle field.  Lines 157--234 compute cross-seed agreement and
+choose a lock only after constructing full root Top-$B$.  Lines 237--291 standardize raw pre-RoPE
+native scores per source, measure Top-1/Top-4 spread, normalized entropy and semantic/native rank
+agreement, then select bounded breadth 1, 2, or 4.  Lines 294--323 merge parent proposals while
+asserting that every locked identity survives; root order fills any unused slots.  The opt-in
+router at lines 326--404 invokes frozen transition providers only when $B-|L|>0$, uses raw native
+rank rather than sigmoid magnitude, and returns separate root, semantic, native-dot, and scorer
+time costs.  It owns no K/V tensor.
+
+The additive runner constructs projection-correct semantic and native traces at lines 162--247
+of 	exttt{run\_monotonic\_adaptive\_competition.py}.  Lines 285--383 call the label-free router,
+then attach exact-oracle and evidence-group metrics to its returned identities.  Validation-only
+selection is at lines 475--509; synthetic direct/rank-2/rank-4 controls and cost-normalized
+held-out effects are at lines 551--692.  The main loop beginning at line 775 preserves the full
+policy matrices, freezes preservation and exploratory roles separately, and writes held-out rows
+without altering the model dispatch path or default routing mode.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -1102,14 +1251,18 @@ caps, exact pre-RoPE Q/K capture, CPU/CUDA identity parity, fixed-identity paylo
 no-materialization-before-closure boundary.  Gate-3 generation validates every saved graph against
 the backward-compatible schema-v2 extension and records zero K/V materializations during closure.
 The feature manifest verifies the frozen model revision, layer 27, 16/8 grouped heads, native head
-width 128, and no memory-use adapter.  The focused displacement/oracle/native suite passes 24.
+width 128, and no memory-use adapter.  The focused iterative/oracle/native/adaptive suite passes
+69 tests.
 All 160 saved Gate-3 graphs and 5,600 result rows satisfy
 schema, parent-budget, and no-closure-materialization checks.  The additive diagnostic preserves
 4,000 convergence rows and 340 raw edge-score rows, then adds 2,488 root-hit classifications,
 17,710 score-family observations, 2,619 fixed-union calibration candidates, and 780 held-out
 control rows.  Tests cover canonical-oracle identity, annotation groups, displacement,
 protected-root budgeting, score summaries, ranking ties, validation leakage, deterministic policy
-fitting, and cost accounting.  The complete repository suite passes 393 tests.
+fitting, and cost accounting.  The monotonic gate adds 19,200 root-policy rows, 14,080 transition
+rows, and 1,040 held-out frozen-policy rows; every row conserves its parent budget and retains all
+locked identities.  The complete repository suite passes 403 tests (one upstream deprecation
+warning).
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

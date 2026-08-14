@@ -68,3 +68,16 @@ oracle-protected upper bound, audits root/semantic/native score paths, and tests
 validation-only family z-score and empirical-quantile controls on held-out
 examples. It remains offline and additive. Results are under
 `../shared/results/paper2_5_iterative_pra/oracle_competition_diagnostics/`.
+
+Monotonic root persistence and adaptive competition:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/run_monotonic_adaptive_competition.py --device cuda
+```
+
+This final frozen-policy gate computes full root Top-B before locking, selects
+transparent lock and transition rules on validation only, and reports held-out
+QASPER preservation plus the Hotpot entry/locking/propagation decomposition.
+The policy implementation is opt-in and does not change one-shot SDK defaults.
+Artifacts are under
+`../shared/results/paper2_5_iterative_pra/monotonic_adaptive_competition/`.
