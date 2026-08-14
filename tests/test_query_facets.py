@@ -2,8 +2,13 @@ import pytest
 import torch
 
 from pra_hf.query_facets import (
+    build_multiscale_query_facets,
+    build_span_query_facets,
+    build_token_query_facets,
     build_contextual_query_facets,
+    clip_query_support,
     contextual_window_spans,
+    deterministic_phrase_spans,
     global_query_facet,
     pool_parent_native_keys,
     score_native_query_facets,
@@ -115,3 +120,52 @@ def test_target_metrics_compute_rank_recall_precision_and_jaccard():
     assert metrics["oracle_precision"] == pytest.approx(0.5)
     assert metrics["oracle_jaccard"] == pytest.approx(1 / 3)
     assert metrics["false_positive_parent_count"] == 1
+
+
+def test_query_support_clips_active_context_without_changing_end_boundary():
+    assert clip_query_support(20, support_span=(3, 18), max_support_tokens=8) == (10, 18)
+    assert clip_query_support(20, max_support_tokens=16) == (4, 20)
+
+
+def test_window_token_multiscale_and_local_only_facet_families():
+    hidden = torch.arange(24, dtype=torch.float32).reshape(12, 2)
+    windowed = build_contextual_query_facets(
+        hidden, (2, 10), window=4, stride=2, include_global=False
+    )
+    tokens = build_token_query_facets(hidden, (8, 10))
+    multiscale = build_multiscale_query_facets(hidden, (2, 10), windows=(2, 4))
+    assert all(row.kind == "local" for row in windowed.provenance)
+    assert len(tokens.provenance) == 3
+    assert {row.family for row in multiscale.provenance[1:]} == {
+        "window_2",
+        "window_4",
+    }
+
+
+def test_phrase_facets_use_punctuation_and_relation_neighborhoods():
+    texts = ["Who", " won", "?", " Before", " that", ",", " where", "?"]
+    spans = deterministic_phrase_spans(texts, (0, len(texts)), neighborhood=4)
+    assert (0, 3, "clause") in spans
+    assert any(label == "relation_neighborhood" for _, _, label in spans)
+    facets = build_span_query_facets(
+        torch.randn(len(texts), 3), spans, include_global=True, family="phrase"
+    )
+    assert facets.provenance[0].kind == "global"
+    assert len(facets.provenance) > 2
+
+
+def test_bounded_support_rejects_stale_prompt_facet_in_control():
+    hidden = torch.tensor(
+        [[1.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.0, 1.0]]
+    )
+    memory = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    full = build_token_query_facets(hidden, (0, 4), include_global=False)
+    latest = build_token_query_facets(hidden, (2, 4), include_global=False)
+    full_pick = select_bounded_parents(
+        score_semantic_query_facets(full.hidden, memory), 1
+    ).parent_indices[0]
+    latest_pick = select_bounded_parents(
+        score_semantic_query_facets(latest.hidden, memory), 1
+    ).parent_indices[0]
+    assert full_pick == 0
+    assert latest_pick == 1

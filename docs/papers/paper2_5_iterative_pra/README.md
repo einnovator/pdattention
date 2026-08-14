@@ -96,3 +96,18 @@ reports the matched-budget root matrix. The third runs only because the Hotpot
 entry gain cleared the predeclared materiality gate; it reconnects the winning
 root to the previously frozen monotonic propagation policy. Artifacts are under
 `../shared/results/paper2_5_iterative_pra/query_entry_facets/`.
+
+Facet-type, prompt-support, and grounded-propagation gates:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/precompute_grounded_query_features.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_grounded_facet_gate.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_grounded_propagation_gate.py --device cuda
+```
+
+These commands compare parameter-free facet families, capture controlled stale
+chat history with an explicit latest-message boundary, and conditionally test
+query validation inside native-QK Top-4 successor proposals. The conditional
+gate fails on held-out edges, so no end-to-end grounded-closure experiment is
+run. Artifacts are under
+`../shared/results/paper2_5_iterative_pra/grounded_query_facets/`.

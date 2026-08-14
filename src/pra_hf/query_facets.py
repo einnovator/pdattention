@@ -9,6 +9,7 @@ native path preserves real query and K/V head identities, including GQA.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -28,6 +29,8 @@ class QueryFacetProvenance:
     kind: str
     token_start: int
     token_end: int
+    family: str = "global"
+    scale: int | None = None
 
 
 @dataclass(frozen=True)
@@ -35,9 +38,9 @@ class QueryFacetSet:
     """Contextual query facets and optional native heads.
 
     ``hidden`` has shape ``[facets, hidden_width]``. ``native_query`` is either
-    absent or has shape ``[facets, query_heads, head_dim]``. The first row is
-    always the existing final-token global query; remaining rows are means over
-    overlapping windows of the already contextualized question states.
+    absent or has shape ``[facets, query_heads, head_dim]``. When present, the
+    global final-token query is the first row. Local-only controls intentionally
+    omit it; all remaining rows pool already contextualized states.
     """
 
     hidden: torch.Tensor
@@ -49,8 +52,11 @@ class QueryFacetSet:
             raise ValueError("Facet hidden states must have shape [facets,width].")
         if len(self.provenance) != self.hidden.shape[0]:
             raise ValueError("Facet provenance must align with facet states.")
-        if self.provenance[0].kind != "global":
-            raise ValueError("The first query facet must preserve the global query.")
+        global_rows = [
+            index for index, row in enumerate(self.provenance) if row.kind == "global"
+        ]
+        if global_rows and global_rows != [0]:
+            raise ValueError("A global query facet must be the first and only global row.")
         if self.native_query is not None:
             if self.native_query.ndim != 3:
                 raise ValueError(
@@ -119,12 +125,166 @@ def contextual_window_spans(
     return tuple((offset, offset + window) for offset in starts)
 
 
+def clip_query_support(
+    token_count: int,
+    *,
+    support_span: tuple[int, int] | None = None,
+    max_support_tokens: int | None = None,
+) -> tuple[int, int]:
+    """Return a bounded suffix of an explicit query-support region.
+
+    Tokens before this region remain causally represented in its contextual
+    states, but cannot issue independent retrieval nominations.
+    """
+    if token_count <= 0:
+        raise ValueError("A query sequence must contain at least one token.")
+    start, end = support_span or (0, token_count)
+    start, end = int(start), int(end)
+    if start < 0 or end <= start or end > token_count:
+        raise ValueError("Query-support span must fit the non-empty sequence.")
+    if max_support_tokens is not None:
+        if max_support_tokens <= 0:
+            raise ValueError("max_support_tokens must be positive when provided.")
+        start = max(start, end - int(max_support_tokens))
+    return start, end
+
+
+def deterministic_phrase_spans(
+    token_texts: Sequence[str],
+    support_span: tuple[int, int],
+    *,
+    neighborhood: int = 4,
+) -> tuple[tuple[int, int, str], ...]:
+    """Create parser-free clause and relation-neighborhood token spans."""
+    start, end = clip_query_support(len(token_texts), support_span=support_span)
+    if neighborhood <= 0:
+        raise ValueError("Phrase neighborhood must be positive.")
+    spans: list[tuple[int, int, str]] = []
+    clause_start = start
+    for index in range(start, end):
+        if re.search(r"[?!.;:\n]", token_texts[index]):
+            if index + 1 > clause_start:
+                spans.append((clause_start, index + 1, "clause"))
+            clause_start = index + 1
+    if clause_start < end:
+        spans.append((clause_start, end, "clause"))
+
+    cues = {
+        "what", "which", "who", "whom", "whose", "where", "when", "why", "how",
+        "before", "after", "between", "both", "from", "with", "than", "during",
+    }
+    left_radius = max(1, neighborhood // 2)
+    for index in range(start, end):
+        normalized = re.sub(r"[^a-z]", "", token_texts[index].lower())
+        if normalized in cues:
+            left = max(start, index - left_radius)
+            right = min(end, left + neighborhood)
+            left = max(start, right - neighborhood)
+            spans.append((left, right, "relation_neighborhood"))
+    return tuple(dict.fromkeys(spans))
+
+
+def build_span_query_facets(
+    hidden_states: torch.Tensor,
+    spans: Sequence[tuple[int, int] | tuple[int, int, str]],
+    *,
+    include_global: bool = True,
+    family: str = "span",
+    native_query: torch.Tensor | None = None,
+) -> QueryFacetSet:
+    """Pool deterministic spans from one contextual state sequence."""
+    if hidden_states.ndim != 2 or hidden_states.shape[0] == 0:
+        raise ValueError("Hidden states must have shape [tokens,width].")
+    if native_query is not None and (
+        native_query.ndim != 3 or native_query.shape[0] != hidden_states.shape[0]
+    ):
+        raise ValueError("Native query states must align with hidden states.")
+    rows = [hidden_states[-1]] if include_global else []
+    native_rows = (
+        [native_query[-1]] if include_global and native_query is not None else []
+    )
+    provenance = (
+        [QueryFacetProvenance("global", hidden_states.shape[0] - 1, hidden_states.shape[0])]
+        if include_global
+        else []
+    )
+    seen: set[tuple[int, int]] = set()
+    for item in spans:
+        start, end = int(item[0]), int(item[1])
+        label = str(item[2]) if len(item) == 3 else family
+        if start < 0 or end <= start or end > hidden_states.shape[0]:
+            raise ValueError("Facet span must fit the contextual state sequence.")
+        if (start, end) in seen:
+            continue
+        seen.add((start, end))
+        rows.append(hidden_states[start:end].mean(dim=0))
+        if native_query is not None:
+            native_rows.append(native_query[start:end].mean(dim=0))
+        provenance.append(
+            QueryFacetProvenance("local", start, end, label, end - start)
+        )
+    if not rows:
+        raise ValueError("At least one global or local query facet is required.")
+    return QueryFacetSet(
+        hidden=torch.stack(rows),
+        native_query=torch.stack(native_rows) if native_query is not None else None,
+        provenance=tuple(provenance),
+    )
+
+
+def build_multiscale_query_facets(
+    hidden_states: torch.Tensor,
+    support_span: tuple[int, int],
+    *,
+    windows: Sequence[int] = (2, 4, 8, 16),
+    include_global: bool = True,
+    native_query: torch.Tensor | None = None,
+) -> QueryFacetSet:
+    """Union overlapping contextual windows at fixed resolutions."""
+    spans: list[tuple[int, int, str]] = []
+    for window in windows:
+        if window <= 0:
+            raise ValueError("Multiscale windows must be positive.")
+        for start, end in contextual_window_spans(
+            support_span, int(window), max(1, int(window) // 2)
+        ):
+            spans.append((start, end, f"window_{int(window)}"))
+    return build_span_query_facets(
+        hidden_states,
+        spans,
+        include_global=include_global,
+        family="multiscale",
+        native_query=native_query,
+    )
+
+
+def build_token_query_facets(
+    hidden_states: torch.Tensor,
+    support_span: tuple[int, int],
+    *,
+    include_global: bool = True,
+    native_query: torch.Tensor | None = None,
+) -> QueryFacetSet:
+    """Retain each contextual support token as one finest-scale facet."""
+    start, end = clip_query_support(
+        hidden_states.shape[0], support_span=support_span
+    )
+    return build_span_query_facets(
+        hidden_states,
+        [(index, index + 1, "token") for index in range(start, end)],
+        include_global=include_global,
+        family="token",
+        native_query=native_query,
+    )
+
+
 def build_contextual_query_facets(
     hidden_states: torch.Tensor,
     question_span: tuple[int, int],
     *,
     window: int,
     stride: int,
+    include_global: bool = True,
     native_query: torch.Tensor | None = None,
 ) -> QueryFacetSet:
     """Derive global+local facets from one fully contextualized query sequence.
@@ -144,20 +304,12 @@ def build_contextual_query_facets(
     if spans[-1][1] > hidden_states.shape[0]:
         raise ValueError("Question windows must fit the contextual state sequence.")
 
-    hidden = [hidden_states[-1]]
-    native = [native_query[-1]] if native_query is not None else None
-    provenance = [
-        QueryFacetProvenance("global", hidden_states.shape[0] - 1, hidden_states.shape[0])
-    ]
-    for start, end in spans:
-        hidden.append(hidden_states[start:end].mean(dim=0))
-        if native is not None and native_query is not None:
-            native.append(native_query[start:end].mean(dim=0))
-        provenance.append(QueryFacetProvenance("local", start, end))
-    return QueryFacetSet(
-        hidden=torch.stack(hidden),
-        native_query=torch.stack(native) if native is not None else None,
-        provenance=tuple(provenance),
+    return build_span_query_facets(
+        hidden_states,
+        [(start, end, f"window_{window}") for start, end in spans],
+        include_global=include_global,
+        family="window",
+        native_query=native_query,
     )
 
 

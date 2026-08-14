@@ -63,7 +63,14 @@ at stride 2.  At 20\%, they raise held-out Hotpot entry presence from 0.343 to 0
 Real pre-RoPE head splitting does not improve this result.  Reconnecting the faceted root to the
 frozen monotonic loop raises Hotpot chain completion from 0.143 to 0.171, but no higher than the
 faceted root alone.  The supported extension is thus opt-in multi-span entry search, not a new
-default or a claim that propagation is solved.
+default or a claim that propagation is solved.  A final additive gate compares token, fixed-window,
+multiscale, and deterministic phrase facets and separates the active prompt from the tokens allowed
+to initiate retrieval.  Validation freezes 2-token facets over the latest user message; held-out
+entry remains 0.429 on Hotpot and 0.967 on QASPER.  Native QK then proposes four successors from a
+known-correct first evidence group, while current-query facets rerank only those candidates.
+Although validation R@1 rises from 0.100 to 0.300, held-out R@1 falls from 0.286 to 0.257 and MRR
+from 0.583 to 0.500, with R@4 fixed at 1.000.  Static query grounding therefore does not solve
+successor choice, and the predeclared end-to-end gate remains closed.
 \end{abstract}
 
 \section{Introduction}
@@ -92,7 +99,7 @@ Top-$B$ discovery with parameter-free iterative closure.  Projection correction,
 propagation, and native-QK propagation likewise alter discovery state only; they do not train the
 backbone or a memory-consumption adapter.
 
-The contributions are eightfold.  First, we formulate iterative PRA as query-conditioned bounded
+The contributions are ninefold.  First, we formulate iterative PRA as query-conditioned bounded
 associative closure over an implicit latent graph.  Second, we implement Level-1 gist-to-gist and
 Level-2 aggregate-frontier traversal with deterministic budgets, cycle handling, root anchoring,
 transparent path scores, and a versioned graph artifact.  Third, we evaluate five semantic-router
@@ -109,7 +116,11 @@ data that persistence repairs direct-retrieval displacement but does not create 
 gain when the entry evidence never enters root Top-$B$.  Eighth, we isolate query-span and native
 head dilution, show that contextual query facets materially improve held-out Hotpot entry
 discovery without reducing QASPER recall, and reconnect the winning root to the frozen bounded
-propagation loop under an unchanged final payload budget.
+propagation loop under an unchanged final payload budget.  Ninth, we compare parameter-free facet
+types and realistic query-support boundaries, then test the rule ``association proposes; current
+query state validates; bounded competition admits'' without mixing native and semantic score
+scales.  The held-out failure of that rule localizes the remaining gap to successor discrimination,
+not Top-4 candidate availability.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -1121,6 +1132,148 @@ dilution is the dominant tested entry failure; head dilution and span--head syne
 supported.  One-shot remains the SDK default, and learned slots, textual decomposition, new
 associative training, and partial materialization remain outside this gate.
 
+\subsection{Facet types, prompt support, and query-grounded propagation}
+
+The preceding experiment established that one fixed window family can improve entry discovery.
+It did not establish that width four is uniquely useful, that every active prompt token should
+issue a retrieval query, or that the same facets can choose a successor proposed by associative
+propagation.  We address those questions additively: source memories and five learned routing
+projections remain frozen, every facet comes from one full contextual prompt pass, and all facets
+still compete for one final parent budget.  Besides the exact global and width-4 controls, we test
+widths 2/4/8/16 at half-window stride, individual token states, their multiscale union,
+deterministic punctuation/relation spans, local-only width-4 facets, and one Top-2-mean reduction.
+
+\begin{table}[H]
+\centering
+\caption{Facet-family root entry at the 20\% parent budget.  Selection uses validation identities;
+held-out columns are descriptive and never feed selection.  ``Cmp.'' is mean held-out Hotpot
+facet--parent comparisons.  All fixed-window rows include the global facet unless marked local.}
+\label{tab:facet-family-gate}
+\small
+\setlength{\tabcolsep}{3.7pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Facet family & Val. Hotpot & Val. QASPER & Test Hotpot & Test QASPER & Cmp. \\
+\midrule
+Global & .089 & .820 & .343 & .967 & 5.9 \\
+$w=2,s=1$ & \textbf{.222} & .780 & .429 & .967 & 134.3 \\
+$w=4,s=2$ & .200 & .820 & .457 & .967 & 67.6 \\
+$w=8,s=4$ & .178 & .820 & .429 & .967 & 34.7 \\
+$w=16,s=8$ & .156 & .800 & .400 & .967 & 19.1 \\
+$w=4$, Top-2 mean & .200 & .820 & .457 & 1.000 & 67.6 \\
+$w=4$, local only & .200 & .780 & .486 & 1.000 & 61.7 \\
+Token & .200 & .820 & .400 & .967 & 140.1 \\
+Multiscale 2/4/8/16 & \textbf{.222} & .780 & .429 & .967 & 238.1 \\
+Phrase/relation spans & \textbf{.222} & .800 & .429 & .967 & \textbf{23.3} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The validation rule first preserves QASPER within 0.05, then maximizes Hotpot entry and MRR and
+breaks ties by false positives and cost.  It freezes width 2, stride 1, max reduction, with the
+global facet retained.  This is not the held-out maximum: local-only width 4 happens to reach
+0.486 on the seven Hotpot test identities, but selecting it after inspection would invalidate the
+gate.  The exact global and width-4 held-out controls reproduce 0.343 and 0.457, respectively.
+The result therefore supports fine contextual facets as a family, while the small identity count
+does not resolve a universal optimal width.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper2_5_iterative_pra/grounded_query_facets/facet_type_gate.pdf}
+\caption{Held-out root entry for every predeclared facet family.  Several contextual families
+preserve QASPER and improve on the global Hotpot control; more facets do not improve monotonically.}
+\label{fig:facet-family-gate}
+\end{figure}
+
+For long prompts, active context and query-support context are distinct.  Earlier tokens may
+causally shape a late hidden state without independently nominating memory.  We compare the
+question span, explicit latest-user-message boundary, recent tails of 16/32/64 tokens, and the
+full prompt.  A controlled chat prompt contains an archived user request, a phrase copied from a
+non-oracle memory parent, tool/history text, and the current question; the stale phrase is varied
+over 0/16/32/64 target tokens.  The validation criterion freezes the latest message.  On clean
+held-out prompts it gives Hotpot/QASPER entry 0.429/0.967 with 134/151 comparisons, versus
+0.257/0.933 and 246/462 for full-prompt support.  The contamination result is more cautious:
+over nonzero stale lengths, latest-message stale-parent selection is 0.229 on held-out Hotpot and
+0.278 on QASPER, compared with 0.219 and 0.289 for full-prompt support.  The boundary reduces
+search and preserves current-question retrieval; it does not uniformly eliminate stale matches.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper2_5_iterative_pra/grounded_query_facets/stale_support_gate.pdf}
+\caption{Held-out Hotpot response to injected stale-memory text.  Left: current root entry.
+Right: selection of the explicitly non-oracle stale parent.  The validation-frozen latest-message
+boundary is bounded and cheaper, but stale-context resistance remains mixed on this sample.}
+\label{fig:stale-support-gate}
+\end{figure}
+
+We next condition on a correct first evidence group $A$ to isolate successor selection.  Existing
+layer-27 pre-RoPE native QK with Top-4 token/head reduction generates
+\begin{equation}
+ C_A=\operatorname{Top4}_{B\notin A} R_A(A,B).
+\end{equation}
+Only those four identities are validated in one batched product by the frozen facets,
+\begin{equation}
+ G_Q(B)=\max_i R_Q(q_i,B),\qquad B\in C_A.
+\end{equation}
+We compare query reranking, rank conjunction
+$r_A(B)+\lambda r_Q(B)$ for $\lambda\in\{.25,.5,1,2\}$, and a validation-fitted query threshold.
+All versus residual facets (excluding the facet that best matches $A$) are separate controls.
+Native and semantic raw scores are never added.  Oracle successor labels enter only validation
+selection and metrics, never candidate generation, facet scoring, or ranking.
+
+\begin{table}[H]
+\centering
+\caption{Conditional successor retrieval from a known-correct $A$.  Validation selects all-facet
+query reranking.  There are ten validation and seven held-out transitions, each evaluated with
+five frozen semantic projections; seed repetitions do not create additional transition identities.}
+\label{tab:grounded-propagation}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Split & Ordering & R@1 & MRR & R@2 & R@4 & Mean rank \\
+\midrule
+Validation & Association only & .100 & .355 & .200 & .600 & 3.60 \\
+Validation & Query rerank & \textbf{.300} & \textbf{.508} & \textbf{.480} & .600 & \textbf{3.04} \\
+Held out & Association only & \textbf{.286} & \textbf{.583} & \textbf{.714} & 1.000 & \textbf{2.14} \\
+Held out & Query rerank & .257 & .500 & .400 & 1.000 & 2.69 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The validation gain does not transfer.  Held-out R@1 changes by $-0.029$, MRR by $-0.083$, and
+R@2 by $-0.314$, while all true successors remain available within the associative Top-4.  Mean
+held-out query margin between the best oracle candidate and best distractor is $-0.113$.
+Residual-facet grounding and rank/threshold conjunctions do not win validation under the R@4
+preservation constraint.  Exact synthetic controls still behave as designed: query grounding
+promotes a weaker but relevant proposal, stops an irrelevant continuation, and retains a
+second-facet bridge.  The failure is therefore empirical discrimination on these natural edges,
+not a missing implementation path.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.60\linewidth]{../shared/results/paper2_5_iterative_pra/grounded_query_facets/grounded_propagation_gate.pdf}
+\caption{Held-out conditional successor retrieval.  Static current-query facets preserve Top-4
+availability but worsen the order inside that bounded candidate set.}
+\label{fig:grounded-propagation}
+\end{figure}
+
+The exact native proposal averages 6.52 million token/head dot products and about 0.0350 seconds per
+held-out edge on the reference GPU.  Root-facet identification adds 24 comparisons; packed
+four-candidate validation adds 86 comparisons and about 0.00146 seconds.  No K/V is materialized by
+this diagnostic.  Our predeclared success rule required at least $+0.10$ held-out R@1 with no
+more than $0.05$ R@4 loss.  It fails, so we do not run or report a same-budget end-to-end grounded
+closure.  Association proposes useful candidates, but static current state does not yet ground
+their order reliably; learned or dynamically updated state remains future work rather than a
+paper result.
+
+QASPER does not supply a comparable conditional edge set here: the selected yes/no subset is
+predominantly one evidence group, so root retrieval is terminal under the available annotation.
+Its held-out root entry remains 0.967, but this is not evidence for a learned stopping decision.
+The failed Hotpot conditional gate also means grounded chain completion at a fixed final memory
+budget is unmeasured rather than zero; we deliberately do not infer it from oracle-conditioned
+edge rank.
+
 \section{Discussion}
 
 \subsection{What the experiments establish}
@@ -1153,6 +1306,8 @@ to contextual local semantic gists; Stage 4 tests tokenwise native QK after sema
 Stage 5 makes root identity persistence monotonic and allocates the remaining budget through
 validation-selected bounded competition.  Stage 6 preserves several contextual views of the
 question through root competition instead of forcing one relational summary before search.
+Stage 7 separates facet type and query-support scope, then asks whether static current-query
+facets can ground a bounded native successor set without mixing score families.
 Projection role, propagation scale, and native attention geometry have therefore been tested
 before introducing learned associative supervision.  Oracle-conditioned rank now shows that
 most true transitions survive within Top-4, so a learned head is not yet the next controlled
@@ -1164,7 +1319,12 @@ from a missing Hotpot entry.  Stage 6 then recovers part of that missing-root ga
 parameter-free contextual facets.  Its success and the failure of native split-head composition
 localize the tested problem to semantic query-span dilution.  Propagation still does not add
 chain completion beyond the improved root, so any later learned query decomposition or
-associative component remains new machinery rather than an automatic extension.
+associative component remains new machinery rather than an automatic extension.  Stage 7 sharpens
+that boundary: the native transition geometry places every held-out successor in Top-4, but static
+semantic facets worsen its position on average.  Candidate availability and candidate ordering
+are therefore separate failures.  A dynamic query updated after reading $A$, explicit relational
+supervision, or another learned discriminator would be a new intervention and must beat the
+reported association-only Top-4 control.
 
 \subsection{Relation to retrieval, agents, and recursive models}
 
@@ -1234,6 +1394,17 @@ they cannot identify a pure head effect relative to A/B.  Finally, the 4-token w
 can be grammatical fragments rather than explicit subquestions.  The result demonstrates useful
 contextual localization, not interpretable decomposition or causal hop annotation.
 
+The additive facet-type gate reuses the same small identity split, so its validation-selected
+2-token width should not be interpreted as universal; the held-out width-4 local-only control is
+higher, illustrating the uncertainty directly.  The stale-history prompt copies text from one
+non-oracle parent but is controlled rather than naturally distributed conversation.  Latest-message
+support reduces comparisons and clean-prompt errors relative to full-prompt support, yet does not
+uniformly reduce stale-parent retrieval.  The conditional grounding gate also grants oracle $A$
+and treats source-ordered evidence groups as approximate transitions.  Its five projections expose
+router sensitivity but its seven held-out edges remain seven identities.  Finally, exact native QK
+is exhaustive in this diagnostic; the millions of recorded dot products are not a production
+latency claim.
+
 \section{Conclusion}
 
 Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
@@ -1260,8 +1431,13 @@ admit more missing Hotpot roots: at 20\%, entry presence reaches 0.457 from 0.34
 recall reaches 0.295 from 0.205, while QASPER recall remains 0.883.  The resulting Hotpot chain
 rate is 0.171 versus 0.143, but reconnecting bounded propagation adds no further chain gain and
 costs orders of magnitude more comparisons.  Multi-span entry search is therefore the supported
-opt-in extension; one-shot remains the default.  Any learned extension must retain the same
-payload, split, leakage, and execution controls and improve beyond this stronger faceted root.
+opt-in extension; one-shot remains the default.  The broader facet ladder preserves that conclusion:
+validation freezes fine 2-token facets and latest-message support, but the held-out sample does not
+identify one universal width or uniformly reject stale memory matches.  More importantly, static
+query reranking of native Top-4 successors changes conditional held-out R@1 from 0.286 to 0.257,
+despite perfect R@4 availability.  We therefore stop before end-to-end grounded closure.  Any
+learned or dynamic extension must retain the same payload, split, leakage, and execution controls
+and improve beyond both the stronger faceted root and the association-only conditional baseline.
 
 \appendix
 \section{Implementation Map}
@@ -1398,6 +1574,30 @@ records zero independent window forwards.  The confirmation at
 \texttt{run\_query\_entry\_propagation.py:74--443} changes only root scores before invoking the
 previously frozen monotonic native-rank policy; its final parent budget remains unchanged.
 
+\paragraph{Facet types and query-grounded propagation.}
+\path{src/pra_hf/query_facets.py:128--307} clips query-support spans and constructs deterministic
+phrase, arbitrary-span, multiscale, token, and overlapping-window facets from one contextual state
+sequence.  Provenance records global/local family, scale, and source-token boundaries.
+\path{src/pra_hf/grounded_propagation.py:26--213} contains no oracle field: lines 80--102 form a
+bounded association-ordered candidate set, lines 105--141 validate its identities in one
+$[\textit{facets},\textit{candidates}]$ product, and lines 144--213 apply association order, query
+reranking, rank conjunction, or a query-threshold AND gate.  Rank conjunction combines ranks only;
+native and semantic raw scores are never added.
+
+The Gate-A runner at
+\path{experiments/paper2_5_iterative_pra/run_grounded_facet_gate.py:106--478} constructs every
+predeclared family, verifies exact global/width-4 baselines, and freezes facet/support choices on
+the hash-stable validation partition.  The controlled capture at
+\texttt{precompute\_grounded\_query\_features.py:46--228} renders old user/tool history plus one
+explicit latest user message, records all character-to-token boundaries, and asserts that the
+copied stale parent is non-oracle.  Gate B at
+\texttt{run\_grounded\_propagation\_gate.py:91--523} first scores native proposals, then computes
+semantic products only for the source group and bounded Top-8 union.  Selection at lines 209--239
+uses validation rows; lines 242--281 implement exact relevance, drift-stop, and unresolved-bridge
+controls.  Candidate JSON retains $A\!\to\!B$ rank, query rank/score, validating facet span/text,
+root-facet equality, and admission.  The runner records zero K/V materialization and stops before
+end-to-end evaluation when its predeclared conditional gate fails.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -1435,8 +1635,14 @@ fitting, and cost accounting.  The monotonic gate adds 19,200 root-policy rows, 
 rows, and 1,040 held-out frozen-policy rows; every row conserves its parent budget and retains all
 locked identities.  The entry gate adds 1,792 root rows and 450 four-method confirmation rows.
 Its manifest records 32 one-pass contextual query captures, zero independent window passes, and
-zero maximum final-token baseline error; all three synthetic controls pass.  The complete
-repository suite passes 412 tests (one upstream deprecation warning).
+zero maximum final-token baseline error; all three synthetic controls pass.  The additive facet
+gate adds 6,400 family rows, 960 clean-support rows, and 3,840 stale-history rows from 128
+one-pass controlled captures.  The conditional propagation gate adds 2,210 rows with complete
+candidate/facet provenance, zero diagnostic K/V materializations, and three passing synthetic
+controls; its end-to-end stop is recorded explicitly.  Thirteen query-facet and six grounded
+propagation unit tests cover support clipping, phrase/multiscale/token facets, local-only sets,
+rank-scale invariance, residual facets, thresholds, provenance, and budgets.  The complete
+repository suite passes 422 tests (one upstream deprecation warning).
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

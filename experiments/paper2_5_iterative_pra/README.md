@@ -41,6 +41,30 @@ python -m experiments.paper2_5_iterative_pra.run_query_entry_propagation --devic
 Artifacts are written under
 `docs/papers/shared/results/paper2_5_iterative_pra/query_entry_facets/`.
 
+## Facet-type and query-grounded propagation gates
+
+This additive iteration keeps the source memories, learned projections, native
+transition geometry, and final parent budget fixed. Gate A compares fixed,
+token, phrase, multiscale, global/local, and robust-reduction facet families.
+It then captures controlled chat prompts containing stale memory-matching
+history and freezes one query-support boundary on validation identities. Gate B
+conditions on a correct first evidence group: native Q/K Top-4 proposes a
+bounded successor set, and the frozen query facets validate only those
+identities. Native and semantic raw scores are never added.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.precompute_grounded_query_features --device cuda
+python -m experiments.paper2_5_iterative_pra.run_grounded_facet_gate --device cuda
+python -m experiments.paper2_5_iterative_pra.run_grounded_propagation_gate --device cuda
+```
+
+The first command writes an ignored, regenerable contextual-state cache. The
+tracked manifest, raw rows, validation audits, plots, and result JSON are under
+`docs/papers/shared/results/paper2_5_iterative_pra/grounded_query_facets/`.
+The conditional propagation runner executes an end-to-end comparison only when
+held-out conditional R@1 improves by at least 0.10 while losing at most 0.05
+R@4. The present run stops at that gate and does not change the SDK default.
+
 ## Gate 3: native local Q/K closure
 
 Gate 3 preserves the frozen semantic router for initial relevance and candidate

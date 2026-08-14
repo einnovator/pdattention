@@ -1,0 +1,255 @@
+{
+  "association_geometry": "native_qk_top4_token_and_head_mean",
+  "candidate_ks": [
+    4,
+    8
+  ],
+  "conditional_final_kv_budget_tokens": 0,
+  "conditional_final_parent_budget": 1,
+  "conditional_gate_passed": false,
+  "diagnostic_only": true,
+  "end_to_end_reason": "stopped_by_predeclared_conditional_gate",
+  "end_to_end_run": false,
+  "frozen_thresholds": {
+    "all": -0.1833282858133316,
+    "residual": -0.21166890859603882
+  },
+  "gate_a_frozen_facet_config": {
+    "family": "window",
+    "include_global": true,
+    "name": "w2_s1",
+    "reduction": "max",
+    "window": 2
+  },
+  "gate_a_frozen_query_support": "latest_message",
+  "heldout_association": {
+    "association_comparisons": 6523757.714285715,
+    "association_wall_time": 0.03498404286801815,
+    "candidate_k": 4,
+    "edges": 7,
+    "grounding_scope": "all",
+    "mode": "association",
+    "mrr": 0.5833333333333334,
+    "partition": "test",
+    "query_facet_count": 22.142857142857142,
+    "query_oracle_margin": -0.11259814756257193,
+    "query_root_comparisons": 24.428571428571427,
+    "query_support_tokens": 22.142857142857142,
+    "query_threshold": null,
+    "rank_lambda": null,
+    "recall_at_1": 0.2857142857142857,
+    "recall_at_2": 0.7142857142857143,
+    "recall_at_4": 1.0,
+    "routing_wall_time": 0.03644780286787344,
+    "rows": 35,
+    "seeds": 5,
+    "target_in_associative_candidates": 1.0,
+    "target_rank": 2.142857142857143,
+    "total_search_comparisons": 6523868.428571428,
+    "validating_facet_equals_root_rate": 0.5976190476190476,
+    "validation_comparisons": 86.28571428571429,
+    "validation_wall_time": 0.0014637599998552884
+  },
+  "heldout_query_grounded": {
+    "association_comparisons": 6523757.714285715,
+    "association_wall_time": 0.03498404286801815,
+    "candidate_k": 4,
+    "edges": 7,
+    "grounding_scope": "all",
+    "mode": "query_rerank",
+    "mrr": 0.5,
+    "partition": "test",
+    "query_facet_count": 22.142857142857142,
+    "query_oracle_margin": -0.11259814756257193,
+    "query_root_comparisons": 24.428571428571427,
+    "query_support_tokens": 22.142857142857142,
+    "query_threshold": null,
+    "rank_lambda": null,
+    "recall_at_1": 0.2571428571428571,
+    "recall_at_2": 0.4,
+    "recall_at_4": 1.0,
+    "routing_wall_time": 0.03644780286787344,
+    "rows": 35,
+    "seeds": 5,
+    "target_in_associative_candidates": 1.0,
+    "target_rank": 2.6857142857142855,
+    "total_search_comparisons": 6523868.428571428,
+    "validating_facet_equals_root_rate": 0.5976190476190476,
+    "validation_comparisons": 86.28571428571429,
+    "validation_wall_time": 0.0014637599998552884
+  },
+  "heldout_r1_gain": -0.02857142857142858,
+  "heldout_r4_loss": 0.0,
+  "kv_materialization_performed": false,
+  "material_success_rule": {
+    "maximum_r4_loss": 0.05,
+    "minimum_r1_gain": 0.1
+  },
+  "model_id": "Qwen/Qwen3-0.6B",
+  "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "primary_candidate_k": 4,
+  "production_default_changed": false,
+  "rank_lambdas": [
+    0.25,
+    0.5,
+    1.0,
+    2.0
+  ],
+  "raw_score_families_mixed": false,
+  "runtime": {
+    "cuda_available": true,
+    "cuda_runtime": "12.6",
+    "device": "NVIDIA GeForce GTX 950M",
+    "git_branch": "research/paper2-5-iter-gist",
+    "git_sha": "fffb917b70c34f9ee283fc895c3b186b2bd16847",
+    "python": "3.10.11",
+    "timestamp_utc": "2026-08-14T12:45:06.910728+00:00",
+    "torch": "2.12.1+cu126",
+    "transformers": "4.55.4"
+  },
+  "schema_version": "1.0",
+  "sdk_change_in_this_iteration": false,
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "selection_audit": [
+    {
+      "candidate": "query_rerank:all:fixed",
+      "mrr": 0.5083333333333333,
+      "r4_preserved": true,
+      "recall_at_1": 0.3,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 82.9
+    },
+    {
+      "candidate": "query_rerank:residual:fixed",
+      "mrr": 0.475,
+      "r4_preserved": true,
+      "recall_at_1": 0.24,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 79.0
+    },
+    {
+      "candidate": "rank_conjunction:all:lambda=0.25",
+      "mrr": 0.355,
+      "r4_preserved": true,
+      "recall_at_1": 0.1,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 82.9
+    },
+    {
+      "candidate": "rank_conjunction:all:lambda=0.5",
+      "mrr": 0.36166666666666664,
+      "r4_preserved": true,
+      "recall_at_1": 0.1,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 82.9
+    },
+    {
+      "candidate": "rank_conjunction:all:lambda=1.0",
+      "mrr": 0.385,
+      "r4_preserved": true,
+      "recall_at_1": 0.08,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 82.9
+    },
+    {
+      "candidate": "rank_conjunction:all:lambda=2.0",
+      "mrr": 0.435,
+      "r4_preserved": true,
+      "recall_at_1": 0.16,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 82.9
+    },
+    {
+      "candidate": "rank_conjunction:residual:lambda=0.25",
+      "mrr": 0.355,
+      "r4_preserved": true,
+      "recall_at_1": 0.1,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 79.0
+    },
+    {
+      "candidate": "rank_conjunction:residual:lambda=0.5",
+      "mrr": 0.36333333333333334,
+      "r4_preserved": true,
+      "recall_at_1": 0.1,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 79.0
+    },
+    {
+      "candidate": "rank_conjunction:residual:lambda=1.0",
+      "mrr": 0.37833333333333335,
+      "r4_preserved": true,
+      "recall_at_1": 0.08,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 79.0
+    },
+    {
+      "candidate": "rank_conjunction:residual:lambda=2.0",
+      "mrr": 0.39166666666666666,
+      "r4_preserved": true,
+      "recall_at_1": 0.08,
+      "recall_at_4": 0.6,
+      "validation_comparisons": 79.0
+    },
+    {
+      "candidate": "threshold_conjunction:all:threshold=-0.1833282858133316",
+      "mrr": 0.389,
+      "r4_preserved": true,
+      "recall_at_1": 0.12,
+      "recall_at_4": 0.58,
+      "validation_comparisons": 82.9
+    },
+    {
+      "candidate": "threshold_conjunction:residual:threshold=-0.21166890859603882",
+      "mrr": 0.38299999999999995,
+      "r4_preserved": true,
+      "recall_at_1": 0.12,
+      "recall_at_4": 0.56,
+      "validation_comparisons": 79.0
+    }
+  ],
+  "static_query_grounding": true,
+  "synthetic_controls": [
+    {
+      "association_top1": 1,
+      "control": "grounded_association",
+      "expected_grounded": 2,
+      "grounded_top1": 2,
+      "passed": true
+    },
+    {
+      "control": "drift_stop",
+      "expected": [
+        2
+      ],
+      "passed": true,
+      "selected": [
+        2
+      ]
+    },
+    {
+      "control": "unresolved_bridge",
+      "expected_top1": 2,
+      "passed": true,
+      "selected": [
+        2
+      ]
+    }
+  ],
+  "training_performed": false,
+  "validation_selection": {
+    "grounding_scope": "all",
+    "mode": "query_rerank",
+    "mrr": 0.5083333333333333,
+    "query_threshold": null,
+    "rank_lambda": null,
+    "recall_at_1": 0.3,
+    "recall_at_4": 0.6
+  }
+}
