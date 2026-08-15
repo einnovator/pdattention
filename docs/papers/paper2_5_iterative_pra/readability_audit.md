@@ -3,10 +3,11 @@
 ## Page Structure
 
 - Previous PDF: 66 pages total; the first appendix began on page 58, leaving 57 main-text pages.
-- Reorganized final PDF: 68 pages total; the chronological appendix begins on page 16, leaving 15
+- Reorganized final PDF: 69 pages total; the chronological appendix begins on page 16, leaving 15
   reviewer-facing main-text pages.
-- The two added total pages are attributable to the final Gate-3 output evidence, external-judge
-  results, and provenance material. No prior negative experiment was deleted to reduce page count.
+- The three added total pages are attributable to the final Gate-3 output evidence, external-judge
+  results, focused related work, and provenance material. No prior negative experiment was deleted
+  to reduce page count.
 
 ## Main Narrative
 
@@ -15,8 +16,9 @@ The main paper now follows the final scientific decomposition:
 1. inherited PRA/HF setting;
 2. bounded associative discovery;
 3. dataset roles and frozen evaluation protocol;
-4. results organized by scientific question;
-5. discussion, limitations, handoff, and conclusion.
+4. focused comparison with long-context, retrieval, and K/V-selection work;
+5. results organized by scientific question;
+6. discussion, limitations, handoff, and conclusion.
 
 The former gate sequence was moved behind the appendix transition. It preserves projection
 correction, parent and local semantic discovery, native-Q/K controls, oracle rank and competition,
@@ -58,5 +60,5 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
   end-to-end quality gain.
 - GPT-5.6 Sol supplies one complete, control-qualified external judgment. Claude covers 51.7% of
   pairs and fails calibration, leaving evaluator robustness unresolved.
-- Generation latency is measured per example; production serving, TTFT/TPOT, concurrency, and
-  optimized graph search remain future systems work.
+- Synchronized TTFT/TPOT and total generation latency are measured per example; production
+  serving, concurrency, and optimized graph search remain future systems work.

@@ -14,6 +14,7 @@ final build. Private behavioral-judge truth and unblinding files are intentional
 | Contextual dependence does not determine graph quality. | `../shared/results/paper2_5_iterative_pra/final_metrics/layer_context_correlations.csv` | Correlations between contextualization measures and edge/path metrics. |
 | All-offset oracle root Top-4 is .878/.950 on MuSiQue/2Wiki, versus .622/.692 for held-out executable selectors. | `../shared/results/paper2_5_iterative_pra/natural_graph_depth/routing_ceiling_table.csv` | Oracle-facet and bounded/executable held-out rows. |
 | Gate 3 contains 1,008 frozen generation runs, enforces a 256-token native-operation bound, and records zero violations. | `../shared/results/paper2_5_iterative_pra/output_validation/gate3_generation_results.json` | Run count, `max_native_operation_tokens`, and violation totals. |
+| Main output timing reports synchronized TTFT, TPOT, and total generation latency for each frozen condition. | `../shared/results/paper2_5_iterative_pra/output_validation/gate3_output_summary.csv` | `ttft_seconds`, `tpot_seconds`, and `total_generation_seconds`; displayed values are rounded to two decimals. |
 | Held-out 2Wiki one-shot/balanced/high-recall/oracle F1 is .354/.313/.271/.362. | `../shared/results/paper2_5_iterative_pra/output_validation/gate3_output_summary.csv` | 2Wiki held-out policy rows, answer F1. |
 | Broad 2Wiki discovery recovers all evidence but final-token attention assigns .044 to evidence and .754 to selected non-evidence. | `../shared/results/paper2_5_iterative_pra/output_validation/gate3_output_analysis.json` | 2Wiki high-recall evidence recovery and attention-mass decomposition. |
 | MuSiQue normalized answer accuracy is zero even with direct full context. | `../shared/results/paper2_5_iterative_pra/output_validation/gate3_output_summary.csv` | MuSiQue direct-full-context row. |
@@ -26,8 +27,8 @@ final build. Private behavioral-judge truth and unblinding files are intentional
 - Evidence reachability is not faithful traversal of the annotated reasoning graph.
 - Oracle-root results are ceilings, not end-to-end routing results.
 - Selected-source fraction is conceptual activation, not physical native-K/V materialization.
-- Gate-3 active K/V and latency are frozen efficacy measurements, not TTFT, TPOT, throughput, or
-  concurrent-serving benchmarks.
+- Gate-3 active K/V plus synchronized TTFT, TPOT, and total latency are frozen single-example
+  efficacy measurements, not throughput, concurrency, or production-serving benchmarks.
 - Five router seeds measure projection sensitivity; they do not multiply independent question
   identities.
 - MuSiQue output comparisons are backbone-limited because the direct-full-context control also has

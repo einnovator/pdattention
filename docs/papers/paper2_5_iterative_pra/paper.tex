@@ -396,6 +396,32 @@ It then freezes one band per dataset and records answer F1, normalized accuracy,
 tokens by layer, final-token evidence/non-evidence/local attention mass, latency, and bound
 violations.  A separate two-example Hotpot/QASPER smoke remains only a compatibility check.
 
+\section{Related Work}
+
+Long-context transformers either change the attention pattern or carry state across segments.
+Longformer, BigBird, and Routing Transformer make token attention sparse
+\cite{beltagy2020longformer,zaheer2020bigbird,roy2021routing}; Transformer-XL and Compressive
+Transformer reuse or compress earlier states \cite{dai2019transformerxl,rae2020compressive}.
+These methods primarily ask how a model attends within an extended sequence or recurrent state.
+PRA instead keeps an externally backed logical memory and activates a bounded, addressable subset
+of its native K/V.  Paper 2.5 asks the narrower question of whether frozen representations already
+define useful memory-to-memory edges for choosing that subset.
+
+Retrieval-augmented models such as REALM, RAG, and RETRO retrieve external text or representations
+before or during generation \cite{guu2020realm,lewis2020rag,borgeaud2022retro}.  IRCoT interleaves
+retrieval with generated reasoning steps \cite{trivedi2023ircot}.  Such loops can rewrite the
+query after each model pass.  Iterative PRA does not generate an intermediate query or rerun the
+transformer during search: a retrieved latent node proposes bounded successors, and only the
+final identities become attention payload.  This makes the search cheaper and directly auditable,
+but less expressive than a text-level retriever or agent that can reformulate the task.
+
+K/V-efficiency methods including H2O, SnapKV, and QUEST select or retain cache entries using
+attention or query signals \cite{zhang2023h2o,li2024snapkv,tang2024quest}.  Their principal target
+is cache reduction for an available context.  Iterative PRA separates root routing, associative
+discovery, and later K/V materialization over external memory.  That distinction motivates this
+paper's separate measurements of root recall, native-edge fidelity, conceptual source activation,
+physical K/V state, and output use.
+
 \section{Results}
 
 \subsection{Does iterative discovery expose evidence missed by one-shot?}
@@ -599,25 +625,26 @@ including direct full context, so it cannot identify a useful materialization ba
 \begin{table}[H]
 \centering
 \caption{Held-out end-to-end output.  Active K/V is peak local plus external per-layer native K/V
-state, in thousands.  Latency is synchronized greedy generation on GTX~950M.}
+state, in thousands.  Time reports synchronized TTFT/TPOT/total greedy-generation seconds on
+GTX~950M; these are diagnostic single-example measurements, not serving throughput.}
 \label{tab:main-output}
 \scriptsize
 \begin{tabular}{llrrrrrr}
 \toprule
-Dataset & Condition & Recall & Source & Active K/V & F1 & Accuracy & Seconds \\
+Dataset & Condition & Recall & Source & Active K/V & F1 & Accuracy & Time (s) \\
 \midrule
-2Wiki & native, no source & .000 & .000 & 1.34 & .353 & .333 & .93 \\
-2Wiki & one-shot PRA & .719 & .589 & 4.25 & .354 & .333 & 1.30 \\
-2Wiki & graph sparse & .490 & .185 & 2.20 & .347 & .333 & 1.00 \\
-2Wiki & graph balanced & .760 & .586 & 4.27 & .313 & .292 & 1.35 \\
-2Wiki & graph broad & 1.000 & .934 & 6.22 & .271 & .250 & 1.46 \\
-2Wiki & oracle evidence & 1.000 & .320 & 2.88 & .362 & .333 & 1.29 \\
-2Wiki & native full context & 1.000 & 1.000 & 38.57 & .233 & .208 & 4.39 \\
+2Wiki & native, no source & .000 & .000 & 1.34 & .353 & .333 & .18/.11/.93 \\
+2Wiki & one-shot PRA & .719 & .589 & 4.25 & .354 & .333 & .19/.14/1.30 \\
+2Wiki & graph sparse & .490 & .185 & 2.20 & .347 & .333 & .17/.12/1.00 \\
+2Wiki & graph balanced & .760 & .586 & 4.27 & .313 & .292 & .19/.13/1.35 \\
+2Wiki & graph broad & 1.000 & .934 & 6.22 & .271 & .250 & .20/.15/1.46 \\
+2Wiki & oracle evidence & 1.000 & .320 & 2.88 & .362 & .333 & .17/.13/1.29 \\
+2Wiki & native full context & 1.000 & 1.000 & 38.57 & .233 & .208 & 3.42/.12/4.39 \\
 \midrule
-MuSiQue & one-shot PRA & .889 & .793 & 58.04 & .011 & .000 & 9.42 \\
-MuSiQue & graph balanced & .931 & .593 & 44.68 & .016 & .000 & 7.69 \\
-MuSiQue & oracle evidence & 1.000 & .275 & 21.97 & .024 & .000 & 4.98 \\
-MuSiQue & native full context & 1.000 & 1.000 & 74.51 & .026 & .000 & 9.86 \\
+MuSiQue & one-shot PRA & .889 & .793 & 58.04 & .011 & .000 & .85/.57/9.42 \\
+MuSiQue & graph balanced & .931 & .593 & 44.68 & .016 & .000 & .70/.47/7.69 \\
+MuSiQue & oracle evidence & 1.000 & .275 & 21.97 & .024 & .000 & .42/.30/4.98 \\
+MuSiQue & native full context & 1.000 & 1.000 & 74.51 & .026 & .000 & 8.48/.17/9.86 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -642,9 +669,10 @@ MuSiQue & native full context & 1.000 & 1.000 & 74.51 & .026 & .000 & 9.86 \\
 
 All 1,008 generations preserve Qwen's 16 query heads, 8 native K/V heads, exact fixed identities,
 and a 4,096-token context bound; maximum block execution is 256 tokens with zero violations.  TTFT,
-TPOT, and total latency are synchronized end-to-end measurements.  Materialization, transfer, and
-attention components refer to the final decode forward and are not extrapolated into serving
-throughput.
+TPOT, and total latency are synchronized end-to-end measurements.  They characterize this frozen
+single-example efficacy runner, not a batched serving system.  Materialization, transfer, and
+attention components refer to the final decode forward and are not extrapolated into throughput,
+concurrency, or production cache behavior.
 
 A 588-presentation canonical blind package represents 294 underlying comparisons in both A/B
 orders.  GPT-5.6 Sol returns complete coverage and passes both calibration anchors exactly:
@@ -721,8 +749,8 @@ at any cost.
 
 \paragraph{Paper 3.5: routing, search, and serving.}
 Train a bounded facet controller against the .878/.950 root-view ceiling; select layer and
-granularity jointly; replace dense Python adjacency with an indexed GPU search; and measure TTFT,
-TPOT, throughput, concurrency, and cache residency in a serving runtime.
+granularity jointly; replace dense Python adjacency with an indexed GPU search; and repeat
+TTFT/TPOT under a serving runtime that also measures throughput, concurrency, and cache residency.
 
 \paragraph{Paper 4: PRA-aware training.}
 Test whether from-scratch or continued training can shape entry, successor, stopping, and memory-use
@@ -2432,8 +2460,8 @@ expanded nodes, search time, adjacency time, and measured CUDA memory.  Table
 construction.  All rows in this chronological graph-only gate remain conceptual-routing
 measurements: materialized native-K/V tokens and bytes are exactly zero; ``selected source'' is
 the previously defined counterfactual whole-parent payload.  The later Gate-3 output study
-materializes those identities and measures generation latency, but neither stage measures TTFT,
-TPOT, concurrency, or serving throughput.
+materializes those identities and measures synchronized TTFT, TPOT, and total generation latency;
+neither stage measures concurrency or serving throughput.
 
 \begin{table}[H]
 \centering
@@ -2488,9 +2516,10 @@ The graph-only program stopped here.  Its code and artifacts characterize the re
 large router, fusing layers, adapting K/B/thresholds, changing materialization, or adding another
 search architecture.  The subsequent Gate-3 output study tests frozen bounded materialization;
 Paper 3 may test a supervised facet selector and adaptive early-local/middle-global topology,
-while serving kernels, TTFT/TPOT, and concurrency remain outside this paper.
+while optimized serving kernels, batched concurrency, and production-calibrated timing remain
+outside this paper.
 
-\section{Extended Chronological Synthesis and Related Work}
+\section{Extended Chronological Synthesis}
 
 \subsection{What the experiments establish}
 
@@ -2726,8 +2755,8 @@ denominators.  Layer correlations have only eight depth points.  Their identity 
 cohort uncertainty but cannot make transformer depth an independent random sample.  Finally, the
 Pareto frontier is conditional on oracle roots and counterfactual whole-parent payload.  It records
 zero actual K/V materialization within that graph-only gate.  Gate 3 later materializes frozen
-sets and measures per-example generation latency, but still supports neither TTFT nor throughput
-claims.
+sets and measures synchronized per-example TTFT, TPOT, and total generation latency, but still
+supports no throughput, concurrency, or production-serving claim.
 
 \section{Extended Experimental Synthesis}
 
