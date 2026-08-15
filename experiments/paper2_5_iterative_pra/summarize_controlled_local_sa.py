@@ -72,6 +72,156 @@ def _plot_window_metric(rows: list[dict], metric: str, ylabel: str, path: Path) 
     plt.close(fig)
 
 
+def _recovery_depth_rows(raw_edges: list[dict]) -> list[dict]:
+    """Find the first layer whose complete evidence path survives at R@4."""
+    examples: dict[tuple[str, str, str], list[dict]] = {}
+    for row in raw_edges:
+        examples.setdefault((row["window"], row["seed"], row["example_id"]), []).append(row)
+    output = []
+    for (window, seed, example_id), rows in examples.items():
+        layers = sorted({int(row["layer_id"]) for row in rows})
+        recovered = [
+            layer
+            for layer in layers
+            if all(
+                _number(row["recall_at_4"]) == 1.0
+                for row in rows
+                if int(row["layer_id"]) == layer
+            )
+        ]
+        first = min(recovered) + 1 if recovered else len(layers) + 1
+        output.append(
+            {
+                "window": window,
+                "seed": seed,
+                "example_id": example_id,
+                "depth": rows[0]["depth"],
+                "minimum_native_recovery_depth": first,
+                "unreachable_within_model": int(not recovered),
+                "recovery_depth_cap": len(layers) + 1,
+            }
+        )
+    return output
+
+
+def _plot_recovery_depth(rows: list[dict], path: Path) -> None:
+    per_seed = _seed_mean(
+        rows,
+        ("window", "seed"),
+        "minimum_native_recovery_depth",
+    )
+    normalized = [
+        {
+            "window": row["window"],
+            "minimum_native_recovery_depth": row[
+                "minimum_native_recovery_depth_mean"
+            ],
+        }
+        for row in per_seed
+    ]
+    summary = _seed_mean(
+        normalized,
+        ("window",),
+        "minimum_native_recovery_depth",
+    )
+    summary.sort(key=lambda row: WINDOW_ORDER[row["window"]])
+    fig, axis = plt.subplots(figsize=(5.2, 3.3))
+    axis.errorbar(
+        [row["window"].replace("w", "W=") for row in summary],
+        [row["minimum_native_recovery_depth_mean"] for row in summary],
+        yerr=[row["minimum_native_recovery_depth_ci95"] for row in summary],
+        marker="o",
+        capsize=3,
+        color="#6d28d9",
+    )
+    axis.set_xlabel("training attention window")
+    axis.set_ylabel("minimum complete-path recovery layer")
+    axis.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+
+
+def _plot_edge_recall_curves(rows: list[dict], path: Path) -> None:
+    final_layer = max(int(row["layer_id"]) for row in rows)
+    selected = [row for row in rows if int(row["layer_id"]) == final_layer]
+    fig, axis = plt.subplots(figsize=(5.5, 3.4))
+    ordered_windows = sorted({row["window"] for row in selected}, key=WINDOW_ORDER.get)
+    for cutoff in (1, 2, 4, 6, 8):
+        values = []
+        for window in ordered_windows:
+            group = [
+                _number(row[f"edge_recall_at_{cutoff}"])
+                for row in selected
+                if row["window"] == window
+            ]
+            values.append(statistics.fmean(group))
+        axis.plot(
+            [window.replace("w", "W=") for window in ordered_windows],
+            values,
+            marker="o",
+            label=f"R@{cutoff}",
+        )
+    axis.set_xlabel("training attention window")
+    axis.set_ylabel("native edge recall")
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(frameon=False, ncol=3, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+
+
+def _plot_layerwise(
+    topology: list[dict],
+    context: list[dict],
+    path: Path,
+) -> None:
+    available = {row["window"] for row in topology}
+    representatives = [window for window in ("w16", "global") if window in available]
+    if not representatives:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(8.0, 3.2))
+    for window in representatives:
+        topo = [row for row in topology if row["window"] == window]
+        context_rows = [row for row in context if row["window"] == window]
+        layers = sorted({int(row["layer_id"]) for row in topo})
+        axes[0].plot(
+            layers,
+            [
+                statistics.fmean(
+                    _number(row["edge_recall_at_4"])
+                    for row in topo
+                    if int(row["layer_id"]) == layer
+                )
+                for layer in layers
+            ],
+            marker="o",
+            label=window,
+        )
+        axes[1].plot(
+            layers,
+            [
+                statistics.fmean(
+                    _number(row["restricted_context_dependence"])
+                    for row in context_rows
+                    if int(row["layer_id"]) == layer
+                )
+                for layer in layers
+            ],
+            marker="o",
+            label=window,
+        )
+    axes[0].set_ylabel("edge R@4")
+    axes[1].set_ylabel("restricted-context dependence")
+    for axis in axes:
+        axis.set_xlabel("decoder layer")
+        axis.grid(axis="y", alpha=0.25)
+        axis.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+
+
 def _plot_spacing(rows: list[dict], path: Path) -> None:
     selected = [
         row
@@ -267,11 +417,19 @@ def main() -> None:
     figures = args.output_dir / "figures"
     figures.mkdir(parents=True, exist_ok=True)
     topology = _read_csv(args.output_dir / "receptive_field_topology.csv")
+    raw_topology = _read_csv(args.output_dir / "receptive_field_topology_rows.csv")
+    context = _read_csv(args.output_dir / "layer_contextualization_by_window.csv")
     pra = _read_csv(args.output_dir / "local_pra_one_shot_iterative.csv")
     if topology:
         _plot_window_metric(topology, "edge_recall_at_4", "native edge R@4", figures / "edge_recall_by_window.png")
         _plot_window_metric(topology, "shortcut_rate", "shortcut rate", figures / "shortcut_rate_by_window.png")
         _plot_window_metric(topology, "complete_path_survival_at_4", "complete path survival @4", figures / "path_survival_by_window.png")
+        _plot_edge_recall_curves(topology, figures / "edge_recall_curves_by_window.png")
+        _plot_layerwise(topology, context, figures / "layerwise_topology_context.png")
+    if raw_topology:
+        recovery = _recovery_depth_rows(raw_topology)
+        _write_csv(args.output_dir / "native_recovery_depth.csv", recovery)
+        _plot_recovery_depth(recovery, figures / "native_recovery_depth_by_window.png")
     if pra:
         _plot_pra_gain(pra, figures / "iterative_gain_by_window.png")
         _plot_spacing(pra, figures / "quality_and_state_by_spacing.png")

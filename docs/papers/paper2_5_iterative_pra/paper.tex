@@ -869,20 +869,22 @@ trace-oriented materializer are diagnostic kernels, not serving implementations.
 behavioral result comes from one control-qualified judge; the second judge is partial and fails
 the calibration anchors, so evaluator robustness remains unresolved.
 
-\section{Handoff}
+\section{Scope Boundaries and Follow-up Work}
 
-\paragraph{Paper 3: evidence-centered materialization.}
-Start from oracle and high-quality discovered identities, deduplicate overlapping spans, window
-around evidence, and reproduce the measured output ceiling with fewer native K/V states.  The
-target is quality at the sparse side of Figure~\ref{fig:main-output-frontier}, not maximum recall
-at any cost.
+\paragraph{Evidence-centered materialization.}
+Future work can start from oracle and high-quality discovered identities, deduplicate overlapping
+spans, window around evidence, and reproduce the measured output ceiling with fewer native K/V
+states.  The target is quality at the sparse side of
+Figure~\ref{fig:main-output-frontier}, not maximum recall at any cost.  The controlled experiment
+in Section~\ref{sec:controlled-local} defines and tests its own indivisible-fact and fixed-budget
+controls; it has no external materialization prerequisite.
 
-\paragraph{Paper 3.5: routing, search, and serving.}
+\paragraph{Routing, search, and serving.}
 Train a bounded facet controller against the .878/.950 root-view ceiling; select layer and
 granularity jointly; replace dense Python adjacency with an indexed GPU search; and repeat
 TTFT/TPOT under a serving runtime that also measures throughput, concurrency, and cache residency.
 
-\paragraph{Paper 4: PRA-aware training.}
+\paragraph{PRA-aware training at scale.}
 Test whether from-scratch or continued training can shape entry, successor, stopping, and memory-use
 geometry together.  Such training is a new architecture study, not evidence about this frozen
 checkpoint.
@@ -2455,7 +2457,7 @@ system should preserve contextual coarse discovery state while exposing fine pay
 training search control around absent fine edges would address the wrong component.  For entry,
 the oracle ceiling motivates bounded facet selection, but the final measurement gate below first
 tests whether inexpensive statistics already predict the winner.  Learned selection is deferred
-to Paper~3.  At this chronological stage, physical native-K/V materialization and serving were
+to a separate study.  At this chronological stage, physical native-K/V materialization and serving were
 still deferred; the later Gate-3 output study in the main text adds bounded materialization and
 generation but not a production serving benchmark.
 
@@ -2645,7 +2647,7 @@ executable facet gap.
 The graph-only program stopped here.  Its code and artifacts characterize the remaining gaps without fitting a
 large router, fusing layers, adapting K/B/thresholds, changing materialization, or adding another
 search architecture.  The subsequent Gate-3 output study tests frozen bounded materialization;
-Paper 3 may test a supervised facet selector and adaptive early-local/middle-global topology,
+future work may test a supervised facet selector and adaptive early-local/middle-global topology,
 while optimized serving kernels, batched concurrency, and production-calibrated timing remain
 outside this paper.
 
@@ -2746,19 +2748,63 @@ Its recurrence is $\textit{query}\rightarrow\textit{memory node}\rightarrow\text
 This distinction motivates the parameter-free Level-1 test: retrieval recursion should earn its
 complexity before neural state recursion is introduced.
 
-\subsection{Paper 3 handoff}
+\subsection{Materialization boundary}
 
 Papers 1--2 conservatively compress search but materialize every selected chunk in full.  Iterative
 closure produces more structure before transfer: hop, parent edges, direct relevance, path score,
 confidence, branch entropy, and duplicate/overlap statistics.  The versioned graph keeps these
-signals even when the final payload remains unchanged.  Paper 3 can therefore ask a separate
-question: given a discovered closure, how much detail should each node receive?  This paper does
-not test partial materialization.  The granularity sweep makes that handoff quantitative.  At a
+signals even when the final payload remains unchanged.  This leaves a separate question: given a
+discovered closure, how much detail should each node receive?  The natural-data chronology does
+not test partial materialization.  Its granularity sweep makes that boundary quantitative.  At a
 fixed six-parent conceptual budget, moving from 16 to 256-token parents raises evidence recall but
 increases the counterfactual selected payload fourteenfold and lowers evidence density more than
-threefold.  Paper 3 should therefore compare whole-parent, evidence-local, and progressively
+threefold.  A follow-up should therefore compare whole-parent, evidence-local, and progressively
 expanded materialization on the same discovered set rather than treating chunk size as a settled
-constant.
+constant.  The controlled study in this revision is self-contained and uses indivisible fact
+parents, making whole-parent and selected-chunk transport an exact identity control.
+
+\subsection{Controlled implementation map}
+\label{app:controlled-code-map}
+
+Table~\ref{tab:controlled-code-map} identifies the minimal implementation surface needed to
+reproduce the controlled experiment.  Line numbers refer to the archived source revision shipped
+with this paper; function and field names are the stable anchors.
+
+\begin{table}[H]
+\centering
+\caption{Code-level map for the controlled LocalSA and evolved-state PRA experiment.}
+\label{tab:controlled-code-map}
+\scriptsize
+\begin{tabular}{p{0.39\linewidth}p{0.53\linewidth}}
+\toprule
+Source anchor & Contract \\
+\midrule
+\path{src/pra_torch/masks.py}, line 8, \texttt{causal\_attention\_mask}
+& Returns a Boolean $[T,T]$ hidden-position mask.  Finite $W$ exposes exactly the current token
+and previous $W-1$ positions; \texttt{None} is ordinary global causal attention. \\
+\path{src/pra_torch/config.py}, lines 30 and 226
+& Declares and validates \texttt{self\_attention\_window}; line 512 normalizes exact
+\texttt{td\_layered\_pra} consumer IDs. \\
+\path{src/pra_torch/model.py}, lines 353--366
+& Builds ordinary position-aware blocks except at explicitly requested PRA layers.  Conversion
+copies layer normalization, Q/K/V/O, FFN, embeddings, and output head. \\
+\path{src/pra_torch/model.py}, line 603, \texttt{forward\_progressive\_pra}
+& Runs blocks in decoder order, routes from each evolved final-token state, removes visited URI
+identities before the next PRA block, and returns logits plus a per-layer route/cost trace. \\
+\path{src/pra_torch/controlled\_local\_sa.py}, line 93
+& Generates fresh chains.  Lines 152--174 force balanced terminal-relation decoys; lines 191--197
+randomly interleave distractors while preserving reverse causal evidence order. \\
+\path{experiments/paper2\_5\_iterative\_pra/run\_controlled\_local\_sa.py}, line 178
+& Trains all matched windows, selects checkpoints on validation only, evaluates a disjoint test
+split, and records tokens, approximate FLOPs, time, parameters, and convergence history. \\
+Same file, line 378, \texttt{topology\_rows}
+& Captures per-layer native Q/K edge ranks and contextualization metrics without PRA. \\
+\path{experiments/paper2\_5\_iterative\_pra/run\_controlled\_pra.py}, lines 73 and 133
+& Encodes layer-native reference K/V once, reruns routing/materialization for every placement, and
+scores gold paths only after inference.  Line 169 activates the no-replay progressive forward. \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Extended Limitations and Threats to Validity}
 
@@ -2979,7 +3025,7 @@ whereas the best cheap held-out selectors reach only .622/.692.  Confidence, pos
 validation-fitted linear scale selector do not close that gap.  The measured sparse frontier spans
 .063 selected source at .819 evidence recall for MuSiQue and .172 at .796 for 2Wiki, while their
 complete-recovery points require .573 and .918 respectively.  We therefore freeze Paper~2.5 at
-this measured boundary.  Supervised or adaptive facet selection belongs to Paper~3; production
+this measured boundary.  Supervised or adaptive facet selection belongs to a separate follow-up; production
 native-K/V serving latency and concurrency belong to a separate systems study.  The Gate-3 output
 experiment in this paper is a bounded efficacy measurement, not that serving study.
 

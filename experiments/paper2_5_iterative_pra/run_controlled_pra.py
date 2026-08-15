@@ -36,7 +36,7 @@ def _pra_patterns(n_layers: int) -> dict[str, tuple[int, ...]]:
         sorted({0, n_layers // 3, (2 * n_layers) // 3, n_layers - 1})
     )
     return {
-        "one_shot": (min(2, n_layers - 1),),
+        "one_shot": (0,),
         "iterative_matched": matched,
         "late_only": (n_layers - 1,),
         "spacing_1": tuple(range(n_layers)),
