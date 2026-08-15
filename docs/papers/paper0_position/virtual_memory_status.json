@@ -1,0 +1,214 @@
+{
+  "schema_version": "1.0",
+  "last_updated": "2026-08-15",
+  "status_vocabulary": {
+    "Demonstrated": "Implemented and measured in the stated experimental scope.",
+    "Strong": "Supported by multiple mechanisms or artifacts, but not yet a decisive end-to-end systems result.",
+    "Partial": "A working component or useful evidence exists, with an important missing subproblem.",
+    "Emerging": "An initial implementation or diagnostic exists, but the design is not yet stable or general.",
+    "Planned": "Architecturally specified next work without a validating implementation.",
+    "Open": "A required property remains unresolved and lacks adequate validation."
+  },
+  "entries": [
+    {
+      "vm_concept": "Virtual address space",
+      "pra_analogue": "URI references and logical token positions",
+      "status": "Strong",
+      "paper": "Papers 0-2",
+      "artifact": "docs/papers/paper0_position/paper.tex; docs/papers/shared/results/pra_head_beyond_native_context.json",
+      "headline_result": "Named external objects and implicit prompt-head positions share one logical-memory interface.",
+      "remaining_gap": "No arbitrary-scale address-space or distributed namespace validation.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Backing store",
+      "pra_analogue": "CPU or external source plus reference native K/V",
+      "status": "Strong",
+      "paper": "Papers 1-2",
+      "artifact": "docs/papers/shared/results/pra_kv_residency.json; research/paper2-hf: docs/papers/shared/results/paper2_hf/",
+      "headline_result": "Reference K/V can remain off device and preserve host-model-native representations.",
+      "remaining_gap": "Distributed storage, freshness, and production cache economics remain open.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Page and index metadata",
+      "pra_analogue": "Gists, hierarchy, source spans, and reference metadata",
+      "status": "Strong",
+      "paper": "Papers 1-2.5",
+      "artifact": "docs/papers/shared/results/pra_parameter_sensitivity_gist.json; research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/final_metrics/final_metrics_results.json",
+      "headline_result": "Compact metadata preserves identity, hierarchy, and routing state separately from native K/V payload.",
+      "remaining_gap": "Index maintenance and large-corpus update cost are not characterized.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Address and page lookup",
+      "pra_analogue": "Query facets and semantic root routing",
+      "status": "Partial",
+      "paper": "Papers 2 and 2.5",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/routing_ceiling_table.csv; docs/papers/shared/results/paper2_5_iterative_pra/final_metrics/final_metrics_results.json",
+      "headline_result": "Oracle root views reach 0.878/0.950 Top-4 on MuSiQue/2Wiki, versus 0.622/0.692 for cheap held-out selectors.",
+      "remaining_gap": "Executable facet selection and distractor calibration do not realize the oracle ceiling.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Locality between pages",
+      "pra_analogue": "Native Q/K associative successor graph",
+      "status": "Strong",
+      "paper": "Paper 2.5",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/natural_graph_depth_results.json",
+      "headline_result": "Frozen native Q/K exposes strong 2Wiki evidence edges after entry, but topology changes with layer and chunk size.",
+      "remaining_gap": "Fine-grained natural edges and end-to-end entry remain unreliable.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Page-in",
+      "pra_analogue": "Selected native K/V transfer from CPU to GPU",
+      "status": "Demonstrated",
+      "paper": "Papers 1 and 2",
+      "artifact": "docs/papers/shared/results/pra_kv_residency.json; research/paper2-hf: docs/papers/shared/results/paper2_hf/",
+      "headline_result": "Selected layer-native K/V is transferred and consumed without replacing it by the routing gist.",
+      "remaining_gap": "Fused asynchronous serving transfer and concurrency are not demonstrated.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Bounded physical working set",
+      "pra_analogue": "Bounded direct head plus active reference native K/V",
+      "status": "Demonstrated",
+      "paper": "Paper 1",
+      "artifact": "docs/papers/shared/results/recall_sparsity/paper1/fixed_k_vs_fraction.csv; docs/papers/shared/results/pra_context_budget.json",
+      "headline_result": "Fixed-k routing reduces active fraction as logical memory grows while every native operation remains bounded.",
+      "remaining_gap": "Task quality and physical boundedness have not been validated from 32K to multi-million-token stores.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Page granularity",
+      "pra_analogue": "Separate encoding, search, and materialization units",
+      "status": "Partial",
+      "paper": "Papers 1 and 2.5; Paper 3 target",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/cross_dataset_granularity.csv",
+      "headline_result": "Fine search nodes reduce conceptual payload but can remove useful native edges.",
+      "remaining_gap": "Evidence-centered physical K/V window size is unresolved.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Cross-page gather",
+      "pra_analogue": "Logical interval gather across selected chunks",
+      "status": "Planned",
+      "paper": "Paper 3 target",
+      "artifact": "docs/papers/paper0_position/paper.tex",
+      "headline_result": "The interface is specified as a post-discovery materialization stage.",
+      "remaining_gap": "No evidence-centered gather implementation or output validation.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Deduplication",
+      "pra_analogue": "Union of overlapping logical K/V intervals",
+      "status": "Planned",
+      "paper": "Paper 3 target",
+      "artifact": "docs/papers/paper0_position/paper.tex",
+      "headline_result": "Graph identities deduplicate conceptually; physical interval union is specified next.",
+      "remaining_gap": "No overlap-aware physical K/V union and accounting.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Demand paging policy",
+      "pra_analogue": "Root route, associative discovery, then K/V disclosure",
+      "status": "Partial",
+      "paper": "Papers 2-2.5; Papers 3-3.5 targets",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/output_validation/gate3_generation_results.json",
+      "headline_result": "The frozen pipeline performs bounded discovery and exact selected-set K/V output validation.",
+      "remaining_gap": "Root competition and memory-use interference prevent a general demand-paging claim.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Replacement and eviction",
+      "pra_analogue": "Bounded prompt head and future adaptive working-set controller",
+      "status": "Partial",
+      "paper": "Paper 1; Paper 3.5 target",
+      "artifact": "docs/papers/shared/results/pra_streaming_rollover.json",
+      "headline_result": "Correctness-first head rollover and explicit budget policies exist.",
+      "remaining_gap": "No learned replacement policy, reuse-aware eviction, or serving pressure test.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Page-fault handling",
+      "pra_analogue": "Discover missing memory, materialize it, and continue",
+      "status": "Emerging",
+      "paper": "Paper 2.5; Papers 3-3.5 targets",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/output_validation/",
+      "headline_result": "Discovery and later materialization are executable as separate bounded stages.",
+      "remaining_gap": "No calibrated online fault detector or iterative decode-resume loop.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Multi-level cache",
+      "pra_analogue": "External source or CPU reference K/V to GPU active K/V",
+      "status": "Demonstrated",
+      "paper": "Papers 1 and 2",
+      "artifact": "docs/papers/shared/results/pra_kv_residency.json",
+      "headline_result": "A basic host-resident to device-active native-K/V lifecycle is measured.",
+      "remaining_gap": "No distributed hierarchy, cache-coherence protocol, or production hit-rate study.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Locality-aware prefetch",
+      "pra_analogue": "Bounded associative graph expansion",
+      "status": "Demonstrated",
+      "paper": "Paper 2.5",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/natural_graph_depth_results.json",
+      "headline_result": "Synthetic indirect nodes and natural annotated successors can be recovered through memory-to-memory edges.",
+      "remaining_gap": "Natural benefits depend on entry, layer, granularity, and activation breadth.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Thrashing control",
+      "pra_analogue": "Adaptive routing, K/B, layer, and materialization control",
+      "status": "Open",
+      "paper": "Paper 3.5 target",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/final_metrics/negative_results_registry.md",
+      "headline_result": "Broad activation and distractor competition are measured failure modes.",
+      "remaining_gap": "No stable adaptive controller or workload-level thrashing metric.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Physical page size",
+      "pra_analogue": "Native K/V materialization window",
+      "status": "Open",
+      "paper": "Paper 3 target",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/output_validation/gate3_output_summary.csv",
+      "headline_result": "Whole selected chunks are materialized; higher evidence recovery is not a monotone quality frontier.",
+      "remaining_gap": "Need oracle-first evidence-centered windows, overlap union, and matched output tests.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Placement across depth",
+      "pra_analogue": "Selected PRA consumer layers",
+      "status": "Emerging",
+      "paper": "Papers 2 and 2.5",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/output_validation/gate3_materialization_band_selection.json",
+      "headline_result": "Layer-selective consumption is executable and all-layer injection can be harmful in diagnostics.",
+      "remaining_gap": "Gate-3 placement is diagnostic and model/dataset specific, not a frozen deployment policy.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Translation and controller",
+      "pra_analogue": "Facet controller and trained semantic router",
+      "status": "Partial",
+      "paper": "Papers 2-2.5; Paper 3.5 target",
+      "artifact": "research/paper2-hf: docs/papers/shared/results/paper2_hf/routing/; research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/routing_ceiling_table.csv",
+      "headline_result": "Learned routing works in some direct-memory regimes, but cheap facet selection leaves a large oracle gap.",
+      "remaining_gap": "Need calibrated bounded control across corpus scale, layers, and retrieval errors.",
+      "last_updated": "2026-08-15"
+    },
+    {
+      "vm_concept": "Scale-independent physical memory",
+      "pra_analogue": "Approximately bounded active K/V as logical memory grows",
+      "status": "Open",
+      "paper": "Paper 3.5 scaling target",
+      "artifact": "docs/papers/shared/results/recall_sparsity/paper1/fixed_k_vs_fraction.csv",
+      "headline_result": "Small controlled fixed-k curves show the intended direction, not arbitrary-scale boundedness.",
+      "remaining_gap": "Run matched 32K, 128K, 512K, 2M, and 8M+ logical-memory experiments with full systems accounting.",
+      "last_updated": "2026-08-15"
+    }
+  ]
+}

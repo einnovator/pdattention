@@ -7,6 +7,7 @@ Vision, motivation, architectural thesis, comparison with long context, RAG, and
 ## Main files
 
 - `paper.tex`
+- `virtual_memory_status.json` (living concept/status/evidence source)
 - `AGENTS.md`
 - `notes.md`
 
