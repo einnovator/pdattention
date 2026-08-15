@@ -177,3 +177,19 @@ root/terminal ceilings, and evaluates one globally bounded union. Raw mappings,
 transitions, hop survival, systems metrics, facet diagnostics, routed rows,
 plots, and bootstrap summaries are under
 `../shared/results/paper2_5_iterative_pra/natural_graph_depth/`.
+
+Layerwise native-graph and contextualization extension:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/precompute_layerwise_graph_features.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_layerwise_graph_exploration.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_layerwise_granularity_cross.py --device cuda
+```
+
+The capture streams exact pre-RoPE Q/K from layers 0/4/8/12/16/20/24/27 and
+measures residual contributions plus position-preserving self/16/32-token
+context interventions. The analysis holds the canonical 128-token graph fixed,
+then conditionally runs the a-priori 0/12/27 by 32/128/256-token cross. Large
+per-example feature files are ignored; their hashes and all metric rows, plots,
+and result JSON are tracked under
+`../shared/results/paper2_5_iterative_pra/layerwise_graph/`.

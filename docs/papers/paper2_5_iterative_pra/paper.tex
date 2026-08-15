@@ -104,7 +104,13 @@ encoding.  At $K=6,B=16$, shrinking search parents from 128 to 16 tokens reduces
 fraction from .513 to .063 on MuSiQue and .770 to .172 on 2Wiki, but complete recovery falls from
 .944/.958 to .500/.583.  Preserved 2Wiki edge R@6 falls from .880 to .400.  Fine-edge
 representation, not insufficient search depth, is the main failure: MuSiQue $D=4$ recall still
-saturates at $H=2$ for 16/32-token nodes.  Finally, an evaluation-only all-offset query audit finds
+saturates at $H=2$ for 16/32-token nodes.  We then hold the 128-token graph fixed and expose actual
+pre-RoPE Q/K from eight Qwen layers.  Restricted-context intervention rises from zero at layer 0
+to .987 at layer 27, but 2Wiki R@6 is non-monotonic: .880 at layers 0 and 27 and .920 at layers
+12 and 20.  A gated layer--granularity cross is sharper.  At 32 tokens, layer 0 reaches .680 while
+layer 27 reaches .400; at 128, layer 12 leads at .920; at 256, all three structural representatives
+reach .958--1.000.  Transformer depth and memory granularity therefore induce interacting graph
+topologies; no fixed late layer is universally best.  Finally, an evaluation-only all-offset query audit finds
 some existing span that ranks a correct root in Top-4 for .878 MuSiQue and .950 2Wiki runs, versus
 .422/.608 for the deployed fixed facets.  Token-scale facets dominate, but distractors receive the
 same multiple-comparison benefit.  A bounded executable union reaches only .411/.475 root recall
@@ -1993,6 +1999,138 @@ blocks at 16 raises local-pair bookkeeping and temporary memory.  Search average
 16 and 4.9/3.2 ms at 128.  These are reference-kernel measurements on the same GTX~950M, not
 serving claims.
 
+\subsection{Transformer depth reorganizes the native graph}
+\label{sec:layerwise-graph}
+
+The preceding experiments inherited layer 27.  We now ask whether that choice is neutral.  We
+freeze the same Qwen checkpoint and the complete 84-example split, fix
+$G_{\mathrm{encode}}=256$, $G_{\mathrm{search}}=128$, zero overlap, oracle roots,
+$K=6$, $B=16$, $H=4$, and the exact pre-RoPE Top-4 token/head reduction, and vary only the
+zero-based decoder block $\ell\in\{0,4,8,12,16,20,24,27\}$.  Q/K is projected from each block's
+actual normalized attention input in one shared model pass; no earlier state is reconstructed from
+layer 27.  The final layer reproduces 2Wiki R@4/R@6/R@8 of .720/.880/1.000 and conditional
+K=6 path survival .824 exactly.
+
+\begin{table}[H]
+\centering
+\caption{Held-out layerwise graph at fixed 128-token search granularity.  $C_{32}$ is normalized
+displacement between the native graph-input state under full and 32-token causal context.
+$\|\alpha\|/\|h\|$ is the local attention-branch ratio, not contextual information itself.
+Path is conditional on preserved 2Wiki transitions; D4 depth averages completed MuSiQue cases.}
+\label{tab:layerwise-graph}
+\scriptsize
+\begin{tabular}{rrrrrrrrrr}
+\toprule
+Layer & $C_{32}$ & $\|\alpha\|/\|h\|$ & R@4 & R@6 & R@8 & MRR & Path K6 & D4 complete & D4 depth \\
+\midrule
+0  & .000 & 6.644 & .720 & .880 & .960 & .520 & .824 & .833 & 1.80 \\
+4  & .410 &  .274 & .720 & .880 & .960 & .390 & .824 & .667 & 1.50 \\
+8  & .686 &  .269 & .680 & .880 & .960 & .432 & .824 & 1.000 & 1.83 \\
+12 & .816 &  .213 & .760 & .920 & .960 & .438 & .882 & 1.000 & 1.50 \\
+16 & .842 &  .274 & .800 & .880 & .960 & .397 & .824 & 1.000 & 1.67 \\
+20 & .782 &  .262 & .760 & .920 & 1.000 & .471 & .882 & .833 & 2.00 \\
+24 & .996 &  .178 & .800 & .880 & 1.000 & .608 & .824 & 1.000 & 1.67 \\
+27 & .987 &  .127 & .720 & .880 & 1.000 & .410 & .824 & 1.000 & 1.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result rejects both simple hypotheses.  Context dependence does grow: the 32-token
+intervention displacement reaches .410 by layer 4 and approximately one by layers 24--27.
+Mean native distance between annotated evidence states contracts from 1.23 at layer 0 to 1.06 at
+layer 27, and two-hop effective branching falls from 3.43 to 2.79.  Yet edge quality is not
+monotonic.  R@6 peaks in the middle at .920, MRR peaks later at layer 24, and layer 27 returns to
+.880/.410.  Across only eight layer points, intervention contextualization correlates with depth
+contraction at Pearson/Spearman .495/.643 but with R@6 at only .201/.000.  These are descriptive
+mechanistic correlations, not significance claims.
+
+The local branch proxy tells a different story.  $\|\alpha_\ell\|/\|h_\ell^{pre}\|$ drops from
+6.64 at layer 0 to .127 at layer 27, while intervention dependence rises.  Layer 0's ratio is large
+because the embedding residual has a different scale; its graph input cannot yet depend on prior
+tokens, so its intervention score is exactly zero.  Post-attention displacement numerically equals
+the branch ratio at every layer, as the residual identity requires.  Attention rotation falls from
+.903 to .007.  Thus local update magnitude is a poor proxy for accumulated context.  The
+position-preserving intervention, which changes accessible K/V while retaining token IDs and
+absolute logical positions, is the stronger measurement.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_edge_recall.png}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_path_survival.png}
+\caption{Layerwise local fidelity at fixed 128-token parents.  Rank structure changes materially,
+but neither direct edges nor complete paths improve monotonically with representation depth.}
+\label{fig:layerwise-fidelity}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_contextualization.png}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_contraction_topology.png}
+\caption{Measured contextualization and topology.  Accumulated dependence on context grows while
+local attention contribution generally shrinks.  Depth contraction and neighbor reuse vary, but
+the graph does not become uniformly more faithful.}
+\label{fig:layerwise-context}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_musique_native_depth.png}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_context_radius.png}
+\caption{Left: completed MuSiQue cases remain much shallower in the native graph than their
+annotated task depth at every layer.  Right: full-versus-restricted displacement for structural
+early/middle/late representatives; a wider causal radius approaches the full state, except that
+the late curve remains strongly dependent on context beyond 32 tokens.}
+\label{fig:layerwise-depth-radius}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/contextualization_graph_correlations.png}
+\caption{Descriptive relationships over eight sampled layers.  Labels are zero-based layer IDs.
+Restricted-context displacement has no monotonic relation to R@6, a moderate positive relation to
+depth contraction, and a weak negative relation to the annotation-relative shortcut rate.  The
+sample is too small for significance claims.}
+\label{fig:layerwise-correlations}
+\end{figure}
+
+Because the one-dimensional effect is material, we run the predeclared small cross using a-priori
+structural representatives 0/12/27 and 32/128/256-token parents.  This is not a best-layer search.
+
+\begin{table}[H]
+\centering
+\caption{Held-out layer--granularity interaction at fixed $K=6,B=16,H=4$.  Each cell is
+2Wiki preserved-edge R@6 / MuSiQue D=4 complete recovery.}
+\label{tab:layer-granularity}
+\small
+\begin{tabular}{rrrr}
+\toprule
+Tokens & Layer 0 & Layer 12 & Layer 27 \\
+\midrule
+32  & .680 / .167 & .480 / .333 & .400 / .333 \\
+128 & .880 / .833 & .920 / 1.000 & .880 / 1.000 \\
+256 & .958 / 1.000 & 1.000 / .833 & 1.000 / 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.84\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layer_granularity_cross.png}
+\caption{Depth and spatial granularity jointly determine the exposed graph.  Early native geometry
+is strongest at fine 32-token 2Wiki edges; a middle layer leads at 128; coarse 256-token parents
+largely erase the layer difference through external contraction.}
+\label{fig:layer-granularity}
+\end{figure}
+
+The interaction changes the recommendation.  Late-layer topology remains a compatible and often
+adequate default, but it is not harmless at fine granularity and is not the universal optimum.
+Future PRA should expose an adaptive multiscale topology---for example early/local and
+middle/global graphs selected under one budget---rather than merely replacing layer 27 with one
+new fixed layer.  We do not implement layer fusion or learned weighting here.  At 256 tokens the
+near-perfect curve is also not a free win: it inherits the earlier result that coarse parents
+approach full-source activation.  Representation-induced and chunk-induced contraction must be
+reported separately.
+
 \subsection{All-offset query facets reveal a selection ceiling}
 
 With graph granularity fixed again at 128 tokens, we ask whether weak routed roots mean that the
@@ -2347,6 +2485,16 @@ than declared solved: pretrained attention contains traversable local evidence g
 faithful deep closure still needs better entry routing, tighter successor geometry, or a dynamic
 reasoning state that preserves task order.
 
+Layerwise extraction narrows ``tighter successor geometry'' further.  The native graph is not one
+fixed object waiting to be read from a transformer: the same source and parent partition induce
+different rank, branching, and distance structure at different blocks.  Measured accumulated
+contextualization explains some contraction but not local edge fidelity.  More importantly, layer
+choice interacts with parent size: early Q/K is strongest in the fine 32-token 2Wiki control,
+middle Q/K is strongest at 128, and external contraction makes all three representatives nearly
+perfect at 256.  The next graph representation should therefore be adaptive and multiscale, while
+charging every exposed scale and layer to one routing budget.  This paper deliberately stops
+before multi-layer fusion, so the current late-layer implementation remains unchanged.
+
 The final granularity and query gates turn those broad options into two concrete interfaces.
 At fine 16-token search nodes, selected source falls to .063/.172 on MuSiQue/2Wiki, but preserved
 edge R@6 falls to .667/.400 and deeper search adds no recovery after $H=2$.  A multiscale
@@ -2610,6 +2758,36 @@ validation identities; lines 555--593 restore routed roots only after each datas
 The remaining aggregation writes 252 mappings, 372 transition rows, 12,096 oracle searches,
 33,408 hop-survival rows, 1,160 facet rows, and 1,260 routed-root rows.
 
+\paragraph{Layerwise native graph and contextualization.}
+\path{src/pra_hf/layerwise_context.py:18--178} defines the per-layer state record and installs
+observation-only hooks at the decoder input, normalized attention input, projected attention
+output, post-attention residual, MLP output, and block output.  Lines 138--166 assert both exact
+residual identities.  Lines 182--207 construct a causal radius mask in the original
+$[1,1,T,T]$ coordinates: tokens remain present, absolute position IDs remain unchanged, and only
+accessible K/V positions change.  Lines 209--287 compute normalized displacement, directional
+rotation, branch magnitude, native query-head entropy/effective support, and local/distant/evidence
+attention fractions.  The FFN branch is retained as a local-transformation control and is never
+called contextualization.
+
+\path{experiments/paper2_5_iterative_pra/precompute_layerwise_graph_features.py:135--305}
+begins capture on all eight actual adapters before one shared full forward, streams exact pre-RoPE
+Q/K to CPU, checks the full-mask parity control, and reruns self/16/32-token visibility with the
+same logical positions.  Lines 336--488 write one regenerable file per example rather than holding
+all layers in memory.  The ignored cache is 7,832,055,097 bytes over 84 SHA-256-pinned entries;
+it covers 158,170 tokens, took 1,863.9 seconds on the GTX~950M, peaked at 1.394~GB allocated CUDA
+memory, and has zero maximum full-context reproduction error.
+
+\path{src/pra_hf/layerwise_graph.py:11--109} implements deterministic Top-$K$ neighbors, bounded
+native distance, weak components, reciprocity, destination reuse, and two-hop effective branching.
+Lines 111--161 provide Pearson/Spearman and example-level bootstrap summaries.  The runner at
+\path{experiments/paper2_5_iterative_pra/run_layerwise_graph_exploration.py:190--735} rebuilds each
+layer's exact adjacency, attaches annotations only after search, computes transition/path/depth/
+shortcut/lexical/system rows, joins them to measured contextualization, and refuses output unless
+layer 27 reproduces the historical curve.  The gated cross at
+\path{experiments/paper2_5_iterative_pra/run_layerwise_granularity_cross.py:109--242} changes only
+the a-priori 0/12/27 layer and 32/128/256-token parent assignment; it neither tunes a best layer nor
+fuses layer scores.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -2672,7 +2850,7 @@ tests cover native adjacency reduction, all three deterministic search strategie
 different-facet goals, a low-query-similarity bridge, minimum depth, first-path stopping,
 deduplication, cycles, finite/shared and unbounded budgets, cost accounting, and the absence of a
 task-label API.  All five synthetic graph controls pass.  The complete repository suite now
-passes 472 tests with the same one upstream deprecation warning.
+passes 479 tests with the same one upstream deprecation warning.
 
 The granularity gate adds 80 evidence-topology rows, 4,800 oracle-free discovery rows, 3,230
 five-seed facet--parent rows, 80 system profiles, and 15 passing chain-contraction controls.
@@ -2689,6 +2867,14 @@ preserved/contracted/unmappable transitions, deterministic identity splitting, a
 shortest-path behavior.  The full-dev audit records both licenses, archive hashes, split schemas,
 and unresolved 2Wiki mappings before model execution.  The feature manifest pins 84 identities,
 158,170 source tokens, the frozen Qwen revision, layer 27, and zero training or generation.
+
+The layerwise extension adds seven focused tests for exact layer indexing, residual capture,
+normalized branch metrics, position-preserving context restriction, deterministic intervention,
+full-context reproduction, GQA attention statistics, deterministic Top-$K$ graph construction,
+shortest distance, topology, tied-rank correlations, and example-level bootstrap behavior.  Its
+tracked outputs contain 10,752 context rows, 992 transition rows, 672 graph rows, 3,360 hop rows,
+and 672 systems rows.  The gated cross adds 756 example conditions and 1,116 transition rows.
+Both runners assert exact layer-27/128-token R@6 reproduction before writing their result JSON.
 
 The cross-dataset extension is implemented in
 \path{experiments/paper2_5_iterative_pra/run_natural_graph_depth.py:93--1568}.

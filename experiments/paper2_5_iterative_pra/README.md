@@ -144,3 +144,22 @@ K4/B6/H4 recovery, emits the complete 16--256-token discovery surface,
 computes facet-parent diagnostics over five frozen projections, and validates
 chain contraction controls. No native K/V is materialized. Artifacts are under
 `docs/papers/shared/results/paper2_5_iterative_pra/chunk_granularity/`.
+
+## Layerwise native graph and contextualization
+
+This experiment holds the 128-token search partition and canonical exact
+native-Q/K graph policy fixed while exposing actual Q/K states from decoder
+layers 0, 4, 8, 12, 16, 20, 24, and 27. The same forwards capture the native
+attention and FFN residual contributions. Position-preserving causal masks then
+restrict each token to self, 16-token, or 32-token history without rebinding its
+absolute logical position.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.precompute_layerwise_graph_features --device cuda
+python -m experiments.paper2_5_iterative_pra.run_layerwise_graph_exploration --device cuda
+```
+
+Large per-example Q/K tensors are regenerable and ignored. Their SHA-256
+manifest, token-class contextualization summaries, graph rows, plots, and final
+result JSON are tracked under
+`docs/papers/shared/results/paper2_5_iterative_pra/layerwise_graph/`.
