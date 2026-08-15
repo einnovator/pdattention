@@ -27,8 +27,9 @@ class PRAConfig:
     model_max_context_tokens: int | None = None  # Hard native-operation context ceiling.
     position_encoding: str = "absolute"  # absolute (default), rope, or sinusoidal.
     rope_theta: float = 10_000.0  # RoPE base controlling angular frequency by head feature.
+    self_attention_window: int | None = None  # None is global; finite W includes current token.
     dropout: float = 0.0  # Dropout used by vanilla/mixed blocks and the GRU pooler.
-    model_variant: str = "custom"  # custom, td_sa, td_pra, or last-two-layer tdx_pra.
+    model_variant: str = "custom"  # custom, td_sa, td_pra, tdx_pra, or td_layered_pra.
 
     # Routing budgets and transport. Remaining blocks after vanilla/mixed are PRA blocks.
     pra_layer_ids: tuple[int, ...] = (2, 3)  # Experiment metadata; variants normalize it.
@@ -219,6 +220,10 @@ class PRAConfig:
         self.rope_theta = float(self.rope_theta)
         if self.rope_theta <= 0:
             raise ValueError("rope_theta must be positive.")
+        if self.self_attention_window is not None:
+            self.self_attention_window = int(self.self_attention_window)
+            if self.self_attention_window <= 0:
+                raise ValueError("self_attention_window must be positive or None.")
         if self.position_encoding == "rope" and (self.d_model // self.n_heads) % 2:
             raise ValueError("RoPE requires an even d_model / n_heads head dimension.")
         self.max_seq_len = int(self.max_seq_len)
@@ -489,7 +494,7 @@ class PRAConfig:
         if self.d_ff <= 0:
             raise ValueError("d_ff must be positive.")
         # Named variants map the paper's architecture labels onto block counts.
-        variants = {"custom", "td_sa", "td_pra", "tdx_pra"}
+        variants = {"custom", "td_sa", "td_pra", "tdx_pra", "td_layered_pra"}
         if self.model_variant not in variants:
             raise ValueError(f"Unsupported model_variant: {self.model_variant}")
         if self.model_variant == "td_sa":
@@ -504,6 +509,14 @@ class PRAConfig:
             self.n_vanilla_layers = max(self.n_layers - 2, 0)
             self.n_mixed_layers = 0
             self.pra_layer_ids = tuple(range(self.n_vanilla_layers, self.n_layers))
+        elif self.model_variant == "td_layered_pra":
+            self.n_vanilla_layers = 0
+            self.n_mixed_layers = 0
+            self.pra_layer_ids = tuple(sorted({int(layer) for layer in self.pra_layer_ids}))
+            if not self.pra_layer_ids:
+                raise ValueError("td_layered_pra requires at least one pra_layer_id.")
+            if self.pra_layer_ids[0] < 0 or self.pra_layer_ids[-1] >= self.n_layers:
+                raise ValueError("pra_layer_ids must index configured decoder layers.")
         self.n_vanilla_layers = int(self.n_vanilla_layers)
         self.n_mixed_layers = int(self.n_mixed_layers)
         if self.n_vanilla_layers < 0 or self.n_mixed_layers < 0:

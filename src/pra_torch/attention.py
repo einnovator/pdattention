@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from .core import PRAExecutionCore
 from .memory import LayerKV, PRAMemoryCache, SelectedChunk
 from .memory_batching import MemoryBatchingStats, dynamic_memory_attention
+from .masks import causal_attention_mask
 from .positions import build_position_encoding
 
 
@@ -75,8 +76,12 @@ class PRAttention(nn.Module):
             head_dim=self.head_dim,
         )
 
-        mask = torch.tril(torch.ones(max_seq_len, max_seq_len))
-        self.register_buffer("causal_mask", mask.view(1, 1, max_seq_len, max_seq_len))
+        hidden = causal_attention_mask(
+            max_seq_len,
+            device="cpu",
+            window=config.self_attention_window,
+        )
+        self.register_buffer("causal_mask", hidden.view(1, 1, max_seq_len, max_seq_len))
 
     def set_pra_cache(self, pra_cache: PRAMemoryCache) -> None:
         """Retarget both the public attention handle and shared execution core."""
@@ -171,7 +176,8 @@ class PRAttention(nn.Module):
         """Run the controlled decoder's causal local attention."""
         b, _h, t, _d = q.shape
         scores = q @ k.transpose(-2, -1) / math.sqrt(self.head_dim)
-        scores = scores.masked_fill(self.causal_mask[:, :, :t, :t] == 0, float("-inf"))
+        scores = scores.masked_fill(self.causal_mask[:, :, :t, :t], float("-inf"))
+        valid = None
         if attention_mask is not None:
             if attention_mask.shape != (b, t):
                 raise ValueError(f"Expected attention_mask {(b, t)}, got {tuple(attention_mask.shape)}.")
@@ -179,7 +185,9 @@ class PRAttention(nn.Module):
             if not bool(valid.any(dim=1).all()):
                 raise ValueError("Every prompt row must contain at least one direct token.")
             scores = scores.masked_fill(~valid[:, None, None, :], float("-inf"))
-        return F.softmax(scores, dim=-1) @ v
+            scores = scores.masked_fill(~valid[:, None, :, None], 0.0)
+        output = F.softmax(scores, dim=-1) @ v
+        return output if valid is None else output * valid[:, None, :, None]
 
     def _empty_selection_metrics(self, prepared) -> dict[str, float]:
         """Report route/budget activity when no K/V survives materialization."""

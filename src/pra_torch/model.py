@@ -22,12 +22,8 @@ from .memory import (
     ReferenceChunkMemory,
     ReferenceRoutingGists,
 )
+from .masks import causal_attention_mask
 from .positions import build_position_encoding
-
-
-def causal_attention_mask(seq_len: int, device) -> torch.Tensor:
-    """Return ``[T,T]`` mask where true entries hide future key positions."""
-    return torch.triu(torch.ones(seq_len, seq_len, dtype=torch.bool, device=device), diagonal=1)
 
 
 class VanillaTransformerBlock(nn.Module):
@@ -37,6 +33,7 @@ class VanillaTransformerBlock(nn.Module):
         """Create one baseline block for ``td_sa`` or a model's vanilla prefix."""
         super().__init__()
         self.layer_id = layer_id  # Stable depth used by traces and block ordering.
+        self.self_attention_window = cfg.self_attention_window
         self.layer = nn.TransformerEncoderLayer(  # Complete baseline attention/MLP block.
             d_model=cfg.d_model,
             nhead=cfg.n_heads,
@@ -56,7 +53,9 @@ class VanillaTransformerBlock(nn.Module):
     ):
         """Transform ``[B,T,D]`` states; ``use_pra_memory`` has no effect here."""
         _ = use_pra_memory, position_ids
-        mask = causal_attention_mask(x.shape[1], x.device)
+        mask = causal_attention_mask(
+            x.shape[1], x.device, window=self.self_attention_window
+        )
         padding_mask = ~attention_mask.bool() if attention_mask is not None else None
         return self.layer(x, src_mask=mask, src_key_padding_mask=padding_mask)
 
@@ -68,6 +67,7 @@ class PositionAwareSelfAttention(nn.Module):
         super().__init__()
         self.n_heads = cfg.n_heads
         self.head_dim = cfg.d_model // cfg.n_heads
+        self.self_attention_window = cfg.self_attention_window
         self.q_proj = nn.Linear(cfg.d_model, cfg.d_model)
         self.k_proj = nn.Linear(cfg.d_model, cfg.d_model)
         self.v_proj = nn.Linear(cfg.d_model, cfg.d_model)
@@ -95,18 +95,25 @@ class PositionAwareSelfAttention(nn.Module):
         query, key = self.position_encoding.transform_qk(query, key, position_ids)
         scores = query @ key.transpose(-2, -1) / math.sqrt(self.head_dim)
         tokens = x.shape[1]
-        future = torch.triu(
-            torch.ones(tokens, tokens, dtype=torch.bool, device=x.device),
-            diagonal=1,
+        hidden = causal_attention_mask(
+            tokens,
+            x.device,
+            window=self.self_attention_window,
         )
-        scores = scores.masked_fill(future[None, None], float("-inf"))
+        scores = scores.masked_fill(hidden[None, None], float("-inf"))
+        query_valid = None
         if attention_mask is not None:
+            query_valid = attention_mask.to(device=x.device, dtype=torch.bool)
             scores = scores.masked_fill(
-                ~attention_mask.to(device=x.device, dtype=torch.bool)[:, None, None, :],
+                ~query_valid[:, None, None, :],
                 float("-inf"),
             )
+            # A right-padded query can have no valid key inside a finite local
+            # window. Give that unused row finite scores, then zero its output.
+            scores = scores.masked_fill(~query_valid[:, None, :, None], 0.0)
         weights = self.attention_dropout(F.softmax(scores, dim=-1))
-        return self.o_proj(self._merge_heads(weights @ value))
+        output = self.o_proj(self._merge_heads(weights @ value))
+        return output if query_valid is None else output * query_valid[:, :, None]
 
 
 class PositionAwareTransformerBlock(nn.Module):
@@ -208,6 +215,7 @@ class PRASATransformerBlock(nn.Module):
         super().__init__()
         self.layer_id = layer_id  # Selects matching layer cache K/V and trace identity.
         self.position_mode = cfg.position_encoding
+        self.self_attention_window = cfg.self_attention_window
         self.ln1 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes the vanilla branch.
         self.self_attn = (
             nn.MultiheadAttention(
@@ -239,7 +247,9 @@ class PRASATransformerBlock(nn.Module):
     def _apply_self_attention(self, x, attention_mask=None, position_ids=None):
         """Apply the leading vanilla causal residual to ``[B,T,D]`` states."""
         norm_x = self.ln1(x)
-        mask = causal_attention_mask(x.shape[1], x.device)
+        mask = causal_attention_mask(
+            x.shape[1], x.device, window=self.self_attention_window
+        )
         padding_mask = ~attention_mask.bool() if attention_mask is not None else None
         if self.position_mode == "absolute":
             attn_out, _ = self.self_attn(
@@ -340,6 +350,20 @@ class TinyPRAModel(nn.Module):
     def _build_blocks(self, cfg: PRAConfig) -> list[nn.Module]:
         """Lay out vanilla prefix, mixed middle, then PRA-only remainder."""
         blocks: list[nn.Module] = []
+        if cfg.model_variant == "td_layered_pra":
+            pra_layers = set(cfg.pra_layer_ids)
+            vanilla_type = (
+                VanillaTransformerBlock
+                if cfg.position_encoding == "absolute"
+                else PositionAwareTransformerBlock
+            )
+            for layer_id in range(cfg.n_layers):
+                blocks.append(
+                    PRATransformerBlock(cfg, layer_id, self.pra_cache)
+                    if layer_id in pra_layers
+                    else vanilla_type(cfg, layer_id)
+                )
+            return blocks
         for layer_id in range(cfg.n_layers):
             if layer_id < cfg.n_vanilla_layers:
                 block_type = (
@@ -575,6 +599,111 @@ class TinyPRAModel(nn.Module):
             )
         x = self.ln(x)
         return self.head(x)
+
+    def forward_progressive_pra(
+        self,
+        input_ids,
+        *,
+        attention_mask=None,
+        position_offset: int = 0,
+        prevent_reference_replay: bool = True,
+    ) -> tuple[torch.Tensor, list[dict]]:
+        """Run PRA layers against an evolving query state and return a route trace.
+
+        Each PRA block receives the hidden state produced by every preceding
+        attention/FFN block.  With ``prevent_reference_replay=True``, references
+        selected by an earlier PRA block are removed from the candidate cache
+        before the next PRA block.  The no-replay implementation is intentionally
+        limited to batch size one because each batch row would otherwise require
+        a different cache namespace.
+
+        Returns:
+            ``(logits, trace)`` where logits are ``[B,T,V]`` and each trace row
+            records the consumer layer, selected URIs, materialized token count,
+            and the final-token query state entering that layer.
+        """
+        if input_ids.ndim != 2:
+            raise ValueError("input_ids must have shape [batch,tokens].")
+        batch, tokens = input_ids.shape
+        if prevent_reference_replay and batch != 1:
+            raise ValueError("No-replay progressive PRA currently requires batch size one.")
+        if tokens > self.cfg.effective_model_max_context_tokens:
+            raise ValueError("Progressive PRA prompt exceeds model_max_context_tokens.")
+        if attention_mask is not None and attention_mask.shape != input_ids.shape:
+            raise ValueError("attention_mask must have the same [batch,tokens] shape as input_ids.")
+
+        position_offset = int(position_offset)
+        position_limit = self.cfg.position_capacity
+        if position_offset < 0 or (
+            position_limit is not None and position_offset + tokens > position_limit
+        ):
+            raise ValueError("Progressive PRA prompt positions exceed model capacity.")
+        positions = torch.arange(
+            position_offset,
+            position_offset + tokens,
+            device=input_ids.device,
+        )
+        x = self.position_encoding.apply_embeddings(
+            self.token_emb(input_ids),
+            positions,
+            self.pos_emb,
+        )
+
+        master_cache = self.pra_cache
+        remaining_entries = list(master_cache.all_entries())
+        visited: set[str] = set()
+        trace: list[dict] = []
+        try:
+            for block in self.blocks:
+                attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
+                is_pra = isinstance(attention, PRAttention)
+                query_state = x[:, -1, :].detach().clone() if is_pra else None
+                if is_pra and prevent_reference_replay:
+                    layer_cache = PRASimpleMemoryCache()
+                    for entry in remaining_entries:
+                        if entry.uri not in visited:
+                            layer_cache.put(entry)
+                    block.set_pra_cache(layer_cache)
+                x = block(
+                    x,
+                    use_pra_memory=True,
+                    attention_mask=attention_mask,
+                    position_ids=positions,
+                )
+                if not is_pra:
+                    continue
+                selected = list(attention.last_selected_chunks[0])
+                selected_uris = list(dict.fromkeys(hit.reference_uri for hit in selected))
+                replayed = sorted(set(selected_uris) & visited)
+                if prevent_reference_replay and replayed:
+                    raise RuntimeError(f"Progressive PRA replayed references: {replayed}")
+                visited.update(selected_uris)
+                diagnostics = dict(attention.last_diagnostics)
+                trace.append(
+                    {
+                        "layer_id": int(block.layer_id),
+                        "selected_reference_uris": selected_uris,
+                        "selected_chunk_ids": [hit.chunk_id for hit in selected],
+                        "selected_scores": [float(hit.chunk_score) for hit in selected],
+                        "materialized_tokens": int(
+                            diagnostics.get(
+                                "memory_tokens_materialized",
+                                sum(hit.selected_token_count for hit in selected),
+                            )
+                        ),
+                        "active_memory_fraction": float(
+                            diagnostics.get("active_memory_fraction", 0.0)
+                        ),
+                        "memory_to_local_output_norm_ratio": float(
+                            diagnostics.get("memory_to_local_output_norm_ratio", 0.0)
+                        ),
+                        "query_state": query_state,
+                        "replayed_reference_uris": replayed,
+                    }
+                )
+        finally:
+            self.set_pra_cache(master_cache)
+        return self.head(self.ln(x)), trace
 
     def _encode_reference_tokens(
         self,
@@ -1544,6 +1673,7 @@ def convert_sa_model_to_pra(
         "max_seq_len",
         "position_encoding",
         "rope_theta",
+        "self_attention_window",
     )
     mismatches = [
         name
