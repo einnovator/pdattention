@@ -697,6 +697,12 @@ class TinyPRAModel(nn.Module):
                         "memory_to_local_output_norm_ratio": float(
                             diagnostics.get("memory_to_local_output_norm_ratio", 0.0)
                         ),
+                        "final_token_memory_attention_mass": float(
+                            diagnostics.get("final_token_memory_attention_mass", 0.0)
+                        ),
+                        "pra_output_divergence_ratio": float(
+                            diagnostics.get("pra_output_divergence_ratio", 0.0)
+                        ),
                         "query_state": query_state,
                         "replayed_reference_uris": replayed,
                     }

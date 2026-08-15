@@ -583,6 +583,7 @@ def main() -> None:
     parser.add_argument("--d-model", type=int, default=128)
     parser.add_argument("--layers", type=int, default=6)
     parser.add_argument("--skip-training", action="store_true")
+    parser.add_argument("--config-only", action="store_true")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     tokenizer = ControlledTokenizer()
@@ -597,7 +598,15 @@ def main() -> None:
             d_model=args.d_model,
             n_layers=args.layers,
         )
-        configs.append({"window": window_name(window), **asdict(cfg)})
+        configs.append(
+            {
+                "window": window_name(window),
+                **asdict(cfg),
+                "batch_size": args.batch_size,
+                "steps": args.steps,
+                "lr": args.learning_rate,
+            }
+        )
     (args.output_dir / "controlled_model_configs.json").write_text(
         json.dumps(
             {
@@ -610,6 +619,19 @@ def main() -> None:
                     "external_materialization_dependency": False,
                 },
                 "seeds": seeds,
+                "training_protocol": {
+                    "steps": args.steps,
+                    "batch_size": args.batch_size,
+                    "learning_rate": args.learning_rate,
+                    "train_examples": args.train_examples,
+                    "validation_examples": args.validation_examples,
+                    "test_examples": args.test_examples,
+                    "topology_examples": args.topology_examples,
+                    "checkpoint_selection": (
+                        "highest validation accuracy every 100 steps; loss breaks ties"
+                    ),
+                    "held_out_test_used_for_selection": False,
+                },
                 "corpus_seeds": {
                     "train": 100001,
                     "validation": 100002,
@@ -624,6 +646,8 @@ def main() -> None:
         ),
         encoding="utf-8",
     )
+    if args.config_only:
+        return
 
     for window in windows:
         for seed in seeds:

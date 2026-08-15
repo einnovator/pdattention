@@ -33,6 +33,8 @@ class MemoryBatchingStats:
     padding_fraction: float  # Padding divided by allocated positions.
     attention_entropy: float = 0.0  # Mean entropy over memory-attention distributions.
     attention_max_weight: float = 0.0  # Mean bucket maximum attention weight.
+    memory_attention_mass: float = 0.0  # Mean joint-softmax mass assigned to memory.
+    final_token_memory_attention_mass: float = 0.0  # Memory mass at the next-token query.
 
     def as_metrics(self) -> dict[str, float]:
         """Flatten packing/attention statistics into experiment metric names."""
@@ -50,6 +52,8 @@ class MemoryBatchingStats:
             ),
             "memory_attention_entropy": self.attention_entropy,
             "memory_attention_max_weight": self.attention_max_weight,
+            "memory_attention_mass": self.memory_attention_mass,
+            "final_token_memory_attention_mass": self.final_token_memory_attention_mass,
         }
 
 
@@ -197,6 +201,7 @@ def dynamic_memory_attention(
     valid = sum(lengths)
     allocated = sum(len(bucket.original_indices) * bucket.max_length for bucket in buckets)
     padding = allocated - valid
+    nonempty_fraction = sum(length > 0 for length in lengths) / max(len(lengths), 1)
     stats = MemoryBatchingStats(
         selected_lengths=tuple(lengths),
         requested_bucket_count=int(bucket_count),
@@ -209,6 +214,10 @@ def dynamic_memory_attention(
         padding_fraction=padding / max(allocated, 1),
         attention_entropy=sum(entropies) / max(len(entropies), 1),
         attention_max_weight=sum(maxima) / max(len(maxima), 1),
+        # Separate memory attention normalizes entirely over memory for each
+        # nonempty row; native-KV attention below measures a joint-softmax share.
+        memory_attention_mass=nonempty_fraction,
+        final_token_memory_attention_mass=nonempty_fraction,
     )
     return output, stats
 
@@ -258,6 +267,8 @@ def native_kv_attention(
     lengths = []
     entropies = []
     maxima = []
+    memory_masses = []
+    final_token_memory_masses = []
     for row_index, (memory_k, memory_v) in enumerate(
         zip(memory_k_by_item, memory_v_by_item)
     ):
@@ -298,6 +309,11 @@ def native_kv_attention(
         scores = scores.masked_fill(~visible[None, None, :, :], float("-inf"))
         weights = F.softmax(scores, dim=-1)
         output_rows.append(weights @ values)
+        memory_weights = weights[..., :memory_length]
+        memory_masses.append(float(memory_weights.sum(dim=-1).mean().detach().cpu()))
+        final_token_memory_masses.append(
+            float(memory_weights[:, :, -1, :].sum(dim=-1).mean().detach().cpu())
+        )
         safe_weights = weights.clamp_min(torch.finfo(weights.dtype).tiny)
         entropies.append(
             float((-(weights * safe_weights.log()).sum(dim=-1).mean()).detach().cpu())
@@ -317,5 +333,9 @@ def native_kv_attention(
         padding_fraction=0.0,
         attention_entropy=sum(entropies) / max(len(entropies), 1),
         attention_max_weight=sum(maxima) / max(len(maxima), 1),
+        memory_attention_mass=sum(memory_masses) / max(len(memory_masses), 1),
+        final_token_memory_attention_mass=(
+            sum(final_token_memory_masses) / max(len(final_token_memory_masses), 1)
+        ),
     )
     return torch.cat(output_rows, dim=0), stats

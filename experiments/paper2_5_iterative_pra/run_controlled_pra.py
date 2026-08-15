@@ -191,6 +191,12 @@ def evaluate_condition(
         memory_local_ratios = [
             float(layer["memory_to_local_output_norm_ratio"]) for layer in trace
         ]
+        final_memory_masses = [
+            float(layer["final_token_memory_attention_mass"]) for layer in trace
+        ]
+        output_divergence_ratios = [
+            float(layer["pra_output_divergence_ratio"]) for layer in trace
+        ]
         state_changes = []
         for previous, current in zip(trace, trace[1:]):
             state_changes.append(
@@ -230,6 +236,16 @@ def evaluate_condition(
                 "mean_memory_to_local_output_norm_ratio": (
                     statistics.fmean(memory_local_ratios)
                     if memory_local_ratios
+                    else 0.0
+                ),
+                "mean_final_token_memory_attention_mass": (
+                    statistics.fmean(final_memory_masses)
+                    if final_memory_masses
+                    else 0.0
+                ),
+                "mean_pra_output_divergence_ratio": (
+                    statistics.fmean(output_divergence_ratios)
+                    if output_divergence_ratios
                     else 0.0
                 ),
                 "replay_count": sum(
@@ -274,6 +290,8 @@ def aggregate_rows(rows: list[dict]) -> list[dict]:
         "mean_intervention_state_displacement",
         "mean_active_memory_fraction",
         "mean_memory_to_local_output_norm_ratio",
+        "mean_final_token_memory_attention_mass",
+        "mean_pra_output_divergence_ratio",
         "replay_count",
     )
     output = []
@@ -336,6 +354,8 @@ def _baseline_rows(
                     "mean_intervention_state_displacement": 0.0,
                     "mean_active_memory_fraction": 0.0,
                     "mean_memory_to_local_output_norm_ratio": 0.0,
+                    "mean_final_token_memory_attention_mass": 0.0,
+                    "mean_pra_output_divergence_ratio": 0.0,
                     "replay_count": 0,
                     "selected_reference_uris": "[]",
                 }

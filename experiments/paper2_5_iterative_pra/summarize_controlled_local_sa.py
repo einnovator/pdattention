@@ -32,7 +32,12 @@ def _mean_ci(values: list[float]) -> tuple[float, float]:
     mean = statistics.fmean(values)
     if len(values) < 2:
         return mean, 0.0
-    return mean, 1.96 * statistics.stdev(values) / math.sqrt(len(values))
+    # Exact 97.5th percentiles for the small seed counts used here; normal
+    # approximation is reserved for larger groups.
+    t_critical = {2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776}.get(
+        len(values), 1.96
+    )
+    return mean, t_critical * statistics.stdev(values) / math.sqrt(len(values))
 
 
 def _aggregate_metrics(
@@ -89,6 +94,7 @@ def _paired_pra_effects(rows: list[dict]) -> list[dict]:
         output.append(
             {
                 "window": window,
+                "estimand": "depth-macro accuracy over in-domain depths 1--4",
                 "n_seeds": len(effects),
                 "iterative_minus_one_shot_accuracy_mean": mean,
                 "iterative_minus_one_shot_accuracy_std": (
@@ -298,30 +304,44 @@ def _plot_spacing(rows: list[dict], path: Path) -> None:
         if row["condition"] in {"spacing_1", "spacing_2", "spacing_4", "spacing_8"}
         and int(float(row["depth"])) <= 4
     ]
-    fig, axes = plt.subplots(1, 2, figsize=(8.0, 3.2))
+    fig, axes = plt.subplots(1, 3, figsize=(11.0, 3.2))
     for window in sorted({row["window"] for row in selected}, key=WINDOW_ORDER.get):
         window_rows = [row for row in selected if row["window"] == window]
         points = []
         for condition in ("spacing_1", "spacing_2", "spacing_4", "spacing_8"):
             values = [_number(row["correct"]) for row in window_rows if row["condition"] == condition]
-            displacement = [
-                _number(row["mean_intervention_state_displacement"])
+            memory_mass = [
+                _number(row["mean_final_token_memory_attention_mass"])
+                for row in window_rows
+                if row["condition"] == condition
+            ]
+            divergence = [
+                _number(row["mean_pra_output_divergence_ratio"])
                 for row in window_rows
                 if row["condition"] == condition
             ]
             if values:
-                points.append((int(condition.split("_")[1]), statistics.fmean(values), statistics.fmean(displacement)))
+                points.append(
+                    (
+                        int(condition.split("_")[1]),
+                        statistics.fmean(values),
+                        statistics.fmean(memory_mass),
+                        statistics.fmean(divergence),
+                    )
+                )
         if points:
             axes[0].plot([p[0] for p in points], [p[1] for p in points], marker="o", label=window)
             axes[1].plot([p[0] for p in points], [p[2] for p in points], marker="o", label=window)
+            axes[2].plot([p[0] for p in points], [p[3] for p in points], marker="o", label=window)
     axes[0].set_ylabel("answer accuracy")
-    axes[1].set_ylabel("query-state displacement")
+    axes[1].set_ylabel("final-token memory mass")
+    axes[2].set_ylabel("PRA/local output divergence")
     for axis in axes:
         axis.set_xlabel("PRA spacing")
         axis.set_xscale("log", base=2)
         axis.set_xticks([1, 2, 4, 8], ["1", "2", "4", "8"])
         axis.grid(axis="y", alpha=0.25)
-    axes[1].legend(frameon=False, fontsize=8)
+    axes[2].legend(frameon=False, fontsize=8)
     fig.tight_layout()
     fig.savefig(path, dpi=180)
     plt.close(fig)
@@ -352,7 +372,7 @@ def _plot_pra_gain(rows: list[dict], path: Path) -> None:
         color="#9f1239",
     )
     axis.set_xlabel("training attention window")
-    axis.set_ylabel("matched iterative minus one-shot accuracy")
+    axis.set_ylabel("iterative - one-shot accuracy")
     axis.grid(axis="y", alpha=0.25)
     fig.tight_layout()
     fig.savefig(path, dpi=180)
@@ -550,6 +570,8 @@ def main() -> None:
                     "materialized_native_kv_tokens",
                     "latency_seconds",
                     "mean_intervention_state_displacement",
+                    "mean_final_token_memory_attention_mass",
+                    "mean_pra_output_divergence_ratio",
                 ),
             ),
         )

@@ -279,6 +279,12 @@ class PRAttention(nn.Module):
                     "accessible_kv_tokens": float(local_token_count + retrieved),
                     "active_memory_fraction": retrieved / max(local_token_count + retrieved, 1),
                     "retrieved_kv_storage_bytes": float(2 * retrieved * self.n_heads * self.head_dim * q.element_size()),
+                    # Native-KV PRA has one joint softmax, so output-local
+                    # divergence is the meaningful residual-change diagnostic.
+                    "pra_output_divergence_ratio": float(
+                        (output - local_out).detach().norm().cpu()
+                    )
+                    / max(float(local_out.detach().norm().cpu()), 1e-12),
                 }
             )
             return output

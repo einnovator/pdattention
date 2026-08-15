@@ -23,36 +23,30 @@ Native Receptive Fields and Bounded Associative Discovery}
 \maketitle
 
 \begin{abstract}
-One-shot memory routing can retrieve an entry fact while missing evidence that is more similar to
-that fact than to the original query.  We ask whether a frozen pretrained transformer already
-contains a useful implicit memory topology for bounded memory-to-memory discovery.  Iterative
-Progressive Retrieval Attention (PRA) first routes a query to roots, follows parameter-free native
-or semantic successor edges under hard depth and parent budgets, and maps only final identities to
-layer-native key/value (K/V) state.  Search state, conceptual selected memory, and physical K/V
-materialization remain distinct.
+Dense global self-attention may compress multi-hop relations into shortcut-rich states before an
+external memory mechanism is introduced.  We test whether explicitly iterative Progressive
+Retrieval Attention (PRA) is more useful when native computation is local.  Twenty-five matched
+causal decoders vary only the training attention window
+$W\in\{16,32,64,128,\mathrm{global}\}$ across five seeds.  Each model is then converted exactly to
+native-K/V PRA without learning.  One-shot and evolved-state iterative retrieval both receive 20
+layer-token K/V states; routing identity, physical materialization, and output use remain separate.
 
-Designed two- and three-hop controls recover every indirect node at the same final parent budget
-where one-shot fails.  Natural topology is more qualified.  With oracle roots and 128-token nodes,
-held-out 2Wiki transition R@4/R@6/R@8 is .720/.880/1.000 and complete-path survival is
-.588/.824/1.000; MuSiQue/2Wiki evidence recall reaches .981/.979, but activates .513/.770 of
-source.  Refining nodes to 16 tokens lowers selected source to .063/.172 while complete recovery
-falls to .500/.583.  Native topology also varies non-monotonically with transformer depth: 2Wiki
-R@6 is .880 at layers 0 and 27, .920 at layers 12 and 20, and the best layer changes with node
-size.  Query states contain much stronger root views than the executable router realizes:
-all-offset oracle Top-4 recall is .878/.950 on MuSiQue/2Wiki, versus .622/.692 for the best cheap
-held-out selectors.
+Locality changes geometry more clearly than output.  At the final layer, $W=16$ attains native
+edge R@4 $.428\pm.076$ and shortcut rate $.429\pm.027$, versus $.187\pm.065$ and
+$.584\pm.069$ for global attention.  Yet its held-out answer accuracy is lower
+($.415\pm.030$ versus $.522\pm.017$).  Under matched PRA accounting, iterative routing raises
+$W=16$ complete-path recovery from .109 to .177 but leaves depth-macro answer accuracy essentially
+unchanged (.167 to .164).  The largest iterative-minus-one-shot mean is +.073 at $W=32$, with a
+95\% interval of $\pm.151$; every window's interval crosses zero.  PRA every layer reaches higher
+recovery and sometimes higher accuracy, but uses about 30 rather than 20 layer-token states.
 
-An end-to-end frozen-output gate shows why reachability is not yet sufficient.  On held-out 2Wiki,
-one-shot, balanced graph, broad graph, and oracle-evidence F1 are .354/.313/.271/.362.  Broad graph
-recovery reaches 1.000 but sends only .044 final-token attention mass to annotated evidence and
-.754 to selected non-evidence.  A control-qualified blind judge rates 2Wiki balanced versus
-one-shot output at 90.0 semantic equivalence and a small +2.9 relative-quality mean, but this does
-not reverse the objective F1 result.  MuSiQue normalized answer accuracy is zero even with direct
-full context, exposing a small-backbone ceiling.  Pretrained Q/K therefore contains real local
-evidence edges after a useful neighborhood is entered, but root competition,
-granularity-dependent missing edges, broad activation, and memory-use interference prevent sparse
-end-to-end multi-hop gains.  These measurements define separate targets for evidence-centered
-materialization, trained entry routing, and serving-efficient search.
+The controlled study therefore supports a qualified outcome: narrow local attention preserves a
+more traversable associative topology, while frozen routing and exact K/V transport alone do not
+make that topology functionally sufficient.  Inherited Gemma, Qwen, and Llama-family measurements
+show the same separation at pretrained scale: discoverability can improve while broad activation
+or memory-use interference erases the output benefit.  Iterative PRA is thus a credible sparse
+nonlocal primitive, but its useful operating point requires jointly learned discovery and memory
+consumption rather than deeper search by itself.
 \end{abstract}
 
 \section{Introduction}
@@ -92,6 +86,11 @@ correction, local-gist propagation, and native-QK propagation likewise alter dis
 they do not train the backbone or a memory-consumption adapter.  The controlled experiment is
 separate: it trains ordinary self-attention models, then performs an exact parameter-free
 self-attention-to-PRA conversion for evaluation.
+
+The controlled result is deliberately not a success-by-definition.  The narrowest model preserves
+the clearest native evidence graph, but matched iterative PRA improves path recovery without a
+statistically resolved output gain.  This distinction between traversable topology and useful
+memory consumption becomes the organizing result of the paper.
 
 This paper contributes seven things.  First, it provides a causal, paired receptive-field experiment
 whose train/evaluation examples, architecture, optimization, and token budget are fixed across five
@@ -222,6 +221,148 @@ native global slots.  Qwen3-0.6B supplies the full-global, shortcut-rich chronol
 the remainder of this paper.  SmolLM2-135M supplies a compact Llama-family replication of routing
 sparsity, but it is not a Llama~3.x checkpoint; we retain that limitation instead of relabeling the
 model.  These pretrained artifacts are contrasts, not substitutes for the paired causal test.
+
+\section{Controlled Results}
+\label{sec:controlled-results}
+
+\subsection{A narrow window preserves topology but limits task accuracy}
+
+Table~\ref{tab:controlled-native-results} reports five-seed means with Student-$t$ 95\% intervals.
+All runs consume 2.65 million training tokens and 800 optimizer updates; the full matrix consumes
+66.2 million tokens and approximately $2.94\times10^{14}$ dense executed FLOPs.  The local mask is
+implemented in the dense attention kernel, so these are controlled geometry experiments rather
+than local-attention speed measurements.
+
+\begin{table}[H]
+\centering
+\caption{Held-out model quality and final-layer native topology.  Accuracy and loss use 512
+held-out examples per seed; topology uses a separate 64-example corpus.}
+\label{tab:controlled-native-results}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Window & Test accuracy & Test loss & Edge R@4 & Shortcut rate \\
+\midrule
+$16$     & $.415\pm.030$ & 1.767 & $.428\pm.076$ & $.429\pm.027$ \\
+$32$     & $.511\pm.012$ & 1.218 & $.294\pm.072$ & $.524\pm.052$ \\
+$64$     & $.506\pm.020$ & 1.118 & $.277\pm.039$ & $.497\pm.061$ \\
+$128$    & $.514\pm.010$ & 1.077 & $.196\pm.062$ & $.537\pm.080$ \\
+Global   & $.522\pm.017$ & 1.085 & $.187\pm.065$ & $.584\pm.069$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The output threshold lies near $W=32$: increasing the window further changes mean accuracy by less
+than 1.2 points.  Topology moves in the opposite direction.  Final-layer R@4 falls monotonically
+from .428 at $W=16$ to .187 globally, while shortcut rate rises from .429 to .584.  Complete
+four-hop survival at R@4 is .203 at $W=16$ and .119 globally.  This supports the first link in the
+causal hypothesis: dense access yields better task behavior here, but its native Q/K graph is less
+explicitly traversable.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.49\linewidth}
+\includegraphics[width=\linewidth]{../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/figures/edge_recall_by_window.png}
+\end{minipage}
+\begin{minipage}{0.49\linewidth}
+\includegraphics[width=\linewidth]{../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/figures/shortcut_rate_by_window.png}
+\end{minipage}
+\caption{Final-layer native topology versus the trained attention window.  Error bars are
+five-seed 95\% Student-$t$ intervals.  Narrow local attention preserves more evidence edges and
+forms fewer non-adjacent shortcuts.}
+\label{fig:controlled-native-window}
+\end{figure}
+
+The effect is not merely a one-layer visibility artifact.  For $W=16$, R@4 rises from .221 at
+layer 0 to .408 at layer 1 and remains near .4 thereafter, while dependence on context outside the
+last 16 tokens rises from approximately zero to .426.  The model therefore propagates information
+through local layers while retaining a clearer edge structure.  Global R@4 remains near .2 even as
+restricted-context dependence approaches .494.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/figures/layerwise_topology_context.png}
+\caption{Layerwise edge R@4 and dependence on context outside a 16-token tail.  Local states become
+contextual through depth without collapsing to the global model's shortcut-rich topology.}
+\label{fig:controlled-layerwise}
+\end{figure}
+
+\subsection{Iterative discovery improves paths, not reliably answers}
+
+Table~\ref{tab:controlled-pra-results} uses a depth-macro estimand over the in-domain 1--4-hop
+tasks.  The one-shot condition selects four facts at layer 0.  The matched iterative condition
+selects one unseen fact at layers 0, 2, 4, and 5.  Both therefore materialize exactly 20
+layer-token K/V states.  The next intervention uses the evolved hidden state, and replay count is
+zero in all 8,000 example-condition rows.
+
+\begin{table}[H]
+\centering
+\caption{Matched one-shot and iterative PRA.  Acc. is answer accuracy, Rec. is evidence recall,
+and Path is complete-path recovery, averaged over depths and then seeds.}
+\label{tab:controlled-pra-results}
+\small
+\begin{tabular}{lrrrrrrr}
+\toprule
+& \multicolumn{3}{c}{One-shot, 20 K/V states} &
+\multicolumn{3}{c}{Iterative, 20 K/V states} & $\Delta$ Acc. \\
+Window & Acc. & Rec. & Path & Acc. & Rec. & Path & Iter.-one \\
+\midrule
+$16$   & .167 & .349 & .109 & .164 & .388 & .177 & -.004 \\
+$32$   & .183 & .365 & .113 & .256 & .383 & .166 & +.073 \\
+$64$   & .178 & .378 & .177 & .195 & .412 & .165 & +.018 \\
+$128$  & .212 & .405 & .190 & .234 & .451 & .232 & +.021 \\
+Global & .212 & .420 & .197 & .177 & .453 & .221 & -.036 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Iterative search usually raises evidence recall and raises path recovery in four of five windows,
+but this does not become a stable output effect.  All paired accuracy intervals cross zero; the
+largest mean, $+.073\pm.151$ at $W=32$, has three positive seeds, one negative seed, and one tie
+(exact two-sided sign test $p=.625$).  At $W=16$, where the topology result is strongest, path
+recovery rises by .068 while answer accuracy changes by $-.004\pm.072$.  This is falsification
+outcome B: a deeper traversable graph exists, but frozen iterative retrieval is not yet
+functionally sufficient.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.67\linewidth]{../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/figures/iterative_gain_by_window.png}
+\caption{Paired depth-macro answer-accuracy gain of matched iterative PRA over one-shot PRA.  No
+window resolves a nonzero effect with five seeds.}
+\label{fig:controlled-iterative-gain}
+\end{figure}
+
+The failure is not caused by an inactive memory path.  Across matched conditions, final-token
+memory attention mass spans roughly .54--.90, and the joint native-K/V output differs from local
+attention by .90--1.42 local-output norms.  The memory strongly perturbs a model trained on direct
+full contexts; better retrieval can therefore coexist with worse consumption.  On the PRA corpus,
+full-context accuracy ranges from .242 to .425, whereas matched iterative accuracy ranges from
+.164 to .256.  Exact K/V transport preserves tensors, not the distribution of states seen during
+training.
+
+\subsection{Frequency trades K/V budget for discovery}
+
+PRA at every layer selects at most six unseen facts and averages 29.8 layer-token states.  Relative
+to matched one-shot routing, it raises depth-macro recall by .197--.244 and path recovery by
+.130--.243 across windows.  Its answer gain is positive in mean for every window, largest at
+$W=64$ ($+.138\pm.149$), but again unresolved with five seeds and no longer budget matched.
+Increasing spacing reduces the payload to 15, 10, and 5 states and generally reduces recovery.
+The unseen eight-hop stress set cannot attain complete-path recovery because every tested budget
+selects fewer than eight facts; it instead measures partial recall, which ranges from .236 to .442.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/figures/quality_and_state_by_spacing.png}
+\caption{PRA spacing over in-domain depths 1--4.  More frequent interventions improve discovery at
+higher K/V cost.  Memory mass and output divergence confirm active, sometimes disruptive native-K/V
+consumption rather than a silent routing path.}
+\label{fig:controlled-spacing}
+\end{figure}
+
+Whole-parent and selected-chunk materialization produce identical selected identities and outputs
+in every row, as required by the indivisible five-token-fact control.  Thus the controlled result
+is self-contained: it does not inherit a payload policy or empirical conclusion from another
+paper.
 
 \section{Inherited PRA/HF Setting}
 
@@ -859,6 +1000,16 @@ and output use must remain separate axes.
 
 \section{Limitations}
 
+The controlled decoders are 740K-parameter scientific instruments with a synthetic 230-token
+vocabulary, not language-model scaling evidence.  Five seeds permit paired direction checks but
+leave wide Student-$t$ intervals; with five same-direction nonzero effects, the minimum exact
+two-sided sign-test value would still be .0625.  The PRA corpus contains only 32 examples per seed
+and has uneven depth counts, so primary comparisons use a depth-macro estimand.  The eight-hop
+stress task exceeds every tested selection budget and cannot measure complete-path success.  The
+local mask uses a dense kernel, so elapsed time and FLOPs do not estimate an optimized LocalSA
+implementation.  Finally, exact conversion is intentionally frozen: it tests inherited geometry
+and transport, not whether PRA-aware training can teach the model to consume sparse memory.
+
 The natural cohorts are diagnostic development subsets: 18 MuSiQue and 24 2Wiki held-out
 identities, 16 HotpotQA/QASPER examples in inherited gates, and one frozen Qwen3-0.6B family.  Some
 analyses use oracle roots to isolate successor geometry; those ceilings are not end-to-end routing.
@@ -891,12 +1042,20 @@ checkpoint.
 
 \section{Conclusion}
 
-Iterative PRA makes indirect memory discovery explicit and bounded.  Frozen pretrained Q/K exposes
-real natural evidence edges, but those edges depend on layer and chunk size, executable root routing
-misses much of the available query geometry, and high recovery still requires broad activation.
-End-to-end generation adds the final boundary: retrieved evidence is not automatically useful
-evidence.  The next gains require better entry selection and selective memory use, not another
-uncontrolled increase in search depth or breadth.
+The controlled experiment answers the paper's central question in two parts.  Strict local
+attention does preserve a more explicitly traversable native graph: final-layer edge R@4 is .428
+at $W=16$ and .187 under global attention, while shortcut rate moves in the opposite direction.
+That geometry is real, grows contextual through depth, and supports greater iterative path
+recovery.  It is not by itself enough for output improvement.  Under a matched 20-state native-K/V
+budget, every five-seed iterative accuracy interval crosses zero, and active memory substantially
+changes the residual stream of a model never trained on this sparse interface.
+
+The inherited pretrained results sharpen the same boundary.  Q/K exposes useful evidence edges,
+but entry routing, granularity, broad activation, and memory-use interference remain separate
+failure modes.  Iterative PRA therefore remains a bounded sparse nonlocal primitive, not a claim
+that graph reachability guarantees reasoning.  The next decisive experiment is PRA-aware training
+that shapes discovery and consumption together while retaining the matched accounting and causal
+controls established here.
 
 \appendix
 \section{Chronological Gate Audit: Projection and Locality}
@@ -1963,7 +2122,7 @@ The opposite trend appears in payload precision.  The selected conceptual set co
 at 16-token parents and 1,331 at 256, or .065 and .903 of the logical source.  Mean evidence
 density falls from .211 to .065, while non-evidence selected tokens rise from 74 to 1,245.  This
 is a counterfactual materialization frontier, not a serving measurement: the experiment transfers
-and materializes zero native K/V tokens.  It nevertheless identifies the Paper-3 tradeoff clearly:
+and materializes zero native K/V tokens.  It nevertheless identifies the materialization tradeoff clearly:
 coarse memory makes discovery easier but activates a polluted payload; fine memory localizes
 evidence but demands stronger discovery.
 

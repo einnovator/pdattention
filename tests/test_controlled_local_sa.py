@@ -244,4 +244,7 @@ def test_progressive_pra_uses_evolved_state_without_reference_replay():
     assert len(selected) == len(set(selected))
     assert all(not row["replayed_reference_uris"] for row in trace)
     assert not torch.equal(trace[0]["query_state"], trace[1]["query_state"])
+    assert all(0.0 <= row["final_token_memory_attention_mass"] <= 1.0 for row in trace)
+    assert all(row["pra_output_divergence_ratio"] >= 0.0 for row in trace)
+    assert any(row["final_token_memory_attention_mass"] > 0.0 for row in trace)
     assert len(model.pra_cache.all_entries()) == 2
