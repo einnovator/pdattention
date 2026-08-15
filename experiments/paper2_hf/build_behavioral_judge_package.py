@@ -338,7 +338,7 @@ def add_controls(pairs: list[PairSpec]) -> list[PairSpec]:
     seen: set[tuple[str, str]] = set()
     for pair in pairs:
         key = (pair.dataset, pair.source_example_id)
-        if key in seen or pair.left_condition != "native_no_context":
+        if key in seen or pair.left_condition not in {"native_no_context", "native_bounded"}:
             continue
         seen.add(key)
         result.append(

@@ -84,6 +84,25 @@ def test_scoring_rejects_missing_or_invalid_responses():
         score_response(invalid, _truth())
 
 
+def test_scoring_can_report_an_explicit_complete_pair_subset():
+    truth = _truth()
+    for suffix in ("ab", "ba"):
+        extra = copy.deepcopy(truth["items"][0 if suffix == "ab" else 1])
+        extra["item_id"] = f"judge_2_{suffix}"
+        extra["pair_group_id"] = "pair_2"
+        extra["source_example_id"] = "example_2"
+        truth["items"].append(extra)
+
+    result = score_response(_response(), truth, allow_partial=True)
+
+    assert result["presentation_count"] == 2
+    assert result["truth_presentation_count"] == 4
+    assert result["presentation_coverage"] == 0.5
+    assert result["underlying_pair_count"] == 1
+    assert result["truth_pair_count"] == 2
+    assert result["pair_coverage"] == 0.5
+
+
 def test_derived_outputs_keep_validation_and_unblinded_pairs_separate(tmp_path):
     truth_path = tmp_path / "truth.json"
     response_path = tmp_path / "response.json"

@@ -206,3 +206,39 @@ diagnostics, role visibility, matched layer correlations, edge/search
 decomposition, sparse quality/payload frontiers, cross-dataset table, plots,
 and negative-results registry under
 `../shared/results/paper2_5_iterative_pra/final_metrics/`.
+
+Gate-3 end-to-end output validation:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/build_gate3_output_selections.py --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_gate3_output_validation.py --phase layer_sweep --device cuda
+python ../../../experiments/paper2_5_iterative_pra/run_gate3_output_validation.py --phase heldout --device cuda
+python ../../../experiments/paper2_5_iterative_pra/analyze_gate3_output_validation.py
+python ../../../experiments/paper2_5_iterative_pra/build_gate3_judge_package.py
+```
+
+The first command freezes one-shot, sparse, balanced, broad, and oracle identity
+sets before generation. The layer sweep chooses one consumption band per
+dataset from validation balanced-graph outputs only; the held-out command then
+runs C0--C6 with deterministic decoding. Analysis produces paired identity
+bootstraps and source/KV/layer/depth figures under
+`../shared/results/paper2_5_iterative_pra/output_validation/`. The final command
+uses the existing Paper-2 A/B-reversal and calibration harness. Blinded items
+are public, while `behavioral_judge_truth.json` is intentionally gitignored.
+The optional `run_gate3_ollama_judge.py` runner is a supplementary local
+protocol diagnostic and never makes a headline SOTA-judge result eligible.
+
+External responses are validated and unblinded with the shared Paper-2 scorer:
+
+```powershell
+python ../../../experiments/paper2_hf/score_behavioral_judge_results.py `
+  --truth ../shared/results/paper2_5_iterative_pra/output_validation/behavioral_judge/behavioral_judge_truth.json `
+  --responses ../shared/results/paper2_5_iterative_pra/output_validation/behavioral_judge/responses/behavioral_judge_response_gpt56sol.json ../shared/results/paper2_5_iterative_pra/output_validation/behavioral_judge/responses/behavioral_judge_response_claude_sonnet5_partial.json `
+  --output ../shared/results/paper2_5_iterative_pra/output_validation/behavioral_judge/behavioral_judge_external_metrics.json `
+  --allow-partial
+```
+
+Strict full-ID coverage remains the default. `--allow-partial` is required here because the
+Claude response contains 152 complete A/B-reversed pairs (51.7% coverage); cross-judge metrics
+use only shared pairs and the report records coverage explicitly. GPT-5.6 Sol covers all 294
+pairs and is the only judge that passes both identity and corruption calibration anchors.

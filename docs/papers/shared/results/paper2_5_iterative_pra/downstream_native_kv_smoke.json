@@ -10,8 +10,8 @@
           "condition": "none",
           "em": 0.0,
           "f1": 0.18181818181818182,
-          "generation_seconds": 1.3619602000107989,
-          "latency_seconds": 1.3634173999889754,
+          "generation_seconds": 1.2256053000455722,
+          "latency_seconds": 1.228195899981074,
           "materialized_kv_token_fraction": 0.0,
           "materialized_kv_tokens": 0,
           "prediction": "Answer in the form the form a direct question: Yes",
@@ -29,18 +29,18 @@
           "condition": "one_shot",
           "em": 0.0,
           "f1": 0.18181818181818182,
-          "generation_seconds": 1.1183182999957353,
-          "latency_seconds": 1.3039607999962755,
+          "generation_seconds": 1.1909735000226647,
+          "latency_seconds": 1.5741014999803156,
           "materialized_kv_token_fraction": 0.07283763277693475,
           "materialized_kv_tokens": 96,
           "prediction": "Answer in the form the form a direct answer: Yes",
-          "query_encoding_seconds": 0.07675240002572536,
+          "query_encoding_seconds": 0.07686260004993528,
           "requested_chunk_fraction": 0.07142857142857142,
           "requested_chunks": 3,
           "requested_kv_token_fraction": 0.07283763277693475,
           "requested_kv_tokens": 96,
           "retrieval_graphs": [],
-          "routing_seconds": 0.10678380000172183
+          "routing_seconds": 0.3037813000846654
         },
         {
           "answer_contained": 1.0,
@@ -48,12 +48,12 @@
           "condition": "iterative",
           "em": 0.0,
           "f1": 0.2857142857142857,
-          "generation_seconds": 1.1153295999974944,
-          "latency_seconds": 1.2907472000224516,
+          "generation_seconds": 1.3618571000406519,
+          "latency_seconds": 1.896879099891521,
           "materialized_kv_token_fraction": 0.07283763277693475,
           "materialized_kv_tokens": 96,
           "prediction": "Answer: Yes\nOptions: A: A: Yes",
-          "query_encoding_seconds": 0.07043479999992996,
+          "query_encoding_seconds": 0.09138460003305227,
           "requested_chunk_fraction": 0.07142857142857142,
           "requested_chunks": 3,
           "requested_kv_token_fraction": 0.07283763277693475,
@@ -65,6 +65,7 @@
                 "branch_top_k": 2,
                 "depth": 2,
                 "frontier_mode": "direct",
+                "frontier_projection": "memory",
                 "max_unique_chunks": 3,
                 "min_confidence": null,
                 "path_score_mode": "product",
@@ -80,37 +81,82 @@
                   2,
                   1
                 ],
+                "local_nodes_explored": 0,
+                "native_qk_comparisons": 0,
+                "semantic_gist_comparisons": 126,
                 "unique_gist_comparisons": 126,
                 "unique_parents": 2,
                 "visited_nodes": 3
               },
               "edges": [
                 {
+                  "accepted": true,
                   "anchored_score": 0.19948995113372803,
                   "edge_score": 0.19948995113372803,
+                  "edge_type": "semantic_similarity",
+                  "head_id": null,
                   "hop": 1,
+                  "kv_head": null,
                   "path_score": 0.599744975566864,
+                  "projection_type": "query_to_memory",
+                  "query_head": null,
+                  "representation_type": "semantic_gist",
+                  "score": 0.19948995113372803,
                   "selected": true,
+                  "semantic_candidate_rank": null,
                   "source": "__root__",
-                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576"
+                  "source_node": "__root__",
+                  "source_span": null,
+                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
+                  "target_node": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
+                  "target_span": null,
+                  "threshold": null
                 },
                 {
+                  "accepted": true,
                   "anchored_score": 0.1952841877937317,
                   "edge_score": 0.1952841877937317,
+                  "edge_type": "semantic_similarity",
+                  "head_id": null,
                   "hop": 1,
+                  "kv_head": null,
                   "path_score": 0.5976420938968658,
+                  "projection_type": "query_to_memory",
+                  "query_head": null,
+                  "representation_type": "semantic_gist",
+                  "score": 0.1952841877937317,
                   "selected": true,
+                  "semantic_candidate_rank": null,
                   "source": "__root__",
-                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=512:544"
+                  "source_node": "__root__",
+                  "source_span": null,
+                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=512:544",
+                  "target_node": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=512:544",
+                  "target_span": null,
+                  "threshold": null
                 },
                 {
+                  "accepted": true,
                   "anchored_score": 0.7140676975250244,
                   "edge_score": 0.908650279045105,
+                  "edge_type": "semantic_similarity",
+                  "head_id": null,
                   "hop": 2,
+                  "kv_head": null,
                   "path_score": 0.5140017446860483,
+                  "projection_type": "memory_to_memory",
+                  "query_head": null,
+                  "representation_type": "semantic_gist",
+                  "score": 0.908650279045105,
                   "selected": true,
+                  "semantic_candidate_rank": null,
                   "source": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
-                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=960:992"
+                  "source_node": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
+                  "source_span": null,
+                  "target": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=960:992",
+                  "target_node": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=960:992",
+                  "target_span": null,
+                  "threshold": null
                 }
               ],
               "example_id": null,
@@ -122,13 +168,21 @@
                   "evidence": null,
                   "final_selected": true,
                   "hop": 1,
+                  "local_span": [
+                    544,
+                    576
+                  ],
                   "materialized": true,
                   "node_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
+                  "parent_chunk_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576",
                   "parent_ids": [
                     "__root__"
                   ],
                   "path_score": 0.599744975566864,
+                  "projection_type": "root_query",
                   "reference_uri": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371",
+                  "representation_type": "semantic_gist",
+                  "resolution_level": "chunk",
                   "selection_reason": "frontier_topk",
                   "winning_gist_index": 0
                 },
@@ -138,13 +192,21 @@
                   "evidence": null,
                   "final_selected": true,
                   "hop": 1,
+                  "local_span": [
+                    512,
+                    544
+                  ],
                   "materialized": true,
                   "node_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=512:544",
+                  "parent_chunk_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=512:544",
                   "parent_ids": [
                     "__root__"
                   ],
                   "path_score": 0.5976420938968658,
+                  "projection_type": "root_query",
                   "reference_uri": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371",
+                  "representation_type": "semantic_gist",
+                  "resolution_level": "chunk",
                   "selection_reason": "frontier_topk",
                   "winning_gist_index": 0
                 },
@@ -154,13 +216,21 @@
                   "evidence": null,
                   "final_selected": true,
                   "hop": 2,
+                  "local_span": [
+                    960,
+                    992
+                  ],
                   "materialized": true,
                   "node_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=960:992",
+                  "parent_chunk_id": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=960:992",
                   "parent_ids": [
                     "benchmark://hotpotqa/5a8b57f25542995d1e6f1371#chunk=544:576"
                   ],
                   "path_score": 0.5140017446860483,
+                  "projection_type": "memory",
                   "reference_uri": "benchmark://hotpotqa/5a8b57f25542995d1e6f1371",
+                  "representation_type": "semantic_gist",
+                  "resolution_level": "chunk",
                   "selection_reason": "frontier_topk",
                   "winning_gist_index": 0
                 }
@@ -169,11 +239,11 @@
                 "node_id": "__root__",
                 "query_norm": 1.0
               },
-              "schema_version": "1.0",
+              "schema_version": "2.0",
               "stop_reason": "unique_budget"
             }
           ],
-          "routing_seconds": 0.1029704999527894
+          "routing_seconds": 0.44059699994977564
         }
       ],
       "dataset": "hotpotqa",
@@ -189,8 +259,8 @@
           "condition": "none",
           "em": 0.0,
           "f1": 0.0,
-          "generation_seconds": 1.0756964000174776,
-          "latency_seconds": 1.076947099994868,
+          "generation_seconds": 1.0978485000086948,
+          "latency_seconds": 1.0993279999820516,
           "materialized_kv_token_fraction": 0.0,
           "materialized_kv_tokens": 0,
           "prediction": "Answer: Yes, Yes, they used a crowdsourcing",
@@ -208,18 +278,18 @@
           "condition": "one_shot",
           "em": 0.0,
           "f1": 0.25,
-          "generation_seconds": 1.2012663999921642,
-          "latency_seconds": 1.3473011000314727,
+          "generation_seconds": 1.148579000029713,
+          "latency_seconds": 1.296852400060743,
           "materialized_kv_token_fraction": 0.022819111005467078,
           "materialized_kv_tokens": 96,
           "prediction": "Answer: Yes, No\nBut, they used a",
-          "query_encoding_seconds": 0.07127700001001358,
+          "query_encoding_seconds": 0.07952869997825474,
           "requested_chunk_fraction": 0.022727272727272728,
           "requested_chunks": 3,
           "requested_kv_token_fraction": 0.022819111005467078,
           "requested_kv_tokens": 96,
           "retrieval_graphs": [],
-          "routing_seconds": 0.07286170002771541
+          "routing_seconds": 0.0668517000740394
         },
         {
           "answer_contained": 1.0,
@@ -227,12 +297,12 @@
           "condition": "iterative",
           "em": 0.0,
           "f1": 0.25,
-          "generation_seconds": 1.1375356999924406,
-          "latency_seconds": 1.2907691999571398,
+          "generation_seconds": 1.137228999985382,
+          "latency_seconds": 1.289620399940759,
           "materialized_kv_token_fraction": 0.022819111005467078,
           "materialized_kv_tokens": 96,
           "prediction": "Answer: Yes, No\nBut, they used a",
-          "query_encoding_seconds": 0.07374010002240539,
+          "query_encoding_seconds": 0.07063890004064888,
           "requested_chunk_fraction": 0.022727272727272728,
           "requested_chunks": 3,
           "requested_kv_token_fraction": 0.022819111005467078,
@@ -244,6 +314,7 @@
                 "branch_top_k": 2,
                 "depth": 2,
                 "frontier_mode": "direct",
+                "frontier_projection": "memory",
                 "max_unique_chunks": 3,
                 "min_confidence": null,
                 "path_score_mode": "product",
@@ -259,37 +330,82 @@
                   2,
                   1
                 ],
+                "local_nodes_explored": 0,
+                "native_qk_comparisons": 0,
+                "semantic_gist_comparisons": 396,
                 "unique_gist_comparisons": 396,
                 "unique_parents": 2,
                 "visited_nodes": 3
               },
               "edges": [
                 {
+                  "accepted": true,
                   "anchored_score": 0.4112491309642792,
                   "edge_score": 0.4112491309642792,
+                  "edge_type": "semantic_similarity",
+                  "head_id": null,
                   "hop": 1,
+                  "kv_head": null,
                   "path_score": 0.7056245654821396,
+                  "projection_type": "query_to_memory",
+                  "query_head": null,
+                  "representation_type": "semantic_gist",
+                  "score": 0.4112491309642792,
                   "selected": true,
+                  "semantic_candidate_rank": null,
                   "source": "__root__",
-                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32"
+                  "source_node": "__root__",
+                  "source_span": null,
+                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
+                  "target_node": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
+                  "target_span": null,
+                  "threshold": null
                 },
                 {
+                  "accepted": true,
                   "anchored_score": 0.37093111872673035,
                   "edge_score": 0.37093111872673035,
+                  "edge_type": "semantic_similarity",
+                  "head_id": null,
                   "hop": 1,
+                  "kv_head": null,
                   "path_score": 0.6854655593633652,
+                  "projection_type": "query_to_memory",
+                  "query_head": null,
+                  "representation_type": "semantic_gist",
+                  "score": 0.37093111872673035,
                   "selected": true,
+                  "semantic_candidate_rank": null,
                   "source": "__root__",
-                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=32:64"
+                  "source_node": "__root__",
+                  "source_span": null,
+                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=32:64",
+                  "target_node": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=32:64",
+                  "target_span": null,
+                  "threshold": null
                 },
                 {
+                  "accepted": true,
                   "anchored_score": 0.708945095539093,
                   "edge_score": 0.8353139162063599,
+                  "edge_type": "semantic_similarity",
+                  "head_id": null,
                   "hop": 2,
+                  "kv_head": null,
                   "path_score": 0.602936820236303,
+                  "projection_type": "memory_to_memory",
+                  "query_head": null,
+                  "representation_type": "semantic_gist",
+                  "score": 0.8353139162063599,
                   "selected": true,
+                  "semantic_candidate_rank": null,
                   "source": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
-                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=1856:1888"
+                  "source_node": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
+                  "source_span": null,
+                  "target": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=1856:1888",
+                  "target_node": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=1856:1888",
+                  "target_span": null,
+                  "threshold": null
                 }
               ],
               "example_id": null,
@@ -301,13 +417,21 @@
                   "evidence": null,
                   "final_selected": true,
                   "hop": 1,
+                  "local_span": [
+                    0,
+                    32
+                  ],
                   "materialized": true,
                   "node_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
+                  "parent_chunk_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32",
                   "parent_ids": [
                     "__root__"
                   ],
                   "path_score": 0.7056245654821396,
+                  "projection_type": "root_query",
                   "reference_uri": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590",
+                  "representation_type": "semantic_gist",
+                  "resolution_level": "chunk",
                   "selection_reason": "frontier_topk",
                   "winning_gist_index": 0
                 },
@@ -317,13 +441,21 @@
                   "evidence": null,
                   "final_selected": true,
                   "hop": 1,
+                  "local_span": [
+                    32,
+                    64
+                  ],
                   "materialized": true,
                   "node_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=32:64",
+                  "parent_chunk_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=32:64",
                   "parent_ids": [
                     "__root__"
                   ],
                   "path_score": 0.6854655593633652,
+                  "projection_type": "root_query",
                   "reference_uri": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590",
+                  "representation_type": "semantic_gist",
+                  "resolution_level": "chunk",
                   "selection_reason": "frontier_topk",
                   "winning_gist_index": 0
                 },
@@ -333,13 +465,21 @@
                   "evidence": null,
                   "final_selected": true,
                   "hop": 2,
+                  "local_span": [
+                    1856,
+                    1888
+                  ],
                   "materialized": true,
                   "node_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=1856:1888",
+                  "parent_chunk_id": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=1856:1888",
                   "parent_ids": [
                     "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590#chunk=0:32"
                   ],
                   "path_score": 0.602936820236303,
+                  "projection_type": "memory",
                   "reference_uri": "benchmark://qasper/1810.08699:1f085b9bb7bfd0d6c8cba1a9d73f08fcf2da7590",
+                  "representation_type": "semantic_gist",
+                  "resolution_level": "chunk",
                   "selection_reason": "frontier_topk",
                   "winning_gist_index": 0
                 }
@@ -348,11 +488,11 @@
                 "node_id": "__root__",
                 "query_norm": 1.0
               },
-              "schema_version": "1.0",
+              "schema_version": "2.0",
               "stop_reason": "unique_budget"
             }
           ],
-          "routing_seconds": 0.07723260001512244
+          "routing_seconds": 0.0798264000331983
         }
       ],
       "dataset": "qasper",
@@ -370,9 +510,9 @@
     "cuda_runtime": "12.6",
     "device": "NVIDIA GeForce GTX 950M",
     "git_branch": "research/paper2-5-iter-gist",
-    "git_sha": "2ca32cb0a64a41cddd48c0ef45dc5f7f613eb652",
+    "git_sha": "e86e175d183ec6379df041b8e48f26871ffaf14f",
     "python": "3.10.11",
-    "timestamp_utc": "2026-08-13T18:58:32.440883+00:00",
+    "timestamp_utc": "2026-08-15T09:39:07.871522+00:00",
     "torch": "2.12.1+cu126",
     "transformers": "4.55.4"
   }

@@ -30,6 +30,11 @@ TARGET_CONDITION = {
     "native_direct_evidence_vs_pra": "pra_routed_frozen",
     "native_full_context_vs_pra": "pra_routed_frozen",
     "frozen_pra_vs_adapted_pra": "pra_routed_residual_16",
+    "gate3_balanced_vs_one_shot": "graph_balanced",
+    "gate3_high_vs_one_shot": "graph_high",
+    "gate3_balanced_vs_native": "graph_balanced",
+    "gate3_balanced_vs_oracle": "graph_balanced",
+    "gate3_selected_band_vs_all_layers": "graph_balanced_selected_band",
     "calibration_identical": "control_identical_copy",
     "calibration_corrupted": "control_corrupted_answer",
 }
@@ -65,7 +70,9 @@ def _sign(value: float) -> int:
     return 1 if value > 0 else -1 if value < 0 else 0
 
 
-def _validate_response(response: dict[str, Any], truth: dict[str, Any]) -> None:
+def _validate_response(
+    response: dict[str, Any], truth: dict[str, Any], *, allow_partial: bool = False
+) -> None:
     if response.get("schema_version") != truth.get("schema_version"):
         raise ValueError("Judge response and truth schema versions differ.")
     if not str(response.get("judge_name", "")).strip():
@@ -80,7 +87,7 @@ def _validate_response(response: dict[str, Any], truth: dict[str, Any]) -> None:
         raise ValueError("Judge response contains duplicate item IDs.")
     missing = sorted(truth_ids - set(response_ids))
     extra = sorted(set(response_ids) - truth_ids)
-    if missing or extra:
+    if extra or (missing and not allow_partial):
         raise ValueError(
             f"Judge response IDs do not match truth: missing={missing[:3]}, extra={extra[:3]}"
         )
@@ -189,10 +196,12 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def score_response(response: dict[str, Any], truth: dict[str, Any]) -> dict[str, Any]:
+def score_response(
+    response: dict[str, Any], truth: dict[str, Any], *, allow_partial: bool = False
+) -> dict[str, Any]:
     """Return pair-collapsed metrics for one validated judge response."""
 
-    _validate_response(response, truth)
+    _validate_response(response, truth, allow_partial=allow_partial)
     truth_by_id = {row["item_id"]: row for row in truth["items"]}
     by_pair: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in response["items"]:
@@ -228,7 +237,11 @@ def score_response(response: dict[str, Any], truth: dict[str, Any]) -> dict[str,
     return {
         "judge_name": response["judge_name"],
         "presentation_count": len(response["items"]),
+        "truth_presentation_count": len(truth["items"]),
+        "presentation_coverage": len(response["items"]) / len(truth["items"]),
         "underlying_pair_count": len(pairs),
+        "truth_pair_count": len(truth["items"]) // 2,
+        "pair_coverage": len(pairs) / (len(truth["items"]) // 2),
         "order_reversal": consistency_metrics,
         "aggregates": aggregates,
         "pairs": pairs,
@@ -267,15 +280,19 @@ def _compare_judges(
     return record
 
 
-def _cross_judge(scored: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _cross_judge(
+    scored: list[dict[str, Any]], *, allow_partial: bool = False
+) -> list[dict[str, Any]]:
     comparisons = []
     for index, left in enumerate(scored):
         left_pairs = {row["pair_group_id"]: row for row in left["pairs"]}
         for right in scored[index + 1 :]:
             right_pairs = {row["pair_group_id"]: row for row in right["pairs"]}
-            if set(left_pairs) != set(right_pairs):
+            if set(left_pairs) != set(right_pairs) and not allow_partial:
                 raise ValueError("Judges do not cover the same underlying pairs.")
-            ids = sorted(left_pairs)
+            ids = sorted(set(left_pairs) & set(right_pairs))
+            if not ids:
+                raise ValueError("Judges do not share any underlying pairs.")
             comparisons.append(
                 _compare_judges(
                     left, right, ids, dataset=None, comparison_group=None
@@ -298,13 +315,18 @@ def _cross_judge(scored: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return comparisons
 
 
-def build_report(truth_path: Path, response_paths: list[Path]) -> dict[str, Any]:
+def build_report(
+    truth_path: Path,
+    response_paths: list[Path],
+    *,
+    allow_partial: bool = False,
+) -> dict[str, Any]:
     truth = json.loads(truth_path.read_text(encoding="utf-8"))
     scored = []
     response_metadata = []
     for path in response_paths:
         response = json.loads(path.read_text(encoding="utf-8"))
-        result = score_response(response, truth)
+        result = score_response(response, truth, allow_partial=allow_partial)
         scored.append(result)
         response_metadata.append(
             {"judge_name": result["judge_name"], "source_file": path.name, "sha256": _sha256(path)}
@@ -315,15 +337,20 @@ def build_report(truth_path: Path, response_paths: list[Path]) -> dict[str, Any]
     return {
         "schema_version": "1.0",
         "evaluation_name": truth["evaluation_name"],
+        "partial_responses_allowed": allow_partial,
         "truth_sha256": _sha256(truth_path),
         "responses": response_metadata,
         "judges": [{key: value for key, value in row.items() if key != "pairs"} for row in scored],
-        "cross_judge": _cross_judge(scored),
+        "cross_judge": _cross_judge(scored, allow_partial=allow_partial),
     }
 
 
 def write_derived_artifacts(
-    truth_path: Path, response_paths: list[Path], output_dir: Path
+    truth_path: Path,
+    response_paths: list[Path],
+    output_dir: Path,
+    *,
+    allow_partial: bool = False,
 ) -> None:
     """Write validation receipts and unblinded pair rows separately from aggregates."""
 
@@ -331,7 +358,7 @@ def write_derived_artifacts(
     output_dir.mkdir(parents=True, exist_ok=True)
     for path in response_paths:
         response = json.loads(path.read_text(encoding="utf-8"))
-        scored = score_response(response, truth)
+        scored = score_response(response, truth, allow_partial=allow_partial)
         slug = "".join(
             character.lower() if character.isalnum() else "_"
             for character in scored["judge_name"]
@@ -344,7 +371,11 @@ def write_derived_artifacts(
             "truth_sha256": _sha256(truth_path),
             "schema_and_ids_valid": True,
             "presentation_count": scored["presentation_count"],
+            "truth_presentation_count": scored["truth_presentation_count"],
+            "presentation_coverage": scored["presentation_coverage"],
             "underlying_pair_count": scored["underlying_pair_count"],
+            "truth_pair_count": scored["truth_pair_count"],
+            "pair_coverage": scored["pair_coverage"],
             "order_reversal": scored["order_reversal"],
         }
         pairs = {
@@ -377,16 +408,31 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional directory for separate validation receipts and unblinded pair rows.",
     )
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help=(
+            "Accept response files that contain only complete A/B-reversed pair subsets; "
+            "coverage is reported and cross-judge metrics use pair intersections."
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    report = build_report(args.truth, args.responses)
+    report = build_report(
+        args.truth, args.responses, allow_partial=args.allow_partial
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     if args.derived_output_dir:
-        write_derived_artifacts(args.truth, args.responses, args.derived_output_dir)
+        write_derived_artifacts(
+            args.truth,
+            args.responses,
+            args.derived_output_dir,
+            allow_partial=args.allow_partial,
+        )
     print(json.dumps(report, indent=2))
 
 

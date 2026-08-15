@@ -14,7 +14,7 @@
 \lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,columns=fullflexible}
 
 \title{Iterative Progressive Retrieval Attention:\\
-Bounded Associative Closure over Latent Gist Memory}
+Bounded Associative Discovery over Latent Gist Memory}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Iterative Progressive Retrieval Attention},pdfauthor={Jorge Simao}}
@@ -23,107 +23,36 @@ Bounded Associative Closure over Latent Gist Memory}
 \maketitle
 
 \begin{abstract}
-One-shot semantic retrieval finds memory nearest to the current query.  It can miss a second
-piece of evidence that is weakly related to the query but strongly related to the first piece.
-We study iterative Progressive Retrieval Attention (PRA), which treats cached routing gists as an
-implicit graph: the query retrieves a bounded frontier, retrieved gists query the same layer-local
-index, and only the final closure is mapped to full native key/value (K/V) state.  The transformer
-is not rerun between retrieval rounds.
+One-shot memory routing can retrieve an entry fact while missing evidence that is more similar to
+that fact than to the original query.  We ask whether a frozen pretrained transformer already
+contains a useful implicit memory topology for bounded memory-to-memory discovery.  Iterative
+Progressive Retrieval Attention (PRA) first routes a query to roots, follows parameter-free native
+or semantic successor edges under hard depth and parent budgets, and maps only final identities to
+layer-native key/value (K/V) state.  Search state, conceptual selected memory, and physical K/V
+materialization remain distinct.
 
-A parameter-free implementation enforces depth, branch, beam, and unique-parent budgets and emits
-a retrieval graph before K/V materialization.  Controlled two- and three-hop graphs validate
-chunk closure exactly, but inherited natural-data results are mixed.  We therefore test two
-specific failure modes without retraining.  First, the learned router is asymmetric:
-$z_q=W_qh_q$ and $z_m=W_mh_m$.  Replacing the incorrect hop-2 frontier $W_mh_A$ by $W_qh_A$
-recovers 0.075 QASPER any-evidence recall relative to historical closure at 10\%, yet remains
-0.013 below one-shot; HotpotQA chain completion is unchanged.  Second, we encode 256-token
-parents once, derive eight 32-token local gists from each contextual state, traverse local nodes,
-and deduplicate parents before materializing native K/V.  This local method solves every designed
-bridge control, where parent closure always fails.  Finally, semantic narrowing followed by
-tokenwise layer-27 pre-RoPE query--key (QK) matching solves all 320 native-bridge controls.  On
-natural data at a matched 20\% parent budget, however, the primary native-QK condition reaches
-HotpotQA chain completion 0.125 versus 0.125 local semantic and 0.138 one-shot; QASPER reaches
-0.900 versus 0.925 and 0.938.  A Top-4 control reaches 0.175 on HotpotQA but falls to 0.838 on
-QASPER and does not dominate across budgets.  Native propagation is therefore expressively
-sufficient on designed bridges but not a dependable pretrained associative geometry on these
-natural samples.  One-shot remains the default, and any learned associative extension now has a
-clearer justification and baseline.  An exact-oracle audit finds that iterative native routing
-loses 11.7--15.6\% of QASPER runs where one-shot already touched oracle evidence.  An
-oracle-protected-root counterfactual recovers 0.044--0.068 recall at the same budget, whereas
-held-out score normalization does not repair HotpotQA.  Monotonic root preservation, then
-adaptive transition width, are therefore tested as a final frozen-policy gate.  On the held-out
-split, monotonic preservation exactly reproduces one-shot quality.  An exploratory native-rank
-policy raises 20\% Hotpot oracle recall from 0.205 to 0.233 but leaves chain completion unchanged
-at 0.143 and regresses at larger budgets; QASPER is preserved at 20\%.  The first Hotpot evidence
-group is absent from root Top-$B$ in 52.9\% of exploratory runs, compared with 11.1\% where it is
-present but not locked.  We therefore retain the full contextual question once and expose
-overlapping query facets to one shared Top-$B$ competition.  Validation selects 4-token windows
-at stride 2.  At 20\%, they raise held-out Hotpot entry presence from 0.343 to 0.457, MRR from
-0.503 to 0.626, and oracle recall from 0.205 to 0.295, while QASPER entry presence remains 0.967.
-Real pre-RoPE head splitting does not improve this result.  Reconnecting the faceted root to the
-frozen monotonic loop raises Hotpot chain completion from 0.143 to 0.171, but no higher than the
-faceted root alone.  The supported extension is thus opt-in multi-span entry search, not a new
-default or a claim that propagation is solved.  A final additive gate compares token, fixed-window,
-multiscale, and deterministic phrase facets and separates the active prompt from the tokens allowed
-to initiate retrieval.  Validation freezes 2-token facets over the latest user message; held-out
-entry remains 0.429 on Hotpot and 0.967 on QASPER.  Native QK then proposes four successors from a
-known-correct first evidence group, while current-query facets rerank only those candidates.
-Although validation R@1 rises from 0.100 to 0.300, held-out R@1 falls from 0.286 to 0.257 and MRR
-from 0.583 to 0.500, with R@4 fixed at 1.000.  Static query grounding therefore does not solve
-successor choice.  We finally re-encode the question with oracle-conditioned $A$ through the
-frozen transformer.  Validation selects the $A\Vert Q$ ordering with question-only support, but
-held-out R@1/MRR move from 0.257/0.500 to 0.229/0.479.  The primary $Q\Vert A$ control with
-Q-and-A support reaches 0.314/0.538 but misses the predeclared $+0.10$ R@1 criterion.  The dynamic
-state gate therefore remains closed before a larger activation-policy sweep.
-We then remove the mistaken requirement that every intermediate memory remain query-like.  A
-bounded graph search follows only native local-QK edges and consults contextual query facets as a
-separate terminal predicate.  With oracle roots, held-out HotpotQA reaches 1.000 later-evidence
-recall at $K=4$ and $B=6$, but no validation threshold satisfies both useful terminal closure and
-the predeclared 0.25 false-goal ceiling: the safest policy disables closure.  The graph-traversal
-primitive therefore passes, while query-based stopping fails; routed-root evaluation is stopped
-by design.
-We then hold the search rule fixed and rebuild the 16 HotpotQA memories at 16, 32, 64, 128,
-and 256-token parent sizes.  Mean oracle-parent count rises from 2.19 at 256 tokens to 7.25 at
-16, while the evidence-token fraction already in the oracle root falls from .575 to .201.  Under
-the fixed $K=4,B=6,H=4$ search, oracle recall correspondingly falls from .969 to .194 and complete
-recovery from .938 to zero.  Conversely, counterfactual selected native-K/V tokens fall from
-1,331 to 94 and evidence density rises from .065 to .211.  Thus the previous one-edge saturation
-is partly a coarse-graining result: fine memory localizes evidence but exposes a real discovery
-limitation.  Query-facet complementarity does not separate oracle evidence from plausible false
-terminals, so it remains diagnostic rather than a stopping rule.
-We next freeze the same native search on 36 MuSiQue and 48 2WikiMultiHopQA examples.  At
-128-token parents, validation selects $K=6,B=16$.  Held-out oracle-root node/complete recovery is
-.981/.944 on MuSiQue and .979/.958 on 2Wiki, but this broad condition activates .513/.770 of
-source tokens.  A six-parent cap lowers MuSiQue completion to .444.  On 25 preserved held-out
-2Wiki transitions, direct R@4/R@6/R@8 is .720/.880/1.000 and complete-path survival is
-.588/.824/1.000.  MuSiQue evidence is genuinely more distributed at depth four, yet all quality
-gain saturates by search depth two.  Pretrained native geometry therefore exposes a dense local
-evidence neighborhood; these data do not establish faithful four-hop traversal.
-We then carry the full 16--256-token ladder to both datasets while preserving 256-token contextual
-encoding.  At $K=6,B=16$, shrinking search parents from 128 to 16 tokens reduces selected source
-fraction from .513 to .063 on MuSiQue and .770 to .172 on 2Wiki, but complete recovery falls from
-.944/.958 to .500/.583.  Preserved 2Wiki edge R@6 falls from .880 to .400.  Fine-edge
-representation, not insufficient search depth, is the main failure: MuSiQue $D=4$ recall still
-saturates at $H=2$ for 16/32-token nodes.  We then hold the 128-token graph fixed and expose actual
-pre-RoPE Q/K from eight Qwen layers.  Restricted-context intervention rises from zero at layer 0
-to .987 at layer 27, but 2Wiki R@6 is non-monotonic: .880 at layers 0 and 27 and .920 at layers
-12 and 20.  A gated layer--granularity cross is sharper.  At 32 tokens, layer 0 reaches .680 while
-layer 27 reaches .400; at 128, layer 12 leads at .920; at 256, all three structural representatives
-reach .958--1.000.  Transformer depth and memory granularity therefore induce interacting graph
-topologies; no fixed late layer is universally best.  Finally, an evaluation-only all-offset query audit finds
-some existing span that ranks a correct root in Top-4 for .878 MuSiQue and .950 2Wiki runs, versus
-.422/.608 for the deployed fixed facets.  Token-scale facets dominate, but distractors receive the
-same multiple-comparison benefit.  A bounded executable union reaches only .411/.475 root recall
-at a four-root budget.  A final measurement-only gate tests inexpensive winning-facet predictors.
-The best single-facet held-out R@4 is .622/.692 (global/global-or-linear) on MuSiQue/2Wiki;
-hidden norm, parent-margin, entropy, position, most-common-scale, and a validation-fitted linear
-scale selector do not approach .878/.950.  Matched-example bootstrap also finds no stable relation
-between restricted-context dependence and edge R@6, MRR, depth contraction, or shortcut rate;
-only lower effective branching covaries clearly.  The final Pareto audit makes the systems tradeoff
-explicit: conservative MuSiQue/2Wiki points activate .063/.172 of source for .500/.583 complete
-recovery, while complete recovery requires .573/.918.  Paper 2.5 therefore freezes here.  Learned
-facet selection and adaptive multiscale topology belong to Paper 3; actual K/V transfer and serving
-measurements belong to Paper 3.5.
+Designed two- and three-hop controls recover every indirect node at the same final parent budget
+where one-shot fails.  Natural topology is more qualified.  With oracle roots and 128-token nodes,
+held-out 2Wiki transition R@4/R@6/R@8 is .720/.880/1.000 and complete-path survival is
+.588/.824/1.000; MuSiQue/2Wiki evidence recall reaches .981/.979, but activates .513/.770 of
+source.  Refining nodes to 16 tokens lowers selected source to .063/.172 while complete recovery
+falls to .500/.583.  Native topology also varies non-monotonically with transformer depth: 2Wiki
+R@6 is .880 at layers 0 and 27, .920 at layers 12 and 20, and the best layer changes with node
+size.  Query states contain much stronger root views than the executable router realizes:
+all-offset oracle Top-4 recall is .878/.950 on MuSiQue/2Wiki, versus .622/.692 for the best cheap
+held-out selectors.
+
+An end-to-end frozen-output gate shows why reachability is not yet sufficient.  On held-out 2Wiki,
+one-shot, balanced graph, broad graph, and oracle-evidence F1 are .354/.313/.271/.362.  Broad graph
+recovery reaches 1.000 but sends only .044 final-token attention mass to annotated evidence and
+.754 to selected non-evidence.  A control-qualified blind judge rates 2Wiki balanced versus
+one-shot output at 90.0 semantic equivalence and a small +2.9 relative-quality mean, but this does
+not reverse the objective F1 result.  MuSiQue normalized answer accuracy is zero even with direct
+full context, exposing a small-backbone ceiling.  Pretrained Q/K therefore contains real local
+evidence edges after a useful neighborhood is entered, but root competition,
+granularity-dependent missing edges, broad activation, and memory-use interference prevent sparse
+end-to-end multi-hop gains.  These measurements define separate targets for evidence-centered
+materialization, trained entry routing, and serving-efficient search.
 \end{abstract}
 
 \section{Introduction}
@@ -143,63 +72,28 @@ $q\rightarrow A\rightarrow B$ is explicit.  It does not require another language
 an intermediate text answer, or serialization through an external tool API.
 
 This paper asks whether pretrained hidden-state gists already possess enough transitive semantic
-geometry for that extension to help.  The question has a strict baseline: iterative closure must
+geometry for that extension to help.  The question has a strict baseline: iterative discovery must
 beat one-shot Top-$B$ at the same final unique-chunk budget $B$.  Otherwise, retrieval depth adds
 cost without adding a useful primitive.
 
 We keep the pretrained backbone and Paper 2 routing/transport stack fixed and replace one-shot
-Top-$B$ discovery with parameter-free iterative closure.  Projection correction, local-gist
+Top-$B$ discovery with parameter-free iterative search.  Projection correction, local-gist
 propagation, and native-QK propagation likewise alter discovery state only; they do not train the
 backbone or a memory-consumption adapter.
 
-The contributions are twelvefold.  First, we formulate iterative PRA as query-conditioned bounded
-associative closure over an implicit latent graph.  Second, we implement Level-1 gist-to-gist and
-Level-2 aggregate-frontier traversal with deterministic budgets, cycle handling, root anchoring,
-transparent path scores, and a versioned graph artifact.  Third, we evaluate five semantic-router
-seeds on held-out HotpotQA and QASPER features, together with exact two- and three-hop synthetic
-controls.  Fourth, we identify and correct an asymmetric projection-interface error without
-retraining.  Fifth, we separate contextual encoding, local propagation, and parent K/V
-materialization scales, showing exact local-bridge recovery but no dependable natural-data chain
-gain.  Sixth, we test semantically narrowed, tokenwise pre-RoPE native QK propagation under the
-same final parent budget, separate semantic and native search costs, and diagnose exact-oracle
-convergence, root displacement, edge rank, and score calibration before choosing the next gate.
-Seventh, we implement oracle-free monotonic root locks and bounded adaptive transition
-competition, select their thresholds on an example-disjoint validation split, and show on held-out
-data that persistence repairs direct-retrieval displacement but does not create a Hotpot chain
-gain when the entry evidence never enters root Top-$B$.  Eighth, we isolate query-span and native
-head dilution, show that contextual query facets materially improve held-out Hotpot entry
-discovery without reducing QASPER recall, and reconnect the winning root to the frozen bounded
-propagation loop under an unchanged final payload budget.  Ninth, we compare parameter-free facet
-types and realistic query-support boundaries, then test the rule ``association proposes; current
-query state validates; bounded competition admits'' without mixing native and semantic score
-scales.  The held-out failure of that rule localizes the remaining gap to successor discrimination,
-not Top-4 candidate availability.  Tenth, we test the simplest dynamic-state repair: one frozen
-contextual pass over $Q$ and known-correct $A$, with exact Q/A facet provenance and a native
-candidate-width ladder.  It uses $A$ but does not clear a validation-frozen materiality gate,
-which rules out the planned activation-surface sweep in this iteration.
-Eleventh, we correct the role of the query in multi-hop search: native association alone admits
-intermediate nodes, while a separately calibrated any-facet threshold tests only terminal
-closure.  The resulting oracle-root surface cleanly separates successful evidence discovery from
-an uncalibrated stopping predicate and enforces the preregistered stop before routed roots.
-Twelfth, we control parent granularity over a 16--256-token ladder, remap every supporting span,
-measure root containment and minimum native-graph recovery depth, and expose the discovery--K/V
-pollution frontier.  Controlled chain contraction verifies that chunking can reduce observed
-graph depth even when task depth is unchanged.
-Thirteenth, we port the frozen search to MuSiQue's explicit 2/3/4-step decompositions and
-2WikiMultiHopQA's supporting facts and relation chains, separating annotated graph truth from
-PRA-parent mappings.  The resulting transition, path-survival, root-routing, and budget analyses
-show strong broad-budget evidence recovery but no native search-depth scaling with task depth.
-Fourteenth, we repeat exact remapping and native search over 16/32/64/128/256-token parents on
-MuSiQue and 2Wiki, distinguish preserved-edge failure from budgeted-search failure, and quantify
-the recovery--payload Pareto surface.  Fifteenth, we exhaust every valid question span at widths
-1/2/4/8/16 from one contextual encoding, compare semantic and lexical ceilings for roots and
-terminal evidence, and test one globally bounded union without exposing labels to runtime search.
-Sixteenth, we close the experimental sequence with a measurement-only synthesis: validation-only
-facet-predictability diagnostics, matched-example layer/context bootstrap, edge-versus-search loss,
-layer--granularity interaction, MuSiQue shortcut decomposition, and a cross-dataset quality--payload
-frontier.  No new search, materialization, or trained production policy is introduced.
+This paper contributes five things.  First, it formulates iterative PRA as bounded search over an
+implicit layer-local memory graph while preserving an exact separation between routing state and
+native K/V payload.  Second, it supplies deterministic graph, budget, cycle, projection, grouped-
+query-head, and native-limit controls that make indirect discovery independently reproducible.
+Third, it measures edge fidelity, path survival, minimum native recovery depth, and conceptual
+payload over synthetic, QASPER, HotpotQA, 2Wiki, and MuSiQue roles rather than treating retrieval
+recall as one undifferentiated quantity.  Fourth, it isolates a non-monotonic interaction among
+chunk granularity, transformer layer, contextual dependence, and executable root competition.
+Fifth, it connects frozen discovery to actual native-K/V generation, showing that high evidence
+recovery can still lose output quality through broad activation and attention dilution.  The full
+chronological gate record, including negative results, remains in the appendices.
 
-\section{From Nearest Neighbors to Associative Closure}
+\section{Inherited PRA/HF Setting}
 
 \subsection{Why one-shot retrieval can stop too early}
 
@@ -224,29 +118,30 @@ not a proof and not complete reasoning.
 
 Figure~\ref{fig:mechanism} separates traversal from payload activation.  This boundary is the
 main systems invariant: compact gists may participate in several search rounds, while full K/V
-cannot enter attention until the closure stops.
+cannot enter attention until discovery stops.
 
 \begin{figure}[H]
 \centering
 \fbox{\begin{minipage}{0.92\linewidth}
 \centering
-\textbf{ONE SHOT}\quad $q\rightarrow\{A,X,Y\}\rightarrow$ full native K/V\\[8pt]
-\textbf{ITERATIVE ASSOCIATIVE CLOSURE}\\[3pt]
-$q\rightarrow A\rightarrow B\rightarrow C$\\[-2pt]
-\hspace{31mm}$\searrow D$\\[5pt]
-$\{A,B,C,D\}$ bounded by $B,D,k,$ and beam size\\
-$\downarrow$\\
-final chunk identities $\rightarrow$ layer-local full native K/V $\rightarrow$ transformer\\[5pt]
-\hrulefill\\[-2pt]
-\textit{Future Paper 3 interface:} closure graph $\dashrightarrow$ progressive detail allocation
+logical source or long prompt\\
+$\downarrow$ model-safe encoding blocks $\downarrow$\\
+layer-native K/V \quad+\quad contextual routing chunks and compact gists\\
+$\downarrow$ root routing $\downarrow$\\
+native successor graph: $q\rightarrow A\rightarrow B\rightarrow C$\\[-2pt]
+\hspace{33mm}$\searrow D$\\
+$\downarrow$ bounded discovery ($B,D,k,$ beam, cycles) $\downarrow$\\
+final identities $\rightarrow$ materialization budgeter $\rightarrow$ selected native K/V\\
+$\downarrow$ direct plus memory attention $\downarrow$\\
+frozen transformer output
 \end{minipage}}
-\caption{Iterative PRA increases search depth without transformer reruns.  Gists are routing
-state; native K/V is the payload.  The dashed handoff preserves graph signals for later work on
-partial materialization.}
+\caption{Final computational decomposition.  Iterative PRA increases discovery depth without
+transformer reruns.  Compact gists and native edges define routing state; selected layer-native
+K/V is the attention payload.}
 \label{fig:mechanism}
 \end{figure}
 
-\section{Method}
+\section{Final Method: Bounded Associative Discovery}
 
 \subsection{Bounded frontier expansion}
 
@@ -273,7 +168,7 @@ We also evaluate log-sum, final-edge, minimum-edge, mean-edge, and direct-root s
 choices are deliberately transparent.  A learned controller would confound the first question:
 whether useful graph structure is already present.
 
-\begin{lstlisting}[caption={Level-1 bounded associative closure},label={alg:closure}]
+\begin{lstlisting}[caption={Level-1 bounded associative discovery},label={alg:closure}]
 frontier = {root}; selected = {}; graph = empty
 for hop in 1..D:
     proposals = union topk_unseen(parent, G, k) for parent in frontier
@@ -354,9 +249,10 @@ chance to find a better closure without increasing active K/V.
 \subsection{Inherited Paper 2 configuration}
 
 Table~\ref{tab:inherited-config} makes the inherited stack explicit.  Layer numbers are zero
-based.  The retrieval studies operate on frozen feature artifacts and do not run the transformer
-or activate K/V; the separate downstream smoke is the only Paper 2.5 experiment that exercises
-the complete native-K/V consumer path.
+based.  The graph-discovery studies operate on frozen feature artifacts and do not activate K/V.
+The final Gate-3 study separately runs the complete frozen transformer and materializes exactly
+the discovered native K/V at predefined consumer-layer bands.  Keeping these phases separate
+distinguishes graph quality from the model's ability to use the resulting memory.
 
 \begin{table}[H]
 \centering
@@ -392,13 +288,13 @@ Component & Paper 2.5 setting \\
 Iterative closure & Parameter-free.  The primary chunk study uses direct frontiers, multiplicative path score, root anchor $\alpha=0.25$, and depths 2, 3, and 4; one-shot is the matched depth-1 Top-$B$ reference.  Gate 3 also remains parameter-free. \\
 Memory-consumption adaptation & None.  Paper 2.5 does not load a memory-use adapter.  Residual-16, rank-32 LoRA, residual-plus-LoRA, and global LM-head adaptation are all absent. \\
 PRA payload & Full layer-native post-RoPE K and native V, preserving Qwen's 8 K/V heads without expanding them to 16 query heads. \\
-PRA consumer layers & None in the frozen-feature retrieval experiments.  The downstream integration smoke routes at layer 27 and materializes/consumes native K/V on layer 27 only; it does not use a multi-layer late band. \\
+PRA consumer layers & None in frozen-feature graph experiments.  Gate 3 sweeps predefined late-layer bands without fitting them on held-out answers.  The frozen selection is layers \{12,20,24,27\} for 2Wiki and all 28 layers for MuSiQue; the latter is explicitly low confidence because every validation band has zero exact-match accuracy. \\
 Routing versus materialization & Intermediate closure nodes remain compact routing state and never enter attention.  Only final selected identities are handed to the existing layer mapper before native K/V becomes active. \\
-Native-operation bounds & The configured hard bound is 256 tokens.  Feature encoding uses 128-token blocks in the inherited study and 256-token parents in Gate 2.  The downstream smoke uses 64-token encoding blocks, observes a maximum native operation of 64 tokens, and records zero violations. \\
-Final native payload budget & The downstream smoke caps materialized memory at 96 tokens and selects three 32-token chunks in both one-shot and iterative conditions.  Retrieval-only studies apply matched logical chunk/parent budgets but do not transfer K/V. \\
-K/V residency in smoke & Reference K/V is CPU-resident, pinned when CUDA is available, and transferred non-blockingly for final selected identities. \\
-Datasets & A held-out split of 16 HotpotQA and 16 QASPER examples, plus controlled synthetic two-hop, three-hop, and local-bridge tasks. \\
-New Paper 2.5 variables & Discovery procedure only: one-shot versus bounded iterative closure, followed by projection-correct frontier, parent-versus-local propagation, semantically narrowed native-QK propagation, monotonic competition, and contextual query-facet gates.  Backbone weights, router checkpoints, payload representation, layer mapper, and host attention semantics remain fixed within each matched comparison. \\
+Native-operation bounds & The configured hard bound is 256 tokens.  Gate-3 prompts may span 4,096 tokens, but each native encoding operation is at most 256 tokens; all 1,008 generation runs record zero bound violations and a maximum native operation of 256 tokens.  The separate smoke uses 64-token blocks and observes a maximum of 64. \\
+Final native payload budget & Graph studies use matched logical budgets.  Gate 3 materializes the exact frozen selected chunks: one-shot, conservative, balanced, high-recall, oracle, and direct-full-context controls.  Its atomic routing unit is 16 tokens, while total active K/V varies by policy and source length. \\
+K/V residency & Reference K/V is CPU-resident, pinned when CUDA is available, and transferred non-blockingly only for final selected identities.  Intermediate graph nodes remain routing state. \\
+Datasets & Controlled synthetic chains; 16-example HotpotQA and QASPER diagnostics; 18 held-out MuSiQue and 24 held-out 2WikiMultiHopQA identities for graph analysis; and 36 MuSiQue plus 48 2Wiki generation examples in Gate 3. \\
+New Paper 2.5 variables & Discovery procedure, graph scale/layer, and frozen output-time materialization policy.  Backbone weights, semantic-router checkpoints, payload representation, layer mapper, and host attention semantics remain fixed within each matched comparison. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -407,12 +303,12 @@ The resulting path is
 \begin{center}
 \textit{frozen Qwen hidden state} $\rightarrow$ \textit{learned 128-D asymmetric router}
 $\rightarrow$ \textit{one-shot or iterative closure} $\rightarrow$ \textit{final identities}
-$\rightarrow$ \textit{PRA layer mapper} $\rightarrow$ \textit{native K/V on layer 27}.
+$\rightarrow$ \textit{PRA layer mapper} $\rightarrow$ \textit{native K/V on a predefined consumer band}.
 \end{center}
 Iterative closure operates only over compact routing state.  Intermediate graph nodes do not
 inject K/V into the transformer.  After closure terminates, the final selected identities are
 handed to the existing PRA layer mapper, which materializes the corresponding full native K/V
-payload on the configured consumer layer in the downstream smoke.
+payload on the configured consumer layers in the downstream smoke or Gate-3 output study.
 
 \noindent\textbf{Paper 2.5 changes the discovery procedure only.  The pretrained backbone,
 routing checkpoints, native-K/V payload representation, layer mapper, and host-model attention
@@ -470,183 +366,381 @@ node is similar to its predecessor but is outranked from the root by distractors
 $B=2$ or $3$, one-shot can afford the entry node but not the full chain.  We run 64 examples per
 seed for each chain length, yielding 320 paired trials per task.
 
-\subsection{Downstream execution validation}
+\subsection{Dataset roles and frozen evaluation protocol}
 
-A separate two-example CUDA smoke loads the pinned Qwen model, indexes one HotpotQA and one
-QASPER source, and compares no memory, one-shot, and $D=2$ closure.  One-shot and closure both
-request three chunks and materialize 96 native K/V tokens.  This run validates execution and
-budget invariants; two examples cannot estimate answer quality.
+The datasets answer different questions rather than forming a single leaderboard.  Synthetic
+chains test exact transitive reachability under known edges.  QASPER is a direct-evidence and
+native-consumer control.  HotpotQA supplies shallow bridge questions and the primary chunk-scale
+diagnostic.  2WikiMultiHopQA supplies annotated evidence transitions and path-fidelity targets.
+MuSiQue supplies deeper annotated task graphs and exposes native shortcuts or contractions.  The
+natural graph analyses use example-disjoint held-out identities: 24 for 2Wiki and 18 for MuSiQue.
+The output gate uses 48 2Wiki and 36 MuSiQue generation examples, without training or answer-based
+policy fitting on the held-out rows.
 
-\subsection{Gate-3 native-QK protocol}
+Root recall measures whether initial routing enters an evidence parent.  Native edge R@$K$
+measures whether an annotated successor appears among a source node's $K$ native neighbors.  Path
+survival requires every annotated transition to survive; complete recovery requires at least one
+active node from every evidence group.  Minimum native recovery depth is the smallest bounded
+search depth that recovers all evidence and is not a claim about reasoning steps.  Selected-source
+fraction and conceptual selected memory describe identities exposed by discovery.  Native K/V
+materialization instead counts the layer-specific token states actually activated for attention.
+Graph contraction denotes an annotated multi-edge path represented by fewer native transitions;
+contextual dependence measures representation change under wider encoding context, not edge
+quality.
 
-Gate 3 asks whether initial relevance and associative propagation require different pretrained
-geometries.  The learned semantic router still scores the root and narrows each activated local
-frontier to either 10\% or 20\% of candidate parents.  Only local regions inside those parents
-enter native refinement.  From the same layer-27 contextual states used by Gate 2, we retain
-Qwen's normalized pre-RoPE projections
-\begin{equation}
-  Q^{pre}=W_Qh,\qquad K^{pre}=W_Kh.
-\end{equation}
-Qwen has 16 query heads and 8 K/V heads, so query heads $2j$ and $2j+1$ compare only with K/V
-head $j$.  The primary local-region transition score is
-\begin{equation}
- s_{QK}(A_i,B_j)=
- \max_{a\in A_i,b\in B_j,h}
- \frac{q_{a,h}^{\mathsf T}k_{b,\lfloor h/2\rfloor}}{\sqrt{128}}.
-\end{equation}
-The sole smooth control averages the four strongest valid token pairs per head and then the four
-strongest query heads.  We compare fixed Top-$k$ transitions with one threshold,
-$\theta=\mu+\sigma$, always under the same hard parent cap.  If thresholding accepts too few
-parents, root-semantic ranking fills the remainder so final materialization stays matched.
-
-Each 256-token parent is encoded once.  Its token states are sliced into contextual 32-token
-routing regions; no region is independently re-encoded.  Native QK changes discovery identities
-only.  Intermediate states contain no payload K/V, and final identities would still map through
-the existing post-RoPE native K plus native V path.  The five router seeds, 10/20/30\% final
-parent budgets, and all one-shot, parent-closure, and local-semantic baselines remain fixed.
-These Gate-3 baselines are recaptured on the same strict 32-token grid as native QK.  They are
-internally matched but slightly differ from Gate 2's historical eight-equal-segment artifact when
-a final 256-token parent is short; Tables~\ref{tab:local} and~\ref{tab:native-qk} therefore answer
-their respective within-gate comparisons rather than being pooled.
+For output validation, frozen discovery rows define conservative, balanced, and high-recall
+policies alongside no-memory, one-shot, oracle-evidence, and direct-full-context controls.  The
+runner materializes exact post-RoPE native K and native V only after discovery, enforces a
+256-token native-operation bound, and sweeps predefined consumer-layer bands on validation data.
+It then freezes one band per dataset and records answer F1, normalized accuracy, active native-K/V
+tokens by layer, final-token evidence/non-evidence/local attention mass, latency, and bound
+violations.  A separate two-example Hotpot/QASPER smoke remains only a compatibility check.
 
 \section{Results}
 
-\subsection{Exact latent chains validate the mechanism}
+\subsection{Does iterative discovery expose evidence missed by one-shot?}
 
-Table~\ref{tab:synthetic} gives the cleanest mechanism test.  Both methods find some evidence,
-but one-shot retrieves only the entry node.  Iterative traversal follows the designed edges and
-completes every chain.  The gain costs one complete index scan per hop.
+The exact mechanism answer is yes.  Across five seeds and 320 trials per task, one-shot at the
+matched final budget retrieves the entry but completes none of the designed two- or three-hop
+chains.  Bounded discovery completes every chain (Table~\ref{tab:main-synthetic}).  This proves
+the graph and budget mechanism, not that natural pretrained geometry supplies every edge.
 
 \begin{table}[H]
 \centering
-\caption{Matched-budget synthetic results over five seeds and 64 examples per seed.}
-\label{tab:synthetic}
+\caption{Exact matched-budget mechanism control.}
+\label{tab:main-synthetic}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Task & Method & Any evidence & Complete chain & Coverage \\
+\midrule
+2-hop & One-shot Top-2 & 1.000 & .000 & .500 \\
+2-hop & Bounded discovery & 1.000 & 1.000 & 1.000 \\
+3-hop & One-shot Top-3 & 1.000 & .000 & .333 \\
+3-hop & Bounded discovery & 1.000 & 1.000 & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Natural semantic closure is not uniformly positive.  At 10\% HotpotQA, one-shot chain completion
+is .138 and depths 2/3/4 reach .150/.163/.175, while any-evidence recall falls from .700 to
+.663/.663/.613.  At 30\%, one-shot again leads.  QASPER is the direct control: one-shot recall is
+.963 at 10\%, versus .875 at depth two.  Projection-correct and local/native variants repair
+specific interfaces and solve designed bridges, but no frozen variant dominates both datasets.
+Appendices~\ref{app:projection-locality}--\ref{app:terminal-search} retain the complete gate record.
+
+\subsection{Does native Q/K encode real evidence edges?}
+
+2Wiki gives the cleanest natural edge test because relation chains map to supporting facts.  At
+128-token search nodes and oracle roots, direct successor R@4/R@6/R@8 is .720/.880/1.000.
+Conditional complete-path survival rises from .588 to .824 and 1.000 (Table~\ref{tab:main-2wiki}).
+The result establishes local reachability after entry.  It does not establish that the executable
+router finds the root or follows the annotated path in order.
+
+\begin{table}[H]
+\centering
+\caption{Held-out 2Wiki native-edge and preserved-path fidelity at 128-token nodes.}
+\label{tab:main-2wiki}
+\small
+\begin{tabular}{rrrr}
+\toprule
+$K$ & Transition R@$K$ & Complete path & Broad evidence recovery \\
+\midrule
+4 & .720 & .588 & .917 \\
+6 & .880 & .824 & .958 \\
+8 & 1.000 & 1.000 & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/natural_graph_depth.pdf}
+\caption{Natural graph diagnostics.  2Wiki exposes transition/path fidelity; MuSiQue separates
+annotated task depth from minimum native recovery depth.}
+\label{fig:main-natural-graph}
+\end{figure}
+
+\subsection{Does annotated depth require deeper native search?}
+
+MuSiQue preserves a real annotation-depth difference: at 128 tokens, depth-four questions occupy
+7.67 oracle parents on average versus 4.33 at depth two.  Yet held-out evidence recovery saturates
+by search depth two under $K=6,B=16$.  Complete recovery by annotated depth 2/3/4 is
+1.000/.833/1.000, while completed cases are reachable in a much shallower native graph.  The
+pretrained graph therefore contains shortcuts or contracted neighborhoods that do not reproduce
+the task decomposition.  Evidence reachability is not faithful annotated reasoning traversal.
+
+\subsection{How does granularity alter graph quality and payload?}
+
+Chunking is part of the graph definition.  Finer nodes localize evidence but remove transitions;
+coarser nodes contract the graph by placing more facts and distractors together.  Table
+\ref{tab:main-granularity} reports frozen held-out representatives.  At 16 tokens, MuSiQue/2Wiki
+select only .063/.172 of source, but complete recovery is .500/.583.  Broad 128-token conditions
+reach complete recovery at .573/.918 selected source.  Deeper search does not repair the missing
+fine edges: MuSiQue depth-four recall saturates at $H=2$ even at 16/32 tokens.
+
+\begin{table}[H]
+\centering
+\caption{Granularity--payload frontier.  Selected is conceptual source activation; no K/V transfer
+is implied by this table.}
+\label{tab:main-granularity}
+\small
 \begin{tabular}{llrrrr}
 \toprule
-Task & Method & Any & Exact chain & Coverage & Comparisons \\
+Dataset & Point & Tokens & Recall & Complete & Selected \\
 \midrule
-2-hop & One-shot Top-2 & 1.000 & 0.000 & 0.500 & 10 \\
-2-hop & Iterative $D=2$ & 1.000 & 1.000 & 1.000 & 20 \\
-3-hop & One-shot Top-3 & 1.000 & 0.000 & 0.333 & 11 \\
-3-hop & Iterative $D=3$ & 1.000 & 1.000 & 1.000 & 33 \\
+MuSiQue & conservative & 16 & .819 & .500 & .063 \\
+MuSiQue & complete & 128 & 1.000 & 1.000 & .573 \\
+2Wiki & conservative & 16 & .796 & .583 & .172 \\
+2Wiki & balanced & 128 & .958 & .917 & .567 \\
+2Wiki & complete & 128 & 1.000 & 1.000 & .918 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-This result establishes that the implementation can recover indirect nodes without transformer
-updates.  It does not show that a pretrained semantic router supplies the required edges.
-
-\subsection{HotpotQA shows a small chain signal and a larger drift cost}
-
-Figure~\ref{fig:hotpot} and Table~\ref{tab:primary} compare natural-data routing.  At 10\%,
-one-shot any-evidence recall is $0.700\pm0.065$ (five-seed 95\% interval), while $D=2$ obtains
-$0.663\pm0.118$.  Yet group-level chain completion rises from 0.138 to 0.150, and reaches 0.175
-at $D=4$.  The two metrics describe different behavior: closure sometimes reaches another
-evidence group, but also leaves an easily retrieved entry neighborhood.
-
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/hotpotqa_closure_recall.pdf}
-\caption{Five-seed HotpotQA matched-budget curves.  Deeper closure modestly improves chain
-completion at some sparse budgets but does not improve the broader any-evidence curve.}
-\label{fig:hotpot}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/musique_granularity.pdf}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/2wiki_granularity.pdf}
+\caption{Finer nodes reduce conceptual payload and raise evidence density, but direct edges and
+complete recovery deteriorate.}
+\label{fig:main-granularity}
 \end{figure}
+
+\subsection{How does transformer depth alter the native graph?}
+
+Layer and granularity interact non-monotonically.  At 32 tokens, early layer 0 gives 2Wiki R@6
+.680 versus .400 at layer 27; at 128, layer 12 leads with .920; at 256, coarse contraction makes
+all three representatives nearly perfect (Table~\ref{tab:main-layer}).  Restricted-context
+dependence rises strongly with layer, but matched-example bootstraps do not stably relate it to
+edge R@6, MRR, depth contraction, or shortcut rate.  Contextual dependence is therefore not a
+surrogate for graph quality.
 
 \begin{table}[H]
 \centering
-\caption{Primary 10\% matched-budget results.  Means combine 16 examples and five independently
-trained routers.  ``All'' requires every positive chunk; ``Chain'' requires every evidence group.}
-\label{tab:primary}
-\begin{tabular}{llrrrrr}
+\caption{Layer--granularity interaction: 2Wiki edge R@6 / MuSiQue depth-four completion.}
+\label{tab:main-layer}
+\small
+\begin{tabular}{rrrr}
 \toprule
-Dataset & Method & Any & Chain & All & Coverage & Comparisons \\
+Tokens & Layer 0 & Layer 12 & Layer 27 \\
 \midrule
-HotpotQA & One-shot & .700 & .138 & .013 & .207 & 50.1 \\
-HotpotQA & Closure $D=2$ & .663 & .150 & .000 & .202 & 219.6 \\
-HotpotQA & Closure $D=3$ & .663 & .163 & .000 & .205 & 273.0 \\
-HotpotQA & Closure $D=4$ & .613 & .175 & .000 & .193 & 303.2 \\
-QASPER & One-shot & .963 & .963 & .213 & .477 & 142.6 \\
-QASPER & Closure $D=2$ & .875 & .875 & .200 & .466 & 1395.9 \\
-QASPER & Closure $D=3$ & .788 & .788 & .175 & .425 & 1822.1 \\
-QASPER & Closure $D=4$ & .825 & .825 & .150 & .426 & 2144.2 \\
+32  & .680 / .167 & .480 / .333 & .400 / .333 \\
+128 & .880 / .833 & .920 / 1.000 & .880 / 1.000 \\
+256 & .958 / 1.000 & 1.000 / .833 & 1.000 / 1.000 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-At 20\%, Hotpot chain completion rises from 0.188 one-shot to 0.212, 0.250, and 0.263 at depths
-2--4.  At 30\%, one-shot returns to the lead (0.412 versus 0.362--0.400).  The effect is therefore
-small, budget dependent, and not accompanied by improved exact all-chunk recall.  Five seeds are
-insufficient to claim a reliable improvement; the direction also changes with budget.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layer_granularity_cross.png}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/layer_context_matched_correlations.png}
+\caption{Left: layer and node size expose different native graphs.  Right: contextual dependence
+does not reliably predict edge or path quality.}
+\label{fig:main-layer}
+\end{figure}
 
-\subsection{QASPER behaves as a direct-retrieval control}
+\subsection{Why is end-to-end root routing weak?}
 
-QASPER's evidence commonly forms one contiguous group, so chain completion equals any-evidence
-recall in this protocol.  Figure~\ref{fig:qasper} shows that one-shot dominates throughout the
-sparse region.  At 10\%, its any/chain recall is $0.963\pm0.069$ versus $0.875\pm0.095$ for
-$D=2$.  Closure adds no useful intermediate relation when the root already addresses the target.
+The query contains useful views that the executable selector does not reliably choose.  An
+evaluation-only all-offset audit finds some contextual span that ranks a correct root in Top-4 for
+.878 MuSiQue and .950 2Wiki runs.  The deployed fixed facets reach .422/.608; the best inexpensive
+held-out selectors reach only .622/.692 (Table~\ref{tab:main-entry}).  Position, hidden norm,
+parent margin, entropy, most-common scale, and a validation-fitted linear scale selector do not
+close the gap.  A bounded union also exposes each distractor to multiple chances, reaching only
+.411/.475.  The limitation is competitive facet selection, not absence of a useful root view.
+
+\begin{table}[H]
+\centering
+\caption{Held-out root Top-4 recall: oracle view versus executable competition.}
+\label{tab:main-entry}
+\small
+\begin{tabular}{lrr}
+\toprule
+Entry rule & MuSiQue & 2Wiki \\
+\midrule
+Deployed fixed facets & .422 & .608 \\
+Bounded all-facet union & .411 & .475 \\
+Best cheap selector & .622 & .692 \\
+All-offset oracle ceiling & .878 & .950 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/qasper_closure_recall.pdf}
-\caption{QASPER matched-budget curves.  The mostly single-group evidence protocol favors direct
-one-shot ranking, as expected if recursion is unnecessary.}
-\label{fig:qasper}
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/facet_predictability_frontier.png}
+\caption{Left: executable facet selectors remain below the oracle root-view ceiling.  Right: high
+complete recovery requires broad conceptual source activation.}
+\label{fig:main-entry-frontier}
 \end{figure}
 
-\subsection{Root anchoring exposes semantic drift}
+\subsection{What does recovered evidence cost, and does the model use it?}
 
-At 10\% Hotpot, pure local traversal ($\alpha=0$) yields any recall 0.600.  Increasing root weight
-to 0.50, 0.75, and 1.0 gives 0.700, 0.738, and 0.700.  QASPER improves monotonically toward the
-root-only condition: 0.863, 0.875, 0.900, 0.913, and 0.963 from $\alpha=0$ to 1.  The best
-QASPER ``iterative'' setting is therefore the one that does not use frontier semantics.
+The final gate freezes discovery before generation, maps exact selected spans to 16-token native
+K/V chunks, and varies evidence breadth and consumption layers separately.  The validation ladder
+is last layer, last four, last eight, middle four, layer 12, topology-sparse
+$\{12,20,24,27\}$, and all 28 layers.  2Wiki selects topology-sparse consumption: balanced
+validation F1 is .392 versus .382 at the last layer and .027 at all layers.  MuSiQue selects all
+layers on a tiny lexical-overlap difference (.034 versus .030 or less); every band has zero
+normalized accuracy, so that choice is low-confidence.
 
-Residual update is the only Level-2 variant to preserve exact all-chunk recall on Hotpot (0.013),
-but its any recall 0.713 does not consistently beat one-shot.  Mean and weighted mean reach 0.738
-any recall while exact all remains zero.  Path-score variants range from 0.650 to 0.738 Hotpot any
-recall and do not improve chain completion consistently.  No parameter-free update dominates.
+Held-out output does not improve with graph breadth (Table~\ref{tab:main-output}).  On 2Wiki,
+one-shot F1 is .354; balanced and broad graph conditions fall to .313 and .271 despite evidence
+recall .760 and 1.000.  Paired deltas versus one-shot are $-.041$ (95\% bootstrap interval
+$[-.125,.001]$) and $-.083$ ($[-.208,.001]$).  Oracle evidence reaches only .362.  Broad graph
+selects .934 of source; final-token attention mass averages .044 on annotated evidence, .754 on
+selected non-evidence, and .202 on the local prompt.  Oracle selection is denser (.110/.461/.430),
+but its small output gain is uncertain.  MuSiQue normalized accuracy is zero for every condition,
+including direct full context, so it cannot identify a useful materialization band for this
+0.6B backbone.
 
-\subsection{Relational gap does not identify real gains}
-
-The motivating diagnostic is
-\begin{equation}
-  \Delta_{rel}=\max_{A\in E\setminus\{B\}}s(g_A,g_B)-s(q,g_B).
-\end{equation}
-Large $\Delta_{rel}$ should favor closure if evidence-to-evidence similarity is a useful edge.
-Figure~\ref{fig:gap} does not show that pattern.  In Hotpot's highest gap quartile, the paired
-$D=2$ any-recall effect is $-0.100$ and coverage effect is $+0.017$.  In QASPER they are
-$-0.176$ and $-0.019$.  A high pairwise cosine score is not enough to identify the correct
-relational transition.
+\begin{table}[H]
+\centering
+\caption{Held-out end-to-end output.  Active K/V is peak local plus external per-layer native K/V
+state, in thousands.  Latency is synchronized greedy generation on GTX~950M.}
+\label{tab:main-output}
+\scriptsize
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Condition & Recall & Source & Active K/V & F1 & Accuracy & Seconds \\
+\midrule
+2Wiki & native, no source & .000 & .000 & 1.34 & .353 & .333 & .93 \\
+2Wiki & one-shot PRA & .719 & .589 & 4.25 & .354 & .333 & 1.30 \\
+2Wiki & graph sparse & .490 & .185 & 2.20 & .347 & .333 & 1.00 \\
+2Wiki & graph balanced & .760 & .586 & 4.27 & .313 & .292 & 1.35 \\
+2Wiki & graph broad & 1.000 & .934 & 6.22 & .271 & .250 & 1.46 \\
+2Wiki & oracle evidence & 1.000 & .320 & 2.88 & .362 & .333 & 1.29 \\
+2Wiki & native full context & 1.000 & 1.000 & 38.57 & .233 & .208 & 4.39 \\
+\midrule
+MuSiQue & one-shot PRA & .889 & .793 & 58.04 & .011 & .000 & 9.42 \\
+MuSiQue & graph balanced & .931 & .593 & 44.68 & .016 & .000 & 7.69 \\
+MuSiQue & oracle evidence & 1.000 & .275 & 21.97 & .024 & .000 & 4.98 \\
+MuSiQue & native full context & 1.000 & 1.000 & 74.51 & .026 & .000 & 9.86 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/relational_gap_effect.pdf}
-\caption{Paired $D=2$ minus one-shot effects at 10\%.  Relational gap does not predict a stable
-closure advantage in the inherited semantic space.}
-\label{fig:gap}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/output_validation/gate3_quality_source.pdf}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/output_validation/gate3_quality_active_kv.pdf}
+\caption{Answer F1 versus conceptual selected source (left) and actual peak native K/V state
+(right).  Higher recovery does not produce a monotone output frontier.}
+\label{fig:main-output-frontier}
 \end{figure}
-
-\subsection{Search cost and full-K/V execution}
-
-Figure~\ref{fig:cost} shows the compact-index cost.  At 10\%, $D=2$ uses 219.6 comparisons per
-Hotpot example versus 50.1 one-shot (4.4$\times$), and 1395.9 versus 142.6 on QASPER
-(9.8$\times$).  The higher QASPER multiplier follows from more candidates and larger frontiers.
-These are exact comparison counts; wall time depends strongly on batching and hardware.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/closure_search_cost.pdf}
-\caption{Compact gist comparisons.  Iteration leaves final K/V budgets fixed but increases index
-work with frontier size and depth.}
-\label{fig:cost}
+\includegraphics[width=0.58\linewidth]{../shared/results/paper2_5_iterative_pra/output_validation/gate3_materialization_layers.pdf}
+\includegraphics[width=0.40\linewidth]{../shared/results/paper2_5_iterative_pra/output_validation/gate3_evidence_recall_quality.pdf}
+\caption{Left: fixed evidence under different consumption bands.  All-layer injection collapses
+2Wiki output.  Right: annotated-evidence recall is not sufficient for answer quality.}
+\label{fig:main-output-layer}
 \end{figure}
 
-The CUDA integration smoke materializes exactly three chunks and 96 K/V tokens for both methods.
-Iterative routing takes 0.103/0.077 seconds on the Hotpot/QASPER examples, versus 0.107/0.073 for
-one-shot in this trace-oriented implementation.  End-to-end times are 1.291/1.291 seconds for
-closure and 1.304/1.347 seconds for one-shot.  The model records zero native-limit violations and
-a maximum 64-token native operation.  These two cases validate the execution contract only.
+All 1,008 generations preserve Qwen's 16 query heads, 8 native K/V heads, exact fixed identities,
+and a 4,096-token context bound; maximum block execution is 256 tokens with zero violations.  TTFT,
+TPOT, and total latency are synchronized end-to-end measurements.  Materialization, transfer, and
+attention components refer to the final decode forward and are not extrapolated into serving
+throughput.
 
-\section{Projection and Locality Gates}
+A 588-presentation canonical blind package represents 294 underlying comparisons in both A/B
+orders.  GPT-5.6 Sol returns complete coverage and passes both calibration anchors exactly:
+identical-copy equivalence is 100 on each dataset, while corrupted-answer equivalence is
+17.5/23.3 on 2Wiki/MuSiQue and relative quality favors the uncorrupted comparator by 39.2/26.8
+points.  Table~\ref{tab:main-judge} therefore reports this control-qualified judge separately.
+On 2Wiki, balanced and broad discovery are usually judged equivalent to one-shot, with small
+positive mean quality differences and mostly ties.  The stronger signal is consumption locality:
+the selected sparse band is preferred to all-layer injection by 37.4 points on average.  On
+MuSiQue, sparse graph outputs remain mixed and are substantially worse than no-memory output in
+the balanced-versus-native comparison, consistent with the direct-full-context ceiling.
+
+\begin{table}[H]
+\centering
+\caption{Control-qualified GPT-5.6 Sol behavioral results after collapsing exact A/B reversals.
+Eq. is semantic equivalence; $\Delta Q$ is relative quality oriented toward the named target.}
+\label{tab:main-judge}
+\scriptsize
+\begin{tabular}{llrrr}
+\toprule
+Dataset & Target vs. comparator & $n$ & Eq. & $\Delta Q$ \\
+\midrule
+2Wiki & Balanced vs. one-shot & 24 & 90.0 & +2.9 \\
+2Wiki & Broad vs. one-shot & 24 & 88.3 & +1.9 \\
+2Wiki & Balanced vs. oracle & 24 & 89.4 & +0.6 \\
+2Wiki & Selected band vs. all layers & 24 & 20.4 & +37.4 \\
+MuSiQue & Balanced vs. one-shot & 18 & 52.8 & +5.5 \\
+MuSiQue & Broad vs. one-shot & 18 & 60.2 & +8.7 \\
+MuSiQue & Balanced vs. no memory & 18 & 18.2 & -40.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Claude Sonnet 5 returned 152 complete pair reversals (51.7\% coverage), but failed calibration:
+identical-copy equivalence is 49.6/49.4 and corrupted-answer equivalence is 46.2/63.1.  Its
+relative-quality direction agrees with GPT on only .270 of their 152 shared pairs.  We retain
+Claude as a failed-instrument diagnostic and exclude it from efficacy interpretation.  The raw
+blinded responses and aggregate metrics are public; the private truth map remains excluded.
+
+\section{Discussion}
+
+The experiments reveal a model graph, not a recovered annotation graph.  Native Q/K contains
+strong local evidence edges once search enters the right neighborhood, but MuSiQue shortcuts and
+coarse-node contraction show that reachability can bypass nominal task order.  Conversely, fine
+nodes preserve payload sparsity while removing useful edges.  Graph construction therefore depends
+jointly on model layer and spatial granularity.
+
+Three bottlenecks remain distinct.  Root routing fails to realize query views that are visibly
+present under oracle evaluation.  Fine successor edges disappear before deeper search can use
+them.  Finally, recovered evidence competes with selected distractors during attention; broad or
+all-layer materialization can perturb a frozen model more than it helps.  Contextual dependence
+alone predicts none of these reliably.  Conceptual selected memory, native K/V materialization,
+and output use must remain separate axes.
+
+\section{Limitations}
+
+The natural cohorts are diagnostic development subsets: 18 MuSiQue and 24 2Wiki held-out
+identities, 16 HotpotQA/QASPER examples in inherited gates, and one frozen Qwen3-0.6B family.  Some
+analyses use oracle roots to isolate successor geometry; those ceilings are not end-to-end routing.
+Broad high-recall conditions activate much of the source.  Annotation graphs are useful evaluation
+objects but need not be the model's preferred reasoning paths.  The 0.6B model has a severe
+MuSiQue output ceiling even under full context.  Dense Python adjacency construction and the
+trace-oriented materializer are diagnostic kernels, not serving implementations.  The approved
+behavioral result comes from one control-qualified judge; the second judge is partial and fails
+the calibration anchors, so evaluator robustness remains unresolved.
+
+\section{Handoff}
+
+\paragraph{Paper 3: evidence-centered materialization.}
+Start from oracle and high-quality discovered identities, deduplicate overlapping spans, window
+around evidence, and reproduce the measured output ceiling with fewer native K/V states.  The
+target is quality at the sparse side of Figure~\ref{fig:main-output-frontier}, not maximum recall
+at any cost.
+
+\paragraph{Paper 3.5: routing, search, and serving.}
+Train a bounded facet controller against the .878/.950 root-view ceiling; select layer and
+granularity jointly; replace dense Python adjacency with an indexed GPU search; and measure TTFT,
+TPOT, throughput, concurrency, and cache residency in a serving runtime.
+
+\paragraph{Paper 4: PRA-aware training.}
+Test whether from-scratch or continued training can shape entry, successor, stopping, and memory-use
+geometry together.  Such training is a new architecture study, not evidence about this frozen
+checkpoint.
+
+\section{Conclusion}
+
+Iterative PRA makes indirect memory discovery explicit and bounded.  Frozen pretrained Q/K exposes
+real natural evidence edges, but those edges depend on layer and chunk size, executable root routing
+misses much of the available query geometry, and high recovery still requires broad activation.
+End-to-end generation adds the final boundary: retrieved evidence is not automatically useful
+evidence.  The next gains require better entry selection and selective memory use, not another
+uncontrolled increase in search depth or breadth.
+
+\appendix
+\section{Chronological Gate Audit: Projection and Locality}
+\label{app:projection-locality}
 
 The preceding results freeze the original chunk-level closure as Level 1.  We next change one
 assumption at a time.  All comparisons reuse the same five checkpoints, held-out examples,
@@ -1459,6 +1553,7 @@ budget is unmeasured rather than zero; we deliberately do not infer it from orac
 edge rank.
 
 \subsection{Semantic graph search with terminal query closure}
+\label{app:terminal-search}
 
 The preceding rerankers asked the current query to judge every successor.  That is too strong for
 an associative chain: a useful bridge may match its predecessor while remaining weakly related to
@@ -2202,7 +2297,9 @@ system should preserve contextual coarse discovery state while exposing fine pay
 training search control around absent fine edges would address the wrong component.  For entry,
 the oracle ceiling motivates bounded facet selection, but the final measurement gate below first
 tests whether inexpensive statistics already predict the winner.  Learned selection is deferred
-to Paper~3, and Paper~3.5 remains responsible for native-K/V materialization and serving.
+to Paper~3.  At this chronological stage, physical native-K/V materialization and serving were
+still deferred; the later Gate-3 output study in the main text adds bounded materialization and
+generation but not a production serving benchmark.
 
 Controlled chains separate the mechanism from Hotpot annotation structure.  For task-edge depths
 $D\in\{1,2,3,4,8\}$, grouping one, two, or four adjacent chain nodes yields observed depth
@@ -2332,10 +2429,11 @@ Tokens & Edge R@6 & Product & Observed & Missing edge & Extra & Gain \\
 The final Pareto artifact joins quality, selected source, evidence density, root breadth, K/B/H,
 expanded nodes, search time, adjacency time, and measured CUDA memory.  Table
 \ref{tab:final-frontier} shows the frozen representatives.  Search latency excludes adjacency
-construction.  All rows remain conceptual-routing measurements: materialized native-K/V tokens
-and bytes are exactly zero; ``selected source'' is the previously defined counterfactual
-whole-parent payload.  The audit records H2D and CUDA allocated/reserved memory where measured,
-but no TTFT, TPOT, concurrency, or serving throughput.
+construction.  All rows in this chronological graph-only gate remain conceptual-routing
+measurements: materialized native-K/V tokens and bytes are exactly zero; ``selected source'' is
+the previously defined counterfactual whole-parent payload.  The later Gate-3 output study
+materializes those identities and measures generation latency, but neither stage measures TTFT,
+TPOT, concurrency, or serving throughput.
 
 \begin{table}[H]
 \centering
@@ -2386,13 +2484,13 @@ native head splitting, fine-edge collapse, weak contextualization--quality predi
 executable facet gap.
 
 \paragraph{Freeze decision.}
-Paper 2.5 stops here.  The code and artifacts characterize the remaining gaps without fitting a
+The graph-only program stopped here.  Its code and artifacts characterize the remaining gaps without fitting a
 large router, fusing layers, adapting K/B/thresholds, changing materialization, or adding another
-search architecture.  Paper 3 may test a supervised bounded facet selector and adaptive
-early-local/middle-global topology against these exact controls.  Paper 3.5 owns actual native-K/V
-transfer, serving kernels, TTFT/TPOT, and concurrency.
+search architecture.  The subsequent Gate-3 output study tests frozen bounded materialization;
+Paper 3 may test a supervised facet selector and adaptive early-local/middle-global topology,
+while serving kernels, TTFT/TPOT, and concurrency remain outside this paper.
 
-\section{Discussion}
+\section{Extended Chronological Synthesis and Related Work}
 
 \subsection{What the experiments establish}
 
@@ -2503,7 +2601,7 @@ threefold.  Paper 3 should therefore compare whole-parent, evidence-local, and p
 expanded materialization on the same discovered set rather than treating chunk size as a settled
 constant.
 
-\section{Limitations}
+\section{Extended Limitations and Threats to Validity}
 
 The natural-data pool has 16 examples per dataset, repeated over five router seeds and then split
 by stable example identity for the final policy-selection gate.
@@ -2529,8 +2627,10 @@ contextual query facets remove four specific confounds, but the experiment does 
 adaptive zoom rules, evidence-edge training, a layer sweep, or a full agentic baseline.  The local
 and native bridge controls are deliberately geometric and do not approximate natural language.
 Hotpot evidence groups are approximate source-order targets rather than annotated transition
-edges, so they can understate or misidentify the useful successor relation.  Downstream F1/EM is
-measured only in a two-example execution smoke and is not used as evidence of quality.  Finally,
+edges, so they can understate or misidentify the useful successor relation.  At this stage,
+downstream F1/EM was measured only in a two-example execution smoke and was not used as evidence
+of quality; the later Gate-3 study supersedes that scope with a frozen 84-example generation
+cohort while preserving the smoke as a compatibility control.  Finally,
 the scorer batches token pairs and heads but still launches small per-example routing operations;
 the reported wall time is not a production-kernel claim.
 
@@ -2625,9 +2725,11 @@ the headline oracle and selected-facet root ceilings are example-level; the pape
 denominators.  Layer correlations have only eight depth points.  Their identity bootstrap measures
 cohort uncertainty but cannot make transformer depth an independent random sample.  Finally, the
 Pareto frontier is conditional on oracle roots and counterfactual whole-parent payload.  It records
-zero actual K/V materialization and therefore supports neither TTFT nor throughput claims.
+zero actual K/V materialization within that graph-only gate.  Gate 3 later materializes frozen
+sets and measures per-example generation latency, but still supports neither TTFT nor throughput
+claims.
 
-\section{Conclusion}
+\section{Extended Experimental Synthesis}
 
 Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
 asymmetric frontier is necessary and materially reduces inherited degradation.  Routing at a
@@ -2718,10 +2820,52 @@ whereas the best cheap held-out selectors reach only .622/.692.  Confidence, pos
 validation-fitted linear scale selector do not close that gap.  The measured sparse frontier spans
 .063 selected source at .819 evidence recall for MuSiQue and .172 at .796 for 2Wiki, while their
 complete-recovery points require .573 and .918 respectively.  We therefore freeze Paper~2.5 at
-this measured boundary.  Supervised or adaptive facet selection belongs to Paper~3; physical
-native-K/V materialization, latency, and concurrency belong to the separate serving study.
+this measured boundary.  Supervised or adaptive facet selection belongs to Paper~3; production
+native-K/V serving latency and concurrency belong to a separate systems study.  The Gate-3 output
+experiment in this paper is a bounded efficacy measurement, not that serving study.
 
-\appendix
+\section{External Behavioral-Judge Audit}
+\label{app:behavioral-judge}
+
+The frozen judge package contains 294 underlying comparisons, each presented in exact A/B and B/A
+orders.  Seven comparison groups cover balanced/broad discovery against one-shot, balanced against
+no memory and oracle evidence, selected versus all-layer consumption, and identical/corrupted
+calibration anchors.  The scorer validates opaque IDs, numeric ranges, reason lengths, and complete
+order-reversed pairs; restores the private condition orientation; and averages reversals before
+aggregation.  Positive $\Delta Q$ always favors the named target after unblinding.
+
+GPT-5.6 Sol covers all 294 pairs.  Claude Sonnet~5 covers 152 complete pairs and no half-pair, so
+the partial-response mode reports 51.7\% coverage and computes cross-judge metrics only on that
+intersection.  Partial acceptance is explicit and opt-in; strict complete-ID validation remains
+the scorer default.  Claude's failure on literal identity and deterministic corruption anchors
+precludes efficacy interpretation despite structurally valid rows.  This is an instrument failure,
+not evidence for or against PRA.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Frozen behavioral-judge artifacts.  The truth file is retained privately; its hash is
+published so later unblinding remains auditable.}
+\label{tab:judge-hashes}
+\begin{tabular}{p{0.29\linewidth}p{0.65\linewidth}}
+\toprule
+Artifact & SHA-256 \\
+\midrule
+Prompt & \texttt{65f810c43576ce9ac8eab640c0f8e0ec0acde3d6cfd73c98ccb065eeaf67b9e1} \\
+Blind package & \texttt{3fa13a3473bc2aca8baa8980a2364069dadbf67d86384e44711c6cca1df933c9} \\
+Private truth & \texttt{45c7c1cd57855ced306234c215085599d8020d6e5fd8a53db6dadced344df6a6} \\
+GPT-5.6 Sol response & \texttt{8318ecb5ae0e65008d8a294eb1ff483e3249d601c90e15388a648a2904d7a9fd} \\
+Claude Sonnet~5 partial & \texttt{8b7cb41a872889f39e0dd8d84940dc44028f386f389df0c6a2f943d0d422448b} \\
+Aggregate metrics & \texttt{4c96f8f67dc74def9ec6650c81405f41bb667e3a0653a02f3b5fe7dbfa9eda82} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The exact judge-specific aggregates, calibration rows, order diagnostics, and shared-pair
+correlations are stored in
+\path{output_validation/behavioral_judge/behavioral_judge_external_metrics.json}.  Blinded raw
+responses remain alongside that aggregate.  No unblinded pair table or truth metadata is tracked.
+
 \section{Implementation Map}
 
 The implementation is designed so another system can reproduce the mechanism without adopting
