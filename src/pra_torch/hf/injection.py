@@ -443,6 +443,7 @@ class PRAHFModel:
                             ),
                             metadata={
                                 "encoding_block_start": block_start,
+                                "encoding_block_tokens": self.hf_config.encoding_block_tokens,
                                 "routing_representation": self.hf_config.routing_representation,
                                 "routing_gist_bytes": int(
                                     sum(

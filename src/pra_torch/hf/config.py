@@ -37,6 +37,7 @@ class PRAHFConfig:
     query_half_life: float = 4.0
     centered_rope_center_policy: str = "exact"
     max_materialized_memory_tokens: int = 512
+    detail_materialization: str = "selected_chunks"
     context_safety_reserve_tokens: int = 0
     top_k_references: int = 2
     top_k_chunks_per_reference: int = 1
@@ -133,6 +134,7 @@ class PRAHFConfig:
             trigger_threshold=self.trigger_threshold,
             memory_transport="native_kv",
             max_materialized_memory_tokens=self.max_materialized_memory_tokens,
+            detail_materialization=self.detail_materialization,
             context_safety_reserve_tokens=self.context_safety_reserve_tokens,
             gist_mode=self.gist_mode,
             gists_per_chunk=self.gists_per_chunk,

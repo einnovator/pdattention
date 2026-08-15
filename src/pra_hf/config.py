@@ -35,6 +35,7 @@ class PRAConfig:
     max_direct_context: int = 256
     native_operation_limit: int = 512
     max_materialized_tokens: int = 256
+    detail_materialization: str = "selected_chunks"
     context_safety_reserve_tokens: int = 4
     encoding_block_tokens: int = 256
     reference_device: str = "cpu"
@@ -189,6 +190,7 @@ class PRAConfig:
             query_window=self.query_window,
             query_half_life=self.query_half_life,
             max_materialized_memory_tokens=self.max_materialized_tokens,
+            detail_materialization=self.detail_materialization,
             context_safety_reserve_tokens=self.context_safety_reserve_tokens,
             # Product selection is applied globally after one complete ranking.
             top_k_references=1_000_000,
