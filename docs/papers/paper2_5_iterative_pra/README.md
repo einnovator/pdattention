@@ -193,3 +193,16 @@ then conditionally runs the a-priori 0/12/27 by 32/128/256-token cross. Large
 per-example feature files are ignored; their hashes and all metric rows, plots,
 and result JSON are tracked under
 `../shared/results/paper2_5_iterative_pra/layerwise_graph/`.
+
+Final measurement-only synthesis:
+
+```powershell
+python ../../../experiments/paper2_5_iterative_pra/run_final_metrics.py
+```
+
+This command consumes the frozen experiment rows and caches without training,
+generation, new graph search, or K/V materialization. It writes the facet
+diagnostics, role visibility, matched layer correlations, edge/search
+decomposition, sparse quality/payload frontiers, cross-dataset table, plots,
+and negative-results registry under
+`../shared/results/paper2_5_iterative_pra/final_metrics/`.

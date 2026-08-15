@@ -114,8 +114,16 @@ topologies; no fixed late layer is universally best.  Finally, an evaluation-onl
 some existing span that ranks a correct root in Top-4 for .878 MuSiQue and .950 2Wiki runs, versus
 .422/.608 for the deployed fixed facets.  Token-scale facets dominate, but distractors receive the
 same multiple-comparison benefit.  A bounded executable union reaches only .411/.475 root recall
-at a four-root budget.  The next gate is therefore a contextual multiscale graph representation
-and a bounded learned facet selector, not deeper search or unbounded facet aggregation.
+at a four-root budget.  A final measurement-only gate tests inexpensive winning-facet predictors.
+The best single-facet held-out R@4 is .622/.692 (global/global-or-linear) on MuSiQue/2Wiki;
+hidden norm, parent-margin, entropy, position, most-common-scale, and a validation-fitted linear
+scale selector do not approach .878/.950.  Matched-example bootstrap also finds no stable relation
+between restricted-context dependence and edge R@6, MRR, depth contraction, or shortcut rate;
+only lower effective branching covaries clearly.  The final Pareto audit makes the systems tradeoff
+explicit: conservative MuSiQue/2Wiki points activate .063/.172 of source for .500/.583 complete
+recovery, while complete recovery requires .573/.918.  Paper 2.5 therefore freezes here.  Learned
+facet selection and adaptive multiscale topology belong to Paper 3; actual K/V transfer and serving
+measurements belong to Paper 3.5.
 \end{abstract}
 
 \section{Introduction}
@@ -186,6 +194,10 @@ MuSiQue and 2Wiki, distinguish preserved-edge failure from budgeted-search failu
 the recovery--payload Pareto surface.  Fifteenth, we exhaust every valid question span at widths
 1/2/4/8/16 from one contextual encoding, compare semantic and lexical ceilings for roots and
 terminal evidence, and test one globally bounded union without exposing labels to runtime search.
+Sixteenth, we close the experimental sequence with a measurement-only synthesis: validation-only
+facet-predictability diagnostics, matched-example layer/context bootstrap, edge-versus-search loss,
+layer--granularity interaction, MuSiQue shortcut decomposition, and a cross-dataset quality--payload
+frontier.  No new search, materialization, or trained production policy is introduced.
 
 \section{From Nearest Neighbors to Associative Closure}
 
@@ -2040,9 +2052,11 @@ intervention displacement reaches .410 by layer 4 and approximately one by layer
 Mean native distance between annotated evidence states contracts from 1.23 at layer 0 to 1.06 at
 layer 27, and two-hop effective branching falls from 3.43 to 2.79.  Yet edge quality is not
 monotonic.  R@6 peaks in the middle at .920, MRR peaks later at layer 24, and layer 27 returns to
-.880/.410.  Across only eight layer points, intervention contextualization correlates with depth
-contraction at Pearson/Spearman .495/.643 but with R@6 at only .201/.000.  These are descriptive
-mechanistic correlations, not significance claims.
+.880/.410.  The final matched-example synthesis in Section~\ref{sec:final-metrics} replaces the
+exploratory all-cohort correlation: intervention dependence has uncertain Pearson correlations
+.470 with R@6 and $-.013$ with depth contraction, while its stable association is with lower
+effective branching ($-.785$).  These are descriptive mechanistic relationships over eight
+layers, not significance claims.
 
 The local branch proxy tells a different story.  $\|\alpha_\ell\|/\|h_\ell^{pre}\|$ drops from
 6.64 at layer 0 to .127 at layer 27, while intervention dependence rises.  Layer 0's ratio is large
@@ -2085,11 +2099,10 @@ the late curve remains strongly dependent on context beyond 32 tokens.}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.86\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/contextualization_graph_correlations.png}
-\caption{Descriptive relationships over eight sampled layers.  Labels are zero-based layer IDs.
-Restricted-context displacement has no monotonic relation to R@6, a moderate positive relation to
-depth contraction, and a weak negative relation to the annotation-relative shortcut rate.  The
-sample is too small for significance claims.}
+\includegraphics[width=0.86\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/layer_context_matched_correlations.png}
+\caption{Matched-example layer correlations with identity-bootstrap 95\% intervals.  Context
+dependence does not stably predict edge fidelity, MRR, depth contraction, or shortcut rate; its
+negative relation to effective branching is the only narrow interval.}
 \label{fig:layerwise-correlations}
 \end{figure}
 
@@ -2184,17 +2197,200 @@ without realizing the oracle ceiling.}
 \label{fig:multiscale-query-audit}
 \end{figure}
 
-Taken together, the two gates define the next experiment narrowly.  For propagation, preserve a
-contextual 128-token discovery representation while exposing 16/32-token identities for eventual
-payload selection; training search control around absent fine edges would address the wrong
-component.  For entry, learn or calibrate one bounded facet selector under hard candidate and
-source budgets; do not grant each facet a materialization budget.  Paper~3 remains responsible
-for how much native K/V is materialized after conceptual identities are selected.
+Taken together, the two gates define the remaining interface narrowly.  For propagation, a future
+system should preserve contextual coarse discovery state while exposing fine payload identities;
+training search control around absent fine edges would address the wrong component.  For entry,
+the oracle ceiling motivates bounded facet selection, but the final measurement gate below first
+tests whether inexpensive statistics already predict the winner.  Learned selection is deferred
+to Paper~3, and Paper~3.5 remains responsible for native-K/V materialization and serving.
 
 Controlled chains separate the mechanism from Hotpot annotation structure.  For task-edge depths
 $D\in\{1,2,3,4,8\}$, grouping one, two, or four adjacent chain nodes yields observed depth
 $\lceil(D+1)/g\rceil-1$; all 15 search controls recover exactly at that depth.  Chunking is
 therefore graph contraction, not evidence that the underlying reasoning became shorter.
+
+\section{Final Measurement Gate and Experiment Freeze}
+\label{sec:final-metrics}
+
+The last gate adds no retrieval mechanism.  It reads the frozen facet score matrices, graph rows,
+systems rows, and layer caches already reported above.  Validation identities fit only two tiny
+diagnostics: the most-common winning scale and a ridge linear classifier of winning scale from
+question length, contextual hidden-state norms, and four lexical question-prefix flags.  Target
+parent identity is absent from every selector signature.  Parent-score margin and entropy inspect
+the unlabeled score distribution and are inexpensive runtime diagnostics, not query-only features.
+All target ranks are computed after facet selection on the example-disjoint held-out partition.
+
+\subsection{Oracle views are visible but not cheaply predictable}
+
+Width one supplies 73.3\%/65.6\% of held-out target-level root winners on MuSiQue/2Wiki; the
+global state supplies another 24.2\%/30.6\%.  Winning spans are not confined to one position:
+44.2\%/55.6\% are in the final third, but 37.5\%/23.3\% are in the first third.  Table
+\ref{tab:final-facet-selectors} evaluates each selected facet at the same example--seed level as
+the oracle ceiling.  No inexpensive statistic approaches post-hoc target-aware selection.  The
+best result is the unmodified global facet, .622 on MuSiQue and .692 on 2Wiki; the validation-fitted
+linear scale selector ties it only on 2Wiki and falls to .500 on MuSiQue.  The result argues for a
+properly supervised bounded selector in later work, not activation of this tiny diagnostic.
+
+\begin{table}[H]
+\centering
+\caption{Held-out example-level root R@4.  Oracle all-offset uses the target only after scoring.
+Every other single-facet row selects without target identity.  The bounded union is the previously
+reported executable four-root competition, not a single-facet rank.}
+\label{tab:final-facet-selectors}
+\small
+\begin{tabular}{lrr}
+\toprule
+Entry diagnostic & MuSiQue & 2Wiki \\
+\midrule
+Deployed fixed facets & .422 & .608 \\
+Bounded all-facet union & .411 & .475 \\
+Global facet only & \textbf{.622} & \textbf{.692} \\
+Earliest facet & .511 & .667 \\
+Highest unlabeled parent margin & .556 & .650 \\
+Lowest parent-score entropy & .500 & .625 \\
+Validation-fitted linear scale & .500 & \textbf{.692} \\
+Oracle all-offset ceiling & .878 & .950 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The visibility boundary is role-dependent even though width one is the most frequent winner for
+every role.  MuSiQue target-level oracle R@4 falls from .833 at roots to .667 at intermediate
+evidence and .711 at terminals; the lexical baseline falls from .792 to .417/.444.  On 2Wiki,
+semantic root/terminal visibility is .933/.823 while lexical visibility is .806/.423.  Query
+views therefore remain useful at the terminal boundary, especially semantically, but the decline
+through the path supports a typed interface
+$q_{entry}\rightarrow$ root $\rightarrow$ memory association $\rightarrow$ terminal
+$\rightarrow q_{terminal}$.  It does not revive the failed terminal stopping rule.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/facet_predictability_frontier.png}
+\caption{Left: held-out root R@4 for inexpensive selected-facet diagnostics.  Right: the
+quality--selected-source Pareto points; high completion is available only at broad activation.}
+\label{fig:final-facet-frontier}
+\end{figure}
+
+\subsection{Context, layer, and chunk do not collapse to one control variable}
+
+The final correlation table repairs a subtle aggregation mismatch in the exploratory layer plot.
+For each graph metric, we now restrict contextualization to the same examples, aggregate by layer,
+and bootstrap example identities 1,000 times.  Restricted-context displacement has Pearson
+correlation .470 with 2Wiki R@6 (95\% bootstrap interval $[-.407,.828]$), .079 with MRR
+($[-.432,.510]$), $-.013$ with MuSiQue depth contraction ($[-.460,.326]$), and $-.430$ with
+shortcut rate ($[-.725,.173]$).  Only effective branching is stable: $r=-.785$
+($[-.807,-.754]$), although its Spearman estimate is a more modest $-.405$.  With eight layer
+points these remain descriptive.  They reject ``more contextual means better graph'' while
+supporting a narrower observation: accumulated context accompanies greater neighbor reuse.
+
+The selected layer--chunk cross remains unchanged.  At 32 tokens, early layer 0 gives 2Wiki R@6
+.680 versus .480/.400 at layers 12/27.  At 128, layer 12 leads .920 versus .880/.880.  At 256,
+all reach .958--1.000 as coarse parents contract the graph.  MuSiQue D=4 shows the same interaction
+without a monotonic layer law.  At 128 tokens, completed-case $\Delta D=D-D^*_{native}$ is
+2.2/2.5/3.0 at layers 0/12/27 with .833/1.000/1.000 completion.  At 32 tokens, apparent
+contraction among survivors is not evidence of a better graph because completion is only
+.167/.333/.333.  Layer-induced geometry and chunk coarse-graining are therefore separately
+reported and cannot be cleanly added.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/layer_chunk_edge_decomposition.png}
+\caption{Left: the selected layer--granularity interaction.  Right: 2Wiki K=6 edge recall,
+independent-edge product survival, and observed preserved-path survival by chunk size.}
+\label{fig:final-layer-edge}
+\end{figure}
+
+\subsection{Missing local edges dominate the fine-graph failure}
+
+Table~\ref{tab:final-edge-search} replaces the earlier comparison between an edge product and
+whole-evidence recovery with a like-for-like preserved-path comparison.  At K=6, missing local
+edges are the largest loss at 32, 64, and 128 tokens.  Additional frontier/search competition is
+only .060/.029 at 32/64.  At 128 and 256, observed survival exceeds the independent product by
+.033/.108, recorded as correlation or redundant-path gain rather than ``negative search loss.''
+The decomposition strengthens the conclusion that deeper search cannot repair an absent fine edge.
+
+\begin{table}[H]
+\centering
+\caption{Held-out 2Wiki edge--path decomposition at K=6.  Extra is
+$\max(0,P_{product}-P_{observed})$; gain is the reverse positive part.}
+\label{tab:final-edge-search}
+\small
+\begin{tabular}{rrrrrrr}
+\toprule
+Tokens & Edge R@6 & Product & Observed & Missing edge & Extra & Gain \\
+\midrule
+32  & .400 & .296 & .235 & .600 & .060 & .000 \\
+64  & .560 & .441 & .412 & .440 & .029 & .000 \\
+128 & .880 & .791 & .824 & .120 & .000 & .033 \\
+256 & 1.000 & .892 & 1.000 & .000 & .000 & .108 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Canonical quality--payload and cross-dataset view}
+
+The final Pareto artifact joins quality, selected source, evidence density, root breadth, K/B/H,
+expanded nodes, search time, adjacency time, and measured CUDA memory.  Table
+\ref{tab:final-frontier} shows the frozen representatives.  Search latency excludes adjacency
+construction.  All rows remain conceptual-routing measurements: materialized native-K/V tokens
+and bytes are exactly zero; ``selected source'' is the previously defined counterfactual
+whole-parent payload.  The audit records H2D and CUDA allocated/reserved memory where measured,
+but no TTFT, TPOT, concurrency, or serving throughput.
+
+\begin{table}[H]
+\centering
+\caption{Held-out quality--payload representatives.  C/B/H denote conservative, balanced, and
+high-recall labels.  A combined label means the same non-dominated row serves both roles.}
+\label{tab:final-frontier}
+\scriptsize
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Point & Tokens & K/B & Selected & Recall & Complete & Search ms \\
+\midrule
+Hotpot & C   & 256 & 1/6  & .552 & .857 & .714 & 1.05 \\
+Hotpot & B/H & 256 & 4/6  & .948 & 1.000 & 1.000 & 1.24 \\
+MuSiQue & C   & 16  & 6/16 & .063 & .819 & .500 & 4.24 \\
+MuSiQue & B/H & 128 & 8/16 & .573 & 1.000 & 1.000 & 4.73 \\
+2Wiki & C   & 16  & 6/16 & .172 & .796 & .583 & 4.51 \\
+2Wiki & B   & 128 & 4/6  & .567 & .958 & .917 & 1.44 \\
+2Wiki & H   & 128 & 8/16 & .918 & 1.000 & 1.000 & 3.06 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Canonical cross-dataset held-out summary.  Dashes mean the all-offset oracle or an
+annotated transition graph was not measured; older fixed-window diagnostics are not relabeled.}
+\label{tab:final-cross-dataset}
+\scriptsize
+\begin{tabular}{llrrrrr}
+\toprule
+Dataset & Role & Routed root R@4 & Oracle facet R@4 & Edge R@6 & Complete & Selected \\
+\midrule
+QASPER & direct control & .967 & -- & -- & .800 & .227 \\
+Hotpot & shallow/granularity & .971 & -- & -- & .312 & .501 \\
+2Wiki & annotated edge/path & .608 & .950 & .880 & .958 & .770 \\
+MuSiQue & depth/topology & .422 & .878 & .833 & .944 & .513 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The cross-dataset table is intentionally not a leaderboard.  QASPER is a small direct-retrieval
+control with no transition graph.  Hotpot exposes granularity but its coarse completion spends
+half the source.  2Wiki provides the cleanest local-edge/path measurement, while MuSiQue provides
+the strongest depth and shortcut audit.  The accompanying negative-results registry points to
+every closed gate: unreliable parent closure, harmful static reranking, failed dynamic Q/A
+reconstruction, uncalibrated terminal thresholds, false-terminal facet complementarity, inconsistent
+native head splitting, fine-edge collapse, weak contextualization--quality prediction, and the
+executable facet gap.
+
+\paragraph{Freeze decision.}
+Paper 2.5 stops here.  The code and artifacts characterize the remaining gaps without fitting a
+large router, fusing layers, adapting K/B/thresholds, changing materialization, or adding another
+search architecture.  Paper 3 may test a supervised bounded facet selector and adaptive
+early-local/middle-global topology against these exact controls.  Paper 3.5 owns actual native-K/V
+transfer, serving kernels, TTFT/TPOT, and concurrency.
 
 \section{Discussion}
 
@@ -2268,6 +2464,12 @@ chain contraction confirms the causal direction of this topology effect.  The cu
 geometry is therefore adequate for a coarse evidence neighborhood, not yet for fine-grained deep
 discovery.  Query-facet complementarity also fails as a completion discriminator, so neither
 larger breadth nor another frozen semantic threshold is the next justified intervention.
+Stage 11 is deliberately measurement-only.  It shows that the winning query view is usually a
+single token or the global state, but position, norm, score margin, entropy, the validation-most-
+common scale, and a tiny validation-fitted linear scale model do not predict that view well enough
+to approach the oracle ceiling.  It also aligns contextualization and graph correlations by
+example, corrects the edge/product comparison, and freezes conservative/balanced/high-recall
+payload points.  This closes Paper 2.5 without converting a diagnostic into a production policy.
 
 \subsection{Relation to retrieval, agents, and recursive models}
 
@@ -2414,6 +2616,17 @@ trained sparse retriever.  The bounded union has no oracle channel, but its with
 normalization and Top-1 nomination are one simple policy, not a learned-selector benchmark.  Its
 failure closes unbounded facet aggregation, not the broader possibility of calibrated selection.
 
+The final selector diagnostics fit only 42 validation identities and evaluate 42 held-out
+identities; five projections again measure sensitivity rather than independent sample size.  The
+linear model predicts only scale and resolves offsets by hidden norm, so its failure is not a
+general impossibility result for learned selectors.  Parent-margin and entropy diagnostics inspect
+all parent scores and are inexpensive but not query-only.  Role visibility is target-level, while
+the headline oracle and selected-facet root ceilings are example-level; the paper labels both
+denominators.  Layer correlations have only eight depth points.  Their identity bootstrap measures
+cohort uncertainty but cannot make transformer depth an independent random sample.  Finally, the
+Pareto frontier is conditional on oracle roots and counterfactual whole-parent payload.  It records
+zero actual K/V materialization and therefore supports neither TTFT nor throughput claims.
+
 \section{Conclusion}
 
 Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
@@ -2495,15 +2708,18 @@ perfect at 256.  The next graph representation should therefore be adaptive and 
 charging every exposed scale and layer to one routing budget.  This paper deliberately stops
 before multi-layer fusion, so the current late-layer implementation remains unchanged.
 
-The final granularity and query gates turn those broad options into two concrete interfaces.
-At fine 16-token search nodes, selected source falls to .063/.172 on MuSiQue/2Wiki, but preserved
-edge R@6 falls to .667/.400 and deeper search adds no recovery after $H=2$.  A multiscale
-contextual index should therefore retain coarse discovery state while pointing to fine payload
+The final measurement gate turns those broad options into two concrete interfaces and closes this
+iteration.  At fine 16-token search nodes, selected source falls to .063/.172 on MuSiQue/2Wiki,
+but preserved edge R@6 falls to .667/.400 and deeper search adds no recovery after $H=2$.
+Missing local links, rather than frontier depth, are therefore the dominant fine-scale failure.
+A multiscale contextual index should retain coarse discovery state while pointing to fine payload
 identities.  At entry, an existing query span supplies an oracle Top-4 root in .878/.950 of runs,
-but a globally bounded max-union remains below the frozen router.  A learned or calibrated facet
-selector can now be tested against a high measured ceiling and a strong negative control.  These
-are separable from Paper~3's question of how many native K/V tokens to materialize after an
-identity has been selected.
+whereas the best cheap held-out selectors reach only .622/.692.  Confidence, position, norm, and a
+validation-fitted linear scale selector do not close that gap.  The measured sparse frontier spans
+.063 selected source at .819 evidence recall for MuSiQue and .172 at .796 for 2Wiki, while their
+complete-recovery points require .573 and .918 respectively.  We therefore freeze Paper~2.5 at
+this measured boundary.  Supervised or adaptive facet selection belongs to Paper~3; physical
+native-K/V materialization, latency, and concurrency belong to the separate serving study.
 
 \appendix
 \section{Implementation Map}
@@ -2788,6 +3004,22 @@ layer 27 reproduces the historical curve.  The gated cross at
 the a-priori 0/12/27 layer and 32/128/256-token parent assignment; it neither tunes a best layer nor
 fuses layer scores.
 
+\paragraph{Final measurement gate.}
+The module \path{src/pra_hf/}\texttt{final\_metrics.py:15--196} contains the measurement-only
+primitives: disjoint
+identity enforcement, deterministic facet-group ranking, label-free confidence features, a
+validation-fitted ridge selector, path-survival decomposition, Pareto marking, and exact keyed
+joins.  None accepts an evidence target or changes candidate retrieval.  The runner at
+\path{experiments/paper2_5_iterative_pra/run_final_metrics.py:152--448} reconstructs all-offset
+facets from the frozen natural-graph cache, fits scale selection on the 42 validation identities,
+and evaluates only disjoint held-out identities.  Lines 449--720 aggregate root/intermediate/
+terminal visibility and compute matched-example layer correlations with 1,000 identity
+bootstraps.  Lines 721--988 separate missing-edge loss from post-edge search loss, assemble the
+MuSiQue shortcut and sparse quality--payload frontiers, and join the four canonical datasets.
+Lines 1013--1129 write the plots and refuse completion until every required row family exists.
+The runner performs no training, generation, graph search, or native-K/V materialization; it is a
+strict synthesis over already frozen rows and regenerable feature caches.
+
 \paragraph{Reproduction.}
 The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
 isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
@@ -2850,7 +3082,7 @@ tests cover native adjacency reduction, all three deterministic search strategie
 different-facet goals, a low-query-similarity bridge, minimum depth, first-path stopping,
 deduplication, cycles, finite/shared and unbounded budgets, cost accounting, and the absence of a
 task-label API.  All five synthetic graph controls pass.  The complete repository suite now
-passes 479 tests with the same one upstream deprecation warning.
+passes 487 tests with the same one upstream deprecation warning.
 
 The granularity gate adds 80 evidence-topology rows, 4,800 oracle-free discovery rows, 3,230
 five-seed facet--parent rows, 80 system profiles, and 15 passing chain-contraction controls.
@@ -2875,6 +3107,16 @@ shortest distance, topology, tied-rank correlations, and example-level bootstrap
 tracked outputs contain 10,752 context rows, 992 transition rows, 672 graph rows, 3,360 hop rows,
 and 672 systems rows.  The gated cross adds 756 example conditions and 1,116 transition rows.
 Both runners assert exact layer-27/128-token R@6 reproduction before writing their result JSON.
+
+The final measurement gate adds 1,160 target-level facet rows, 188 selector summaries, five role
+rows, six hop rows, eight layer summaries, 25 matched-correlation rows, nine layer--chunk cells,
+30 edge-decomposition rows, 140 quality--payload frontier rows, 15 memory-audit rows, and four
+cross-dataset rows.  Eight focused tests cover deterministic facet ranking, label-free confidence
+features, validation/held-out identity separation, selector API leakage, fitted selection, path
+decomposition, Pareto membership, and exact joins.  The runner asserts disjoint selector splits,
+uses 1,000 identity bootstraps, preserves blank values for unmeasured cross-dataset cells, and
+records zero materialized native K/V tokens rather than relabeling counterfactual source payload
+as serving memory.
 
 The cross-dataset extension is implemented in
 \path{experiments/paper2_5_iterative_pra/run_natural_graph_depth.py:93--1568}.

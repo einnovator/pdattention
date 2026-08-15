@@ -163,3 +163,20 @@ Large per-example Q/K tensors are regenerable and ignored. Their SHA-256
 manifest, token-class contextualization summaries, graph rows, plots, and final
 result JSON are tracked under
 `docs/papers/shared/results/paper2_5_iterative_pra/layerwise_graph/`.
+
+## Final measurement gate
+
+This measurement-only synthesis consumes the frozen natural-graph,
+multiscale-query, layerwise, granularity, and systems rows. It does not train a
+selector, rerun graph search, generate text, or materialize native K/V.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.run_final_metrics
+```
+
+The command evaluates label-free facet diagnostics on disjoint validation and
+held-out identities, bootstraps matched-example layer correlations, decomposes
+edge and downstream search loss, and emits sparse quality/payload frontiers.
+Tables, plots, the negative-results registry, and the strict result manifest are
+under
+`docs/papers/shared/results/paper2_5_iterative_pra/final_metrics/`.
