@@ -2,24 +2,24 @@
 
 ## Page Structure
 
-- Previous frozen PDF: 69 pages total, with 15 reviewer-facing main-text pages.
-- Outcome-B diagnostic PDF: 81 pages total; the chronological experiment record remains in the
-  appendices, while the controlled causal diagnosis now occupies pages 8--12 of the main text.
-- The added pages preserve the full historical record and add the five-condition causal intervention,
-  traversal-to-use analysis, consumer-layer profile, and reproducibility artifacts. No negative result
-  was removed to shorten the paper.
+- Final PDF: 69 pages total, with a 14-page reviewer-facing main narrative.
+- The appendix begins on page 15 and preserves the chronological gate record, negative results,
+  implementation maps, external judgment audit, and validation gates.
+- The main paper lives in `main_associative_memory.tex`; `paper.tex` retains the common preamble and
+  archival appendices. This separation makes the scientific argument inspectable without deleting
+  the experiment history.
 
 ## Main Narrative
 
-The main paper now follows the final scientific decomposition:
+The main paper now follows the causal decomposition requested for the associative-memory framing:
 
-1. inherited PRA/HF setting;
-2. bounded associative discovery;
-3. dataset roles and frozen evaluation protocol;
-4. focused comparison with long-context, retrieval, and K/V-selection work;
-5. controlled traversal-to-answer causal diagnosis;
-6. results organized by scientific question;
-7. discussion, limitations, handoff, and conclusion.
+1. PRA as a probe of transformer associative memory;
+2. receptive field and memory topology;
+3. iterative traversal under a fixed physical K/V budget;
+4. controlled activation and the oracle memory intervention;
+5. layerwise consumption and preservation;
+6. pretrained validation across root entry, edge geometry, granularity, and output behavior;
+7. related work, discussion, limitations, explicit follow-up boundaries, and conclusion.
 
 The former gate sequence was moved behind the appendix transition. It preserves projection
 correction, parent and local semantic discovery, native-Q/K controls, oracle rank and competition,
@@ -47,23 +47,26 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
 ## Render Verification
 
 - Built with `pdflatex`, `bibtex`, and two final `pdflatex` passes on August 15, 2026.
-- `pdfinfo` reports 81 US-letter pages and a 2.29 MiB output.
-- LaTeX reports no fatal errors or overfull boxes. Remaining underfull-box notices occur in narrow
-  bibliography and code-map paragraphs and do not clip content.
-- Visually inspected the title page, causal-diagnosis pages 8--12, and final bibliography page 81 at
-  130 dpi. Headings, equations, tables, figures, captions, references, and page numbers are legible;
-  no overlap, clipping, black boxes, or missing glyphs were found.
+- `pdfinfo` reports 69 US-letter pages and a 2.07 MiB output.
+- LaTeX reports no fatal errors, undefined references or citations, package errors, or overfull boxes.
+  Remaining underfull-box notices occur in narrow bibliography and code-map paragraphs and do not
+  clip content.
+- Visually inspected pages 1--16 and implementation-map page 59 at 125 dpi, including the headline
+  table, topology and traversal figures, answer-margin trajectory, causal diagnosis, final causal
+  pipeline, pretrained transition, conclusion, and appendix boundary. Headings, equations, tables,
+  figures, captions, references, and page numbers are legible; no overlap, clipping, black boxes, or
+  missing glyphs were found.
 
 ## Terminology Changes
 
-- The reviewer-facing mechanism is called **bounded associative discovery** or **bounded search**.
-  **Closure** remains only where it names a historical experiment, code artifact, or exact set
+- The causal sequence is **potential topology**, **root activation**, **associative traversal**,
+  **controlled activation**, **consumption**, and **preservation**. These stages are not conflated.
+- **Closure** remains only where it names a historical experiment, code artifact, or exact set
   operation in the appendix.
 - **Root routing**, **native successor**, **native graph**, **annotated/task graph**, **path
   survival**, and **minimum native recovery depth** name separate measured quantities.
-- **Graph contraction/shortcut** does not imply shorter reasoning.
 - **Conceptual selected memory** is distinguished from **native K/V materialization**.
-- **Oracle evaluation** is distinguished from **oracle-free discovery** and executable selection.
+- **Oracle memory** is a matched causal capacity control, not an executable routing method.
 
 ## Reviewer Risks Still Open
 
@@ -77,6 +80,10 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
 - The controlled causal cohort has 16 paired examples per checkpoint and five seeds per receptive
   field. Oracle effects are directionally consistent, but the minimum exact two-sided five-seed sign
   result is `p=.0625`; the paper treats this as a diagnostic ceiling, not a powered architecture claim.
+- Iterative traversal improves margins strongly on path-improved model-example units, but the
+  current policy produces too few such units to establish an aggregate accuracy improvement.
+- Ordinary selected memory remains distractor dominated; controlled activation, rather than search
+  depth alone, is the primary unresolved mechanism.
 - GPT-5.6 Sol supplies one complete, control-qualified external judgment. Claude covers 51.7% of
   pairs and fails calibration, leaving evaluator robustness unresolved.
 - Synchronized TTFT/TPOT and total generation latency are measured per example; production

@@ -544,6 +544,7 @@ def mechanistic_summaries(root: Path) -> dict[str, list[dict]]:
         "causal": causal,
         "attention_rows": attention,
         "alignment_rows": alignment,
+        "stages": stages,
         "ceiling": ceiling,
         "activity": activity,
         "consumer": consumer,
@@ -622,6 +623,33 @@ def plots(root: Path, topology: list[dict], pairs: list[dict], frontier: list[di
     axis.bar([i+width for i in x], [number(row["native_attention_mass"]) for row in activity], width, label="native")
     axis.set_xticks(list(x), [f'{row["window"]}\n{row["evidence_condition"]}' for row in activity], rotation=45, ha="right", fontsize=7)
     axis.set_ylabel("final-query attention mass"); axis.legend(frameon=False, ncol=3); fig.tight_layout(); fig.savefig(figures / "memory_attention_decomposition.png", dpi=180); plt.close(fig)
+
+    trajectory = [
+        row for row in mechanism["stages"]
+        if row["policy"] == "iterative_matched"
+        and row["evidence_condition"] in {"e0", "selected", "oracle", "wrong"}
+        and row["stage_type"] in {"input", "after_layer"}
+    ]
+    fig, axis = plt.subplots(figsize=(5.8, 3.5))
+    colors = {"e0": "#4c78a8", "selected": "#f58518", "oracle": "#54a24b", "wrong": "#e45756"}
+    for condition in ("e0", "selected", "oracle", "wrong"):
+        rows = [row for row in trajectory if row["evidence_condition"] == condition]
+        layers = sorted({int(row["layer"]) for row in rows})
+        margins = [
+            statistics.fmean(
+                number(row["correct_margin"])
+                for row in rows
+                if int(row["layer"]) == layer
+            )
+            for layer in layers
+        ]
+        axis.plot(layers, margins, marker="o", label=condition, color=colors[condition])
+    axis.set_xticks(range(-1, 6), ["input", "0", "1", "2", "3", "4", "5"])
+    axis.set_xlabel("captured residual stage / layer")
+    axis.set_ylabel("correct-label margin")
+    axis.grid(axis="y", alpha=.25)
+    axis.legend(frameon=False, ncol=2)
+    fig.tight_layout(); fig.savefig(figures / "answer_margin_trajectory.png", dpi=180); plt.close(fig)
 
     consumer = mechanism["consumer"]
     fig, axis = plt.subplots(figsize=(5.5, 3.4))

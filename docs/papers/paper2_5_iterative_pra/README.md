@@ -1,4 +1,9 @@
-# Paper 2.5: Iterative PRA
+# Paper 2.5: Associative Memory in Transformers
+
+The reviewer-facing associative-memory narrative lives in
+`main_associative_memory.tex`; `paper.tex` supplies the common preamble and the
+complete chronological/negative-result appendices. The experiment program is
+frozen against additional graph-search mechanisms.
 
 Build from this directory with:
 
@@ -16,7 +21,7 @@ python ../../../experiments/paper2_5_iterative_pra/run_closure.py --device cpu
 python ../../../experiments/paper2_5_iterative_pra/summarize_results.py
 ```
 
-Controlled receptive-field and frozen-consumer diagnosis:
+Controlled receptive-field and causal activation diagnosis:
 
 ```powershell
 python -m experiments.paper2_5_iterative_pra.run_controlled_local_sa `
@@ -37,8 +42,9 @@ python -m experiments.paper2_5_iterative_pra.summarize_outcome_b `
 
 The final two commands reuse frozen checkpoints. They do not train a router,
 consumer, readout, or memory projection. Their matched causal cache conditions
-and intermediate readouts delimit retrieval, attention, residual integration,
-and later-layer preservation before Paper 2.5 is frozen.
+and intermediate readouts delimit topology, traversal, controlled activation,
+consumption, and later-layer preservation. The oracle intervention establishes
+frozen consumption capacity; it is not an executable routing policy.
 
 The compact routing sweep is faster on CPU for these small matrices.  The separate
 `run_downstream_smoke.py` runner validates full native-K/V execution on CUDA.

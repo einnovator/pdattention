@@ -31,6 +31,14 @@ final build. Private behavioral-judge truth and unblinding files are intentional
 
 ## Claim Boundaries
 
+- The main causal interpretation is `associative topology -> iterative traversal -> controlled
+  activation -> consumption -> preservation`. These stages name different measured events.
+- Better traversal is functionally useful in the path-improved subgroup; the unresolved claim is
+  aggregate policy reliability, not whether traversal can ever improve computation.
+- Oracle memory is a matched causal consumption control. It demonstrates frozen consumption
+  capacity but is neither an executable selector nor a deployable routing policy.
+- Distractor-dominated attention identifies controlled activation as the dominant measured
+  limitation. Physical K/V disclosure and PRA-aware training remain separate paper boundaries.
 - Evidence reachability is not faithful traversal of the annotated reasoning graph.
 - Oracle-root results are ceilings, not end-to-end routing results.
 - Selected-source fraction is conceptual activation, not physical native-K/V materialization.
