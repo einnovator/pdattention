@@ -1023,6 +1023,15 @@ class PRASimpleMemoryCache(PRAMemoryCache):
                 "reference_source": hit.entry.metadata.get("source", "reference"),
                 "implicit_reference": bool(hit.entry.metadata.get("implicit", False)),
                 "reference_display_name": hit.entry.metadata.get("display_name", hit.entry.uri),
+                **(
+                    {
+                        "materialization_intervals": list(
+                            hit.entry.metadata["materialization_intervals"]
+                        )
+                    }
+                    if hit.entry.metadata.get("materialization_intervals")
+                    else {}
+                ),
             },
         )
 

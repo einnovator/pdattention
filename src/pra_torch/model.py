@@ -700,6 +700,28 @@ class TinyPRAModel(nn.Module):
                         "final_token_memory_attention_mass": float(
                             diagnostics.get("final_token_memory_attention_mass", 0.0)
                         ),
+                        "final_token_memory_weights": (
+                            attention.last_memory_batching_stats.final_token_memory_weights[0]
+                            if attention.last_memory_batching_stats is not None
+                            and attention.last_memory_batching_stats.final_token_memory_weights
+                            else ()
+                        ),
+                        "materialization_metrics": {
+                            key: float(value)
+                            for key, value in diagnostics.items()
+                            if key
+                            in {
+                                "requested_tokens_pre_dedup",
+                                "deduplicated_materialization_tokens",
+                                "materialized_native_kv_tokens",
+                                "materialized_gist_kv_tokens",
+                                "evidence_kv_tokens",
+                                "non_evidence_kv_tokens",
+                                "evidence_density",
+                                "storage_shards_touched",
+                                "cross_shard_interval_count",
+                            }
+                        },
                         "pra_output_divergence_ratio": float(
                             diagnostics.get("pra_output_divergence_ratio", 0.0)
                         ),

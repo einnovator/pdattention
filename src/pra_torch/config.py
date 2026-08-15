@@ -140,7 +140,7 @@ class PRAConfig:
     # Diagnostics affect observability only, not routing or attention results.
     collect_detailed_timing: bool = False  # Record routing/materialization/attention durations.
     collect_attention_metrics: bool = True  # Compatibility flag; aggregates are always retained.
-    collect_per_head_metrics: bool = False  # Reserved for per-head diagnostics.
+    collect_per_head_metrics: bool = False  # Capture compact final-query [H,M] memory weights.
     collect_routing_metrics: bool = False  # Keep complete rankings for aggregate MRR/recall.
     collect_rank_diagnostics: bool = False  # Retain complete pre-top-k candidate score lists.
     chunk_match_mode: str = "exact_id"  # Ground-truth match by ID, overlap, or IoU threshold.

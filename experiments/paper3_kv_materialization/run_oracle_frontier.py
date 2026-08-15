@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import json
 import math
 import statistics
@@ -78,7 +79,50 @@ class _TokenClock(StoppingCriteria):
         return False
 
 
-def _policies(phase: str, selected_radius: int | None = None) -> tuple[Policy, ...]:
+def _policies(
+    phase: str,
+    selected_radius: int | None = None,
+    *,
+    study: str = "pilot",
+) -> tuple[Policy, ...]:
+    if study == "confirmation":
+        if phase == "validation":
+            return (
+                Policy("M_none", "none"),
+                Policy("M0_native_gist", "native_gist_only"),
+                Policy("M1_whole_parent", "selected_chunks"),
+                *(
+                    Policy(
+                        f"M3_radius_{radius}",
+                        "logical_intervals",
+                        radius,
+                        radius,
+                    )
+                    for radius in (0, 2, 4, 8)
+                ),
+            )
+        if phase == "heldout":
+            if selected_radius is None:
+                raise ValueError("heldout confirmation requires a validation-selected radius")
+            selected = (
+                Policy(
+                    f"M3_selected_radius_{selected_radius}",
+                    "logical_intervals",
+                    selected_radius,
+                    selected_radius,
+                ),
+            ) if selected_radius not in {0, 2} else ()
+            return (
+                Policy("M_none", "none"),
+                Policy("M0_native_gist", "native_gist_only"),
+                Policy("M1_whole_parent", "selected_chunks"),
+                Policy("M2_evidence_only", "logical_intervals", 0, 0),
+                Policy("M3_radius_2", "logical_intervals", 2, 2),
+                *selected,
+            )
+        raise ValueError(f"unsupported phase: {phase}")
+    if study != "pilot":
+        raise ValueError(f"unsupported study: {study}")
     if phase == "validation":
         return (
             Policy("M_none", "none"),
@@ -416,7 +460,12 @@ def _select_radius(aggregates):
     for dataset in ("musique", "2wikimultihopqa"):
         rows = {row["condition"]: row for row in aggregates if row["dataset"] == dataset}
         whole = rows["M1_whole_parent"]["gold_mean_token_logprob"]
-        candidates = [rows[f"M3_radius_{radius}"] for radius in RADII]
+        candidates = [
+            row
+            for name, row in rows.items()
+            if name.startswith("M3_radius_")
+        ]
+        candidates.sort(key=lambda row: int(row["condition"].rsplit("_", 1)[1]))
         feasible = [row for row in candidates if row["gold_mean_token_logprob"] >= whole - 0.05]
         winner = min(
             feasible or candidates,
@@ -461,14 +510,58 @@ def _examples(args, discovery_rows):
     all_examples = load_musique(args.musique_dev) + load_2wiki(args.twowiki_dev)
     by_id = {example.example_id: example for example in all_examples}
     partition = "validation" if args.phase == "validation" else "test"
-    ids = {
-        dataset: sorted({
+    opposite = "test" if partition == "validation" else "validation"
+    ids = {}
+    for dataset in ("musique", "2wikimultihopqa"):
+        selected = sorted({
             row["example_id"] for row in discovery_rows
             if row["dataset"] == dataset and row["partition"] == partition
         })[: args.examples_per_dataset]
-        for dataset in ("musique", "2wikimultihopqa")
-    }
+        reserved = {
+            row["example_id"] for row in discovery_rows
+            if row["dataset"] == dataset and row["partition"] == opposite
+        }
+        if len(selected) < args.examples_per_dataset:
+            extension = sorted(
+                example.example_id
+                for example in all_examples
+                if example.dataset == dataset
+                and example.example_id not in reserved
+                and example.example_id not in selected
+            )
+            selected.extend(extension[: args.examples_per_dataset - len(selected)])
+        ids[dataset] = selected
     return [by_id[identity] for dataset in ids for identity in ids[dataset]]
+
+
+def _annotation_geometry(tokenizer, example):
+    """Map dataset-truth character spans to the exact reference-token domain."""
+    encoded = tokenizer(
+        example.source,
+        add_special_tokens=False,
+        return_offsets_mapping=True,
+    )
+    offsets = encoded["offset_mapping"]
+    spans = []
+    for node in example.nodes:
+        if node.text_span is None:
+            continue
+        char_start, char_end = map(int, node.text_span)
+        positions = [
+            index
+            for index, (start, end) in enumerate(offsets)
+            if int(end) > char_start and int(start) < char_end
+        ]
+        if positions:
+            spans.append((positions[0], positions[-1] + 1))
+    spans = sorted(set(spans))
+    if not spans:
+        raise ValueError(f"No mapped annotation evidence for {example.dataset}/{example.example_id}")
+    return {
+        "evidence_token_spans": spans,
+        "source_tokens": len(encoded["input_ids"]),
+        "geometry_source": "dataset_annotation_character_spans",
+    }
 
 
 def _row_metrics(diagnostics, layers):
@@ -483,10 +576,24 @@ def _row_metrics(diagnostics, layers):
     return {
         "materialized_unique_tokens": unique,
         "native_kv_token_states": unique * len(layers),
-        "native_kv_bytes": sum(float(row.get("materialized_native_kv_bytes", 0)) for row in active),
+        "native_kv_bytes": sum(
+            float(
+                row.get(
+                    "materialized_native_kv_bytes",
+                    row.get("retrieved_kv_transfer_bytes", 0),
+                )
+            )
+            for row in active
+        ),
         "interval_resolution_seconds": sum(float(row.get("interval_resolution_seconds", 0)) for row in active),
-        "logical_gather_seconds": sum(float(row.get("logical_gather_seconds", 0)) for row in active),
-        "logical_h2d_seconds": sum(float(row.get("logical_h2d_seconds", 0)) for row in active),
+        "logical_gather_seconds": sum(
+            float(row.get("logical_gather_seconds", row.get("materialization_duration_seconds", 0)))
+            for row in active
+        ),
+        "logical_h2d_seconds": sum(
+            float(row.get("logical_h2d_seconds", row.get("selected_kv_transfer_duration_seconds", 0)))
+            for row in active
+        ),
         "cross_shard_interval_count": sum(float(row.get("cross_shard_interval_count", 0)) for row in active),
     }
 
@@ -504,7 +611,9 @@ def run(args):
     inherited = json.loads(args.band_selection.read_text(encoding="utf-8"))["selected_bands"]
     examples = _examples(args, discovery_rows)
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint = args.output_dir / f"{args.phase}_checkpoint.jsonl"
+    artifact_prefix = getattr(args, "artifact_prefix", "oracle_frontier")
+    study = getattr(args, "study", "pilot")
+    checkpoint = args.output_dir / f"{artifact_prefix}_{args.phase}_checkpoint.jsonl"
     rows = _load_checkpoint(checkpoint)
     completed = {(row["dataset"], row["example_id"], row["condition"]) for row in rows}
 
@@ -538,11 +647,17 @@ def run(args):
 
     for example_index, example in enumerate(examples, start=1):
         dataset = example.dataset
-        policies = _policies(args.phase, selected_radius.get(dataset))
+        policies = _policies(
+            args.phase,
+            selected_radius.get(dataset),
+            study=study,
+        )
         pending = [policy for policy in policies if (dataset, example.example_id, policy.name) not in completed]
         if not pending:
             continue
-        canonical = discovery[(dataset, example.example_id, "oracle_evidence")]
+        canonical = discovery.get((dataset, example.example_id, "oracle_evidence"))
+        if canonical is None:
+            canonical = _annotation_geometry(tokenizer, example)
         evidence_spans = [tuple(map(int, span)) for span in canonical["evidence_token_spans"]]
         source_tokens = int(canonical["source_tokens"])
         band = bands[inherited[dataset]]
@@ -599,6 +714,9 @@ def run(args):
                 "condition": policy.name,
                 "selection_policy": "annotated_evidence_oracle" if layers else "none",
                 "oracle_labels_used": bool(layers),
+                "geometry_source": canonical.get(
+                    "geometry_source", "frozen_paper2_5_discovery_manifest"
+                ),
                 "materialization_policy": policy.mode,
                 "radius_left": policy.radius_left,
                 "radius_right": policy.radius_right,
@@ -633,6 +751,15 @@ def run(args):
             _append(checkpoint, row)
             rows.append(row)
             completed.add((dataset, example.example_id, policy.name))
+        # Loop-local selected hits retain their owning cache entry. Release those
+        # references before encoding the next source so long cohorts do not hold
+        # two complete layer-native caches at once on memory-constrained GPUs.
+        pra.clear_references()
+        entry = oracle_selected = selected = mapped = None
+        teacher = generation = encoded = None
+        gc.collect()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
         print(f"[{args.phase} {example_index}/{len(examples)}] {dataset} {example.example_id} rows={len(pending)}", flush=True)
 
     baselines = {(row["dataset"], row["example_id"]): row for row in rows if row["condition"] == "M_none"}
@@ -648,7 +775,12 @@ def run(args):
     artifact = {
         "schema_version": "1.0",
         "runtime": runtime_metadata(),
-        "protocol": "oracle-first frozen Qwen native-K/V materialization frontier",
+        "protocol": (
+            "toy-motivated pretrained confirmation"
+            if study == "confirmation"
+            else "oracle-first frozen Qwen native-K/V materialization frontier"
+        ),
+        "study": study,
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
         "backbone_frozen": True,
@@ -663,12 +795,12 @@ def run(args):
         "rows": rows,
         "aggregates": aggregates,
     }
-    (args.output_dir / f"oracle_frontier_{args.phase}.json").write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
-    _write_csv(args.output_dir / f"oracle_frontier_{args.phase}_rows.csv", [{key: value for key, value in row.items() if not isinstance(value, (dict, list))} for row in rows])
-    _write_csv(args.output_dir / f"oracle_frontier_{args.phase}_aggregate.csv", aggregates)
+    (args.output_dir / f"{artifact_prefix}_{args.phase}.json").write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
+    _write_csv(args.output_dir / f"{artifact_prefix}_{args.phase}_rows.csv", [{key: value for key, value in row.items() if not isinstance(value, (dict, list))} for row in rows])
+    _write_csv(args.output_dir / f"{artifact_prefix}_{args.phase}_aggregate.csv", aggregates)
     combined = []
     for phase in ("validation", "heldout"):
-        path = args.output_dir / f"oracle_frontier_{phase}.json"
+        path = args.output_dir / f"{artifact_prefix}_{phase}.json"
         if path.exists():
             combined.extend(json.loads(path.read_text(encoding="utf-8"))["aggregates"])
     _plots(combined, args.output_dir)
@@ -681,6 +813,8 @@ def parse_args():
     inherited = ROOT / "docs/papers/shared/results/paper2_5_iterative_pra/output_validation"
     output = ROOT / "docs/papers/shared/results/paper3_kv_materialization"
     parser.add_argument("--phase", choices=("validation", "heldout"), required=True)
+    parser.add_argument("--study", choices=("pilot", "confirmation"), default="pilot")
+    parser.add_argument("--artifact-prefix", default="oracle_frontier")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--examples-per-dataset", type=int, default=4)
     parser.add_argument("--max-new-tokens", type=int, default=12)

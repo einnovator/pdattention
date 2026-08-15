@@ -27,6 +27,7 @@ from pra_torch.memory import (
     ReferenceChunkMemory,
     SelectedChunk,
 )
+from pra_torch.memory_batching import native_kv_attention
 
 
 def _chunk(uri: str, start: int, end: int, *, chunk_id: str | None = None):
@@ -352,3 +353,43 @@ def test_core_logical_mode_returns_empty_when_selection_is_empty():
     assert key.shape == value.shape == (1, 2, 0, 3)
     assert retained == []
     assert stats["memory_tokens_materialized"] == 0
+
+
+def test_native_attention_can_capture_compact_final_query_memory_weights():
+    torch.manual_seed(403)
+    query = torch.randn(1, 4, 3, 3)
+    local_key = torch.randn(1, 2, 3, 3)
+    local_value = torch.randn(1, 2, 3, 3)
+    memory_key = torch.randn(1, 2, 5, 3)
+    memory_value = torch.randn(1, 2, 5, 3)
+
+    _output, stats = native_kv_attention(
+        query,
+        local_key,
+        local_value,
+        [memory_key],
+        [memory_value],
+        collect_final_token_memory_weights=True,
+    )
+
+    weights = torch.tensor(stats.final_token_memory_weights[0])
+    assert weights.shape == (4, 5)
+    assert weights.sum(dim=-1).mean().item() == pytest.approx(
+        stats.final_token_memory_attention_mass
+    )
+    assert (weights >= 0).all()
+
+
+def test_oracle_parent_intervals_follow_the_selected_hit_without_routing_labels():
+    attention, selected = _logical_attention("logical_intervals")
+    intervals = list(selected.metadata["materialization_intervals"])
+    selected.entry.metadata["materialization_intervals"] = intervals
+    selected.entry.metadata["selection_source"] = "oracle_parent"
+
+    routed = attention.pra_cache.search(
+        torch.zeros(1, 6), 0, attention.config
+    )[0][0]
+
+    assert routed.reference_uri == "mem://a"
+    assert routed.metadata["materialization_intervals"] == intervals
+    assert "evidence" not in routed.metadata
