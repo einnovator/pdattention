@@ -1,5 +1,6 @@
 """Causal controls for matched LocalSA and layered PRA experiments."""
 
+import pytest
 import torch
 
 from pra_torch.controlled_local_sa import (
@@ -17,6 +18,12 @@ from pra_torch.model import (
     convert_sa_model_to_pra,
 )
 from experiments.paper2_5_iterative_pra.run_controlled_pra import _pra_patterns
+from experiments.paper2_5_iterative_pra.run_toy_mechanistic import (
+    forced_reference_plan,
+    label_metrics,
+    partition_memory_attention,
+)
+from experiments.paper2_5_iterative_pra.summarize_outcome_b import exact_sign_p
 
 
 def _config(**updates) -> PRAConfig:
@@ -248,3 +255,67 @@ def test_progressive_pra_uses_evolved_state_without_reference_replay():
     assert all(row["pra_output_divergence_ratio"] >= 0.0 for row in trace)
     assert any(row["final_token_memory_attention_mass"] > 0.0 for row in trace)
     assert len(model.pra_cache.all_entries()) == 2
+
+    _, forced_trace = model.forward_progressive_pra(
+        query,
+        forced_reference_uris_by_layer={
+            0: ("controlled://b",),
+            2: ("controlled://a",),
+        },
+    )
+    assert [row["selected_reference_uris"] for row in forced_trace] == [
+        ["controlled://b"],
+        ["controlled://a"],
+    ]
+
+
+def test_controlled_label_metrics_use_correct_class_margin_and_probability():
+    logits = torch.tensor([9.0, 0.1, 0.2, -0.3, 0.0, 0.4, 0.3, 0.2, 1.4, 0.1, 0.0, 0.4, 0.3, 0.2])
+    metrics = label_metrics(logits, 8)
+    assert metrics["correct"] == 1
+    assert metrics["full_vocabulary_correct"] == 0
+    assert metrics["correct_logit"] == pytest.approx(1.4)
+    assert metrics["max_wrong_logit"] == pytest.approx(0.4)
+    assert metrics["correct_margin"] == pytest.approx(1.0)
+    assert 0.0 < metrics["correct_probability"] < 1.0
+
+
+def test_memory_attention_partition_conserves_shared_softmax_mass():
+    partition = partition_memory_attention(
+        ["evidence", "distractor"],
+        [2, 1],
+        [[0.20, 0.10, 0.05], [0.30, 0.10, 0.05]],
+        {"evidence"},
+    )
+    assert partition["evidence_attention_mass"] == pytest.approx(0.35)
+    assert partition["distractor_attention_mass"] == pytest.approx(0.05)
+    assert partition["native_attention_mass"] == pytest.approx(0.60)
+    assert partition["attention_mass_sum"] == pytest.approx(1.0)
+
+
+def test_exact_sign_test_uses_model_level_nonzero_pairs_only():
+    assert exact_sign_p([1, 1, 1, 1, 1]) == pytest.approx(0.0625)
+    assert exact_sign_p([1, -1, 0, 0, 0]) == pytest.approx(1.0)
+
+
+def test_oracle_plan_matches_four_fact_budget_without_reference_replay():
+    tokenizer = ControlledTokenizer(entity_count=64)
+    example = make_controlled_example(
+        tokenizer,
+        seed=71,
+        depth=2,
+        distractor_count=4,
+        evidence_gap=2,
+        lexical_overlap=0.5,
+        relation_types=4,
+        branching=1,
+    )
+    plan = forced_reference_plan(
+        example,
+        evidence_condition="oracle",
+        layer_ids=(0, 2, 4, 5),
+        top_k=1,
+    )
+    selected = [uri for layer in (0, 2, 4, 5) for uri in plan[layer]]
+    assert selected[:2] == list(example.target_reference_uris)
+    assert len(selected) == len(set(selected)) == 4

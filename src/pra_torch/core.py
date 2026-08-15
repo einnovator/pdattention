@@ -455,6 +455,7 @@ class PRAExecutionCore:
             prepared.values,
             attention_mask=attention_mask,
             max_context_tokens=self.config.effective_model_max_context_tokens,
+            collect_final_token_memory_weights=self.config.collect_per_head_metrics,
         )
         synchronize_detailed_timing(query, self.config.collect_detailed_timing)
         return output, stats, time.perf_counter() - started

@@ -607,13 +607,17 @@ class TinyPRAModel(nn.Module):
         attention_mask=None,
         position_offset: int = 0,
         prevent_reference_replay: bool = True,
+        forced_reference_uris_by_layer: dict[int, tuple[str, ...]] | None = None,
     ) -> tuple[torch.Tensor, list[dict]]:
         """Run PRA layers against an evolving query state and return a route trace.
 
         Each PRA block receives the hidden state produced by every preceding
         attention/FFN block.  With ``prevent_reference_replay=True``, references
         selected by an earlier PRA block are removed from the candidate cache
-        before the next PRA block.  The no-replay implementation is intentionally
+        before the next PRA block. ``forced_reference_uris_by_layer`` is an
+        explicit causal-control hook: it restricts a layer's candidate cache to
+        declared existing identities, while preserving normal materialization
+        and attention. The no-replay implementation is intentionally
         limited to batch size one because each batch row would otherwise require
         a different cache namespace.
 
@@ -658,7 +662,24 @@ class TinyPRAModel(nn.Module):
                 attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
                 is_pra = isinstance(attention, PRAttention)
                 query_state = x[:, -1, :].detach().clone() if is_pra else None
-                if is_pra and prevent_reference_replay:
+                forced_uris = (
+                    forced_reference_uris_by_layer.get(int(block.layer_id))
+                    if is_pra and forced_reference_uris_by_layer is not None
+                    else None
+                )
+                if forced_uris is not None:
+                    layer_cache = PRASimpleMemoryCache()
+                    for uri in forced_uris:
+                        entry = master_cache.get(uri)
+                        if entry is None:
+                            raise ValueError(
+                                f"Forced PRA reference is absent from the cache: {uri}"
+                            )
+                        if prevent_reference_replay and uri in visited:
+                            raise ValueError(f"Forced PRA plan replays reference: {uri}")
+                        layer_cache.put(entry)
+                    block.set_pra_cache(layer_cache)
+                elif is_pra and prevent_reference_replay:
                     layer_cache = PRASimpleMemoryCache()
                     for entry in remaining_entries:
                         if entry.uri not in visited:
@@ -699,6 +720,12 @@ class TinyPRAModel(nn.Module):
                         ),
                         "final_token_memory_attention_mass": float(
                             diagnostics.get("final_token_memory_attention_mass", 0.0)
+                        ),
+                        "final_token_memory_weights": (
+                            attention.last_memory_batching_stats.final_token_memory_weights[0]
+                            if attention.last_memory_batching_stats is not None
+                            and attention.last_memory_batching_stats.final_token_memory_weights
+                            else ()
                         ),
                         "pra_output_divergence_ratio": float(
                             diagnostics.get("pra_output_divergence_ratio", 0.0)

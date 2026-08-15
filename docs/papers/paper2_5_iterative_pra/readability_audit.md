@@ -2,12 +2,12 @@
 
 ## Page Structure
 
-- Previous PDF: 66 pages total; the first appendix began on page 58, leaving 57 main-text pages.
-- Reorganized final PDF: 69 pages total; the chronological appendix begins on page 16, leaving 15
-  reviewer-facing main-text pages.
-- The three added total pages are attributable to the final Gate-3 output evidence, external-judge
-  results, focused related work, and provenance material. No prior negative experiment was deleted
-  to reduce page count.
+- Previous frozen PDF: 69 pages total, with 15 reviewer-facing main-text pages.
+- Outcome-B diagnostic PDF: 81 pages total; the chronological experiment record remains in the
+  appendices, while the controlled causal diagnosis now occupies pages 8--12 of the main text.
+- The added pages preserve the full historical record and add the five-condition causal intervention,
+  traversal-to-use analysis, consumer-layer profile, and reproducibility artifacts. No negative result
+  was removed to shorten the paper.
 
 ## Main Narrative
 
@@ -17,8 +17,9 @@ The main paper now follows the final scientific decomposition:
 2. bounded associative discovery;
 3. dataset roles and frozen evaluation protocol;
 4. focused comparison with long-context, retrieval, and K/V-selection work;
-5. results organized by scientific question;
-6. discussion, limitations, handoff, and conclusion.
+5. controlled traversal-to-answer causal diagnosis;
+6. results organized by scientific question;
+7. discussion, limitations, handoff, and conclusion.
 
 The former gate sequence was moved behind the appendix transition. It preserves projection
 correction, parent and local semantic discovery, native-Q/K controls, oracle rank and competition,
@@ -28,6 +29,11 @@ implementation maps, and validation gates.
 
 ## Headline Evidence
 
+- Controlled receptive-field matrix: `controlled_local_sa_v6/receptive_field_topology_summary.csv`.
+- Matched one-shot/iterative analysis: `controlled_local_sa_v6/iterative_matched_budget_seed_stats.csv`.
+- Frozen-consumer causal controls: `controlled_local_sa_v6/causal_memory_seed_summary.csv`.
+- Traversal-to-answer joins: `controlled_local_sa_v6/traversal_to_use_rows.csv`.
+- Attention, residual, and consumer-layer traces: `controlled_local_sa_v6/mechanistic/`.
 - Exact synthetic indirect discovery: `local_associative_closure/gate2_local_results.json`.
 - 2Wiki edge and path fidelity: `natural_graph_depth/natural_graph_depth_results.json`.
 - Granularity and conceptual payload: `natural_graph_depth/cross_dataset_granularity.csv`.
@@ -37,6 +43,16 @@ implementation maps, and validation gates.
   `output_validation/gate3_output_analysis.json`.
 
 The complete value-level mapping is in `claim_to_artifact_audit.md`.
+
+## Render Verification
+
+- Built with `pdflatex`, `bibtex`, and two final `pdflatex` passes on August 15, 2026.
+- `pdfinfo` reports 81 US-letter pages and a 2.29 MiB output.
+- LaTeX reports no fatal errors or overfull boxes. Remaining underfull-box notices occur in narrow
+  bibliography and code-map paragraphs and do not clip content.
+- Visually inspected the title page, causal-diagnosis pages 8--12, and final bibliography page 81 at
+  130 dpi. Headings, equations, tables, figures, captions, references, and page numbers are legible;
+  no overlap, clipping, black boxes, or missing glyphs were found.
 
 ## Terminology Changes
 
@@ -58,6 +74,9 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
 - MuSiQue generation is limited by the frozen backbone even with full direct context.
 - The 2Wiki output deltas have confidence intervals spanning zero; the paper does not claim an
   end-to-end quality gain.
+- The controlled causal cohort has 16 paired examples per checkpoint and five seeds per receptive
+  field. Oracle effects are directionally consistent, but the minimum exact two-sided five-seed sign
+  result is `p=.0625`; the paper treats this as a diagnostic ceiling, not a powered architecture claim.
 - GPT-5.6 Sol supplies one complete, control-qualified external judgment. Claude covers 51.7% of
   pairs and fails calibration, leaving evaluator robustness unresolved.
 - Synchronized TTFT/TPOT and total generation latency are measured per example; production

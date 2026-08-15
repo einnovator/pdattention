@@ -16,6 +16,30 @@ python ../../../experiments/paper2_5_iterative_pra/run_closure.py --device cpu
 python ../../../experiments/paper2_5_iterative_pra/summarize_results.py
 ```
 
+Controlled receptive-field and frozen-consumer diagnosis:
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.run_controlled_local_sa `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6 `
+  --device cuda --windows 16,32,64,128,global --seeds 17,29,41,53,67 `
+  --steps 800 --d-model 96 --layers 6
+python -m experiments.paper2_5_iterative_pra.run_controlled_pra `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6 `
+  --device cuda --windows 16,32,64,128,global --seeds 17,29,41,53,67 `
+  --examples 32 --d-model 96 --layers 6
+python -m experiments.paper2_5_iterative_pra.run_toy_mechanistic `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6 `
+  --device cuda --windows 16,32,64,128,global --seeds 17,29,41,53,67 `
+  --examples 16
+python -m experiments.paper2_5_iterative_pra.summarize_outcome_b `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6
+```
+
+The final two commands reuse frozen checkpoints. They do not train a router,
+consumer, readout, or memory projection. Their matched causal cache conditions
+and intermediate readouts delimit retrieval, attention, residual integration,
+and later-layer preservation before Paper 2.5 is frozen.
+
 The compact routing sweep is faster on CPU for these small matrices.  The separate
 `run_downstream_smoke.py` runner validates full native-K/V execution on CUDA.
 

@@ -35,6 +35,10 @@ class MemoryBatchingStats:
     attention_max_weight: float = 0.0  # Mean bucket maximum attention weight.
     memory_attention_mass: float = 0.0  # Mean joint-softmax mass assigned to memory.
     final_token_memory_attention_mass: float = 0.0  # Memory mass at the next-token query.
+    # Per-row [H,M] weights for the final direct-token query. These compact
+    # diagnostics let controlled studies distinguish evidence from distractor
+    # memory without retaining the full [B,H,T,M+T] attention tensor.
+    final_token_memory_weights: tuple[tuple[tuple[float, ...], ...], ...] = ()
 
     def as_metrics(self) -> dict[str, float]:
         """Flatten packing/attention statistics into experiment metric names."""
@@ -231,6 +235,7 @@ def native_kv_attention(
     *,
     attention_mask: torch.Tensor | None = None,
     max_context_tokens: int | None = None,
+    collect_final_token_memory_weights: bool = False,
 ) -> tuple[torch.Tensor, MemoryBatchingStats]:
     """Attend jointly over selected historical K/V and causal local K/V.
 
@@ -269,6 +274,7 @@ def native_kv_attention(
     maxima = []
     memory_masses = []
     final_token_memory_masses = []
+    final_token_memory_weights = []
     for row_index, (memory_k, memory_v) in enumerate(
         zip(memory_k_by_item, memory_v_by_item)
     ):
@@ -314,6 +320,11 @@ def native_kv_attention(
         final_token_memory_masses.append(
             float(memory_weights[:, :, -1, :].sum(dim=-1).mean().detach().cpu())
         )
+        if collect_final_token_memory_weights:
+            final_weights = memory_weights[0, :, -1, :].detach().float().cpu()
+            final_token_memory_weights.append(
+                tuple(tuple(float(value) for value in head) for head in final_weights)
+            )
         safe_weights = weights.clamp_min(torch.finfo(weights.dtype).tiny)
         entropies.append(
             float((-(weights * safe_weights.log()).sum(dim=-1).mean()).detach().cpu())
@@ -337,5 +348,6 @@ def native_kv_attention(
         final_token_memory_attention_mass=(
             sum(final_token_memory_masses) / max(len(final_token_memory_masses), 1)
         ),
+        final_token_memory_weights=tuple(final_token_memory_weights),
     )
     return torch.cat(output_rows, dim=0), stats

@@ -120,7 +120,14 @@ def test_native_attention_reports_active_kv_and_transfer_volume():
             },
         )
     )
-    attention = PRAttention(16, 4, 16, 0, cache, config=_config(n_layers=1)).eval()
+    attention = PRAttention(
+        16,
+        4,
+        16,
+        0,
+        cache,
+        config=_config(n_layers=1, collect_per_head_metrics=True),
+    ).eval()
 
     output = attention(torch.randn(1, 5, 16))
     diagnostics = attention.last_diagnostics
@@ -132,6 +139,13 @@ def test_native_attention_reports_active_kv_and_transfer_volume():
     assert diagnostics["active_memory_fraction"] == pytest.approx(3 / 8)
     assert diagnostics["retrieved_kv_storage_bytes"] == 2 * 3 * 16 * 4
     assert diagnostics["retrieved_kv_transfer_bytes"] == 0.0
+    weights = attention.last_memory_batching_stats.final_token_memory_weights
+    assert len(weights) == 1
+    assert len(weights[0]) == 4
+    assert all(len(head) == 3 for head in weights[0])
+    assert sum(sum(head) for head in weights[0]) / 4 == pytest.approx(
+        diagnostics["final_token_memory_attention_mass"]
+    )
 
 
 def test_native_gap_metrics_keep_transport_and_retrieval_effects_separate():

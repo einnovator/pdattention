@@ -18,8 +18,14 @@ python -m experiments.paper2_5_iterative_pra.run_controlled_local_sa `
 python -m experiments.paper2_5_iterative_pra.run_controlled_pra `
   --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6 `
   --device cuda --windows 16,32,64,128,global --seeds 17,29,41,53,67 `
-  --d-model 96 --layers 6
+  --examples 32 --d-model 96 --layers 6
 python -m experiments.paper2_5_iterative_pra.summarize_controlled_local_sa `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6
+python -m experiments.paper2_5_iterative_pra.run_toy_mechanistic `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6 `
+  --device cuda --windows 16,32,64,128,global --seeds 17,29,41,53,67 `
+  --examples 16
+python -m experiments.paper2_5_iterative_pra.summarize_outcome_b `
   --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6
 ```
 
@@ -28,6 +34,12 @@ control is therefore the same fact payload, and the fixed native K/V budget is
 20 tokens. One-shot routes up to four facts once; progressive conditions route
 one unseen fact per intervention and count layer-token K/V states. Gold URI
 paths are used only after inference for scoring.
+
+The mechanistic pass reuses the validation-selected checkpoints and cached
+layer-native projections. It compares no memory, routed memory, oracle-only
+evidence, matched irrelevant memory, and content-shuffled memory. Forward hooks
+capture final-head margins after each PRA residual and native layer, plus exact
+evidence/distractor/native shared-softmax mass. No model parameter is updated.
 
 ## Projection and local-associative gates
 
