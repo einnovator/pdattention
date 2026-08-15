@@ -35,6 +35,75 @@ def _mean_ci(values: list[float]) -> tuple[float, float]:
     return mean, 1.96 * statistics.stdev(values) / math.sqrt(len(values))
 
 
+def _aggregate_metrics(
+    rows: list[dict],
+    group_fields: tuple[str, ...],
+    metrics: tuple[str, ...],
+) -> list[dict]:
+    groups: dict[tuple, list[dict]] = {}
+    for row in rows:
+        groups.setdefault(tuple(row[field] for field in group_fields), []).append(row)
+    output = []
+    for key, group in sorted(groups.items(), key=lambda item: str(item[0])):
+        aggregate = {**dict(zip(group_fields, key)), "n_seeds": len(group)}
+        for metric in metrics:
+            values = [_number(row[metric]) for row in group]
+            mean, ci = _mean_ci(values)
+            aggregate[f"{metric}_mean"] = mean
+            aggregate[f"{metric}_std"] = statistics.stdev(values) if len(values) > 1 else 0.0
+            aggregate[f"{metric}_ci95"] = ci
+        output.append(aggregate)
+    return output
+
+
+def _exact_two_sided_sign_p(positive: int, negative: int) -> float:
+    """Return the exact sign-test p-value after dropping zero differences."""
+    n = positive + negative
+    if n == 0:
+        return 1.0
+    tail = sum(math.comb(n, index) for index in range(min(positive, negative) + 1))
+    return min(1.0, 2.0 * tail / (2**n))
+
+
+def _paired_pra_effects(rows: list[dict]) -> list[dict]:
+    per_seed: dict[tuple[str, str, str], list[float]] = {}
+    for row in rows:
+        if int(float(row["depth"])) > 4:
+            continue
+        per_seed.setdefault(
+            (row["window"], row["seed"], row["condition"]), []
+        ).append(_number(row["correct"]))
+    output = []
+    for window in sorted({key[0] for key in per_seed}, key=WINDOW_ORDER.get):
+        effects = []
+        for seed in sorted({key[1] for key in per_seed if key[0] == window}):
+            one = per_seed.get((window, seed, "one_shot"))
+            iterative = per_seed.get((window, seed, "iterative_matched"))
+            if one and iterative:
+                effects.append(statistics.fmean(iterative) - statistics.fmean(one))
+        if not effects:
+            continue
+        mean, ci = _mean_ci(effects)
+        positive = sum(effect > 0 for effect in effects)
+        negative = sum(effect < 0 for effect in effects)
+        output.append(
+            {
+                "window": window,
+                "n_seeds": len(effects),
+                "iterative_minus_one_shot_accuracy_mean": mean,
+                "iterative_minus_one_shot_accuracy_std": (
+                    statistics.stdev(effects) if len(effects) > 1 else 0.0
+                ),
+                "iterative_minus_one_shot_accuracy_ci95": ci,
+                "positive_seed_count": positive,
+                "negative_seed_count": negative,
+                "zero_seed_count": sum(effect == 0 for effect in effects),
+                "exact_two_sided_sign_p": _exact_two_sided_sign_p(positive, negative),
+            }
+        )
+    return output
+
+
 def _seed_mean(rows: list[dict], group_fields: tuple[str, ...], metric: str) -> list[dict]:
     groups: dict[tuple, list[float]] = {}
     for row in rows:
@@ -420,7 +489,44 @@ def main() -> None:
     raw_topology = _read_csv(args.output_dir / "receptive_field_topology_rows.csv")
     context = _read_csv(args.output_dir / "layer_contextualization_by_window.csv")
     pra = _read_csv(args.output_dir / "local_pra_one_shot_iterative.csv")
+    training = _read_csv(args.output_dir / "training_runs.csv")
+    if training:
+        _write_csv(
+            args.output_dir / "training_by_window.csv",
+            _aggregate_metrics(
+                training,
+                ("window",),
+                (
+                    "test_accuracy",
+                    "test_loss",
+                    "accuracy_depth_1",
+                    "accuracy_depth_2",
+                    "accuracy_depth_3",
+                    "accuracy_depth_4",
+                    "selected_step",
+                    "elapsed_seconds_total",
+                ),
+            ),
+        )
     if topology:
+        _write_csv(
+            args.output_dir / "topology_by_window_layer.csv",
+            _aggregate_metrics(
+                topology,
+                ("window", "layer_id"),
+                (
+                    "mrr",
+                    "edge_recall_at_1",
+                    "edge_recall_at_2",
+                    "edge_recall_at_4",
+                    "edge_recall_at_6",
+                    "edge_recall_at_8",
+                    "complete_path_survival_at_4",
+                    "shortcut_rate",
+                    "unreachable_at_4",
+                ),
+            ),
+        )
         _plot_window_metric(topology, "edge_recall_at_4", "native edge R@4", figures / "edge_recall_by_window.png")
         _plot_window_metric(topology, "shortcut_rate", "shortcut rate", figures / "shortcut_rate_by_window.png")
         _plot_window_metric(topology, "complete_path_survival_at_4", "complete path survival @4", figures / "path_survival_by_window.png")
@@ -431,6 +537,26 @@ def main() -> None:
         _write_csv(args.output_dir / "native_recovery_depth.csv", recovery)
         _plot_recovery_depth(recovery, figures / "native_recovery_depth_by_window.png")
     if pra:
+        _write_csv(
+            args.output_dir / "pra_by_window_condition_depth.csv",
+            _aggregate_metrics(
+                pra,
+                ("window", "condition", "depth"),
+                (
+                    "correct",
+                    "reference_recall",
+                    "complete_path_recovery",
+                    "ordered_prefix_recovery",
+                    "materialized_native_kv_tokens",
+                    "latency_seconds",
+                    "mean_intervention_state_displacement",
+                ),
+            ),
+        )
+        _write_csv(
+            args.output_dir / "paired_pra_effects.csv",
+            _paired_pra_effects(pra),
+        )
         _plot_pra_gain(pra, figures / "iterative_gain_by_window.png")
         _plot_spacing(pra, figures / "quality_and_state_by_spacing.png")
     gemma, llama, qwen = _export_inherited_pretrained(args.output_dir)
