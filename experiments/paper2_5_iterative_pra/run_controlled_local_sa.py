@@ -181,6 +181,7 @@ def train_one(
     tokenizer: ControlledTokenizer,
     train_examples: Sequence[ControlledExample],
     validation_examples: Sequence[ControlledExample],
+    test_examples: Sequence[ControlledExample],
     seed: int,
     steps: int,
     batch_size: int,
@@ -196,6 +197,11 @@ def train_one(
     train_tokens = 0
     elapsed_before = 0.0
     losses: list[float] = []
+    validation_history: list[dict] = []
+    best_accuracy = -1.0
+    best_loss = float("inf")
+    best_step = 0
+    best_checkpoint = checkpoint.with_name(f"{checkpoint.stem}_best.pt")
     if checkpoint.exists():
         state = torch.load(checkpoint, map_location=device, weights_only=False)
         if state.get("protocol_version") not in {None, CONTROLLED_PROTOCOL_VERSION}:
@@ -209,6 +215,10 @@ def train_one(
         train_tokens = int(state.get("train_tokens", 0))
         elapsed_before = float(state.get("elapsed_seconds", 0.0))
         losses = list(state.get("losses", []))
+        validation_history = list(state.get("validation_history", []))
+        best_accuracy = float(state.get("best_accuracy", -1.0))
+        best_loss = float(state.get("best_loss", float("inf")))
+        best_step = int(state.get("best_step", 0))
     invocation_start_tokens = train_tokens
     started = time.perf_counter()
     model.train()
@@ -242,6 +252,37 @@ def train_one(
             losses.append(float(loss.detach()))
             if completed % 100 == 0 or completed == steps:
                 checkpoint.parent.mkdir(parents=True, exist_ok=True)
+                validation, _ = evaluate_model(
+                    model,
+                    validation_examples,
+                    tokenizer,
+                    batch_size=batch_size,
+                    device=device,
+                )
+                validation_row = {"step": completed, **validation}
+                validation_history = [
+                    row for row in validation_history if int(row["step"]) != completed
+                ]
+                validation_history.append(validation_row)
+                candidate_accuracy = float(validation["eval_accuracy"])
+                candidate_loss = float(validation["eval_loss"])
+                if candidate_accuracy > best_accuracy or (
+                    candidate_accuracy == best_accuracy and candidate_loss < best_loss
+                ):
+                    best_accuracy = candidate_accuracy
+                    best_loss = candidate_loss
+                    best_step = completed
+                    torch.save(
+                        {
+                            "model": model.state_dict(),
+                            "step": completed,
+                            "validation": validation,
+                            "config": asdict(cfg),
+                            "protocol_version": CONTROLLED_PROTOCOL_VERSION,
+                        },
+                        best_checkpoint,
+                    )
+                model.train()
                 elapsed_total = elapsed_before + time.perf_counter() - started
                 torch.save(
                     {
@@ -251,6 +292,10 @@ def train_one(
                         "train_tokens": train_tokens,
                         "elapsed_seconds": elapsed_total,
                         "losses": losses[-200:],
+                        "validation_history": validation_history,
+                        "best_accuracy": best_accuracy,
+                        "best_loss": best_loss,
+                        "best_step": best_step,
                         "config": asdict(cfg),
                         "protocol_version": CONTROLLED_PROTOCOL_VERSION,
                     },
@@ -262,9 +307,13 @@ def train_one(
     elapsed = time.perf_counter() - started
     elapsed_total = elapsed_before + elapsed
     invocation_tokens = train_tokens - invocation_start_tokens
-    validation, _ = evaluate_model(
+    if not best_checkpoint.exists():
+        raise RuntimeError("Training completed without a validation-selected checkpoint.")
+    best_state = torch.load(best_checkpoint, map_location=device, weights_only=False)
+    model.load_state_dict(best_state["model"])
+    test, _ = evaluate_model(
         model,
-        validation_examples,
+        test_examples,
         tokenizer,
         batch_size=batch_size,
         device=device,
@@ -274,8 +323,12 @@ def train_one(
     # Dense executed-FLOP estimate is reported, not presented as profiler output.
     approximate_flops_per_step = 6 * parameter_count * mean_tokens
     metrics = {
-        **validation,
+        **{key.replace("eval_", "test_"): value for key, value in test.items()},
         "step": completed,
+        "selected_step": best_step,
+        "selected_validation_accuracy": best_accuracy,
+        "selected_validation_loss": best_loss,
+        "validation_history_json": json.dumps(validation_history, sort_keys=True),
         "train_tokens": train_tokens,
         "train_loss_last_50": statistics.fmean(losses[-50:]),
         "parameter_count": parameter_count,
@@ -525,6 +578,7 @@ def main() -> None:
     parser.add_argument("--learning-rate", type=float, default=8e-4)
     parser.add_argument("--train-examples", type=int, default=4096)
     parser.add_argument("--validation-examples", type=int, default=512)
+    parser.add_argument("--test-examples", type=int, default=512)
     parser.add_argument("--topology-examples", type=int, default=64)
     parser.add_argument("--d-model", type=int, default=128)
     parser.add_argument("--layers", type=int, default=6)
@@ -556,6 +610,13 @@ def main() -> None:
                     "external_materialization_dependency": False,
                 },
                 "seeds": seeds,
+                "corpus_seeds": {
+                    "train": 100001,
+                    "validation": 100002,
+                    "topology": 100003,
+                    "pra": 100004,
+                    "test": 100005,
+                },
                 "configs": configs,
             },
             indent=2,
@@ -573,33 +634,48 @@ def main() -> None:
                 d_model=args.d_model,
                 n_layers=args.layers,
             )
-            train_data = controlled_examples(tokenizer, count=args.train_examples, seed=seed * 1000 + 1)
+            train_data = controlled_examples(tokenizer, count=args.train_examples, seed=100_001)
             validation = controlled_examples(
-                tokenizer, count=args.validation_examples, seed=seed * 1000 + 2
+                tokenizer, count=args.validation_examples, seed=100_002
+            )
+            test_data = controlled_examples(
+                tokenizer, count=args.test_examples, seed=100_005
             )
             checkpoint = args.output_dir / "checkpoints" / f"{window_name(window)}_seed{seed}.pt"
             if args.skip_training:
                 state = torch.load(checkpoint, map_location=args.device, weights_only=False)
                 model = TinyPRAModel(cfg).to(args.device)
-                model.load_state_dict(state["model"])
+                best_checkpoint = checkpoint.with_name(f"{checkpoint.stem}_best.pt")
+                selected = torch.load(
+                    best_checkpoint if best_checkpoint.exists() else checkpoint,
+                    map_location=args.device,
+                    weights_only=False,
+                )
+                model.load_state_dict(selected["model"])
                 metrics, _ = evaluate_model(
                     model,
-                    validation,
+                    test_data,
                     tokenizer,
                     batch_size=args.batch_size,
                     device=args.device,
                 )
                 metrics.update(
                     step=state["step"],
+                    selected_step=selected.get("step", state["step"]),
                     train_tokens=state.get("train_tokens", 0),
                     parameter_count=sum(p.numel() for p in model.parameters()),
                 )
+                metrics = {
+                    key.replace("eval_", "test_"): value
+                    for key, value in metrics.items()
+                }
             else:
                 model, metrics = train_one(
                     cfg=cfg,
                     tokenizer=tokenizer,
                     train_examples=train_data,
                     validation_examples=validation,
+                    test_examples=test_data,
                     seed=seed,
                     steps=args.steps,
                     batch_size=args.batch_size,
@@ -622,7 +698,7 @@ def main() -> None:
             topology_data = controlled_examples(
                 tokenizer,
                 count=args.topology_examples,
-                seed=seed * 1000 + 3,
+                seed=100_003,
                 depths=(2, 3, 4, 8),
                 distractors=(4, 8),
                 evidence_gaps=(0, 2, 6),
@@ -652,7 +728,7 @@ def main() -> None:
             )
             print(
                 f"completed {window_name(window)} seed={seed}: "
-                f"accuracy={float(metrics['eval_accuracy']):.4f}"
+                f"accuracy={float(metrics['test_accuracy']):.4f}"
             )
 
 

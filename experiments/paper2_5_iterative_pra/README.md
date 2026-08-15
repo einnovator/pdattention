@@ -2,6 +2,33 @@
 
 Run commands from the repository root.
 
+## Controlled LocalSA reopening
+
+The causal receptive-field experiment is self-contained. It does not depend on
+another paper's materialization policy. Each randomized chain uses balanced
+terminal labels, several label-relation decoys, reverse-causal evidence order,
+and random distractor interleaving. All windows and initialization seeds share
+the exact same generated train/evaluation examples.
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.run_controlled_local_sa `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6 `
+  --device cuda --windows 16,32,64,128,global --seeds 17,29,41,53,67 `
+  --steps 800 --d-model 96 --layers 6
+python -m experiments.paper2_5_iterative_pra.run_controlled_pra `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6 `
+  --device cuda --windows 16,32,64,128,global --seeds 17,29,41,53,67 `
+  --d-model 96 --layers 6
+python -m experiments.paper2_5_iterative_pra.summarize_controlled_local_sa `
+  --output-dir docs/papers/shared/results/paper2_5_iterative_pra/controlled_local_sa_v6
+```
+
+The selected-chunk payload is one indivisible five-token fact. The whole-parent
+control is therefore the same fact payload, and the fixed native K/V budget is
+20 tokens. One-shot routes up to four facts once; progressive conditions route
+one unseen fact per intervention and count layer-token K/V states. Gold URI
+paths are used only after inference for scoring.
+
 ## Projection and local-associative gates
 
 Gate 1 corrects asymmetric frontier projection without retraining:

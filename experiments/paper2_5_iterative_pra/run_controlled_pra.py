@@ -66,6 +66,50 @@ def _put_references(
 
 
 @torch.no_grad()
+def precompute_reference_entries(
+    source: TinyPRAModel,
+    examples: list[ControlledExample],
+    tokenizer: ControlledTokenizer,
+    device: str,
+) -> dict[str, list]:
+    """Encode exact layer-native K/V once for every later PRA placement.
+
+    Disabled-memory SA/PRA conversion is logit-equivalent, and all consumer
+    placements share the same converted projections. Extra layer payloads in a
+    cache entry are inert when a condition has no PRA consumer at that layer.
+    """
+    encoder_cfg = replace(
+        source.cfg,
+        model_variant="td_layered_pra",
+        pra_layer_ids=tuple(range(source.cfg.n_layers)),
+        trigger_threshold=-1.0,
+    )
+    encoder = convert_sa_model_to_pra(source, encoder_cfg).to(device).eval()
+    encoded = {}
+    for example in examples:
+        entries = []
+        for reference in example.references:
+            entries.append(
+                encoder.encode_reference_tokens_to_cache(
+                    reference.uri,
+                    reference.token_ids,
+                    tokenizer,
+                    device,
+                    metadata={"controlled_fact": True},
+                )
+            )
+        encoded[example.example_id] = entries
+    return encoded
+
+
+def _put_precomputed_references(model: TinyPRAModel, entries: list) -> None:
+    """Publish immutable precomputed entries into one condition-local cache."""
+    model.clear_pra_cache()
+    for entry in entries:
+        model.pra_cache.put(entry)
+
+
+@torch.no_grad()
 def _sa_prediction(
     model: TinyPRAModel,
     token_ids: tuple[int, ...],
@@ -92,6 +136,7 @@ def evaluate_condition(
     device: str,
     top_k_references: int,
     materialization: str,
+    entries_by_example: dict[str, list] | None = None,
 ) -> list[dict]:
     """Convert exact SA weights, route content, and score after unblinding."""
     target_cfg = replace(
@@ -109,7 +154,10 @@ def evaluate_condition(
     model = convert_sa_model_to_pra(source, target_cfg).to(device).eval()
     rows = []
     for example in examples:
-        _put_references(model, example, tokenizer, device)
+        if entries_by_example is None:
+            _put_references(model, example, tokenizer, device)
+        else:
+            _put_precomputed_references(model, entries_by_example[example.example_id])
         ids = torch.tensor([example.query_input_ids], dtype=torch.long, device=device)
         if device.startswith("cuda"):
             torch.cuda.synchronize()
@@ -325,7 +373,7 @@ def main() -> None:
             examples = controlled_examples(
                 tokenizer,
                 count=args.examples,
-                seed=seed * 1000 + 4,
+                seed=100_004,
                 depths=(1, 2, 3, 4, 8),
                 distractors=(4, 8),
                 evidence_gaps=(0, 2, 6),
@@ -334,6 +382,9 @@ def main() -> None:
                 branchings=(0, 1, 2),
             )
             rows = _baseline_rows(source, examples, device=args.device)
+            entries_by_example = precompute_reference_entries(
+                source, examples, tokenizer, args.device
+            )
             for condition, layer_ids in patterns.items():
                 top_k = 4 if condition in {"one_shot", "late_only"} else 1
                 rows.extend(
@@ -346,6 +397,7 @@ def main() -> None:
                         device=args.device,
                         top_k_references=top_k,
                         materialization="selected_chunks",
+                        entries_by_example=entries_by_example,
                     )
                 )
             # Whole-parent is an identity control here: each controlled URI is
@@ -360,6 +412,7 @@ def main() -> None:
                     device=args.device,
                     top_k_references=4,
                     materialization="full_reference",
+                    entries_by_example=entries_by_example,
                 )
             )
             rows = [

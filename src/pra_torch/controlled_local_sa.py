@@ -17,7 +17,7 @@ import torch
 
 
 SPECIAL_TOKENS = ("[PAD]", "[BOS]", "[FACT]", "[SEP]", "[Q]", "[A]")
-CONTROLLED_PROTOCOL_VERSION = "balanced_terminal_labels_interleaved_decoys_v4"
+CONTROLLED_PROTOCOL_VERSION = "paired_fixed_corpus_validation_selected_v6"
 
 
 class ControlledTokenizer:
