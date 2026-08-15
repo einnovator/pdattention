@@ -104,6 +104,7 @@ def test_layered_pra_places_only_requested_interventions():
 def test_pra_spacing_patterns_are_in_bounds_and_increasing():
     patterns = _pra_patterns(6)
     assert patterns["spacing_1"] == (0, 1, 2, 3, 4, 5)
+    assert patterns["iterative_matched"] == (0, 2, 4, 5)
     assert patterns["spacing_2"] == (0, 2, 4)
     assert patterns["spacing_4"] == (0, 4)
     assert patterns["spacing_8"] == (0,)

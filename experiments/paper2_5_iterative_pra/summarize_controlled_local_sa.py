@@ -117,7 +117,7 @@ def _plot_pra_gain(rows: list[dict], path: Path) -> None:
     for window in {key[0] for key in per_seed}:
         for seed in {key[1] for key in per_seed if key[0] == window}:
             one = per_seed.get((window, seed, "one_shot"))
-            iterative = per_seed.get((window, seed, "spacing_2"))
+            iterative = per_seed.get((window, seed, "iterative_matched"))
             if one and iterative:
                 gains.setdefault(window, []).append(statistics.fmean(iterative) - statistics.fmean(one))
     ordered = sorted(gains, key=WINDOW_ORDER.get)
@@ -133,7 +133,7 @@ def _plot_pra_gain(rows: list[dict], path: Path) -> None:
         color="#9f1239",
     )
     axis.set_xlabel("training attention window")
-    axis.set_ylabel("iterative spacing-2 minus one-shot accuracy")
+    axis.set_ylabel("matched iterative minus one-shot accuracy")
     axis.grid(axis="y", alpha=0.25)
     fig.tight_layout()
     fig.savefig(path, dpi=180)
@@ -218,7 +218,7 @@ def _cross_architecture(
             if not selected:
                 continue
             one = [row for row in pra if row["window"] == window and row["condition"] == "one_shot" and int(float(row["depth"])) <= 4]
-            iterative = [row for row in pra if row["window"] == window and row["condition"] == "spacing_2" and int(float(row["depth"])) <= 4]
+            iterative = [row for row in pra if row["window"] == window and row["condition"] == "iterative_matched" and int(float(row["depth"])) <= 4]
             gain = (
                 statistics.fmean(_number(row["correct"]) for row in iterative)
                 - statistics.fmean(_number(row["correct"]) for row in one)

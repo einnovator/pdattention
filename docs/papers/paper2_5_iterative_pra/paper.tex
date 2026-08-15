@@ -13,8 +13,8 @@
 \setlength{\emergencystretch}{3em}
 \lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,columns=fullflexible}
 
-\title{Iterative Progressive Retrieval Attention:\\
-Bounded Associative Discovery over Latent Gist Memory}
+\title{When Does Iterative Progressive Retrieval Attention Help?\\
+Native Receptive Fields and Bounded Associative Discovery}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Iterative Progressive Retrieval Attention},pdfauthor={Jorge Simao}}
@@ -71,27 +71,157 @@ rounds, preserve the discovery graph, and materialize exact K/V only once.  The 
 $q\rightarrow A\rightarrow B$ is explicit.  It does not require another language-model pass,
 an intermediate text answer, or serialization through an external tool API.
 
-This paper asks whether pretrained hidden-state gists already possess enough transitive semantic
-geometry for that extension to help.  The question has a strict baseline: iterative discovery must
-beat one-shot Top-$B$ at the same final unique-chunk budget $B$.  Otherwise, retrieval depth adds
-cost without adding a useful primitive.
+There is a prior question.  A globally trained full-self-attention model can repeatedly mix distant
+evidence before PRA is introduced.  Its hidden states may already compress a multi-hop chain into
+shortcut-rich geometry, leaving little non-redundant work for explicit iterative retrieval.  A
+model trained with strict local attention has a known, slower-growing native receptive field and
+may preserve a more traversable evidence topology.  We therefore ask when iterative retrieval is
+useful, rather than assuming that one pretrained geometry settles the question.
 
-We keep the pretrained backbone and Paper 2 routing/transport stack fixed and replace one-shot
-Top-$B$ discovery with parameter-free iterative search.  Projection correction, local-gist
-propagation, and native-QK propagation likewise alter discovery state only; they do not train the
-backbone or a memory-consumption adapter.
+The comparison has a strict baseline: iterative discovery must beat one-shot Top-$B$ under matched
+native-K/V accounting.  Otherwise, retrieval depth adds cost without adding a useful primitive.
+We first train matched small causal models with windows 16, 32, 64, 128, and global attention.  We
+then replace selected self-attention blocks with weight-identical PRA blocks, so the next routing
+query is the hidden state produced after earlier retrieved memory, intervening local attention,
+and the FFN.  Finally, we reinterpret the existing Qwen measurements and use Gemma and a compact
+Llama-family control as pretrained architectural contrasts.
 
-This paper contributes five things.  First, it formulates iterative PRA as bounded search over an
+In the pretrained experiments, we keep the backbone and inherited routing/transport stack fixed
+and replace one-shot Top-$B$ discovery with parameter-free iterative search.  Projection
+correction, local-gist propagation, and native-QK propagation likewise alter discovery state only;
+they do not train the backbone or a memory-consumption adapter.  The controlled experiment is
+separate: it trains ordinary self-attention models, then performs an exact parameter-free
+self-attention-to-PRA conversion for evaluation.
+
+This paper contributes seven things.  First, it provides a causal, paired receptive-field experiment
+whose train/evaluation examples, architecture, optimization, and token budget are fixed across five
+attention windows and five initialization seeds.  Second, it implements evolved-state iterative PRA
+with explicit prevention of fixed-reference replay and matched layer-token K/V accounting.  Third,
+it formulates iterative PRA as bounded search over an
 implicit layer-local memory graph while preserving an exact separation between routing state and
-native K/V payload.  Second, it supplies deterministic graph, budget, cycle, projection, grouped-
+native K/V payload.  Fourth, it supplies deterministic graph, budget, cycle, projection, grouped-
 query-head, and native-limit controls that make indirect discovery independently reproducible.
-Third, it measures edge fidelity, path survival, minimum native recovery depth, and conceptual
+Fifth, it measures edge fidelity, path survival, minimum native recovery depth, and conceptual
 payload over synthetic, QASPER, HotpotQA, 2Wiki, and MuSiQue roles rather than treating retrieval
-recall as one undifferentiated quantity.  Fourth, it isolates a non-monotonic interaction among
+recall as one undifferentiated quantity.  Sixth, it isolates a non-monotonic interaction among
 chunk granularity, transformer layer, contextual dependence, and executable root competition.
-Fifth, it connects frozen discovery to actual native-K/V generation, showing that high evidence
+Seventh, it connects frozen discovery to actual native-K/V generation, showing that high evidence
 recovery can still lose output quality through broad activation and attention dilution.  The full
 chronological gate record, including negative results, remains in the appendices.
+
+\section{Controlled Receptive-Field Study}
+\label{sec:controlled-local}
+
+\subsection{Causal hypothesis}
+
+The controlled study tests a directional claim:
+\begin{equation}
+ W_{\mathrm{train}}
+ \longrightarrow \text{native Q/K topology and contextualization}
+ \longrightarrow \text{value of sparse nonlocal PRA}.
+\end{equation}
+A strict local window does not freeze a token's receptive field permanently.  With window $W$,
+token $i$ at one layer can attend only positions
+\begin{equation}
+  \max(0,i-W+1),\ldots,i,
+\end{equation}
+but after $L$ layers its theoretical causal receptive field can grow to
+$1+L(W-1)$ tokens.  We therefore measure topology and state transformation at every layer rather
+than labeling a trained model ``local'' from its one-layer mask alone.
+
+\subsection{Matched model family and training discipline}
+
+Table~\ref{tab:controlled-config} fixes every model property except the native self-attention
+window.  These models are intentionally small scientific instruments, not scaling competitors.
+The available 4~GB GPU made a five-window, five-seed 20--100M pretraining matrix inappropriate;
+we instead use a 739,968-parameter decoder and report this limit explicitly.
+
+\begin{table}[H]
+\centering
+\caption{Controlled model and data configuration.  All five windows use identical examples and
+optimizer settings; model seed changes initialization and batch order only.}
+\label{tab:controlled-config}
+\small
+\begin{tabular}{p{0.31\linewidth}p{0.58\linewidth}}
+\toprule
+Property & Fixed value \\
+\midrule
+Decoder & 6 pre-norm layers, width 96, 4 heads, FFN width 384, RoPE, no dropout \\
+Parameters / vocabulary & 739,968 / 230 controlled tokens \\
+Native attention & $W\in\{16,32,64,128,\text{global}\}$; current token is included in $W$ \\
+Train/validation/test & 4,096 / 512 / 512 disjoint deterministic examples \\
+Optimization & AdamW, batch 48, 800 updates, gradient norm 1.0, warmup plus cosine decay \\
+Checkpoint rule & validation accuracy every 100 updates; loss breaks ties; test is untouched \\
+Initialization seeds & 17, 29, 41, 53, 67 \\
+Tasks & direct, 2-, 3-, and 4-hop training/evaluation; unseen 8-hop stress \\
+Controlled factors & evidence gap, distractors, lexical overlap, relation count, and branching \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Randomized chain task and leakage controls}
+
+Each example samples a fresh entity/relation chain.  The terminal entity maps to one of eight
+balanced answer labels, so random accuracy is .125.  Multiple distractors use the same terminal
+relation with wrong source entities; scanning for a unique label relation cannot solve the task.
+Evidence preserves only reverse causal order---a later-hop fact precedes the fact that points to
+it---while distractors are randomly interleaved.  No evidence fact has a fixed absolute position.
+Train, validation, held-out test, topology, and PRA evaluation use distinct fixed corpus seeds,
+and those corpora are shared by every model seed and every $W$.
+
+The query contains a start entity and relation sequence but never its answer.  During PRA
+evaluation, the cache receives observable fact tokens and a neutral controlled-fact marker only.
+Gold URI paths never enter cache metadata, search configuration, query construction, or
+materialization.  They are joined to predictions only after inference.  This distinction makes
+oracle leakage testable rather than implicit.
+
+\subsection{Native topology and contextualization measurements}
+
+For each evidence edge $A\rightarrow B$, we score $A$'s native per-head query against mean native
+keys for every other fact at each layer.  We report edge R@1/2/4/6/8, MRR, complete-path survival,
+shortcut rate, graph density, and whether the physical and depth-expanded receptive fields can
+reach the target.  State traces separately record attention-output magnitude, post-attention
+cosine displacement, entropy and effective support, FFN magnitude, and dependence on context
+outside a restricted tail.  This prevents a high Q/K rank from being mistaken for either causal
+visibility or effective value transport.
+
+\subsection{Exact conversion and evolved-state iterative PRA}
+
+After training, a self-attention checkpoint is converted without learning.  At requested consumer
+layers, the ordinary block is replaced by a PRA block carrying the same layer normalization,
+$Q/K/V/O$ projections, and FFN weights.  With memory disabled, source and converted logits agree
+to numerical tolerance.  Reference encoding then captures these same layer-native post-RoPE keys
+and native values.
+
+The primary iterative forward is
+\begin{equation}
+ h_{\ell_1}\xrightarrow{\mathrm{PRA}(A)}h'_{\ell_1}
+ \xrightarrow{\mathrm{LocalSA/FFN}}h_{\ell_2}
+ \xrightarrow{\mathrm{PRA}(B)}h'_{\ell_2}\cdots .
+\end{equation}
+Routing at $\ell_2$ therefore uses the final-token state after the first memory residual and all
+intervening computation.  Selected URI identities are removed from later candidate caches, so a
+later intervention cannot replay a fixed evidence set.  The trace records every selected URI,
+query-state displacement, materialized token count, active-memory fraction, and replay count.
+
+\subsection{Self-contained payload and accounting controls}
+
+One controlled URI is one indivisible five-token fact.  Selected-chunk and whole-parent
+materialization are consequently an identity control: both disclose the same native K/V tensors.
+No external materialization result is assumed.  One-shot selects at most four facts once, for 20
+layer-token K/V states.  The primary iterative condition selects at most one unseen fact at four
+consumer layers, also 20 layer-token states.  We then vary intervention spacing 1, 2, 4, and 8 as
+a separate quality--cost experiment; these spacing conditions intentionally have different total
+consumer-layer counts and are not described as budget matched.
+
+\subsection{Pretrained bridge and contrast}
+
+The controlled result is compared with already frozen, independently measured model families.
+Gemma~3~1B alternates five local layers with one global layer and consumes PRA at a subset of its
+native global slots.  Qwen3-0.6B supplies the full-global, shortcut-rich chronology developed in
+the remainder of this paper.  SmolLM2-135M supplies a compact Llama-family replication of routing
+sparsity, but it is not a Llama~3.x checkpoint; we retain that limitation instead of relabeling the
+model.  These pretrained artifacts are contrasts, not substitutes for the paired causal test.
 
 \section{Inherited PRA/HF Setting}
 

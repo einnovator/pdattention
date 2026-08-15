@@ -32,8 +32,12 @@ from experiments.paper2_5_iterative_pra.run_controlled_local_sa import (
 
 def _pra_patterns(n_layers: int) -> dict[str, tuple[int, ...]]:
     """Return reproducible consumer placements for one-shot and spacing controls."""
+    matched = tuple(
+        sorted({0, n_layers // 3, (2 * n_layers) // 3, n_layers - 1})
+    )
     return {
         "one_shot": (min(2, n_layers - 1),),
+        "iterative_matched": matched,
         "late_only": (n_layers - 1,),
         "spacing_1": tuple(range(n_layers)),
         "spacing_2": tuple(range(0, n_layers, 2)),
@@ -455,7 +459,13 @@ def _write_targets(output_dir: Path, aggregates: list[dict]) -> None:
             row
             for row in aggregates
             if row["condition"]
-            in {"local_sa_full_context", "one_shot", "spacing_1", "spacing_2"}
+            in {
+                "local_sa_full_context",
+                "one_shot",
+                "iterative_matched",
+                "spacing_1",
+                "spacing_2",
+            }
         ],
     )
 
