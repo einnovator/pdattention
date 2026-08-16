@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "validation_units": 95,
+  "heldout_units": 65,
+  "router_seeds": [
+    1,
+    7,
+    21,
+    42,
+    87
+  ],
+  "summary": [
+    {
+      "variant": "R0_profile",
+      "n": 65,
+      "quality": 0.6153846153846154,
+      "oracle_quality": 0.6153846153846154,
+      "quality_regret": 0.0,
+      "cost": 109.9076923076923,
+      "oracle_cost": 90.58461538461539,
+      "cost_regret": 19.323076923076922,
+      "joint_exact": 0.8,
+      "mean_head_accuracy": 0.8,
+      "underprediction": 0.03076923076923077,
+      "overprediction": 0.16923076923076924
+    },
+    {
+      "variant": "R1_feature_mlp",
+      "n": 325,
+      "quality": 0.5938461538461538,
+      "oracle_quality": 0.6153846153846154,
+      "quality_regret": 0.021538461538461538,
+      "cost": 103.6923076923077,
+      "oracle_cost": 90.58461538461539,
+      "cost_regret": 13.107692307692307,
+      "joint_exact": 0.7753846153846153,
+      "mean_head_accuracy": 0.7789010989010989,
+      "underprediction": 0.055384615384615386,
+      "overprediction": 0.16615384615384615
+    },
+    {
+      "variant": "R2_encoder_mlp",
+      "n": 325,
+      "quality": 0.5907692307692308,
+      "oracle_quality": 0.6153846153846154,
+      "quality_regret": 0.024615384615384615,
+      "cost": 104.01230769230769,
+      "oracle_cost": 90.58461538461539,
+      "cost_regret": 13.427692307692308,
+      "joint_exact": 0.7938461538461539,
+      "mean_head_accuracy": 0.7986813186813186,
+      "underprediction": 0.046153846153846156,
+      "overprediction": 0.15692307692307692
+    },
+    {
+      "variant": "R3A_autoregressive",
+      "n": 325,
+      "quality": 0.5907692307692308,
+      "oracle_quality": 0.6153846153846154,
+      "quality_regret": 0.024615384615384615,
+      "cost": 102.56,
+      "oracle_cost": 90.58461538461539,
+      "cost_regret": 11.975384615384616,
+      "joint_exact": 0.8061538461538461,
+      "mean_head_accuracy": 0.8061538461538461,
+      "underprediction": 0.04923076923076923,
+      "overprediction": 0.14461538461538462
+    }
+  ],
+  "gate_a_profiles": "reported by R0 and fixed-profile baselines in the parent study",
+  "gate_b_independent_heads": "evaluated",
+  "gate_c_semantic_encoder": "evaluated with a dependency-free hashing baseline; replaceable by a compact pretrained encoder",
+  "gate_d_interactions": {
+    "evaluated": true,
+    "r2_quality": 0.5907692307692308,
+    "r3_quality": 0.5907692307692308,
+    "r2_cost": 104.01230769230769,
+    "r3_cost": 102.56,
+    "continue_to_controller_transformer": false
+  },
+  "interpretation": "The comparison tests whether compositional and semantic capacity moves the held-out quality/cost frontier. Profile-derived labels make parameter interactions highly coupled by construction, so interaction mutual information is diagnostic rather than causal."
+}

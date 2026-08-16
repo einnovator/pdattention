@@ -19,3 +19,10 @@ Adaptive quality uses validation-frozen Paper 2.5 traces. Output calibration
 uses the separate Paper 3 controlled-model split. Systems timings are labeled
 standalone prototype measurements; external baseline rows are controlled
 matched-budget proxies unless explicitly identified as inherited Qwen data.
+
+The same command also runs two bounded add-on studies. Query-region discovery
+uses deterministic matched prompt layouts and synthetic prose/log/URL payloads;
+it performs no model inference. Router architecture variants use the frozen
+95/65 minimum-effort split and five small-controller seeds. R2's semantic input
+is a hashing baseline that exercises the encoder interface, not a claim about a
+pretrained NLP encoder.

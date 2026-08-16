@@ -21,6 +21,7 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 from experiments.paper3_5_adaptive_pra.adaptive_experiment import run_adaptive_experiment
+from experiments.paper3_5_adaptive_pra.addon_study import run_addon_studies
 from experiments.paper3_5_adaptive_pra.systems_benchmarks import run_systems_benchmarks
 
 
@@ -230,9 +231,9 @@ def plot_architecture(output: Path) -> None:
     axis.set_ylim(0, 5.2)
     axis.axis("off")
     boxes = {
-        "query / current state": (0.3, 3.7, 1.7, 0.8, "#ecf0f1"),
+        "prompt roles /\nquery regions": (0.3, 3.7, 1.7, 0.8, "#ecf0f1"),
         "observable features": (2.35, 3.7, 1.7, 0.8, "#d6eaf8"),
-        "E0 / E1 / E2\ncontroller": (4.4, 3.7, 1.7, 0.8, "#d5f5e3"),
+        "swappable effort\nrouter R0--R3": (4.4, 3.7, 1.7, 0.8, "#d5f5e3"),
         "indexed native-Q/K\nsearch": (6.45, 3.7, 1.7, 0.8, "#fdebd0"),
         "logical interval\nmaterializer": (8.5, 3.7, 1.7, 0.8, "#f5eef8"),
         "paged K/V cache": (8.5, 1.8, 1.7, 0.8, "#f5eef8"),
@@ -247,7 +248,7 @@ def plot_architecture(output: Path) -> None:
         axis.add_patch(rectangle)
         axis.text(x + width / 2, y + height / 2, label, ha="center", va="center", fontsize=9)
         centers[label] = (x + width / 2, y + height / 2)
-    top = ["query / current state", "observable features", "E0 / E1 / E2\ncontroller", "indexed native-Q/K\nsearch", "logical interval\nmaterializer"]
+    top = ["prompt roles /\nquery regions", "observable features", "swappable effort\nrouter R0--R3", "indexed native-Q/K\nsearch", "logical interval\nmaterializer"]
     bottom = ["paged K/V cache", "native attention +\ngeneration", "confidence /\nconsistency", "stop, fallback,\nor retry", "structured trace"]
     for left, right in zip(top, top[1:]):
         left_box, right_box = boxes[left], boxes[right]
@@ -272,10 +273,10 @@ def plot_architecture(output: Path) -> None:
             xytext=(left_box[0], centers[left][1]),
             arrowprops={"arrowstyle": "->", "lw": 1.4, "color": "#34495e"},
         )
-    stop_box, controller_box = boxes["stop, fallback,\nor retry"], boxes["E0 / E1 / E2\ncontroller"]
+    stop_box, controller_box = boxes["stop, fallback,\nor retry"], boxes["swappable effort\nrouter R0--R3"]
     axis.annotate(
         "",
-        xy=(centers["E0 / E1 / E2\ncontroller"][0], controller_box[1]),
+        xy=(centers["swappable effort\nrouter R0--R3"][0], controller_box[1]),
         xytext=(centers["stop, fallback,\nor retry"][0], stop_box[1] + stop_box[3]),
         arrowprops={"arrowstyle": "->", "lw": 1.5, "color": "#c0392b", "connectionstyle": "arc3,rad=-0.28"},
     )
@@ -285,7 +286,63 @@ def plot_architecture(output: Path) -> None:
     _save(figure, output, "adaptive_pra_runtime_architecture")
 
 
-def build_findings(adaptive: dict, systems: dict, output: Path) -> dict:
+def plot_query_region_results(output: Path) -> None:
+    rows = _rows(output / "query_region_layout_rows.csv")
+    layouts = ["L0_context_query", "L1_query_context", "L2_context_query_context", "L3_instruction_context_query", "L4_query_long_payload"]
+    methods = ["head", "explicit", "structural", "auto_retry"]
+    labels = {"head": "head", "explicit": "explicit span", "structural": "structural", "auto_retry": "head + reinterpret"}
+    colors = {"head": "#7f8c8d", "explicit": "#2c3e50", "structural": "#16a085", "auto_retry": "#c0392b"}
+    figure, axes = plt.subplots(1, 2, figsize=(10.2, 3.8))
+    for method in methods:
+        recall, effort = [], []
+        for layout in layouts:
+            selected = [row for row in rows if row["method"] == method and row["layout"] == layout]
+            recall.append(sum(float(row["root_recall_at_1"]) for row in selected) / len(selected))
+            effort.append(sum(float(row["search_effort"]) for row in selected) / len(selected))
+        axes[0].plot(range(len(layouts)), recall, marker="o", color=colors[method], label=labels[method])
+        axes[1].plot(range(len(layouts)), effort, marker="o", color=colors[method], label=labels[method])
+    short = ["C+Q", "Q+C", "C1+Q+C2", "I+C+Q", "Q+long C"]
+    for axis in axes:
+        axis.set_xticks(range(len(layouts)), short, rotation=18)
+        axis.grid(alpha=0.25)
+    axes[0].set_ylabel("root recall at 1")
+    axes[0].set_ylim(-0.03, 1.03)
+    axes[1].set_ylabel("mean lexical comparisons")
+    axes[0].legend(fontsize=7)
+    _save(figure, output, "query_region_layout_frontier")
+
+    displacement = _rows(output / "query_region_head_displacement.csv")
+    figure, axis = plt.subplots(figsize=(6.8, 4.0))
+    for method in ("head", "explicit", "structural"):
+        selected = sorted([row for row in displacement if row["method"] == method], key=lambda row: float(row["actual_tokens_after_query"]))
+        axis.plot([float(row["actual_tokens_after_query"]) for row in selected], [float(row["root_recall_at_1"]) for row in selected], marker="o", label=labels.get(method, method), color=colors[method])
+    axis.set_xscale("symlog", linthresh=32)
+    axis.set_xlabel("tokens serialized after query")
+    axis.set_ylabel("root recall at 1")
+    axis.set_ylim(-0.03, 1.03)
+    axis.grid(alpha=0.25)
+    axis.legend(fontsize=8)
+    _save(figure, output, "query_region_displacement")
+
+
+def plot_router_variants(output: Path) -> None:
+    findings = json.loads((output / "router_findings.json").read_text(encoding="utf-8"))
+    rows = findings["summary"]
+    labels = {"R0_profile": "R0 profiles", "R1_feature_mlp": "R1 feature MLP", "R2_encoder_mlp": "R2 semantic MLP", "R3A_autoregressive": "R3A autoregressive"}
+    colors = {"R0_profile": "#2c3e50", "R1_feature_mlp": "#3498db", "R2_encoder_mlp": "#16a085", "R3A_autoregressive": "#8e44ad"}
+    figure, axis = plt.subplots(figsize=(6.8, 4.2))
+    for row in rows:
+        variant = row["variant"]
+        axis.scatter(float(row["cost"]), float(row["quality"]), s=65, color=colors[variant])
+        axis.annotate(labels[variant], (float(row["cost"]), float(row["quality"])), xytext=(5, 5), textcoords="offset points", fontsize=8)
+    axis.set_xlabel("mean abstract effort")
+    axis.set_ylabel("complete evidence-chain rate")
+    axis.set_ylim(0.55, 0.64)
+    axis.grid(alpha=0.25)
+    _save(figure, output, "router_variant_quality_cost")
+
+
+def build_findings(adaptive: dict, systems: dict, addons: dict, output: Path) -> dict:
     frontier = adaptive["frontier"]
 
     def result(dataset: str, method: str) -> dict:
@@ -307,6 +364,8 @@ def build_findings(adaptive: dict, systems: dict, output: Path) -> dict:
         },
         "adaptive": adaptive,
         "systems": systems,
+        "query_regions": addons["query_regions"],
+        "router_variants": addons["router_variants"],
         "primary_findings": {
             "qasper_quality_high": qasper_high["quality"],
             "qasper_quality_learned": qasper_learned["quality"],
@@ -325,6 +384,8 @@ def build_findings(adaptive: dict, systems: dict, output: Path) -> dict:
             "Search, gather, page, cache, and batching timings are standalone CPU prototype measurements.",
             "RAG, long-context, and KV-cache rows are controlled matched-budget proxies, not upstream production implementations.",
             "Inherited Qwen serving rows are measured single-request observations; concurrency HBM is extrapolated.",
+            "Query-region results are deterministic matched lexical controls, not natural-prompt semantic understanding.",
+            "R2 uses a dependency-free hashing encoder interface rather than a benchmarked pretrained NLP encoder.",
         ],
     }
     (output / "paper3_5_findings.json").write_text(
@@ -344,13 +405,19 @@ def run(output: Path) -> dict:
         output,
         ROOT / "docs/papers/shared/results/paper2_5_iterative_pra/output_validation/gate3_generation_rows.csv",
     )
+    addons = run_addon_studies(
+        ROOT / "docs/papers/shared/results/paper2_5_iterative_pra/monotonic_adaptive_competition/transition_policy_rows.csv",
+        output,
+    )
     plot_adaptive_frontier(output)
     plot_calibration(output)
     plot_indexed_search(output)
     plot_concurrency(output)
     plot_baselines(output)
     plot_architecture(output)
-    return build_findings(adaptive, systems, output)
+    plot_query_region_results(output)
+    plot_router_variants(output)
+    return build_findings(adaptive, systems, addons, output)
 
 
 def parse_args() -> argparse.Namespace:

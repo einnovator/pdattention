@@ -24,7 +24,7 @@ _ORACLE_MARKERS = ("oracle", "gold", "ground_truth", "answer_correct", "evidence
 class EffortProfile:
     """One validated discrete point in the PRA control-vector space.
 
-    The fields instantiate ``(F,R,K,H,B,theta,L,G,M)``.  Conceptual parent and
+    The fields instantiate ``(Q,F,R,K,H,B,theta,L,G,M)``.  Conceptual parent and
     physical native-K/V budgets are separate because broad search does not have
     to imply broad disclosure.
     """
@@ -43,6 +43,7 @@ class EffortProfile:
     consumer_layers: tuple[int, ...]
     granularity_tokens: int
     materialization_policy: str
+    query_region_policy: str = "head"
 
     def __post_init__(self) -> None:
         if not self.name or self.level < 0:
@@ -61,12 +62,15 @@ class EffortProfile:
             raise ValueError("routing_threshold must lie in [0, 1].")
         if not self.search_layers or not self.consumer_layers:
             raise ValueError("Effort profiles require search and consumer layers.")
+        if not self.query_region_policy:
+            raise ValueError("Effort profiles require a query-region policy.")
 
     @property
     def control_vector(self) -> dict[str, Any]:
-        """Return the public ``F/R/K/H/B/theta/L/G/M`` representation."""
+        """Return the public ``Q/F/R/K/H/B/theta/L/G/M`` representation."""
 
         return {
+            "Q": {"policy": self.query_region_policy},
             "F": {"policy": self.facet_policy, "count": self.facet_count},
             "R": self.retained_roots,
             "K": self.neighbors_per_expansion,
@@ -154,15 +158,15 @@ def default_effort_profiles() -> tuple[EffortProfile, ...]:
         (
             EffortProfile(
                 "E0_low", 0, "last_span", 1, 1, 2, 0, 2, 256, 0.65,
-                (27,), (27,), 256, "evidence_centered",
+                (27,), (27,), 256, "evidence_centered", "head",
             ),
             EffortProfile(
                 "E1_medium", 1, "multi_span", 2, 2, 4, 1, 4, 512, 0.45,
-                (24, 27), (26, 27), 128, "evidence_centered",
+                (24, 27), (26, 27), 128, "evidence_centered", "structural",
             ),
             EffortProfile(
                 "E2_high", 2, "multi_scale", 4, 4, 8, 3, 8, 1024, 0.25,
-                (20, 24, 27), (24, 25, 26, 27), 64, "threshold_gated_radius",
+                (20, 24, 27), (24, 25, 26, 27), 64, "threshold_gated_radius", "multi_region",
             ),
         )
     )
@@ -173,6 +177,12 @@ class ControllerFeatures:
     """Cheap query, routing, output, and memory observations for effort choice."""
 
     query_length: float = 0.0
+    prompt_length: float = 0.0
+    query_region_count: float = 1.0
+    query_region_confidence: float = 0.0
+    query_region_score_gap: float = 0.0
+    query_region_disagreement: float = 0.0
+    query_region_expansion: float = 0.0
     sentence_count: float = 0.0
     entity_density: float = 0.0
     relation_density: float = 0.0
@@ -437,6 +447,13 @@ class RetryTrace:
     generation_seconds: float
     escalation_reasons: tuple[str, ...]
     stop_reason: str
+    query_region_policy: str = "head"
+    query_start: int | None = None
+    query_end: int | None = None
+    query_region_count: int = 0
+    query_region_confidence: float = 0.0
+    query_region_method: str = "unreported"
+    query_region_expansion: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -567,6 +584,21 @@ class AdaptiveRetryAgent:
                 generation_seconds=current.generation_seconds,
                 escalation_reasons=reasons if not stop else (),
                 stop_reason=stop_reason if stop else "",
+                query_region_policy=profile.query_region_policy,
+                query_start=(
+                    int(current.metadata["query_spans"][0][0])
+                    if current.metadata.get("query_spans")
+                    else None
+                ),
+                query_end=(
+                    int(current.metadata["query_spans"][0][1])
+                    if current.metadata.get("query_spans")
+                    else None
+                ),
+                query_region_count=len(current.metadata.get("query_spans", ())),
+                query_region_confidence=float(current.metadata.get("query_region_confidence", 0.0)),
+                query_region_method=str(current.metadata.get("query_region_method", "unreported")),
+                query_region_expansion=int(current.metadata.get("query_region_expansion", 0)),
             )
             traces.append(trace)
             current.features = features

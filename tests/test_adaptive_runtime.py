@@ -99,6 +99,12 @@ def test_retry_escalates_monotonically_and_reuses_state() -> None:
             reusable_state={"profile": profile.name},
             reused_search_items=0 if previous is None else 1,
             reused_kv_tokens=0 if previous is None else previous.active_native_kv,
+            metadata={
+                "query_spans": ((3, 7),),
+                "query_region_confidence": 0.8,
+                "query_region_method": "structural",
+                "query_region_expansion": int(previous is not None),
+            },
         )
 
     agent = AdaptiveRetryAgent(
@@ -122,6 +128,12 @@ def test_retry_escalates_monotonically_and_reuses_state() -> None:
     assert result.traces[1].reused_kv_tokens == 256
     assert result.traces[0].escalation_reasons
     assert result.traces[1].stop_reason == "confidence"
+    assert result.traces[0].query_start == 3
+    assert result.traces[0].query_end == 7
+    assert result.traces[0].query_region_count == 1
+    assert result.traces[0].query_region_confidence == pytest.approx(0.8)
+    assert result.traces[0].query_region_method == "structural"
+    assert result.traces[1].query_region_expansion == 1
 
 
 def test_retry_enforces_maximum_active_kv_budget() -> None:

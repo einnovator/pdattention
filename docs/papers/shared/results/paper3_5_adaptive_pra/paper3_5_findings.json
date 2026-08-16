@@ -1470,6 +1470,9 @@
             ]
           },
           "M": "evidence_centered",
+          "Q": {
+            "policy": "head"
+          },
           "R": 1,
           "theta": 0.65
         },
@@ -1483,6 +1486,7 @@
         "name": "E0_low",
         "native_kv_budget": 256,
         "neighbors_per_expansion": 2,
+        "query_region_policy": "head",
         "retained_roots": 1,
         "routing_threshold": 0.65,
         "search_layers": [
@@ -1518,6 +1522,9 @@
             ]
           },
           "M": "evidence_centered",
+          "Q": {
+            "policy": "structural"
+          },
           "R": 2,
           "theta": 0.45
         },
@@ -1531,6 +1538,7 @@
         "name": "E1_medium",
         "native_kv_budget": 512,
         "neighbors_per_expansion": 4,
+        "query_region_policy": "structural",
         "retained_roots": 2,
         "routing_threshold": 0.45,
         "search_layers": [
@@ -1572,6 +1580,9 @@
             ]
           },
           "M": "threshold_gated_radius",
+          "Q": {
+            "policy": "multi_region"
+          },
           "R": 4,
           "theta": 0.25
         },
@@ -1585,6 +1596,7 @@
         "name": "E2_high",
         "native_kv_budget": 1024,
         "neighbors_per_expansion": 8,
+        "query_region_policy": "multi_region",
         "retained_roots": 4,
         "routing_threshold": 0.25,
         "search_layers": [
@@ -2780,7 +2792,9 @@
     "Output entropy is calibrated separately on the Paper-3 controlled model and is not sufficient by itself.",
     "Search, gather, page, cache, and batching timings are standalone CPU prototype measurements.",
     "RAG, long-context, and KV-cache rows are controlled matched-budget proxies, not upstream production implementations.",
-    "Inherited Qwen serving rows are measured single-request observations; concurrency HBM is extrapolated."
+    "Inherited Qwen serving rows are measured single-request observations; concurrency HBM is extrapolated.",
+    "Query-region results are deterministic matched lexical controls, not natural-prompt semantic understanding.",
+    "R2 uses a dependency-free hashing encoder interface rather than a benchmarked pretrained NLP encoder."
   ],
   "primary_findings": {
     "hotpot_effort_high": 152.0,
@@ -2793,6 +2807,113 @@
     "qasper_effort_reduction": 0.6000000000000001,
     "qasper_quality_high": 0.9,
     "qasper_quality_learned": 0.9
+  },
+  "query_regions": {
+    "gate1_headroom": {
+      "explicit_query_first_root_recall": 1.0,
+      "head_query_first_root_recall": 0.0,
+      "passed": true
+    },
+    "gate2_automatic_discovery": {
+      "oracle_headroom_captured": 1.0,
+      "passed": true,
+      "structural_query_first_root_recall": 1.0
+    },
+    "gate3_retry": {
+      "correct_to_broken": 0,
+      "mean_added_search_effort": 4.8,
+      "passed": true,
+      "wrong_to_corrected": 216
+    },
+    "interpretation": "Explicit and structural query roles remove serialization sensitivity in this matched lexical control. The result establishes SDK headroom and deterministic baseline behavior, not natural-language semantic region understanding.",
+    "layout_sensitivity": {
+      "head_spread": 1.0,
+      "structural_spread": 0.0
+    },
+    "learned_region_router_required": false,
+    "schema_version": "1.0"
+  },
+  "router_variants": {
+    "gate_a_profiles": "reported by R0 and fixed-profile baselines in the parent study",
+    "gate_b_independent_heads": "evaluated",
+    "gate_c_semantic_encoder": "evaluated with a dependency-free hashing baseline; replaceable by a compact pretrained encoder",
+    "gate_d_interactions": {
+      "continue_to_controller_transformer": false,
+      "evaluated": true,
+      "r2_cost": 104.01230769230769,
+      "r2_quality": 0.5907692307692308,
+      "r3_cost": 102.56,
+      "r3_quality": 0.5907692307692308
+    },
+    "heldout_units": 65,
+    "interpretation": "The comparison tests whether compositional and semantic capacity moves the held-out quality/cost frontier. Profile-derived labels make parameter interactions highly coupled by construction, so interaction mutual information is diagnostic rather than causal.",
+    "router_seeds": [
+      1,
+      7,
+      21,
+      42,
+      87
+    ],
+    "schema_version": "1.0",
+    "summary": [
+      {
+        "cost": 109.9076923076923,
+        "cost_regret": 19.323076923076922,
+        "joint_exact": 0.8,
+        "mean_head_accuracy": 0.8,
+        "n": 65,
+        "oracle_cost": 90.58461538461539,
+        "oracle_quality": 0.6153846153846154,
+        "overprediction": 0.16923076923076924,
+        "quality": 0.6153846153846154,
+        "quality_regret": 0.0,
+        "underprediction": 0.03076923076923077,
+        "variant": "R0_profile"
+      },
+      {
+        "cost": 103.6923076923077,
+        "cost_regret": 13.107692307692307,
+        "joint_exact": 0.7753846153846153,
+        "mean_head_accuracy": 0.7789010989010989,
+        "n": 325,
+        "oracle_cost": 90.58461538461539,
+        "oracle_quality": 0.6153846153846154,
+        "overprediction": 0.16615384615384615,
+        "quality": 0.5938461538461538,
+        "quality_regret": 0.021538461538461538,
+        "underprediction": 0.055384615384615386,
+        "variant": "R1_feature_mlp"
+      },
+      {
+        "cost": 104.01230769230769,
+        "cost_regret": 13.427692307692308,
+        "joint_exact": 0.7938461538461539,
+        "mean_head_accuracy": 0.7986813186813186,
+        "n": 325,
+        "oracle_cost": 90.58461538461539,
+        "oracle_quality": 0.6153846153846154,
+        "overprediction": 0.15692307692307692,
+        "quality": 0.5907692307692308,
+        "quality_regret": 0.024615384615384615,
+        "underprediction": 0.046153846153846156,
+        "variant": "R2_encoder_mlp"
+      },
+      {
+        "cost": 102.56,
+        "cost_regret": 11.975384615384616,
+        "joint_exact": 0.8061538461538461,
+        "mean_head_accuracy": 0.8061538461538461,
+        "n": 325,
+        "oracle_cost": 90.58461538461539,
+        "oracle_quality": 0.6153846153846154,
+        "overprediction": 0.14461538461538462,
+        "quality": 0.5907692307692308,
+        "quality_regret": 0.024615384615384615,
+        "underprediction": 0.04923076923076923,
+        "variant": "R3A_autoregressive"
+      }
+    ],
+    "validation_units": 95
   },
   "runtime": {
     "cuda_available": true,
@@ -2813,14 +2934,14 @@
       "measured": true,
       "miss_rate": 0.008333333333333333,
       "prefetch_policy": "graph_neighbor",
-      "replay_seconds": 0.0003991000121459365,
+      "replay_seconds": 0.0001849000109359622,
       "requests": 240,
       "useful_prefetches": 17,
       "wasted_prefetches_at_end": 2,
       "workload": "controlled_hotset_plus_path"
     },
     "cache_rows": 27,
-    "gemm_speedup_vs_loop_at_4096": 2526.6435735352193,
+    "gemm_speedup_vs_loop_at_4096": 2927.1447602050966,
     "indexed_search_rows": 15,
     "kernel_rows": 6,
     "kv_baseline_rows": 15,
@@ -2832,7 +2953,7 @@
       "measured": true,
       "miss_rate": 0.004166666666666667,
       "prefetch_policy": "oracle_next_upper_bound",
-      "replay_seconds": 0.0002957000397145748,
+      "replay_seconds": 0.0006058000726625323,
       "requests": 240,
       "useful_prefetches": 40,
       "wasted_prefetches_at_end": 0,

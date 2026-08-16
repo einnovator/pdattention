@@ -35,6 +35,12 @@ and automatic modes, a monotonic retry state machine, oracle-free features, cali
 structured traces, exact batched native-Q/K search, interval gathering, a page-table prototype,
 cache policies, and heterogeneous batching.
 
+Two add-on studies extend the controller.  Across 360 matched prose, log, and URL-list prompts,
+recent-head root recall is .400 with a 1.0 layout spread, while explicit and structural spans reach
+1.000 with zero spread and survive 8K-token displacement in this labeled lexical control.  On the
+frozen 65-unit cohort, R0 retains oracle quality .615 at cost 109.9; R1--R3A lower cost to
+102.6--104.0 but quality to .591--.594, so added controller complexity is not promoted.
+
 The adaptive study uses 95 validation and 65 held-out example--seed units from frozen Paper-2.5
 routing traces.  On QASPER, the learned controller matches the always-high chain-completion rate
 (.900) while reducing mean abstract effort from 152.0 to 60.8, a 60.0\% reduction.  On HotpotQA,
@@ -82,7 +88,7 @@ where $Q$ is held-out output or retrieval quality and $C$ includes conceptual se
 generation retries, and measured latency.  Equation~\ref{eq:adaptive-goal} is not guaranteed on
 every dataset.  If almost every query is hard, the correct controller should spend the high budget.
 
-This paper makes six contributions:
+This paper makes eight contributions:
 \begin{enumerate}
 \item It defines a public PRA control vector and freezes three monotonic effort profiles rather
 than predicting unconstrained continuous parameters.
@@ -96,6 +102,10 @@ fixed-page K/V prototype, cache/prefetch policies, and heterogeneous batching.
 minimum effort on held-out HotpotQA and QASPER traces.
 \item It constructs matched-budget RAG, long-context, and K/V-selection frontiers while clearly
 separating controlled proxies from production third-party implementations.
+\item It makes query-region location and extent explicit, supports structured prompt roles, and
+tests matched query-first, query-last, query-middle, log, and URL-list layouts.
+\item It compares profile, independent-head, semantic-input, and interaction-aware effort routers
+under one minimum-sufficient-effort target and a quality/cost stop rule.
 \end{enumerate}
 
 Full-weight PRA retraining is deliberately absent.  That intervention belongs to Paper~4.  Here the
@@ -107,9 +117,10 @@ scientific object is adaptive inference over frozen routing and consumer behavio
 
 At attempt $t$, the runtime selects
 \begin{equation}
- a_t=(F,R,K,H,B_c,B_{kv},\theta,L_s,L_c,G,M),
+ a_t=(\mathcal Q,F,R,K,H,B_c,B_{kv},\theta,L_s,L_c,G,M),
 \end{equation}
-where $F$ is the facet policy, $R$ retained roots, $K$ candidate neighbors per expansion, $H$ hop
+where $\mathcal Q$ is one or more functional query regions, $F$ is the facet policy, $R$ retained
+roots, $K$ candidate neighbors per expansion, $H$ hop
 depth, $B_c$ conceptual parent budget, $B_{kv}$ physical native-K/V budget, $\theta$ a closure
 threshold, $L_s$ search layers, $L_c$ consumer layers, $G$ routing/materialization granularity, and
 $M$ disclosure policy.  We separate $B_c$ and $B_{kv}$ because Paper~3 found that broad search can
@@ -124,13 +135,13 @@ universal hyperparameters; they are a stable SDK contract and an initial experim
 \caption{Validation-frozen effort profiles.  The layer identifiers refer to the inherited 28-layer
 Qwen experiments.  Lower routing thresholds permit broader closure.}
 \label{tab:profiles}
-\begin{tabular}{lrrrrrrrl}
+\begin{tabular}{llrrrrrrrl}
 \toprule
-Profile & facets & $R$ & $K$ & $H$ & $B_c$ & $B_{kv}$ & $G$ & consumer layers \\
+Profile & $\mathcal Q$ & facets & $R$ & $K$ & $H$ & $B_c$ & $B_{kv}$ & $G$ & consumer layers \\
 \midrule
-E0 low & 1 & 1 & 2 & 0 & 2 & 256 & 256 & 27 \\
-E1 medium & 2 & 2 & 4 & 1 & 4 & 512 & 128 & 26--27 \\
-E2 high & 4 & 4 & 8 & 3 & 8 & 1024 & 64 & 24--27 \\
+E0 low & head & 1 & 1 & 2 & 0 & 2 & 256 & 256 & 27 \\
+E1 medium & structural & 2 & 2 & 4 & 1 & 4 & 512 & 128 & 26--27 \\
+E2 high & multi-region & 4 & 4 & 8 & 3 & 8 & 1024 & 64 & 24--27 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -176,6 +187,44 @@ Controller regret is
 subject to reporting whether $Q_i(\hat e_i)$ matches $Q_i(e_i^*)$.  Negative regret without matched
 quality is not a saving.
 
+\subsection{Query-region discovery: separating intent from position}
+
+The runtime first asks which prompt region specifies the retrieval objective and only then asks how
+to facet that region.  These are distinct decisions:
+\begin{equation}
+ \mathrm{prompt}\rightarrow\mathcal Q=\{[s_j,e_j)\}_j
+ \rightarrow\{q_1,\ldots,q_F\}\rightarrow\mathrm{roots}\rightarrow\mathrm{search}.
+\end{equation}
+Functional roles include instruction, query, current state, context, references, history, and tool
+or log output.  Position does not determine role.  Explicit token spans or caller-labeled segments
+are authoritative.  Raw text falls back to a deterministic structural ladder that recognizes
+question/instruction headings and punctuation while discounting code fences, logs, context labels,
+and URL lists.  A retry may reinterpret a recent-head cue as a structural or multi-region cue before
+increasing $R$, $K$, $H$, or K/V budget.
+
+The selection records start, end, region count, method, confidence, and score margin.  Multiple
+regions support a persistent instruction plus a narrower current question; session mode selects the
+smallest current query state rather than the whole conversation.  The heuristic is deliberately a
+baseline.  A learned span scorer is justified only if explicit-span headroom remains after structural
+selection on natural prompts.
+
+\subsection{Learned effort routing: profiles to interacting heads}
+
+All controller families target minimum sufficient effort rather than the highest-scoring action:
+\begin{equation}
+ a_i^*=\arg\min_a C(a)\quad\text{subject to}\quad Q_i(a)\ge q_i^*.
+\end{equation}
+R0 selects one validation-frozen profile.  R1 uses a shared feature MLP and independent categorical
+heads.  R2 adds a cached query-region representation.  R3A predicts controls autoregressively in the
+order $\mathcal Q\rightarrow F\rightarrow R\rightarrow K\rightarrow H\rightarrow B$.  Integer
+controls and thresholds use finite categorical values; no Cartesian action class is constructed.
+For independent heads,
+\begin{equation}
+ \mathcal L=\sum_j\lambda_j\,\mathrm{CE}(\hat a_j,a_j^*).
+\end{equation}
+Evaluation reports each head, under- and over-allocation, quality regret, cost regret, calibration,
+and latency.  Joint exact match is secondary to the held-out quality/expected-effort frontier.
+
 \section{Retry and Runtime Design}
 
 \begin{figure}[H]
@@ -215,8 +264,9 @@ and no-change retries separately.
 
 A trace contains attempt index, profile and control vector, active K/V, selected-parent count,
 incorrect-answer probability, routing entropy, answer margin, consistency, search/materialization/
-generation time, reuse counts, escalation signals, and stop reason.  It does not contain hidden
-chain-of-thought.  Evaluator outcomes live in experiment rows outside the controller feature path.
+generation time, reuse counts, query-region bounds, confidence, method and expansion count,
+escalation signals, and stop reason.  It does not contain hidden chain-of-thought.  Evaluator
+outcomes live in experiment rows outside the controller feature path.
 
 \subsection{Indexed native-Q/K search}
 
@@ -381,6 +431,105 @@ separately because routing and output confidence were not observed on one unifie
 \label{fig:risk-coverage}
 \end{figure}
 
+\section{Query-Region and Router-Architecture Results}
+
+\subsection{Matched prompt layouts}
+
+The controlled corpus crosses 24 semantic cases, three payload forms (prose, logs, and URL lists),
+and five serializations.  Each row keeps evidence, eight candidate roots, one selected root, 16
+active native-K/V tokens, and a global facet fixed.  The lexical candidate geometry is intentionally
+simple: the experiment isolates cue position and role detection, not pretrained semantic routing.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Matched query-layout headline result.  Each policy cell is root R@1 / answer-quality
+proxy; active K/V is 16 throughout.  Effort lists head / explicit / structural / reinterpretation
+lexical comparisons.}
+\label{tab:query-layout}
+\begin{tabular}{lcccccc}
+\toprule
+Layout & head & explicit & structural & head+reinterpret & active K/V & effort \\
+\midrule
+$C+Q$ & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 16 & 8/8/8/8 \\
+$Q+C$ & .00/.00 & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 16 & 8/8/8/16 \\
+$C_1+Q+C_2$ & .00/.00 & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 16 & 8/8/8/16 \\
+$I+C+Q$ & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 16 & 8/8/8/8 \\
+$Q+$long payload & .00/.00 & 1.00/1.00 & 1.00/1.00 & 1.00/1.00 & 16 & 8/8/8/16 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\textwidth]{../shared/results/paper3_5_adaptive_pra/query_region_layout_frontier.png}
+\caption{Serialization changes a suffix-head cue but not explicit or structurally discovered
+regions in the matched control.  Reinterpretation pays a second search only when the structural cue
+does not overlap the recent head.}
+\label{fig:query-layout}
+\end{figure}
+
+Head R@1 averages .400 and its layout spread is 1.0.  Explicit and structural regions both average
+1.000 with zero spread, so Gate~1 and Gate~2 pass in this corpus.  Reinterpretation corrects all 216
+head failures, breaks none of 144 initially correct cases, and adds eight comparisons per corrected
+case (4.8 averaged over all requests).  This perfect heuristic result follows from explicit question
+labels and punctuation; it is a structural control, not evidence that natural query-role discovery
+is solved.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/query_region_displacement.png}
+\caption{Early-query displacement.  The 16-token head fails once payload follows the query, while
+explicit and structural regions preserve root R@1 through 8,192 following payload tokens.}
+\label{fig:query-displacement}
+\end{figure}
+
+The displacement sweep makes the motivating failure direct: head R@1 changes from 1.0 at zero
+following tokens to zero at 32 and remains zero through 8K; explicit and structural selection remain
+1.0.  Multi-region, facet, root-count, URL-role, and session-isolation rows are retained in the public
+artifacts.  Broad all-region selection reaches only .333 overall, so more query-region breadth is not
+monotonically better.
+
+\subsection{Router capacity and the stop rule}
+
+R0--R3A share the 95 validation / 65 test split and validation-derived minimum-effort labels.  R1
+uses runtime features only.  R2 adds a 32-dimensional signed-hashing query channel to exercise the
+semantic-router interface without downloading or claiming a pretrained encoder.  R3A adds
+autoregressive parameter conditioning.  R1--R3A use five seeds.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out router architecture frontier.  Quality is complete-chain rate; cost is abstract
+PRA effort.  R0 has one deterministic fit; learned multi-head values pool five seeds.}
+\label{tab:router-variants}
+\begin{tabular}{lrrrrrr}
+\toprule
+Router & quality & cost & joint exact & mean head acc. & under & over \\
+\midrule
+R0 profile & .615 & 109.9 & .800 & .800 & .031 & .169 \\
+R1 feature MLP & .594 & 103.7 & .775 & .779 & .055 & .166 \\
+R2 semantic MLP & .591 & 104.0 & .794 & .799 & .046 & .157 \\
+R3A autoregressive & .591 & 102.6 & .806 & .806 & .049 & .145 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/router_variant_quality_cost.png}
+\caption{Added controller capacity does not improve the held-out quality/cost frontier.  R3A is
+slightly cheaper than R2 at the same quality, but both remain below R0 quality.}
+\label{fig:router-variants}
+\end{figure}
+
+The profile selector remains the supported controller.  R1--R3A save 5.9--7.3 cost units relative
+to R0 by under-allocating more often, but lose 2.2--2.5 quality points.  R3A improves joint parameter
+exactness to .806 and lowers cost relative to R2 without restoring quality.  The interaction gate
+therefore fails: no controller transformer is built.  Parameter mutual information is reported only
+as profile-label coupling because all heads inherit three jointly defined profiles; it is not causal
+evidence that changing one PRA control changes another.
+
 \section{Systems Results}
 
 \subsection{Exact GEMM is the current small-index default}
@@ -543,7 +692,21 @@ pra-hf adaptive plan --mode auto --features request_features.json \
   --trace-output request_plan.json
 \end{lstlisting}
 
-Manual mode uses the same profile representation and accepts explicit facet, root, neighbor, hop,
+Query intent can be supplied as a token span, structured roles, or inferred structurally:
+\begin{lstlisting}[language=Python]
+selector.select(prompt, query_spans=((q_start, q_end),))
+selector.select(segments=[
+    PromptSegment("query", question),
+    PromptSegment("context", logs),
+])
+selector.select(prompt, policy="structural")
+\end{lstlisting}
+The selector returns half-open token intervals, confidence, score margin, method, and selected text.
+The model adapter can use those intervals to construct facets without assuming that query end equals
+prompt end.  Structured segments are preferred in public applications; automatic inference does not
+override explicit metadata.
+
+Manual mode uses the same profile representation and accepts explicit query-region, facet, root, neighbor, hop,
 conceptual-budget, K/V, threshold, layer, granularity, and materialization overrides.  Overrides are
 request-local; they do not silently redefine the validated global ladder.
 
@@ -555,10 +718,15 @@ An independent implementation needs four invariants:
 tokens separately.
 \item Label every timing as component, end-to-end, measured, or extrapolated.  A Python microbenchmark
 cannot become a production throughput claim by omission.
+\item Keep query-role discovery separate from faceting, and preserve explicit caller spans or roles
+through retries unless the caller permits reinterpretation.
 \end{enumerate}
 
 The relevant implementation is compact.  \texttt{adaptive\_runtime.py} defines profiles, feature
 validation, learned and hand controllers, stop policy, retries, consistency, and calibration.
+\texttt{query\_regions.py} defines structured segments, explicit spans, structural discovery,
+multi-region selection, and cue reinterpretation.  \texttt{effort\_router.py} defines finite action
+spaces, independent categorical heads, a cached semantic-input contract, and autoregressive heads.
 \texttt{serving\_runtime.py} defines native-Q/K indexes, merged interval gather, page storage,
 eviction, and ragged packing.  The experiment scripts freeze validation decisions and emit every
 normalized row needed to regenerate the figures and tables.
@@ -577,6 +745,19 @@ The retry result is similarly conditional.  Retry recovers failures, but confide
 early enough to repay regeneration.  Direct minimum-effort prediction is more valuable on QASPER;
 cheap-first retry is a robust fallback.  Better answer-stability signals, incremental decoding, and
 prefix-cache reuse are the next systems targets.
+
+The add-on studies sharpen what escalation means.  Failure may require a different cue rather than
+more roots under the same misplaced cue.  Explicit roles and spans are both cheaper and more reliable
+than discovering role from raw serialization, so applications should expose them when possible.
+Automatic structural reinterpretation is a bounded fallback.  Query-region breadth has the same
+two-sided character as other PRA controls: it can recover distributed instructions, but it can also
+dilute the objective and multiply facets, roots, and comparisons.
+
+They also provide a controller-complexity stop.  Independent parameter heads are compositional and
+the autoregressive model can represent interactions, but neither improves the present quality/cost
+frontier.  A small profile selector is not merely an implementation convenience here; it is the
+empirically preferred point.  A compact pretrained encoder should be tested only on a larger natural
+cohort where semantic query classes leave measured headroom over runtime features.
 
 \subsection{Cognitive interpretation}
 
@@ -605,9 +786,16 @@ answer.  Output confidence comes from a separate controlled model, so a combined
 controller remains untested.  The held-out adaptive cohort contains only 65 example--seed units and
 inherits Paper-2.5's model and dataset choices.
 
-The learned controller is linear.  It establishes a deterministic baseline but does not exploit
-temporal retry histories or richer question semantics.  The output calibration cohort is small and
-imbalanced.  Semantic consistency uses token F1.  It can miss paraphrase and contradiction.
+The supported learned controller is linear.  R1--R3A test additional capacity, but the R2 semantic
+input is a dependency-free hashing baseline rather than a pretrained NLP encoder.  The profile-derived
+targets couple parameter labels by construction, and the cohort is too small to establish natural
+parameter interactions.  The output calibration cohort is small and imbalanced.  Semantic
+consistency uses token F1.  It can miss paraphrase and contradiction.
+
+Query-region evaluation is a deterministic lexical control with explicit headings, 24 semantic
+templates, and synthetic prose/log/URL payloads.  Perfect structural detection is therefore a gate,
+not a natural-prompt accuracy estimate.  Stack traces, tables, email threads, ambiguous multi-turn
+instructions, tokenizer-specific span mapping, and a lightweight learned span scorer remain untested.
 
 The page cache is a standalone implementation, not vLLM PagedAttention.  Search, gather, caching,
 and batching timings are CPU component benchmarks.  HBM concurrency values are extrapolated.
@@ -632,6 +820,12 @@ Monotonic retry recovers failures but is not free; generation overhead can outwe
 Entropy alone is not a sufficient stop signal, while combined observable routing features provide
 useful but imperfect failure discrimination.
 
+Adaptive PRA must also decide what the query is.  In matched layout controls, explicit and structural
+query regions remove the complete serialization sensitivity of a recent-head cue, and reinterpretation
+changes the cue before widening search.  This is strong SDK evidence but only synthetic structural
+evidence.  More controller capacity is likewise not automatically useful: R1--R3A save modest effort
+by sacrificing held-out quality, leaving the profile selector as the supported default.
+
 The systems prototype establishes exact batched search, K/V gather parity, page and cache accounting,
 and heterogeneous batching.  It also identifies the unfinished work plainly: coarse search must
 beat GEMM at scale, page gathering must move out of Python, and adaptive control must run inside a
@@ -647,6 +841,10 @@ All normalized artifacts are under
 \item effort profiles, controller features/training/calibration, oracle ceiling, regret, retry
 traces/outcomes, and adaptive frontier;
 \item indexed search, gather, page, cache, batching, serving, RAG, K/V, and long-context rows;
+\item query-region configurations plus per-layout, detection, retrieval, output, displacement,
+facet, root, retry, and session summaries, findings, and figures;
+\item router profiles, action spaces, oracle targets, R0--R3 results, per-head calibration,
+interaction diagnostics, regret, latency, query-class summaries, findings, and frontier figure;
 \item baseline taxonomy, findings JSON, and all paper figures in PNG and PDF form.
 \end{itemize}
 
