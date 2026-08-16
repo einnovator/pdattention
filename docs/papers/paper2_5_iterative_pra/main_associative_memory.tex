@@ -26,8 +26,9 @@ remains statistically unresolved.  Ordinary executable memory is distractor domi
 attention mass to evidence and .521 to memory distractors.  A matched oracle intervention raises
 frozen accuracy from .140 to .398 and correct-label margin from $-3.103$ to $-.703$.
 
-These results identify controlled activation, not absolute frozen-consumer incapacity, as the
-dominant limitation.  Transformer memory contains topology that depends causally on receptive field;
+These results reject absolute consumer incapacity; noisy controlled activation is the leading tested
+limitation, but attention dilution is not isolated as its sole mechanism.
+Transformer memory contains topology that depends causally on receptive field;
 iterative PRA can traverse that topology; and the frozen computation can use correctly activated
 memory.  The unresolved problem is to make useful evidence dominate sparse external-memory influence
 and to preserve that influence through subsequent layers.
@@ -77,7 +78,7 @@ Does transformer memory expose associative topology? & Yes: native Q/K contains 
 Does receptive field affect topology? & Yes: final-layer R@4 is .428 at $W=16$ and .187 globally & Locality preserves stronger explicit structure. \\
 Can iterative PRA traverse it? & Yes: path recovery usually rises at the same 20-state budget & Evolving-state access is an operational primitive. \\
 Does improved traversal help computation? & Yes when useful evidence changes: margin $+2.164$ & Traversal is useful, but improved cases are sparse. \\
-Why is aggregate answer gain weak? & Selected memory gives .147 mass to evidence and .521 to distractors & Controlled activation is the dominant bottleneck. \\
+Why is aggregate answer gain weak? & Selected memory gives .147 mass to evidence and .521 to distractors & Noisy controlled activation is the leading measured bottleneck. \\
 Can the frozen model consume correct PRA memory? & Yes: oracle accuracy .140$\rightarrow$.398 & Frozen-consumer incapacity is rejected as an absolute explanation. \\
 Do layers matter? & Yes: search, consumption, and preservation profiles differ & There is no universal best PRA layer. \\
 \bottomrule
@@ -117,11 +118,22 @@ At a PRA layer, memory and direct-context K/V share one softmax.  For the final 
 \begin{equation}
   A_E=\sum_{j\in\mathrm{evidence}}\alpha_j,\quad
   A_J=\sum_{j\in\mathrm{memory\ distractors}}\alpha_j,\quad
-  A_N=\sum_{j\in\mathrm{native\ context}}\alpha_j,quad
+  A_N=\sum_{j\in\mathrm{native\ context}}\alpha_j,\quad
   A_E+A_J+A_N=1.
 \end{equation}
 This decomposition exposes whether a correct identity merely appears in the working set or actually
 competes successfully for influence.
+For an exact evidence mask $KV_E$ and selected physical set $KV_S$, we report
+\begingroup\small
+\begin{equation}
+  P_E^{KV}=\frac{|KV_E\cap KV_S|}{|KV_S|},\quad
+  R_E^{KV}=\frac{|KV_E\cap KV_S|}{|KV_E|},\quad
+  P_E^{\mathrm{attn}}=\frac{A_E}{A_E+A_J},\quad
+  S_E^{\mathrm{attn}}=\frac{A_E}{A_E+A_J+A_N}=A_E.
+\end{equation}
+\endgroup
+$P_E^{\mathrm{attn}}$ conditions on memory and $S_E^{\mathrm{attn}}$ includes native context;
+``precision'' requires an explicit selected-set denominator and evidence mask.
 
 \begin{figure}[H]
 \centering
@@ -376,6 +388,8 @@ per window, the strongest exact two-sided sign result is still $p=.0625$; the re
 directionally consistent causal ceiling, not a fully powered deployment comparison.  Wrong memory
 lowers accuracy to .058.  Memory content therefore matters, and the frozen transformer has
 substantial latent capacity to consume correctly activated PRA memory.
+The matched oracle, wrong, and shuffled controls establish content specificity, not a sparsity-only
+benefit, but do not isolate softmax dilution: value content, residual state, and preservation also change.
 
 \begin{figure}[H]
 \centering
@@ -527,8 +541,9 @@ $\searrow$ later erasure (21.6\%) $\rightarrow$ lost gain\\
 $\downarrow$\\
 \textbf{OUTPUT} \quad (oracle accuracy .140$\rightarrow$.398)
 \end{minipage}}
-\caption{Final causal pipeline.  The dominant measured loss is controlled activation between
-selected memory and evidence-dominated attention; consumer placement and preservation are secondary.}
+\caption{Final diagnostic pipeline.  Noisy controlled activation between selected memory and
+evidence-dominated attention is the leading measured loss; the intervention does not isolate
+softmax dilution from value content, consumer placement, or preservation.}
 \label{fig:causal-pipeline}
 \end{figure}
 
@@ -751,15 +766,21 @@ resource and control questions, not to claim biological equivalence.
 The experiments support a progression from \emph{potential memory} to \emph{activated memory},
 \emph{attended memory}, \emph{useful state change}, and \emph{preserved computation}.  Receptive
 field changes potential associative topology.  Evolving-state PRA can traverse that topology.
-Ordinary selection, however, exposes too many plausible distractors, so evidence does not dominate
-the shared softmax.  Oracle forcing demonstrates that when evidence does dominate, the frozen
-transformer can convert it into substantially better margins and predictions.
+Ordinary selection, however, is distractor dominated under the shared softmax.  Oracle forcing
+jointly changes retained content and attention allocation and produces substantially better margins
+and predictions.  The controls therefore identify noisy activation as a leading failure mode, but
+they do not establish attention dilution as the unique cause of the output difference.
 
-Controlled activation is therefore the primary unresolved mechanism.  It is not equivalent to
+Controlled activation is therefore a principal unresolved mechanism.  It is not equivalent to
 choosing the largest $K$, deepest search, or broadest source coverage.  Each plausible memory given
 another opportunity to enter attention also competes with evidence.  The Qwen root-facet ceiling and
 the controlled oracle intervention show that useful representations already exist; selecting a
 small, evidence-dense working set remains difficult.
+
+This resembles a retrieval precision--recall tradeoff with added costs to search, active K/V, and
+shared-softmax mass.  These controls only partially identify dilution as causal.  A fixed-routing
+study shows that a correct core can outperform its parent; frozen pretrained evidence-only memory
+chiefly preserves quality with less K/V.  Neither result supports a universal ``less is better'' rule.
 
 \subsection{Parameter directionality and adaptive effort}
 
@@ -814,6 +835,9 @@ train or evaluate one.  It must also discover the query region itself.  Real pro
 active request first, in the middle, last, or before logs and URLs; query-region location and extent
 should therefore join $(F,R,K,H,B,\theta,L,G)$ as adaptive variables rather than remain a fixed
 final-token assumption.
+The target is the minimum-cost configuration meeting a quality constraint, or a measured Pareto point;
+the largest configuration is not a quality upper bound.  Retry may widen discovery while narrowing
+materialization, preserve a strong root, change query facet or region, or stop.
 
 Search, consumption, and preservation operate on different computational timescales.  A layer can
 have useful native Q/K topology while being a poor location for injecting value vectors.  An early
@@ -888,10 +912,8 @@ ordinary memory is
 distractor dominated, while matched oracle evidence raises frozen accuracy from .140 to .398 and
 margin from $-3.103$ to $-.703$.  The frozen transformer can consume correct PRA memory.
 
-Paper 2.5 therefore ends with seven bounded claims: associative topology exists and is shaped by
-receptive field; iterative traversal is real and sometimes useful; the current executable mechanism
-improves useful paths only in a minority of units; ordinary selected memory is distractor dominated;
-correct oracle memory is useful to the frozen consumer; controlled activation rather than absolute
-consumer incapacity is the main unresolved inference-time problem; and adaptive effort allocation is
-the next routing/runtime problem.  Physical K/V disclosure, adaptive control, and learned robustness
-remain deliberately separate research programs.
+Paper 2.5 supports seven bounded claims: receptive field shapes associative topology; iterative
+traversal is real but improves useful paths in only a minority of units; ordinary memory is distractor
+dominated; oracle memory is useful to the frozen consumer; controlled activation, not absolute
+consumer incapacity, is a leading unresolved problem; and adaptive effort is next.  Physical K/V
+disclosure, adaptive control, and learned robustness remain separate research programs.
