@@ -1,0 +1,28 @@
+{
+  "status": "controlled_pilot_complete",
+  "seed_count": 5,
+  "logical_memory_min_tokens": 32768,
+  "logical_memory_max_tokens": 8388608,
+  "primary_active_kv_tokens": 128,
+  "logical_to_active_ratio_at_max": 65536.0,
+  "exact_evidence_recall_min": 1.0,
+  "exact_evidence_recall_max": 1.0,
+  "exact_search_latency_growth": 30.18725995535364,
+  "indexed_search_latency_growth": 0.9879820219615568,
+  "indexed_over_exact_latency_at_max": 0.35050075444370987,
+  "indexed_speedup_over_exact_at_max": 2.8530609059233827,
+  "indexed_comparison_reduction_at_max": 102.4,
+  "indexed_topk_overlap_at_max": 0.390625,
+  "routing_index_mib_at_max": 64.125,
+  "best_fit_families": {
+    "quality_vs_logical_memory_exact": "constant",
+    "active_kv_vs_logical_memory_exact": "constant",
+    "search_latency_vs_logical_memory_exact": "saturating_exponential",
+    "search_latency_vs_logical_memory_indexed_p4": "constant"
+  },
+  "cost_measured": false,
+  "end_to_end_lm_quality_measured": false,
+  "gemma_ladder_measured": false,
+  "claim": "At fixed synthetic retrieval difficulty, logical memory increased while selected native-K/V stayed fixed and retrieval recall was stable.",
+  "limitation": "The result is a controlled routing/systems pilot, not a language-model scaling law or production ANN benchmark."
+}
