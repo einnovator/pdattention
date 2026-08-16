@@ -13,4 +13,6 @@ These are dominant directions, not universal monotonic laws. Effects depend on d
 | PRA consumer layers | unchanged | potentially up | interference possible | up strongly | up | repeated assimilation |
 | Finer chunks | varies | edge recall can fall | payload down | down per node | node count up | precise disclosure |
 
+Query-region location and extent are separate adaptive variables: real prompts may place the active request before, within, or after logs, URLs, and other serialized context. No query-region controller is evaluated in Paper 2.5.
+
 Artifact anchors: `query_entry_facets/query_entry_summary.csv`, `natural_graph_depth/natural_graph_depth_results.json`, `natural_graph_depth/cross_dataset_granularity.csv`, `controlled_local_sa_v6/oracle_consumption_ceiling.csv`, and `controlled_local_sa_v6/consumer_layer_profile.csv`.

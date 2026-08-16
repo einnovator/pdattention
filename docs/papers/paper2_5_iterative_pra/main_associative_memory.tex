@@ -442,10 +442,20 @@ because this synthetic generator couples it to chain depth.  Root-score gaps, ro
 facets, per-unit native R@$K$/MRR, contraction, and frontier competition were not recorded for these
 paired units.
 
-We do not fit a retry classifier.  The cohort contains only 16 repeated task identities per
-checkpoint, and its strongest features are either structural eligibility or generator-coupled.
-Treating a random row split across seeds as independent prediction would overstate generalization.
-The descriptive signature instead motivates the independent adaptive-control question in Paper 3.5.
+We test only a one-feature decision stump on the 248 eligible one-shot misses.  Feature and threshold
+selection occur inside each leave-one-example-identity-out fold, so all 25 model realizations of the
+held-out task identity remain outside training; no post-treatment field is available to the stump.
+The primary feature set is label free and excludes both target/evidence annotations and query length,
+which the generator couples to chain depth.  Across 16 held-out identities it recovers 35/59
+improvements but issues 60 false retries: balanced accuracy is .638 (identity-bootstrap 95\% interval
+[.564,.707]), recall .593 [.484,.683], and precision .368 [.221,.529].  One-shot attention entropy is
+selected in every fold.  A query-length-only sensitivity is stronger---balanced accuracy .839
+[.730,.919], recall .831 [.582,.983], and precision .628 [.525,.769]---but exploits a synthetic
+generator shortcut rather than a natural runtime signal.  Always declining to retry has raw accuracy
+.762 and balanced accuracy .500.  Label-free observables therefore contain only modest signal and do
+not supply a reliable controller.  The small identity count, broad precision intervals, and asymmetric
+retry cost make this a diagnostic rather than a deployable policy; Paper 3.5 must test adaptive control
+on larger natural independent cohorts.
 
 \begin{figure}[H]
 \centering
@@ -684,12 +694,33 @@ Oracle evidence & 1.000 & .320 & 2.88 & .362 \\
 \end{tabular}
 \end{table}
 
-A control-qualified GPT-5.6 Sol judge rates 2Wiki balanced versus one-shot at 90.0 semantic
-equivalence and +2.9 relative quality, but favors the selected sparse band over all-layer output by
-37.4 points.  Claude Sonnet 5 covers only 51.7\% of pairs and fails both calibration anchors; it is
-retained as a failed-instrument diagnostic rather than efficacy evidence.  Pretrained experiments
-thus do not establish dramatic QA gains.  They show that richer search improves access more
-consistently than output, while layer placement and distractor competition materially affect use.
+\begin{table}[H]
+\centering
+\caption{Control-qualified GPT-5.6 Sol judgments on held-out 2Wiki.  The rows answer different
+questions: routing policy relative to one-shot, and sparse versus indiscriminate layer placement.}
+\label{tab:judge-separation}
+\small
+\begin{tabular}{p{0.24\linewidth}p{0.15\linewidth}p{0.13\linewidth}p{0.32\linewidth}}
+\toprule
+Comparison & Semantic equivalence & Relative quality & Interpretation \\
+\midrule
+Balanced versus one-shot & 90.0 & $+2.9$ & Near behavioral parity; no large routing-quality claim \\
+Selected sparse band versus all 28 layers & 20.4 & $+37.4$ & Strong preference for selective placement \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\[
+\text{sparse selected PRA} \gg \text{all-layer PRA}
+\quad\not\Rightarrow\quad
+\text{sparse PRA} \gg \text{one-shot/native}.
+\]
+Each underlying pair is presented in both A/B orders.  A qualified judge must score an identical
+copy at 100 equivalence and zero relative quality, reject a corrupted control, and remain invariant
+to order.  GPT-5.6 Sol covers all 294 pairs and passes those anchors.  Claude Sonnet 5 covers only
+51.7\% and fails both calibration anchors, so it remains a failed-instrument diagnostic and is never
+averaged with GPT-5.6 Sol.  The evidence establishes that layer placement matters strongly even
+when balanced iterative output remains near one-shot parity; it does not establish dramatic QA gain.
 
 \section{Related Work}
 
@@ -779,7 +810,10 @@ $\mathrm{query/state}\rightarrow(F,R,K,H,B,\theta,L,G)$.  A QASPER-like direct q
 narrow policy; a Hotpot bridge query may warrant additional facets or roots; distributed MuSiQue
 evidence may warrant more search and coverage budget only when confidence justifies the added
 distractor load.  Paper 3.5 asks whether a controller can make that decision; this paper does not
-train or evaluate one.
+train or evaluate one.  It must also discover the query region itself.  Real prompts may place the
+active request first, in the middle, last, or before logs and URLs; query-region location and extent
+should therefore join $(F,R,K,H,B,\theta,L,G)$ as adaptive variables rather than remain a fixed
+final-token assumption.
 
 Search, consumption, and preservation operate on different computational timescales.  A layer can
 have useful native Q/K topology while being a poor location for injecting value vectors.  An early
@@ -828,7 +862,9 @@ materialization, overlap deduplication, and quality at a smaller physical payloa
 \paragraph{Paper 3.5: adaptive control.}
 How should query difficulty or confidence adapt facets, roots, $K$, hops, budgets, retries, and runtime
 effort?  The distractor-dominated result directly motivates a controller that spends additional search
-only when it improves evidence concentration.  No such controller is trained or evaluated here.
+only when it improves evidence concentration.  The controller must also infer where the active query
+begins and ends when requests occur before or among logs, URLs, and other serialized context.  No such
+controller or query-region detector is trained or evaluated here.
 
 \paragraph{Paper 4: learned robustness.}
 Can frozen-to-LoRA-to-full-weight-to-native PRA training make memory representation, consumption, and
@@ -836,7 +872,7 @@ assimilation robust to imperfect sparse memory?  The motivation is not that froz
 use memory: oracle evidence proves they can.  Training may instead improve robustness, portability,
 and preservation under noisy executable activation.  Because oracle evidence substantially improves
 frozen-model output, PRA-aware training should evaluate robustness as memory quality degrades from
-oracle to partially correct to ordinary noisy retrieval, not merely oracle performance.
+oracle to mostly correct, noisy, and finally distractor-only retrieval, not merely oracle performance.
 
 \section{Conclusion}
 
@@ -852,8 +888,10 @@ ordinary memory is
 distractor dominated, while matched oracle evidence raises frozen accuracy from .140 to .398 and
 margin from $-3.103$ to $-.703$.  The frozen transformer can consume correct PRA memory.
 
-Paper 2.5 therefore ends at controlled activation and preservation.  The immediate challenge is not
-another graph-search variant or a claim of absolute consumer incapacity.  It is to activate a sparse
-working set whose influence is concentrated on useful evidence, place that activation where the
-residual computation can use it, and preserve the resulting change.  Physical K/V disclosure,
-adaptive effort, and learned robustness remain deliberately separate research programs.
+Paper 2.5 therefore ends with seven bounded claims: associative topology exists and is shaped by
+receptive field; iterative traversal is real and sometimes useful; the current executable mechanism
+improves useful paths only in a minority of units; ordinary selected memory is distractor dominated;
+correct oracle memory is useful to the frozen consumer; controlled activation rather than absolute
+consumer incapacity is the main unresolved inference-time problem; and adaptive effort allocation is
+the next routing/runtime problem.  Physical K/V disclosure, adaptive control, and learned robustness
+remain deliberately separate research programs.

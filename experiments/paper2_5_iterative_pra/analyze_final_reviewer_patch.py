@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 from pathlib import Path
 import random
@@ -169,8 +170,13 @@ def build_iteration_rows(results: Path) -> list[dict]:
             "one_shot_margin": number(source["one_shot_margin"]),
             "one_shot_correct_probability": number(baseline["correct_probability"]),
             "one_shot_prediction_entropy": number(baseline["prediction_entropy"]),
+            "one_shot_attention_entropy": baseline_attention["attention_entropy"],
             "one_shot_evidence_attention_mass": baseline_attention["evidence_attention_mass"],
             "one_shot_distractor_attention_mass": baseline_attention["distractor_attention_mass"],
+            "one_shot_memory_attention_mass": (
+                baseline_attention["evidence_attention_mass"]
+                + baseline_attention["distractor_attention_mass"]
+            ),
             "one_shot_evidence_distractor_ratio": safe_ratio(
                 baseline_attention["evidence_attention_mass"],
                 baseline_attention["distractor_attention_mass"],
@@ -223,8 +229,10 @@ PRE_DECISION = (
     "one_shot_margin",
     "one_shot_correct_probability",
     "one_shot_prediction_entropy",
+    "one_shot_attention_entropy",
     "one_shot_evidence_attention_mass",
     "one_shot_distractor_attention_mass",
+    "one_shot_memory_attention_mass",
     "one_shot_evidence_distractor_ratio",
     "one_shot_native_attention_mass",
 )
@@ -257,6 +265,18 @@ BINARY = {
     "positive_immediate_margin_gain",
     "erased_by_final_layer",
 }
+
+LABEL_FREE_PREDICTABILITY_FEATURES = (
+    "window_is_w16",
+    "window_is_w32",
+    "window_is_w64",
+    "window_is_w128",
+    "window_is_global",
+    "one_shot_prediction_entropy",
+    "one_shot_attention_entropy",
+    "one_shot_memory_attention_mass",
+    "one_shot_native_attention_mass",
+)
 
 
 def summarize_features(rows: list[dict]) -> list[dict]:
@@ -344,6 +364,196 @@ def summarize_features(rows: list[dict]) -> list[dict]:
             }
         )
     return output
+
+
+def confusion_metrics(truth: list[int], predictions: list[int]) -> dict[str, float | int]:
+    true_positive = sum(actual == 1 and predicted == 1 for actual, predicted in zip(truth, predictions))
+    false_positive = sum(actual == 0 and predicted == 1 for actual, predicted in zip(truth, predictions))
+    true_negative = sum(actual == 0 and predicted == 0 for actual, predicted in zip(truth, predictions))
+    false_negative = sum(actual == 1 and predicted == 0 for actual, predicted in zip(truth, predictions))
+    sensitivity = true_positive / (true_positive + false_negative) if true_positive + false_negative else 0.0
+    specificity = true_negative / (true_negative + false_positive) if true_negative + false_positive else 0.0
+    precision = true_positive / (true_positive + false_positive) if true_positive + false_positive else 0.0
+    return {
+        "true_positive": true_positive,
+        "false_positive": false_positive,
+        "true_negative": true_negative,
+        "false_negative": false_negative,
+        "accuracy": (true_positive + true_negative) / len(truth),
+        "balanced_accuracy": (sensitivity + specificity) / 2,
+        "precision": precision,
+        "recall": sensitivity,
+        "specificity": specificity,
+        "f1": (
+            2 * true_positive / (2 * true_positive + false_positive + false_negative)
+            if 2 * true_positive + false_positive + false_negative
+            else 0.0
+        ),
+    }
+
+
+def threshold_candidates(values: list[float]) -> list[float]:
+    unique = sorted(set(values))
+    return [unique[0] - 1e-12, *[(left + right) / 2 for left, right in zip(unique, unique[1:])], unique[-1] + 1e-12]
+
+
+def threshold_predictions(rows: list[dict], feature: str, direction: str, threshold: float) -> list[int]:
+    if direction == "le":
+        return [int(number(row[feature]) <= threshold) for row in rows]
+    return [int(number(row[feature]) >= threshold) for row in rows]
+
+
+def select_stump(rows: list[dict], features: tuple[str, ...]) -> dict[str, float | str]:
+    truth = [int(row["path_improved"]) for row in rows]
+    best: tuple[tuple[float, float, int, int], dict[str, float | str]] | None = None
+    for feature_index, feature in enumerate(features):
+        values = [number(row[feature]) for row in rows]
+        for direction_index, direction in enumerate(("le", "ge")):
+            for threshold in threshold_candidates(values):
+                predictions = threshold_predictions(rows, feature, direction, threshold)
+                metrics = confusion_metrics(truth, predictions)
+                # Prefer balanced accuracy, then fewer retries, then the fixed feature/direction order.
+                key = (
+                    number(metrics["balanced_accuracy"]),
+                    -statistics.fmean(predictions),
+                    -feature_index,
+                    -direction_index,
+                )
+                candidate = {
+                    "feature": feature,
+                    "direction": direction,
+                    "threshold": threshold,
+                    "training_balanced_accuracy": metrics["balanced_accuracy"],
+                    "training_predicted_retry_rate": statistics.fmean(predictions),
+                }
+                if best is None or key > best[0]:
+                    best = key, candidate
+    assert best is not None
+    return best[1]
+
+
+def grouped_bootstrap_interval(
+    prediction_rows: list[dict], metric: str, *, seed: int = 2535, draws: int = 10000
+) -> list[float]:
+    grouped: dict[str, list[dict]] = {}
+    for row in prediction_rows:
+        grouped.setdefault(str(row["example_id"]), []).append(row)
+    identities = sorted(grouped)
+    rng = random.Random(seed)
+    estimates = []
+    for _ in range(draws):
+        sampled = [rng.choice(identities) for _ in identities]
+        rows = [row for identity in sampled for row in grouped[identity]]
+        metrics = confusion_metrics(
+            [int(row["actual"]) for row in rows],
+            [int(row["predicted"]) for row in rows],
+        )
+        estimates.append(number(metrics[metric]))
+    estimates.sort()
+    return [estimates[int(0.025 * draws)], estimates[min(int(0.975 * draws), draws - 1)]]
+
+
+def cross_validate_stump(eligible: list[dict], features: tuple[str, ...]) -> dict:
+    identities = sorted({str(row["example_id"]) for row in eligible})
+    prediction_rows = []
+    folds = []
+    for held_out_identity in identities:
+        training = [row for row in eligible if row["example_id"] != held_out_identity]
+        held_out = [row for row in eligible if row["example_id"] == held_out_identity]
+        stump = select_stump(training, features)
+        predictions = threshold_predictions(
+            held_out,
+            str(stump["feature"]),
+            str(stump["direction"]),
+            number(stump["threshold"]),
+        )
+        truth = [int(row["path_improved"]) for row in held_out]
+        fold_metrics = confusion_metrics(truth, predictions)
+        folds.append(
+            {
+                "held_out_example_id": held_out_identity,
+                "held_out_units": len(held_out),
+                "held_out_positive_units": sum(truth),
+                **stump,
+                **{f"held_out_{key}": value for key, value in fold_metrics.items()},
+            }
+        )
+        prediction_rows.extend(
+            {
+                "example_id": held_out_identity,
+                "actual": actual,
+                "predicted": predicted,
+            }
+            for actual, predicted in zip(truth, predictions)
+        )
+
+    metrics = confusion_metrics(
+        [int(row["actual"]) for row in prediction_rows],
+        [int(row["predicted"]) for row in prediction_rows],
+    )
+    selected_feature_counts = {
+        feature: sum(fold["feature"] == feature for fold in folds)
+        for feature in features
+        if any(fold["feature"] == feature for fold in folds)
+    }
+    return {
+        "method": "one-feature threshold selected inside each leave-one-example-identity-out fold",
+        "selection_metric": "training balanced accuracy; retry-rate and fixed-order tie breaks",
+        "candidate_features": list(features),
+        "post_treatment_features_used": False,
+        "pooled_held_out_metrics": metrics,
+        "grouped_bootstrap_ci95": {
+            "balanced_accuracy": grouped_bootstrap_interval(prediction_rows, "balanced_accuracy"),
+            "precision": grouped_bootstrap_interval(prediction_rows, "precision"),
+            "recall": grouped_bootstrap_interval(prediction_rows, "recall"),
+        },
+        "always_no_retry_baseline": {
+            "accuracy": sum(not int(row["path_improved"]) for row in eligible) / len(eligible),
+            "balanced_accuracy": 0.5,
+        },
+        "selected_feature_counts": selected_feature_counts,
+        "folds": folds,
+    }
+
+
+def analyze_predictability(rows: list[dict]) -> dict:
+    eligible = [row for row in rows if number(row["one_shot_path_recovery"]) == 0]
+    identities = sorted({str(row["example_id"]) for row in eligible})
+    label_free = cross_validate_stump(eligible, LABEL_FREE_PREDICTABILITY_FEATURES)
+    query_length = cross_validate_stump(eligible, ("query_token_count",))
+    label_free_metrics = label_free["pooled_held_out_metrics"]
+    query_length_metrics = query_length["pooled_held_out_metrics"]
+    result = {
+        "schema_version": "1.1",
+        "analysis_scope": "existing controlled traces only; no model or router execution",
+        "eligibility": "one_shot_path_recovery == 0",
+        "target": "path_gain > 0",
+        "eligible_units": len(eligible),
+        "positive_units": sum(int(row["path_improved"]) for row in eligible),
+        "negative_units": sum(not int(row["path_improved"]) for row in eligible),
+        "independent_task_identities": len(identities),
+        "primary_label_free_diagnostic": label_free,
+        "generator_coupled_query_length_sensitivity": query_length,
+        "interpretation": (
+            "Label-free one-shot observables excluding generator-coupled query length are weak: "
+            f"balanced accuracy is {number(label_free_metrics['balanced_accuracy']):.3f} and "
+            f"precision is {number(label_free_metrics['precision']):.3f}. Query length appears "
+            f"stronger ({number(query_length_metrics['balanced_accuracy']):.3f} balanced accuracy) "
+            "because the synthetic generator couples it to chain depth. Neither result justifies a "
+            "deployable retry controller; larger natural independent cohorts are required."
+        ),
+    }
+    assert len(eligible) == 248
+    assert sum(int(row["path_improved"]) for row in eligible) == 59
+    assert len(label_free["folds"]) == 16
+    assert (
+        label_free_metrics["true_positive"],
+        label_free_metrics["false_positive"],
+        label_free_metrics["true_negative"],
+        label_free_metrics["false_negative"],
+    ) == (35, 60, 129, 24)
+    assert round(number(query_length_metrics["balanced_accuracy"]), 3) == 0.839
+    return result
 
 
 def build_dataset_summary(results: Path) -> list[dict]:
@@ -441,6 +651,9 @@ def write_parameter_directionality(path: Path) -> None:
         "| `theta` threshold | precision up, recall down | varies | down | down | down | confidence filtering |\n"
         "| PRA consumer layers | unchanged | potentially up | interference possible | up strongly | up | repeated assimilation |\n"
         "| Finer chunks | varies | edge recall can fall | payload down | down per node | node count up | precise disclosure |\n\n"
+        "Query-region location and extent are separate adaptive variables: real prompts may place the "
+        "active request before, within, or after logs, URLs, and other serialized context. No "
+        "query-region controller is evaluated in Paper 2.5.\n\n"
         "Artifact anchors: `query_entry_facets/query_entry_summary.csv`, "
         "`natural_graph_depth/natural_graph_depth_results.json`, "
         "`natural_graph_depth/cross_dataset_granularity.csv`, "
@@ -459,9 +672,14 @@ def main() -> None:
 
     rows = build_iteration_rows(args.results)
     summary = summarize_features(rows)
+    predictability = analyze_predictability(rows)
     datasets = build_dataset_summary(args.results)
     write_csv(output / "iteration_benefit_59_vs_341.csv", rows)
     write_csv(output / "iteration_benefit_feature_summary.csv", summary)
+    (output / "iteration_benefit_predictability.json").write_text(
+        json.dumps(predictability, indent=2) + "\n",
+        encoding="utf-8",
+    )
     write_csv(output / "dataset_routing_geometry_summary.csv", datasets)
     write_parameter_directionality(output / "pra_parameter_directionality.md")
 

@@ -2,8 +2,8 @@
 
 ## Page Structure
 
-- Final PDF: 72 pages total, with a 17-page reviewer-facing main narrative.
-- The appendix begins on page 18 and preserves the chronological gate record, negative results,
+- Final PDF: 73 pages total, with an 18-page reviewer-facing main narrative.
+- The appendix begins on page 19 and preserves the chronological gate record, negative results,
   implementation maps, external judgment audit, and validation gates.
 - The main paper lives in `main_associative_memory.tex`; `paper.tex` retains the common preamble and
   archival appendices. This separation makes the scientific argument inspectable without deleting
@@ -41,6 +41,8 @@ implementation maps, and validation gates.
 - Final 59-versus-341 rows and miss-conditioned feature summaries:
   `final_reviewer_patch/iteration_benefit_59_vs_341.csv` and
   `final_reviewer_patch/iteration_benefit_feature_summary.csv`.
+- Grouped pre-decision predictability diagnostic:
+  `final_reviewer_patch/iteration_benefit_predictability.json`.
 - Cross-dataset reviewer synthesis: `final_reviewer_patch/dataset_routing_geometry_summary.csv`.
 - Attention, residual, and consumer-layer traces: `controlled_local_sa_v6/mechanistic/`.
 - Exact synthetic indirect discovery: `local_associative_closure/gate2_local_results.json`.
@@ -56,13 +58,14 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
 ## Render Verification
 
 - Built with `pdflatex`, `bibtex`, and two final `pdflatex` passes on August 16, 2026.
-- `pdfinfo` reports 72 US-letter pages and approximately 2.1 MiB output.
+- `pdfinfo` reports 73 US-letter pages and approximately 2.1 MiB output.
 - LaTeX reports no fatal errors, undefined references or citations, package errors, or overfull boxes.
   Remaining underfull-box notices occur in narrow bibliography and code-map paragraphs and do not
   clip content.
-- Visually reinspected changed reviewer-facing pages 1, 9--10, 12, and 16--18 at 110 dpi, including
-  the abstract, 59-versus-341 table, dataset geometry, parameter directions, scope handoffs,
-  conclusion, and appendix boundary. The previously inspected topology, trajectory, causal-pipeline,
+- Visually reinspected reviewer-facing pages 1, 9--13, and 15--18 at 130 dpi, including the abstract,
+  59-versus-341 analysis, grouped predictability result, dataset geometry, judge distinction,
+  parameter directions, scope handoffs, conclusion, and appendix boundary. The previously inspected
+  topology, trajectory, causal-pipeline,
   and implementation-map content is unchanged. Headings, equations, tables,
   figures, captions, references, and page numbers are legible; no overlap, clipping, black boxes, or
   missing glyphs were found.
@@ -92,9 +95,10 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
   result is `p=.0625`; the paper treats this as a diagnostic ceiling, not a powered architecture claim.
 - Iterative traversal improves margins strongly on path-improved model-example units, but the
   current policy produces too few such units to establish an aggregate accuracy improvement.
-- The pre-decision profile is descriptive, not a deployable retry policy. A classifier was not
-  justified by 16 repeated task identities and generator-coupled depth/query features, so no
-  `iteration_benefit_predictability.json` is emitted.
+- The primary pre-decision stump is descriptive, label free, and not a deployable retry policy.
+  Grouped held-out balanced accuracy is .638, while precision is .368 with a broad [.221,.529]
+  identity-bootstrap interval; all estimates rest on 16 independent task identities. A stronger
+  .839 query-length sensitivity is explicitly identified as a synthetic generator shortcut.
 - The causal receptive-field comparison belongs to the controlled 25-model family. Qwen
   layer/chunk diagnostics are directional architecture evidence, not a causal pretrained
   LocalSA-versus-GlobalSA comparison.
@@ -102,5 +106,7 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
   depth alone, is the primary unresolved mechanism.
 - GPT-5.6 Sol supplies one complete, control-qualified external judgment. Claude covers 51.7% of
   pairs and fails calibration, leaving evaluator robustness unresolved.
+- Sparse-band superiority to all-layer injection is a placement result; it is not evidence that
+  balanced sparse PRA substantially outperforms one-shot or native output.
 - Synchronized TTFT/TPOT and total generation latency are measured per example; production
   serving, concurrency, and optimized graph search remain future systems work.
