@@ -84,31 +84,31 @@
       "vm_concept": "Page granularity",
       "pra_analogue": "Separate encoding, search, and materialization units",
       "status": "Partial",
-      "paper": "Papers 1 and 2.5; Paper 3 target",
-      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/cross_dataset_granularity.csv",
-      "headline_result": "Fine search nodes reduce conceptual payload but can remove useful native edges.",
-      "remaining_gap": "Evidence-centered physical K/V window size is unresolved.",
-      "last_updated": "2026-08-15"
+      "paper": "Papers 1, 2.5, and 3",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/cross_dataset_granularity.csv; research/paper3-kv-materialization: docs/papers/shared/results/paper3_kv_materialization/toy_materialization/toy_materialization_frontier.csv",
+      "headline_result": "Fine search nodes can remove useful native edges; controlled evidence-centered windows expose a separate disclosure frontier.",
+      "remaining_gap": "Physical window policy has not generalized across models, datasets, and production access patterns.",
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Cross-page gather",
       "pra_analogue": "Logical interval gather across selected chunks",
-      "status": "Planned",
-      "paper": "Paper 3 target",
-      "artifact": "docs/papers/paper0_position/paper.tex",
-      "headline_result": "The interface is specified as a post-discovery materialization stage.",
-      "remaining_gap": "No evidence-centered gather implementation or output validation.",
-      "last_updated": "2026-08-15"
+      "status": "Demonstrated",
+      "paper": "Paper 3",
+      "artifact": "research/paper3-kv-materialization: docs/papers/shared/results/paper3_kv_materialization/toy_materialization/toy_materialization_frontier.csv",
+      "headline_result": "The controlled runtime gathers evidence-centered logical intervals across storage chunks and validates their causal output effect.",
+      "remaining_gap": "No fused asynchronous production gather under concurrent serving.",
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Deduplication",
       "pra_analogue": "Union of overlapping logical K/V intervals",
-      "status": "Planned",
-      "paper": "Paper 3 target",
-      "artifact": "docs/papers/paper0_position/paper.tex",
-      "headline_result": "Graph identities deduplicate conceptually; physical interval union is specified next.",
-      "remaining_gap": "No overlap-aware physical K/V union and accounting.",
-      "last_updated": "2026-08-15"
+      "status": "Demonstrated",
+      "paper": "Paper 3",
+      "artifact": "research/paper3-kv-materialization: docs/papers/shared/results/paper3_kv_materialization/toy_materialization/toy_materialization_summary.json",
+      "headline_result": "The controlled interval materializer unions overlapping logical regions while preserving token order and resource identity.",
+      "remaining_gap": "Concurrent cache coherence and production accounting remain untested.",
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Demand paging policy",
@@ -122,23 +122,23 @@
     },
     {
       "vm_concept": "Replacement and eviction",
-      "pra_analogue": "Bounded prompt head and future adaptive working-set controller",
+      "pra_analogue": "Bounded prompt head and adaptive working-set controller",
       "status": "Partial",
-      "paper": "Paper 1; Paper 3.5 target",
-      "artifact": "docs/papers/shared/results/pra_streaming_rollover.json",
-      "headline_result": "Correctness-first head rollover and explicit budget policies exist.",
+      "paper": "Papers 1 and 3.5",
+      "artifact": "docs/papers/shared/results/pra_streaming_rollover.json; adaptive-pra: docs/papers/shared/results/paper3_5_adaptive_pra/cache_policy_benchmarks.csv",
+      "headline_result": "Correctness-first head rollover, explicit effort budgets, and prototype LRU/LFU/hybrid cache policies exist.",
       "remaining_gap": "No learned replacement policy, reuse-aware eviction, or serving pressure test.",
-      "last_updated": "2026-08-15"
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Page-fault handling",
       "pra_analogue": "Discover missing memory, materialize it, and continue",
       "status": "Emerging",
-      "paper": "Paper 2.5; Papers 3-3.5 targets",
-      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/output_validation/",
-      "headline_result": "Discovery and later materialization are executable as separate bounded stages.",
+      "paper": "Papers 2.5-3.5",
+      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/output_validation/; adaptive-pra: docs/papers/shared/results/paper3_5_adaptive_pra/retry_outcomes.csv",
+      "headline_result": "Discovery, physical materialization, and bounded monotonic retry are executable as separate stages.",
       "remaining_gap": "No calibrated online fault detector or iterative decode-resume loop.",
-      "last_updated": "2026-08-15"
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Multi-level cache",
@@ -163,22 +163,22 @@
     {
       "vm_concept": "Thrashing control",
       "pra_analogue": "Adaptive routing, K/B, layer, and materialization control",
-      "status": "Open",
-      "paper": "Paper 3.5 target",
-      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/final_metrics/negative_results_registry.md",
-      "headline_result": "Broad activation and distractor competition are measured failure modes.",
-      "remaining_gap": "No stable adaptive controller or workload-level thrashing metric.",
-      "last_updated": "2026-08-15"
+      "status": "Partial",
+      "paper": "Paper 3.5",
+      "artifact": "adaptive-pra: docs/papers/shared/results/paper3_5_adaptive_pra/adaptive_compute_frontier.csv; docs/papers/shared/results/paper3_5_adaptive_pra/retry_outcomes.csv",
+      "headline_result": "Validation-frozen effort profiles and an observable-only controller allocate bounded effort and record escalation traces.",
+      "remaining_gap": "Workload-level thrashing behavior and production stability remain untested.",
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Physical page size",
       "pra_analogue": "Native K/V materialization window",
-      "status": "Open",
-      "paper": "Paper 3 target",
-      "artifact": "research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/output_validation/gate3_output_summary.csv",
-      "headline_result": "Whole selected chunks are materialized; higher evidence recovery is not a monotone quality frontier.",
-      "remaining_gap": "Need oracle-first evidence-centered windows, overlap union, and matched output tests.",
-      "last_updated": "2026-08-15"
+      "status": "Partial",
+      "paper": "Paper 3",
+      "artifact": "research/paper3-kv-materialization: docs/papers/shared/results/paper3_kv_materialization/toy_materialization/toy_materialization_frontier.csv; docs/papers/shared/results/paper3_kv_materialization/pretrained_confirmation/pretrained_materialization_frontier.csv",
+      "headline_result": "Exact cores, local radii, complete facts, and whole parents define controlled and pretrained materialization frontiers.",
+      "remaining_gap": "The best physical window is model- and dataset-dependent; a learned general policy is absent.",
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Placement across depth",
@@ -194,17 +194,17 @@
       "vm_concept": "Translation and controller",
       "pra_analogue": "Facet controller and trained semantic router",
       "status": "Partial",
-      "paper": "Papers 2-2.5; Paper 3.5 target",
-      "artifact": "research/paper2-hf: docs/papers/shared/results/paper2_hf/routing/; research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/routing_ceiling_table.csv",
-      "headline_result": "Learned routing works in some direct-memory regimes, but cheap facet selection leaves a large oracle gap.",
-      "remaining_gap": "Need calibrated bounded control across corpus scale, layers, and retrieval errors.",
-      "last_updated": "2026-08-15"
+      "paper": "Papers 2-3.5",
+      "artifact": "research/paper2-hf: docs/papers/shared/results/paper2_hf/routing/; research/paper2-5-iter-gist: docs/papers/shared/results/paper2_5_iterative_pra/natural_graph_depth/routing_ceiling_table.csv; adaptive-pra: docs/papers/shared/results/paper3_5_adaptive_pra/controller_calibration.json",
+      "headline_result": "Learned direct routing and observable-only effort selection work in scoped regimes, but cheap facet selection retains a large oracle gap.",
+      "remaining_gap": "Calibrated bounded control has not generalized across corpus scale, model families, and retrieval errors.",
+      "last_updated": "2026-08-16"
     },
     {
       "vm_concept": "Scale-independent physical memory",
       "pra_analogue": "Approximately bounded active K/V as logical memory grows",
       "status": "Open",
-      "paper": "Paper 3.5 scaling target",
+      "paper": "Paper 5 working target",
       "artifact": "docs/papers/shared/results/recall_sparsity/paper1/fixed_k_vs_fraction.csv",
       "headline_result": "Small controlled fixed-k curves show the intended direction, not arbitrary-scale boundedness.",
       "remaining_gap": "Run matched 32K, 128K, 512K, 2M, and 8M+ logical-memory experiments with full systems accounting.",
