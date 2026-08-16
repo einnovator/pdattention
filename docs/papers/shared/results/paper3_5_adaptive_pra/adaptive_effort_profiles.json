@@ -1,0 +1,151 @@
+[
+  {
+    "name": "E0_low",
+    "level": 0,
+    "facet_policy": "last_span",
+    "facet_count": 1,
+    "retained_roots": 1,
+    "neighbors_per_expansion": 2,
+    "hop_depth": 0,
+    "conceptual_budget": 2,
+    "native_kv_budget": 256,
+    "routing_threshold": 0.65,
+    "search_layers": [
+      27
+    ],
+    "consumer_layers": [
+      27
+    ],
+    "granularity_tokens": 256,
+    "materialization_policy": "evidence_centered",
+    "control_vector": {
+      "F": {
+        "policy": "last_span",
+        "count": 1
+      },
+      "R": 1,
+      "K": 2,
+      "H": 0,
+      "B": {
+        "conceptual_parents": 2,
+        "native_kv_tokens": 256
+      },
+      "theta": 0.65,
+      "L": {
+        "search": [
+          27
+        ],
+        "consumer": [
+          27
+        ]
+      },
+      "G": 256,
+      "M": "evidence_centered"
+    },
+    "cost_units": 8.0
+  },
+  {
+    "name": "E1_medium",
+    "level": 1,
+    "facet_policy": "multi_span",
+    "facet_count": 2,
+    "retained_roots": 2,
+    "neighbors_per_expansion": 4,
+    "hop_depth": 1,
+    "conceptual_budget": 4,
+    "native_kv_budget": 512,
+    "routing_threshold": 0.45,
+    "search_layers": [
+      24,
+      27
+    ],
+    "consumer_layers": [
+      26,
+      27
+    ],
+    "granularity_tokens": 128,
+    "materialization_policy": "evidence_centered",
+    "control_vector": {
+      "F": {
+        "policy": "multi_span",
+        "count": 2
+      },
+      "R": 2,
+      "K": 4,
+      "H": 1,
+      "B": {
+        "conceptual_parents": 4,
+        "native_kv_tokens": 512
+      },
+      "theta": 0.45,
+      "L": {
+        "search": [
+          24,
+          27
+        ],
+        "consumer": [
+          26,
+          27
+        ]
+      },
+      "G": 128,
+      "M": "evidence_centered"
+    },
+    "cost_units": 28.0
+  },
+  {
+    "name": "E2_high",
+    "level": 2,
+    "facet_policy": "multi_scale",
+    "facet_count": 4,
+    "retained_roots": 4,
+    "neighbors_per_expansion": 8,
+    "hop_depth": 3,
+    "conceptual_budget": 8,
+    "native_kv_budget": 1024,
+    "routing_threshold": 0.25,
+    "search_layers": [
+      20,
+      24,
+      27
+    ],
+    "consumer_layers": [
+      24,
+      25,
+      26,
+      27
+    ],
+    "granularity_tokens": 64,
+    "materialization_policy": "threshold_gated_radius",
+    "control_vector": {
+      "F": {
+        "policy": "multi_scale",
+        "count": 4
+      },
+      "R": 4,
+      "K": 8,
+      "H": 3,
+      "B": {
+        "conceptual_parents": 8,
+        "native_kv_tokens": 1024
+      },
+      "theta": 0.25,
+      "L": {
+        "search": [
+          20,
+          24,
+          27
+        ],
+        "consumer": [
+          24,
+          25,
+          26,
+          27
+        ]
+      },
+      "G": 64,
+      "M": "threshold_gated_radius"
+    },
+    "cost_units": 152.0
+  }
+]
