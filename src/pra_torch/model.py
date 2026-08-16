@@ -2,6 +2,7 @@
 
 from contextlib import nullcontext
 from dataclasses import replace
+import math
 import warnings
 
 import torch
@@ -21,11 +22,8 @@ from .memory import (
     ReferenceChunkMemory,
     ReferenceRoutingGists,
 )
-
-
-def causal_attention_mask(seq_len: int, device) -> torch.Tensor:
-    """Return ``[T,T]`` mask where true entries hide future key positions."""
-    return torch.triu(torch.ones(seq_len, seq_len, dtype=torch.bool, device=device), diagonal=1)
+from .masks import causal_attention_mask
+from .positions import build_position_encoding
 
 
 class VanillaTransformerBlock(nn.Module):
@@ -35,6 +33,7 @@ class VanillaTransformerBlock(nn.Module):
         """Create one baseline block for ``td_sa`` or a model's vanilla prefix."""
         super().__init__()
         self.layer_id = layer_id  # Stable depth used by traces and block ordering.
+        self.self_attention_window = cfg.self_attention_window
         self.layer = nn.TransformerEncoderLayer(  # Complete baseline attention/MLP block.
             d_model=cfg.d_model,
             nhead=cfg.n_heads,
@@ -45,12 +44,109 @@ class VanillaTransformerBlock(nn.Module):
             norm_first=True,
         )
 
-    def forward(self, x, use_pra_memory: bool = True, attention_mask=None):
+    def forward(
+        self,
+        x,
+        use_pra_memory: bool = True,
+        attention_mask=None,
+        position_ids=None,
+    ):
         """Transform ``[B,T,D]`` states; ``use_pra_memory`` has no effect here."""
-        _ = use_pra_memory
-        mask = causal_attention_mask(x.shape[1], x.device)
+        _ = use_pra_memory, position_ids
+        mask = causal_attention_mask(
+            x.shape[1], x.device, window=self.self_attention_window
+        )
         padding_mask = ~attention_mask.bool() if attention_mask is not None else None
         return self.layer(x, src_mask=mask, src_key_padding_mask=padding_mask)
+
+
+class PositionAwareSelfAttention(nn.Module):
+    """Explicit causal self-attention used when Q/K need positional transforms."""
+
+    def __init__(self, cfg: PRAConfig):
+        super().__init__()
+        self.n_heads = cfg.n_heads
+        self.head_dim = cfg.d_model // cfg.n_heads
+        self.self_attention_window = cfg.self_attention_window
+        self.q_proj = nn.Linear(cfg.d_model, cfg.d_model)
+        self.k_proj = nn.Linear(cfg.d_model, cfg.d_model)
+        self.v_proj = nn.Linear(cfg.d_model, cfg.d_model)
+        self.o_proj = nn.Linear(cfg.d_model, cfg.d_model)
+        self.attention_dropout = nn.Dropout(cfg.dropout)
+        self.position_encoding = build_position_encoding(
+            cfg.position_encoding,
+            head_dim=self.head_dim,
+            rope_theta=cfg.rope_theta,
+        )
+
+    def _split_heads(self, x: torch.Tensor) -> torch.Tensor:
+        batch, tokens, _ = x.shape
+        return x.view(batch, tokens, self.n_heads, self.head_dim).transpose(1, 2)
+
+    def _merge_heads(self, x: torch.Tensor) -> torch.Tensor:
+        batch, heads, tokens, width = x.shape
+        return x.transpose(1, 2).contiguous().view(batch, tokens, heads * width)
+
+    def forward(self, x, *, position_ids, attention_mask=None):
+        """Attend causally over ``[B,T,D]`` after positioning ``[B,H,T,Dh]`` Q/K."""
+        query = self._split_heads(self.q_proj(x))
+        key = self._split_heads(self.k_proj(x))
+        value = self._split_heads(self.v_proj(x))
+        query, key = self.position_encoding.transform_qk(query, key, position_ids)
+        scores = query @ key.transpose(-2, -1) / math.sqrt(self.head_dim)
+        tokens = x.shape[1]
+        hidden = causal_attention_mask(
+            tokens,
+            x.device,
+            window=self.self_attention_window,
+        )
+        scores = scores.masked_fill(hidden[None, None], float("-inf"))
+        query_valid = None
+        if attention_mask is not None:
+            query_valid = attention_mask.to(device=x.device, dtype=torch.bool)
+            scores = scores.masked_fill(
+                ~query_valid[:, None, None, :],
+                float("-inf"),
+            )
+            # A right-padded query can have no valid key inside a finite local
+            # window. Give that unused row finite scores, then zero its output.
+            scores = scores.masked_fill(~query_valid[:, None, :, None], 0.0)
+        weights = self.attention_dropout(F.softmax(scores, dim=-1))
+        output = self.o_proj(self._merge_heads(weights @ value))
+        return output if query_valid is None else output * query_valid[:, :, None]
+
+
+class PositionAwareTransformerBlock(nn.Module):
+    """Pre-norm decoder block for RoPE and other projection-level position modes."""
+
+    def __init__(self, cfg: PRAConfig, layer_id: int):
+        super().__init__()
+        self.layer_id = layer_id
+        self.ln1 = nn.LayerNorm(cfg.d_model)
+        self.attn = PositionAwareSelfAttention(cfg)
+        self.ln2 = nn.LayerNorm(cfg.d_model)
+        self.ff = nn.Sequential(
+            nn.Linear(cfg.d_model, cfg.d_ff),
+            nn.GELU(),
+            nn.Dropout(cfg.dropout),
+            nn.Linear(cfg.d_ff, cfg.d_model),
+        )
+        self.residual_dropout = nn.Dropout(cfg.dropout)
+
+    def forward(
+        self,
+        x,
+        use_pra_memory: bool = True,
+        attention_mask=None,
+        position_ids=None,
+    ):
+        _ = use_pra_memory
+        if position_ids is None:
+            position_ids = torch.arange(x.shape[1], device=x.device)
+        x = x + self.residual_dropout(
+            self.attn(self.ln1(x), position_ids=position_ids, attention_mask=attention_mask)
+        )
+        return x + self.residual_dropout(self.ff(self.ln2(x)))
 
 
 class PRATransformerBlock(nn.Module):
@@ -76,23 +172,34 @@ class PRATransformerBlock(nn.Module):
             nn.Linear(cfg.d_ff, cfg.d_model),
         )
 
-    def forward(self, x, use_pra_memory: bool = True, attention_mask=None):
+    def forward(
+        self,
+        x,
+        use_pra_memory: bool = True,
+        attention_mask=None,
+        position_ids=None,
+    ):
         """Run pre-norm attention/MLP residuals on ``[B,T,D]`` hidden states."""
         x = x + self.attn(
             self.ln1(x),
             use_pra_memory=use_pra_memory,
             attention_mask=attention_mask,
+            position_ids=position_ids,
         )
         x = x + self.ff(self.ln2(x))
         return x
 
     def set_pra_cache(self, pra_cache: PRAMemoryCache) -> None:
         """Attach a cache to this block's PRA attention."""
-        self.attn.pra_cache = pra_cache
+        self.attn.set_pra_cache(pra_cache)
 
-    def project_reference_kv(self, x, *, detach: bool = True):
+    def project_reference_kv(self, x, *, detach: bool = True, position_ids=None):
         """Map ``[1,M,D]`` reference states to this layer's ``[1,H,M,Dh]`` K/V."""
-        return self.attn.project_kv(self.ln1(x), detach=detach)
+        return self.attn.project_kv(
+            self.ln1(x),
+            detach=detach,
+            position_ids=position_ids,
+        )
 
 
 class PRASATransformerBlock(nn.Module):
@@ -107,12 +214,18 @@ class PRASATransformerBlock(nn.Module):
         """Create vanilla attention, PRA attention, and MLP pre-norm sublayers."""
         super().__init__()
         self.layer_id = layer_id  # Selects matching layer cache K/V and trace identity.
+        self.position_mode = cfg.position_encoding
+        self.self_attention_window = cfg.self_attention_window
         self.ln1 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes the vanilla branch.
-        self.self_attn = nn.MultiheadAttention(  # Added conventional causal attention.
-            embed_dim=cfg.d_model,
-            num_heads=cfg.n_heads,
-            dropout=cfg.dropout,
-            batch_first=True,
+        self.self_attn = (
+            nn.MultiheadAttention(
+                embed_dim=cfg.d_model,
+                num_heads=cfg.n_heads,
+                dropout=cfg.dropout,
+                batch_first=True,
+            )
+            if cfg.position_encoding == "absolute"
+            else PositionAwareSelfAttention(cfg)
         )
         self.ln2 = nn.LayerNorm(cfg.d_model)  # Pre-normalizes the PRA branch.
         self.pra_attn = PRAttention(  # Second local attention plus reference memory.
@@ -131,40 +244,62 @@ class PRASATransformerBlock(nn.Module):
             nn.Linear(cfg.d_ff, cfg.d_model),
         )
 
-    def _apply_self_attention(self, x, attention_mask=None):
+    def _apply_self_attention(self, x, attention_mask=None, position_ids=None):
         """Apply the leading vanilla causal residual to ``[B,T,D]`` states."""
         norm_x = self.ln1(x)
-        mask = causal_attention_mask(x.shape[1], x.device)
-        padding_mask = ~attention_mask.bool() if attention_mask is not None else None
-        attn_out, _ = self.self_attn(
-            norm_x,
-            norm_x,
-            norm_x,
-            attn_mask=mask,
-            key_padding_mask=padding_mask,
-            need_weights=False,
+        mask = causal_attention_mask(
+            x.shape[1], x.device, window=self.self_attention_window
         )
+        padding_mask = ~attention_mask.bool() if attention_mask is not None else None
+        if self.position_mode == "absolute":
+            attn_out, _ = self.self_attn(
+                norm_x,
+                norm_x,
+                norm_x,
+                attn_mask=mask,
+                key_padding_mask=padding_mask,
+                need_weights=False,
+            )
+        else:
+            if position_ids is None:
+                position_ids = torch.arange(x.shape[1], device=x.device)
+            attn_out = self.self_attn(
+                norm_x,
+                position_ids=position_ids,
+                attention_mask=attention_mask,
+            )
         return x + attn_out
 
-    def forward(self, x, use_pra_memory: bool = True, attention_mask=None):
+    def forward(
+        self,
+        x,
+        use_pra_memory: bool = True,
+        attention_mask=None,
+        position_ids=None,
+    ):
         """Run vanilla attention, local-plus-memory PRA attention, then the MLP."""
-        x = self._apply_self_attention(x, attention_mask)
+        x = self._apply_self_attention(x, attention_mask, position_ids)
         x = x + self.pra_attn(
             self.ln2(x),
             use_pra_memory=use_pra_memory,
             attention_mask=attention_mask,
+            position_ids=position_ids,
         )
         x = x + self.ff(self.ln3(x))
         return x
 
     def set_pra_cache(self, pra_cache: PRAMemoryCache) -> None:
         """Attach a cache to this block's PRA attention."""
-        self.pra_attn.pra_cache = pra_cache
+        self.pra_attn.set_pra_cache(pra_cache)
 
-    def project_reference_kv(self, x, *, detach: bool = True):
+    def project_reference_kv(self, x, *, detach: bool = True, position_ids=None):
         """Project reference K/V from the same post-vanilla state queried by PRA."""
-        x = self._apply_self_attention(x)
-        return self.pra_attn.project_kv(self.ln2(x), detach=detach)
+        x = self._apply_self_attention(x, position_ids=position_ids)
+        return self.pra_attn.project_kv(
+            self.ln2(x),
+            detach=detach,
+            position_ids=position_ids,
+        )
 
 
 class TinyPRAModel(nn.Module):
@@ -185,6 +320,11 @@ class TinyPRAModel(nn.Module):
         )
         self.token_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)  # IDs -> [B,T,D].
         self.pos_emb = nn.Embedding(cfg.max_seq_len, cfg.d_model)  # Absolute local positions.
+        self.position_encoding = build_position_encoding(
+            cfg.position_encoding,
+            head_dim=cfg.d_model // cfg.n_heads,
+            rope_theta=cfg.rope_theta,
+        )
         needs_gru_pooler = (
             "gru" in {cfg.gist_mode, cfg.reference_level_gist_mode}
             or (
@@ -210,9 +350,28 @@ class TinyPRAModel(nn.Module):
     def _build_blocks(self, cfg: PRAConfig) -> list[nn.Module]:
         """Lay out vanilla prefix, mixed middle, then PRA-only remainder."""
         blocks: list[nn.Module] = []
+        if cfg.model_variant == "td_layered_pra":
+            pra_layers = set(cfg.pra_layer_ids)
+            vanilla_type = (
+                VanillaTransformerBlock
+                if cfg.position_encoding == "absolute"
+                else PositionAwareTransformerBlock
+            )
+            for layer_id in range(cfg.n_layers):
+                blocks.append(
+                    PRATransformerBlock(cfg, layer_id, self.pra_cache)
+                    if layer_id in pra_layers
+                    else vanilla_type(cfg, layer_id)
+                )
+            return blocks
         for layer_id in range(cfg.n_layers):
             if layer_id < cfg.n_vanilla_layers:
-                blocks.append(VanillaTransformerBlock(cfg, layer_id))
+                block_type = (
+                    VanillaTransformerBlock
+                    if cfg.position_encoding == "absolute"
+                    else PositionAwareTransformerBlock
+                )
+                blocks.append(block_type(cfg, layer_id))
             elif layer_id < cfg.n_vanilla_layers + cfg.n_mixed_layers:
                 blocks.append(PRASATransformerBlock(cfg, layer_id, self.pra_cache))
             else:
@@ -386,6 +545,7 @@ class TinyPRAModel(nn.Module):
         """Map ``[B,T]`` IDs to logits, optionally continuing historical positions."""
         b, t = input_ids.shape
         native_limit = self.cfg.effective_model_max_context_tokens
+        position_limit = self.cfg.position_capacity
         if t > native_limit:
             raise ValueError(
                 f"Native forward has {t} tokens, exceeding "
@@ -404,28 +564,179 @@ class TinyPRAModel(nn.Module):
                 else torch.ones_like(pos, dtype=torch.bool)
             )
             valid_positions = pos[valid]
-            if (
+            if position_limit is not None and (
                 valid_positions.numel()
-                and (int(valid_positions.min()) < 0 or int(valid_positions.max()) >= native_limit)
+                and (
+                    int(valid_positions.min()) < 0
+                    or int(valid_positions.max()) >= position_limit
+                )
             ):
                 raise ValueError("Prompt positions exceed the model positional table.")
             pos = pos.masked_fill(~valid, 0)
-            positional = self.pos_emb(pos)
         else:
             scalar_offset = int(position_offset)
-            if scalar_offset < 0 or scalar_offset + t > native_limit:
+            if scalar_offset < 0 or (
+                position_limit is not None
+                and scalar_offset + t > position_limit
+            ):
                 raise ValueError(
                     "Prompt position range exceeds the model positional table: "
                     f"[{scalar_offset}, {scalar_offset + t}) vs "
-                    f"model_max_context_tokens={native_limit}."
+                    f"position_capacity={position_limit}."
                 )
             pos = torch.arange(scalar_offset, scalar_offset + t, device=input_ids.device)
-            positional = self.pos_emb(pos)[None, :, :]
-        x = self.token_emb(input_ids) + positional
+        x = self.position_encoding.apply_embeddings(
+            self.token_emb(input_ids),
+            pos,
+            self.pos_emb,
+        )
         for block in self.blocks:
-            x = block(x, use_pra_memory=use_pra_memory, attention_mask=attention_mask)
+            x = block(
+                x,
+                use_pra_memory=use_pra_memory,
+                attention_mask=attention_mask,
+                position_ids=pos,
+            )
         x = self.ln(x)
         return self.head(x)
+
+    def forward_progressive_pra(
+        self,
+        input_ids,
+        *,
+        attention_mask=None,
+        position_offset: int = 0,
+        prevent_reference_replay: bool = True,
+        forced_reference_uris_by_layer: dict[int, tuple[str, ...]] | None = None,
+    ) -> tuple[torch.Tensor, list[dict]]:
+        """Run PRA layers against an evolving query state and return a route trace.
+
+        Each PRA block receives the hidden state produced by every preceding
+        attention/FFN block.  With ``prevent_reference_replay=True``, references
+        selected by an earlier PRA block are removed from the candidate cache
+        before the next PRA block. ``forced_reference_uris_by_layer`` is an
+        explicit causal-control hook: it restricts a layer's candidate cache to
+        declared existing identities, while preserving normal materialization
+        and attention. The no-replay implementation is intentionally
+        limited to batch size one because each batch row would otherwise require
+        a different cache namespace.
+
+        Returns:
+            ``(logits, trace)`` where logits are ``[B,T,V]`` and each trace row
+            records the consumer layer, selected URIs, materialized token count,
+            and the final-token query state entering that layer.
+        """
+        if input_ids.ndim != 2:
+            raise ValueError("input_ids must have shape [batch,tokens].")
+        batch, tokens = input_ids.shape
+        if prevent_reference_replay and batch != 1:
+            raise ValueError("No-replay progressive PRA currently requires batch size one.")
+        if tokens > self.cfg.effective_model_max_context_tokens:
+            raise ValueError("Progressive PRA prompt exceeds model_max_context_tokens.")
+        if attention_mask is not None and attention_mask.shape != input_ids.shape:
+            raise ValueError("attention_mask must have the same [batch,tokens] shape as input_ids.")
+
+        position_offset = int(position_offset)
+        position_limit = self.cfg.position_capacity
+        if position_offset < 0 or (
+            position_limit is not None and position_offset + tokens > position_limit
+        ):
+            raise ValueError("Progressive PRA prompt positions exceed model capacity.")
+        positions = torch.arange(
+            position_offset,
+            position_offset + tokens,
+            device=input_ids.device,
+        )
+        x = self.position_encoding.apply_embeddings(
+            self.token_emb(input_ids),
+            positions,
+            self.pos_emb,
+        )
+
+        master_cache = self.pra_cache
+        remaining_entries = list(master_cache.all_entries())
+        visited: set[str] = set()
+        trace: list[dict] = []
+        try:
+            for block in self.blocks:
+                attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
+                is_pra = isinstance(attention, PRAttention)
+                query_state = x[:, -1, :].detach().clone() if is_pra else None
+                forced_uris = (
+                    forced_reference_uris_by_layer.get(int(block.layer_id))
+                    if is_pra and forced_reference_uris_by_layer is not None
+                    else None
+                )
+                if forced_uris is not None:
+                    layer_cache = PRASimpleMemoryCache()
+                    for uri in forced_uris:
+                        entry = master_cache.get(uri)
+                        if entry is None:
+                            raise ValueError(
+                                f"Forced PRA reference is absent from the cache: {uri}"
+                            )
+                        if prevent_reference_replay and uri in visited:
+                            raise ValueError(f"Forced PRA plan replays reference: {uri}")
+                        layer_cache.put(entry)
+                    block.set_pra_cache(layer_cache)
+                elif is_pra and prevent_reference_replay:
+                    layer_cache = PRASimpleMemoryCache()
+                    for entry in remaining_entries:
+                        if entry.uri not in visited:
+                            layer_cache.put(entry)
+                    block.set_pra_cache(layer_cache)
+                x = block(
+                    x,
+                    use_pra_memory=True,
+                    attention_mask=attention_mask,
+                    position_ids=positions,
+                )
+                if not is_pra:
+                    continue
+                selected = list(attention.last_selected_chunks[0])
+                selected_uris = list(dict.fromkeys(hit.reference_uri for hit in selected))
+                replayed = sorted(set(selected_uris) & visited)
+                if prevent_reference_replay and replayed:
+                    raise RuntimeError(f"Progressive PRA replayed references: {replayed}")
+                visited.update(selected_uris)
+                diagnostics = dict(attention.last_diagnostics)
+                trace.append(
+                    {
+                        "layer_id": int(block.layer_id),
+                        "selected_reference_uris": selected_uris,
+                        "selected_chunk_ids": [hit.chunk_id for hit in selected],
+                        "selected_scores": [float(hit.chunk_score) for hit in selected],
+                        "materialized_tokens": int(
+                            diagnostics.get(
+                                "memory_tokens_materialized",
+                                sum(hit.selected_token_count for hit in selected),
+                            )
+                        ),
+                        "active_memory_fraction": float(
+                            diagnostics.get("active_memory_fraction", 0.0)
+                        ),
+                        "memory_to_local_output_norm_ratio": float(
+                            diagnostics.get("memory_to_local_output_norm_ratio", 0.0)
+                        ),
+                        "final_token_memory_attention_mass": float(
+                            diagnostics.get("final_token_memory_attention_mass", 0.0)
+                        ),
+                        "final_token_memory_weights": (
+                            attention.last_memory_batching_stats.final_token_memory_weights[0]
+                            if attention.last_memory_batching_stats is not None
+                            and attention.last_memory_batching_stats.final_token_memory_weights
+                            else ()
+                        ),
+                        "pra_output_divergence_ratio": float(
+                            diagnostics.get("pra_output_divergence_ratio", 0.0)
+                        ),
+                        "query_state": query_state,
+                        "replayed_reference_uris": replayed,
+                    }
+                )
+        finally:
+            self.set_pra_cache(master_cache)
+        return self.head(self.ln(x)), trace
 
     def _encode_reference_tokens(
         self,
@@ -445,29 +756,41 @@ class TinyPRAModel(nn.Module):
         ids = torch.tensor([token_ids], dtype=torch.long, device=device)
         position_offset = int(position_offset)
         native_limit = self.cfg.effective_model_max_context_tokens
+        position_limit = self.cfg.position_capacity
         if ids.shape[1] > native_limit:
             raise ValueError(
                 f"Reference encoding call has {ids.shape[1]} tokens, exceeding "
                 f"model_max_context_tokens={native_limit}."
             )
-        if position_offset < 0 or position_offset + ids.shape[1] > native_limit:
+        if position_offset < 0 or (
+            position_limit is not None
+            and position_offset + ids.shape[1] > position_limit
+        ):
             raise ValueError(
                 "Reference position range exceeds the model positional table: "
                 f"[{position_offset}, {position_offset + ids.shape[1]}) vs "
-                f"model_max_context_tokens={native_limit}."
+                f"position_capacity={position_limit}."
             )
         pos = torch.arange(
             position_offset,
             position_offset + ids.shape[1],
             device=device,
         )
-        x = self.token_emb(ids) + self.pos_emb(pos)[None, :, :]
+        x = self.position_encoding.apply_embeddings(
+            self.token_emb(ids),
+            pos,
+            self.pos_emb,
+        )
         layer_kv = {}
         for block in self.blocks:
             # Capture the exact normalized state consumed by this depth's memory branch.
             if hasattr(block, "project_reference_kv"):
-                layer_kv[block.layer_id] = block.project_reference_kv(x, detach=detach)
-            x = block(x, use_pra_memory=use_pra_memory)
+                layer_kv[block.layer_id] = block.project_reference_kv(
+                    x,
+                    detach=detach,
+                    position_ids=pos,
+                )
+            x = block(x, use_pra_memory=use_pra_memory, position_ids=pos)
         return layer_kv
 
     def _cache_resident_kv(self, kv: LayerKV) -> LayerKV:
@@ -479,7 +802,17 @@ class TinyPRAModel(nn.Module):
         if self.cfg.kv_cache_pin_memory and torch.cuda.is_available():
             key = key.pin_memory()
             value = value.pin_memory()
-        return LayerKV(k=key, v=value)
+        positions = (
+            kv.position_ids.detach().to("cpu")
+            if kv.position_ids is not None
+            else None
+        )
+        return LayerKV(
+            k=key,
+            v=value,
+            position_ids=positions,
+            position_state=kv.position_state,
+        )
 
     def _bounded_reference_payloads(
         self,
@@ -537,7 +870,10 @@ class TinyPRAModel(nn.Module):
             position_offset = (
                 encode_start
                 if self.cfg.reference_position_mode == "global"
-                and encode_start + len(encode_ids) <= native_limit
+                and (
+                    not self.position_encoding.has_bounded_positions
+                    or encode_start + len(encode_ids) <= self.cfg.max_seq_len
+                )
                 else 0
             )
             encoded = self._encode_reference_tokens(
@@ -551,6 +887,12 @@ class TinyPRAModel(nn.Module):
                 layer_id: LayerKV(
                     k=kv.k[:, :, left_context : left_context + len(core_ids), :],
                     v=kv.v[:, :, left_context : left_context + len(core_ids), :],
+                    position_ids=(
+                        kv.position_ids[..., left_context : left_context + len(core_ids)]
+                        if kv.position_ids is not None
+                        else None
+                    ),
+                    position_state=kv.position_state,
                 )
                 for layer_id, kv in encoded.items()
             }
@@ -572,6 +914,8 @@ class TinyPRAModel(nn.Module):
                     chunk_id=f"{uri}#chunk={len(payloads)}",
                     token_start=global_start,
                     token_end=global_end,
+                    logical_start=global_start,
+                    logical_end=global_end,
                     metadata={
                         **local.metadata,
                         "encoding_block_id": encoding_index,
@@ -579,8 +923,8 @@ class TinyPRAModel(nn.Module):
                         "encoding_input_end": core.token_end,
                         "encoding_input_tokens": len(encode_ids),
                         "encoding_context_tokens": left_context,
-                        "logical_start_token": global_start,
-                        "logical_end_token": global_end,
+                        "logical_start": global_start,
+                        "logical_end": global_end,
                         "base_model_position_offset": position_offset,
                     },
                 )
@@ -591,6 +935,12 @@ class TinyPRAModel(nn.Module):
                             layer_id: LayerKV(
                                 k=kv.k[:, :, local.token_start : local.token_end, :],
                                 v=kv.v[:, :, local.token_start : local.token_end, :],
+                                position_ids=(
+                                    kv.position_ids[..., local.token_start : local.token_end]
+                                    if kv.position_ids is not None
+                                    else None
+                                ),
+                                position_state=kv.position_state,
                             )
                             for layer_id, kv in core_kv.items()
                         },
@@ -738,6 +1088,10 @@ class TinyPRAModel(nn.Module):
             "encoding_run_encoded_tokens_including_overlap": encoded_token_total,
             "encoding_run_stored_kv_tokens": len(flat_ids),
             "encoding_run_duplication_factor": encoded_token_total / max(len(flat_ids), 1),
+            "max_encoding_input_tokens": max(
+                (len(block["encode_ids"]) for block in block_specs),
+                default=0,
+            ),
         }
         entries = {
             str(row["uri"]): PRACacheEntry(
@@ -763,8 +1117,11 @@ class TinyPRAModel(nn.Module):
                 position_offset = (
                     block["encode_start"]
                     if self.cfg.reference_position_mode == "global"
-                    and block["encode_start"] + len(block["encode_ids"])
-                    <= self.cfg.effective_model_max_context_tokens
+                    and (
+                        not self.position_encoding.has_bounded_positions
+                        or block["encode_start"] + len(block["encode_ids"])
+                        <= self.cfg.max_seq_len
+                    )
                     else 0
                 )
                 layer_kv = self._encode_reference_tokens(
@@ -783,6 +1140,12 @@ class TinyPRAModel(nn.Module):
                         sliced = LayerKV(
                             k=kv.k[:, :, local_start:local_end, :],
                             v=kv.v[:, :, local_start:local_end, :],
+                            position_ids=(
+                                kv.position_ids[..., local_start:local_end]
+                                if kv.position_ids is not None
+                                else None
+                            ),
+                            position_state=kv.position_state,
                         )
                         computed = compute_gists(
                             keys=projected_tokens(sliced.k),
@@ -803,6 +1166,8 @@ class TinyPRAModel(nn.Module):
                             source_uri=str(row["uri"]),
                             token_start=0,
                             token_end=len(row["token_ids"]),
+                            logical_start=starts[row_index],
+                            logical_end=starts[row_index + 1],
                             token_kv=self._cache_resident_kv(sliced),
                             routing_gist=ChunkRoutingGist(
                                 k=computed.k.detach() if detach else computed.k,
@@ -823,6 +1188,9 @@ class TinyPRAModel(nn.Module):
                                 "encoding_overlap_tokens": block["overlap_tokens"],
                                 "global_token_start": starts[row_index],
                                 "global_token_end": starts[row_index + 1],
+                                "logical_start": starts[row_index],
+                                "logical_end": starts[row_index + 1],
+                                "base_model_position_offset": position_offset,
                             },
                         )
                         entry.layer_memory.setdefault(
@@ -1030,6 +1398,8 @@ class TinyPRAModel(nn.Module):
                         source_uri=chunk.source_uri,
                         token_start=chunk.token_start,
                         token_end=min(chunk.token_start + len(token_ids), chunk.token_end),
+                        logical_start=chunk.logical_start,
+                        logical_end=chunk.logical_start + len(token_ids),
                         char_start=chunk.char_start,
                         char_end=chunk.char_end,
                         token_kv=self._cache_resident_kv(kv),
@@ -1327,7 +1697,17 @@ def convert_sa_model_to_pra(
         raise ValueError("Source model must use model_variant='td_sa'.")
     if target_config.memory_transport != "native_kv":
         raise ValueError("SA conversion targets canonical memory_transport='native_kv'.")
-    architecture = ("vocab_size", "d_model", "n_heads", "n_layers", "d_ff", "max_seq_len")
+    architecture = (
+        "vocab_size",
+        "d_model",
+        "n_heads",
+        "n_layers",
+        "d_ff",
+        "max_seq_len",
+        "position_encoding",
+        "rope_theta",
+        "self_attention_window",
+    )
     mismatches = [
         name
         for name in architecture
@@ -1343,29 +1723,50 @@ def convert_sa_model_to_pra(
         target.ln.load_state_dict(source.ln.state_dict())
         target.head.load_state_dict(source.head.state_dict())
         for source_block, target_block in zip(source.blocks, target.blocks):
-            if not isinstance(source_block, VanillaTransformerBlock):
-                raise TypeError("Every source td_sa block must be vanilla self-attention.")
-            if isinstance(target_block, VanillaTransformerBlock):
+            if not isinstance(
+                source_block,
+                (VanillaTransformerBlock, PositionAwareTransformerBlock),
+            ):
+                raise TypeError("Every source td_sa block must be self-attention only.")
+            if isinstance(
+                target_block,
+                (VanillaTransformerBlock, PositionAwareTransformerBlock),
+            ):
+                if type(target_block) is not type(source_block):
+                    raise TypeError("Source and target position-aware block types differ.")
                 target_block.load_state_dict(source_block.state_dict())
                 continue
             if not isinstance(target_block, PRATransformerBlock):
                 raise TypeError("SA conversion supports vanilla or PRA target blocks.")
 
-            layer = source_block.layer
-            target_block.ln1.load_state_dict(layer.norm1.state_dict())
-            target_block.ln2.load_state_dict(layer.norm2.state_dict())
-            q_weight, k_weight, v_weight = layer.self_attn.in_proj_weight.chunk(3, dim=0)
-            q_bias, k_bias, v_bias = layer.self_attn.in_proj_bias.chunk(3, dim=0)
-            for projection, weight, bias in (
-                (target_block.attn.q_proj, q_weight, q_bias),
-                (target_block.attn.k_proj, k_weight, k_bias),
-                (target_block.attn.v_proj, v_weight, v_bias),
-            ):
-                projection.weight.copy_(weight)
-                projection.bias.copy_(bias)
-            target_block.attn.o_proj.load_state_dict(layer.self_attn.out_proj.state_dict())
-            target_block.ff[0].load_state_dict(layer.linear1.state_dict())
-            target_block.ff[2].load_state_dict(layer.linear2.state_dict())
+            if isinstance(source_block, VanillaTransformerBlock):
+                layer = source_block.layer
+                target_block.ln1.load_state_dict(layer.norm1.state_dict())
+                target_block.ln2.load_state_dict(layer.norm2.state_dict())
+                q_weight, k_weight, v_weight = layer.self_attn.in_proj_weight.chunk(3, dim=0)
+                q_bias, k_bias, v_bias = layer.self_attn.in_proj_bias.chunk(3, dim=0)
+                for projection, weight, bias in (
+                    (target_block.attn.q_proj, q_weight, q_bias),
+                    (target_block.attn.k_proj, k_weight, k_bias),
+                    (target_block.attn.v_proj, v_weight, v_bias),
+                ):
+                    projection.weight.copy_(weight)
+                    projection.bias.copy_(bias)
+                target_block.attn.o_proj.load_state_dict(layer.self_attn.out_proj.state_dict())
+                target_block.ff[0].load_state_dict(layer.linear1.state_dict())
+                target_block.ff[2].load_state_dict(layer.linear2.state_dict())
+            else:
+                target_block.ln1.load_state_dict(source_block.ln1.state_dict())
+                target_block.ln2.load_state_dict(source_block.ln2.state_dict())
+                for target_projection, source_projection in (
+                    (target_block.attn.q_proj, source_block.attn.q_proj),
+                    (target_block.attn.k_proj, source_block.attn.k_proj),
+                    (target_block.attn.v_proj, source_block.attn.v_proj),
+                    (target_block.attn.o_proj, source_block.attn.o_proj),
+                ):
+                    target_projection.load_state_dict(source_projection.state_dict())
+                target_block.ff[0].load_state_dict(source_block.ff[0].state_dict())
+                target_block.ff[2].load_state_dict(source_block.ff[3].state_dict())
     return target
 
 

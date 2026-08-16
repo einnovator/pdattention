@@ -28,6 +28,8 @@ class LayerKV:
 
     k: torch.Tensor  # Keys used for routing-gist construction and cross-attention.
     v: torch.Tensor  # Values returned when a query attends to this memory.
+    position_ids: torch.Tensor | None = None  # [M] or [1,M] positions used to publish K.
+    position_state: str = "post_position"  # post_position or experimental pre_position.
 
 
 ChunkKV = LayerKV
@@ -42,6 +44,9 @@ class ChunkRoutingGist:
     method: str = "mean"  # Pooling rule that produced k/v.
     summary_k: torch.Tensor | None = None  # Separately encoded summary keys [gists, d_model].
     metadata: dict = field(default_factory=dict)  # Pooling/source diagnostics.
+    query_k: torch.Tensor | None = None  # Aligned W_q projections for associative frontiers.
+    parent_k: torch.Tensor | None = None  # W_m projection of the contextual parent mean [1,D].
+    parent_query_k: torch.Tensor | None = None  # W_q projection of that same parent mean [1,D].
 
     def __post_init__(self) -> None:
         """Normalize legacy ``[D]`` constructors into the invariant ``[1,D]`` form."""
@@ -49,12 +54,26 @@ class ChunkRoutingGist:
             self.k = self.k.unsqueeze(0)
         if self.v is not None and self.v.ndim == 1:
             self.v = self.v.unsqueeze(0)
+        if self.query_k is not None and self.query_k.ndim == 1:
+            self.query_k = self.query_k.unsqueeze(0)
+        if self.parent_k is not None and self.parent_k.ndim == 1:
+            self.parent_k = self.parent_k.unsqueeze(0)
+        if self.parent_query_k is not None and self.parent_query_k.ndim == 1:
+            self.parent_query_k = self.parent_query_k.unsqueeze(0)
         if self.summary_k is not None and self.summary_k.ndim == 1:
             self.summary_k = self.summary_k.unsqueeze(0)
         if self.k.ndim != 2:
             raise ValueError(f"Chunk routing keys must be [gists,model], got {self.k.shape}.")
         if self.v is not None and self.v.shape != self.k.shape:
             raise ValueError("Chunk routing value gists must match key-gist shape.")
+        if self.query_k is not None and self.query_k.shape != self.k.shape:
+            raise ValueError("Query-projected gists must align with memory-projected gists.")
+        for name, value in (
+            ("parent_k", self.parent_k),
+            ("parent_query_k", self.parent_query_k),
+        ):
+            if value is not None and (value.ndim != 2 or value.shape[0] != 1):
+                raise ValueError(f"{name} must have shape [1,model].")
 
 
 @dataclass
@@ -90,6 +109,21 @@ class ReferenceChunkMemory:
     char_start: int | None = None  # Optional inclusive source-character offset.
     char_end: int | None = None  # Optional exclusive source-character offset.
     metadata: dict = field(default_factory=dict)  # Chunking and truncation provenance.
+    logical_start: int = -1  # Inclusive coordinate in the owning continuous source.
+    logical_end: int | None = None  # Exclusive coordinate reconstructed from start + length.
+
+    def __post_init__(self) -> None:
+        """Normalize compact logical provenance without storing per-token coordinates."""
+        logical_start = self.token_start if self.logical_start < 0 else int(self.logical_start)
+        logical_end = (
+            logical_start + self.token_count
+            if self.logical_end is None
+            else int(self.logical_end)
+        )
+        if logical_start < 0 or logical_end - logical_start != self.token_count:
+            raise ValueError("Logical memory offsets must match the contiguous K/V token count.")
+        self.logical_start = logical_start
+        self.logical_end = logical_end
 
     @property
     def token_count(self) -> int:
@@ -161,6 +195,17 @@ class SelectedChunk:
         return self.chunk.token_end
 
     @property
+    def logical_start(self) -> int:
+        """Return the source-relative coordinate used to reconstruct token positions."""
+        return self.chunk.logical_start
+
+    @property
+    def logical_end(self) -> int:
+        """Return the exclusive source-relative coordinate."""
+        assert self.chunk.logical_end is not None
+        return self.chunk.logical_end
+
+    @property
     def selected_token_count(self) -> int:
         """Return how many token K/V positions this selection can materialize."""
         return self.chunk.token_count
@@ -175,6 +220,8 @@ class SelectedChunk:
             "layer_id": self.layer_id,
             "token_start": self.token_start,
             "token_end": self.token_end,
+            "logical_start": self.logical_start,
+            "logical_end": self.logical_end,
             "selected_token_count": self.selected_token_count,
             "reference_rank": self.reference_rank,
             "rank_within_reference": self.rank_within_reference,

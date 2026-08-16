@@ -71,6 +71,23 @@ class ReferenceChunk:
     char_end: int | None = None  # Optional exclusive source-character offset.
     marker_type: str | None = None  # Boundary rule that created the chunk.
     metadata: dict = field(default_factory=dict)  # Dataset and partition provenance.
+    logical_start: int = -1  # Inclusive coordinate within this continuous source.
+    logical_end: int | None = None  # Exclusive coordinate; start + length when contiguous.
+
+    def __post_init__(self) -> None:
+        """Default logical coordinates to source-token offsets and validate continuity."""
+        if self.token_start < 0 or self.token_end < self.token_start:
+            raise ValueError("Chunk token offsets must satisfy 0 <= token_start <= token_end.")
+        logical_start = self.token_start if self.logical_start < 0 else int(self.logical_start)
+        logical_end = (
+            logical_start + len(self.token_ids)
+            if self.logical_end is None
+            else int(self.logical_end)
+        )
+        if logical_start < 0 or logical_end - logical_start != len(self.token_ids):
+            raise ValueError("Logical chunk offsets must cover exactly the contiguous token IDs.")
+        object.__setattr__(self, "logical_start", logical_start)
+        object.__setattr__(self, "logical_end", logical_end)
 
 
 class ReferencePartitioner(Protocol):
@@ -206,6 +223,8 @@ def _apply_overflow(chunks, max_chunks, policy, all_token_ids, text, tokenizer):
         token_ids=tail_ids,
         token_start=start,
         token_end=len(all_token_ids),
+        logical_start=start,
+        logical_end=len(all_token_ids),
         char_end=len(text),
         metadata={**chunks[max_chunks - 1].metadata, "merged_tail_chunks": discarded + 1},
     )
@@ -259,6 +278,8 @@ def _split_oversized_chunks(chunks, tokenizer, max_chunk_tokens):
                     token_ids=ids,
                     token_start=chunk.token_start + local_start,
                     token_end=chunk.token_start + local_start + len(ids),
+                    logical_start=chunk.logical_start + local_start,
+                    logical_end=chunk.logical_start + local_start + len(ids),
                     char_start=None,
                     char_end=None,
                     metadata={**chunk.metadata, "bounded_token_split": True},

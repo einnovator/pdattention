@@ -931,8 +931,13 @@ def evaluate_reference_ablation(
                                     if chunk.token_kv.k.device.type == "cuda":
                                         gpu_cached_kv_bytes += payload_bytes
                         unique_source_tokens = encoded_tokens = stored_tokens = 0
+                        max_encoding_input_tokens = 0
                         seen_encoding_runs = set()
                         for entry in visible_entries:
+                            max_encoding_input_tokens = max(
+                                max_encoding_input_tokens,
+                                int(entry.metadata.get("max_encoding_input_tokens", 0)),
+                            )
                             run_id = entry.metadata.get("encoding_run_id")
                             if run_id is not None:
                                 if run_id in seen_encoding_runs:
@@ -991,6 +996,22 @@ def evaluate_reference_ablation(
                                 "stored_kv_tokens_including_overlap": stored_tokens,
                                 "duplication_factor": encoded_tokens
                                 / max(unique_source_tokens, 1),
+                                "logical_native_ratio": (
+                                    (local_tokens + unique_source_tokens)
+                                    / max(model.cfg.effective_model_max_context_tokens, 1)
+                                ),
+                                "model_operation_limit": (
+                                    model.cfg.effective_model_max_context_tokens
+                                ),
+                                "position_capacity": model.cfg.position_capacity,
+                                "maximum_native_operation": max(
+                                    local_tokens,
+                                    max_encoding_input_tokens,
+                                ),
+                                "native_limit_violations": int(
+                                    max(local_tokens, max_encoding_input_tokens)
+                                    > model.cfg.effective_model_max_context_tokens
+                                ),
                                 "chunk_overlap_fraction": model.cfg.chunk_overlap_fraction,
                                 "chunk_overlap_tokens": model.cfg.resolved_chunk_overlap_tokens,
                                 "overlap_materialization": model.cfg.overlap_materialization,

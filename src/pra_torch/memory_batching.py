@@ -33,6 +33,12 @@ class MemoryBatchingStats:
     padding_fraction: float  # Padding divided by allocated positions.
     attention_entropy: float = 0.0  # Mean entropy over memory-attention distributions.
     attention_max_weight: float = 0.0  # Mean bucket maximum attention weight.
+    memory_attention_mass: float = 0.0  # Mean joint-softmax mass assigned to memory.
+    final_token_memory_attention_mass: float = 0.0  # Memory mass at the next-token query.
+    # Per-row [H,M] weights for the final direct-token query. These compact
+    # diagnostics let controlled studies distinguish evidence from distractor
+    # memory without retaining the full [B,H,T,M+T] attention tensor.
+    final_token_memory_weights: tuple[tuple[tuple[float, ...], ...], ...] = ()
 
     def as_metrics(self) -> dict[str, float]:
         """Flatten packing/attention statistics into experiment metric names."""
@@ -50,6 +56,8 @@ class MemoryBatchingStats:
             ),
             "memory_attention_entropy": self.attention_entropy,
             "memory_attention_max_weight": self.attention_max_weight,
+            "memory_attention_mass": self.memory_attention_mass,
+            "final_token_memory_attention_mass": self.final_token_memory_attention_mass,
         }
 
 
@@ -197,6 +205,7 @@ def dynamic_memory_attention(
     valid = sum(lengths)
     allocated = sum(len(bucket.original_indices) * bucket.max_length for bucket in buckets)
     padding = allocated - valid
+    nonempty_fraction = sum(length > 0 for length in lengths) / max(len(lengths), 1)
     stats = MemoryBatchingStats(
         selected_lengths=tuple(lengths),
         requested_bucket_count=int(bucket_count),
@@ -209,6 +218,10 @@ def dynamic_memory_attention(
         padding_fraction=padding / max(allocated, 1),
         attention_entropy=sum(entropies) / max(len(entropies), 1),
         attention_max_weight=sum(maxima) / max(len(maxima), 1),
+        # Separate memory attention normalizes entirely over memory for each
+        # nonempty row; native-KV attention below measures a joint-softmax share.
+        memory_attention_mass=nonempty_fraction,
+        final_token_memory_attention_mass=nonempty_fraction,
     )
     return output, stats
 
@@ -222,18 +235,30 @@ def native_kv_attention(
     *,
     attention_mask: torch.Tensor | None = None,
     max_context_tokens: int | None = None,
+    collect_final_token_memory_weights: bool = False,
 ) -> tuple[torch.Tensor, MemoryBatchingStats]:
     """Attend jointly over selected historical K/V and causal local K/V.
 
-    All projected tensors use ``[B,H,T,Dh]`` except each variable memory row,
-    which is ``[1,H,M_i,Dh]``. Memory positions precede local positions and are
+    Queries use ``[B,H_q,T,Dh]`` while local and memory K/V use native
+    ``H_kv`` heads. ``H_q`` may equal ``H_kv`` (ordinary multi-head attention)
+    or be an integer multiple (GQA/MQA). Memory positions precede local positions and are
     visible to every local query. Local positions retain the ordinary causal and
     padding masks. Crucially, one softmax normalizes both sources; no separate
     memory branch or output projection is introduced.
     """
-    if q.shape != local_k.shape or q.shape != local_v.shape:
-        raise ValueError("Local Q/K/V must have matching [B,H,T,Dh] shapes.")
-    batch_size, _heads, token_count, _head_dim = q.shape
+    if q.ndim != 4 or local_k.ndim != 4 or local_v.shape != local_k.shape:
+        raise ValueError("Local Q and K/V must be rank-four tensors with matching K/V shapes.")
+    batch_size, query_heads, token_count, head_dim = q.shape
+    if (
+        local_k.shape[0] != batch_size
+        or local_k.shape[2] != token_count
+        or local_k.shape[3] != head_dim
+    ):
+        raise ValueError("Local K/V batch, token, and head dimensions must match Q.")
+    kv_heads = int(local_k.shape[1])
+    if kv_heads <= 0 or query_heads % kv_heads:
+        raise ValueError("Query heads must be an integer multiple of native K/V heads.")
+    kv_groups = query_heads // kv_heads
     if len(memory_k_by_item) != batch_size or len(memory_v_by_item) != batch_size:
         raise ValueError("Memory list length must match query batch size.")
     if attention_mask is not None and attention_mask.shape != (batch_size, token_count):
@@ -247,6 +272,9 @@ def native_kv_attention(
     lengths = []
     entropies = []
     maxima = []
+    memory_masses = []
+    final_token_memory_masses = []
+    final_token_memory_weights = []
     for row_index, (memory_k, memory_v) in enumerate(
         zip(memory_k_by_item, memory_v_by_item)
     ):
@@ -254,7 +282,7 @@ def native_kv_attention(
             raise ValueError("Each memory K/V pair must have matching [1,H,M,Dh] shapes.")
         if (
             memory_k.shape[0] != 1
-            or memory_k.shape[1] != q.shape[1]
+            or memory_k.shape[1] != kv_heads
             or memory_k.shape[3] != q.shape[3]
         ):
             raise ValueError("Memory K/V head dimensions do not match the query.")
@@ -273,6 +301,9 @@ def native_kv_attention(
 
         keys = torch.cat((memory_k, local_k[row_index : row_index + 1]), dim=2)
         values = torch.cat((memory_v, local_v[row_index : row_index + 1]), dim=2)
+        if kv_groups > 1:
+            keys = keys.repeat_interleave(kv_groups, dim=1)
+            values = values.repeat_interleave(kv_groups, dim=1)
         scores = q[row_index : row_index + 1] @ keys.transpose(-2, -1) * scale
         memory_visible = torch.ones(
             token_count, memory_length, dtype=torch.bool, device=q.device
@@ -284,6 +315,16 @@ def native_kv_attention(
         scores = scores.masked_fill(~visible[None, None, :, :], float("-inf"))
         weights = F.softmax(scores, dim=-1)
         output_rows.append(weights @ values)
+        memory_weights = weights[..., :memory_length]
+        memory_masses.append(float(memory_weights.sum(dim=-1).mean().detach().cpu()))
+        final_token_memory_masses.append(
+            float(memory_weights[:, :, -1, :].sum(dim=-1).mean().detach().cpu())
+        )
+        if collect_final_token_memory_weights:
+            final_weights = memory_weights[0, :, -1, :].detach().float().cpu()
+            final_token_memory_weights.append(
+                tuple(tuple(float(value) for value in head) for head in final_weights)
+            )
         safe_weights = weights.clamp_min(torch.finfo(weights.dtype).tiny)
         entropies.append(
             float((-(weights * safe_weights.log()).sum(dim=-1).mean()).detach().cpu())
@@ -303,5 +344,10 @@ def native_kv_attention(
         padding_fraction=0.0,
         attention_entropy=sum(entropies) / max(len(entropies), 1),
         attention_max_weight=sum(maxima) / max(len(maxima), 1),
+        memory_attention_mass=sum(memory_masses) / max(len(memory_masses), 1),
+        final_token_memory_attention_mass=(
+            sum(final_token_memory_masses) / max(len(final_token_memory_masses), 1)
+        ),
+        final_token_memory_weights=tuple(final_token_memory_weights),
     )
     return torch.cat(output_rows, dim=0), stats

@@ -1,21 +1,14 @@
 [project]
-name = "pra-handoff"
-version = "0.1.0"
-description = "URI-addressed Progressive Retrieval Attention research prototype"
+name = "pra-hf"
+version = "0.2.0rc1"
+description = "Bounded sparse native-KV memory for Hugging Face causal language models"
 requires-python = ">=3.10"
 dependencies = [
   "torch>=2.2",
   "click>=8.1",
   "PyYAML>=6.0",
   "numpy>=1.24",
-  "tqdm>=4.66",
-  "pytest>=8.0",
-  "matplotlib>=3.8",
-  "jupyter>=1.0",
   "transformers>=4.45",
-  "accelerate>=0.33",
-  "peft>=0.12",
-  "datasets>=3.0",
   "tokenizers>=0.20",
 ]
 
@@ -25,10 +18,20 @@ docs = [
   "mkdocs-material>=9.6,<10",
   "mkdocstrings[python]>=0.29",
 ]
+research = [
+  "accelerate>=0.33",
+  "datasets>=3.0",
+  "jupyter>=1.0",
+  "matplotlib>=3.8",
+  "peft>=0.12",
+  "pytest>=8.0",
+  "tqdm>=4.66",
+]
 
 [project.scripts]
 pra = "pra_torch.cli:cli"
+pra-hf = "pra_hf.cli:cli"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
