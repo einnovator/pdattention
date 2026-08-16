@@ -6,6 +6,10 @@ final build. Private behavioral-judge truth and unblinding files are intentional
 
 | Headline claim | Canonical artifact | Primary fields or rows |
 |---|---|---|
+| Iterative PRA improves complete-path recovery in 59/400 (14.8%) paired units; within those units margin rises by 2.164 with frozen paired-bootstrap 95% interval [1.336, 2.971]. | `../shared/results/paper2_5_iterative_pra/final_reviewer_patch/iteration_benefit_59_vs_341.csv` and `controlled_local_sa_v6/traversal_to_use_rows.csv` | Exact `G+`/`G0` assignment, path change, margin change, and answer change for every unit. |
+| The path-improved minority is evidence poor after one shot; among one-shot misses it has shorter chains, longer evidence spans, lower evidence mass, and higher distractor mass. | `../shared/results/paper2_5_iterative_pra/final_reviewer_patch/iteration_benefit_feature_summary.csv` | `one_shot_miss_only` pre-decision rows with means, medians, standardized effects, and bootstrap intervals. |
+| Hotpot 4-token contextual facets raise selected-root inclusion from .343 to .457 at 20%, while query-parent comparisons rise from 5.9 to 67.6. | `../shared/results/paper2_5_iterative_pra/query_entry_facets/query_entry_summary.csv` and `final_reviewer_patch/dataset_routing_geometry_summary.csv` | Held-out `A_global_semantic` and `B_multi_span_semantic` rows. |
+| QASPER/Hotpot/2Wiki/MuSiQue differ in root entry, evidence dispersion, successor topology, and conceptual payload. | `../shared/results/paper2_5_iterative_pra/final_reviewer_patch/dataset_routing_geometry_summary.csv` | Exact metrics copied from canonical frozen summaries plus explicitly labeled qualitative geometry. |
 | Final-layer controlled edge R@4 declines from .428 at W=16 to .187 globally while shortcut rate rises from .429 to .584. | `../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/receptive_field_topology_summary.csv` | Five-window final-layer means, SDs, intervals, and empirically best layers. |
 | Matched iterative PRA improves traversal more consistently than answer accuracy; every five-seed model-level accuracy interval crosses zero. | `../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/iterative_matched_budget_by_window.csv` and `paired_pra_effects.csv` | Exact 20-state one-shot/iterative rows and depth-macro paired seed effects. |
 | In the mechanistic cohort, path-improved units gain +2.164 correct-label margin and +.102 accuracy, while path-worsened units lose both. | `../shared/results/paper2_5_iterative_pra/controlled_local_sa_v6/traversal_to_use_rows.csv` | Paired path, margin, and answer deltas for 400 model--example units. |
@@ -35,6 +39,11 @@ final build. Private behavioral-judge truth and unblinding files are intentional
   activation -> consumption -> preservation`. These stages name different measured events.
 - Better traversal is functionally useful in the path-improved subgroup; the unresolved claim is
   aggregate policy reliability, not whether traversal can ever improve computation.
+- `G+` membership structurally requires a one-shot miss. The miss-conditioned analysis separates
+  retry eligibility from descriptive retry benefit; no classifier is fitted because there are only
+  16 repeated controlled identities and several features are generator-coupled.
+- One-shot measurements are pre-decision only with respect to choosing an iterative retry. Iterative
+  attention, margin gain, answer gain, and erasure are post-treatment diagnostics.
 - Oracle memory is a matched causal consumption control. It demonstrates frozen consumption
   capacity but is neither an executable selector nor a deployable routing policy.
 - Distractor-dominated attention identifies controlled activation as the dominant measured
@@ -50,3 +59,5 @@ final build. Private behavioral-judge truth and unblinding files are intentional
   zero normalized accuracy.
 - Behavioral scores are evaluator measurements, not ground truth. Only GPT-5.6 Sol passes the
   preregistered calibration anchors; Claude is retained as a failed-instrument diagnostic.
+- Parameter directions are synthesis claims, not monotonic laws. The frozen source map is
+  `final_reviewer_patch/pra_parameter_directionality.md`.

@@ -17,11 +17,12 @@ checkpoint is converted without learning to native-K/V PRA.  We complement this 
 frozen Qwen, Gemma, and Llama-family diagnostics on multi-hop language tasks.
 
 At the controlled model's final layer, $W=16$ attains native edge R@4 $.428\pm.076$, versus
-$.187\pm.065$ under global attention.  Evolving-state iterative PRA improves complete-path recovery
-under the same 20 layer-token K/V budget, but aggregate answer-accuracy intervals remain unresolved.
-The apparent traversal--output gap is conditional rather than absolute: model--example units whose
-path recovery improves gain $2.164$ correct-label margin, with a paired bootstrap 95\% interval
-$[1.336,2.971]$.  Ordinary executable memory is distractor dominated, assigning .147 final-query
+$.187\pm.065$ under global attention.  Under the same 20 layer-token K/V budget, evolving-state
+iterative PRA improves complete-path recovery over one-shot retrieval in 59/400 (14.8\%)
+model--example units.  Within this path-improved subset, correct-label margin increases by $2.164$,
+with a paired-bootstrap 95\% interval $[1.336,2.971]$, while aggregate answer-accuracy improvement
+remains statistically unresolved.  Ordinary executable memory is distractor dominated, assigning
+.147 final-query
 attention mass to evidence and .521 to memory distractors.  A matched oracle intervention raises
 frozen accuracy from .140 to .398 and correct-label margin from $-3.103$ to $-.703$.
 
@@ -385,7 +386,7 @@ direction.  Curves average paired checkpoints and examples for diagnosis rather 
 \label{fig:margin-trajectory}
 \end{figure}
 
-\subsection{Traversal gains are useful when they occur}
+\subsection{When does iteration help?}
 
 Iterative PRA improves complete-path recovery over one-shot in 59 of 400 model--example units,
 leaves it unchanged in 293, and worsens it in 48.  Within the improved subset, correct-label margin
@@ -394,6 +395,57 @@ interval $[-.017,.220]$.  When path recovery worsens, margin falls by 1.585 and 
 Across all rows, path gain correlates .279 with margin gain and .207 with answer gain.  Better
 traversal is therefore functionally useful when it changes evidence, but the tested policy does not
 produce that event reliably enough for a stable aggregate accuracy improvement.
+
+Let $G_+=\{\Delta\mathrm{path}>0\}$ denote the 59 improved units and
+$G_0=\{\Delta\mathrm{path}\leq0\}$ the other 341.  Table~\ref{tab:iteration-benefit}
+compares their existing traces.  The first block contains measurements available after one-shot
+retrieval but before choosing a retry; the second contains consequences observed only after
+iteration.  The distinction matters: margin gain, iterative evidence mass, and erasure can diagnose
+a completed retry but cannot serve as deployable retry triggers.
+
+\begin{table}[H]
+\centering
+\caption{Path-improved versus other model--example units.  Entries are means; $d$ is the pooled
+standardized mean difference except for answer gain, reported as a mean change.  Intervals
+and medians are preserved in the public derived CSV.}
+\label{tab:iteration-benefit}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Timing & Feature & $G_+$ (59) & $G_0$ (341) & Effect \\
+\midrule
+Pre-decision & One-shot reference recall & .085 & .603 & $d=-1.393$ \\
+Pre-decision & One-shot evidence mass & .037 & .230 & $d=-1.094$ \\
+Pre-decision & One-shot distractor mass & .871 & .657 & $d=1.119$ \\
+Pre-decision & Chain depth & 1.17 & 1.92 & $d=-.770$ \\
+Pre-decision & One-shot margin & $-4.137$ & $-2.330$ & $d=-.534$ \\
+Pre-decision & Evidence span (tokens) & 30.83 & 26.92 & $d=.307$ \\
+\midrule
+Post-treatment & Margin gain & 2.164 & .026 & $d=.629$ \\
+Post-treatment & Answer gain & .102 & $-.065$ & $+.166$ \\
+Post-treatment & Iterative evidence mass & .202 & .137 & $d=.635$ \\
+Post-treatment & Iterative distractor mass & .476 & .528 & $d=-.387$ \\
+Post-treatment & Erased by final layer & .203 & .185 & $p=.720$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+One-shot complete-path recovery is zero in every $G_+$ unit by construction: a binary complete path
+cannot improve from one.  That fact identifies retry eligibility, not a learned signature.  Among
+the 248 one-shot misses, 59 improve and 189 do not.  Relative to those 189 misses, improved retries
+have shorter chains (1.17 versus 2.50, $d=-1.43$), longer evidence spans (30.83 versus 20.94 tokens,
+$d=.89$), less one-shot evidence mass (.037 versus .156, $d=-.779$), and more distractor mass (.871
+versus .720, $d=.854$).  Their baseline margin is also lower ($-4.137$ versus $-3.233$, $d=-.319$).
+Thus the minority has a recognizable controlled-task profile: shallow recoverable paths whose
+one-shot working set is especially evidence poor.  Query length is omitted from the interpretation
+because this synthetic generator couples it to chain depth.  Root-score gaps, routing entropy,
+facets, per-unit native R@$K$/MRR, contraction, and frontier competition were not recorded for these
+paired units.
+
+We do not fit a retry classifier.  The cohort contains only 16 repeated task identities per
+checkpoint, and its strongest features are either structural eligibility or generator-coupled.
+Treating a random row split across seeds as independent prediction would overstate generalization.
+The descriptive signature instead motivates the independent adaptive-control question in Paper 3.5.
 
 \begin{figure}[H]
 \centering
@@ -491,6 +543,18 @@ facets achieve .422/.608; the best inexpensive held-out selectors reach .622/.69
 norm, margin, entropy, and validation-fitted scale selectors do not close the gap.  Root activation is
 therefore a competition problem, not simply the absence of a useful query representation.
 
+HotpotQA makes that competition concrete.  A short bridge question can mix a source entity, first
+relation, bridge object, second relation, and target property.  The correct first passage can be
+necessary without being answer-like, so $\operatorname{sim}(Q,B)$ can exceed
+$\operatorname{sim}(Q,A)$ even when $A$ is the correct root and $A\rightarrow B$ is a strong native
+transition.  Distractors can match one sub-intent, and the query-to-memory comparison is asymmetric:
+$Q$ is a question state while $A$ and $B$ are contextual memory states.  The inherited seven-identity
+Hotpot test is not a failure case for candidate availability---global semantic root R@4 is .971---but
+at a 20\% selection budget the correct root is included only .343 of the time.  Four-token contextual
+facets raise inclusion to .457 by preserving relational subphrases, while comparisons rise from 5.9
+to 67.6.  More facets create opportunities and competitors; selecting the facet that expresses the
+current retrieval intention remains the hard part.
+
 \begin{table}[H]
 \centering
 \caption{Held-out root Top-4 recall: oracle query view versus executable selection.}
@@ -504,6 +568,25 @@ Deployed fixed facets & .422 & .608 \\
 Bounded all-facet union & .411 & .475 \\
 Best cheap selector & .622 & .692 \\
 All-offset oracle ceiling & .878 & .950 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Dataset routing geometry from frozen artifacts.  Values are diagnostic and cohorts differ
+in role; blank oracle entries were not measured.}
+\label{tab:dataset-routing-geometry}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{p{0.09\linewidth}p{0.20\linewidth}p{0.16\linewidth}p{0.19\linewidth}p{0.20\linewidth}}
+\toprule
+Dataset & Query $\rightarrow$ root & Evidence dispersion & Memory $\rightarrow$ memory & Main bottleneck \\
+\midrule
+QASPER & Low in direct control: R@4 .967; facets add no 20\% inclusion gain & Low/moderate: .227 source selected & No annotated transition graph & Direct retrieval and materialization \\
+HotpotQA & Bridge-ambiguous; R@4 .971 but inclusion .343$\rightarrow$.457 with facets & Moderate: .501 source selected & Useful after correct root; propagation adds little here & Robust multi-intent root activation and concentration \\
+2Wiki & Executable R@4 .608 versus .950 oracle-facet ceiling & Moderate/high: .770 source selected & Strong: edge R@6 .880 & Root/facet selection before successor traversal \\
+MuSiQue & Executable R@4 .422 versus .878 oracle-facet ceiling & Distributed: .513 source selected & Useful but contracted: edge R@6 .833 & Root selection, dispersion, and contraction \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -647,6 +730,57 @@ another opportunity to enter attention also competes with evidence.  The Qwen ro
 the controlled oracle intervention show that useful representations already exist; selecting a
 small, evidence-dense working set remains difficult.
 
+\subsection{Parameter directionality and adaptive effort}
+
+One fixed PRA configuration is unlikely to be optimal because each control moves opportunity,
+distractor pressure, physical state, and compute differently (Table~\ref{tab:parameter-direction}).
+More facets $F$ preserve more query intents but create more candidate competition; this helped
+Hotpot root inclusion while leaving QASPER unchanged at the same 20\% budget.  More roots $R$ improve
+entry coverage but broaden the selected working set.  More neighbors $K$ improve successor
+availability at superlinear comparison cost: the held-out Hotpot oracle-root control recovers all
+oracle parents at $K=4,B=6$, whereas faithful 2Wiki transition and path recovery require $K=8$.
+Neither operating point is universal.  Greater hop depth $H$ can recover long paths, but global
+contextualization can contract them into shallow shortcuts before routing begins.  A larger final
+budget $B$ tolerates ranking error while increasing active K/V and softmax competition.  Raising an
+acceptance threshold $\theta$ reverses that tradeoff, improving precision while risking weak bridge
+evidence; earlier threshold-calibration gates did not identify a reliable closure rule.
+
+Consumer placement is a separate axis.  More PRA layers offer repeated assimilation but consume
+more layer-token K/V and can perturb or erase useful residual changes.  The best search layer need
+not be the best consumer layer or preservation schedule.  Finally, chunk granularity $G$ changes the
+graph itself: coarse nodes improve containment at low node count but disclose irrelevant payload,
+whereas fine nodes improve payload precision while increasing graph size and sensitivity to missing
+edges, $K$, and $H$.
+
+\begin{table}[H]
+\centering
+\caption{Dominant parameter directions, not universal monotonic laws.  Effects depend on dataset,
+layer, granularity, and routing quality.}
+\label{tab:parameter-direction}
+\scriptsize
+\begin{tabular}{lccccc p{0.22\linewidth}}
+\toprule
+Parameter $\uparrow$ & Root & Path & Distractors & Active K/V & Search & Typical benefit \\
+\midrule
+$F$ facets & $\uparrow$ & indirect $\uparrow$ & $\uparrow$ & indirect $\uparrow$ & $\uparrow$ & Ambiguous, multi-intent queries \\
+$R$ roots & $\uparrow$ & $\uparrow$ & $\uparrow\uparrow$ & $\uparrow$ & $\uparrow$ & Uncertain root rank \\
+$K$ neighbors & --- & $\uparrow$ & $\uparrow$ & $\uparrow$ & $\uparrow\uparrow$ & Noisy successor rank \\
+$H$ hops & --- & deep paths $\uparrow$ & $\uparrow\uparrow$ & $\uparrow$ & $\uparrow\uparrow$ & Distributed evidence \\
+$B$ budget & $\uparrow$/--- & $\uparrow$ & $\uparrow\uparrow$ & $\uparrow\uparrow$ & ---/$\uparrow$ & Incomplete coverage \\
+$\theta$ threshold & precision $\uparrow$, recall $\downarrow$ & varies & $\downarrow$ & $\downarrow$ & $\downarrow$ & Confidence filtering \\
+PRA layers & --- & potential $\uparrow$ & interference & $\uparrow\uparrow$ & $\uparrow$ & Repeated assimilation \\
+Finer $G$ & varies & edges can $\downarrow$ & payload $\downarrow$ & $\downarrow$/node & nodes $\uparrow$ & Precise disclosure \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These coupled directions motivate adaptive rather than globally maximal effort:
+$\mathrm{query/state}\rightarrow(F,R,K,H,B,\theta,L,G)$.  A QASPER-like direct query may use a
+narrow policy; a Hotpot bridge query may warrant additional facets or roots; distributed MuSiQue
+evidence may warrant more search and coverage budget only when confidence justifies the added
+distractor load.  Paper 3.5 asks whether a controller can make that decision; this paper does not
+train or evaluate one.
+
 Search, consumption, and preservation operate on different computational timescales.  A layer can
 have useful native Q/K topology while being a poor location for injecting value vectors.  An early
 consumer can create a useful change that later layers erase.  These observations favor architectures
@@ -680,6 +814,10 @@ reasoning paths.  MuSiQue generation is backbone limited even with full context.
 and trace-oriented materialization are not production-serving kernels.  One external judge passes
 calibration; the second is partial and fails it.
 
+The causal $W=16$ versus global topology result is established in the controlled 25-model family.
+Pretrained Qwen layer/chunk diagnostics are directionally consistent with architecture-dependent
+topology but do not constitute a causal pretrained LocalSA-versus-GlobalSA comparison.
+
 \section{Scope Boundaries and Follow-up Work}
 
 \paragraph{Paper 3: physical disclosure.}
@@ -696,7 +834,9 @@ only when it improves evidence concentration.  No such controller is trained or 
 Can frozen-to-LoRA-to-full-weight-to-native PRA training make memory representation, consumption, and
 assimilation robust to imperfect sparse memory?  The motivation is not that frozen consumers cannot
 use memory: oracle evidence proves they can.  Training may instead improve robustness, portability,
-and preservation under noisy executable activation.
+and preservation under noisy executable activation.  Because oracle evidence substantially improves
+frozen-model output, PRA-aware training should evaluate robustness as memory quality degrades from
+oracle to partially correct to ordinary noisy retrieval, not merely oracle performance.
 
 \section{Conclusion}
 
@@ -705,9 +845,10 @@ receptive field.  In the controlled family, final-layer edge R@4 is .428 at $W=1
 global attention.  Evolving-state PRA can exploit that structure to recover more paths under the
 same physical K/V budget.
 
-Better traversal is useful when it changes evidence.  Path-improved model--example units gain 2.164
-correct-label margin, even though the current policy produces too few such cases for a stable
-aggregate accuracy gain.  The causal intervention explains the operational gap: ordinary memory is
+Better traversal is useful when it changes evidence.  It does so in 59/400 (14.8\%) model--example
+units, which gain 2.164 correct-label margin, even though the current policy produces too few such
+cases for a stable aggregate accuracy gain.  The causal intervention explains the operational gap:
+ordinary memory is
 distractor dominated, while matched oracle evidence raises frozen accuracy from .140 to .398 and
 margin from $-3.103$ to $-.703$.  The frozen transformer can consume correct PRA memory.
 

@@ -2,8 +2,8 @@
 
 ## Page Structure
 
-- Final PDF: 69 pages total, with a 14-page reviewer-facing main narrative.
-- The appendix begins on page 15 and preserves the chronological gate record, negative results,
+- Final PDF: 72 pages total, with a 17-page reviewer-facing main narrative.
+- The appendix begins on page 18 and preserves the chronological gate record, negative results,
   implementation maps, external judgment audit, and validation gates.
 - The main paper lives in `main_associative_memory.tex`; `paper.tex` retains the common preamble and
   archival appendices. This separation makes the scientific argument inspectable without deleting
@@ -21,6 +21,11 @@ The main paper now follows the causal decomposition requested for the associativ
 6. pretrained validation across root entry, edge geometry, granularity, and output behavior;
 7. related work, discussion, limitations, explicit follow-up boundaries, and conclusion.
 
+The final reviewer patch adds a compact "When Does Iteration Help?" analysis before the causal
+diagnosis, a dataset-routing geometry table in pretrained validation, and a parameter-directionality
+table in discussion. The main text explicitly distinguishes measurements available after one-shot
+retrieval from outcomes visible only after iteration.
+
 The former gate sequence was moved behind the appendix transition. It preserves projection
 correction, parent and local semantic discovery, native-Q/K controls, oracle rank and competition,
 protected-root policies, query facets, static and dynamic grounding, terminal-threshold failures,
@@ -33,6 +38,10 @@ implementation maps, and validation gates.
 - Matched one-shot/iterative analysis: `controlled_local_sa_v6/iterative_matched_budget_seed_stats.csv`.
 - Frozen-consumer causal controls: `controlled_local_sa_v6/causal_memory_seed_summary.csv`.
 - Traversal-to-answer joins: `controlled_local_sa_v6/traversal_to_use_rows.csv`.
+- Final 59-versus-341 rows and miss-conditioned feature summaries:
+  `final_reviewer_patch/iteration_benefit_59_vs_341.csv` and
+  `final_reviewer_patch/iteration_benefit_feature_summary.csv`.
+- Cross-dataset reviewer synthesis: `final_reviewer_patch/dataset_routing_geometry_summary.csv`.
 - Attention, residual, and consumer-layer traces: `controlled_local_sa_v6/mechanistic/`.
 - Exact synthetic indirect discovery: `local_associative_closure/gate2_local_results.json`.
 - 2Wiki edge and path fidelity: `natural_graph_depth/natural_graph_depth_results.json`.
@@ -46,14 +55,15 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
 
 ## Render Verification
 
-- Built with `pdflatex`, `bibtex`, and two final `pdflatex` passes on August 15, 2026.
-- `pdfinfo` reports 69 US-letter pages and a 2.07 MiB output.
+- Built with `pdflatex`, `bibtex`, and two final `pdflatex` passes on August 16, 2026.
+- `pdfinfo` reports 72 US-letter pages and approximately 2.1 MiB output.
 - LaTeX reports no fatal errors, undefined references or citations, package errors, or overfull boxes.
   Remaining underfull-box notices occur in narrow bibliography and code-map paragraphs and do not
   clip content.
-- Visually inspected pages 1--16 and implementation-map page 59 at 125 dpi, including the headline
-  table, topology and traversal figures, answer-margin trajectory, causal diagnosis, final causal
-  pipeline, pretrained transition, conclusion, and appendix boundary. Headings, equations, tables,
+- Visually reinspected changed reviewer-facing pages 1, 9--10, 12, and 16--18 at 110 dpi, including
+  the abstract, 59-versus-341 table, dataset geometry, parameter directions, scope handoffs,
+  conclusion, and appendix boundary. The previously inspected topology, trajectory, causal-pipeline,
+  and implementation-map content is unchanged. Headings, equations, tables,
   figures, captions, references, and page numbers are legible; no overlap, clipping, black boxes, or
   missing glyphs were found.
 
@@ -82,6 +92,12 @@ The complete value-level mapping is in `claim_to_artifact_audit.md`.
   result is `p=.0625`; the paper treats this as a diagnostic ceiling, not a powered architecture claim.
 - Iterative traversal improves margins strongly on path-improved model-example units, but the
   current policy produces too few such units to establish an aggregate accuracy improvement.
+- The pre-decision profile is descriptive, not a deployable retry policy. A classifier was not
+  justified by 16 repeated task identities and generator-coupled depth/query features, so no
+  `iteration_benefit_predictability.json` is emitted.
+- The causal receptive-field comparison belongs to the controlled 25-model family. Qwen
+  layer/chunk diagnostics are directional architecture evidence, not a causal pretrained
+  LocalSA-versus-GlobalSA comparison.
 - Ordinary selected memory remains distractor dominated; controlled activation, rather than search
   depth alone, is the primary unresolved mechanism.
 - GPT-5.6 Sol supplies one complete, control-qualified external judgment. Claude covers 51.7% of

@@ -237,6 +237,18 @@ decomposition, sparse quality/payload frontiers, cross-dataset table, plots,
 and negative-results registry under
 `../shared/results/paper2_5_iterative_pra/final_metrics/`.
 
+Final reviewer-response synthesis from frozen traces:
+
+```powershell
+python -m experiments.paper2_5_iterative_pra.analyze_final_reviewer_patch
+```
+
+This command joins the canonical 400 controlled model--example units, emits the
+59-versus-341 pre-decision and post-treatment comparisons, and summarizes the
+existing cross-dataset routing geometry and parameter directions. It performs
+no training, routing, generation, or model inference. The derived artifacts are
+under `../shared/results/paper2_5_iterative_pra/final_reviewer_patch/`.
+
 Gate-3 end-to-end output validation:
 
 ```powershell
