@@ -15,6 +15,7 @@ from pra_torch.hf import inject_pra
 from pra_torch.memory import SelectedChunk
 
 from .config import PRAConfig
+from .hybrid_discovery import TokenNativeIndex
 from .iterative import (
     GistIndex,
     HierarchicalGistIndex,
@@ -409,7 +410,11 @@ class PRAForCausalLM:
             )
             rankings = self._iterative_rankings(simple_index, results)
             retrieval_graphs = [result.graph.to_dict() for result in results]
-        elif self.config.routing_mode == "iterative":
+        elif self.config.routing_mode in {
+            "iterative",
+            "token_iterative",
+            "hybrid_iterative",
+        }:
             index = GistIndex.from_entries(
                 self._handle.cache.all_entries(),
                 self.routing_layer,
@@ -417,7 +422,23 @@ class PRAForCausalLM:
                 dtype=query.dtype,
             )
             iterative = IterativeGistRouter(index)
-            results = iterative.route_batch(query, self.config.iterative_config)
+            if self.config.routing_mode == "iterative":
+                results = iterative.route_batch(query, self.config.iterative_config)
+            else:
+                token_index = TokenNativeIndex.from_gist_index(index, self.tokenizer)
+                results = []
+                for row_index, row in enumerate(query):
+                    prompt_ids = input_ids[row_index][attention_mask[row_index].bool()]
+                    results.append(
+                        iterative.route(
+                            row,
+                            self.config.iterative_config,
+                            token_index=token_index,
+                            root_token_ids=prompt_ids.detach().cpu().tolist(),
+                            tokenizer=self.tokenizer,
+                            discovery_policy=self.config.hybrid_discovery_policy,
+                        )
+                    )
             selected = [iterative.selected_chunks(result) for result in results]
             rankings = self._iterative_rankings(index, results)
             retrieval_graphs = [result.graph.to_dict() for result in results]

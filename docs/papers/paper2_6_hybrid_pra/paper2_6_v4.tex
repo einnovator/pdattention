@@ -1,0 +1,286 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,amsmath,amssymb,enumitem,tabularx,graphicx,float}
+\usepackage[hidelinks]{hyperref}
+\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/}}
+\setlength{\emergencystretch}{3em}
+\title{Hybrid Reference Discovery for Progressive Retrieval Attention:\\Token-Native and Semantic Routing for Multi-Hop Evidence}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{\today}
+\begin{document}\maketitle
+
+\begin{abstract}
+Progressive Retrieval Attention (PRA) separates a large logical memory from the smaller layer-native key/value working set admitted to attention. Contextual gists provide a semantic index, but names and token sequences exposed by intermediate evidence can also act as addresses. We implement token-native exact, normalized, IDF-weighted, ordered, approximate, entity, and explicit channels as an identity-aligned sidecar to PRA's existing bounded iterative router; decoded-word BM25 remains a separate baseline. The sidecar proposes identities; it neither copies nor materializes native K/V. On an identity-disjoint frozen Qwen3-0.6B feature test (16 HotpotQA and 16 QASPER examples), all principal conditions request four chunks. HotpotQA supporting-evidence recall is 0.151 for gist-only routing, 0.398 for BM25, and 0.279 for iterative hybrid routing; the paired hybrid--gist difference is 0.129 (95\% bootstrap interval 0.018--0.242). On QASPER, exact token routing is strongest (0.178), while hybrid improves from 0.038 to 0.081 but its interval crosses zero. Controlled chains show that a newly exposed token address can recover a second-hop target that one-shot gist routing misses, but typo recovery falls to 50\%, and confidently wrong overlap remains a severe failure mode. These are discovery-level results. No downstream answer-generation experiment was run, and we make no claim of improved QA accuracy.
+\end{abstract}
+
+\section{Introduction}
+PRA treats long context as addressable memory rather than a token sequence that must remain fully active. Its native-KV design separates stable object identity, compact routing representations, and detailed layer-specific K/V. This raises a distinct question: \emph{what evidence should discover a candidate memory object?}
+
+Current routing can score a contextual query $q_{t,\ell}$ against chunk gist $g_{i,\ell}$:
+\[
+s^{sem}_{i,\ell}=\cos(q_{t,\ell},g_{i,\ell}).
+\]
+This captures contextual relatedness but need not preserve exact sequence identity. PRA, however, already has access to the host model tokenizer. Exact token spans, weighted token overlap, ordered token subsequences, and approximate subword matches preserve identity-bearing evidence without introducing a second tokenizer. They do not reliably resolve paraphrases or implicit relations, so contextual gists remain necessary. The experiments below find both regimes: lexical channels dominate the present HotpotQA slice, while exact spans rather than fusion dominate QASPER.
+
+Paper 2.5 studies bounded associative discovery and exposes entry-routing, granularity, broad-activation, and interference limits. This paper asks which discovery signals should generate and rank candidates. Paper 3 then asks which candidates, and how much detail, should be materialized. Keeping these questions separate is central to the experimental design.
+
+\section{Hybrid Reference Discovery}
+At hop $h$, let
+\[
+\mathcal C_h =
+\mathcal C_h^{explicit}\cup
+\mathcal C_h^{tok\mbox{-}exact}\cup
+\mathcal C_h^{tok\mbox{-}approx}\cup
+\mathcal C_h^{semantic}\cup
+\mathcal C_h^{assoc}.
+\]
+Candidates retain URI/chunk identity, layer, raw channel scores, discovery hop, parent, provenance, rank, confidence, and an explicit calibration-status flag. Exact handles may resolve deterministically; approximate channels generate candidates.
+
+The implementation compares a progressive resolution cascade, candidate union, score fusion, token-native scoring followed by semantic reranking, semantic scoring followed by token-native reranking, and iterative hybrid traversal. Classical BM25 over decoded word terms is retained as a strong baseline rather than absorbed into the proposed mechanism.
+
+\section{Token-Native Reference Matching}
+The proposed non-neural resolver operates over the host model tokenizer. For each memory object we retain raw token IDs, normalized token spans, decoded subword strings, and title/name/alias boundaries. This permits exact identity matching without a second NLP vocabulary, while still allowing controlled normalization of tokenizer-specific leading-space, punctuation, and case artifacts.
+
+A progressive cascade is evaluated:
+\[
+\mathrm{explicit}
+\rightarrow
+\mathrm{exact\ token\ span}
+\rightarrow
+\mathrm{weighted/ordered\ token}
+\rightarrow
+\mathrm{approximate\ token}
+\rightarrow
+\mathrm{semantic\ gist}.
+\]
+Earlier high-confidence stages may resolve or sharply narrow candidates before later stages run.
+
+For weighted overlap, let $Q$ and $R_i$ denote query and reference token multisets or aligned spans, and let $w(t)$ be a corpus-dependent token weight. A simple form is
+\[
+s_i^{overlap}
+=
+\frac{\sum_{t\in \mathrm{uniq}(Q)\cap \mathrm{uniq}(R_i)} w(t)}
+{\sum_{t\in \mathrm{uniq}(R_i)} w(t)}.
+\]
+The present token-native score uses token-space inverse document frequency,
+\[
+w(t)=\log\frac{N+1}{df(t)+1},
+\]
+which can automatically downweight domain-generic tokens. Ordered subsequence overlap preserves multi-token identity while tolerating intervening material. Fixed stop-token removal and explicit token $n$-grams remain ablations.
+
+Approximate matching is attempted only after exact or high-confidence matching fails or remains ambiguous. The current implementation uses sequence similarity over normalized subword pieces. Bounded token edit distance and similarity in the host model's input-token embedding matrix remain open ablations rather than assumed defaults.
+
+Classical word-level BM25 remains a strong baseline. The scientific question is whether model-token-aware identity resolution provides a better PRA-native discovery signal, not whether conventional information retrieval is unnecessary.
+
+
+\subsection{Confidence and Provenance}
+A candidate record includes raw channel scores and an explicit confidence field with stable intended semantics:
+\[
+c_i \approx
+P(r_i\ \mathrm{is\ a\ valid\ referent}\mid q,\mathbf{s}_i,p_i),
+\]
+where $\mathbf{s}_i$ contains channel-specific evidence and $p_i$ records discovery provenance. The same numerical score from an exact token match, an approximate token match, and a semantic gist is not assumed to have the same reliability.
+
+Raw discovery scores are marked uncalibrated in runtime traces. We fit calibration only on validation candidates and evaluate Brier score, expected calibration error, reliability, and selective accuracy/coverage. This makes the discovery interface testable for subsequent control:
+\[
+c_i > \tau_{\mathrm{act}}
+\Rightarrow \mathrm{materialize},
+\]
+\[
+\tau_{\mathrm{search}} < c_i \le \tau_{\mathrm{act}}
+\Rightarrow \mathrm{retrieve/disambiguate\ further},
+\]
+with low-confidence cases eligible for abstention. External side-effecting action remains outside the scope of this paper, but the same confidence semantics can later support act/search/ask/abstain policies in agent systems.
+
+\section{Multi-Hop Reference Following}
+A useful pattern is
+\[
+Q \xrightarrow{semantic} C_1
+\xrightarrow{token\ reference} C_2
+\xrightarrow{reasoning} A.
+\]
+After selecting $C_1$, its indexed token sequence becomes the lexical query for the next bounded hop. Its semantic gist remains the semantic frontier. Both channels therefore score the same aligned candidate rows before the existing branch, beam, depth, and unique-chunk controls admit $C_2$. This produces a dynamically traversed chunk--reference graph without requiring a complete symbolic knowledge graph in advance.
+
+If reference structure is informative, sparse traversal may replace broad semantic expansion:
+\[
+\mathrm{same\ evidence\ recall}
+\quad\text{with}\quad
+\mathrm{fewer\ candidates/materialized\ tokens}.
+\]
+
+\section{Implementation}
+The implementation is intentionally split into a discovery sidecar and the inherited Paper~2.5 traversal. \texttt{TokenNativeIndex} in \texttt{src/pra\_hf/hybrid\_discovery.py}, beginning at line 161, tokenizes each source once and slices it with the cache's stable token offsets. Its rows must match \texttt{GistIndex.records} exactly; a mismatch raises before routing. \texttt{DiscoveryCandidate} (line 100) retains URI, chunk and layer identity, all raw channel scores, spans, hop, parent, provenance, rank, and confidence. Longest exact spans and ordered overlap are implemented at lines 49 and 68. Channel scoring and policy selection begin at line 282.
+
+Crucially, this code does not add a second traversal engine. \texttt{IterativeGistRouter.route} in \texttt{src/pra\_hf/iterative.py} begins at line 413. Optional token arguments are validated at lines 432--441. Semantic and token-native scores are computed for each current frontier at lines 500--535; their fused ranking then passes through the original visited-set, per-parent branch, beam, confidence, and unique-chunk budget. An admitted chunk contributes its gist and token IDs to the next frontier. The retrieval graph records channel provenance, while native K/V remains untouched.
+
+The product path exposes \texttt{token\_iterative} and \texttt{hybrid\_iterative} configuration modes. \texttt{PRAForCausalLM} constructs the aligned sidecar only for those modes (\texttt{src/pra\_hf/model.py}, lines 428--445). After traversal stops, the existing identity mapper resolves selected chunks across consumption layers at line 449. Only after that mapping are graph nodes marked materialized (lines 457--461). Thus the experiment's requested chunks are not mislabeled as active K/V.
+
+\section{Research Questions and Success Levels}
+\begin{enumerate}[leftmargin=*]
+\item Does hybrid discovery improve supporting-evidence recall at matched active budget?
+\item Which discovery signals dominate entry versus later hops?
+\item Can iterative reference following outperform simply increasing semantic top-$k$?
+\item Do candidate provenance and confidence improve downstream materialization/control decisions?
+\item When does token-level reference structure fail to add value over contextual gists?
+\item Do retrieval improvements survive end-to-end answer generation?
+\end{enumerate}
+
+We distinguish two success levels. A \emph{discovery-level positive result} requires improved required-evidence recall at matched active cost, or matched recall with materially lower active memory/cost, supported statistically and by causal controls. An \emph{end-to-end positive result} additionally requires a resolved improvement in downstream QA, such as paired EM/F1 improvement with an appropriate confidence interval or significance test on at least one natural multi-hop dataset.
+
+This distinction is essential. Paper 2.6 studies discovery as a mechanism upstream of materialization and generation, so a robust discovery Pareto improvement remains scientifically meaningful even if the current model does not convert it into answer gains. However, the paper must not describe such a result as improved reasoning or QA performance.
+
+
+\section{Tokenization Robustness}
+Token-native matching introduces a specific invariance question: can the resolver recognize the same referent when its surface form induces a different tokenizer sequence? We therefore make tokenization robustness a first-class experiment rather than a minor tokenizer-family ablation.
+
+For a fixed referent $r$, construct controlled variants
+\[
+\mathcal P(r)=
+\{r_{\mathrm{case}},r_{\mathrm{space}},r_{\mathrm{punct}},
+r_{\mathrm{hyphen}},r_{\mathrm{split}},r_{\mathrm{typo}},
+r_{\mathrm{abbr}},r_{\mathrm{alias}},\ldots\}.
+\]
+The present controlled suite covers case, punctuation, one-character misspellings, and contradictory high-overlap names. Whitespace, hyphenation, concatenation/splitting, naturally induced alternate subword segmentation, and abbreviation/alias tests remain open.
+
+We measure degradation separately for exact-span, weighted/ordered, approximate-token, cascade, and iterative-hybrid conditions. The objective is an invariance curve showing how rapidly each mechanism loses referent accuracy as the surface form moves away from exact token identity.
+
+\section{Wrong-Reference Stress Testing}
+Average recall is insufficient if token-native matching becomes confidently wrong under ambiguity. We implement a controlled conflict in which an admitted chunk names both a high-overlap distractor and a lower-overlap valid target. Broader tests of shared aliases, nonexistent references, and independently varied semantic--token conflict remain open.
+
+A particularly diagnostic condition is
+\[
+s_{\mathrm{token}}(A) \gg s_{\mathrm{token}}(B),
+\qquad
+s_{\mathrm{semantic}}(B) \gg s_{\mathrm{semantic}}(A),
+\]
+with only one candidate being the valid referent. The present test measures wrong-candidate confidence and target recovery after the conflicting hop. Downstream QA degradation and broader selective behavior remain open. A useful hybrid method should degrade gracefully rather than convert ambiguous token evidence into high-confidence catastrophic routing errors.
+
+\section{Experimental Protocol}
+\subsection{Controlled Mechanism Tasks}
+We construct 20 deterministic chains per condition. A semantic entry identifies the first chunk, which exposes a token address for a target placed behind two stronger semantic distractors. Clean, case, punctuation, typo, and confidently wrong-overlap variants use a two-chunk request budget. These are mechanism probes, not independent natural examples.
+
+\subsection{Natural Evidence Retrieval}
+We reuse the identity-disjoint Paper~2 feature protocol: frozen Qwen3-0.6B attention-input hidden states at layer 27, 32-token mean-gist chunks, revision \texttt{c1899de...e47ca}, and the question-exponential query. Validation contains eight HotpotQA and eight QASPER examples; held-out test contains 16 of each. No model weights are loaded in this study. B0--B4 and H1--H5 receive a final budget of four requested chunks. A1 deliberately buys breadth with eight semantic chunks and is not a matched-budget result. O1 admits annotated evidence first as a ceiling. No candidate is materialized.
+
+The hybrid entry/later semantic weights are selected on validation from $\{0.4,0.6,0.8\}\times\{0.1,0.3,0.5\}$, with token weights as complements. Entry weights 0.4 and 0.6 tie in aggregate validation recall; the semantic-entry/token-later tie-break selects $(0.6,0.1)$. Test identities are not used for selection. Confidence uses a monotone ten-bin histogram fitted only on validation candidates.
+
+\section{Baselines and Conditions}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Condition & Discovery & Role\\
+\midrule
+B0 & gist-only PRA & semantic baseline\\
+B1 & BM25/word lexical & classical IR baseline\\
+B2 & exact token span/name & identity baseline\\
+B3 & weighted/ordered token & token-native baseline\\
+B4 & approximate token & fallback baseline\\
+H1 & semantic $\cup$ token-native & hybrid recall\\
+H2 & token-native $\rightarrow$ semantic & reranking\\
+H3 & semantic $\rightarrow$ token-native & reverse reranking\\
+H4 & token cascade + semantic fallback & cascade\\
+H5 & iterative token/semantic hybrid & main proposal\\
+A1 & broad semantic top-$k$ & breadth baseline\\
+O1 & annotated/oracle & ceiling\\
+\bottomrule
+\end{tabular}
+\end{center}
+Candidate budgets are matched for B0--B4 and H1--H5. A1 and O1 are labeled ceilings; no materialization budget is consumed in this discovery-only experiment.
+
+\section{Results}
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out evidence discovery. R, P, and M are supporting-evidence recall, precision, and MRR. Principal conditions request four chunks; A1 requests eight.}
+\begin{tabular}{lrrrrrr}
+\toprule
+& \multicolumn{3}{c}{HotpotQA} & \multicolumn{3}{c}{QASPER}\\
+Condition & R & P & M & R & P & M\\
+\midrule
+B0 gist & .151 & .172 & .276 & .038 & .062 & .130\\
+B1 BM25 & \textbf{.398} & \textbf{.453} & \textbf{.875} & .042 & .094 & .135\\
+B2 exact & .287 & .328 & .568 & \textbf{.178} & \textbf{.312} & \textbf{.443}\\
+B3 weighted & .287 & .328 & .568 & .061 & .109 & .214\\
+B4 approximate & .301 & .359 & .734 & .037 & .078 & .141\\
+H1 union & .209 & .250 & .365 & .038 & .062 & .130\\
+H2 token$\rightarrow$semantic & .287 & .344 & .635 & .044 & .078 & .125\\
+H3 semantic$\rightarrow$token & .279 & .328 & .635 & .052 & .094 & .156\\
+H4 cascade & .240 & .281 & .474 & .126 & .203 & .307\\
+H5 iterative hybrid & .279 & .312 & .646 & .081 & .125 & .177\\
+A1 broad semantic & .310 & .180 & .363 & .088 & .078 & .155\\
+O1 oracle & .876 & 1.000 & 1.000 & .633 & 1.000 & 1.000\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{natural_recall.pdf}
+\caption{Held-out evidence recall. H5 improves gist-only recall on HotpotQA at the same four-chunk request budget, but does not surpass decoded-word BM25. QASPER favors exact spans. A1 uses twice the requested budget.}
+\end{figure}
+
+On HotpotQA, H5 improves recall over B0 by 0.129. A paired 10,000-sample bootstrap over the 16 test identities gives a 95\% interval of [0.018, 0.242]; ten examples improve, four worsen, and two tie. B1 remains stronger, so the result supports heterogeneous discovery but not superiority of the present fusion rule. H5 reaches 90\% of A1's recall (0.279 versus 0.310) while requesting half as many chunks; this cross-budget comparison is descriptive.
+
+On QASPER, H5 improves recall by 0.043, but its interval $[-0.014,0.111]$ crosses zero (four improve, two worsen, ten tie). Exact spans instead improve over B0 by 0.140 with interval [0.053, 0.244]. This is evidence for regime dependence: QASPER's scientific evidence in this small slice benefits from exact continuity, while repeated traversal adds little.
+
+\subsection{Controlled Chains and Failure Controls}
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{synthetic_perturbations.pdf}
+\caption{Controlled second-hop target recovery at a two-chunk request budget. H5 recovers every clean, case, and punctuation target, half of typo targets, and none when the exposed lexical address is confidently wrong.}
+\end{figure}
+
+Gist-only retrieval recovers none of the hidden targets because the target sits behind stronger semantic distractors. H5 recovers 100\% of clean, case, and punctuation targets, showing that admitted evidence can expose a useful later-hop address. Recovery falls to 50\% for one-character perturbations under the current approximate score. In the contradictory condition, H5 follows the wrong high-overlap address and recovers no targets; wrong selected candidates receive mean raw confidence 0.585. This is catastrophic rather than graceful degradation and prevents confidence-gated deployment without stronger disambiguation.
+
+\subsection{Confidence and Cost}
+Validation-fitted calibration remains weak. On held-out candidates, H5 has Brier score 0.185 and ECE 0.151, but no candidate crosses the 0.5 action threshold. BM25 has Brier 0.205 and ECE 0.096, and likewise has zero coverage at 0.5. Exact matching is particularly overconfident (Brier 0.281, ECE 0.251). Provenance is therefore useful diagnostically, but the present calibrator is not a production materialization controller.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{confidence_reliability.pdf}
+\caption{Held-out reliability after validation-only histogram calibration. Sparse and collapsed confidence levels limit threshold usefulness; these curves are diagnostics, not evidence of deployable calibration.}
+\end{figure}
+
+The implementation logs logical, resident, requested, and materialized counts separately. B0--H5 request exactly four chunks per natural example; materialized chunks and tokens are zero by construction. Averaged over the held-out examples, B0 takes 5.56~ms to reconstruct the gist index and 1.63~ms to route (7.19~ms cold total). B1 adds 34.42~ms of token-index construction and takes 62.60~ms to route (102.42~ms cold). Two-hop H5 adds 35.09~ms of token-index construction and takes 181.59~ms to route (224.46~ms cold), performing 289 mean semantic and 289 token comparisons versus B0's 96 semantic comparisons. These are exhaustive Python research timings, not serving claims. Cached sidecars, posting lists, and tensorized lexical intersections are necessary before a systems comparison.
+
+\section{Evaluation}
+Discovery metrics include supporting-document/fact recall, MRR, NDCG, precision, missed-evidence rate, hop success, and path completion. Resource metrics include discovered, requested, and materialized chunks/tokens, active fraction, distractor materialization, index construction, cold/warm routing, repeated-hop cost, transfer, and end-to-end latency.
+
+A useful descriptive efficiency quantity is
+\[
+E_R=\frac{\mathrm{required\ evidence\ recall}}
+{\mathrm{materialized\ token\mbox{-}KV}},
+\]
+but Pareto curves are primary because a single ratio can hide quality--cost tradeoffs.
+
+An end-to-end extension would add answer EM/F1 and loss/calibration. The present retrieval headline explicitly records that answer generation was not run. Confidence metrics include Brier score, expected calibration error, reliability curves, and selective accuracy/coverage where feasible. The controlled wrong-reference and oracle conditions are reported here; disabled, shuffled, irrelevant, empty, and full-context generation controls remain for the downstream study.
+
+\section{Open Ablations and Controls}
+This first study covers the complete policy matrix, matched primary budgets, raw and normalized exact spans, IDF-weighted/ordered overlap, approximate matching, perturbations, contradictory evidence, and provenance-aware calibration. It does not yet resolve stop-token suppression, token-embedding similarity, alias extraction, tokenizer-family sensitivity, chunk granularity, gist count, model size, or sparse versus all PRA layers. Those are open ablations rather than implied completed experiments.
+
+Metadata must not leak gold supporting labels. The exact query text/state used by each channel and hop is logged. Discovery is not counted as materialization, and hybrid systems do not receive an unreported larger active budget.
+
+\section{Interface to Materialization}
+The implementation exposes the discovery-side equivalent of
+\[
+\mathrm{discover}(q,M,B,\pi)\rightarrow
+\{(r_i,\mathbf{s}_i,p_i,c_i)\}_{i=1}^{n},
+\]
+where $\mathbf{s}_i$ preserves channel scores, $p_i$ provenance, and $c_i$ has the referent-validity semantics defined above. Paper 3 consumes these candidates and independently chooses an active native-KV set:
+\[
+\mathrm{materialize}(C,B_{KV},\pi_M)\rightarrow\mathcal A.
+\]
+Paper 3 can consume this record without making materialization depend on one retriever.
+
+\section{Contributions}
+This work contributes: (1) a provenance-preserving hybrid discovery formulation for PRA; (2) a model-token-native matcher with exact, weighted, ordered, approximate, entity, and explicit channels, evaluated beside a separate decoded-word BM25 baseline; (3) one bounded iterative engine shared by gist-only, token-only, and hybrid policies; (4) tokenization and confidently wrong-reference controls; (5) validation-only referent calibration diagnostics; (6) matched-budget evidence that hybrid discovery improves over gist-only routing on this HotpotQA slice, while exact matching is preferable on QASPER; and (7) a clean identity-level interface between discovery and materialization.
+
+\section{Limitations and Falsification}
+The natural test contains only 16 examples per dataset, uses one frozen model, one routing layer, one tokenizer, and one chunk size. Bootstrap intervals quantify sampling uncertainty but do not substitute for larger replications. Token indexes add storage and runtime cost; the current exhaustive Python scorer is too slow for serving claims. Tokenizer segmentation is unstable across surface forms, aliases can be ambiguous, and some tasks contain little token-level continuity. Most importantly, the wrong-reference control demonstrates overconfident failure rather than graceful degradation.
+
+The end-to-end claim has a separate bar. We did not run generation, EM/F1, or native-KV consumption in this study. The results therefore establish a discovery mechanism and identify a discovery--consumption question; they do not establish improved reasoning. QASPER and the wrong-reference control also show that a single fusion policy is not robust enough for deployment.
+
+\section{Conclusion}
+PRA discovery need not be one hidden-state similarity function. An identity-aligned token sidecar can participate in the existing bounded gist traversal without touching native K/V. On the present HotpotQA slice, iterative hybrid routing improves gist-only evidence recall by 0.129 at the same request budget and reaches 90\% of an eight-chunk semantic baseline with four requests, though decoded-word BM25 remains stronger. QASPER instead favors exact token spans, and contradictory overlap exposes a high-confidence failure. The result is a positive but bounded discovery finding: token evidence is useful when intermediate chunks expose addresses, policy choice is task-dependent, and disambiguation and downstream generation remain open.
+
+\end{document}

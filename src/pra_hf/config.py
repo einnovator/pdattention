@@ -55,6 +55,13 @@ class PRAConfig:
     residual_beta: float = 1.0
     path_score_mode: str = "product"
     iterative_min_confidence: float | None = None
+    hybrid_discovery_mode: str = "iterative_hybrid"
+    hybrid_semantic_weight: float = 0.65
+    hybrid_token_weight: float = 0.35
+    hybrid_later_semantic_weight: float = 0.25
+    hybrid_later_token_weight: float = 0.75
+    hybrid_exact_min_tokens: int = 2
+    hybrid_cascade_threshold: float = 0.25
 
     def __post_init__(self) -> None:
         self.consumption_layers = tuple(int(layer) for layer in self.consumption_layers)
@@ -77,18 +84,32 @@ class PRAConfig:
             )
         if self.reference_device not in {"cpu", "gpu"}:
             raise ValueError("reference_device must be 'cpu' or 'gpu'.")
-        if self.routing_mode not in {"one_shot", "iterative", "local_iterative"}:
+        iterative_modes = {
+            "iterative",
+            "local_iterative",
+            "token_iterative",
+            "hybrid_iterative",
+        }
+        if self.routing_mode not in {"one_shot", *iterative_modes}:
             raise ValueError(
-                "routing_mode must be 'one_shot', 'iterative', or 'local_iterative'."
+                "routing_mode must be 'one_shot', 'iterative', 'local_iterative', "
+                "'token_iterative', or 'hybrid_iterative'."
             )
         # Import lazily so the stable config module does not create an import cycle.
-        if self.routing_mode in {"iterative", "local_iterative"}:
+        if self.routing_mode in iterative_modes:
             self.iterative_config
+        if self.routing_mode in {"token_iterative", "hybrid_iterative"}:
+            self.hybrid_discovery_policy
 
     @property
     def selection_policy(self) -> str:
         """Return the active budget policy, including documented precedence."""
-        if self.routing_mode in {"iterative", "local_iterative"}:
+        if self.routing_mode in {
+            "iterative",
+            "local_iterative",
+            "token_iterative",
+            "hybrid_iterative",
+        }:
             return f"{self.routing_mode}_closure"
         return "selected_fraction" if self.selected_fraction is not None else "top_k"
 
@@ -108,6 +129,26 @@ class PRAConfig:
             residual_beta=self.residual_beta,
             path_score_mode=self.path_score_mode,
             min_confidence=self.iterative_min_confidence,
+        )
+
+    @property
+    def hybrid_discovery_policy(self):
+        """Translate public channel controls into the discovery-only policy."""
+        from .hybrid_discovery import HybridDiscoveryPolicy
+
+        mode = (
+            "token_weighted"
+            if self.routing_mode == "token_iterative"
+            else self.hybrid_discovery_mode
+        )
+        return HybridDiscoveryPolicy(
+            mode=mode,
+            semantic_weight=self.hybrid_semantic_weight,
+            token_weight=self.hybrid_token_weight,
+            later_semantic_weight=self.hybrid_later_semantic_weight,
+            later_token_weight=self.hybrid_later_token_weight,
+            exact_min_tokens=self.hybrid_exact_min_tokens,
+            cascade_threshold=self.hybrid_cascade_threshold,
         )
 
     def resolved_layers(self, model_config_or_layer_count) -> tuple[int, tuple[int, ...]]:

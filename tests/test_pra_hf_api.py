@@ -16,6 +16,8 @@ from pra_hf import PRAConfig, PRAForCausalLM, PRARouter
 class TinyTokenizer:
     """Deterministic tokenizer sufficient for the offline public-API gates."""
 
+    all_special_ids = (0, 1)
+
     def __call__(self, text, return_tensors="pt", add_special_tokens=False):
         values = [2 + (ord(char) % 61) for char in text]
         if add_special_tokens:
@@ -24,6 +26,9 @@ class TinyTokenizer:
 
     def decode(self, token_ids, skip_special_tokens=True):
         return " ".join(str(int(value)) for value in token_ids)
+
+    def convert_ids_to_tokens(self, token_ids):
+        return [str(int(value)) for value in token_ids]
 
     def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True):
         return "\n".join(f"{row['role']}: {row['content']}" for row in messages)
@@ -163,6 +168,33 @@ def test_iterative_product_path_closes_before_native_memory_is_enabled(monkeypat
     assert events[1][1] is not None
     assert result.stats["selection_policy"] == "iterative_closure"
     assert result.stats["retrieval_graphs"][0]["nodes"]
+
+
+def test_hybrid_iterative_product_path_preserves_discovery_materialization_boundary():
+    torch.manual_seed(304)
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(
+            routing_mode="hybrid_iterative",
+            routing_depth=2,
+            branch_top_k=1,
+            beam_size=1,
+            max_unique_chunks=2,
+            selected_fraction=None,
+        ),
+    )
+    pra.add_reference("alpha points to beta")
+    pra.add_reference("beta stores the answer")
+
+    result = pra.generate("find alpha", max_new_tokens=1, return_details=True)
+    graph = result.stats["retrieval_graphs"][0]
+
+    assert result.stats["selection_policy"] == "hybrid_iterative_closure"
+    assert graph["root"]["discovery_mode"] == "iterative_hybrid"
+    assert graph["nodes"]
+    assert all(node["discovery_channels"] for node in graph["nodes"])
+    assert all(node["materialized"] for node in graph["nodes"] if node["final_selected"])
     assert all(node["materialized"] for node in result.stats["retrieval_graphs"][0]["nodes"])
     assert result.stats["requested_chunks"] <= 2
 

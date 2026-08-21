@@ -17,6 +17,12 @@ import torch.nn.functional as F
 
 from pra_torch.memory import PRACacheEntry, ReferenceChunkMemory, SelectedChunk
 
+from .hybrid_discovery import (
+    DiscoveryCandidate,
+    HybridDiscoveryPolicy,
+    TokenNativeIndex,
+)
+
 
 GRAPH_SCHEMA_VERSION = "2.0"
 _PATH_MODES = {"product", "logsum", "last", "min", "mean", "direct"}
@@ -286,6 +292,9 @@ class RetrievalNode:
     resolution_level: str = "chunk"
     representation_type: str = "semantic_gist"
     projection_type: str = "memory"
+    discovery_channels: dict[str, Any] = field(default_factory=dict)
+    confidence: float | None = None
+    confidence_calibrated: bool = False
 
 
 @dataclass
@@ -354,6 +363,7 @@ class _Frontier:
     query: torch.Tensor
     path_score: float
     edge_scores: tuple[float, ...]
+    token_ids: tuple[int, ...] = ()
 
 
 def _path_score(mode: str, direct: float, edges: tuple[float, ...]) -> float:
@@ -407,8 +417,28 @@ class IterativeGistRouter:
         *,
         example_id: str | None = None,
         evidence_chunk_ids: set[str] | None = None,
+        token_index: TokenNativeIndex | None = None,
+        root_token_ids: Iterable[int] | None = None,
+        tokenizer: Any | None = None,
+        discovery_policy: HybridDiscoveryPolicy | None = None,
+        explicit_reference_uris: set[str] | None = None,
     ) -> IterativeRoutingResult:
-        """Traverse compact gists and stop before any native K/V is requested."""
+        """Traverse compact gists and stop before any native K/V is requested.
+
+        Supplying a token index enables lexical or hybrid scoring inside this
+        same bounded loop.  The sidecar must align exactly with the semantic
+        index; the default call path remains semantic-only.
+        """
+        hybrid_enabled = token_index is not None
+        if hybrid_enabled:
+            if root_token_ids is None or tokenizer is None:
+                raise ValueError(
+                    "token_index requires root_token_ids and tokenizer."
+                )
+            token_index.validate_alignment(self.index)
+            discovery_policy = discovery_policy or HybridDiscoveryPolicy()
+        elif any(value is not None for value in (root_token_ids, tokenizer, discovery_policy)):
+            raise ValueError("Token discovery arguments require token_index.")
         if root_query.ndim == 2:
             if root_query.shape[0] != 1:
                 raise ValueError("route handles one query row; call route_batch for batches.")
@@ -425,11 +455,33 @@ class IterativeGistRouter:
                 "Query-projected closure requires aligned query_gists in the index."
             )
         root_scores_t, _ = self._scores(root.unsqueeze(0))
-        direct_scores = root_scores_t[0]
+        semantic_direct_scores = root_scores_t[0]
+        root_candidates: list[DiscoveryCandidate] | None = None
+        if hybrid_enabled:
+            root_candidates = token_index.score(
+                root_token_ids,
+                semantic_direct_scores,
+                tokenizer,
+                discovery_policy,
+                hop=1,
+                parent_id="__root__",
+                explicit_reference_uris=explicit_reference_uris,
+            )
+            direct_scores = semantic_direct_scores.new_tensor(
+                [2.0 * candidate.selected_score - 1.0 for candidate in root_candidates]
+            )
+        else:
+            direct_scores = semantic_direct_scores
         graph = RetrievalGraph(
             example_id=example_id,
             layer_id=self.index.layer_id,
-            root={"node_id": "__root__", "query_norm": float(root.norm().item())},
+            root={
+                "node_id": "__root__",
+                "query_norm": float(root.norm().item()),
+                "discovery_mode": (
+                    discovery_policy.mode if discovery_policy is not None else "gist_only"
+                ),
+            },
             budget=asdict(config),
         )
         if config.depth == 0 or config.max_unique_chunks == 0 or config.branch_top_k == 0:
@@ -437,17 +489,53 @@ class IterativeGistRouter:
             return IterativeRoutingResult((), tuple(direct_scores.cpu().tolist()), graph)
 
         visited: set[int] = set()
-        frontier = [_Frontier(None, "__root__", root, 1.0, ())]
+        frontier = [
+            _Frontier(
+                None,
+                "__root__",
+                root,
+                1.0,
+                (),
+                tuple(int(value) for value in (root_token_ids or ())),
+            )
+        ]
         comparisons = duplicates = proposals = 0
+        token_comparisons = 0
         overlap_ratios: list[float] = []
         accepted_per_hop: list[int] = []
         stop_reason = "depth"
 
         for hop in range(1, config.depth + 1):
             queries = torch.stack([item.query for item in frontier])
-            frontier_scores, frontier_winners = self._scores(queries)
+            semantic_scores, frontier_winners = self._scores(queries)
+            frontier_scores = semantic_scores
+            frontier_candidates: list[list[DiscoveryCandidate] | None] = [
+                None for _ in frontier
+            ]
+            if hybrid_enabled:
+                hybrid_rows = []
+                for parent_row, parent in enumerate(frontier):
+                    candidates = token_index.score(
+                        parent.token_ids,
+                        semantic_scores[parent_row],
+                        tokenizer,
+                        discovery_policy,
+                        hop=hop,
+                        parent_id=parent.node_id,
+                        explicit_reference_uris=explicit_reference_uris,
+                    )
+                    frontier_candidates[parent_row] = candidates
+                    hybrid_rows.append(
+                        semantic_scores.new_tensor(
+                            [2.0 * candidate.selected_score - 1.0 for candidate in candidates]
+                        )
+                    )
+                frontier_scores = torch.stack(hybrid_rows)
+                token_comparisons += int(frontier_scores.numel())
             comparisons += int(frontier_scores.numel())
-            candidate_parents: dict[int, list[tuple[float, int, float, float, int]]] = {}
+            candidate_parents: dict[
+                int, list[tuple[float, int, float, float, int, DiscoveryCandidate | None]]
+            ] = {}
             proposed_rows: list[set[int]] = []
             for parent_row, parent in enumerate(frontier):
                 scores = frontier_scores[parent_row]
@@ -472,8 +560,13 @@ class IterativeGistRouter:
                         config.path_score_mode, float(direct_scores[index].item()), edges
                     )
                     winner = int(frontier_winners[parent_row, index].item())
+                    candidate = (
+                        frontier_candidates[parent_row][index]
+                        if frontier_candidates[parent_row] is not None
+                        else None
+                    )
                     candidate_parents.setdefault(index, []).append(
-                        (path, parent_row, raw_edge, anchored_score, winner)
+                        (path, parent_row, raw_edge, anchored_score, winner, candidate)
                     )
             if len(proposed_rows) > 1:
                 total = sum(len(rows) for rows in proposed_rows)
@@ -503,7 +596,7 @@ class IterativeGistRouter:
 
             next_frontier: list[_Frontier] = []
             for index in accepted_indices:
-                path, parent_row, edge, anchored_score, winner = best[index]
+                path, parent_row, edge, anchored_score, winner, candidate = best[index]
                 parent = frontier[parent_row]
                 entry, chunk = self.index.records[index]
                 node_id = chunk.chunk_id
@@ -527,9 +620,24 @@ class IterativeGistRouter:
                         projection_type=(
                             "root_query" if hop == 1 else config.frontier_projection
                         ),
+                        representation_type=(
+                            "token_semantic_hybrid" if candidate is not None else "semantic_gist"
+                        ),
+                        discovery_channels=(candidate.to_dict() if candidate is not None else {}),
+                        confidence=(candidate.confidence if candidate is not None else None),
+                        confidence_calibrated=(
+                            candidate.confidence_calibrated if candidate is not None else False
+                        ),
                     )
                 )
-                for alt_path, alt_parent_row, alt_edge, alt_anchored, _ in candidate_parents[index]:
+                for (
+                    alt_path,
+                    alt_parent_row,
+                    alt_edge,
+                    alt_anchored,
+                    _,
+                    alt_candidate,
+                ) in candidate_parents[index]:
                     graph.edges.append(
                         RetrievalEdge(
                             source=frontier[alt_parent_row].node_id,
@@ -546,6 +654,16 @@ class IterativeGistRouter:
                             ),
                             score=alt_edge,
                             accepted=alt_parent_row == parent_row,
+                            edge_type=(
+                                alt_candidate.selected_channel
+                                if alt_candidate is not None
+                                else "semantic_similarity"
+                            ),
+                            representation_type=(
+                                "token_semantic_hybrid"
+                                if alt_candidate is not None
+                                else "semantic_gist"
+                            ),
                         )
                     )
                 gist = (
@@ -558,7 +676,14 @@ class IterativeGistRouter:
                 else:
                     query = gist
                 next_frontier.append(
-                    _Frontier(index, node_id, query, path, (*parent.edge_scores, max(0.0, min(1.0, (anchored_score + 1.0) / 2.0))))
+                    _Frontier(
+                        index,
+                        node_id,
+                        query,
+                        path,
+                        (*parent.edge_scores, max(0.0, min(1.0, (anchored_score + 1.0) / 2.0))),
+                        (token_index.records[index].token_ids if hybrid_enabled else ()),
+                    )
                 )
                 visited.add(index)
             accepted_per_hop.append(len(accepted_indices))
@@ -574,7 +699,16 @@ class IterativeGistRouter:
                     aggregate = selected_gists.mean(dim=0)
                 aggregate = F.normalize(root + config.residual_beta * aggregate, dim=-1)
                 best_parent = max(next_frontier, key=lambda item: item.path_score)
-                frontier = [_Frontier(best_parent.index, best_parent.node_id, aggregate, best_parent.path_score, best_parent.edge_scores)]
+                frontier = [
+                    _Frontier(
+                        best_parent.index,
+                        best_parent.node_id,
+                        aggregate,
+                        best_parent.path_score,
+                        best_parent.edge_scores,
+                        best_parent.token_ids,
+                    )
+                ]
             else:
                 frontier = next_frontier
             if len(visited) >= config.max_unique_chunks:
@@ -601,6 +735,7 @@ class IterativeGistRouter:
             "branch_entropy": branch_entropy,
             "candidate_overlap_mean": sum(overlap_ratios) / max(len(overlap_ratios), 1),
             "semantic_gist_comparisons": comparisons,
+            "token_index_comparisons": token_comparisons,
             "native_qk_comparisons": 0,
             "local_nodes_explored": 0,
         }
@@ -637,7 +772,14 @@ class IterativeGistRouter:
                     winning_gist_index=node.winning_gist_index,
                     winning_gist_score=node.edge_score,
                     gist_count=int(chunk.routing_gist.k.shape[0]),
-                    metadata={"selection_policy": "iterative_closure", "hop": node.hop},
+                    metadata={
+                        "selection_policy": node.discovery_channels.get(
+                            "selected_channel", "iterative_closure"
+                        ),
+                        "hop": node.hop,
+                        "candidate_confidence": node.confidence,
+                        "confidence_calibrated": node.confidence_calibrated,
+                    },
                 )
             )
         return selected
