@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "scope": "frozen_qwen_query_self_encoding_for_factorized_effort_control",
+  "examples": 32,
+  "units": 160,
+  "validation_selection": "four-fold grouped CV by example identity",
+  "heldout_used_for_selection": false,
+  "router_seeds": [
+    1,
+    7,
+    21,
+    42,
+    87
+  ],
+  "selected_self_representations": [
+    "S2_embed_last",
+    "S5_hidden_l28_mean",
+    "S7_native_k_l13_mean"
+  ],
+  "validation_selected_self_representation": "S2_embed_last",
+  "validation_selected_self_heldout_quality": 0.6676923076923077,
+  "validation_selected_self_total_cost": 27.199520947802196,
+  "observable_heldout_quality": 0.7015384615384616,
+  "signed_hash_heldout_quality": 0.6092307692307692,
+  "self_quality_delta_vs_observable": -0.03384615384615386,
+  "validation_selected_contextual_representation": "S8_context_hidden_l14_mean",
+  "validation_selected_contextual_heldout": {
+    "representation": "S8_context_hidden_l14_mean",
+    "quality": 0.6738461538461539,
+    "retrieval_cost": 25.70235576923077,
+    "total_cost": 27.70235576923077,
+    "oracle_regret": 12.129519230769231,
+    "under_allocation": 0.24923076923076923,
+    "over_allocation": 0.5446153846153846,
+    "prefill_cost": 2.0,
+    "prefill_latency_seconds": 0.17754271404559796,
+    "rows": 325
+  },
+  "heldout_descriptive_maxima_are_not_used_for_selection": true,
+  "target_architectures": [
+    {
+      "target_architecture": "global_profile",
+      "quality": 0.5169230769230769,
+      "retrieval_cost": 14.26783653846154,
+      "total_cost": 14.287453640109891,
+      "oracle_regret": -1.2853828983516484,
+      "under_allocation": 0.40615384615384614,
+      "over_allocation": 0.27692307692307694,
+      "prefill_cost": 0.019617101648351648,
+      "prefill_latency_seconds": 1.5236923112892186e-05,
+      "rows": 325
+    },
+    {
+      "target_architecture": "group_profiles",
+      "quality": 0.4646153846153846,
+      "retrieval_cost": 12.713413461538462,
+      "total_cost": 12.733030563186814,
+      "oracle_regret": -2.839805975274725,
+      "under_allocation": 0.4584615384615385,
+      "over_allocation": 0.27076923076923076,
+      "prefill_cost": 0.019617101648351648,
+      "prefill_latency_seconds": 1.5236923112892186e-05,
+      "rows": 325
+    },
+    {
+      "target_architecture": "independent_params",
+      "quality": 0.5230769230769231,
+      "retrieval_cost": 15.80625,
+      "total_cost": 15.825867101648353,
+      "oracle_regret": 0.2530305631868131,
+      "under_allocation": 0.4,
+      "over_allocation": 0.36615384615384616,
+      "prefill_cost": 0.019617101648351648,
+      "prefill_latency_seconds": 1.5236923112892186e-05,
+      "rows": 325
+    },
+    {
+      "target_architecture": "interaction_params",
+      "quality": 0.5230769230769231,
+      "retrieval_cost": 16.103653846153847,
+      "total_cost": 16.123270947802197,
+      "oracle_regret": 0.5504344093406592,
+      "under_allocation": 0.4,
+      "over_allocation": 0.3630769230769231,
+      "prefill_cost": 0.019617101648351648,
+      "prefill_latency_seconds": 1.5236923112892186e-05,
+      "rows": 325
+    }
+  ],
+  "feature_ablation": [
+    {
+      "feature_mode": "query_only",
+      "dataset": "hotpotqa",
+      "quality": 0.5714285714285714,
+      "retrieval_cost": 29.3,
+      "total_cost": 29.32295918367347,
+      "oracle_regret": 9.34126275510204,
+      "under_allocation": 0.42857142857142855,
+      "over_allocation": 0.5714285714285714,
+      "prefill_cost": 0.02295918367346939,
+      "prefill_latency_seconds": 1.4226285740733147e-05,
+      "rows": 175
+    },
+    {
+      "feature_mode": "query_only",
+      "dataset": "qasper",
+      "quality": 0.7333333333333333,
+      "retrieval_cost": 29.860416666666666,
+      "total_cost": 29.876134672619045,
+      "oracle_regret": 19.44696800595238,
+      "under_allocation": 0.1,
+      "over_allocation": 0.9,
+      "prefill_cost": 0.015718005952380952,
+      "prefill_latency_seconds": 1.6416000047077735e-05,
+      "rows": 150
+    },
+    {
+      "feature_mode": "query_plus_static",
+      "dataset": "hotpotqa",
+      "quality": 0.6457142857142857,
+      "retrieval_cost": 31.349285714285713,
+      "total_cost": 31.37224489795918,
+      "oracle_regret": 11.390548469387754,
+      "under_allocation": 0.35428571428571426,
+      "over_allocation": 0.6457142857142857,
+      "prefill_cost": 0.02295918367346939,
+      "prefill_latency_seconds": 1.4226285740733147e-05,
+      "rows": 175
+    },
+    {
+      "feature_mode": "query_plus_static",
+      "dataset": "qasper",
+      "quality": 0.6933333333333334,
+      "retrieval_cost": 22.315625,
+      "total_cost": 22.33134300595238,
+      "oracle_regret": 11.902176339285715,
+      "under_allocation": 0.14,
+      "over_allocation": 0.4866666666666667,
+      "prefill_cost": 0.015718005952380952,
+      "prefill_latency_seconds": 1.6416000047077735e-05,
+      "rows": 150
+    }
+  ],
+  "external_encoder_gate": "deferred",
+  "reuse": {
+    "first_memory_layer": 24,
+    "best_representation_depth": 0,
+    "eligible": true,
+    "boundary": "reuse only up to first PRA consumer; corrected query regions require recapture"
+  },
+  "claim_boundaries": [
+    "Backbone and frozen native graph/query scores are unchanged.",
+    "The endpoint is evidence-chain sufficiency, not generated-answer quality.",
+    "Representation selection uses grouped validation CV and never held-out labels.",
+    "Contextual source-plus-query rows are diagnostic upper bounds and pay their 256-token prefill.",
+    "Query-prefill reuse is exact only before the first PRA memory consumer.",
+    "No compact external encoder was run before the self-encoding gate.",
+    "2Wiki and MuSiQue lack the frozen factorized action surface used by this add-on."
+  ]
+}

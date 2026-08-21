@@ -40,6 +40,18 @@ from .factorized_control import (
     factorized_cost,
     pareto_frontier,
 )
+from .self_router import (
+    QueryPrefillAccounting,
+    QwenPrefixState,
+    ValidationProjector,
+    decode_grouped_action,
+    native_qk_representation,
+    pool_query_tokens,
+    query_span_mask,
+    qwen_prefill_continue,
+    qwen_prefill_prefix,
+    reuse_is_semantically_valid,
+)
 from .query_regions import (
     PromptSegment,
     QueryRegion,

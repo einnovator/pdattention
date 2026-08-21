@@ -52,6 +52,14 @@ serialization sensitivity in matched controls and remain stable through 8K follo
 Structural selection is perfect on six semi-natural fixtures but falls to .400 under five deliberate
 role decoys, while the competing recent-head interpretation remains correct there.  The result
 motivates disagreement-aware reinterpretation rather than unconditional structural replacement.
+We also ask whether the frozen Qwen3-0.6B backbone should read its own question before allocating
+PRA effort.  Four-fold grouped validation selects the last question-token embedding, but its
+five-seed held-out quality is .668 at total cost 27.20, below the observable profile router's .702
+at 28.25.
+The validation-selected source-plus-query upper bound reaches only .674 while paying a 256-token
+prefill.  Thus model-native query state does not yet justify replacing observable R0 or introducing
+an external encoder.  Exact prefix continuation does, however, show that representations captured
+before the first PRA consumer can be reused without recomputing the query.
 All primary quality results are frozen-score evidence-chain endpoints, not generated-answer scores.
 Kernel, cache, batching, and serving-engine optimization are handed to Papers 5.5 and 6.
 \end{abstract}
@@ -82,7 +90,7 @@ where $Q$ is held-out output or retrieval quality and $C$ includes conceptual se
 generation retries, and measured latency.  Equation~\ref{eq:adaptive-goal} is not guaranteed on
 every dataset.  If almost every query is hard, the correct controller should spend the high budget.
 
-This paper makes seven contributions:
+This paper makes nine contributions:
 \begin{enumerate}
 \item It defines a public PRA control vector and freezes three monotonic effort profiles rather
 than predicting unconstrained continuous parameters.
@@ -100,6 +108,10 @@ including token-weighted evidence precision and recall and separate search/admis
 routers on validation-derived factorized targets rather than inherited profile labels.
 \item It evaluates bounded single-control correction and compound fallback as explicit retry
 upper bounds, recording wrong-to-correct, correct-to-broken, extra work, and action identity.
+\item It compares signed hashing, token embeddings, early/middle/final query-only states, native
+Q/K geometry, and an expensive contextual upper bound under grouped validation selection.
+\item It tests coherent group profiles against global, independent, and autoregressive factorized
+targets, and supplies an exact pre-consumer query-prefill reuse path with cost accounting.
 \end{enumerate}
 
 Full-weight PRA retraining is deliberately absent.  That intervention belongs to Paper~4.  Here the
@@ -319,6 +331,36 @@ R0 is trained against the minimum sufficient profile.  R1, R2, and R3A are train
 minimum-cost factorized action.  R2's 32-dimensional signed-hash input uses the actual question text.
 All neural controllers use five fixed initialization seeds.  The retry audit begins from one frozen
 R0 seed and permits one single-control correction or a separately labeled compound fallback.
+
+\subsection{Self-encoded query-router cohort}
+
+The self-router add-on keeps the factorized surface, identities, partitions, and five controller
+seeds fixed.  It freezes Qwen3-0.6B at revision
+\texttt{c1899de289a04d12100db370d81485cdf75e47ca}.  For each of the 32 unique questions, the normal
+question-only chat prompt is encoded with memory disabled; pooling is restricted to the explicit
+question span.  The sweep includes token embeddings, hidden states after layers 4, 7, 14, 18, and
+28, and native Q/K states after Qwen's per-head RMS normalization and before RoPE at representative
+layers.  Mean pooling is primary; last
+token is tested only for embeddings and layers 14 and 28.  A 256-token ordinary source-plus-question
+prompt supplies a contextual diagnostic upper bound.
+
+Every high-dimensional representation is compressed by a 16-dimensional PCA fitted only on unique
+validation identities.  Four-fold validation cross-validation, grouped by example identity, selects
+representations and compact codebooks; the 65 held-out example--seed units do not participate.
+The same two-layer 32-unit profile head and five initialization seeds are used across sources.  The
+target-granularity gate compares validation-derived global profiles, coherent interpret/search/admit
+groups, independent categorical values, and the sequence $F\rightarrow R\rightarrow K\rightarrow
+H\rightarrow B$.
+
+A separate query prepass through depth $k$ is charged
+\begin{equation}
+ C_q=\frac{T_q\max(1,k)}{64L},\qquad C_{\mathrm{total}}=C(a)+C_q,
+ \label{eq:self-prefill-cost}
+\end{equation}
+where $T_q$ includes the question chat wrapper and $L=28$.  We also report cumulative warmed CUDA
+event latency on a GTX~950M.  If capture stops before the first possible PRA consumer (layer 24),
+the exact intermediate state may be reused and the additional $C_q$ is zero.  Tests require bitwise
+parity with uninterrupted Qwen execution and verify that the prepass mutates no parameter or cache.
 
 \subsection{Inherited measurement scope}
 
@@ -696,8 +738,8 @@ missing sufficient actions more often; no factorized learned router dominates R0
 
 True factorized labels prove that cheaper actions exist, but the small cohort and signed-hash channel
 do not predict them safely.  Conservative decoding recovers 2.2--4.3 quality points over its argmax
-counterpart, still below R0.  A pretrained encoder or larger controller is not promoted here; the
-next gate is a larger grouped natural dataset.
+counterpart, still below R0.  Section~\ref{sec:self-routing} tests model-native semantic channels
+before any external encoder; a larger grouped natural dataset remains necessary.
 
 \subsection{Bounded targeted-retry headroom}
 
@@ -730,6 +772,135 @@ of which only three are solvable anywhere in the lattice.  The audit establishes
 localizes missing capacity.  It does not establish that an oracle-free diagnostic attains that rate.
 The endpoint remains direct initial prediction followed by at most one confidence-triggered,
 explicitly traced correction.
+
+\section{Self-Encoded Query Routing: Letting the Backbone Read the Task Before Allocating Memory}
+\label{sec:self-routing}
+
+Instead of immediately adding a separate semantic encoder, the backbone can briefly represent its
+own task:
+\begin{equation}
+ Q\longrightarrow z_Q^{(k)}\longrightarrow \hat a
+ \longrightarrow \text{PRA search/admission/consumption}.
+\end{equation}
+This duplicates only a short question prefill in D0 and can avoid duplication entirely in D1 when
+$z_Q^{(k)}$ is an exact prefix of normal execution.  The empirical question is whether that state
+predicts sufficient effort better than cheap observable geometry.
+
+\subsection{Representation and layer gate}
+
+Table~\ref{tab:self-representations} reports the profile-target gate.  Validation CV selects the
+last token embedding, available before any decoder block.  Its held-out quality is .668, however,
+below the observable router's .702; signed hashing is lower at .609.  The validation-selected contextual
+variant is layer-14 hidden mean and reaches only .674 while paying a 256-token prefill.  Consequently
+the experiment stops before a compact external encoder.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Five-seed profile routing by representation.  CV quality selects representations; held-out
+quality is never used for selection.  Cost includes Eq.~\ref{eq:self-prefill-cost}; latency is the
+cumulative query representation time on the measured GPU.}
+\label{tab:self-representations}
+\begin{tabular}{lrrrrr}
+\toprule
+Representation & CV quality & test quality & total cost & under & latency (ms) \\
+\midrule
+S0 observables & .728 & .702 & 28.25 & .222 & 0.0 \\
+S1 signed hash & .686 & .609 & 25.53 & .314 & 0.0 \\
+\textbf{S2 embedding last} & \textbf{.726} & .668 & 27.20 & .255 & .015 \\
+S2 embedding mean & .699 & .717 & 25.74 & .206 & .015 \\
+S3 hidden layer 7 mean & .714 & .698 & 27.13 & .225 & 30.8 \\
+S7 native K layer 13 mean & .718 & .655 & 27.85 & .268 & 59.3 \\
+S8 contextual hidden layer 14 mean & .705 & .674 & 27.70 & .249 & 177.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+S2 embedding mean is numerically highest on held-out units (.717), but its CV quality is .699 and
+it was not selected.  Treating the held-out maximum as the
+winner would leak the test split.  The appropriate conclusion is therefore not that embeddings
+improve R0, but that a larger grouped cohort is needed to resolve a small, unstable difference.
+The reversal between validation-selected embedding-last and held-out embedding-mean also makes
+pooling instability explicit; no learned pooling sweep is warranted on this cohort.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/self_router_quality_by_layer.png}
+\caption{Held-out profile-router quality over query-prefill depth.  Color encodes total abstract
+cost.  Greater depth does not produce a monotonic quality gain.}
+\label{fig:self-layer-quality}
+\end{figure}
+
+The validation-selected embedding state separates the datasets imperfectly.  Query plus static
+observables improves HotpotQA over query-only routing (.646 versus .571), but slightly reduces
+QASPER (.693 versus .733).  Runtime fields such as root gaps after search remain retry-only and are
+not admitted to the initial router.  The current sample does not support a universal fusion rule.
+
+\subsection{Query-only versus contextual geometry}
+
+Context changes pooled query geometry less than its 256-token cost might suggest.  Mean cosine
+similarities between query-only and contextual states are .945 at hidden layer 14, .956 at the final
+hidden state, .921 for native Q at layer 13, and .966 for native Q at layer 23.  The small drift does
+not translate into better validation-selected control.  This supports query-only representation as
+the cheaper diagnostic substrate, but not the stronger claim that the current head can use it.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.70\textwidth]{../shared/results/paper3_5_adaptive_pra/self_router_query_context_drift.png}
+\caption{Cosine similarity between pooled query-only and 256-token source-contextualized question
+states.  Contextual processing is expensive, while the selected representations remain close.}
+\label{fig:self-context-drift}
+\end{figure}
+
+\subsection{Coherent modes versus parameter values}
+
+We next hold the validation-selected embedding-last representation fixed and replace targets.  Four
+validation-derived global profiles and five coherent search profiles are fitted without held-out
+labels.  Table~\ref{tab:self-targets} shows that all four target families under-allocate.  The
+independent and interaction-aware heads tie at .523, below frozen-profile routing with the same
+representation (.668).  Group profiles are cheapest only because they miss 45.8\% of
+oracle-solvable units.  Negative nominal regret in these rows is therefore failure, not
+efficiency.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Target granularity with validation-selected S2 embedding-last.  Global and group codebooks are
+derived on validation only.}
+\label{tab:self-targets}
+\begin{tabular}{lrrrr}
+\toprule
+Target architecture & quality & total cost & under & over \\
+\midrule
+Global profiles & .517 & 14.29 & .406 & .277 \\
+Interpret/search/admit groups & .465 & 12.73 & .458 & .271 \\
+Independent parameter values & .523 & 15.83 & .400 & .366 \\
+Autoregressive interactions & .523 & 16.12 & .400 & .363 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.68\textwidth]{../shared/results/paper3_5_adaptive_pra/self_router_target_frontier.png}
+\caption{Target-architecture quality/cost frontier.  Parameter heads improve over grouped modes,
+but none approaches the robust profile selector; low-cost group routing is under-allocation.}
+\label{fig:self-target-frontier}
+\end{figure}
+
+\subsection{Double encoding and exact reuse}
+
+The selected embedding state appears before every decoder block and therefore before the earliest
+layer-24 PRA consumer.  A fresh D0 prepass costs .020 abstract units, processes 35.2 query-prompt
+tokens on average, and takes .015 ms on the measured GPU.  D1 reuses the same normal embedding
+state; exact prefix-continuation tests remove recomputation and reduce total cost from 27.20 to
+27.18 without changing the .668 routing endpoint.  This reuse result is architectural, not a
+quality improvement.
+
+Reuse is invalid after a memory-consuming layer, when ordinary context should precede the query, or
+after query reinterpretation changes the selected span.  The 216 controlled wrong-to-correct
+reinterpretations therefore require one new encoding of the corrected cue; repeatedly increasing
+$F,R,K,H,$ or $B$ around a known-wrong cue is not an equivalent substitute.
 
 \section{Inherited Runtime Measurements and Scope Handoff}
 
@@ -916,7 +1087,7 @@ Manual mode uses the same profile representation and accepts explicit query-regi
 conceptual-budget, K/V, threshold, layer, granularity, and materialization overrides.  Overrides are
 request-local; they do not silently redefine the validated global ladder.
 
-An independent implementation needs four invariants:
+An independent implementation needs five invariants:
 \begin{enumerate}
 \item Separate conceptual and physical budgets in the public request and trace schema.
 \item Reject evaluator labels before feature vectorization; do not merely promise not to use them.
@@ -936,7 +1107,14 @@ spaces, independent categorical heads, a cached semantic-input contract, and aut
 \texttt{factorized\_control.py} defines valid independent actions, exact component accounting,
 token-weighted evidence metrics, Pareto dominance, allocation outcomes, and retry action names.
 \texttt{factorized\_study.py} executes the frozen lattice and emits the oracle, router, and retry
-artifacts.  Physical-runtime implementation remains behind the control/execution boundary.
+artifacts.  \texttt{self\_router.py} adds query-span pooling over tensors $[B,T,\ldots]$, exact
+native Q/K capture from the layer-normalized residual stream, validation-only projection, grouped
+action decoding, prefill accounting, and Qwen prefix continuation.  Q and K are reshaped to
+$[B,T,H,d_h]$ and passed through the layer's own \texttt{q\_norm}/\texttt{k\_norm} before question-span
+pooling, matching Qwen's pre-RoPE attention geometry rather than exposing raw projection outputs.
+The precompute script stores
+only pooled vectors; \texttt{self\_router\_study.py} owns oracle labels, grouped CV, target codebooks,
+and plots.  Physical-runtime implementation remains behind the control/execution boundary.
 
 \section{Discussion}
 
@@ -969,15 +1147,19 @@ dilute the objective and multiply facets, roots, and comparisons.
 
 They also provide a controller-complexity stop.  Independent and autoregressive heads now receive
 genuine factorized targets, yet neither improves the quality/cost frontier.  The result is no longer
-an artifact of copying E0/E1/E2 labels, although the sample and query representation remain limited.
-A compact pretrained encoder should be tested only on a larger grouped natural cohort.
+an artifact of copying E0/E1/E2 labels.  Self-encoding then removes the query-representation
+ambiguity without changing that result: validation-selected embedding-last and contextual hidden
+states both fall below observables on held-out units.  The external-encoder gate therefore remains
+closed.
+A compact pretrained encoder is justified only after a larger grouped natural cohort establishes
+semantic headroom that this cohort does not.
 
 \subsection{Cognitive interpretation}
 
 The tested computational principle is modest:
 \begin{quote}
-cheap or predicted effort $\rightarrow$ uncertainty detection $\rightarrow$ selective escalation
-$\rightarrow$ stop.
+encode task $\rightarrow$ allocate effort $\rightarrow$ execute $\rightarrow$ detect uncertainty
+$\rightarrow$ selective correction $\rightarrow$ stop.
 \end{quote}
 Natural cognitive systems plausibly vary retrieval cues and deliberation under uncertainty, but
 the present controller is not a biological model.  Its scientific content is the measured frontier
@@ -1004,6 +1186,16 @@ R2 uses actual questions through a dependency-free signed-hash encoder rather th
 encoder.  The output calibration cohort is small and imbalanced.  Semantic consistency uses token
 F1 and can miss paraphrase and contradiction.
 
+The self-router sweep contains 32 unique questions from HotpotQA and QASPER and one frozen
+Qwen3-0.6B backbone.  Repeated model seeds provide routing variation but not additional linguistic
+identities.  Validation-selected embedding-last does not generalize to held-out units, while the
+numerical held-out maximum for embedding mean was not validation-selected and is not a confirmed
+gain.  The
+contextual condition processes an ordinary truncated source prompt as a diagnostic; it is not the
+normal PRA execution path.  2Wiki, MuSiQue, learned attention pooling, another model family, and an
+external encoder remain untested because they lack this add-on's frozen factorized surface or fail
+the staged expansion rule.  CUDA timings are from one GTX~950M and are not deployment latency claims.
+
 Query-region evaluation remains deterministic.  Semi-natural email, code, log, URL, tool-output, and
 conversation fixtures broaden surface form but are not sampled from a natural prompt distribution.
 The adversarial structural failure shows that ambiguous role resolution remains open.  Tokenizer-
@@ -1026,15 +1218,17 @@ HotpotQA cost from 34.18 to 19.98 and matched QASPER cost from 16.11 to 8.95.  T
 main scientific question: profile quantization hides useful low-cost combinations.
 
 The control problem is not solved.  R1--R3A reduce nominal cost by under-allocating and remain below
-R0 quality, even with factorized targets and actual-question hashing.  R0 stays the SDK default.
+R0 quality, even with factorized targets.  Signed hashing, deep self-state, native Q/K, and the
+validation-selected contextual upper bound do not reverse that result.  R0 stays the SDK default.
 One bounded oracle corrective action exposes substantial retry headroom, but compound changes and
 five unsolved QASPER units prevent a stronger online claim.
 
 Adaptive PRA must also decide what the query is.  Explicit roles remain preferred; structural and
 recent interpretations should compete under confidence because either can fail under serialization
 or decoys.  The contribution is therefore a measured control surface, a conservative default, and a
-bounded retry endpoint.  Making those decisions fast belongs to Paper~5.5; making them native to
-vLLM belongs to Paper~6.
+bounded retry endpoint.  A self-prefill captured before layer 24 can be reused exactly, which makes
+future semantic control cheaper, but the present controller does not earn that added complexity.
+Making those decisions fast belongs to Paper~5.5; making them native to vLLM belongs to Paper~6.
 
 \appendix
 \section{Artifact Manifest}
@@ -1051,6 +1245,9 @@ interaction diagnostics, regret, latency, query-class summaries, findings, and f
 \item factorized action space, per-unit oracles and Pareto fronts, quantization regret, parameter
 requirements/interactions, precision--recall and search--admission surfaces, factorized router
 targets/results, bounded retry rows, findings JSON, and figures;
+\item self-router representation/configuration manifests, layer/pooling/profile sweeps, contextual
+drift, feature ablation, target-family rows, under/over-allocation, exact-reuse accounting, findings,
+and figures;
 \item inherited systems and matched-proxy rows retained for Paper-5.5 provenance, not counted as
 Paper-3.5 contributions.
 \end{itemize}
@@ -1059,6 +1256,8 @@ The complete study runs with:
 \begin{lstlisting}[language=bash]
 python -m experiments.paper3_5_adaptive_pra.run_study
 python -m experiments.paper3_5_adaptive_pra.factorized_study
+python -m experiments.paper3_5_adaptive_pra.precompute_self_router_features --device cuda
+python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
 python -m pytest
 \end{lstlisting}
 
@@ -1088,6 +1287,14 @@ factorized action spaces contain a complete-chain configuration:
 Under-allocation means the selected action misses a chain recovered by the factorized oracle.
 Over-allocation means it matches oracle quality at higher cost.  A failed unit is never counted as a
 cost saving.  Held-out oracle labels are used only for evaluation and corrective-action upper bounds.
+
+For self-routing, each grouped-CV fold fits centering and PCA components on unique training
+identities only, then applies the frozen transform to its validation identities.  Final held-out
+models refit on all validation identities.  Query-prefill cost is always added to the selected
+retrieval action unless the exact prefix state is reused.  Parameter-label accuracy is diagnostic;
+Tables~\ref{tab:self-representations} and~\ref{tab:self-targets} report downstream chain quality,
+under-allocation, and total cost instead.  The source-plus-query condition pays all 256 ordinary
+context tokens and is never presented as a free in-flight signal.
 
 \section{Representative Public Trace}
 

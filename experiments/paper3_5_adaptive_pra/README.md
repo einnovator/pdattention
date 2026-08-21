@@ -31,3 +31,22 @@ trains R0/R1/R2/R3A on validation-derived factorized targets, and writes compact
 oracle, Pareto, precision/recall, router, and retry artifacts. Large frozen
 feature tensors remain outside Git. Systems optimization is out of scope for
 Paper 3.5 and is handed to Papers 5.5 and 6.
+
+Capture and evaluate the frozen-backbone self-router add-on with:
+
+```powershell
+python -m experiments.paper3_5_adaptive_pra.precompute_self_router_features --device cuda
+python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
+```
+
+The capture pools only the explicit question span from the normal question-only
+chat prompt. It records embeddings, representative hidden layers, native Q/K,
+and a separately charged 256-token source-contextualized upper bound. The study
+uses four-fold example-grouped validation selection, five router seeds, and the
+existing 792-action frozen surface. It expands target architectures only for the
+validation-selected self representation. Held-out maxima never select a layer.
+
+Query-prefill reuse is claimed only at or before the first PRA consumer layer.
+Offline tests require exact Qwen prefix-continuation parity and no model-state
+mutation. The external-encoder gate remains deferred when self-encoding does not
+improve the validation-selected quality/cost frontier.
