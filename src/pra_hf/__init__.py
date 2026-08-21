@@ -24,6 +24,22 @@ from .effort_router import (
     RouterActionSpace,
     profile_actions,
 )
+from .factorized_control import (
+    BUDGET_LEVELS,
+    FACET_LEVELS,
+    HOP_LEVELS,
+    NEIGHBOR_LEVELS,
+    ROOT_LEVELS,
+    FactorizedEffortAction,
+    allocation_outcome,
+    changed_control,
+    cheapest_sufficient,
+    dominates,
+    evidence_kv_metrics,
+    factorized_action_space,
+    factorized_cost,
+    pareto_frontier,
+)
 from .query_regions import (
     PromptSegment,
     QueryRegion,

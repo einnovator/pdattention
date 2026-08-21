@@ -19,3 +19,15 @@ three payload types, explicit/structural/retry policies, and a 0--8K displacemen
 sweep. The router gate compares R0 profiles, R1 feature heads, R2 semantic-input
 heads, and R3A autoregressive heads under one validation-derived minimum-effort
 target. Complexity escalation stops when held-out quality/cost does not improve.
+
+Run the factorized control and bounded corrective-retry study separately:
+
+```powershell
+python -m experiments.paper3_5_adaptive_pra.factorized_study
+```
+
+This runner evaluates the independent interpretation/search/admission lattice,
+trains R0/R1/R2/R3A on validation-derived factorized targets, and writes compact
+oracle, Pareto, precision/recall, router, and retry artifacts. Large frozen
+feature tensors remain outside Git. Systems optimization is out of scope for
+Paper 3.5 and is handed to Papers 5.5 and 6.

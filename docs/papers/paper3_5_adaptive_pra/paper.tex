@@ -14,7 +14,7 @@
 \lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,frame=single,columns=fullflexible}
 
 \title{Adaptive Progressive Retrieval Attention:\\
-Confidence-Guided Routing, Monotonic Retry, and a Bounded Memory Runtime}
+Factorized Control, Query Reinterpretation, and Bounded Retry}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Adaptive Progressive Retrieval Attention},pdfauthor={Jorge Simao}}
@@ -24,42 +24,36 @@ Confidence-Guided Routing, Monotonic Retry, and a Bounded Memory Runtime}
 
 \begin{abstract}
 Progressive Retrieval Attention (PRA) separates conceptual memory discovery from physical
-native-key/value (K/V) activation.  Earlier experiments used fixed routing and materialization
-settings.  This paper asks whether one runtime can spend little on easy queries, escalate difficult
-queries, reuse prior work, and stop under explicit confidence and resource bounds.
+native-key/value (K/V) activation.  This paper asks how much PRA effort a query should receive and
+when a bounded second attempt is justified.  We first evaluate three coherent effort profiles, then
+open their coupling into independently selectable interpretation, search, and admission controls.
 
-We introduce a discrete controller over three validation-frozen effort profiles.  Each profile
-instantiates query facets, retained roots, neighbors, hop depth, conceptual and physical budgets,
-thresholds, search/consumer layers, granularity, and disclosure policy.  The runtime exposes manual
-and automatic modes, a monotonic retry state machine, oracle-free features, calibrated stop signals,
-structured traces, exact batched native-Q/K search, interval gathering, a page-table prototype,
-cache policies, and heterogeneous batching.
+The factorized study replays frozen native graph and query scores for 95 validation and 65 held-out
+HotpotQA/QASPER example--seed units.  It evaluates 792 valid configurations per unit over query
+facets $F$, roots $R$, successor breadth $K$, hop depth $H$, conceptual budget $B_s$, and physical
+K/V admission budget $B_{kv}$.  On held-out HotpotQA, the factorized oracle preserves complete-chain
+quality 1.000 while reducing mean abstract cost from 34.18 for the cheapest sufficient E0/E1/E2
+profile to 19.98.  On the 24 QASPER units solved by both action spaces, cost falls from 16.11 to 8.95;
+factorization additionally solves one unit that no profile solves, yielding .833 versus .800 overall.
+Thus profile coupling hides substantial lower-cost combinations, although no learned router yet
+predicts those combinations reliably.
 
-Two add-on studies extend the controller.  Across 360 matched prose, log, and URL-list prompts,
-recent-head root recall is .400 with a 1.0 layout spread, while explicit and structural spans reach
-1.000 with zero spread and survive 8K-token displacement in this labeled lexical control.  On the
-frozen 65-unit cohort, R0 retains oracle quality .615 at cost 109.9; R1--R3A lower cost to
-102.6--104.0 but quality to .591--.594, so added controller complexity is not promoted.
+Five-seed factorized controllers make that limitation explicit.  R0 profile routing obtains .631
+chain quality at cost 24.29.  Independent, conservative, signed-hash query, and autoregressive heads
+reduce cost to 16.13--18.06 but quality to .486--.560 because under-allocation rises.  Parameter
+accuracy is therefore not the endpoint.  A one-retry evaluator-side correction audit raises quality
+from .631 to the factorized ceiling .923, correcting all 15 initial HotpotQA failures and four of nine
+QASPER failures at 2.49 mean added cost; eight HotpotQA and QASPER cases use a single root/facet
+change, while compound fallback remains necessary elsewhere.  This is retry headroom, not a learned
+online policy.
 
-The adaptive study uses 95 validation and 65 held-out example--seed units from frozen Paper-2.5
-routing traces.  On QASPER, the learned controller matches the always-high chain-completion rate
-(.900) while reducing mean abstract effort from 152.0 to 60.8, a 60.0\% reduction.  On HotpotQA,
-both learned and always-high control reach only .371; the controller assigns the full effort because
-31 of 35 held-out units require the highest profile under the oracle minimum-effort audit.  This is
-appropriate allocation, not a compute saving.  A cheap-first retry reaches the same quality, but
-costs 156.0 on HotpotQA and 141.9 on QASPER because repeated generation offsets reuse.  Combined
-routing features predict failure with AUROC .824 and AUPRC .853.  In a separate controlled output
-trace, entropy alone is weak (AUROC .403), while answer margin and combined output signals separate
-errors; entropy is therefore not a sufficient stop rule.
-
-Prototype systems measurements show that batched GEMM is 2,527$\times$ faster than a Python
-per-key loop at 4,096 keys.  The present coarse index is slower than GEMM at this scale and reaches
-only .648 Top-8 recall with eight probes.  A fused \texttt{index\_select} gather is parity-correct
-but has no consistent CPU advantage at these sizes, whereas Python page lookup remains 14--37$\times$
-slower than contiguous gathering.  Controlled matched-budget comparisons include iterative RAG,
-native context, and mechanism-faithful K/V selector proxies; they are not production baseline
-implementations.  The evidence supports adaptive memory allocation and a reproducible runtime
-contract, but not yet a production vLLM speed claim.
+Query interpretation is itself an action.  Explicit and structural regions remove recent-head
+serialization sensitivity in matched controls and remain stable through 8K following tokens.
+Structural selection is perfect on six semi-natural fixtures but falls to .400 under five deliberate
+role decoys, while the competing recent-head interpretation remains correct there.  The result
+motivates disagreement-aware reinterpretation rather than unconditional structural replacement.
+All primary quality results are frozen-score evidence-chain endpoints, not generated-answer scores.
+Kernel, cache, batching, and serving-engine optimization are handed to Papers 5.5 and 6.
 \end{abstract}
 
 \section{Introduction}
@@ -88,7 +82,7 @@ where $Q$ is held-out output or retrieval quality and $C$ includes conceptual se
 generation retries, and measured latency.  Equation~\ref{eq:adaptive-goal} is not guaranteed on
 every dataset.  If almost every query is hard, the correct controller should spend the high budget.
 
-This paper makes eight contributions:
+This paper makes seven contributions:
 \begin{enumerate}
 \item It defines a public PRA control vector and freezes three monotonic effort profiles rather
 than predicting unconstrained continuous parameters.
@@ -96,16 +90,16 @@ than predicting unconstrained continuous parameters.
 routing, output, and memory features; evaluator labels are rejected by the serving API.
 \item It provides manual and automatic retry modes with incremental state reuse, hard budgets,
 semantic answer consistency, and structured decision traces.
-\item It adds exact batched and coarse-to-fine native-Q/K search, fused interval gathering, a
-fixed-page K/V prototype, cache/prefetch policies, and heterogeneous batching.
 \item It evaluates validation-frozen adaptive compute, calibration, retry recovery, and oracle
 minimum effort on held-out HotpotQA and QASPER traces.
-\item It constructs matched-budget RAG, long-context, and K/V-selection frontiers while clearly
-separating controlled proxies from production third-party implementations.
 \item It makes query-region location and extent explicit, supports structured prompt roles, and
 tests matched query-first, query-last, query-middle, log, and URL-list layouts.
-\item It compares profile, independent-head, semantic-input, and interaction-aware effort routers
-under one minimum-sufficient-effort target and a quality/cost stop rule.
+\item It measures profile quantization regret over 792 valid factorized configurations per unit,
+including token-weighted evidence precision and recall and separate search/admission budgets.
+\item It retrains profile, independent-head, signed-hash query, conservative, and autoregressive
+routers on validation-derived factorized targets rather than inherited profile labels.
+\item It evaluates bounded single-control correction and compound fallback as explicit retry
+upper bounds, recording wrong-to-correct, correct-to-broken, extra work, and action identity.
 \end{enumerate}
 
 Full-weight PRA retraining is deliberately absent.  That intervention belongs to Paper~4.  Here the
@@ -216,8 +210,10 @@ All controller families target minimum sufficient effort rather than the highest
 \end{equation}
 R0 selects one validation-frozen profile.  R1 uses a shared feature MLP and independent categorical
 heads.  R2 adds a cached query-region representation.  R3A predicts controls autoregressively in the
-order $\mathcal Q\rightarrow F\rightarrow R\rightarrow K\rightarrow H\rightarrow B$.  Integer
-controls and thresholds use finite categorical values; no Cartesian action class is constructed.
+order $\mathcal Q\rightarrow F\rightarrow R\rightarrow K\rightarrow H\rightarrow B_s\rightarrow
+B_{kv}$.  Integer controls and thresholds use finite categorical values; no Cartesian action class
+is constructed.  The first comparison inherits profile-derived labels; the decisive comparison is
+retrained later on independently measured factorized-oracle targets.
 For independent heads,
 \begin{equation}
  \mathcal L=\sum_j\lambda_j\,\mathrm{CE}(\hat a_j,a_j^*).
@@ -230,18 +226,20 @@ and latency.  Joint exact match is secondary to the held-out quality/expected-ef
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_pra_runtime_architecture.png}
-\caption{Adaptive PRA runtime.  The control plane chooses a bounded profile from observable state.
-Search and K/V state are reused when confidence, consistency, or closure signals request a broader
-attempt.  The trace exposes decisions and metrics, not hidden reasoning.}
+\caption{Adaptive PRA control endpoint.  Competing query interpretations feed a direct profile or
+factorized action.  Observable failure evidence may trigger one targeted correction with compatible
+search and K/V reuse; otherwise the controller stops.}
 \label{fig:architecture}
 \end{figure}
 
 \subsection{State machine}
 
-Attempt zero uses the selected profile.  A manual caller may name low, medium, or high effort and
-explicitly request one broader retry.  Automatic mode applies a calibrated stop rule.  If the rule
-fails, the next profile may widen selected controls while preserving prior roots, search results,
-K/V pages, and prefix state.  Search budget, active K/V, retry count, and latency are hard caps.
+Attempt zero uses the selected profile or factorized action.  A manual caller may name low, medium,
+or high effort, provide individual controls, and request one bounded retry.  Automatic mode applies
+a calibrated stop rule.  If it fails, the corrective action may reinterpret the query, widen facets,
+increase roots, neighbors, hops, or search budget, or change K/V admission while preserving compatible
+roots, search results, K/V state, and prefix state.  Search budget, active K/V, retry count, and
+latency are hard caps.
 
 The public transition is:
 \begin{lstlisting}[language=Python]
@@ -252,7 +250,7 @@ while True:
     trace.append(public_decision(result, profile, signals))
     if stop or budget_exhausted(profile, trace):
         return result, trace
-    profile = next_monotonic_profile(profile)
+    profile = targeted_correction(profile, observable_failure_signals)
     previous = result
 \end{lstlisting}
 
@@ -268,27 +266,23 @@ generation time, reuse counts, query-region bounds, confidence, method and expan
 escalation signals, and stop reason.  It does not contain hidden chain-of-thought.  Evaluator
 outcomes live in experiment rows outside the controller feature path.
 
-\subsection{Indexed native-Q/K search}
+\subsection{Control/execution boundary}
 
 Let $Q\in\mathbb{R}^{n_q\times d}$ be native query states and
 $K_m\in\mathbb{R}^{n_m\times d}$ indexed memory keys.  Exact batched search computes
 \begin{equation}
  S=QK_m^\top,\qquad I=\operatorname{TopK}(S,k).
 \end{equation}
-This removes Python per-key scoring and dense all-pairs graph construction.  The prototype also
-uses deterministic coarse centroids: select $p$ clusters, gather their candidates, then apply exact
-Top-K inside that subset.  Approximation is acceptable only when recall/latency beats exact GEMM at
-the deployment scale.
+This equation defines the search work exposed to the controller.  How a later runtime compiles or
+indexes it is outside the adaptive-policy contribution; approximation is acceptable only under a
+separate matched-recall systems gate.
 
-\subsection{Materialization and page layout}
+\subsection{Search/admission boundary}
 
-The materializer validates source-relative half-open intervals, merges overlap and adjacency,
-builds one token index, and applies \texttt{index\_select} to K and V with shape
-$[B,H,T,D_h]$.  A fixed-page store maps $(\mathrm{request},\mathrm{page})$ to
-$[H,P,D_h]$ tensors and supports LRU, LFU, and hybrid eviction.  This establishes page accounting,
-fragmentation, and exact gather parity.  It is not a vLLM kernel.  PagedAttention controls where K/V
-is stored~\cite{kwon2023vllm}; PRA controls which logical memory becomes active.  A production
-integration must join those decisions without replaying selected tokens through Python.
+Conceptual search returns source-parent identities.  Admission maps a bounded subset to native K/V
+with shape $[B,H,T,D_h]$.  The adaptive trace must record both the searched parent budget and the
+physically admitted token count.  PagedAttention controls where K/V is stored~\cite{kwon2023vllm};
+PRA control decides which logical memory becomes active.  Physical layout optimization is deferred.
 
 \section{Experimental Protocol}
 
@@ -313,7 +307,20 @@ Abstract effort is deterministic:
 A retry pays the final monotonic profile plus a fixed controlled regeneration charge of two units
 per additional attempt.  Measured routing latency is reported separately.
 
-\subsection{Systems protocol}
+\subsection{Factorized-control cohort}
+
+The same 95/65 grouped split is replayed from frozen Qwen native adjacency, query-facet scores, source
+spans, and evidence groups.  Validation supplies factorized router targets; held-out targets are
+evaluator-only.  The full valid lattice is executed on both partitions so the held-out oracle is an
+evaluation ceiling, not a pruning input.  Pareto dominance maximizes complete-chain quality, evidence
+recall, and evidence precision while minimizing abstract cost, active K/V, and transition comparisons.
+
+R0 is trained against the minimum sufficient profile.  R1, R2, and R3A are trained against the
+minimum-cost factorized action.  R2's 32-dimensional signed-hash input uses the actual question text.
+All neural controllers use five fixed initialization seeds.  The retry audit begins from one frozen
+R0 seed and permits one single-control correction or a separately labeled compound fallback.
+
+\subsection{Inherited measurement scope}
 
 Search, gather, page, cache, and batching benchmarks run on CPU with PyTorch 2.12.1.  Exact search
 uses 32 queries, 64-dimensional keys, Top-8, and 256--4,096 memories.  Kernel tests use 8 heads and
@@ -321,12 +328,11 @@ head dimension 32.  Page tests store 1,537 tokens and select 128 clustered or di
 Batch tests use 1--32 heterogeneous requests.  We report medians and mark HBM estimates as
 extrapolated.
 
-Held-out Qwen measurements are inherited from the Paper-2.5 Gate-3 test artifact and normalized into
-one serving schema.  They include TTFT, TPOT, total generation time, routing, materialization,
-transfer, active K/V, and peak GPU allocation.  They are single-request observations, not an
-adaptive end-to-end serving run.
+These earlier CPU components and held-out Qwen observations are retained only as provenance for the
+Paper-5.5 handoff.  They are not used to select factorized actions and are not adaptive end-to-end
+serving measurements.
 
-\subsection{Baseline discipline}
+\subsection{Inherited baseline discipline}
 
 The matched synthetic corpus contains 1,024 documents and 200 two-hop queries.  The query retrieves
 a bridge; the answer evidence is linked from that bridge.  Native context, truncation, one-shot RAG,
@@ -490,7 +496,22 @@ following tokens to zero at 32 and remains zero through 8K; explicit and structu
 artifacts.  Broad all-region selection reaches only .333 overall, so more query-region breadth is not
 monotonically better.
 
-\subsection{Router capacity and the stop rule}
+\subsection{Semi-natural and adversarial role fixtures}
+
+Six additional fixtures place the operative question inside email, tool output, source code, logs,
+URL lists, and multi-turn conversation.  Structural discovery obtains root R@1 1.000 and mean span
+IoU .981; explicit spans obtain 1.000 on both measures.  These remain constructed fixtures, but their
+surface form is less regular than the original matched template.
+
+Five adversarial fixtures insert a quoted previous question, a question-like log field, a misleading
+heading, a code-comment question, or a URL containing query-like text.  Structural R@1 falls to .400
+and span IoU to .314.  Recent-head remains correct on all five because the current question is later
+than the decoy.  The bounded policy therefore keeps the recent interpretation rather than replacing
+it merely because a structural cue exists.  This negative control changes the design conclusion:
+structural discovery is one candidate interpretation, and disagreement or a small score gap should
+trigger comparison, not unconditional trust.
+
+\subsection{Preliminary profile-derived router capacity}
 
 R0--R3A share the 95 validation / 65 test split and validation-derived minimum-effort labels.  R1
 uses runtime features only.  R2 adds a 32-dimensional signed-hashing query channel to exercise the
@@ -530,7 +551,192 @@ therefore fails: no controller transformer is built.  Parameter mutual informati
 as profile-label coupling because all heads inherit three jointly defined profiles; it is not causal
 evidence that changing one PRA control changes another.
 
-\section{Systems Results}
+\section{Factorized Control Results}
+
+\subsection{Measured action lattice and cost}
+
+The preliminary multi-head comparison cannot answer whether profiles are the right action unit:
+every target field was copied from E0, E1, or E2.  We therefore replay the frozen native adjacency
+and query-facet scores over
+\begin{equation}
+ (F,R,K,H,B_s,B_{kv})\in
+ \{1,2,4\}\times\{1,2,4\}\times\{2,4,8\}\times
+ \{0,1,2,3\}\times\{2,4,8\}\times\{2,4,8\}.
+\end{equation}
+Configurations with $B_s<R$ or $B_{kv}<R$ are invalid, leaving 792 measured actions per
+example--seed unit.  Query-region policy is fixed to structural, native edge admission is open,
+terminal-goal stopping is closed, and best-first traversal is fixed.  These controls isolate profile
+coupling rather than reopening every Paper-2.5 routing choice.
+
+For each execution, root scoring compares $F$ facets with all source parents; graph search records
+actual native proposals; and physical admission preserves roots before admitting discovered parents
+in search order.  The normalized accounting used only for within-study ordering is
+\begin{equation}
+ C(a)=F+N_{\mathrm{transition}}+B_s+\frac{T_{kv}}{64},
+ \label{eq:factorized-cost}
+\end{equation}
+where $T_{kv}$ is the number of materialized native-K/V source tokens.  The artifacts also retain
+unscaled root comparisons $F N_{\mathrm{parents}}$, transition comparisons, conceptual parents,
+K/V tokens, and wall time.  Thus Equation~\ref{eq:factorized-cost} is auditable rather than a latency
+surrogate.
+
+Physical evidence metrics are token weighted:
+\begin{equation}
+ P_{E,kv}=\frac{\text{materialized evidence K/V tokens}}
+                 {\text{all materialized K/V tokens}},\qquad
+ R_{E,kv}=\frac{\text{materialized evidence K/V tokens}}
+                 {\text{required evidence K/V tokens}}.
+\end{equation}
+Complete-chain quality requires every evidence group to be represented after physical admission.
+No generated answer exists for these newly factorized configurations, so no output oracle is imputed.
+
+\subsection{Profile quantization regret}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\textwidth]{../shared/results/paper3_5_adaptive_pra/factorized_quality_cost_frontier.png}
+\caption{Held-out factorized quality--cost surface.  Stars are per-example factorized oracles
+averaged by dataset; E0--E2 are diagonal profile configurations under the same accounting.}
+\label{fig:factorized-frontier}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out profile quantization audit.  Matched rows include units solved by both action
+spaces.  QASPER overall quality is also shown because factorization solves one additional unit.}
+\label{tab:factorized-oracle}
+\begin{tabular}{lrrrrrr}
+\toprule
+Dataset & matched $n$ & profile quality & factor quality & profile cost & factor cost & regret \\
+\midrule
+HotpotQA & 35 & 1.000 & 1.000 & 34.18 & 19.98 & 14.20 \\
+QASPER matched & 24 & 1.000 & 1.000 & 16.11 & 8.95 & 7.15 \\
+QASPER all & 30 & .800 & .833 & 16.82 & 10.43 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+HotpotQA supports the profile-aliasing hypothesis rather than the intrinsically-high-effort
+hypothesis: difficult examples often need one expensive dimension, not the full E2 bundle.  Mean
+cost falls 41.5\% at matched complete-chain quality.  On matched QASPER units the aggregate reduction
+is 44.4\%.  The absolute costs should not be compared with the earlier 8/28/152 convention;
+Table~\ref{tab:factorized-oracle} recomputes both spaces with Equation~\ref{eq:factorized-cost}.
+
+\subsection{What the oracle actually requests}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Held-out minimum-cost factorized-oracle distributions.  Entries are percentages of
+example--seed units; omitted levels have zero mass.}
+\label{tab:factor-requirements}
+\begin{tabular}{lll}
+\toprule
+Control & HotpotQA & QASPER \\
+\midrule
+$F$ & 1: 97.1,\ 4: 2.9 & 1: 96.7,\ 2: 3.3 \\
+$R$ & 1: 65.7,\ 2: 8.6,\ 4: 25.7 & 1: 66.7,\ 2: 23.3,\ 4: 10.0 \\
+$K$ & 2: 80.0,\ 4: 5.7,\ 8: 14.3 & 2: 96.7,\ 4: 3.3 \\
+$H$ & 0: 45.7,\ 1: 54.3 & 0: 96.7,\ 1: 3.3 \\
+$B_s$ & 2: 34.3,\ 4: 45.7,\ 8: 20.0 & 2: 86.7,\ 4: 10.0,\ 8: 3.3 \\
+$B_{kv}$ & 2: 34.3,\ 4: 45.7,\ 8: 20.0 & 2: 86.7,\ 4: 10.0,\ 8: 3.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Nearly every unit uses one facet and low successor breadth.  HotpotQA's extra work is concentrated
+in roots, one graph hop, and larger parent budgets; QASPER is predominantly root-only.  No held-out
+oracle chooses $B_s>B_{kv}$.  Broader-search/narrower-admission configurations are measured, but
+under deterministic search-order admission they do not become the cheapest complete physical chain.
+Separating the budgets remains architecturally necessary; this admission rule does not yet exploit it.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/factorized_precision_recall.png}
+\caption{Token-weighted physical evidence precision and recall across aggregate factorized
+configurations.  Broad conceptual recovery does not guarantee a precise admitted K/V set.}
+\label{fig:factorized-pr}
+\end{figure}
+
+\subsection{Routers retrained on factorized targets}
+
+Every learned router is trained only on 95 validation units and evaluated on 65 test units over five
+initialization seeds.  R2 now hashes actual question text rather than a dataset-class phrase.
+Conservative R1/R2 decoding selects an upper categorical quantile.  Invalid independently predicted
+budgets are raised only enough to preserve all roots, and the repair rate remains below 2.2\%.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Five-seed held-out router frontier on factorized targets.  Under-allocation means failing
+a chain the factorized oracle completes; over-allocation means matching quality at higher cost.}
+\label{tab:factorized-routers}
+\begin{tabular}{lrrrrr}
+\toprule
+Router & quality & cost & cost regret & under & over \\
+\midrule
+R0 profile & .631 & 24.29 & 8.72 & .292 & .523 \\
+R1 independent & .538 & 16.13 & .56 & .385 & .378 \\
+R1 conservative & .560 & 17.97 & 2.40 & .363 & .422 \\
+R2 query hash & .505 & 16.55 & .98 & .418 & .335 \\
+R2 conservative & .548 & 18.06 & 2.48 & .375 & .400 \\
+R3A autoregressive & .486 & 17.18 & 1.61 & .437 & .335 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/factorized_router_quality_cost.png}
+\caption{Factorized controller quality versus expected cost.  Lower nominal cost is obtained by
+missing sufficient actions more often; no factorized learned router dominates R0.}
+\label{fig:factorized-routers}
+\end{figure}
+
+True factorized labels prove that cheaper actions exist, but the small cohort and signed-hash channel
+do not predict them safely.  Conservative decoding recovers 2.2--4.3 quality points over its argmax
+counterpart, still below R0.  A pretrained encoder or larger controller is not promoted here; the
+next gate is a larger grouped natural dataset.
+
+\subsection{Bounded targeted-retry headroom}
+
+We take one frozen-seed R0 decision as the initial action and permit one corrective attempt.  The
+audit first chooses the cheapest successful action differing in exactly one control.  If none exists,
+it records a compound fallback to the factorized oracle.  Accounting preserves prior effort and adds
+two regeneration units.  Because evaluator success chooses the correction, this is an upper bound,
+not an online classifier.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out bounded corrective-retry audit.  Parenthetical values give corrected initial
+failures.}
+\label{tab:targeted-retry}
+\begin{tabular}{lrrrrr}
+\toprule
+Dataset & initial quality & final quality & corrected & mean added cost & correct broken \\
+\midrule
+HotpotQA & .571 & 1.000 & .429 (15/15) & 2.31 & 0 \\
+QASPER & .700 & .833 & .133 (4/9) & 2.71 & 0 \\
+All & .631 & .923 & .292 (19/24) & 2.49 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Seven Hotpot failures are repaired by increasing $R$, one by widening $F$, and seven require a
+compound fallback.  One QASPER failure is repaired by increasing $R$; eight invoke compound fallback,
+of which only three are solvable anywhere in the lattice.  The audit establishes retry headroom and
+localizes missing capacity.  It does not establish that an oracle-free diagnostic attains that rate.
+The endpoint remains direct initial prediction followed by at most one confidence-triggered,
+explicitly traced correction.
+
+\section{Inherited Runtime Measurements and Scope Handoff}
+
+The following measurements were completed during the original combined control/serving study and
+are retained for provenance.  They are not Paper~3.5 contributions.  Kernel compilation, memory
+hierarchy, cache/prefetch policy, batching, concurrency, and broad engine comparison now belong to
+Paper~5.5; first-class vLLM logical blocks and scheduling belong to Paper~6.
 
 \subsection{Exact GEMM is the current small-index default}
 
@@ -727,24 +933,32 @@ validation, learned and hand controllers, stop policy, retries, consistency, and
 \texttt{query\_regions.py} defines structured segments, explicit spans, structural discovery,
 multi-region selection, and cue reinterpretation.  \texttt{effort\_router.py} defines finite action
 spaces, independent categorical heads, a cached semantic-input contract, and autoregressive heads.
-\texttt{serving\_runtime.py} defines native-Q/K indexes, merged interval gather, page storage,
-eviction, and ragged packing.  The experiment scripts freeze validation decisions and emit every
-normalized row needed to regenerate the figures and tables.
+\texttt{factorized\_control.py} defines valid independent actions, exact component accounting,
+token-weighted evidence metrics, Pareto dominance, allocation outcomes, and retry action names.
+\texttt{factorized\_study.py} executes the frozen lattice and emits the oracle, router, and retry
+artifacts.  Physical-runtime implementation remains behind the control/execution boundary.
 
 \section{Discussion}
 
 \subsection{What adaptive control accomplished}
 
-The strongest result is not that adaptive control always saves compute.  It is that the controller
-distinguishes a heterogeneous cohort from a uniformly hard one.  QASPER contains many E0-sufficient
-cases, and the learned policy removes 60\% of mean effort at matched chain quality.  HotpotQA does
-not offer that opportunity under the present router, so the controller spends E2.  A controller
-that reported large savings there would likely be sacrificing quality or exploiting labels.
+The profile experiment first appeared to make HotpotQA uniformly high effort: 31 of 35 held-out units
+needed E2.  Factorization changes that interpretation.  Every Hotpot unit is solved at lower mean
+cost because most need only one facet, low $K$, and at most one hop; the expensive requirement is
+usually concentrated in roots or total parent budget.  Coherent profiles are robust, but they pay
+for controls that an individual query does not require.
 
-The retry result is similarly conditional.  Retry recovers failures, but confidence must stop it
-early enough to repay regeneration.  Direct minimum-effort prediction is more valuable on QASPER;
-cheap-first retry is a robust fallback.  Better answer-stability signals, incremental decoding, and
-prefix-cache reuse are the next systems targets.
+QASPER remains the more heterogeneous workload.  Its factorized oracle uses $H=0$ on 96.7\% of
+held-out units and obtains a small quality gain over the profile lattice.  These oracle results
+justify fine-grained actions in principle.  The learned-router results deny the stronger claim that
+the present controller can allocate them safely: every R1--R3A variant loses quality through
+under-allocation.  R0 therefore remains the supported initial controller despite measurable
+quantization regret.
+
+Retry is similarly conditional.  A bounded evaluator-side correction closes 19 of 24 initial
+failures, and eight corrections change only roots or facets.  The remaining solvable failures need
+compound changes.  This establishes a target for a future diagnostic classifier, not an achieved
+online correction policy.  Universal cheap-first escalation remains inferior to direct prediction.
 
 The add-on studies sharpen what escalation means.  Failure may require a different cue rather than
 more roots under the same misplaced cue.  Explicit roles and spans are both cheaper and more reliable
@@ -753,11 +967,10 @@ Automatic structural reinterpretation is a bounded fallback.  Query-region bread
 two-sided character as other PRA controls: it can recover distributed instructions, but it can also
 dilute the objective and multiply facets, roots, and comparisons.
 
-They also provide a controller-complexity stop.  Independent parameter heads are compositional and
-the autoregressive model can represent interactions, but neither improves the present quality/cost
-frontier.  A small profile selector is not merely an implementation convenience here; it is the
-empirically preferred point.  A compact pretrained encoder should be tested only on a larger natural
-cohort where semantic query classes leave measured headroom over runtime features.
+They also provide a controller-complexity stop.  Independent and autoregressive heads now receive
+genuine factorized targets, yet neither improves the quality/cost frontier.  The result is no longer
+an artifact of copying E0/E1/E2 labels, although the sample and query representation remain limited.
+A compact pretrained encoder should be tested only on a larger grouped natural cohort.
 
 \subsection{Cognitive interpretation}
 
@@ -770,14 +983,13 @@ Natural cognitive systems plausibly vary retrieval cues and deliberation under u
 the present controller is not a biological model.  Its scientific content is the measured frontier
 between quality and expected resource use.
 
-\subsection{Serving implications}
+\subsection{Program handoff}
 
-Paper~3 converted conceptual selection into smaller active K/V.  Paper~3.5 shows the control and
-accounting needed to exploit that bounded memory across requests.  Exact GEMM should remain the
-small-index search default.  ANN becomes relevant only beyond a measured crossover.  Page layout is
-necessary for reuse and concurrency, but Python page lookup erases the expected gain.  The next
-credible systems milestone is a fused GPU path that maps selected logical intervals directly to
-PagedAttention blocks and measures HBM, TTFT, TPOT, throughput, and eviction under concurrency.
+Paper~3.5 ends at an adaptive initial action, observable sufficiency evidence, and one bounded
+correction.  Kernel compilation, indexed-search crossover, physical memory hierarchy, batching,
+and concurrency are Paper~5.5 questions.  First-class vLLM logical blocks, asynchronous memory
+movement, and scheduler awareness are Paper~6 questions.  This boundary keeps control quality from
+being conflated with a Python prototype's throughput.
 
 \section{Limitations}
 
@@ -786,51 +998,43 @@ answer.  Output confidence comes from a separate controlled model, so a combined
 controller remains untested.  The held-out adaptive cohort contains only 65 example--seed units and
 inherits Paper-2.5's model and dataset choices.
 
-The supported learned controller is linear.  R1--R3A test additional capacity, but the R2 semantic
-input is a dependency-free hashing baseline rather than a pretrained NLP encoder.  The profile-derived
-targets couple parameter labels by construction, and the cohort is too small to establish natural
-parameter interactions.  The output calibration cohort is small and imbalanced.  Semantic
-consistency uses token F1.  It can miss paraphrase and contradiction.
+The supported learned controller is the R0 profile selector.  Factorized R1--R3A use independently
+measured targets, but the cohort is too small to establish reliable natural parameter interactions.
+R2 uses actual questions through a dependency-free signed-hash encoder rather than a pretrained NLP
+encoder.  The output calibration cohort is small and imbalanced.  Semantic consistency uses token
+F1 and can miss paraphrase and contradiction.
 
-Query-region evaluation is a deterministic lexical control with explicit headings, 24 semantic
-templates, and synthetic prose/log/URL payloads.  Perfect structural detection is therefore a gate,
-not a natural-prompt accuracy estimate.  Stack traces, tables, email threads, ambiguous multi-turn
-instructions, tokenizer-specific span mapping, and a lightweight learned span scorer remain untested.
+Query-region evaluation remains deterministic.  Semi-natural email, code, log, URL, tool-output, and
+conversation fixtures broaden surface form but are not sampled from a natural prompt distribution.
+The adversarial structural failure shows that ambiguous role resolution remains open.  Tokenizer-
+specific span mapping and a lightweight learned span scorer remain untested.
 
-The page cache is a standalone implementation, not vLLM PagedAttention.  Search, gather, caching,
-and batching timings are CPU component benchmarks.  HBM concurrency values are extrapolated.
-FAISS, HNSW, Triton, CUDA extensions, and production cache libraries remain to be integrated.  The
-coarse index underperforms exact GEMM at the tested scale.
-
-RAG and K/V comparisons are controlled proxies.  A complete external study must run strong
-single-shot and iterative RAG, upstream H2O/SnapKV/ClusterKV/StreamingLLM implementations, native
-long context, and matched generation on the same backbone and corpus.  Sparse and recurrent-memory
-architectures require compatible checkpoints.  Dollar-per-million-token estimates are unavailable
-on the local hardware.
+The factorized endpoint is frozen-score evidence-chain recovery, not generated-answer quality.
+Facet selection ranks existing cached facets; it is not a newly learned interpreter.  Search-order
+admission does not exploit $B_s>B_{kv}$ in any held-out minimum-cost oracle.  The targeted correction
+audit uses evaluator success to choose an action and must not be read as an oracle-free retry result.
+Five QASPER units remain unsolved throughout the measured lattice.
 
 Finally, no full PRA backbone is trained here.  Learned consumer adaptation and full-weight scaling
 are deferred to Paper~4.
 
 \section{Conclusion}
 
-PRA can be represented as an adaptive bounded-memory runtime rather than one fixed retrieval
-configuration.  A small validation-frozen controller preserves high-effort QASPER chain quality at
-60\% lower mean effort and correctly declines to save effort on predominantly hard HotpotQA.
-Monotonic retry recovers failures but is not free; generation overhead can outweigh reused search.
-Entropy alone is not a sufficient stop signal, while combined observable routing features provide
-useful but imperfect failure discrimination.
+PRA effort is better represented by separable interpretation, search, and admission controls than by
+one diagonal profile lattice.  At matched complete-chain quality, factorization reduces mean held-out
+HotpotQA cost from 34.18 to 19.98 and matched QASPER cost from 16.11 to 8.95.  The result resolves the
+main scientific question: profile quantization hides useful low-cost combinations.
 
-Adaptive PRA must also decide what the query is.  In matched layout controls, explicit and structural
-query regions remove the complete serialization sensitivity of a recent-head cue, and reinterpretation
-changes the cue before widening search.  This is strong SDK evidence but only synthetic structural
-evidence.  More controller capacity is likewise not automatically useful: R1--R3A save modest effort
-by sacrificing held-out quality, leaving the profile selector as the supported default.
+The control problem is not solved.  R1--R3A reduce nominal cost by under-allocating and remain below
+R0 quality, even with factorized targets and actual-question hashing.  R0 stays the SDK default.
+One bounded oracle corrective action exposes substantial retry headroom, but compound changes and
+five unsolved QASPER units prevent a stronger online claim.
 
-The systems prototype establishes exact batched search, K/V gather parity, page and cache accounting,
-and heterogeneous batching.  It also identifies the unfinished work plainly: coarse search must
-beat GEMM at scale, page gathering must move out of Python, and adaptive control must run inside a
-concurrent production scheduler.  The contribution is a reproducible control contract and an
-honest quality/cost frontier on which that next integration can be built.
+Adaptive PRA must also decide what the query is.  Explicit roles remain preferred; structural and
+recent interpretations should compete under confidence because either can fail under serialization
+or decoys.  The contribution is therefore a measured control surface, a conservative default, and a
+bounded retry endpoint.  Making those decisions fast belongs to Paper~5.5; making them native to
+vLLM belongs to Paper~6.
 
 \appendix
 \section{Artifact Manifest}
@@ -840,17 +1044,21 @@ All normalized artifacts are under
 \begin{itemize}
 \item effort profiles, controller features/training/calibration, oracle ceiling, regret, retry
 traces/outcomes, and adaptive frontier;
-\item indexed search, gather, page, cache, batching, serving, RAG, K/V, and long-context rows;
 \item query-region configurations plus per-layout, detection, retrieval, output, displacement,
-facet, root, retry, and session summaries, findings, and figures;
+facet, root, retry, session, semi-natural, and adversarial summaries, findings, and figures;
 \item router profiles, action spaces, oracle targets, R0--R3 results, per-head calibration,
 interaction diagnostics, regret, latency, query-class summaries, findings, and frontier figure;
-\item baseline taxonomy, findings JSON, and all paper figures in PNG and PDF form.
+\item factorized action space, per-unit oracles and Pareto fronts, quantization regret, parameter
+requirements/interactions, precision--recall and search--admission surfaces, factorized router
+targets/results, bounded retry rows, findings JSON, and figures;
+\item inherited systems and matched-proxy rows retained for Paper-5.5 provenance, not counted as
+Paper-3.5 contributions.
 \end{itemize}
 
 The complete study runs with:
 \begin{lstlisting}[language=bash]
 python -m experiments.paper3_5_adaptive_pra.run_study
+python -m experiments.paper3_5_adaptive_pra.factorized_study
 python -m pytest
 \end{lstlisting}
 
@@ -870,6 +1078,16 @@ Search comparisons count query--key dot products.  K/V bytes count both keys and
 fragmentation is allocated page slots minus valid tokens.  Batch allocation counts padded or page
 rounded token slots.  CPU benchmark bytes are physical tensor sizes; HBM/request is an explicitly
 marked extrapolation from token count, dimension, dtype, and K/V multiplicity.
+
+For factorized control, profile quantization regret is defined only when both the profile and
+factorized action spaces contain a complete-chain configuration:
+\begin{equation}
+ R_{\mathrm{quantization}}=C_{\mathrm{profile\ oracle}}-
+ C_{\mathrm{factorized\ oracle}}.
+\end{equation}
+Under-allocation means the selected action misses a chain recovered by the factorized oracle.
+Over-allocation means it matches oracle quality at higher cost.  A failed unit is never counted as a
+cost saving.  Held-out oracle labels are used only for evaluation and corrective-action upper bounds.
 
 \section{Representative Public Trace}
 

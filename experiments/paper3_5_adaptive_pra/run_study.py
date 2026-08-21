@@ -226,63 +226,44 @@ def plot_baselines(output: Path) -> None:
 
 
 def plot_architecture(output: Path) -> None:
-    figure, axis = plt.subplots(figsize=(11.2, 5.2))
+    figure, axis = plt.subplots(figsize=(11.2, 5.0))
     axis.set_xlim(0, 11.2)
-    axis.set_ylim(0, 5.2)
+    axis.set_ylim(0, 5.0)
     axis.axis("off")
     boxes = {
-        "prompt roles /\nquery regions": (0.3, 3.7, 1.7, 0.8, "#ecf0f1"),
-        "observable features": (2.35, 3.7, 1.7, 0.8, "#d6eaf8"),
-        "swappable effort\nrouter R0--R3": (4.4, 3.7, 1.7, 0.8, "#d5f5e3"),
-        "indexed native-Q/K\nsearch": (6.45, 3.7, 1.7, 0.8, "#fdebd0"),
-        "logical interval\nmaterializer": (8.5, 3.7, 1.7, 0.8, "#f5eef8"),
-        "paged K/V cache": (8.5, 1.8, 1.7, 0.8, "#f5eef8"),
-        "native attention +\ngeneration": (6.45, 1.8, 1.7, 0.8, "#fdebd0"),
-        "confidence /\nconsistency": (4.4, 1.8, 1.7, 0.8, "#d5f5e3"),
-        "stop, fallback,\nor retry": (2.35, 1.8, 1.7, 0.8, "#fadbd8"),
-        "structured trace": (0.3, 1.8, 1.7, 0.8, "#ecf0f1"),
+        "query / session\nstate": (0.25, 3.45, 1.55, 0.78, "#ecf0f1"),
+        "competing query\ninterpretations": (2.05, 3.45, 1.65, 0.78, "#d6eaf8"),
+        "direct effort\ncontroller": (3.95, 3.45, 1.55, 0.78, "#d5f5e3"),
+        "PRA attempt": (5.75, 3.45, 1.45, 0.78, "#fdebd0"),
+        "confidence /\nfailure evidence": (7.45, 3.45, 1.65, 0.78, "#f5eef8"),
+        "stop + answer": (9.35, 3.45, 1.5, 0.78, "#d5f5e3"),
+        "interpret\nQ regions, F": (2.05, 1.35, 1.65, 0.78, "#d6eaf8"),
+        "search\nR, K, H, Bs": (3.95, 1.35, 1.55, 0.78, "#fdebd0"),
+        "admit\nBkv, threshold": (5.75, 1.35, 1.45, 0.78, "#f5eef8"),
+        "one targeted\ncorrection": (7.45, 1.35, 1.65, 0.78, "#fadbd8"),
     }
     centers = {}
     for label, (x, y, width, height, color) in boxes.items():
         rectangle = plt.Rectangle((x, y), width, height, facecolor=color, edgecolor="#2c3e50", linewidth=1.1)
         axis.add_patch(rectangle)
-        axis.text(x + width / 2, y + height / 2, label, ha="center", va="center", fontsize=9)
+        axis.text(x + width / 2, y + height / 2, label, ha="center", va="center", fontsize=8.8)
         centers[label] = (x + width / 2, y + height / 2)
-    top = ["prompt roles /\nquery regions", "observable features", "swappable effort\nrouter R0--R3", "indexed native-Q/K\nsearch", "logical interval\nmaterializer"]
-    bottom = ["paged K/V cache", "native attention +\ngeneration", "confidence /\nconsistency", "stop, fallback,\nor retry", "structured trace"]
+
+    top = ["query / session\nstate", "competing query\ninterpretations", "direct effort\ncontroller", "PRA attempt", "confidence /\nfailure evidence", "stop + answer"]
     for left, right in zip(top, top[1:]):
         left_box, right_box = boxes[left], boxes[right]
-        axis.annotate(
-            "",
-            xy=(right_box[0], centers[right][1]),
-            xytext=(left_box[0] + left_box[2], centers[left][1]),
-            arrowprops={"arrowstyle": "->", "lw": 1.4, "color": "#34495e"},
-        )
-    top_box, page_box = boxes[top[-1]], boxes["paged K/V cache"]
-    axis.annotate(
-        "",
-        xy=(centers["paged K/V cache"][0], page_box[1] + page_box[3]),
-        xytext=(centers[top[-1]][0], top_box[1]),
-        arrowprops={"arrowstyle": "->", "lw": 1.4, "color": "#34495e"},
-    )
-    for left, right in zip(bottom, bottom[1:]):
+        axis.annotate("", xy=(right_box[0], centers[right][1]), xytext=(left_box[0] + left_box[2], centers[left][1]), arrowprops={"arrowstyle": "->", "lw": 1.4, "color": "#34495e"})
+
+    lower = ["interpret\nQ regions, F", "search\nR, K, H, Bs", "admit\nBkv, threshold", "one targeted\ncorrection"]
+    for left, right in zip(lower, lower[1:]):
         left_box, right_box = boxes[left], boxes[right]
-        axis.annotate(
-            "",
-            xy=(right_box[0] + right_box[2], centers[right][1]),
-            xytext=(left_box[0], centers[left][1]),
-            arrowprops={"arrowstyle": "->", "lw": 1.4, "color": "#34495e"},
-        )
-    stop_box, controller_box = boxes["stop, fallback,\nor retry"], boxes["swappable effort\nrouter R0--R3"]
-    axis.annotate(
-        "",
-        xy=(centers["swappable effort\nrouter R0--R3"][0], controller_box[1]),
-        xytext=(centers["stop, fallback,\nor retry"][0], stop_box[1] + stop_box[3]),
-        arrowprops={"arrowstyle": "->", "lw": 1.5, "color": "#c0392b", "connectionstyle": "arc3,rad=-0.28"},
-    )
-    axis.text(3.85, 3.0, "incremental escalation + reuse", color="#c0392b", fontsize=8.5, ha="center")
-    axis.text(0.3, 4.85, "Control plane", fontsize=10, weight="bold", color="#2c3e50")
-    axis.text(0.3, 3.0, "Memory / generation plane", fontsize=10, weight="bold", color="#2c3e50")
+        axis.annotate("", xy=(right_box[0], centers[right][1]), xytext=(left_box[0] + left_box[2], centers[left][1]), arrowprops={"arrowstyle": "->", "lw": 1.3, "color": "#34495e"})
+    axis.annotate("", xy=(centers["interpret\nQ regions, F"][0], boxes["interpret\nQ regions, F"][1] + boxes["interpret\nQ regions, F"][3]), xytext=(centers["direct effort\ncontroller"][0], boxes["direct effort\ncontroller"][1]), arrowprops={"arrowstyle": "->", "lw": 1.3, "color": "#34495e"})
+    axis.annotate("", xy=(centers["one targeted\ncorrection"][0], boxes["one targeted\ncorrection"][1] + boxes["one targeted\ncorrection"][3]), xytext=(centers["confidence /\nfailure evidence"][0], boxes["confidence /\nfailure evidence"][1]), arrowprops={"arrowstyle": "->", "lw": 1.5, "color": "#c0392b"})
+    axis.annotate("", xy=(boxes["PRA attempt"][0], centers["PRA attempt"][1]), xytext=(centers["one targeted\ncorrection"][0], boxes["one targeted\ncorrection"][1] + boxes["one targeted\ncorrection"][3]), arrowprops={"arrowstyle": "->", "lw": 1.5, "color": "#c0392b", "connectionstyle": "arc3,rad=-0.22"})
+    axis.text(5.55, 0.62, "bounded retry preserves compatible search and K/V state", color="#c0392b", fontsize=8.5, ha="center")
+    axis.text(0.25, 4.65, "Adaptive control endpoint", fontsize=10, weight="bold", color="#2c3e50")
+    axis.text(0.25, 2.55, "Factorized action", fontsize=10, weight="bold", color="#2c3e50")
     _save(figure, output, "adaptive_pra_runtime_architecture")
 
 
@@ -352,9 +333,11 @@ def build_findings(adaptive: dict, systems: dict, addons: dict, output: Path) ->
     qasper_learned = result("qasper", "learned_direct")
     hotpot_high = result("hotpotqa", "fixed_E2_high")
     hotpot_learned = result("hotpotqa", "learned_direct")
+    factorized_path = output / "paper3_5_next_findings.json"
+    factorized = json.loads(factorized_path.read_text(encoding="utf-8")) if factorized_path.exists() else None
     findings = {
         "schema_version": "1.0",
-        "study_scope": "frozen_trace_adaptive_control_plus_controlled_systems_prototypes",
+        "study_scope": "adaptive_initial_control_query_interpretation_factorized_actions_and_bounded_retry",
         "runtime": {
             "python": platform.python_version(),
             "torch": torch.__version__,
@@ -366,6 +349,7 @@ def build_findings(adaptive: dict, systems: dict, addons: dict, output: Path) ->
         "systems": systems,
         "query_regions": addons["query_regions"],
         "router_variants": addons["router_variants"],
+        "factorized_control": factorized,
         "primary_findings": {
             "qasper_quality_high": qasper_high["quality"],
             "qasper_quality_learned": qasper_learned["quality"],
@@ -386,8 +370,18 @@ def build_findings(adaptive: dict, systems: dict, addons: dict, output: Path) ->
             "Inherited Qwen serving rows are measured single-request observations; concurrency HBM is extrapolated.",
             "Query-region results are deterministic matched lexical controls, not natural-prompt semantic understanding.",
             "R2 uses a dependency-free hashing encoder interface rather than a benchmarked pretrained NLP encoder.",
+            "Factorized control replays frozen native scores and does not impute generated-answer quality.",
+            "The targeted corrective-action audit is an evaluator-side upper bound, not a learned online retry policy.",
+            "Kernel, cache, batching, and serving-engine work is inherited handoff evidence for Papers 5.5 and 6.",
         ],
     }
+    if factorized is not None:
+        findings["primary_findings"]["factorized"] = factorized["datasets"]
+        findings["primary_findings"]["interpretation"] = (
+            "Profiles remain the safest learned controller, but the factorized oracle shows that "
+            "profile coupling hides substantial lower-cost actions. Bounded retry has measured "
+            "correction headroom; learning an oracle-free targeted correction remains open."
+        )
     (output / "paper3_5_findings.json").write_text(
         json.dumps(findings, indent=2, sort_keys=True), encoding="utf-8"
     )

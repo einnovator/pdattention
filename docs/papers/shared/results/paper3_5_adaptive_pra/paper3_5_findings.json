@@ -2794,14 +2794,90 @@
     "RAG, long-context, and KV-cache rows are controlled matched-budget proxies, not upstream production implementations.",
     "Inherited Qwen serving rows are measured single-request observations; concurrency HBM is extrapolated.",
     "Query-region results are deterministic matched lexical controls, not natural-prompt semantic understanding.",
-    "R2 uses a dependency-free hashing encoder interface rather than a benchmarked pretrained NLP encoder."
+    "R2 uses a dependency-free hashing encoder interface rather than a benchmarked pretrained NLP encoder.",
+    "Factorized control replays frozen native scores and does not impute generated-answer quality.",
+    "The targeted corrective-action audit is an evaluator-side upper bound, not a learned online retry policy.",
+    "Kernel, cache, batching, and serving-engine work is inherited handoff evidence for Papers 5.5 and 6."
   ],
+  "factorized_control": {
+    "claim_boundaries": [
+      "The experiment replays frozen Qwen native graph and query scores; it is not live generation.",
+      "Evidence K/V precision and recall are token-weighted over source-parent spans.",
+      "Facet selection is score-based over the existing query-facet cache, not a new learned query interpreter.",
+      "Targeted retry chooses the cheapest successful one-control correction as an evaluator-side upper bound; compound fallback is reported separately.",
+      "R2 uses actual question text but a signed-hashing encoder, not a pretrained semantic encoder."
+    ],
+    "datasets": {
+      "hotpotqa": {
+        "factorized_oracle_cost": 19.98169642857143,
+        "factorized_oracle_quality": 1.0,
+        "heldout_units": 35,
+        "mean_profile_quantization_regret_when_both_sufficient": 14.196875,
+        "profile_and_factorized_sufficient_units": 35,
+        "retry_correction_rate": 0.42857142857142855,
+        "retry_final_quality": 1.0,
+        "retry_initial_quality": 0.5714285714285714,
+        "retry_mean_added_cost": 2.3142857142857145
+      },
+      "qasper": {
+        "factorized_oracle_cost": 10.429166666666667,
+        "factorized_oracle_quality": 0.8333333333333334,
+        "heldout_units": 30,
+        "mean_profile_quantization_regret_when_both_sufficient": 7.152994791666667,
+        "profile_and_factorized_sufficient_units": 24,
+        "retry_correction_rate": 0.13333333333333333,
+        "retry_final_quality": 0.8333333333333334,
+        "retry_initial_quality": 0.7,
+        "retry_mean_added_cost": 2.705208333333333
+      }
+    },
+    "output_oracle": "not available for newly factorized configurations; no output quality is imputed",
+    "query_semantic_input": "actual question text encoded by signed hashing baseline",
+    "router_seeds": [
+      1,
+      7,
+      21,
+      42,
+      87
+    ],
+    "schema_version": "1.0",
+    "scope": "frozen_native_score_factorized_adaptive_control",
+    "systems_handoff": "kernel, cache, batching, and serving optimization moved to Paper 5.5; vLLM integration moved to Paper 6",
+    "units": {
+      "heldout": 65,
+      "validation": 95
+    }
+  },
   "primary_findings": {
+    "factorized": {
+      "hotpotqa": {
+        "factorized_oracle_cost": 19.98169642857143,
+        "factorized_oracle_quality": 1.0,
+        "heldout_units": 35,
+        "mean_profile_quantization_regret_when_both_sufficient": 14.196875,
+        "profile_and_factorized_sufficient_units": 35,
+        "retry_correction_rate": 0.42857142857142855,
+        "retry_final_quality": 1.0,
+        "retry_initial_quality": 0.5714285714285714,
+        "retry_mean_added_cost": 2.3142857142857145
+      },
+      "qasper": {
+        "factorized_oracle_cost": 10.429166666666667,
+        "factorized_oracle_quality": 0.8333333333333334,
+        "heldout_units": 30,
+        "mean_profile_quantization_regret_when_both_sufficient": 7.152994791666667,
+        "profile_and_factorized_sufficient_units": 24,
+        "retry_correction_rate": 0.13333333333333333,
+        "retry_final_quality": 0.8333333333333334,
+        "retry_initial_quality": 0.7,
+        "retry_mean_added_cost": 2.705208333333333
+      }
+    },
     "hotpot_effort_high": 152.0,
     "hotpot_effort_learned": 152.0,
     "hotpot_quality_high": 0.37142857142857144,
     "hotpot_quality_learned": 0.37142857142857144,
-    "interpretation": "The controller saves effort on heterogeneous QASPER but correctly saturates at E2 on uniformly hard HotpotQA; retry is a recovery mechanism, not a guaranteed cost reduction.",
+    "interpretation": "Profiles remain the safest learned controller, but the factorized oracle shows that profile coupling hides substantial lower-cost actions. Bounded retry has measured correction headroom; learning an oracle-free targeted correction remains open.",
     "qasper_effort_high": 152.0,
     "qasper_effort_learned": 60.8,
     "qasper_effort_reduction": 0.6000000000000001,
@@ -2809,6 +2885,11 @@
     "qasper_quality_learned": 0.9
   },
   "query_regions": {
+    "expanded_fixtures": {
+      "adversarial_retry_root_recall": 1.0,
+      "adversarial_structural_root_recall": 0.4,
+      "natural_structural_root_recall": 1.0
+    },
     "gate1_headroom": {
       "explicit_query_first_root_recall": 1.0,
       "head_query_first_root_recall": 0.0,
@@ -2923,7 +3004,7 @@
     "torch": "2.12.1+cu126"
   },
   "schema_version": "1.0",
-  "study_scope": "frozen_trace_adaptive_control_plus_controlled_systems_prototypes",
+  "study_scope": "adaptive_initial_control_query_interpretation_factorized_actions_and_bounded_retry",
   "systems": {
     "batching_rows": 24,
     "best_coarse_recall_at_4096": 0.6484375,

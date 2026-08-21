@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "scope": "frozen_native_score_factorized_adaptive_control",
+  "units": {
+    "validation": 95,
+    "heldout": 65
+  },
+  "datasets": {
+    "hotpotqa": {
+      "heldout_units": 35,
+      "factorized_oracle_quality": 1.0,
+      "factorized_oracle_cost": 19.98169642857143,
+      "mean_profile_quantization_regret_when_both_sufficient": 14.196875,
+      "profile_and_factorized_sufficient_units": 35,
+      "retry_initial_quality": 0.5714285714285714,
+      "retry_final_quality": 1.0,
+      "retry_mean_added_cost": 2.3142857142857145,
+      "retry_correction_rate": 0.42857142857142855
+    },
+    "qasper": {
+      "heldout_units": 30,
+      "factorized_oracle_quality": 0.8333333333333334,
+      "factorized_oracle_cost": 10.429166666666667,
+      "mean_profile_quantization_regret_when_both_sufficient": 7.152994791666667,
+      "profile_and_factorized_sufficient_units": 24,
+      "retry_initial_quality": 0.7,
+      "retry_final_quality": 0.8333333333333334,
+      "retry_mean_added_cost": 2.705208333333333,
+      "retry_correction_rate": 0.13333333333333333
+    }
+  },
+  "router_seeds": [
+    1,
+    7,
+    21,
+    42,
+    87
+  ],
+  "query_semantic_input": "actual question text encoded by signed hashing baseline",
+  "output_oracle": "not available for newly factorized configurations; no output quality is imputed",
+  "systems_handoff": "kernel, cache, batching, and serving optimization moved to Paper 5.5; vLLM integration moved to Paper 6",
+  "claim_boundaries": [
+    "The experiment replays frozen Qwen native graph and query scores; it is not live generation.",
+    "Evidence K/V precision and recall are token-weighted over source-parent spans.",
+    "Facet selection is score-based over the existing query-facet cache, not a new learned query interpreter.",
+    "Targeted retry chooses the cheapest successful one-control correction as an evaluator-side upper bound; compound fallback is reported separately.",
+    "R2 uses actual question text but a signed-hashing encoder, not a pretrained semantic encoder."
+  ]
+}

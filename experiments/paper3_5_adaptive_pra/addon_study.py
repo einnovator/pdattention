@@ -198,6 +198,124 @@ def _region_selection(
     raise ValueError(method)
 
 
+def expanded_query_region_fixtures() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Return semi-natural layouts and adversarial question-role controls."""
+
+    natural = [
+        {
+            "fixture": "email_thread",
+            "query": "QUESTION: Why did service_target_0 fail after deployment?",
+            "prompt": "From: ops@example.test\nSubject: Incident review\nEarlier discussion: rollout completed.\nQUESTION: Why did service_target_0 fail after deployment?\n-- quoted reply --\nThe dashboard is attached.",
+        },
+        {
+            "fixture": "tool_output",
+            "query": "QUESTION: Why did service_target_1 fail after deployment?",
+            "prompt": "TOOL OUTPUT:\nstatus=500 service=service_target_1\ntrace_id=abc123\nEND TOOL OUTPUT\nQUESTION: Why did service_target_1 fail after deployment?",
+        },
+        {
+            "fixture": "source_code",
+            "query": "QUESTION: Why did service_target_2 fail after deployment?",
+            "prompt": "```python\ndef deploy():\n    return 'service_target_2'\n```\nQUESTION: Why did service_target_2 fail after deployment?\nBuild output follows below.",
+        },
+        {
+            "fixture": "logs",
+            "query": "QUESTION: Why did service_target_3 fail after deployment?",
+            "prompt": "2026-08-20 INFO starting deployment\nQUESTION: Why did service_target_3 fail after deployment?\n2026-08-20 ERROR connection reset\n2026-08-20 INFO retry exhausted",
+        },
+        {
+            "fixture": "url_list",
+            "query": "QUESTION: Why did service_target_4 fail after deployment?",
+            "prompt": "QUESTION: Why did service_target_4 fail after deployment?\nREFERENCES:\nhttps://status.example.test/service_target_4\nhttps://logs.example.test/query?service=target",
+        },
+        {
+            "fixture": "multi_turn",
+            "query": "CURRENT QUESTION: Why did service_target_5 fail after deployment?",
+            "prompt": "USER: Summarize yesterday's release.\nASSISTANT: It completed.\nUSER CURRENT QUESTION: Why did service_target_5 fail after deployment?\nTOOL: unrelated billing records follow.",
+        },
+    ]
+    adversarial = [
+        {
+            "fixture": "quoted_previous_question",
+            "query": "CURRENT QUESTION: Why did service_target_6 fail after deployment?",
+            "prompt": "Quoted email: QUESTION: Why did service_noise_6 fail?\nThe old answer was inconclusive.\nCURRENT QUESTION: Why did service_target_6 fail after deployment?\nAttachments follow.",
+        },
+        {
+            "fixture": "question_inside_log",
+            "query": "CURRENT QUESTION: Why did service_target_7 fail after deployment?",
+            "prompt": "LOG: parser text='QUESTION: Why did service_noise_7 fail?'\nLOG: level=debug\nCURRENT QUESTION: Why did service_target_7 fail after deployment?\nLOG: trailing payload",
+        },
+        {
+            "fixture": "misleading_heading",
+            "query": "CURRENT QUESTION: Why did service_target_8 fail after deployment?",
+            "prompt": "QUESTION:\nThis heading labels archived examples, including service_noise_8.\nCURRENT QUESTION: Why did service_target_8 fail after deployment?\nAppendix begins here.",
+        },
+        {
+            "fixture": "code_comment_question",
+            "query": "CURRENT QUESTION: Why did service_target_9 fail after deployment?",
+            "prompt": "// QUESTION: Why did service_noise_9 fail?\nfunction archivedExample() {}\nCURRENT QUESTION: Why did service_target_9 fail after deployment?\nCompiler diagnostics follow.",
+        },
+        {
+            "fixture": "url_in_query",
+            "query": "CURRENT QUESTION: Why did service_target_10 fail at https://edge.example.test/query?",
+            "prompt": "Archived URL: https://old.example.test/QUESTION/service_noise_10\nCURRENT QUESTION: Why did service_target_10 fail at https://edge.example.test/query?\nRaw URLs follow.",
+        },
+    ]
+    return natural, adversarial
+
+
+def _run_expanded_query_fixtures(
+    selector: QueryRegionSelector,
+    fixtures: Sequence[Mapping[str, str]],
+    *,
+    adversarial: bool,
+) -> list[dict[str, Any]]:
+    rows = []
+    for index, fixture in enumerate(fixtures):
+        query, prompt = fixture["query"], fixture["prompt"]
+        target_span = _subsequence_span(prompt, query)
+        target_match = re.search(r"service_target_\d+", query)
+        if target_match is None:
+            raise ValueError("Expanded fixture lacks a target service identity.")
+        target = target_match.group(0)
+        answer = target.replace("service_target", "cause_target")
+        candidates = _candidate_chunks(100 + index, target, answer)
+        head = selector.select(prompt, policy="head")
+        structural = selector.select(prompt, policy="structural")
+        head_tokens = {token for span in head.spans for token in range(*span)}
+        structural_tokens = {token for span in structural.spans for token in range(*span)}
+        disagreement = 1.0 - len(head_tokens & structural_tokens) / max(len(head_tokens | structural_tokens), 1)
+        for method in ("head", "explicit", "structural", "auto_retry"):
+            attempts = 1
+            if method == "auto_retry":
+                selection = head
+                route = _route(selection.selected_text(), candidates, 1, "global")
+                if route["ranked"][0] != target and structural.confidence >= head.confidence:
+                    selection = structural
+                    route = _route(selection.selected_text(), candidates, 1, "global")
+                    attempts = 2
+            else:
+                selection, _ = _region_selection(selector, prompt, target_span, method)
+                route = _route(selection.selected_text(), candidates, 1, "global")
+            metrics = _span_metrics(selection.spans, target_span)
+            rows.append(
+                {
+                    "fixture": fixture["fixture"],
+                    "adversarial": int(adversarial),
+                    "method": method,
+                    "root_recall_at_1": float(route["ranked"][0] == target),
+                    "span_iou": metrics["span_iou"],
+                    "region_precision": metrics["region_precision"],
+                    "region_recall": metrics["region_recall"],
+                    "region_confidence": selection.confidence,
+                    "head_structural_disagreement": disagreement,
+                    "structural_head_confidence_delta": structural.confidence - head.confidence,
+                    "attempts": attempts,
+                    "search_effort": route["comparisons"] * attempts,
+                }
+            )
+    return rows
+
+
 def run_query_region_study(output: Path) -> dict[str, Any]:
     """Run matched layout, displacement, interaction, retry, and session controls."""
 
@@ -373,6 +491,12 @@ def run_query_region_study(output: Path) -> dict[str, Any]:
             session_rows.append({"case_id": case, "method": method, "region_count": len(selected.regions), "selected_tokens": sum(region.token_count for region in selected.regions), "root_recall_at_1": float(routed["ranked"][0] == f"service_target_{case}"), "search_effort": routed["comparisons"]})
     write_csv(output / "query_region_session_results.csv", _aggregate(session_rows, ("method",), ("region_count", "selected_tokens", "root_recall_at_1", "search_effort")))
 
+    natural_fixtures, adversarial_fixtures = expanded_query_region_fixtures()
+    natural_rows = _run_expanded_query_fixtures(selector, natural_fixtures, adversarial=False)
+    adversarial_rows = _run_expanded_query_fixtures(selector, adversarial_fixtures, adversarial=True)
+    write_csv(output / "query_region_natural_results.csv", natural_rows)
+    write_csv(output / "query_region_adversarial_results.csv", adversarial_rows)
+
     def metric(method: str, layout: str, field: str) -> float:
         return _mean(float(row[field]) for row in rows if row["method"] == method and row["layout"] == layout)
 
@@ -388,6 +512,11 @@ def run_query_region_study(output: Path) -> dict[str, Any]:
         "gate2_automatic_discovery": {"structural_query_first_root_recall": structural_first, "oracle_headroom_captured": (structural_first - head_first) / max(explicit_first - head_first, 1e-12), "passed": structural_first > head_first},
         "gate3_retry": {"wrong_to_corrected": corrected, "correct_to_broken": sum(row["correct_to_broken"] for row in retry_rows), "mean_added_search_effort": _mean(row["added_search_effort"] for row in retry_rows), "passed": corrected > 0},
         "layout_sensitivity": {"head_spread": head_spread, "structural_spread": structural_spread},
+        "expanded_fixtures": {
+            "natural_structural_root_recall": _mean(row["root_recall_at_1"] for row in natural_rows if row["method"] == "structural"),
+            "adversarial_structural_root_recall": _mean(row["root_recall_at_1"] for row in adversarial_rows if row["method"] == "structural"),
+            "adversarial_retry_root_recall": _mean(row["root_recall_at_1"] for row in adversarial_rows if row["method"] == "auto_retry"),
+        },
         "interpretation": "Explicit and structural query roles remove serialization sensitivity in this matched lexical control. The result establishes SDK headroom and deterministic baseline behavior, not natural-language semantic region understanding.",
         "learned_region_router_required": False,
     }
