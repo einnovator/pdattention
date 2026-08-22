@@ -199,6 +199,18 @@ def _route_case(
         "cold_discovery_ms": gist_index_build_ms + token_index_build_ms + elapsed_ms,
         "semantic_comparisons": costs.get("semantic_gist_comparisons", 0),
         "token_comparisons": costs.get("token_index_comparisons", 0),
+        "selected_chunk_ids": "|".join(selected),
+        "positive_chunk_ids": "|".join(sorted(positives)),
+        "selected_hops": "|".join(
+            str(getattr(node, "hop", 0))
+            for node in (result.graph.nodes if condition != "O1_oracle" else ())
+            if node.node_id in selected
+        ),
+        "selected_hop_pairs": "|".join(
+            f"{node.node_id}@{getattr(node, 'hop', 0)}"
+            for node in (result.graph.nodes if condition != "O1_oracle" else ())
+            if node.node_id in selected
+        ),
     }
     return row, confidence_rows
 

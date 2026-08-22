@@ -1,0 +1,529 @@
+{
+  "cohorts": {
+    "2wikimultihopqa": {
+      "test": 24,
+      "validation": 24
+    },
+    "hotpotqa": {
+      "test": 16,
+      "validation": 8
+    },
+    "musique": {
+      "test": 18,
+      "validation": 18
+    },
+    "qasper": {
+      "test": 16,
+      "validation": 8
+    }
+  },
+  "oracle_headroom": {
+    "2wikimultihopqa": 0.1295138888888889,
+    "hotpotqa": 0.337797619047619,
+    "musique": 0.06689144189144189,
+    "qasper": 0.02924107142857143
+  },
+  "protocol": {
+    "chunk_tokens": 32,
+    "hybrid_weights": {
+      "entry_semantic": 0.6,
+      "later_semantic": 0.1
+    },
+    "iterative_depth": 2,
+    "iterative_per_hop_branch": 2,
+    "materialization_performed": false,
+    "model_id": "Qwen/Qwen3-0.6B",
+    "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "requested_chunks": 4,
+    "routing_layer": 27,
+    "seed": 20260811,
+    "selector_gold_features": false
+  },
+  "selector": [
+    {
+      "dataset": "qasper",
+      "examples": 16,
+      "policy": "best_fixed",
+      "precision": 0.3125,
+      "recall": 0.17762019230769233
+    },
+    {
+      "dataset": "qasper",
+      "examples": 16,
+      "policy": "hybrid",
+      "precision": 0.078125,
+      "recall": 0.04352678571428571
+    },
+    {
+      "dataset": "qasper",
+      "examples": 16,
+      "policy": "adaptive",
+      "precision": 0.109375,
+      "recall": 0.06540178571428572
+    },
+    {
+      "dataset": "qasper",
+      "examples": 16,
+      "policy": "oracle",
+      "precision": 0.359375,
+      "recall": 0.20686126373626376
+    },
+    {
+      "dataset": "hotpotqa",
+      "examples": 16,
+      "policy": "best_fixed",
+      "precision": 0.171875,
+      "recall": 0.15074404761904764
+    },
+    {
+      "dataset": "hotpotqa",
+      "examples": 16,
+      "policy": "hybrid",
+      "precision": 0.34375,
+      "recall": 0.2875
+    },
+    {
+      "dataset": "hotpotqa",
+      "examples": 16,
+      "policy": "adaptive",
+      "precision": 0.375,
+      "recall": 0.32901785714285714
+    },
+    {
+      "dataset": "hotpotqa",
+      "examples": 16,
+      "policy": "oracle",
+      "precision": 0.5625,
+      "recall": 0.48854166666666665
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "examples": 24,
+      "policy": "best_fixed",
+      "precision": 0.25,
+      "recall": 0.18564814814814815
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "examples": 24,
+      "policy": "hybrid",
+      "precision": 0.25,
+      "recall": 0.20335648148148147
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "examples": 24,
+      "policy": "adaptive",
+      "precision": 0.23958333333333334,
+      "recall": 0.1908564814814815
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "examples": 24,
+      "policy": "oracle",
+      "precision": 0.3854166666666667,
+      "recall": 0.315162037037037
+    },
+    {
+      "dataset": "musique",
+      "examples": 18,
+      "policy": "best_fixed",
+      "precision": 0.4305555555555556,
+      "recall": 0.13214759777259777
+    },
+    {
+      "dataset": "musique",
+      "examples": 18,
+      "policy": "hybrid",
+      "precision": 0.5,
+      "recall": 0.15068646631146634
+    },
+    {
+      "dataset": "musique",
+      "examples": 18,
+      "policy": "adaptive",
+      "precision": 0.4861111111111111,
+      "recall": 0.15316650941650942
+    },
+    {
+      "dataset": "musique",
+      "examples": 18,
+      "policy": "oracle",
+      "precision": 0.6388888888888888,
+      "recall": 0.19903903966403969
+    }
+  ],
+  "summary": [
+    {
+      "channel": "gist",
+      "complete_path": 0.0,
+      "dataset": "qasper",
+      "evidence_recall": 0.03794642857142857,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 142.625,
+      "mrr": 0.13020833333333331,
+      "precision": 0.0625,
+      "precision_ci95_high": 0.125,
+      "precision_ci95_low": 0.015625,
+      "recall_ci95_high": 0.07589285714285714,
+      "recall_ci95_low": 0.004464285714285714
+    },
+    {
+      "channel": "exact",
+      "complete_path": 0.0,
+      "dataset": "qasper",
+      "evidence_recall": 0.17762019230769233,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 285.25,
+      "mrr": 0.4427083333333333,
+      "precision": 0.3125,
+      "precision_ci95_high": 0.4375,
+      "precision_ci95_low": 0.1875,
+      "recall_ci95_high": 0.2709684065934066,
+      "recall_ci95_low": 0.09626488095238095
+    },
+    {
+      "channel": "bm25",
+      "complete_path": 0.0,
+      "dataset": "qasper",
+      "evidence_recall": 0.04163804945054945,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 285.25,
+      "mrr": 0.13541666666666666,
+      "precision": 0.09375,
+      "precision_ci95_high": 0.203125,
+      "precision_ci95_low": 0.015625,
+      "recall_ci95_high": 0.09297733516483517,
+      "recall_ci95_low": 0.004807692307692308
+    },
+    {
+      "channel": "approx",
+      "complete_path": 0.0,
+      "dataset": "qasper",
+      "evidence_recall": 0.03739697802197803,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 285.25,
+      "mrr": 0.140625,
+      "precision": 0.078125,
+      "precision_ci95_high": 0.15625,
+      "precision_ci95_low": 0.015625,
+      "recall_ci95_high": 0.078125,
+      "recall_ci95_low": 0.004807692307692308
+    },
+    {
+      "channel": "hybrid",
+      "complete_path": 0.0,
+      "dataset": "qasper",
+      "evidence_recall": 0.04352678571428571,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 285.25,
+      "mrr": 0.125,
+      "precision": 0.078125,
+      "precision_ci95_high": 0.15625,
+      "precision_ci95_low": 0.015625,
+      "recall_ci95_high": 0.09040178571428571,
+      "recall_ci95_low": 0.0078125
+    },
+    {
+      "channel": "iterative_hybrid",
+      "complete_path": 0.0,
+      "dataset": "qasper",
+      "evidence_recall": 0.08102678571428572,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 855.75,
+      "mrr": 0.17708333333333331,
+      "precision": 0.125,
+      "precision_ci95_high": 0.234375,
+      "precision_ci95_low": 0.046875,
+      "recall_ci95_high": 0.14174107142857142,
+      "recall_ci95_low": 0.028125
+    },
+    {
+      "channel": "gist",
+      "complete_path": 0.0,
+      "dataset": "hotpotqa",
+      "evidence_recall": 0.15074404761904764,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 50.125,
+      "mrr": 0.2760416666666667,
+      "precision": 0.171875,
+      "precision_ci95_high": 0.265625,
+      "precision_ci95_low": 0.078125,
+      "recall_ci95_high": 0.24107142857142855,
+      "recall_ci95_low": 0.06979166666666665
+    },
+    {
+      "channel": "exact",
+      "complete_path": 0.0,
+      "dataset": "hotpotqa",
+      "evidence_recall": 0.2869047619047619,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 100.25,
+      "mrr": 0.5677083333333333,
+      "precision": 0.328125,
+      "precision_ci95_high": 0.46875,
+      "precision_ci95_low": 0.203125,
+      "recall_ci95_high": 0.3927083333333333,
+      "recall_ci95_low": 0.178125
+    },
+    {
+      "channel": "bm25",
+      "complete_path": 0.0,
+      "dataset": "hotpotqa",
+      "evidence_recall": 0.3977678571428572,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 100.25,
+      "mrr": 0.875,
+      "precision": 0.453125,
+      "precision_ci95_high": 0.578125,
+      "precision_ci95_low": 0.328125,
+      "recall_ci95_high": 0.5163690476190476,
+      "recall_ci95_low": 0.2824404761904762
+    },
+    {
+      "channel": "approx",
+      "complete_path": 0.0,
+      "dataset": "hotpotqa",
+      "evidence_recall": 0.3014880952380952,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 100.25,
+      "mrr": 0.734375,
+      "precision": 0.359375,
+      "precision_ci95_high": 0.484375,
+      "precision_ci95_low": 0.25,
+      "recall_ci95_high": 0.39508928571428575,
+      "recall_ci95_low": 0.21502976190476192
+    },
+    {
+      "channel": "hybrid",
+      "complete_path": 0.0,
+      "dataset": "hotpotqa",
+      "evidence_recall": 0.2875,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 100.25,
+      "mrr": 0.6354166666666666,
+      "precision": 0.34375,
+      "precision_ci95_high": 0.484375,
+      "precision_ci95_low": 0.203125,
+      "recall_ci95_high": 0.3976190476190476,
+      "recall_ci95_low": 0.18050595238095238
+    },
+    {
+      "channel": "iterative_hybrid",
+      "complete_path": 0.0,
+      "dataset": "hotpotqa",
+      "evidence_recall": 0.2794642857142857,
+      "examples": 16,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 300.75,
+      "mrr": 0.6458333333333334,
+      "precision": 0.3125,
+      "precision_ci95_high": 0.4375,
+      "precision_ci95_low": 0.203125,
+      "recall_ci95_high": 0.396875,
+      "recall_ci95_low": 0.1797619047619048
+    },
+    {
+      "channel": "gist",
+      "complete_path": 0.0,
+      "dataset": "2wikimultihopqa",
+      "evidence_recall": 0.13182870370370373,
+      "examples": 24,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 41.875,
+      "mrr": 0.3020833333333333,
+      "precision": 0.1875,
+      "precision_ci95_high": 0.2708333333333333,
+      "precision_ci95_low": 0.11458333333333333,
+      "recall_ci95_high": 0.18252314814814818,
+      "recall_ci95_low": 0.08055555555555555
+    },
+    {
+      "channel": "exact",
+      "complete_path": 0.0,
+      "dataset": "2wikimultihopqa",
+      "evidence_recall": 0.19606481481481483,
+      "examples": 24,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 83.75,
+      "mrr": 0.4895833333333334,
+      "precision": 0.23958333333333334,
+      "precision_ci95_high": 0.3333333333333333,
+      "precision_ci95_low": 0.15625,
+      "recall_ci95_high": 0.2728009259259259,
+      "recall_ci95_low": 0.1298611111111111
+    },
+    {
+      "channel": "bm25",
+      "complete_path": 0.0,
+      "dataset": "2wikimultihopqa",
+      "evidence_recall": 0.26168981481481485,
+      "examples": 24,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 83.75,
+      "mrr": 0.6111111111111112,
+      "precision": 0.3125,
+      "precision_ci95_high": 0.40625,
+      "precision_ci95_low": 0.21875,
+      "recall_ci95_high": 0.3531250000000001,
+      "recall_ci95_low": 0.1761574074074074
+    },
+    {
+      "channel": "approx",
+      "complete_path": 0.0,
+      "dataset": "2wikimultihopqa",
+      "evidence_recall": 0.20300925925925928,
+      "examples": 24,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 83.75,
+      "mrr": 0.5833333333333334,
+      "precision": 0.25,
+      "precision_ci95_high": 0.3333333333333333,
+      "precision_ci95_low": 0.16666666666666666,
+      "recall_ci95_high": 0.2693287037037037,
+      "recall_ci95_low": 0.13877314814814817
+    },
+    {
+      "channel": "hybrid",
+      "complete_path": 0.0,
+      "dataset": "2wikimultihopqa",
+      "evidence_recall": 0.20335648148148147,
+      "examples": 24,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 83.75,
+      "mrr": 0.46527777777777773,
+      "precision": 0.25,
+      "precision_ci95_high": 0.34375,
+      "precision_ci95_low": 0.15625,
+      "recall_ci95_high": 0.2837962962962963,
+      "recall_ci95_low": 0.1255787037037037
+    },
+    {
+      "channel": "iterative_hybrid",
+      "complete_path": 0.0,
+      "dataset": "2wikimultihopqa",
+      "evidence_recall": 0.18564814814814815,
+      "examples": 24,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 251.25,
+      "mrr": 0.4583333333333333,
+      "precision": 0.25,
+      "precision_ci95_high": 0.3541666666666667,
+      "precision_ci95_low": 0.15625,
+      "recall_ci95_high": 0.26064814814814813,
+      "recall_ci95_low": 0.11365740740740742
+    },
+    {
+      "channel": "gist",
+      "complete_path": 0.0,
+      "dataset": "musique",
+      "evidence_recall": 0.10842444592444593,
+      "examples": 18,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 81.61111111111111,
+      "mrr": 0.5462962962962963,
+      "precision": 0.3333333333333333,
+      "precision_ci95_high": 0.4166666666666667,
+      "precision_ci95_low": 0.25,
+      "recall_ci95_high": 0.14875841750841748,
+      "recall_ci95_low": 0.07209757834757834
+    },
+    {
+      "channel": "exact",
+      "complete_path": 0.0,
+      "dataset": "musique",
+      "evidence_recall": 0.13583095145595148,
+      "examples": 18,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 163.22222222222223,
+      "mrr": 0.8333333333333334,
+      "precision": 0.4166666666666667,
+      "precision_ci95_high": 0.5277777777777778,
+      "precision_ci95_low": 0.3055555555555556,
+      "recall_ci95_high": 0.1908790283790284,
+      "recall_ci95_low": 0.086895165020165
+    },
+    {
+      "channel": "bm25",
+      "complete_path": 0.0,
+      "dataset": "musique",
+      "evidence_recall": 0.13214759777259777,
+      "examples": 18,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 163.22222222222223,
+      "mrr": 0.7962962962962963,
+      "precision": 0.4305555555555556,
+      "precision_ci95_high": 0.5416666666666666,
+      "precision_ci95_low": 0.3194444444444444,
+      "recall_ci95_high": 0.16995041995041998,
+      "recall_ci95_low": 0.09486774799274801
+    },
+    {
+      "channel": "approx",
+      "complete_path": 0.0,
+      "dataset": "musique",
+      "evidence_recall": 0.15585271210271212,
+      "examples": 18,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 163.22222222222223,
+      "mrr": 0.8333333333333334,
+      "precision": 0.5138888888888888,
+      "precision_ci95_high": 0.625,
+      "precision_ci95_low": 0.4166666666666667,
+      "recall_ci95_high": 0.19412740037740034,
+      "recall_ci95_low": 0.1215351777851778
+    },
+    {
+      "channel": "hybrid",
+      "complete_path": 0.0,
+      "dataset": "musique",
+      "evidence_recall": 0.15068646631146634,
+      "examples": 18,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 163.22222222222223,
+      "mrr": 0.8055555555555556,
+      "precision": 0.5,
+      "precision_ci95_high": 0.6111111111111112,
+      "precision_ci95_low": 0.3888888888888889,
+      "recall_ci95_high": 0.18942400192400197,
+      "recall_ci95_low": 0.11336071336071335
+    },
+    {
+      "channel": "iterative_hybrid",
+      "complete_path": 0.0,
+      "dataset": "musique",
+      "evidence_recall": 0.146222064972065,
+      "examples": 18,
+      "mean_requested_chunks": 4.0,
+      "mean_search_comparisons": 489.6666666666667,
+      "mrr": 0.7777777777777778,
+      "precision": 0.4722222222222222,
+      "precision_ci95_high": 0.6111111111111112,
+      "precision_ci95_low": 0.3333333333333333,
+      "recall_ci95_high": 0.1998408998408999,
+      "recall_ci95_low": 0.09590201465201466
+    }
+  ],
+  "validation_selected_fixed_channel": {
+    "2wikimultihopqa": "iterative_hybrid",
+    "hotpotqa": "gist",
+    "musique": "bm25",
+    "qasper": "exact"
+  },
+  "wrong_reference": {
+    "interpretation": "High-overlap contradictory names test graceful degradation; no gold metadata enters the index.",
+    "wrong_candidate_count": 40,
+    "wrong_candidate_mean_raw_confidence": 0.5854142763784953
+  }
+}

@@ -36,14 +36,14 @@ native-K/V intervals.
   `local_iterative`; disabled/default behavior must remain byte-for-byte
   compatible.
 
-## Existing lexical support and missing mechanisms
+## Implemented lexical support
 
 `experiments/paper2_hf/routing/precompute_router_features.py` stores a one-hop
 question/chunk token-ID set-Jaccard score. It is an experimental diagnostic,
 not a reusable index. It discards order, token frequency, exact spans,
 normalization state, aliases, provenance, and hop context.
 
-Paper 2.6 therefore needs:
+Paper 2.6 now provides:
 
 1. a tokenizer-native index aligned exactly with `GistIndex.records`;
 2. raw and normalized token sequences, IDF, n-grams, aliases, and BM25 words;
@@ -54,15 +54,15 @@ Paper 2.6 therefore needs:
 6. validation-only confidence calibration and held-out reliability metrics;
 7. controlled perturbation and confidently-wrong-reference tests.
 
-## Reuse plan
+## Reuse boundary
 
-The token-native index will be a sidecar to `GistIndex`, checked for exact
-identity alignment. `IterativeGistRouter.route()` will accept an optional
+The token-native index is a sidecar to `GistIndex`, checked for exact
+identity alignment. `IterativeGistRouter.route()` accepts an optional
 sidecar and policy. Semantic and token-native channels will propose within the
 existing Paper-2.5 loop and compete for the same branch, beam, and unique-chunk
 budgets. The default call path will not construct or consult the sidecar.
 
-`PRAForCausalLM` will construct the sidecar only for explicit token-native or
+`PRAForCausalLM` constructs the sidecar only for explicit token-native or
 hybrid routing modes. The root token query comes from the already-tokenized
 prompt; each admitted chunk contributes its indexed token sequence to the next
 frontier. Final identities continue through the existing layer mapping and
@@ -77,3 +77,17 @@ exercise exact, normalized, weighted, ordered, approximate, semantic-only, and
 mixed-hop cases. The primary endpoint is evidence discovery at a matched final
 candidate budget. Any generated-answer experiment is reported separately and
 does not retroactively redefine discovery success.
+
+The channel-geometry extension also reuses Paper-2.5's frozen 2Wiki and MuSiQue
+token states and labelled evidence mapping. It adapts them to the same one-mean-
+gist-per-32-token-chunk contract without loading model weights. The tracked
+runner emits the six-channel matrix, per-example geometry and advantage rows,
+precision/recall intervals, channel overlap, rare new-address diagnostics,
+validation-fixed and oracle selectors, robustness controls, and all paper
+plots under `shared/results/paper2_6_hybrid_pra/channel_geometry`.
+
+`src/pra_hf/channel_geometry.py` keeps the selector boundary explicit. Gold
+geometry may explain observed channel advantage, but the diagnostic selector
+rejects gold-derived fields. Every primary route is asserted to return exactly
+four unique chunks. Discovery comparisons are logged, materialized K/V remains
+zero, and the claim audit records that no answer generation is performed.

@@ -2,15 +2,15 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs,amsmath,amssymb,enumitem,tabularx,graphicx,float}
 \usepackage[hidelinks]{hyperref}
-\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/}}
+\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{docs/papers/shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_geometry/}}
 \setlength{\emergencystretch}{3em}
-\title{Hybrid Reference Discovery for Progressive Retrieval Attention:\\Token-Native and Semantic Routing for Multi-Hop Evidence}
+\title{Multi-Representational Reference Discovery for Progressive Retrieval Attention:\\Semantic, Lexical, and Iterative Routing Across Four Evidence Tasks}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \begin{document}\maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (PRA) separates a large logical memory from the smaller layer-native key/value working set admitted to attention. Contextual gists provide a semantic index, but names and token sequences exposed by intermediate evidence can also act as addresses. We implement token-native exact, normalized, IDF-weighted, ordered, approximate, entity, and explicit channels as an identity-aligned sidecar to PRA's existing bounded iterative router; decoded-word BM25 remains a separate baseline. The sidecar proposes identities; it neither copies nor materializes native K/V. On an identity-disjoint frozen Qwen3-0.6B feature test (16 HotpotQA and 16 QASPER examples), all principal conditions request four chunks. HotpotQA supporting-evidence recall is 0.151 for gist-only routing, 0.398 for BM25, and 0.279 for iterative hybrid routing; the paired hybrid--gist difference is 0.129 (95\% bootstrap interval 0.018--0.242). On QASPER, exact token routing is strongest (0.178), while hybrid improves from 0.038 to 0.081 but its interval crosses zero. Controlled chains show that a newly exposed token address can recover a second-hop target that one-shot gist routing misses, but typo recovery falls to 50\%, and confidently wrong overlap remains a severe failure mode. These are discovery-level results. No downstream answer-generation experiment was run, and we make no claim of improved QA accuracy.
+Progressive Retrieval Attention (PRA) separates a large logical memory from the smaller layer-native key/value working set admitted to attention. Contextual gists provide a semantic index, but names and token sequences can also act as addresses. We implement token-native exact, normalized, IDF-weighted, ordered, approximate, entity, and explicit channels as an identity-aligned sidecar to PRA's bounded iterative router; decoded-word BM25 remains a separate baseline. The sidecar proposes identities; it neither copies nor materializes native K/V. We compare six channels at the same four-chunk request budget over identity-disjoint frozen Qwen3-0.6B features: QASPER ($n=16$ test) favors exact token matching (recall 0.178), HotpotQA ($n=16$) and 2WikiMultiHopQA ($n=24$) favor BM25 (0.398 and 0.262), and MuSiQue ($n=18$) favors approximate token matching (0.156), narrowly ahead of static hybrid (0.151). Static fusion never beats the best single channel. A per-example channel oracle reaches 0.207, 0.489, 0.315, and 0.199 recall, respectively, but a fixed observable heuristic does not close this gap. Rare addresses exposed at hop one identify a positive QASPER subset, not a universal iterative gain. Controlled chains retain the earlier positive mechanism result and the confidently wrong-reference failure. These are cohort-bounded discovery results: no K/V is materialized and no answer generation is run.
 \end{abstract}
 
 \section{Introduction}
@@ -20,7 +20,7 @@ Current routing can score a contextual query $q_{t,\ell}$ against chunk gist $g_
 \[
 s^{sem}_{i,\ell}=\cos(q_{t,\ell},g_{i,\ell}).
 \]
-This captures contextual relatedness but need not preserve exact sequence identity. PRA, however, already has access to the host model tokenizer. Exact token spans, weighted token overlap, ordered token subsequences, and approximate subword matches preserve identity-bearing evidence without introducing a second tokenizer. They do not reliably resolve paraphrases or implicit relations, so contextual gists remain necessary. The experiments below find both regimes: lexical channels dominate the present HotpotQA slice, while exact spans rather than fusion dominate QASPER.
+This captures contextual relatedness but need not preserve exact sequence identity. PRA, however, already has access to the host model tokenizer. Exact token spans, weighted token overlap, ordered token subsequences, and approximate subword matches preserve identity-bearing evidence without introducing a second tokenizer. They do not reliably resolve paraphrases or implicit relations, so contextual gists remain necessary. The four datasets below do not yield one winning formula. They yield different lexical channels, substantial disagreement in the top-ranked chunk, and a per-example oracle gap. Retrieval channel is therefore itself a control decision.
 
 Paper 2.5 studies bounded associative discovery and exposes entry-routing, granularity, broad-activation, and interference limits. This paper asks which discovery signals should generate and rank candidates. Paper 3 then asks which candidates, and how much detail, should be materialized. Keeping these questions separate is central to the experimental design.
 
@@ -115,6 +115,8 @@ Crucially, this code does not add a second traversal engine. \texttt{IterativeGi
 
 The product path exposes \texttt{token\_iterative} and \texttt{hybrid\_iterative} configuration modes. \texttt{PRAForCausalLM} constructs the aligned sidecar only for those modes (\texttt{src/pra\_hf/model.py}, lines 428--445). After traversal stops, the existing identity mapper resolves selected chunks across consumption layers at line 449. Only after that mapping are graph nodes marked materialized (lines 457--461). Thus the experiment's requested chunks are not mislabeled as active K/V.
 
+The channel-geometry boundary is independently reusable. \path{src/pra_hf/channel_geometry.py} defines identity-set precision/recall and the deterministic channel oracle at lines 36--55, rare new-address detection at lines 63--79, and the gold-rejecting observable selector at lines 82--108. The experiment adapter in \path{experiments/paper2_6_hybrid_pra/run_channel_geometry.py} reconstructs one 32-token mean gist per frozen natural-feature span at lines 85--113, extracts root ranks, score gaps, lexicality, and evidence dispersion at lines 174--285, and begins the complete artifact-producing protocol at line 363. This split lets another implementation replace the diagnostic policy without changing candidate identity, traversal, or K/V materialization semantics.
+
 \section{Research Questions and Success Levels}
 \begin{enumerate}[leftmargin=*]
 \item Does hybrid discovery improve supporting-evidence recall at matched active budget?
@@ -163,6 +165,10 @@ We construct 20 deterministic chains per condition. A semantic entry identifies 
 We reuse the identity-disjoint Paper~2 feature protocol: frozen Qwen3-0.6B attention-input hidden states at layer 27, 32-token mean-gist chunks, revision \texttt{c1899de...e47ca}, and the question-exponential query. Validation contains eight HotpotQA and eight QASPER examples; held-out test contains 16 of each. No model weights are loaded in this study. B0--B4 and H1--H5 receive a final budget of four requested chunks. A1 deliberately buys breadth with eight semantic chunks and is not a matched-budget result. O1 admits annotated evidence first as a ceiling. No candidate is materialized.
 
 The hybrid entry/later semantic weights are selected on validation from $\{0.4,0.6,0.8\}\times\{0.1,0.3,0.5\}$, with token weights as complements. Entry weights 0.4 and 0.6 tie in aggregate validation recall; the semantic-entry/token-later tie-break selects $(0.6,0.1)$. Test identities are not used for selection. Confidence uses a monotone ten-bin histogram fitted only on validation candidates.
+
+The extension reuses Paper~2.5's separately frozen natural-graph cohort: 24 validation and 24 test 2Wiki examples, plus 18 validation and 18 test MuSiQue examples. Labelled evidence spans map through the fast tokenizer before the routing partition is constructed. Frozen token hidden states are averaged over the same 32-token local spans, yielding one gist per candidate chunk; the question-exponential query and layer remain unchanged. Six primary channels---gist, exact, BM25, approximate token, static token-to-semantic reranking, and two-hop iterative hybrid---all request exactly four unique chunks. Iteration uses branch two per step, depth two, at most four unique chunks, and reports all comparisons. The $(0.6,0.1)$ entry/later semantic weights are inherited without retuning. These cohorts remain below the requested 50 held-out units per dataset, so all new comparisons are explicitly cohort-bounded.
+
+Per-example explanatory geometry includes query/evidence token overlap, IDF-weighted overlap, named-entity overlap, evidence regions, evidence extent and gaps, annotated depth, root ranks, score gaps, and channel disagreement. Gold-derived geometry is never passed to the adaptive baseline. Its fixed rule can see query rarity, root score gaps, channel disagreement, and whether an already admitted hop-one chunk exposes a rare address. The selector API rejects gold fields. Best fixed channels are selected on validation; the per-example oracle is evaluated only as an upper bound.
 
 \section{Baselines and Conditions}
 \begin{center}
@@ -223,6 +229,70 @@ On HotpotQA, H5 improves recall over B0 by 0.129. A paired 10,000-sample bootstr
 
 On QASPER, H5 improves recall by 0.043, but its interval $[-0.014,0.111]$ crosses zero (four improve, two worsen, ten tie). Exact spans instead improve over B0 by 0.140 with interval [0.053, 0.244]. This is evidence for regime dependence: QASPER's scientific evidence in this small slice benefits from exact continuity, while repeated traversal adds little.
 
+\subsection{Four-Dataset Channel Geometry}
+Table~\ref{tab:four-channel} holds the request budget, chunk size, model, layer, and query representation fixed while changing only discovery channel. The winner changes across cohorts. QASPER favors exact spans; HotpotQA and 2Wiki favor decoded-word BM25; MuSiQue favors normalized approximate token matching, with static hybrid close behind. Static fusion improves over gist in every cohort but never beats the strongest single channel. The result is not ``hybrid search wins.'' It is that semantic and lexical representations fail differently, and their relative utility changes by example and task.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out recall/precision at four requested 32-token chunks. Bold marks the largest recall in each row; 95\% paired-example bootstrap intervals for those winners appear below.}
+\label{tab:four-channel}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Dataset ($n$) & Gist & Exact & BM25 & Approx. & Static hybrid & Iterative hybrid\\
+\midrule
+QASPER (16) & .038/.062 & \textbf{.178}/.312 & .042/.094 & .037/.078 & .044/.078 & .081/.125\\
+HotpotQA (16) & .151/.172 & .287/.328 & \textbf{.398}/.453 & .301/.359 & .288/.344 & .279/.312\\
+2Wiki (24) & .132/.188 & .196/.240 & \textbf{.262}/.312 & .203/.250 & .203/.250 & .186/.250\\
+MuSiQue (18) & .108/.333 & .136/.417 & .132/.431 & \textbf{.156}/.514 & .151/.500 & .146/.472\\
+\bottomrule
+\end{tabular}}
+\vspace{2pt}
+
+\footnotesize Best-channel recall intervals are QASPER [.096,.271], HotpotQA [.282,.516], 2Wiki [.176,.353], and MuSiQue [.122,.194].
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{channel_recall.pdf}
+\caption{Matched-budget recall across retrieval channels and datasets. Different lexical channels win each cohort; neither static nor iterative hybrid dominates.}
+\end{figure}
+
+Precision moves with recall rather than revealing a hidden fusion win. The strongest precision is 0.312 for QASPER exact, 0.453 for Hotpot BM25, 0.312 for 2Wiki BM25, and 0.514 for MuSiQue approximate matching. Across all channel pairs, mean selected-set Jaccard is only 0.256 on QASPER, 0.325 on Hotpot, 0.369 on 2Wiki, and 0.326 on MuSiQue. In particular, gist--BM25 overlap is 0.045, 0.143, 0.152, and 0.119. The channels are not redundant, but naive fusion often spends its fixed budget on complementary distractors as well as complementary evidence.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{channel_precision_recall.pdf}
+\caption{The channel precision--recall surface. Each point is one dataset/channel mean; higher recall obtained by fusion is not automatically a better discovery policy when precision falls.}
+\end{figure}
+
+Channel disagreement is itself diagnostic. Examples with at least the median three distinct root choices have a mean best-lexical-over-gist advantage of 0.197, compared with 0.101 below the median. High IDF-weighted query/evidence overlap similarly has a 0.200 lexical advantage, versus 0.131 in the lower half. These are post-hoc descriptive strata, not fitted dataset laws: the cohorts are too small and gold overlap is unavailable at deployment. Static hybrid remains below the best single channel in both strata ($-0.124$ and $-0.082$ recall), which argues against one uncalibrated score formula.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{.49\linewidth}\centering
+\includegraphics[width=\linewidth]{lexical_advantage.pdf}
+\end{minipage}\hfill
+\begin{minipage}{.49\linewidth}\centering
+\includegraphics[width=\linewidth]{disagreement_headroom.pdf}
+\end{minipage}
+\caption{Left: gold query/evidence lexical overlap versus exact-over-gist recall. Right: root-channel disagreement versus validation-fixed channel-oracle headroom. Geometry is explanatory; neither variable is used as gold input to the selector.}
+\end{figure}
+
+\subsection{Channel Selection and Iterative Exposure}
+The per-example channel oracle reaches recall 0.207 on QASPER, 0.489 on Hotpot, 0.315 on 2Wiki, and 0.199 on MuSiQue. Relative to the channel selected on validation, mean oracle headroom is 0.029, 0.338, 0.130, and 0.067. Hotpot's large value partly reflects validation instability: gist beats BM25 by only 0.001 on eight validation examples, whereas BM25 is much stronger on test. On 2Wiki, validation selects iterative hybrid while test favors BM25. These reversals are evidence for larger calibration cohorts, not evidence that test labels should choose a production channel.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{channel_oracle_headroom.pdf}
+\caption{Per-example oracle headroom over the validation-selected fixed channel. The ceiling is useful for diagnosing adaptive opportunity, but is not a deployable result.}
+\end{figure}
+
+The fixed observable selector does not realize the oracle opportunity. Its recall is 0.081, 0.279, 0.186, and 0.146 across QASPER, Hotpot, 2Wiki, and MuSiQue. It therefore improves over static hybrid only on QASPER, ties the iterative policy elsewhere by construction, and remains below the best held-out single channel. We retain it as a leakage-audited baseline, not as the proposed final policy. A learned selector requires a larger validation cohort and should predict channel utility from query rarity, calibrated score gaps, and disagreement without using answer or evidence annotations.
+
+A stricter new-address metric requires a normalized tokenizer piece to be absent from the question, present in an admitted hop-one chunk and unrecovered gold evidence, and rare under the example-local IDF. Such addresses occur in 6/16 QASPER, 5/16 Hotpot, 10/24 2Wiki, and 15/18 MuSiQue cases. Iterative-minus-static recall on address-positive cases is +0.100, $-0.047$, $-0.005$, and +0.003, respectively; address-negative effects are 0.000, +0.010, $-0.027$, and $-0.042$. Exposure is therefore necessary for the controlled lexical-following mechanism but not sufficient on natural data. The router must also identify the right address, preserve the right frontier, and rank the successor within the same total budget.
+
 \subsection{Controlled Chains and Failure Controls}
 \begin{figure}[H]
 \centering
@@ -256,7 +326,7 @@ but Pareto curves are primary because a single ratio can hide quality--cost trad
 An end-to-end extension would add answer EM/F1 and loss/calibration. The present retrieval headline explicitly records that answer generation was not run. Confidence metrics include Brier score, expected calibration error, reliability curves, and selective accuracy/coverage where feasible. The controlled wrong-reference and oracle conditions are reported here; disabled, shuffled, irrelevant, empty, and full-context generation controls remain for the downstream study.
 
 \section{Open Ablations and Controls}
-This first study covers the complete policy matrix, matched primary budgets, raw and normalized exact spans, IDF-weighted/ordered overlap, approximate matching, perturbations, contradictory evidence, and provenance-aware calibration. It does not yet resolve stop-token suppression, token-embedding similarity, alias extraction, tokenizer-family sensitivity, chunk granularity, gist count, model size, or sparse versus all PRA layers. Those are open ablations rather than implied completed experiments.
+This study covers the complete policy matrix, four natural cohorts, matched primary budgets, raw and normalized exact spans, IDF-weighted/ordered overlap, approximate matching, per-example geometry, channel diversity, oracle headroom, a leakage-audited heuristic, perturbations, contradictory evidence, and provenance-aware calibration. It does not yet resolve stop-token suppression, token-embedding similarity, alias extraction, tokenizer-family sensitivity, chunk granularity, gist count, model size, sparse versus all PRA layers, or a statistically powered learned selector. Those are open ablations rather than implied completed experiments.
 
 Metadata must not leak gold supporting labels. The exact query text/state used by each channel and hop is logged. Discovery is not counted as materialization, and hybrid systems do not receive an unreported larger active budget.
 
@@ -273,14 +343,14 @@ where $\mathbf{s}_i$ preserves channel scores, $p_i$ provenance, and $c_i$ has t
 Paper 3 can consume this record without making materialization depend on one retriever.
 
 \section{Contributions}
-This work contributes: (1) a provenance-preserving hybrid discovery formulation for PRA; (2) a model-token-native matcher with exact, weighted, ordered, approximate, entity, and explicit channels, evaluated beside a separate decoded-word BM25 baseline; (3) one bounded iterative engine shared by gist-only, token-only, and hybrid policies; (4) tokenization and confidently wrong-reference controls; (5) validation-only referent calibration diagnostics; (6) matched-budget evidence that hybrid discovery improves over gist-only routing on this HotpotQA slice, while exact matching is preferable on QASPER; and (7) a clean identity-level interface between discovery and materialization.
+This work contributes: (1) a provenance-preserving, multi-representational discovery formulation for PRA; (2) a model-token-native matcher with exact, weighted, ordered, approximate, entity, and explicit channels, evaluated beside decoded-word BM25; (3) one bounded iterative engine shared by gist-only, token-only, and hybrid policies; (4) tokenization and confidently wrong-reference controls; (5) a four-dataset, matched-budget precision--recall and channel-diversity analysis; (6) a leakage-audited separation between explanatory gold geometry, observable channel selection, and per-example oracle headroom; (7) evidence that fixed static fusion does not dominate the best lexical channel, while the best channel changes across tasks and examples; and (8) a clean identity-level interface between discovery and materialization.
 
 \section{Limitations and Falsification}
-The natural test contains only 16 examples per dataset, uses one frozen model, one routing layer, one tokenizer, and one chunk size. Bootstrap intervals quantify sampling uncertainty but do not substitute for larger replications. Token indexes add storage and runtime cost; the current exhaustive Python scorer is too slow for serving claims. Tokenizer segmentation is unstable across surface forms, aliases can be ambiguous, and some tasks contain little token-level continuity. Most importantly, the wrong-reference control demonstrates overconfident failure rather than graceful degradation.
+The natural tests contain 16 QASPER, 16 HotpotQA, 24 2Wiki, and 18 MuSiQue examples. They use one frozen model, one routing layer, one tokenizer, one chunk size, and inherited feature captures made under two compatible but separately generated protocols. Bootstrap intervals quantify sampling uncertainty but do not substitute for larger replications. Validation contains only eight QASPER and Hotpot identities, which makes fixed-channel selection visibly unstable. Geometry strata are descriptive and partly gold-derived; they explain failures but cannot be deployment inputs. Token indexes add storage and runtime cost; the exhaustive Python scorer is too slow for serving claims. Tokenizer segmentation is unstable across surface forms, aliases can be ambiguous, and some tasks contain little token-level continuity. Most importantly, the heuristic fails to close the oracle gap and the wrong-reference control demonstrates overconfident failure rather than graceful degradation.
 
 The end-to-end claim has a separate bar. We did not run generation, EM/F1, or native-KV consumption in this study. The results therefore establish a discovery mechanism and identify a discovery--consumption question; they do not establish improved reasoning. QASPER and the wrong-reference control also show that a single fusion policy is not robust enough for deployment.
 
 \section{Conclusion}
-PRA discovery need not be one hidden-state similarity function. An identity-aligned token sidecar can participate in the existing bounded gist traversal without touching native K/V. On the present HotpotQA slice, iterative hybrid routing improves gist-only evidence recall by 0.129 at the same request budget and reaches 90\% of an eight-chunk semantic baseline with four requests, though decoded-word BM25 remains stronger. QASPER instead favors exact token spans, and contradictory overlap exposes a high-confidence failure. The result is a positive but bounded discovery finding: token evidence is useful when intermediate chunks expose addresses, policy choice is task-dependent, and disambiguation and downstream generation remain open.
+PRA discovery need not be one hidden-state similarity function. An identity-aligned token sidecar can participate in bounded gist traversal without touching native K/V. Across four small held-out cohorts, exact spans lead QASPER, BM25 leads Hotpot and 2Wiki, and approximate tokenizer-piece matching leads MuSiQue. Static hybrid improves on gist but never beats the strongest single channel; iteration helps a rare-address QASPER subset but is not a general solution. Low channel overlap and positive per-example oracle headroom show that the representations contain complementary evidence, while validation reversals and heuristic failure show that choosing among them remains unsolved. The resulting claim is narrower and more useful than universal fusion: PRA discovery is multi-representational, retrieval channel should become an adaptive control decision, and downstream materialization and generation must remain separate evaluation stages.
 
 \end{document}
