@@ -211,6 +211,7 @@ selector, rerun graph search, generate text, or materialize native K/V.
 
 ```powershell
 python -m experiments.paper2_5_iterative_pra.run_final_metrics
+python -m experiments.paper2_5_iterative_pra.normalized_efficiency
 ```
 
 The command evaluates label-free facet diagnostics on disjoint validation and
@@ -219,3 +220,6 @@ edge and downstream search loss, and emits sparse quality/payload frontiers.
 Tables, plots, the negative-results registry, and the strict result manifest are
 under
 `docs/papers/shared/results/paper2_5_iterative_pra/final_metrics/`.
+The second command reports evidence recall, precision, complete recovery, active
+fraction, sparsity, and working-set overhead from actual deduplicated chunk IDs
+under `normalized_efficiency/`.

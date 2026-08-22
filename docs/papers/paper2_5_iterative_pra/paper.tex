@@ -16,6 +16,25 @@
 \input{main_associative_memory.tex}
 
 \appendix
+\section{Normalized Efficiency Detail}
+\label{app:normalized-efficiency}
+
+The row-level release preserves example identity, dataset, seed, policy, $N$,
+$E$, deduplicated $K$, recovered evidence, $R_E$, $P_E$, $C_E$, $K/N$, and
+$K/E$.  Iterative rows additionally retain per-hop incremental and cumulative
+unique sets.  The plots below expose the two diagnostics omitted from the compact
+main-text view: complete recovery and working-set overhead.  They do not convert
+conceptual chunks into a physical K/V claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.48\linewidth]{../shared/results/paper2_5_iterative_pra/normalized_efficiency/complete_recovery_vs_active_fraction.pdf}
+\includegraphics[width=.48\linewidth]{../shared/results/paper2_5_iterative_pra/normalized_efficiency/working_set_overhead_vs_recall.pdf}
+\caption{Per-budget complete recovery (left) and evidence-normalized working-set
+overhead (right).  Dataset-specific rows and evidence-count strata are exported
+in the accompanying CSV artifacts.}
+\end{figure}
+
 \section{Chronological Gate Audit: Projection and Locality}
 \label{app:projection-locality}
 

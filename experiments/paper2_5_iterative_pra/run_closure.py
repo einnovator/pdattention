@@ -128,6 +128,11 @@ def _evaluate_one(feature, root, memory, *, seed, method, depth, fraction, alpha
         torch.cuda.synchronize(root.device)
     elapsed = time.perf_counter() - started
     selected = set(result.selected_indices)
+    selected_ids = [router.index.chunk_ids[index] for index in result.selected_indices]
+    selected_by_hop = [
+        [node.node_id for node in result.graph.nodes if node.hop == hop and node.final_selected]
+        for hop in range(1, depth + 1)
+    ]
     groups = _evidence_groups(feature["positive_mask"])
     direct = torch.tensor(result.direct_scores)
     direct_order = torch.argsort(direct, descending=True).tolist()
@@ -157,6 +162,11 @@ def _evaluate_one(feature, root, memory, *, seed, method, depth, fraction, alpha
         "frontier": frontier,
         "path_score": path,
         "candidate_chunks": candidate_count,
+        "evidence_chunks": len(evidence),
+        "recovered_evidence_chunks": len(selected & evidence),
+        "selected_chunk_ids": json.dumps(selected_ids),
+        "evidence_chunk_ids": json.dumps(sorted(evidence_ids)),
+        "selected_chunk_ids_by_hop": json.dumps(selected_by_hop),
         "selected_unique_chunks": len(selected),
         "selected_fraction": len(selected) / candidate_count,
         "any_evidence": float(bool(selected & evidence)),

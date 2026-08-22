@@ -19,6 +19,7 @@ Primary experiment:
 ```powershell
 python ../../../experiments/paper2_5_iterative_pra/run_closure.py --device cpu
 python ../../../experiments/paper2_5_iterative_pra/summarize_results.py
+python -m experiments.paper2_5_iterative_pra.normalized_efficiency
 ```
 
 Controlled receptive-field and causal activation diagnosis:

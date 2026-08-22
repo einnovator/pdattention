@@ -28,6 +28,9 @@ frozen accuracy from .140 to .398 and correct-label margin from $-3.103$ to $-.7
 
 These results reject absolute consumer incapacity; noisy controlled activation is the leading tested
 limitation, but attention dilution is not isolated as its sole mechanism.
+Candidate-normalized replay likewise finds no iterative dominance: at matched
+deduplicated $K/N$, depth-two iteration trades small complete-recovery gains at
+wide budgets for slightly lower mean evidence recall than one-shot retrieval.
 Transformer memory contains topology that depends causally on receptive field;
 iterative PRA can traverse that topology; and the frozen computation can use correctly activated
 memory.  The unresolved problem is to make useful evidence dominate sparse external-memory influence
@@ -596,6 +599,57 @@ All-offset oracle ceiling & .878 & .950 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Evidence recovery per selected logical working set}
+
+To compare examples with different source and evidence sizes, let $N$ be the
+candidate-chunk count, $E$ the evaluator-labelled evidence count, and $K$ the
+actual deduplicated selected set.  We report
+\[
+R_E=\frac{|K\cap E|}{|E|},\qquad
+P_E=\frac{|K\cap E|}{|K|},\qquad
+C_E=\mathbb{1}[E\subseteq K],
+\]
+together with selected fraction $\phi=K/N$, sparsity $1-\phi$, and working-set
+overhead $\omega=K/E$.  Evidence labels are attached only for scoring.  The
+oracle row is a matched-budget evidence-aware ceiling, not an executable router.
+
+\begin{table}[H]
+\centering
+\caption{Held-out candidate-normalized recovery at the primary 10\% budget.
+Rows macro-average 80 example--seed units.  Iteration uses the predeclared
+depth-two, direct-frontier, product-path condition.}
+\label{tab:main-normalized-efficiency}
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+Dataset & Policy & $R_E$ & $P_E$ & $C_E$ & $K/N$ & $K/E$\\
+\midrule
+HotpotQA & one-shot & .207 & .207 & .013 & .106 & 1.188\\
+HotpotQA & iterative & .202 & .206 & .000 & .106 & 1.188\\
+HotpotQA & oracle & .924 & 1.000 & .688 & .092 & .924\\
+QASPER & one-shot & .477 & .182 & .213 & .104 & 3.340\\
+QASPER & iterative & .466 & .172 & .200 & .104 & 3.340\\
+QASPER & oracle & .953 & 1.000 & .875 & .057 & .953\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 30\%, iteration raises complete recovery from .100 to .113 on HotpotQA and
+from .388 to .438 on QASPER, but its mean $R_E$ remains slightly below one-shot
+(.478 versus .497 and .651 versus .656).  Thus iteration changes which evidence
+sets become complete but does not move the measured recall--working-set frontier
+outward.  The large QASPER $K/E$ also makes the distractor burden visible: a
+nominal 10\% budget selects 3.34 chunks per evidence chunk on average.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\linewidth]{../shared/results/paper2_5_iterative_pra/normalized_efficiency/recall_vs_active_fraction.pdf}
+\caption{Evidence recall against actual selected fraction across measured
+budgets.  Only the oracle crosses the predeclared .80/.90/.95 targets; no
+$\phi_{80}$, $\phi_{90}$, or $\phi_{95}$ is extrapolated for executable routes.}
+\label{fig:main-normalized-efficiency}
+\end{figure}
 
 \begin{table}[H]
 \centering
