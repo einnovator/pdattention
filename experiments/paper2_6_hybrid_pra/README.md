@@ -32,3 +32,14 @@ by the preceding channel-selection run.
 Outputs are written to
 `docs/papers/shared/results/paper2_6_hybrid_pra/final_iteration/`. The bootstrap
 rows are uncertainty estimates over the frozen identities, not cohort expansion.
+## Normalized PRA efficiency
+
+After rerunning the frozen channel-selection replay, build the normalized
+root/successor analysis with:
+
+```powershell
+python -m experiments.paper2_6_hybrid_pra.normalized_efficiency
+```
+
+The analysis deduplicates selected identities across stages and keeps search
+comparisons separate from the conceptual working-set fraction.

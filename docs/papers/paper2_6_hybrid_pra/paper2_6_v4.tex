@@ -2,7 +2,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs,amsmath,amssymb,enumitem,tabularx,graphicx,float}
 \usepackage[hidelinks]{hyperref}
-\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{../shared/results/paper2_6_hybrid_pra/channel_selection/}{../shared/results/paper2_6_hybrid_pra/final_iteration/}{docs/papers/shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_geometry/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/}{docs/papers/shared/results/paper2_6_hybrid_pra/final_iteration/}}
+\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{../shared/results/paper2_6_hybrid_pra/channel_selection/}{../shared/results/paper2_6_hybrid_pra/channel_selection/normalized_efficiency/}{../shared/results/paper2_6_hybrid_pra/final_iteration/}{docs/papers/shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_geometry/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/normalized_efficiency/}{docs/papers/shared/results/paper2_6_hybrid_pra/final_iteration/}}
 \setlength{\emergencystretch}{3em}
 \title{Multi-Representational Reference Discovery for Progressive Retrieval Attention:\\Semantic, Lexical, and Iterative Routing Across Four Evidence Tasks}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
@@ -477,6 +477,55 @@ The observable UsefulAddress proxy combines address presence, rarity, uniqueness
 
 \section{Evaluation}
 Discovery metrics include supporting-document/fact recall, MRR, NDCG, precision, missed-evidence rate, hop success, and path completion. Resource metrics include discovered, requested, and materialized chunks/tokens, active fraction, distractor materialization, index construction, cold/warm routing, repeated-hop cost, transfer, and end-to-end latency.
+
+\subsection{Candidate-Normalized Discovery Efficiency}
+Absolute Top-$K$ is not comparable across sources with different numbers of
+chunks or evidence spans.  For each example, let $N$ be the number of candidate
+chunks, $E$ the number of evaluator-labelled evidence chunks, and $K$ the
+deduplicated selected set.  We report evidence recall
+$R_E=|K\cap E|/|E|$, evidence precision $P_E=|K\cap E|/|K|$, complete recovery
+$C_E=\mathbb{1}[E\subseteq K]$, selected fraction $\phi=K/N$, sparsity
+$\rho=1-\phi$, and working-set overhead $\omega=K/E$.  For a successor route,
+$K$ is the union of root and successor identities; thus duplicate selections do
+not receive extra credit.  Search comparisons and token-span operations remain
+separate costs, not proxies for physical K/V activation.
+
+\begin{table}[H]
+\centering
+\caption{Held-out normalized efficiency at the fixed two-root plus two-successor
+budget.  Each row is the highest-recall measured root--successor pair for that
+cohort.  $C_E=0$ throughout: the sparse policy improves partial recovery but is
+not a complete-evidence policy at this budget.}
+\label{tab:normalized-channel-efficiency}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Cohort & Root $\rightarrow$ successor & $R_E$ & $P_E$ & $K/N$ & $K/E$\\
+\midrule
+QASPER & exact $\rightarrow$ exact-address & .121 & .219 & .032 & 1.029\\
+HotpotQA & approximate $\rightarrow$ semantic & .145 & .156 & .088 & .896\\
+2Wiki & exact $\rightarrow$ semantic & .148 & .236 & .102 & .901\\
+MuSiQue & BM25 $\rightarrow$ exact-address & .086 & .278 & .050 & .327\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The normalization changes the interpretation in two useful ways.  First,
+QASPER's lower absolute recall occurs while touching only 3.2\% of a much larger
+candidate pool; its best pair nevertheless selects about one chunk per evidence
+chunk.  Second, MuSiQue's best measured pair has the lowest working-set overhead
+but also the lowest recall.  Neither comparison supports a universal channel:
+the Pareto point changes by cohort, in the same direction as the root/successor
+geometry analysis.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.76\linewidth]{normalized_channel_precision_recall.pdf}
+\caption{Evidence precision against evidence recall for every held-out root and
+root--successor policy.  The full 25-pair surface is retained rather than only
+the cohort-wise maxima in Table~\ref{tab:normalized-channel-efficiency}.}
+\label{fig:normalized-channel-pr}
+\end{figure}
 
 A useful descriptive efficiency quantity is
 \[
