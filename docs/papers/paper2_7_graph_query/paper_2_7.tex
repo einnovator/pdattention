@@ -1,0 +1,362 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.92in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,enumitem,graphicx,hyperref,microtype,tabularx,url,xcolor}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,urlcolor=blue!55!black}
+\newcommand{\pra}{\textsc{PRA}}
+\newcommand{\resultroot}{../shared/results/paper2_7_query_graph}
+
+\title{Graph-Structured Query Facet Discovery for Progressive Retrieval Attention:\\
+Controlled Recovery and a Frozen Natural-Cohort Test}
+\author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Progressive Retrieval Attention (\pra) routes a bounded set of native key/value memory chunks into attention. Its recent multi-facet and lexical--semantic variants improve which memory is addressed, but still obtain query facets from predetermined spans or cue families. We test whether a sparse graph over frozen decoder query states can discover those facets instead. The implementation separates query encoding, tensor-native graph construction, hard clustering, provenance-preserving facet pooling, and the inherited Paper~2.6 scorer. On a controlled corpus with one to six latent facets and disjoint five-seed validation and test cohorts, validation selects contextual cosine edges, per-node $k=2$, threshold $0.45$, union symmetrization, and connected components. Held-out adjusted Rand index (ARI) is $0.832$, compared with $0.563$ for non-oracle deterministic embedding $k$-means and $0.271$ for validation-selected fixed windows. Recovery remains $0.830$ under interleaving. On a frozen 74-query cohort from QASPER, HotpotQA, 2WikiMultiHopQA, and MuSiQue, the graph path reproduces inherited Paper~2.6 controls exactly. Graph facets improve semantic-only HotpotQA evidence recall over embedding $k$-means by $0.0662$ (paired bootstrap 95\% CI $[0.0063,0.1272]$). They do not, however, improve the stronger Paper~2.6 hybrid scorer reliably: graph-minus-hybrid recall changes range from $-0.0078$ to $+0.0156$, and every paired interval includes zero. Graph construction and clustering also add measurable latency. We therefore establish a working, reproducible query-graph mechanism and a controlled facet-recovery result, but not a general improvement in the natural retrieval quality/cost frontier. Pre-registered gates correctly stop Graclus, Leiden, soft propagation, and bidirectional encoding experiments. The negative boundary is informative: representational communities can be recovered without an oracle cluster count, yet better decomposition alone need not change the top four retrieved chunks under a strong lexical--semantic router.
+\end{abstract}
+
+\section{Introduction}
+Long-context inference has two different selection problems. The system must decide what a query is asking, and then decide which stored memory is relevant to those demands. Dense retrieval often compresses the first problem into one vector~\cite{karpukhin2020dpr,lewis2020rag}; multi-hop systems may instead retrieve repeatedly or condition later retrieval on earlier evidence~\cite{xiong2021mdr,trivedi2023ircot}. \pra separates logical memory from a bounded active native-K/V working set~\cite{simao2026pra,simao2026hf}. Paper~2.5 made the query side multi-facet, and Paper~2.6 combined semantic, exact, approximate, and BM25 channels~\cite{simao2026iterative,simao2026hybrid}. This paper asks a narrower mechanistic question: can relations among query units discover the facet set itself?
+
+The proposal is tempting. A compound question can contain several entity, relation, and constraint regions. If contextual states form a sparse similarity graph, communities might recover these regions even when their tokens are interleaved. Their pooled states could then query the existing \pra memory index. But three failure modes must be separated. First, a graph can recover synthetic labels without improving retrieval. Second, a graph can improve a weak semantic baseline while adding nothing to an already complementary lexical--semantic router. Third, an apparent gain can come from changing the memory budget, model, or cohort rather than from query decomposition.
+
+We address those confounds with a staged evaluation. The graph code is opt-in and leaves Paper~2.6 defaults untouched. Validation chooses graph structure on controlled examples only. Natural evaluation reuses the frozen Qwen3-0.6B routing states, memory features, scorer, query identities, and four-chunk budget. Inherited rows are reproduced before graph comparisons. We report both a directional gate and paired uncertainty, and stop algorithm expansion when the statistical gate fails.
+
+The main findings are:
+\begin{enumerate}[leftmargin=*]
+  \item A minimal tensor-native query graph recovers non-contiguous controlled facets without a test-time oracle count. Connected components reach test ARI $0.832$ and pairwise F1 $0.999$.
+  \item The selected graph is simpler than expected: contextual edges alone outperform lexical or contextual--lexical edges on controlled validation; $k=2$ and union symmetrization are sufficient.
+  \item Natural utility is localized. Graph connected components improve HotpotQA semantic-only routing over deterministic $k$-means, but do not reliably improve the inherited Paper~2.6 hybrid router on the four-dataset cohort.
+  \item Query graph construction and clustering are not free. For these short queries, the current eager PyTorch implementation adds roughly $9$--$25$ ms before hybrid scoring, so it makes no speed claim.
+  \item The result narrows the next question. The bottleneck is no longer whether query communities can be formed; it is whether they add ranking information beyond a strong hybrid scorer and affect downstream materialization and generation.
+\end{enumerate}
+
+\section{Scope and system boundary}
+Figure~\ref{fig:boundary} shows the tested boundary. Paper~2.7 operates only on the encoded query. It neither traverses a memory graph nor changes native-K/V materialization. The graph facet set is adapted to the existing Paper~2.5/2.6 query-facet interface, after which the inherited scorer and budgeted top-$k$ selection run unchanged.
+
+\begin{figure}[t]
+\centering
+\setlength{\fboxsep}{5pt}
+\begin{tabular}{c}
+\fbox{frozen causal query states $H\in\mathbb{R}^{N\times d}$ + unit provenance}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{weighted similarities $W$ $\rightarrow$ per-node top-$k$ + threshold $\rightarrow$ sparse query graph}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{connected components or weighted label propagation $\rightarrow$ memberships}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{mean-pooled graph facets $Z$ + exact member provenance}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{unchanged Paper~2.6 semantic / lexical--semantic memory scorer}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{four requested memory chunks; no K/V materialization or generation in this study}
+\end{tabular}
+\caption{The Paper~2.7 intervention. Query-side community discovery is upstream of memory ranking and distinct from Paper~2.5 iterative memory-graph traversal.}
+\label{fig:boundary}
+\end{figure}
+
+This boundary matters for the claims. ``Requested token budget 128'' means four selected chunks at 32 tokens each. The natural experiment records selections and evidence recall; it does not physically materialize 128 K/V tokens, execute memory attention, or generate answers. Consequently, this paper measures routing utility at a matched requested budget, not end-to-end answer quality or realized memory cost.
+
+\section{Sparse query graph}
+\subsection{Nodes and provenance}
+For one encoded query, let $H=[h_1,\ldots,h_N]^\top\in\mathbb{R}^{N\times d}$. Each node is a token-aligned query unit with a stable absolute prompt-coordinate ID, token start/end, decoded audit text, layer, optional head, and vector source. Text supports audit and lexical preprocessing; clustering uses tensors. Natural experiments use frozen causal hidden states from layer 27 of Qwen3-0.6B, revision \texttt{c1899de2}, inherited from the Paper~2.5/2.6 feature caches.
+
+The code contract appears in \path{src/pra_hf/query_graph.py:26-107}. Node arrays have shape $[N]$; \texttt{src}, \texttt{dst}, \texttt{weight}, and edge components have shape $[E]$. All graph tensors share one device. An edge \texttt{src[e]}$\rightarrow$\texttt{dst[e]} means that the source label may reach the destination during directed propagation. This explicit convention prevents accidental conversion of causal attention into an undirected graph.
+
+\subsection{Edge scores and sparsification}
+The implementation supports
+\begin{equation}
+w_{ij}=\frac{\alpha s^{ctx}_{ij}+\beta s^{lex}_{ij}+\gamma s^{attn}_{ij}
++\delta s^{pos}_{ij}+\eta s^{\Delta h}_{ij}}
+{\alpha+\beta+\gamma+\delta+\eta}.
+\end{equation}
+Contextual, lexical, and residual terms are non-negative cosine similarities. The positional term is $\exp(-|i-j|/\sigma)$. Attention is accepted as an already defined non-negative matrix and remains directed unless a caller requests a derived symmetric policy. The reported runs have no attention or residual-update cache, so their weights are zero. Stable BLAKE2-hashed token and character $n$-grams provide optional lexical node features (\path{query_graph.py:118-147}).
+
+The builder immediately removes self-edges, takes per-row top-$k$, and applies $w_{ij}>\tau$:
+\begin{equation}
+(i,j)\in E \Longleftrightarrow j\in\operatorname{TopK}(W_i,k)\land w_{ij}>\tau.
+\end{equation}
+A tiny deterministic index preference resolves exact top-$k$ ties across devices. The implementation (\path{query_graph.py:200-325}) exposes four policies: directed arcs; union symmetrization with the larger weight; mutual top-$k$ with averaged reciprocal weights; and reciprocal averaging on a union graph. Thus symmetry is a recorded graph transformation, not an unstated property of decoder attention.
+
+\subsection{Threshold filtration}
+For thresholds $\tau_1<\cdots<\tau_m$, we filter one fixed weighted edge set rather than rebuilding neighbors. Raising the threshold may split components but cannot merge them. \path{query_graph_cluster.py:170-207} records component count, split count, and retained within-component pair fraction. The present experiment uses filtration as a validation diagnostic and chooses one threshold; it does not promote a persistence-derived facet rule.
+
+\section{Hard communities and facet pooling}
+\subsection{Connected components}
+The minimal method initializes each node with its own label and repeatedly propagates minimum labels:
+\begin{align}
+r_j^{(t)} &= \min_{i:(i,j)\in E} c_i^{(t)}, &
+c_j^{(t+1)} &= \min(c_j^{(t)},r_j^{(t)}).
+\end{align}
+The implementation uses one gather and \texttt{scatter\_reduce\_(reduce="amin")} per iteration (\path{query_graph_cluster.py:70-104}). For an undirected component partition, the builder emits reciprocal arcs. On a directed graph this operation is intentionally minimum-label reachability, not weak connected components.
+
+\subsection{Weighted label propagation}
+The second method lets each node adopt the label with greatest incoming edge mass:
+\begin{equation}
+c_i^{(t+1)}=\arg\max_c\sum_{j:(j,i)\in E}w_{ji}\mathbf{1}[c_j^{(t)}=c].
+\end{equation}
+Query graphs are short, so the implementation accumulates a bounded $[N,C]$ vote table without Python loops over nodes or edges. Lowest-label ties are deterministic, a small self-retention term stabilizes labels, and a repeated two-cycle terminates without being mislabeled as fixed-point convergence (\path{query_graph_cluster.py:107-167}). This is related to classical label-propagation community detection~\cite{raghavan2007label}, but its synchronous deterministic rule is tailored to reproducible tensor inference.
+
+\subsection{Pooling and scorer adaptation}
+Hard labels become one-hot membership $Q\in\{0,1\}^{N\times K}$. A facet is the membership-normalized mean
+\begin{equation}
+Z=\operatorname{diag}(Q^\top\mathbf{1})^{-1}Q^\top H.
+\end{equation}
+An optional global query column can be prepended. Native per-head query states, if supplied, are pooled with the same memberships. \path{src/pra_hf/query_graph_facets.py:76-180} retains every member unit ID, token span, and audit string, then adapts $Z$ to the frozen \texttt{QueryFacetSet} scorer interface. Non-contiguous members remain non-contiguous in graph provenance even though the legacy adapter also records their enclosing span.
+
+The source includes a bounded soft-membership pooler, but no soft propagation algorithm is evaluated. It exists to make the representation contract explicit; Gate~4 prevents using it as evidence in this paper.
+
+\section{Experimental design}
+\subsection{Gates}
+We use five gates:
+\begin{description}[leftmargin=1.4cm,style=nextline]
+  \item[G0] Reproduce inherited Paper~2.6 rows with graph mode disabled.
+  \item[G1] Pass graph primitive, determinism, convergence, and CPU/CUDA parity tests.
+  \item[G2] Beat validation-selected fixed windows and non-oracle embedding clustering on held-out controlled facets.
+  \item[G3] Improve matched-budget natural retrieval on at least one dataset without a material regression elsewhere. We separately require paired uncertainty to exclude zero before expanding the claim.
+  \item[G4/G5] Only after G3, test Graclus/Leiden/soft propagation and then freeze a method for causal-versus-bidirectional encoding.
+\end{description}
+The directional G3 tolerance is positive mean recall change on at least one dataset and no change below $-0.02$. The statistical interpretation additionally requires paired intervals that support a stable improvement. This split prevents one sparse changed selection from being narrated as a settled gain.
+
+\subsection{Controlled facets}
+The generator constructs compound queries with one to six latent facets. It varies order, contiguous versus interleaved units, shared entities, lexical overlap, distractors, pronouns, paraphrases, and permutations. Latent facet centers generate contextual states; observable text generates lexical features. Punctuation and position do not expose IDs. Validation contains 120 examples from seeds 11, 23, 37, 53, and 71. Test contains 120 disjoint examples from seeds 101, 113, 127, 139, and 151. Manifests and hashes are stored with the results.
+
+The staged validation cross avoids a full Cartesian search. It first compares edge families and connected components versus label propagation at $k=4,\tau=0.55$, union policy. It then freezes the best family/method while sweeping $k\in\{2,4,8,16,32\}$, freezes $k$ while sweeping $\tau\in\{0.35,0.45,0.55,0.65,0.75\}$, and finally compares direction policies. Selection maximizes mean ARI, then pairwise F1, then lower count error and runtime. No test label or oracle test cluster count enters this process.
+
+Baselines are one global cluster, validation-selected fixed windows, a four-unit clause proxy, and deterministic farthest-first embedding $k$-means. The $k$-means cluster count is $\min(6,\operatorname{round}\sqrt{N/2})$, not the target count.
+
+\subsection{Natural retrieval}
+The frozen natural cohort contains 16 QASPER~\cite{dasigi2021qasper}, 16 HotpotQA~\cite{yang2018hotpotqa}, 24 2WikiMultiHopQA~\cite{ho2020twowiki}, and 18 MuSiQue~\cite{trivedi2022musique} test queries. We reuse Qwen3-0.6B layer-27 query states, memory gists, tokenizer revision, Paper~2.6 token-native index, and dataset identities. Every condition requests four 32-token chunks.
+
+Conditions are global semantic routing; Paper~2.5 multiscale and clause facets; deterministic embedding $k$-means; graph connected components; graph weighted label propagation; BM25; Paper~2.6 hybrid; and graph-facet variants of the hybrid scorer. Evidence recall is the fraction of annotated evidence recovered among selected chunks, averaged per example. Routing precision and MRR remain in machine-readable tables. Paired 95\% intervals use 10,000 bootstrap resamples of per-example recall differences with seed 20260822.
+
+\subsection{Implementation and provenance}
+Graph construction and clustering execute on CUDA when available; exact CPU/CUDA label parity is tested. Timings synchronize CUDA around each stage. The natural runner is \path{experiments/paper2_7_query_graph/run_natural_retrieval.py:370-624}; inherited parity is computed at lines 234--261 and paired effects at lines 264--302. Per-example facet labels, member IDs, token bounds, selected chunk identities, run configuration, model revision, data hashes, and timing are persisted under \path{docs/papers/shared/results/paper2_7_query_graph/}.
+
+\section{G1: primitive correctness}
+Seventeen focused tests cover invalid shapes, duplicate IDs, isolated nodes, two components, chains, stars, duplicate and unsorted edges, directed-versus-symmetric behavior, convergence, threshold monotonicity, deterministic label propagation and $k$-means, hard/soft pooling, exact non-contiguous provenance, scorer adaptation, and facet suppression. CUDA was available. CPU and CUDA produced identical graph labels for all parity cases.
+
+The primitive benchmark contains 100 rows across CPU and CUDA. Its purpose is correctness and accounting, not a kernel record. The connected-components loop is the minimal high-level PyTorch baseline; no claim is made that it matches specialized GPU graph libraries. Threshold filtration passed the no-merge invariant.
+
+\section{G2: controlled facet recovery}
+\subsection{Validation selection}
+Figure~\ref{fig:validation} reports the staged validation sweep. Contextual connected components are strongest in the first stage (ARI $0.779$ at the common starting configuration). Lexical connected components yield $0.191$, contextual--lexical edges $0.426$, and adding position $0.446$. Thus lexical overlap is a distractor in this controlled generator rather than a complementary signal. This does not imply that memory-side lexical routing is weak.
+
+$k=2$ is marginally better than larger values at the inherited threshold. Thresholds $0.35$ and $0.45$ are stable, after which recovery falls sharply. At selected $k=2,\tau=0.45$, union and reciprocal-average policies tie at ARI $0.831$; deterministic tie-breaking selects union. Directed ($0.722$) and mutual ($0.662$) graphs are weaker.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{\resultroot/algorithm_cross/validation_ablation.pdf}
+\caption{Validation-only staged ablation. Each panel conditions on the winner of the preceding stage; it is not a full Cartesian sweep.}
+\label{fig:validation}
+\end{figure}
+
+\subsection{Held-out recovery}
+Table~\ref{tab:controlled} and Figure~\ref{fig:controlled} show test recovery. Graph connected components improve ARI by $0.560$ over fixed windows and $0.269$ over deterministic embedding $k$-means. Their pairwise F1 is $0.999$, and mean absolute cluster-count error is $0.033$. Weighted label propagation also passes the baselines but is weaker than connected components.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Controlled held-out recovery over 120 examples and five test seeds.}
+\label{tab:controlled}
+\begin{tabular}{lrrrrr}
+\toprule
+Method & ARI & NMI & Pair F1 & Boundary F1 & Count error\\
+\midrule
+Global & 0.000 & 0.000 & 0.491 & 0.000 & 2.500\\
+Fixed window / clause proxy & 0.271 & 0.438 & 0.556 & 0.265 & 0.267\\
+Embedding $k$-means & 0.563 & 0.685 & 0.772 & 0.735 & 1.150\\
+Graph connected components & \textbf{0.832} & \textbf{0.832} & \textbf{0.999} & \textbf{0.833} & \textbf{0.033}\\
+Weighted label propagation & 0.771 & 0.802 & 0.941 & 0.760 & 0.458\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{\resultroot/controlled/controlled_facet_recovery.pdf}
+\caption{Held-out controlled ARI. Hyperparameters and fixed-window width were selected on the disjoint validation cohort.}
+\label{fig:controlled}
+\end{figure}
+
+Interleaving exposes the difference between positional spans and relational communities. Connected-components ARI is $0.833$ for contiguous examples and $0.830$ for interleaved examples. Fixed windows drop from $0.528$ to $0.015$; embedding $k$-means changes from $0.606$ to $0.519$. Figure~\ref{fig:scaling} shows recovery by latent facet count.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{\resultroot/controlled/controlled_scaling_by_facets.pdf}
+\caption{Controlled recovery as latent query facets rise from one to six.}
+\label{fig:scaling}
+\end{figure}
+
+As a mechanism diagnostic, suppressing the discovered community with maximum overlap for a target facet reduces its prototype similarity more than removing a size-matched random set; mean damage advantage is $0.671$. This is not a natural retrieval or answer ablation. The prototype is generated from controlled labels, so the result checks only whether recovered clusters carry the intended synthetic geometry.
+
+G2 passes. It establishes controlled relational facet discovery without a test-time oracle count. It does not establish that those facets are computational subtasks in a language model.
+
+\section{G0 and G3: frozen natural retrieval}
+\subsection{Inherited parity}
+The graph-disabled run reproduces every archived global-semantic and Paper~2.6 hybrid evidence-recall row with maximum absolute error $0.0$ and identical selected chunk IDs. This caught an implementation hazard during development: raw feature tensors used numeric chunk order while production \texttt{GistIndex} sorts cache identities lexicographically. The final runner scores \texttt{index.gists} in production order. G0 passes, and the graph intervention does not silently alter the inherited baseline.
+
+\subsection{Aggregate retrieval}
+Table~\ref{tab:natural} and Figure~\ref{fig:natural} show evidence recall. On HotpotQA, graph connected components improve semantic-only routing from $0.167$ for embedding $k$-means to $0.234$. They exceed Paper~2.5 multiscale facets by $0.021$, although that paired interval includes zero. The strongest inherited lexical-only BM25 row is omitted from the compact table but reaches $0.398$ on HotpotQA, emphasizing that query decomposition and memory matching are different sources of signal.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Evidence recall at four requested 32-token chunks. These are routing selections; physical K/V materialization and generation were not run.}
+\label{tab:natural}
+\begin{tabular}{lrrrr}
+\toprule
+Condition & QASPER & HotpotQA & 2Wiki & MuSiQue\\
+\midrule
+Global semantic & 0.038 & 0.151 & 0.132 & 0.108\\
+Paper~2.5 multiscale & 0.067 & 0.212 & 0.169 & 0.109\\
+Embedding $k$-means & 0.038 & 0.167 & 0.149 & 0.088\\
+Graph connected components & 0.033 & 0.234 & 0.175 & 0.090\\
+Graph label propagation & 0.033 & 0.151 & 0.152 & 0.111\\
+Paper~2.6 hybrid & \textbf{0.044} & 0.288 & \textbf{0.203} & 0.151\\
+Graph-CC hybrid & 0.036 & \textbf{0.303} & \textbf{0.203} & 0.143\\
+Graph-LP hybrid & \textbf{0.044} & 0.288 & 0.200 & \textbf{0.152}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{\resultroot/natural/natural_retrieval_recall.pdf}
+\caption{Frozen natural-cohort evidence recall. The graph helps one semantic-only regime, but inherited hybrid routing remains the stronger comparison.}
+\label{fig:natural}
+\end{figure}
+
+\subsection{Paired effects and stop decision}
+The cleanest graph-only comparison is against embedding $k$-means because both decompose the same frozen hidden states. On HotpotQA, graph CC gains $0.0662$ recall with paired 95\% CI $[0.0063,0.1272]$: six examples improve, one worsens, and nine are unchanged. Effects on QASPER, 2Wiki, and MuSiQue are $-0.0045$, $+0.0258$, and $+0.0022$, with intervals crossing zero.
+
+The stronger test asks whether graph facets improve Paper~2.6 hybrid retrieval. Table~\ref{tab:paired} gives paired graph-CC effects. HotpotQA changes by $+0.0156$, but only one of 16 examples changes and the lower interval endpoint is zero. QASPER and MuSiQue are slightly negative; 2Wiki is identical. All four intervals include zero. Weighted-label-propagation hybrid is tied on QASPER and HotpotQA, slightly negative on 2Wiki, and slightly positive on MuSiQue; its intervals also include zero.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Graph-CC hybrid minus Paper~2.6 hybrid evidence recall, paired by query.}
+\label{tab:paired}
+\begin{tabular}{lrrrrr}
+\toprule
+Dataset & $n$ & Mean $\Delta$ & 95\% CI & Better/Worse & Unchanged\\
+\midrule
+QASPER & 16 & $-0.0078$ & $[-0.0234,0.0000]$ & 0/1 & 15\\
+HotpotQA & 16 & $+0.0156$ & $[0.0000,0.0469]$ & 1/0 & 15\\
+2Wiki & 24 & $0.0000$ & $[0.0000,0.0000]$ & 0/0 & 24\\
+MuSiQue & 18 & $-0.0078$ & $[-0.0284,0.0111]$ & 1/3 & 14\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.86\linewidth]{\resultroot/natural/natural_graph_gain.pdf}
+\caption{Paired graph-CC hybrid effect relative to Paper~2.6 hybrid. Error bars are per-example bootstrap 95\% intervals.}
+\label{fig:gain}
+\end{figure}
+
+The pre-specified directional tolerance passes: HotpotQA is positive and no dataset falls below $-0.02$. The statistical gate does not. We therefore do not claim that graph facets improve the natural quality/cost frontier. Following protocol, G4 and G5 remain closed. Graclus~\cite{dhillon2007graclus}, Leiden~\cite{traag2019leiden}, soft propagation, attention/residual edge families, and bidirectional encoding are not run results.
+
+\section{Efficiency}
+Table~\ref{tab:latency} reports synchronized stage timing from the natural CUDA run. The graph path is an eager research implementation optimized for transparent tensor behavior, not tiny-$N$ launch efficiency. Connected-components graph construction plus clustering adds $8.6$--$24.9$ ms per query. Total graph-CC hybrid routing is slower than Paper~2.6 hybrid on every cohort.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Mean milliseconds per query. Graph stage is build plus connected-components clustering; totals include scoring and selection but exclude model encoding, K/V materialization, memory attention, and generation.}
+\label{tab:latency}
+\begin{tabular}{lrrr}
+\toprule
+Dataset & Graph stage & Paper~2.6 hybrid total & Graph-CC hybrid total\\
+\midrule
+QASPER & 8.61 & 33.59 & 37.72\\
+HotpotQA & 24.94 & 22.51 & 49.37\\
+2Wiki & 11.85 & 15.16 & 28.04\\
+MuSiQue & 16.05 & 43.62 & 60.04\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Mean graph size ranges from 26.5 edges on QASPER to 75.0 on MuSiQue, so arithmetic volume is small. Runtime is dominated by dense $N\times N$ similarity construction, eager CUDA kernels, synchronization for measurement, and iterative clustering launch overhead. A fused or compiled implementation could reduce latency, but a speed claim requires full-inference measurement. Weighted label propagation is slower because it repeatedly creates and reduces a dense $N\times C$ vote table.
+
+The graph stores sparse edge tensors and active components, while similarity construction currently materializes dense $N\times N$ intermediates. This is acceptable for short query regions but should not be generalized to document-scale graphs. Exact sparse tensor footprint is available through \path{query_graph.py:347-360}; peak CUDA allocation is recorded per natural example.
+
+\section{Interpretation}
+\subsection{Controlled recovery is real but insufficient}
+The controlled result is not merely contiguous segmentation. It survives token interleaving and does not use the true number of facets. Sparse connectivity contains relational information that one global vector, fixed windows, and non-oracle centroid clustering fail to expose as cleanly. Connected components outperform weighted propagation because generated neighborhoods are already nearly separable; repeated voting adds opportunities to fragment them.
+
+Yet ARI does not optimize evidence recall. A partition can match synthetic labels while pooling away the token that best aligns with a memory gist. Conversely, different facet sets can produce the same top four chunks. On the natural cohort, most paired hybrid selections do not change. The strong lexical channel can recover chunks that a modified semantic facet misses, compressing marginal value.
+
+\subsection{Why HotpotQA differs}
+HotpotQA provides the clearest positive signal. Its two-hop questions often contain two entity/relation regions, and graph CC produces 2.44 discovered facets on average. Relative to non-oracle $k$-means, local connectivity better separates frozen query states and improves evidence recall. But Paper~2.6 hybrid already supplies lexical evidence, so only one query's final four-chunk selection improves. The result supports graph structure as a semantic decomposition method, not yet as a hybrid-router replacement.
+
+\subsection{Causal geometry remains limiting}
+Decoder states obey $h_i=f(x_{\leq i})$. Early query tokens cannot encode later constraints. Cosine similarity is symmetric, but the states from which it is computed are causally asymmetric. Union symmetrization can connect similar states; it cannot give early nodes future context. Removing a pretrained decoder's causal mask would be out of distribution and is not a valid remedy. Gate~5 was written as a separately trained or technically justified encoder-mode experiment, and it was not opened.
+
+\subsection{A narrower next experiment}
+The next useful experiment is not a larger menu of community algorithms. It is a cohort with enough query-level changes to estimate whether graph facets add information after lexical--semantic fusion. Candidate interventions are to train a query encoder or light edge scorer against evidence retrieval while freezing the memory index, expose calibrated facet scores to the hybrid ranker instead of max-pooling them, and evaluate downstream materialization and answer behavior after a routing gain is established. Each changes a different causal link and should be tested separately.
+
+\section{Related work}
+\paragraph{Retrieval and multi-hop reasoning.}
+RAG and REALM couple language models to external retrieval~\cite{lewis2020rag,guu2020realm}; DPR learns dense passage retrieval~\cite{karpukhin2020dpr}. Multi-hop systems retrieve iteratively or interleave reasoning and retrieval~\cite{xiong2021mdr,qi2021irrr,trivedi2023ircot}. Paper~2.7 does not propose document graph search. It clusters units within the query, then delegates memory ranking to the existing \pra scorer.
+
+\paragraph{Sparse and hybrid retrieval.}
+BM25 supplies lexical evidence~\cite{robertson2009bm25}, and reciprocal-rank fusion combines heterogeneous lists without assuming score calibration~\cite{cormack2009rrf}. Paper~2.6 studies exact, approximate, BM25, and semantic channels for identity-aligned \pra memory~\cite{simao2026hybrid}. The present intervention is upstream: it changes semantic query facets while retaining memory-side machinery.
+
+\paragraph{Graph clustering.}
+Classical label propagation forms communities by local label consensus without a pre-specified count~\cite{raghavan2007label}. Graclus optimizes graph-cut objectives through multilevel weighted kernel $k$-means without eigendecomposition~\cite{dhillon2007graclus}. Leiden adds refinement intended to avoid poorly connected communities~\cite{traag2019leiden}. These methods motivate candidate discoverers, but only tensor connected components and deterministic weighted label propagation are evaluated here.
+
+\paragraph{Long-context attention and memory.}
+Sparse attention constrains token interactions inside the model~\cite{beltagy2020longformer,zaheer2020bigbird}; retrieval-augmented memory and K/V selection constrain which external or cached states become active~\cite{borgeaud2022retro,tang2024quest,liu2025retrievalattention}. \pra focuses on addressable native K/V and bounded materialization~\cite{simao2026pra,simao2026materialization}. Query graph clustering is orthogonal to eventual K/V materialization.
+
+\section{Limitations}
+The controlled generator has clean latent state geometry and is not a substitute for annotated natural query facets. Its cluster ablation uses synthetic prototypes. Natural cohorts are small (16--24 examples per dataset), and sparse selection changes yield wide or boundary-touching intervals. The experiment reuses cached Qwen3-0.6B states from one late layer and does not compare early, middle, head-specific, attention, or residual-update edges. It evaluates requested chunks, not physically materialized tokens, memory-attention outputs, generated answers, or judge scores. Timings exclude query encoding and generation while intentionally including synchronization around graph stages. The builder forms dense pairwise similarities before sparsification, so current complexity is $O(N^2d)$ despite sparse storage. Finally, the selected threshold comes from a synthetic validation distribution; learned calibration may transfer better.
+
+\section{Conclusion}
+Sparse contextual query graphs can discover controlled facets with high fidelity and without an oracle cluster count. The selected connected-components method is tensor-native, deterministic, provenance-preserving, and exactly compatible with the frozen Paper~2.6 scorer. It also improves semantic-only HotpotQA routing over deterministic embedding clustering. These successes do not carry through as a reliable improvement over the stronger lexical--semantic hybrid router across QASPER, HotpotQA, 2Wiki, and MuSiQue. The implementation therefore earns a mechanistic result and reusable experimental boundary, not the broad claim proposed at the start. The gate failure is productive: it rules out algorithm proliferation as the immediate next step and directs attention toward calibrated query representations and rank fusion that can change natural top-$k$ selections at matched cost.
+
+\appendix
+\section{Reimplementation map}
+The following map ties each moving part to the checked-in implementation. Line
+numbers refer to the Paper~2.7 branch.
+\paragraph{Graph schema.} Aligned $[N]$ node and $[E]$ edge tensors, one
+device, and stable provenance: \path{src/pra_hf/query_graph.py:26-107}.
+\paragraph{Lexical features.} Stable hashed token/character $n$-grams with
+shape $[N,B]$: \path{src/pra_hf/query_graph.py:118-147}.
+\paragraph{Graph builder.} Components, top-$k$, threshold, and direction
+policy: \path{src/pra_hf/query_graph.py:200-325}.
+\paragraph{Filtration.} Fixed-edge-set split-only refinement:
+\path{src/pra_hf/query_graph_cluster.py:170-207}.
+\paragraph{Connected components.} Minimum-label gather/scatter propagation:
+\path{src/pra_hf/query_graph_cluster.py:70-104}.
+\paragraph{Weighted propagation.} Deterministic $[N,C]$ weighted votes:
+\path{src/pra_hf/query_graph_cluster.py:107-167}.
+\paragraph{Facet pooling.} $Q^\top H$ normalization and exact provenance:
+\path{src/pra_hf/query_graph_facets.py:76-180}.
+\paragraph{Policy selection.} Validation-only staged edge/$k$/$\tau$/policy
+cross: \path{experiments/paper2_7_query_graph/run_algorithm_cross.py:166-227}.
+\paragraph{Natural evaluation.} Frozen features, parity, paired effects, and
+artifacts: \path{experiments/paper2_7_query_graph/run_natural_retrieval.py:370-624}.
+
+An independent implementation needs five interfaces: slice an encoded query into aligned states and immutable provenance; compute and immediately sparsify explicit edge components; cluster without consulting target facet count; pool states while retaining exact members; and pass pooled states to an unchanged memory scorer at an identical budget. The essential audit is parity with graph mode disabled. Without it, memory-index ordering changes can look like a query-graph effect.
+
+\section{Artifact inventory and reproducibility}
+The result root is \path{docs/papers/shared/results/paper2_7_query_graph/}. It contains:
+\begin{itemize}[leftmargin=*]
+  \item \path{primitives/}: CPU/CUDA parity, timing, and filtration invariants;
+  \item \path{algorithm_cross/}: validation rows, summaries, selected policy, and Figure~\ref{fig:validation};
+  \item \path{controlled/}: held-out metrics, aggregate tables, cluster-ablation rows, and plots;
+  \item \path{natural/}: 74-query rows, parity table, paired effects, facet assignments, selections, config, hashes, claim audit, and plots;
+  \item \path{encoding_mode/}: a record that Gate~5 was ineligible and no unmasked decoder pass ran.
+\end{itemize}
+
+The inherited base commit is \texttt{f1e085de0d82f0c996bc6631effc104cb33f9925}. Run metadata records a dirty research tree because the new implementation was not yet committed; base lineage remains explicit. Controlled validation and test manifest SHA-256 values are \texttt{7af2af96...3571} and \texttt{6ce010fe...7eb8}. Natural and query-feature hashes are in \path{natural/run_config.json}. Commands are documented in \path{experiments/paper2_7_query_graph/README.md}.
+
+\section{Unrun gated extensions}
+The following are designs rather than findings: attention and residual-update edge families; persistent-component facet selection; Graclus; Leiden; learned or soft propagation; a bidirectional query encoder; physical native-K/V materialization; memory-attention execution; answer generation; and LLM judging. Their absence follows the G3 stop rule. Reporting them here prevents readers from interpreting the general graph API as evidence that these variants were evaluated.
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+\end{document}

@@ -20,6 +20,9 @@ from .iterative import (
     IterativeRoutingResult,
     RetrievalGraph,
 )
+from .query_graph import QueryGraph, QueryUnitProvenance, build_query_graph
+from .query_graph_cluster import connected_components, weighted_label_propagation
+from .query_graph_facets import GraphQueryFacetSet, pool_hard_graph_facets
 
 __version__ = "0.2.0rc1"
 
@@ -39,7 +42,14 @@ __all__ = [
     "PRARouter",
     "ReferenceHandle",
     "RetrievalGraph",
+    "GraphQueryFacetSet",
+    "QueryGraph",
+    "QueryUnitProvenance",
     "TokenChunkRecord",
     "TokenNativeIndex",
+    "build_query_graph",
+    "connected_components",
     "evaluate_router_features",
+    "pool_hard_graph_facets",
+    "weighted_label_propagation",
 ]
