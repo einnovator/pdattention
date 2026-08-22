@@ -1,11 +1,14 @@
 import pytest
 
 from pra_hf.channel_geometry import (
+    headroom_decomposition,
     jaccard,
     new_address_tokens,
     oracle_channel,
     precision_recall,
+    reciprocal_rank_fusion,
     select_observable_channel,
+    useful_address,
 )
 
 
@@ -37,3 +40,18 @@ def test_selector_rejects_gold_geometry_and_uses_observable_signals():
         {"query_rare_fraction": 0.3, "exact_top_score": 0.9}
     ) == "exact"
     assert select_observable_channel({"new_address_observed": True}) == "iterative_hybrid"
+
+
+def test_rank_fusion_does_not_mix_incomparable_raw_scores():
+    scores = reciprocal_rank_fusion(
+        {"semantic": {"a": 1, "b": 2}, "exact": {"b": 1, "a": 2}}
+    )
+    assert scores["a"] == scores["b"]
+
+
+def test_headroom_and_useful_address_have_distinct_semantics():
+    assert headroom_decomposition(0.8, 0.6, 0.5) == pytest.approx((0.2, 0.1))
+    assert useful_address(exposed=True, gold_linked=True, successor_rank=3, rank_limit=4)
+    assert not useful_address(
+        exposed=True, gold_linked=False, successor_rank=1, rank_limit=4
+    )

@@ -2,7 +2,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs,amsmath,amssymb,enumitem,tabularx,graphicx,float}
 \usepackage[hidelinks]{hyperref}
-\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{docs/papers/shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_geometry/}}
+\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{../shared/results/paper2_6_hybrid_pra/channel_selection/}{docs/papers/shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_geometry/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/}}
 \setlength{\emergencystretch}{3em}
 \title{Multi-Representational Reference Discovery for Progressive Retrieval Attention:\\Semantic, Lexical, and Iterative Routing Across Four Evidence Tasks}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
@@ -10,7 +10,7 @@
 \begin{document}\maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (PRA) separates a large logical memory from the smaller layer-native key/value working set admitted to attention. Contextual gists provide a semantic index, but names and token sequences can also act as addresses. We implement token-native exact, normalized, IDF-weighted, ordered, approximate, entity, and explicit channels as an identity-aligned sidecar to PRA's bounded iterative router; decoded-word BM25 remains a separate baseline. The sidecar proposes identities; it neither copies nor materializes native K/V. We compare six channels at the same four-chunk request budget over identity-disjoint frozen Qwen3-0.6B features: QASPER ($n=16$ test) favors exact token matching (recall 0.178), HotpotQA ($n=16$) and 2WikiMultiHopQA ($n=24$) favor BM25 (0.398 and 0.262), and MuSiQue ($n=18$) favors approximate token matching (0.156), narrowly ahead of static hybrid (0.151). Static fusion never beats the best single channel. A per-example channel oracle reaches 0.207, 0.489, 0.315, and 0.199 recall, respectively, but a fixed observable heuristic does not close this gap. Rare addresses exposed at hop one identify a positive QASPER subset, not a universal iterative gain. Controlled chains retain the earlier positive mechanism result and the confidently wrong-reference failure. These are cohort-bounded discovery results: no K/V is materialized and no answer generation is run.
+Progressive Retrieval Attention (PRA) separates a large logical memory from the smaller layer-native key/value working set admitted to attention. Contextual gists provide a semantic index, but names and token sequences can also act as addresses. We implement token-native exact, normalized, IDF-weighted, ordered, approximate, entity, and explicit channels as an identity-aligned sidecar to PRA's bounded iterative router; decoded-word BM25 remains a separate baseline. The sidecar proposes identities; it neither copies nor materializes native K/V. At a matched four-chunk request budget over frozen Qwen3-0.6B features, QASPER favors exact matching, HotpotQA and 2Wiki favor BM25, and MuSiQue favors approximate token matching; static fusion never beats the best single channel. Splitting the budget into two root and two successor chunks changes the picture: root and successor representations differ on three of four datasets. True per-example root-channel headroom is 0.014--0.053 recall after separately accounting for validation instability, but neither a hand rule nor a validation-trained linear selector beats the best fixed policy. Rank fusion also fails. A competitive, gold-linked newly exposed address predicts positive iterative gain only on MuSiQue. Approximate matching repairs typos and some aliases, while every channel follows a confidently wrong reference. These are cohort-bounded discovery results: no K/V is materialized and no answer generation is run.
 \end{abstract}
 
 \section{Introduction}
@@ -115,7 +115,9 @@ Crucially, this code does not add a second traversal engine. \texttt{IterativeGi
 
 The product path exposes \texttt{token\_iterative} and \texttt{hybrid\_iterative} configuration modes. \texttt{PRAForCausalLM} constructs the aligned sidecar only for those modes (\texttt{src/pra\_hf/model.py}, lines 428--445). After traversal stops, the existing identity mapper resolves selected chunks across consumption layers at line 449. Only after that mapping are graph nodes marked materialized (lines 457--461). Thus the experiment's requested chunks are not mislabeled as active K/V.
 
-The channel-geometry boundary is independently reusable. \path{src/pra_hf/channel_geometry.py} defines identity-set precision/recall and the deterministic channel oracle at lines 36--55, rare new-address detection at lines 63--79, and the gold-rejecting observable selector at lines 82--108. The experiment adapter in \path{experiments/paper2_6_hybrid_pra/run_channel_geometry.py} reconstructs one 32-token mean gist per frozen natural-feature span at lines 85--113, extracts root ranks, score gaps, lexicality, and evidence dispersion at lines 174--285, and begins the complete artifact-producing protocol at line 363. This split lets another implementation replace the diagnostic policy without changing candidate identity, traversal, or K/V materialization semantics.
+The channel-geometry boundary is independently reusable. \path{src/pra_hf/channel_geometry.py} defines identity-set precision/recall and the deterministic channel oracle at lines 36--55, rare new-address detection at lines 90--106, and the gold-rejecting observable selector beginning at line 123. The experiment adapter in \path{experiments/paper2_6_hybrid_pra/run_channel_geometry.py} reconstructs one 32-token mean gist per frozen natural-feature span beginning at line 85, extracts root ranks, score gaps, lexicality, and evidence dispersion beginning at line 206, and starts the complete artifact-producing protocol at line 395. This split lets another implementation replace the diagnostic policy without changing candidate identity, traversal, or K/V materialization semantics.
+
+The follow-up primitives are similarly explicit. Rank-only fusion, headroom decomposition, and the competitive-address predicate are at lines 63--122 of \path{src/pra_hf/channel_geometry.py}. The root/successor cross-product in \path{experiments/paper2_6_hybrid_pra/run_channel_selection.py} begins at line 216; the validation-only linear selector begins at line 386; extended collision controls begin at line 572; and the complete run begins at line 744. The machine-readable action contract is emitted near line 822 as \path{search_method_action_spec.json}. It names legal root and successor actions, parameters, confidence signals, costs, and failure indicators without importing gold geometry into the controller interface.
 
 \section{Research Questions and Success Levels}
 \begin{enumerate}[leftmargin=*]
@@ -293,6 +295,95 @@ The fixed observable selector does not realize the oracle opportunity. Its recal
 
 A stricter new-address metric requires a normalized tokenizer piece to be absent from the question, present in an admitted hop-one chunk and unrecovered gold evidence, and rare under the example-local IDF. Such addresses occur in 6/16 QASPER, 5/16 Hotpot, 10/24 2Wiki, and 15/18 MuSiQue cases. Iterative-minus-static recall on address-positive cases is +0.100, $-0.047$, $-0.005$, and +0.003, respectively; address-negative effects are 0.000, +0.010, $-0.027$, and $-0.042$. Exposure is therefore necessary for the controlled lexical-following mechanism but not sufficient on natural data. The router must also identify the right address, preserve the right frontier, and rank the successor within the same total budget.
 
+\subsection{Separating Root and Successor Search}
+The preceding four-chunk result treats discovery as one decision. We next allocate two requested chunks to root search $Q\rightarrow C_1$ and two to successor search $(Q,C_1)\rightarrow C_2$. Every root channel is crossed with every successor channel for audit. The successor headline holds the root policy fixed to the validation-selected channel, so successor quality is not averaged over changing root quality. For MuSiQue and 2Wiki, successor truth follows annotated dependency nodes; QASPER and Hotpot lack an ordered graph annotation, so successor truth is explicitly labelled as the remaining unordered evidence. This distinction prevents an inferred chain from becoming dataset truth.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Best held-out root channel and best successor channel under the validation-selected root. Each stage requests two chunks. R/P are stage-local evidence recall/precision; comparisons are exhaustive candidate scores per example.}
+\label{tab:root-successor}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Dataset & Root & Root R/P & Root cmp. & Successor & Succ. R/P & Succ. cmp. & Same space?\\
+\midrule
+QASPER & exact & .096/.312 & 143 & exact new address & .025/.125 & 285 & yes\\
+HotpotQA & exact & .047/.094 & 50 & native semantic & .135/.281 & 100 & no\\
+2Wiki & gist & .076/.125 & 42 & exact new address & .050/.083 & 85 & no\\
+MuSiQue & approximate & .084/.139 & 82 & native semantic & .032/.111 & 163 & no\\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The best space changes after admission on three of four datasets. QASPER retains exact identity at both stages. Hotpot and MuSiQue prefer lexical root discovery but semantic successor expansion; 2Wiki prefers semantic entry and an exact newly exposed successor address. The low absolute recalls remain important: this is evidence that channel action should be state-dependent, not evidence that the present two-stage router solves multi-hop retrieval. Root choices also change with budget. At two root chunks, Hotpot favors exact rather than the four-chunk BM25 winner, showing that retrieval representation and conceptual budget interact.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{.49\linewidth}\centering
+\includegraphics[width=\linewidth]{root_recall.pdf}
+\end{minipage}\hfill
+\begin{minipage}{.49\linewidth}\centering
+\includegraphics[width=\linewidth]{successor_recall.pdf}
+\end{minipage}
+\caption{Root recall at two chunks (left) and successor recall at two chunks under the validation-selected root (right). Root and successor retrieval are different decisions even under one total four-chunk budget.}
+\end{figure}
+
+Per-example oracle transitions are heterogeneous. The most frequent are exact$\rightarrow$exact (9), exact$\rightarrow$native semantic (8), exact$\rightarrow$BM25-state (7), gist$\rightarrow$native semantic (6), and BM25$\rightarrow$native semantic (5). No transition occupies a majority. The corresponding path gains are 0.038, 0.105, 0.076, 0.065, and 0.062. This is direct evidence against forcing root and successor states through one static fusion score.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{channel_transition_heatmap.pdf}
+\caption{Held-out per-example oracle root$\rightarrow$successor transitions. Frequencies describe an upper-bound diagnostic, not a deployable controller.}
+\end{figure}
+
+\subsection{True Headroom and Observable Selection}
+We decompose oracle gain as
+\[
+H_{selection}=R_{oracle}-R_{best\ heldout\ fixed},\qquad
+H_{validation}=R_{best\ heldout\ fixed}-R_{validation\ selected}.
+\]
+Mean $H_{selection}$ is 0.014 on QASPER, 0.021 on Hotpot, 0.053 on 2Wiki, and 0.013 on MuSiQue. Mean $H_{validation}$ is 0, 0.031, 0.026, and 0. This corrects the earlier four-chunk ``oracle headroom'' figure, which combined adaptive opportunity with small-validation reversal. At the two-chunk root stage, 2Wiki has the largest true adaptive opportunity, while Hotpot's validation instability is larger than its true selector headroom.
+
+With the validation root held fixed, successor $H_{selection}$ is 0.027, 0.028, 0.056, and 0.016; successor $H_{validation}$ is 0, 0.056, 0.011, and 0.008. Thus 2Wiki retains the largest true channel opportunity at both stages, while Hotpot's successor-channel validation reversal is twice its true adaptive headroom. The action space is real, but these small calibration splits cannot choose it reliably.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{headroom_decomposition.pdf}
+\caption{True per-example channel-selection headroom separated from validation-selected channel instability. Negative per-example instability is allowed; bars report means.}
+\end{figure}
+
+Neither modest selector baseline closes the gap. The fixed hand rule reaches root recall 0.020, 0.031, 0.040, and 0.073 across QASPER, Hotpot, 2Wiki, and MuSiQue. A validation-trained linear softmax selector over 24 query-only and score/rank features reaches 0.047, 0.016, 0.053, and 0.084. The best held-out fixed channels reach 0.096, 0.047, 0.076, and 0.084; the per-example oracle reaches 0.110, 0.068, 0.130, and 0.096. The linear model ties the fixed MuSiQue result and improves over the validation-selected 2Wiki channel by 0.003, but it does not justify replacing a fixed policy. No MLP is fitted because the 58 validation identities do not support a larger controller.
+
+Root-channel disagreement also fails as a standalone selector feature. Its Pearson correlation with true per-example oracle headroom is only 0.052; selected-set Jaccard, top-10 rank overlap, and score disagreement have correlations 0.020, 0.107, and 0.013. Disagreement reveals representation diversity, but diversity alone does not say which channel is right.
+
+\subsection{Why Static Fusion Loses}
+At a two-chunk root budget, lexical channels add unique gold chunks relative to gist---0.812 per QASPER example, 0.188 Hotpot, 0.208 2Wiki, and 0.333 MuSiQue---but simultaneously add 3.062, 3.500, 2.792, and 2.778 unique distractors. Static hybrid recall is 0.031, 0.031, 0.053, and 0.082, below the per-example best single-channel recall of 0.110, 0.068, 0.130, and 0.087. The failure is therefore budget dilution plus score-scale mismatch, not lack of complementary evidence. Reciprocal-rank fusion avoids raw-score calibration assumptions but reaches only 0.035, 0.044, 0.053, and 0.045 recall. It is not a hidden robust winner.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{hybrid_unique_contributions.pdf}
+\caption{Unique lexical evidence and distractors relative to gist at the root stage. Complementary candidates are mostly distractors under the fixed two-chunk budget.}
+\end{figure}
+
+The inherited four-chunk MuSiQue analysis contains three cases where approximate retrieval strictly beats exact, BM25, and gist retrieval. All three have partial named-entity mentions under the observable taxonomy; this supports a partial-mention explanation on this tiny subset, not a general morphology or spelling claim. The two-chunk analysis finds no strict approximate-over-exact root win because the channels tie on the affected examples. QASPER's three strict exact wins are classified as explicit evidence wording. The two strict Hotpot/2Wiki BM25 wins use multiple moderately informative terms rather than one dominant span. These manual-rule labels are auditable hypotheses for larger annotation, not ground truth causes.
+
+\subsection{Useful Addresses and Robustness}
+We tighten the iterative condition to
+\[
+\mathrm{UsefulAddress}=\mathrm{Exposed}\land\mathrm{GoldLinked}\land
+(\mathrm{successor\ rank}\leq4).
+\]
+Under validation-selected roots, useful-address rates are 0.250 on QASPER, 0.063 on Hotpot, 0 on the 18 successor-bearing 2Wiki examples, and 0.222 on MuSiQue. UsefulAddress predicts a positive hybrid-state versus native-semantic path effect only on MuSiQue: +0.054 versus $-0.001$ without a useful address. QASPER is $-0.021$ in both strata; the single useful Hotpot case ties, and no 2Wiki address is competitive. Rare exposure is thus insufficient until the address also ranks within retry reach, and even the stricter predicate is dataset-dependent.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.65\linewidth]{useful_address_gain.pdf}
+\caption{Path-recall gain of hybrid-state over native-semantic successor search. A competitive, gold-linked address is predictive only in the present MuSiQue subset.}
+\end{figure}
+
+The extended controlled suite separates normalization from disambiguation. All three channels recover clean, case, punctuation, near-entity, shared-prefix, numeric-ID, and URL/domain targets in all 20 trials without selecting the designated distractor. Exact matching recovers no typo targets and selects a near typo distractor in half; approximate matching recovers every typo and half of synonym/alias targets; iterative hybrid recovers half the typos but no aliases. Every channel follows the confidently wrong reference (target recovery 0, wrong-target recovery 1). Its hybrid wrong-target confidence is 0.396, below the diagnostic 0.5 action threshold, so retry is available in this constructed case, but calibration remains too weak for a deployment claim.
+
 \subsection{Controlled Chains and Failure Controls}
 \begin{figure}[H]
 \centering
@@ -343,14 +434,14 @@ where $\mathbf{s}_i$ preserves channel scores, $p_i$ provenance, and $c_i$ has t
 Paper 3 can consume this record without making materialization depend on one retriever.
 
 \section{Contributions}
-This work contributes: (1) a provenance-preserving, multi-representational discovery formulation for PRA; (2) a model-token-native matcher with exact, weighted, ordered, approximate, entity, and explicit channels, evaluated beside decoded-word BM25; (3) one bounded iterative engine shared by gist-only, token-only, and hybrid policies; (4) tokenization and confidently wrong-reference controls; (5) a four-dataset, matched-budget precision--recall and channel-diversity analysis; (6) a leakage-audited separation between explanatory gold geometry, observable channel selection, and per-example oracle headroom; (7) evidence that fixed static fusion does not dominate the best lexical channel, while the best channel changes across tasks and examples; and (8) a clean identity-level interface between discovery and materialization.
+This work contributes: (1) a provenance-preserving, multi-representational discovery formulation for PRA; (2) a model-token-native matcher evaluated beside decoded-word BM25; (3) one bounded iterative engine shared by semantic, token, and hybrid policies; (4) a four-dataset, matched-budget precision--recall and channel-diversity analysis; (5) a root/successor decomposition showing state-dependent channel transitions; (6) a separation of true per-example oracle headroom from validation instability; (7) leakage-audited hand-rule and linear selectors plus an RRF control; (8) a stricter competitive, gold-linked UsefulAddress diagnostic and extended collision controls; and (9) a machine-readable search-method action space for Paper~3.5 and a clean identity-level handoff to materialization.
 
 \section{Limitations and Falsification}
-The natural tests contain 16 QASPER, 16 HotpotQA, 24 2Wiki, and 18 MuSiQue examples. They use one frozen model, one routing layer, one tokenizer, one chunk size, and inherited feature captures made under two compatible but separately generated protocols. Bootstrap intervals quantify sampling uncertainty but do not substitute for larger replications. Validation contains only eight QASPER and Hotpot identities, which makes fixed-channel selection visibly unstable. Geometry strata are descriptive and partly gold-derived; they explain failures but cannot be deployment inputs. Token indexes add storage and runtime cost; the exhaustive Python scorer is too slow for serving claims. Tokenizer segmentation is unstable across surface forms, aliases can be ambiguous, and some tasks contain little token-level continuity. Most importantly, the heuristic fails to close the oracle gap and the wrong-reference control demonstrates overconfident failure rather than graceful degradation.
+The natural tests contain 16 QASPER, 16 HotpotQA, 24 2Wiki, and 18 MuSiQue examples. Only 18 held-out 2Wiki examples have a distinct annotated successor under this partition. The study uses one frozen model, one routing layer, one tokenizer, one chunk size, and inherited feature captures made under two compatible but separately generated protocols. Bootstrap intervals quantify sampling uncertainty but do not substitute for larger replications. Validation contains only eight QASPER and Hotpot identities, which makes fixed-channel selection visibly unstable and the 24-feature linear selector underpowered. QASPER and Hotpot successor labels are unordered evidence remainders rather than annotated dependency edges. Geometry strata and win taxonomies are descriptive and partly gold-derived; they explain failures but cannot be deployment inputs. Token indexes add storage and runtime cost; the exhaustive Python scorer is too slow for serving claims. Most importantly, neither selector closes the oracle gap, UsefulAddress is predictive only on MuSiQue, and confidently wrong references defeat every channel.
 
 The end-to-end claim has a separate bar. We did not run generation, EM/F1, or native-KV consumption in this study. The results therefore establish a discovery mechanism and identify a discovery--consumption question; they do not establish improved reasoning. QASPER and the wrong-reference control also show that a single fusion policy is not robust enough for deployment.
 
 \section{Conclusion}
-PRA discovery need not be one hidden-state similarity function. An identity-aligned token sidecar can participate in bounded gist traversal without touching native K/V. Across four small held-out cohorts, exact spans lead QASPER, BM25 leads Hotpot and 2Wiki, and approximate tokenizer-piece matching leads MuSiQue. Static hybrid improves on gist but never beats the strongest single channel; iteration helps a rare-address QASPER subset but is not a general solution. Low channel overlap and positive per-example oracle headroom show that the representations contain complementary evidence, while validation reversals and heuristic failure show that choosing among them remains unsolved. The resulting claim is narrower and more useful than universal fusion: PRA discovery is multi-representational, retrieval channel should become an adaptive control decision, and downstream materialization and generation must remain separate evaluation stages.
+PRA discovery need not be one hidden-state similarity function. An identity-aligned token sidecar can participate in bounded gist traversal without touching native K/V. Across four small held-out cohorts, exact, BM25, approximate, and semantic channels each occupy a useful regime. Root and successor spaces differ on three datasets, and no oracle transition dominates. Static score fusion and rank fusion both dilute a tight budget with complementary distractors. Yet the observable selectors remain below the best fixed policy, and competitive addresses help only one cohort. The supported conclusion is therefore architectural rather than triumphant: retrieval representation is a state- and task-dependent action; Paper~3.5 should learn channel and effort jointly from larger calibration cohorts, while Paper~3 independently controls materialization. Until then, fixed policies, retry, and abstention remain safer than pretending one fusion rule is universal.
 
 \end{document}

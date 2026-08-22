@@ -211,6 +211,11 @@ def _route_case(
             for node in (result.graph.nodes if condition != "O1_oracle" else ())
             if node.node_id in selected
         ),
+        "selected_confidence_pairs": "|".join(
+            f"{node.node_id}@{float(node.confidence if node.confidence is not None else (node.direct_query_score + 1.0) / 2.0):.8f}"
+            for node in (result.graph.nodes if condition != "O1_oracle" else ())
+            if node.node_id in selected
+        ),
     }
     return row, confidence_rows
 

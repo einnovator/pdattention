@@ -47,7 +47,7 @@ from pra_hf.hybrid_discovery import (  # noqa: E402
     _normalize_piece,
 )
 from pra_hf.iterative import IterativeGistRouter  # noqa: E402
-from pra_hf.natural_reasoning_graph import load_2wiki, load_musique  # noqa: E402
+from pra_hf.natural_reasoning_graph import parse_2wiki_row, parse_musique_row  # noqa: E402
 from pra_torch.hf import QUERY_QUESTION_EXPONENTIAL, aggregate_query_states  # noqa: E402
 
 
@@ -88,6 +88,16 @@ def _natural_feature(row: dict) -> dict:
     hidden = row["token_hidden"].float()
     gists = torch.stack([hidden[start:end].mean(0) for start, end in spans])
     gold_spans = [tuple(map(int, span)) for span in row["node_token_spans"].values()]
+    root_spans = [
+        tuple(map(int, row["node_token_spans"][node_id]))
+        for node_id in row["root_node_ids"]
+        if node_id in row["node_token_spans"]
+    ]
+    successor_spans = [
+        tuple(map(int, span))
+        for node_id, span in row["node_token_spans"].items()
+        if node_id not in set(row["root_node_ids"])
+    ]
     positive = torch.tensor(
         [any(_overlap(span, gold) for gold in gold_spans) for span in spans],
         dtype=torch.bool,
@@ -107,6 +117,14 @@ def _natural_feature(row: dict) -> dict:
         "chunk_spans": spans,
         "memory_gists": gists,
         "positive_mask": positive,
+        "root_positive_mask": torch.tensor(
+            [any(_overlap(span, gold) for gold in root_spans) for span in spans],
+            dtype=torch.bool,
+        ),
+        "successor_positive_mask": torch.tensor(
+            [any(_overlap(span, gold) for gold in successor_spans) for span in spans],
+            dtype=torch.bool,
+        ),
         "queries": {"question_exp_h2.0": query},
         "evidence_spans": gold_spans,
         "source_tokens": int(row["source_tokens"]),
@@ -134,7 +152,21 @@ def _load_cases(args) -> list[tuple[dict, dict]]:
         args.natural_features, map_location="cpu", weights_only=False, mmap=True
     )
     selected_ids = {row["example_id"] for row in selected}
-    natural = load_musique(args.musique_dev) + load_2wiki(args.twowiki_dev)
+    natural = []
+    with args.musique_dev.open(encoding="utf-8") as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            raw = json.loads(line)
+            if str(raw["id"]) in selected_ids:
+                natural.append(parse_musique_row(raw))
+    wiki_rows = json.loads(args.twowiki_dev.read_text(encoding="utf-8"))
+    natural.extend(
+        parse_2wiki_row(raw)
+        for raw in wiki_rows
+        if str(raw["_id"]) in selected_ids
+    )
+    del wiki_rows
     natural_by_id = {row.example_id: row for row in natural if row.example_id in selected_ids}
     if set(natural_by_id) != selected_ids:
         raise ValueError("Natural feature identities do not match local labelled datasets.")

@@ -91,3 +91,19 @@ geometry may explain observed channel advantage, but the diagnostic selector
 rejects gold-derived fields. Every primary route is asserted to return exactly
 four unique chunks. Discovery comparisons are logged, materialized K/V remains
 zero, and the claim audit records that no answer generation is performed.
+
+The next iteration separates the four-chunk budget into two root requests and
+two successor requests. All 25 root/successor channel pairs are retained for
+audit, while successor headlines hold the validation-selected root fixed.
+`headroom_decomposition()` separates true per-example selector opportunity from
+validation-selection instability. A validation-only linear selector uses 24
+query/score/rank observables; no MLP is fitted. Reciprocal-rank fusion is the
+only added fusion control.
+
+Natural successor semantics remain explicit: MuSiQue/2Wiki use annotated graph
+dependencies, while QASPER/Hotpot use a separately labelled unordered evidence
+remainder. `UsefulAddress` requires exposure, a gold link, and rank within four.
+The extended robustness matrix distinguishes target and wrong-target recovery
+for near entities, shared prefixes, numeric IDs, URL paths, and aliases. The
+Paper-3.5 handoff is serialized in `search_method_action_spec.json`; it exposes
+search actions and costs but no gold geometry or materialization decision.

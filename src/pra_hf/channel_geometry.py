@@ -60,6 +60,33 @@ def jaccard(left: Iterable[str], right: Iterable[str]) -> float:
     return len(left_set & right_set) / len(union) if union else 1.0
 
 
+def reciprocal_rank_fusion(
+    rankings: Mapping[str, Mapping[str, int]], *, constant: float = 60.0
+) -> dict[str, float]:
+    """Fuse channel ranks without assuming that raw scores are calibrated."""
+    if constant <= 0:
+        raise ValueError("RRF constant must be positive.")
+    identities = {identity for ranking in rankings.values() for identity in ranking}
+    return {
+        identity: sum(
+            1.0 / (constant + ranking[identity])
+            for ranking in rankings.values()
+            if identity in ranking
+        )
+        for identity in identities
+    }
+
+
+def headroom_decomposition(
+    oracle: float, best_heldout_fixed: float, validation_selected: float
+) -> tuple[float, float]:
+    """Separate adaptive opportunity from validation-selection instability."""
+    return (
+        float(oracle) - float(best_heldout_fixed),
+        float(best_heldout_fixed) - float(validation_selected),
+    )
+
+
 def new_address_tokens(
     query_tokens: Iterable[str],
     first_hop_tokens: Iterable[str],
@@ -77,6 +104,20 @@ def new_address_tokens(
     exposed = {value for value in first_hop_tokens if len(value) >= minimum_length}
     later = {value for value in later_gold_tokens if len(value) >= minimum_length}
     return (exposed & later) - query
+
+
+def useful_address(
+    *, exposed: bool, gold_linked: bool, successor_rank: int | None, rank_limit: int
+) -> bool:
+    """Require an exposed address to link gold and rank within retry reach."""
+    if rank_limit <= 0:
+        raise ValueError("rank_limit must be positive.")
+    return bool(
+        exposed
+        and gold_linked
+        and successor_rank is not None
+        and int(successor_rank) <= rank_limit
+    )
 
 
 def select_observable_channel(features: Mapping[str, float | int | bool]) -> str:
