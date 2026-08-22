@@ -47,6 +47,12 @@ QASPER failures at 2.49 mean added cost; eight HotpotQA and QASPER cases use a s
 change, while compound fallback remains necessary elsewhere.  This is retry headroom, not a learned
 online policy.
 
+Normalized candidate accounting exposes a different controller tradeoff from the abstract cost
+alone.  On QASPER, the factorized oracle recovers .917 of evidence parents while admitting 10.9%
+of candidates; targeted retry reaches the same recall at 19.0%.  On HotpotQA, targeted retry raises
+evidence-parent recall from .733 to .948, but expands admission from 69.7% to 75.6%.  These are
+identity-level discovery and native-K/V activation measurements, not generated-answer gains.
+
 A separate four-dataset study treats retrieval representation itself as an action.  It replays 132
 frozen Paper-2.6 examples, of which 120 have a labelled successor decision.  Validation selects
 exact root search, reaching .066 held-out root recall versus .104 for the per-example root oracle.
@@ -799,6 +805,72 @@ localizes missing capacity.  It does not establish that an oracle-free diagnosti
 The endpoint remains direct initial prediction followed by at most one confidence-triggered,
 explicitly traced correction.
 
+\subsection{Candidate-normalized controller efficiency}
+\label{sec:normalized-controller-efficiency}
+
+Abstract controller cost is useful for comparing actions within this study, but it does not reveal
+how much of the available memory was searched or admitted.  For each example, let $N$ be the number
+of candidate source parents, $E$ the number of evidence parents, $K_{search}$ the unique parents
+visited by routing, and $K_{admit}$ the unique parents whose native K/V enters the consumer.  We
+report
+\begin{equation}
+R_E=\frac{|S_{admit}\cap G|}{E},\qquad
+P_E=\frac{|S_{admit}\cap G|}{K_{admit}},\qquad
+C_E=\mathbf{1}[G\subseteq S_{admit}],
+\end{equation}
+together with admission fraction $\phi=K_{admit}/N$, working-set overhead
+$\omega=K_{admit}/E$, and the physical token count $KV_{active}$.  Search comparisons,
+$K_{search}$, $K_{admit}$, and $KV_{active}$ remain separate quantities.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out candidate-normalized efficiency.  Learned policies are five-seed means;
+oracle and retry rows are evaluator-side one-seed ceilings.  $KV$ is mean admitted native-K/V
+tokens.}
+\label{tab:normalized-controller-efficiency}
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Policy & $R_E$ & $P_E$ & $C_E$ & $K/N$ & $K/E$ & $KV$ \\
+\midrule
+HotpotQA & R0 profile & .733 & .400 & .543 & .697 & 1.905 & 979 \\
+ & factorized oracle & .824 & .624 & .600 & .576 & 1.633 & 840 \\
+ & targeted retry & .948 & .476 & .886 & .756 & 2.090 & 1079 \\
+\addlinespace
+QASPER & R0 profile & .750 & .450 & .700 & .182 & 2.267 & 636 \\
+ & factorized oracle & .917 & .796 & .833 & .109 & 1.550 & 431 \\
+ & targeted retry & .917 & .588 & .833 & .190 & 2.517 & 675 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The normalized view sharpens both positive and negative results.  QASPER has a strong sparse
+factorized ceiling: its oracle improves recall and precision over R0 while admitting fewer
+candidates and 205 fewer native-K/V tokens on average.  Targeted retry reaches that recall ceiling,
+but with more distractors and physical states.  HotpotQA is less sparse at this parent granularity;
+retry buys substantially higher evidence recall by broadening admission, while the oracle identifies
+a smaller and more precise working set than R0.  Across learned R1--R3A policies, lower $K/N$ is
+accompanied by lower $C_E$: on HotpotQA complete recovery falls to .257--.291, and on QASPER to
+.620--.687.  Their lower nominal cost therefore reflects under-allocation rather than a superior
+frontier.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_5_adaptive_pra/controller_oracle_learned_pareto.pdf}
+\end{minipage}
+\hfill
+\begin{minipage}{.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_5_adaptive_pra/search_more_admit_less.pdf}
+\end{minipage}
+\caption{Left: evidence recall against admitted candidate fraction for the measured controller
+frontier.  Right: row-level search and admission fractions; points below the diagonal search more
+parents than they materialize.  Neither axis is an end-to-end latency measurement.}
+\label{fig:normalized-controller-efficiency}
+\end{figure}
+
 \section{Retrieval Representation as an Adaptive Action}
 \label{sec:adaptive-search-methods}
 
@@ -1451,6 +1523,13 @@ validation-selected contextual upper bound do not reverse that result.  R0 stays
 One bounded oracle corrective action exposes substantial retry headroom, but compound changes and
 five unsolved QASPER units prevent a stronger online claim.
 
+Candidate normalization explains where that headroom comes from.  QASPER's factorized oracle reaches
+.917 evidence-parent recall and .796 precision while admitting 10.9% of candidates, compared with
+.750, .450, and 18.2% for R0.  Retry reaches the oracle recall but admits 19.0% and has lower
+precision.  HotpotQA retry raises recall to .948 at a denser 75.6% admission fraction.  Thus adaptive
+control can expose sparse working sets, especially on QASPER, but the learned controller has not yet
+found them reliably.
+
 Retrieval representation adds another genuine but unresolved control surface.  Exact root search
 selected on validation reaches .066 recall, while the root oracle reaches .104.  At the two-stage
 budget, the fixed BM25$\rightarrow$native-semantic pair reaches .030, the interpretable cascade .048,
@@ -1484,6 +1563,9 @@ interaction diagnostics, regret, latency, query-class summaries, findings, and f
 \item factorized action space, per-unit oracles and Pareto fronts, quantization regret, parameter
 requirements/interactions, precision--recall and search--admission surfaces, factorized router
 targets/results, bounded retry rows, findings JSON, and figures;
+\item normalized controller rows, candidate and evidence counts, search/admission fractions,
+physical native-K/V tokens, complete-recovery and Pareto tables, allocation outcomes, claim audit,
+and ten normalized figures;
 \item self-router representation/configuration manifests, layer/pooling/profile sweeps, contextual
 drift, feature ablation, target-family rows, under/over-allocation, exact-reuse accounting, findings,
 and figures;
@@ -1498,6 +1580,7 @@ The complete study runs with:
 \begin{lstlisting}[language=bash]
 python -m experiments.paper3_5_adaptive_pra.run_study
 python -m experiments.paper3_5_adaptive_pra.factorized_study
+python -m experiments.paper3_5_adaptive_pra.normalized_efficiency
 python -m experiments.paper3_5_adaptive_pra.precompute_self_router_features --device cuda
 python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
 python -m experiments.paper3_5_adaptive_pra.adaptive_search_methods

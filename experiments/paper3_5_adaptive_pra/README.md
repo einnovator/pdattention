@@ -36,7 +36,12 @@ Run the adaptive root/successor search-method study with:
 
 ```powershell
 python -m experiments.paper3_5_adaptive_pra.adaptive_search_methods
+python -m experiments.paper3_5_adaptive_pra.normalized_efficiency
 ```
+
+The final command reports candidate-normalized search and admission breadth,
+evidence-normalized working-set overhead, physical native-K/V tokens, and
+bounded-retry increments without collapsing them into one abstract cost.
 
 This runner imports the deterministic Paper 2.6 action specification, replays
 its frozen four-dataset channel rows, and learns validation-only root,

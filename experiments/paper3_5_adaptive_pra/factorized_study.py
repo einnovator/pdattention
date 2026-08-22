@@ -219,6 +219,7 @@ def evaluate_action(
     kv = evidence_kv_metrics(materialized, example.oracle, lengths)
     conceptual_metrics = evidence_kv_metrics(visited, example.oracle, lengths)
     groups = example.groups
+    evidence_parents = sorted(set().union(*(set(group) for group in groups))) if groups else []
     conceptual_chain = float(bool(groups) and all(set(group) & set(visited) for group in groups))
     materialized_chain = float(bool(groups) and all(set(group) & set(materialized) for group in groups))
     costs = factorized_cost(
@@ -237,6 +238,9 @@ def evaluate_action(
         **action.to_dict(),
         "available_query_facets": example.facet_count,
         "selected_facet_indices": json.dumps([int(value) for value in source_facets]),
+        "parent_count": len(example.parent_spans),
+        "evidence_parent_count": len(evidence_parents),
+        "evidence_parent_ids": json.dumps(evidence_parents),
         "root_ids": json.dumps(roots),
         "root_available": float(bool(first_group & set(roots))),
         "visited_ids": json.dumps(visited),
@@ -340,6 +344,10 @@ def build_oracle_artifacts(units: Sequence[UnitSurface], output: Path) -> dict[t
             }
         )
     _write_csv(output / "factorized_oracle_rows.csv", oracle_rows)
+    _write_csv(
+        output / "fixed_policy_rows.csv",
+        [dict(_row_for_action(unit, FactorizedEffortAction.profile(1))) for unit in units],
+    )
     _write_csv(output / "factorized_pareto_frontiers.csv", pareto_rows)
     _write_csv(output / "profile_quantization_regret.csv", regrets)
     return oracles
@@ -565,6 +573,14 @@ def run_router_study(
                         "cost_regret": float(selected["abstract_cost"]) - float(oracle["abstract_cost"]),
                         "allocation_outcome": allocation_outcome(selected, oracle),
                         "invalid_combination_repaired": int(repaired),
+                        **{f"selected_{name}": selected[name] for name in (
+                            "parent_count", "evidence_parent_count", "evidence_parent_ids",
+                            "visited_ids", "materialized_ids", "visited_count",
+                            "materialized_parent_count", "conceptual_evidence_recall",
+                            "conceptual_evidence_precision", "evidence_kv_recall",
+                            "evidence_kv_precision", "materialized_kv_tokens",
+                            "root_comparisons", "transition_comparisons",
+                        )},
                         **action.to_dict(),
                     }
                 )
@@ -590,6 +606,14 @@ def run_router_study(
                     "cost_regret": float(selected["abstract_cost"]) - float(oracle["abstract_cost"]),
                     "allocation_outcome": allocation_outcome(selected, oracle),
                     "invalid_combination_repaired": 0,
+                    **{f"selected_{name}": selected[name] for name in (
+                        "parent_count", "evidence_parent_count", "evidence_parent_ids",
+                        "visited_ids", "materialized_ids", "visited_count",
+                        "materialized_parent_count", "conceptual_evidence_recall",
+                        "conceptual_evidence_precision", "evidence_kv_recall",
+                        "evidence_kv_precision", "materialized_kv_tokens",
+                        "root_comparisons", "transition_comparisons",
+                    )},
                     **action.to_dict(),
                 }
             )
@@ -683,6 +707,21 @@ def run_targeted_retry(
                 "extra_selected_kv_tokens": max(0.0, float(final["selected_kv_tokens"]) - float(initial["selected_kv_tokens"])),
                 "extra_transition_comparisons": max(0.0, float(final["transition_comparisons"]) - float(initial["transition_comparisons"])),
                 "oracle_cost": oracle["abstract_cost"],
+                **{f"initial_{name}": initial[name] for name in (
+                    "parent_count", "evidence_parent_count", "evidence_parent_ids",
+                    "visited_ids", "materialized_ids", "visited_count",
+                    "materialized_parent_count", "conceptual_evidence_recall",
+                    "conceptual_evidence_precision", "evidence_kv_recall",
+                    "evidence_kv_precision", "materialized_kv_tokens",
+                    "root_comparisons", "transition_comparisons",
+                )},
+                **{f"final_{name}": final[name] for name in (
+                    "visited_ids", "materialized_ids", "visited_count",
+                    "materialized_parent_count", "conceptual_evidence_recall",
+                    "conceptual_evidence_precision", "evidence_kv_recall",
+                    "evidence_kv_precision", "materialized_kv_tokens",
+                    "root_comparisons", "transition_comparisons",
+                )},
             }
         )
     _write_csv(output / "targeted_retry_results.csv", retry_rows)
