@@ -552,6 +552,11 @@ def _robust_feature(tokenizer, index, perturbation):
     elif perturbation == "numeric_id_collision": correct, wrong, mention = f"ID-{index}73142", f"ID-{index}73124", f"ID-{index}73142"
     elif perturbation == "url_domain_overlap": correct, wrong, mention = f"api.example.org/v2/orders/{index}", f"api.example.org/v2/order/{index}", f"api.example.org/v2/orders/{index}"
     elif perturbation == "alias_synonym": correct, wrong, mention = f"New York City {index}", f"York City {index}", f"Big Apple {index}"
+    elif perturbation == "same_name_wrong_entity": correct, wrong, mention = f"Mercury planet {index}", f"Mercury element {index}", f"Mercury {index}"
+    elif perturbation == "same_class_wrong_instance": correct, wrong, mention = f"Cobalt Project {index}", f"Copper Project {index}", f"Project {index}"
+    elif perturbation == "correct_entity_wrong_relation": correct, wrong, mention = f"Cobalt parent {index}", f"Cobalt rival {index}", f"Cobalt {index}"
+    elif perturbation == "stale_alternate_alias": correct, wrong, mention = f"CurrentName{index}", f"OldName{index}", f"OldName{index}"
+    elif perturbation == "two_plausible_references": correct, wrong, mention = f"Cobalt option {index}", f"Copper option {index}", f"Cobalt option {index} or Copper option {index}"
     chunks = [f"{entry} points to {mention}", f"{wrong} stores a plausible distractor", f"Unrelated {index} generic text", f"{correct} stores payload Zeta{index}"]
     if perturbation == "confidently_wrong":
         wrong, correct = f"Wrong{index}", f"Correct{index}"
@@ -570,7 +575,13 @@ def _robust_feature(tokenizer, index, perturbation):
 
 
 def _robustness(tokenizer):
-    perturbations = ("clean","case","punctuation","typo","confidently_wrong","near_entity_collision","shared_prefix","numeric_id_collision","url_domain_overlap","alias_synonym")
+    perturbations = (
+        "clean", "case", "punctuation", "typo", "alias_synonym",
+        "confidently_wrong", "near_entity_collision", "shared_prefix",
+        "numeric_id_collision", "url_domain_overlap", "same_name_wrong_entity",
+        "same_class_wrong_instance", "correct_entity_wrong_relation",
+        "stale_alternate_alias", "two_plausible_references",
+    )
     modes = {"exact":"token_exact","approx":"token_approx","hybrid":"iterative_hybrid"}
     rows=[]
     for perturbation in perturbations:
@@ -583,6 +594,117 @@ def _robustness(tokenizer):
                 wrong_conf=confidence.get(wrong,0.0)
                 rows.append({"perturbation":perturbation,"example_id":feature["example_id"],"channel":channel,"target_recovery":float(target in selected),"wrong_target_recovery":float(wrong in selected),"wrong_target_confidence":wrong_conf,"abstention_at_0_5":float(max(confidence.values(),default=0)<.5),"retry_opportunity":float(target not in selected and wrong_conf<.6)})
     return rows
+
+
+def _search_method_action_spec():
+    """Return the stable discovery-method contract consumed by Paper 3.5."""
+    shared_root = {
+        "stage": "root",
+        "required_state": ["question_token_ids", "question_hidden_state"],
+        "required_index": ["identity_aligned_gist_index", "token_native_sidecar"],
+        "parameters": {"top_k": [1, 2, 4], "chunk_tokens": [32]},
+        "confidence_outputs": [
+            "top_score", "top1_top2_gap", "effective_support",
+            "top_candidate_agreement", "semantic_lexical_consistency",
+        ],
+        "cost_metrics": [
+            "comparisons", "index_lookups", "token_span_operations",
+            "latency_ms", "index_memory_bytes",
+        ],
+    }
+    shared_successor = {
+        "stage": "successor",
+        "required_state": ["admitted_root_chunk", "current_path"],
+        "required_index": ["identity_aligned_gist_index", "token_native_sidecar"],
+        "parameters": {"top_k": [1, 2, 4]},
+        "confidence_outputs": [
+            "top_score", "top1_top2_gap", "effective_support",
+            "current_path_consistency", "candidate_ambiguity",
+        ],
+        "cost_metrics": [
+            "frontiers", "comparisons", "index_lookups",
+            "token_span_operations", "latency_ms", "index_memory_bytes",
+        ],
+    }
+    roots = {
+        "semantic": {
+            **shared_root,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[gist_only]",
+            "legacy_channel": "gist",
+            "required_index": ["identity_aligned_gist_index"],
+            "known_failure_modes": ["semantic_collision", "lexical_identity_miss"],
+        },
+        "exact": {
+            **shared_root,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[token_exact]",
+            "legacy_channel": "exact",
+            "known_failure_modes": ["typo_miss", "alias_miss", "same_name_ambiguity"],
+        },
+        "bm25": {
+            **shared_root,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[bm25]",
+            "legacy_channel": "bm25",
+            "known_failure_modes": ["term_collision", "relation_ambiguity", "budget_dilution"],
+        },
+        "approximate": {
+            **shared_root,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[token_approx]",
+            "legacy_channel": "approx",
+            "known_failure_modes": ["near_entity_collision", "shared_prefix_collision"],
+        },
+        "hybrid": {
+            **shared_root,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[token_semantic_rerank]",
+            "legacy_channel": "hybrid",
+            "known_failure_modes": ["score_scale_mismatch", "budget_dilution"],
+        },
+    }
+    successors = {
+        "native_semantic": {
+            **shared_successor,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[gist_only,hop=2]",
+            "required_index": ["identity_aligned_gist_index"],
+            "parameters": {"top_k": [1, 2, 4], "state": "admitted_chunk"},
+            "known_failure_modes": ["semantic_collision", "new_address_blindness"],
+        },
+        "exact_new_address": {
+            **shared_successor,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[token_exact,hop=2]",
+            "parameters": {"top_k": [1, 2, 4], "state": "admitted_chunk"},
+            "known_failure_modes": ["typo_miss", "alias_miss", "same_name_ambiguity"],
+        },
+        "bm25_state": {
+            **shared_successor,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[bm25,hop=2]",
+            "parameters": {"top_k": [1, 2, 4], "state": "question_plus_admitted_chunk"},
+            "known_failure_modes": ["state_query_dilution", "term_collision"],
+        },
+        "approximate_new_address": {
+            **shared_successor,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[token_approx,hop=2]",
+            "parameters": {"top_k": [1, 2, 4], "state": "admitted_chunk"},
+            "known_failure_modes": ["near_entity_collision", "shared_prefix_collision"],
+        },
+        "hybrid_state": {
+            **shared_successor,
+            "implementation_id": "pra_hf.hybrid_discovery:TokenNativeIndex.score[iterative_hybrid,hop=2]",
+            "parameters": {"top_k": [1, 2, 4], "state": "question_plus_admitted_chunk"},
+            "known_failure_modes": ["score_scale_mismatch", "distractor_expansion"],
+        },
+    }
+    # Legacy keys remain aliases during the Paper 3.5 transition.
+    for definition in [*roots.values(), *successors.values()]:
+        definition["allowed_params"] = definition["parameters"]
+        definition["confidence_signals"] = definition["confidence_outputs"]
+        definition["failure_indicators"] = definition["known_failure_modes"]
+    return {
+        "schema_version": "2.0",
+        "contract": "paper2.6-search-method-action-space",
+        "root_successor_independent": True,
+        "root_search_methods": roots,
+        "successor_search_methods": successors,
+        "materialization_performed": False,
+    }
 
 
 def _plots(output, root_summary, successor_summary, transitions, headroom, disagreement, taxonomy, useful_rows, postmortem, selector):
@@ -819,7 +941,7 @@ def run(args):
     args.output_dir.mkdir(parents=True,exist_ok=True)
     artifacts={"root_channel_results.csv":root_rows,"successor_channel_results.csv":successor_rows,"channel_transition_matrix.csv":transitions,"channel_true_oracle_headroom.csv":headroom,"successor_true_oracle_headroom.csv":successor_headroom,"validation_instability.csv":headroom,"channel_disagreement_features.csv":disagreement,"selector_observable_features.csv":feature_rows,"selector_results.csv":selector,"static_hybrid_postmortem.csv":postmortem,"iterative_useful_address.csv":useful_rows,"address_confidence.csv":address_conf,"wrong_reference_robustness_extended.csv":robustness,"root_successor_summary.csv":root_successor_table,"musique_approx_win_analysis.csv":[r for r in taxonomy if r["dataset"]=="musique"],"qasper_exact_win_analysis.csv":[r for r in taxonomy if r["dataset"]=="qasper"],"bm25_win_analysis.csv":[r for r in taxonomy if r["dataset"] in {"hotpotqa","2wikimultihopqa"}]}
     for name,rows in artifacts.items(): _write_csv(args.output_dir/name,rows)
-    action_spec={"schema_version":"1.0","root_search_methods":{name:{"allowed_params":{"top_k":[1,2,4],"chunk_tokens":[32]},"confidence_signals":["top_score","score_gap","rank"],"cost_metrics":["comparisons","index_lookups","token_span_operations","latency_ms","index_memory_bytes"],"failure_indicators":["low_precision","root_disagreement","small_score_gap"]} for name in ROOT_CHANNELS},"successor_search_methods":{name:{"allowed_params":{"top_k":[1,2,4],"state":"question_plus_admitted_chunk" if name in {"bm25_state","hybrid_state"} else "admitted_chunk"},"confidence_signals":["top_score","score_gap","successor_rank"],"cost_metrics":["frontiers","comparisons","token_span_operations","latency_ms"],"failure_indicators":["not_gold_linked","noncompetitive_address","distractor_expansion"]} for name in SUCCESSOR_CHANNELS},"materialization_performed":False}
+    action_spec=_search_method_action_spec()
     (args.output_dir/"search_method_action_spec.json").write_text(json.dumps(action_spec,indent=2,sort_keys=True),encoding="utf-8")
     findings_path=args.output_dir.parent/"channel_geometry"/"paper2_6_findings.json"; findings=json.loads(findings_path.read_text(encoding="utf-8")); findings["channel_selection_iteration"]={"step_budget":args.step_budget,"total_budget":2*args.step_budget,"root_successor_summary":root_successor_table,"heldout_fixed":heldout_fixed,"validation_fixed":validation_fixed,"successor_validation_fixed":validation_successor,"successor_heldout_fixed":heldout_successor,"mean_true_selection_headroom":{d:mean(r["selection_headroom"] for r in headroom if r["dataset"]==d) for d in DATASETS},"mean_validation_instability":{d:mean(r["validation_instability"] for r in headroom if r["dataset"]==d) for d in DATASETS},"mean_successor_selection_headroom":{d:mean(r["selection_headroom"] for r in successor_headroom if r["dataset"]==d) for d in DATASETS},"mean_successor_validation_instability":{d:mean(r["validation_instability"] for r in successor_headroom if r["dataset"]==d) for d in DATASETS},"linear_selector_validation_loss":linear_loss,"linear_selector_features":linear_features,"generation_performed":False,"materialization_performed":False}; findings_path.write_text(json.dumps(findings,indent=2,sort_keys=True),encoding="utf-8")
     audit=["# Paper 2.6 channel-selection claim audit","","- Root and successor search each request two chunks; total conceptual budget remains four.","- Root and successor precision/recall are reported separately.","- True adaptive headroom is separated from validation-selection instability.","- The linear selector trains only on validation identities and observable features.","- Gold evidence geometry appears only in explanatory/taxonomy artifacts.","- RRF is the only additional fusion control.","- UsefulAddress requires exposure, a gold link, and successor rank <= 4.","- Costs are exhaustive Python research measurements, not serving claims.","- No native K/V is materialized and no generation/output metric is claimed."]

@@ -107,3 +107,34 @@ The extended robustness matrix distinguishes target and wrong-target recovery
 for near entities, shared prefixes, numeric IDs, URL paths, and aliases. The
 Paper-3.5 handoff is serialized in `search_method_action_spec.json`; it exposes
 search actions and costs but no gold geometry or materialization decision.
+
+## Final stability and disambiguation iteration
+
+The final iteration retains the frozen 132 identities. No larger cache preserves
+the same model revision, layer, query aggregation, 32-token chunking, and evidence
+mapping, so bootstrap resamples are reported as uncertainty estimates rather than
+new cohort members. Root and successor resampling is identity-paired and resolves
+ties using the study's original recall, precision, and MRR order.
+
+`src/pra_hf/confidence_diagnostics.py` owns dependency-light AUROC, AUPRC, ECE,
+reliability, selective metrics, paired bootstrap, leakage validation, and action-
+spec validation. Dataset identity and any feature name containing answer, evidence,
+gold, label, oracle, positive, or target semantics are rejected from deployable
+feature sets. Gold membership appears only as an evaluation outcome.
+
+`run_final_iteration.py` replays the frozen candidate scores without a model forward
+pass or route-policy change. It exports exact-span, rarity, ambiguity, score-support,
+cross-channel, semantic-consistency, path-consistency, and source-consistency fields.
+These are explicitly referential-validity proxies, not entity-resolution claims.
+Validation-CDF calibration and conservative thresholds are fitted on validation
+identities only. The consistency gate is a diagnostic control and is not wired into
+the runtime router.
+
+The controlled suite now includes same-name/wrong-entity, same-class/wrong-instance,
+correct-entity/wrong-relation, stale-alias, and two-plausible-reference conditions.
+It preserves the original route layout and budget. The final action specification
+uses canonical independent root and successor method names, retains legacy aliases,
+and records implementation identifiers, state/index requirements, parameters,
+confidence outputs, costs, and known failures. It asserts that materialization was
+not performed. Paper 3.5 owns adaptive selection/retry; Paper 3 owns physical K/V
+admission.
