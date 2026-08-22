@@ -14,7 +14,7 @@
 \lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,frame=single,columns=fullflexible}
 
 \title{Adaptive Progressive Retrieval Attention:\\
-Factorized Control, Query Reinterpretation, and Bounded Retry}
+Interpretation, Search-Method Selection, Admission, and Bounded Retry}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Adaptive Progressive Retrieval Attention},pdfauthor={Jorge Simao}}
@@ -46,6 +46,16 @@ from .631 to the factorized ceiling .923, correcting all 15 initial HotpotQA fai
 QASPER failures at 2.49 mean added cost; eight HotpotQA and QASPER cases use a single root/facet
 change, while compound fallback remains necessary elsewhere.  This is retry headroom, not a learned
 online policy.
+
+A separate four-dataset study treats retrieval representation itself as an action.  It replays 132
+frozen Paper-2.6 examples, of which 120 have a labelled successor decision.  Validation selects
+exact root search, reaching .066 held-out root recall versus .104 for the per-example root oracle.
+For the 68 held-out examples with successor labels, a fixed BM25-root/native-semantic-successor pair
+reaches .030 recall; independently predicted root and successor methods reach .032, an interpretable
+cascade reaches .048, and the joint method oracle reaches .143.  The method space therefore has
+real headroom, but the present small controller does not capture it.  Learned targeted retry raises
+.032 only to .037, while an oracle correction reaches .143.  These are matched-budget discovery
+metrics, not generated-answer or K/V-materialization gains.
 
 Query interpretation is itself an action.  Explicit and structural regions remove recent-head
 serialization sensitivity in matched controls and remain stable through 8K following tokens.
@@ -90,7 +100,7 @@ where $Q$ is held-out output or retrieval quality and $C$ includes conceptual se
 generation retries, and measured latency.  Equation~\ref{eq:adaptive-goal} is not guaranteed on
 every dataset.  If almost every query is hard, the correct controller should spend the high budget.
 
-This paper makes nine contributions:
+This paper makes eleven contributions:
 \begin{enumerate}
 \item It defines a public PRA control vector and freezes three monotonic effort profiles rather
 than predicting unconstrained continuous parameters.
@@ -112,6 +122,9 @@ upper bounds, recording wrong-to-correct, correct-to-broken, extra work, and act
 Q/K geometry, and an expensive contextual upper bound under grouped validation selection.
 \item It tests coherent group profiles against global, independent, and autoregressive factorized
 targets, and supplies an exact pre-consumer query-prefill reuse path with cost accounting.
+\item It makes root and successor retrieval representations independent controller actions, imports
+the Paper-2.6 action contract by content hash, and compares fixed, cascade, learned, and oracle
+method policies on four natural evidence tasks.
 \end{enumerate}
 
 Full-weight PRA retraining is deliberately absent.  That intervention belongs to Paper~4.  Here the
@@ -123,14 +136,16 @@ scientific object is adaptive inference over frozen routing and consumer behavio
 
 At attempt $t$, the runtime selects
 \begin{equation}
- a_t=(\mathcal Q,F,R,K,H,B_c,B_{kv},\theta,L_s,L_c,G,M),
+ a_t=(\mathcal Q,S_r,S_s,F,R,K,H,B_s,B_{kv},\theta,L_s,L_c,G,M),
 \end{equation}
-where $\mathcal Q$ is one or more functional query regions, $F$ is the facet policy, $R$ retained
-roots, $K$ candidate neighbors per expansion, $H$ hop
-depth, $B_c$ conceptual parent budget, $B_{kv}$ physical native-K/V budget, $\theta$ a closure
+where $\mathcal Q$ is one or more functional query regions, $S_r$ and $S_s$ are the root and
+successor search representations, $F$ is the facet policy, $R$ retained roots, $K$ candidate
+neighbors per expansion, $H$ hop depth, $B_s$ conceptual search budget, $B_{kv}$ physical native-K/V budget, $\theta$ a closure
 threshold, $L_s$ search layers, $L_c$ consumer layers, $G$ routing/materialization granularity, and
-$M$ disclosure policy.  We separate $B_c$ and $B_{kv}$ because Paper~3 found that broad search can
-remain compatible with compact evidence-only activation.
+$M$ disclosure policy.  We separate $B_s$ and $B_{kv}$ because Paper~3 found that broad search can
+remain compatible with compact evidence-only activation.  We also do not force $S_r=S_s$: an
+admitted chunk changes the successor query state and can expose an address best resolved in another
+representation.
 
 The first public implementation uses three profiles (Table~\ref{tab:profiles}).  They are not
 universal hyperparameters; they are a stable SDK contract and an initial experimental ladder.
@@ -199,7 +214,8 @@ The runtime first asks which prompt region specifies the retrieval objective and
 to facet that region.  These are distinct decisions:
 \begin{equation}
  \mathrm{prompt}\rightarrow\mathcal Q=\{[s_j,e_j)\}_j
- \rightarrow\{q_1,\ldots,q_F\}\rightarrow\mathrm{roots}\rightarrow\mathrm{search}.
+ \rightarrow(\{q_1,\ldots,q_F\},S_r)\rightarrow\mathrm{roots}
+ \rightarrow(S_s,\mathrm{search})\rightarrow\mathrm{admit}\rightarrow\mathrm{evaluate}.
 \end{equation}
 Functional roles include instruction, query, current state, context, references, history, and tool
 or log output.  Position does not determine role.  Explicit token spans or caller-labeled segments
@@ -222,8 +238,10 @@ All controller families target minimum sufficient effort rather than the highest
 \end{equation}
 R0 selects one validation-frozen profile.  R1 uses a shared feature MLP and independent categorical
 heads.  R2 adds a cached query-region representation.  R3A predicts controls autoregressively in the
-order $\mathcal Q\rightarrow F\rightarrow R\rightarrow K\rightarrow H\rightarrow B_s\rightarrow
-B_{kv}$.  Integer controls and thresholds use finite categorical values; no Cartesian action class
+order $\mathcal Q\rightarrow S_r\rightarrow F\rightarrow R\rightarrow S_s\rightarrow K
+\rightarrow H\rightarrow B_s\rightarrow B_{kv}$.  The method heads are added only as measured
+categorical targets; interaction-aware expansion remains gated by Section~\ref{sec:adaptive-search-methods}.
+Integer controls and thresholds use finite categorical values; no Cartesian action class
 is constructed.  The first comparison inherits profile-derived labels; the decisive comparison is
 retrained later on independently measured factorized-oracle targets.
 For independent heads,
@@ -239,8 +257,9 @@ and latency.  Joint exact match is secondary to the held-out quality/expected-ef
 \centering
 \includegraphics[width=\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_pra_runtime_architecture.png}
 \caption{Adaptive PRA control endpoint.  Competing query interpretations feed a direct profile or
-factorized action.  Observable failure evidence may trigger one targeted correction with compatible
-search and K/V reuse; otherwise the controller stops.}
+factorized action.  The extended action also selects independent root and successor search methods.
+Observable failure evidence may trigger one targeted correction with compatible search and K/V
+reuse; otherwise the controller stops.}
 \label{fig:architecture}
 \end{figure}
 
@@ -249,9 +268,16 @@ search and K/V reuse; otherwise the controller stops.}
 Attempt zero uses the selected profile or factorized action.  A manual caller may name low, medium,
 or high effort, provide individual controls, and request one bounded retry.  Automatic mode applies
 a calibrated stop rule.  If it fails, the corrective action may reinterpret the query, widen facets,
-increase roots, neighbors, hops, or search budget, or change K/V admission while preserving compatible
+change root or successor representation, increase roots, neighbors, hops, or search budget, or
+change K/V admission while preserving compatible
 roots, search results, K/V state, and prefix state.  Search budget, active K/V, retry count, and
 latency are hard caps.
+
+The full controller cycle is therefore
+\[
+\mathrm{QUERY/SESSION}\rightarrow\mathrm{INTERPRET}\rightarrow\mathrm{SEARCH}
+\rightarrow\mathrm{ADMIT}\rightarrow\mathrm{EVALUATE}\rightarrow\mathrm{targeted\ retry}.
+\]
 
 The public transition is:
 \begin{lstlisting}[language=Python]
@@ -773,6 +799,197 @@ localizes missing capacity.  It does not establish that an oracle-free diagnosti
 The endpoint remains direct initial prediction followed by at most one confidence-triggered,
 explicitly traced correction.
 
+\section{Retrieval Representation as an Adaptive Action}
+\label{sec:adaptive-search-methods}
+
+Effort control asks how broadly to search.  Method control asks what evidence relation should define
+that search.  We decompose one attempt into
+\begin{equation}
+\underbrace{(\mathcal Q,F,S_r)}_{\text{interpret}}
+\quad\longrightarrow\quad
+\underbrace{(R,K,H,S_s)}_{\text{search}}
+\quad\longrightarrow\quad
+\underbrace{(B_s,B_{kv},\theta,L,G,M)}_{\text{admit}}.
+\label{eq:interpret-search-admit}
+\end{equation}
+The root method $S_r$ is one of semantic mean-gist, exact token, BM25, approximate token, or static
+hybrid search.  The successor method $S_s$ is native semantic, exact new-address, BM25 over the
+question/current state, approximate new-address, or state-conditioned hybrid search.  Equation~
+\ref{eq:interpret-search-admit} permits, for example, a semantic root followed by an exact address,
+or a lexical root followed by native-semantic traversal.  Searching two representations does not
+authorize twice as much K/V: $B_s$ and $B_{kv}$ remain separate decisions.
+
+\subsection{Protocol and action contract}
+
+The study imports Paper~2.6's machine-readable action specification and verifies its SHA-256 digest
+before use.  Its frozen corpus contains 58 validation and 74 held-out examples across QASPER,
+HotpotQA, 2Wiki, and MuSiQue.  All 132 examples have matched two-chunk root rows; 120 have a labelled
+two-chunk successor decision, including 68 held-out examples.  Twelve root-only examples remain in
+root and cross-dataset analyses but are not assigned a fictitious successor.  One validation example
+omits ten of the 25 root/successor pairs; fixed-policy selection maximizes measured cohort coverage
+before quality, and missing actions are never imputed.
+
+The serving contract is implemented in
+\begin{center}
+\path{src/pra_hf/adaptive_search.py}
+\end{center}
+\texttt{AdaptiveSearchAction} begins at line 72 and carries independent methods around the existing
+factorized effort action.  Strict action-spec import begins at line 130; dataset identity, gold
+geometry, oracle labels, and answer correctness are rejected from controller features at line 163.
+The deterministic method oracle at line 177 is evaluator-only.  Useful-address scoring, targeted
+method-delta naming, and operation-specific accounting begin at lines 198, 228, and 242.  The study
+runner derives oracle rows at line 221, evaluates policies at line 420, performs leave-one-dataset-out
+tests at line 509, and starts bounded method retry at line 639.  These line references make the
+interpret/search/admit boundary independently reproducible without coupling it to the paper script.
+
+\subsection{Root and successor method headroom}
+
+Validation selects exact root search.  Its held-out root recall is .066, while selecting the best
+measured root method independently per example reaches .104, a .038 absolute diagnostic gap.  The
+74 held-out root oracles choose exact for 21 examples, semantic for 19, BM25 for 15, approximate for
+11, and hybrid for 8.  No representation has majority support.
+
+Conditioning successor choice on the per-example root oracle reaches .082 recall.  Allowing the
+root/successor pair to vary jointly reaches .143, compared with .030 for the validation-selected
+fixed pair, BM25 root followed by native-semantic successor.  The 68 successor oracles choose native
+semantic 22 times, exact new-address 15, BM25 state 14, approximate new-address 10, and hybrid state
+7.  Twenty-two of the 25 possible root-to-successor transitions occur at least once.  The most common
+is semantic$\rightarrow$native semantic, with only 9 examples.  Representation choice is therefore
+state dependent, but the oracle is an upper bound, not a controller.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.48\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/root_method_oracle_distribution.pdf}
+\includegraphics[width=.48\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/successor_method_oracle_distribution.pdf}
+\caption{Held-out method-oracle distributions.  Root (left) and successor (right) choices are
+heterogeneous across all four datasets; counts are identities, not repeated model seeds.}
+\label{fig:method-oracle-distributions}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/root_successor_method_heatmap.pdf}
+\caption{Held-out joint-oracle transitions.  Sparse mass across 22 cells argues against tying root
+and successor representations, but does not say that an observable selector can predict the cell.}
+\label{fig:method-transitions}
+\end{figure}
+
+\subsection{Fixed, cascaded, and learned policies}
+
+Table~\ref{tab:method-policies} evaluates downstream evidence discovery rather than method-label
+accuracy.  S0 forces the corresponding root and successor representation; S1 selects one pair per
+dataset on validation and is diagnostic because dataset identity is forbidden at deployment; S2 is
+static hybrid; S3 is one global root/successor pair; S4 and S5 adapt one stage; S6 predicts both; and
+S7 is the per-example oracle.  C0 is a non-learned cascade over exact/BM25 gaps and disagreement.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out matched-budget method policies over 68 successor-bearing examples.  Comparisons
+are evidence recall, precision, and MRR.  No policy completes every broad evidence span within the
+four requested chunks, so complete-recovery is zero and omitted.}
+\label{tab:method-policies}
+\begin{tabular}{llrrr}
+\toprule
+ID & policy & recall & precision & MRR \\
+\midrule
+S0 & one method at both stages & .011 & .044 & .179 \\
+S1 & dataset-fixed diagnostic & .028 & .081 & .234 \\
+S2 & static hybrid & .035 & .088 & .229 \\
+S3 & fixed BM25$\rightarrow$native pair & .030 & .081 & .229 \\
+S4 & adaptive root only & .037 & .081 & .212 \\
+S5 & adaptive successor only & .024 & .074 & .208 \\
+S6 & adaptive root and successor & .032 & .074 & .225 \\
+C0 & interpretable cascade & \textbf{.048} & \textbf{.118} & \textbf{.240} \\
+S7 & per-example method oracle & .143 & .353 & .615 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The observable learned controller does not close the gap.  Adaptive root selection adds .007 recall
+over S3, but successor-only selection loses .006 and joint selection adds only .002.  The cascade is
+the strongest deployable row, yet its gains are concentrated in HotpotQA (.089) and 2Wiki (.078); it
+falls below S3 on QASPER and MuSiQue.  Static hybrid also remains below the cascade.  The result is
+not ``adaptivity works'' in general.  It is the narrower claim that method headroom exists and these
+small selectors are not yet reliable enough to exploit it.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/fixed_adaptive_quality_cost_frontier.pdf}
+\caption{Held-out method policies.  The horizontal axis shows search-operation counts and is not a
+latency-equivalent scalar across semantic GEMM, postings, and token-span work.}
+\label{fig:method-frontier}
+\end{figure}
+
+\subsection{Generalization, self-query state, and useful addresses}
+
+Leaving each dataset out in turn gives root-method classification accuracy .167 on 2Wiki, .188 on
+HotpotQA, .278 on MuSiQue, and .250 on QASPER.  Dataset identity is absent from every feature vector.
+These values are too weak to support a general channel controller.  The existing frozen
+\texttt{S2\_embed\_last} cache covers only 32 HotpotQA/QASPER identities, all assigned to the Paper-2.6
+test split.  We therefore report four-fold identity-grouped out-of-fold classification rather than
+mislabeling a fitted-on-test result as held out.  Observable features reach .313 root-method
+accuracy, the embedding reaches .438, and their concatenation returns to .313.  This is a small
+classification signal, not a measured downstream-quality gain or a reason to replace R0.
+
+Only 12.2\% of held-out examples satisfy the evaluator-side useful-address predicate.  A
+validation-trained observable gate predicts no positive at threshold .5, hence both precision and
+recall are zero.  Abstention avoids confident lexical expansion but misses all useful cases.  The
+gate must improve before exact or approximate successor following can be enabled by default.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.48\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/method_cross_dataset_generalization.pdf}
+\includegraphics[width=.48\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/useful_address_confidence_gain.pdf}
+\caption{Left: leave-one-dataset-out method accuracy without dataset identity.  Right: predicted
+useful-address probability versus lexical-successor gain; the fitted gate abstains at .5.}
+\label{fig:method-generalization-address}
+\end{figure}
+
+Query-region interaction is not identifiable in this inherited corpus: 130 examples use layout code
+0 and only two use code 1.  We therefore do not add the interaction-aware architecture proposed in
+the study plan.  The controlled query-region fixtures remain evidence that interpretation matters,
+but they cannot identify a natural query-region$\times$method effect.
+
+\subsection{Method retry and the factorized surface}
+
+From S6, 32 held-out examples need no oracle correction, 16 need only a successor-method switch, 8
+need only a root-method switch, and 12 need both.  Always switching reduces recall from .032 to .023.
+A validation-trained delta controller predicts both action type and replacement methods; it reaches
+.037 recall with .221 action accuracy.  Oracle correction reaches .143.  Method switching is thus a
+valid retry action, but evaluator-side correction remains much stronger than the learned policy.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.62\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/retry_correction_by_action.pdf}
+\caption{Evaluator-side correction decomposition from adaptive root+successor selection.  The
+learned retry predicts the delta and replacement methods separately; it never receives gold evidence.}
+\label{fig:method-retry}
+\end{figure}
+
+All 32 Paper-3.5 factorized identities overlap the channel corpus, although their validation/test
+assignment differs.  We join them by stable dataset/example identity and retain both measured
+surfaces: factorized chain quality and cost, and Paper-2.6 method recall and operation counts.  The
+reported joint floor is their minimum.  It is a composition diagnostic, not execution of every
+method inside all 792 factorized actions.  Accordingly, factorization cost savings and adaptive
+method quality gains are plotted on separate axes and are never added.  Paper~2.6 materializes no
+K/V; the inherited Paper-3.5 rows alone supply physical K/V counts.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.48\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/search_breadth_kv_admission_breadth.pdf}
+\includegraphics[width=.48\textwidth]{../shared/results/paper3_5_adaptive_pra/adaptive_search_methods/factorized_method_oracle_regret.pdf}
+\caption{Left: conceptual parent budget versus physical admission budget on the identity-matched
+factorized surface.  Right: factorized cost savings and method recall gain remain distinct units.}
+\label{fig:method-factorized-composition}
+\end{figure}
+
+Semantic comparisons, BM25 postings, exact/approximate span operations, index memory, and measured
+prototype latency are retained in separate columns.  The exhaustive Python timings remain unsuitable
+for serving claims.  A production controller should optimize measured downstream quality under
+per-system resource constraints, not a fabricated scalar that treats one posting lookup as one GPU
+dot product.
+
 \section{Self-Encoded Query Routing: Letting the Backbone Read the Task Before Allocating Memory}
 \label{sec:self-routing}
 
@@ -1099,21 +1316,21 @@ cannot become a production throughput claim by omission.
 through retries unless the caller permits reinterpretation.
 \end{enumerate}
 
-The relevant implementation is compact.  \texttt{adaptive\_runtime.py} defines profiles, feature
+The relevant implementation is compact.  \path{adaptive_runtime.py} defines profiles, feature
 validation, learned and hand controllers, stop policy, retries, consistency, and calibration.
-\texttt{query\_regions.py} defines structured segments, explicit spans, structural discovery,
-multi-region selection, and cue reinterpretation.  \texttt{effort\_router.py} defines finite action
+\path{query_regions.py} defines structured segments, explicit spans, structural discovery,
+multi-region selection, and cue reinterpretation.  \path{effort_router.py} defines finite action
 spaces, independent categorical heads, a cached semantic-input contract, and autoregressive heads.
-\texttt{factorized\_control.py} defines valid independent actions, exact component accounting,
+\path{factorized_control.py} defines valid independent actions, exact component accounting,
 token-weighted evidence metrics, Pareto dominance, allocation outcomes, and retry action names.
-\texttt{factorized\_study.py} executes the frozen lattice and emits the oracle, router, and retry
-artifacts.  \texttt{self\_router.py} adds query-span pooling over tensors $[B,T,\ldots]$, exact
+\path{factorized_study.py} executes the frozen lattice and emits the oracle, router, and retry
+artifacts.  \path{self_router.py} adds query-span pooling over tensors $[B,T,\ldots]$, exact
 native Q/K capture from the layer-normalized residual stream, validation-only projection, grouped
 action decoding, prefill accounting, and Qwen prefix continuation.  Q and K are reshaped to
 $[B,T,H,d_h]$ and passed through the layer's own \texttt{q\_norm}/\texttt{k\_norm} before question-span
 pooling, matching Qwen's pre-RoPE attention geometry rather than exposing raw projection outputs.
 The precompute script stores
-only pooled vectors; \texttt{self\_router\_study.py} owns oracle labels, grouped CV, target codebooks,
+only pooled vectors; \path{self_router_study.py} owns oracle labels, grouped CV, target codebooks,
 and plots.  Physical-runtime implementation remains behind the control/execution boundary.
 
 \section{Discussion}
@@ -1207,6 +1424,17 @@ admission does not exploit $B_s>B_{kv}$ in any held-out minimum-cost oracle.  Th
 audit uses evaluator success to choose an action and must not be read as an oracle-free retry result.
 Five QASPER units remain unsolved throughout the measured lattice.
 
+The search-method extension inherits Paper~2.6's small matched-budget discovery corpus and exhaustive
+Python implementations.  It contains 74 held-out root identities but only 68 with successor labels;
+complete broad-span recovery is zero at the four-chunk request budget.  The per-example method oracle
+uses evaluator labels, and the 32-identity factorized join is a composition of two measured surfaces,
+not a joint execution.  Leave-one-dataset-out method accuracy is weak.  The useful-address gate
+abstains on every held-out example, and the learned retry action accuracy is .221.  The self-query
+method comparison is four-fold out-of-fold because all overlapping cache identities belong to the
+Paper-2.6 test split; it is not a validation-frozen downstream result.  Query-region$\times$method
+interaction is unidentifiable because only two examples use the minority layout.  Unlike method
+operations are intentionally not collapsed into one systems-cost scalar.
+
 Finally, no full PRA backbone is trained here.  Learned consumer adaptation and full-weight scaling
 are deferred to Paper~4.
 
@@ -1223,10 +1451,21 @@ validation-selected contextual upper bound do not reverse that result.  R0 stays
 One bounded oracle corrective action exposes substantial retry headroom, but compound changes and
 five unsolved QASPER units prevent a stronger online claim.
 
+Retrieval representation adds another genuine but unresolved control surface.  Exact root search
+selected on validation reaches .066 recall, while the root oracle reaches .104.  At the two-stage
+budget, the fixed BM25$\rightarrow$native-semantic pair reaches .030, the interpretable cascade .048,
+the learned joint selector .032, and the joint method oracle .143.  Root and successor methods should
+therefore remain independent actions, but a validation-fixed pair remains the conservative default
+until selection improves.  C0 is the strongest measured deployable cascade, not a universal policy:
+it loses to the fixed pair on QASPER and MuSiQue.  Always switching methods hurts; learned targeted
+retry raises recall only from .032 to .037.
+
 Adaptive PRA must also decide what the query is.  Explicit roles remain preferred; structural and
 recent interpretations should compete under confidence because either can fail under serialization
 or decoys.  The contribution is therefore a measured control surface, a conservative default, and a
-bounded retry endpoint.  A self-prefill captured before layer 24 can be reused exactly, which makes
+bounded retry endpoint.  The runtime now follows the six-stage cycle in
+Equation~\ref{eq:interpret-search-admit}, followed by evaluation and targeted retry.  A self-prefill
+captured before layer 24 can be reused exactly, which makes
 future semantic control cheaper, but the present controller does not earn that added complexity.
 Making those decisions fast belongs to Paper~5.5; making them native to vLLM belongs to Paper~6.
 
@@ -1236,8 +1475,8 @@ Making those decisions fast belongs to Paper~5.5; making them native to vLLM bel
 All normalized artifacts are under
 \texttt{docs/papers/shared/results/paper3\_5\_adaptive\_pra}.  They include:
 \begin{itemize}
-\item effort profiles, controller features/training/calibration, oracle ceiling, regret, retry
-traces/outcomes, and adaptive frontier;
+\item effort profiles, controller features, training and calibration, oracle ceiling, regret, retry
+traces and outcomes, and the adaptive frontier;
 \item query-region configurations plus per-layout, detection, retrieval, output, displacement,
 facet, root, retry, session, semi-natural, and adversarial summaries, findings, and figures;
 \item router profiles, action spaces, oracle targets, R0--R3 results, per-head calibration,
@@ -1248,6 +1487,9 @@ targets/results, bounded retry rows, findings JSON, and figures;
 \item self-router representation/configuration manifests, layer/pooling/profile sweeps, contextual
 drift, feature ablation, target-family rows, under/over-allocation, exact-reuse accounting, findings,
 and figures;
+\item adaptive-search action specification, root/successor oracles, transition matrix, fixed/cascade/
+learned policy rows, leave-one-dataset-out and self-query controls, useful-address and retry rows,
+factorized composition, operation-specific cost accounting, claim audit, findings, and ten figures;
 \item inherited systems and matched-proxy rows retained for Paper-5.5 provenance, not counted as
 Paper-3.5 contributions.
 \end{itemize}
@@ -1258,6 +1500,7 @@ python -m experiments.paper3_5_adaptive_pra.run_study
 python -m experiments.paper3_5_adaptive_pra.factorized_study
 python -m experiments.paper3_5_adaptive_pra.precompute_self_router_features --device cuda
 python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
+python -m experiments.paper3_5_adaptive_pra.adaptive_search_methods
 python -m pytest
 \end{lstlisting}
 

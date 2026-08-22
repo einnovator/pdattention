@@ -32,6 +32,19 @@ oracle, Pareto, precision/recall, router, and retry artifacts. Large frozen
 feature tensors remain outside Git. Systems optimization is out of scope for
 Paper 3.5 and is handed to Papers 5.5 and 6.
 
+Run the adaptive root/successor search-method study with:
+
+```powershell
+python -m experiments.paper3_5_adaptive_pra.adaptive_search_methods
+```
+
+This runner imports the deterministic Paper 2.6 action specification, replays
+its frozen four-dataset channel rows, and learns validation-only root,
+successor, useful-address, and targeted-retry selectors. It keeps search
+operation counts separate from the inherited Paper 3.5 K/V-admission surface;
+their 32-identity join is explicitly a composed diagnostic, not an end-to-end
+generation or materialization experiment.
+
 Capture and evaluate the frozen-backbone self-router add-on with:
 
 ```powershell

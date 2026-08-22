@@ -1,0 +1,266 @@
+{
+  "claims": [
+    "retrieval representation is a separate adaptive action",
+    "root and successor method choices need not match",
+    "method oracle and validation instability are evaluator-side diagnostics",
+    "search comparisons and physical K/V admission remain separate",
+    "no generated-answer or materialization gain is claimed"
+  ],
+  "cross_dataset": [
+    {
+      "dataset_feature_used": 0,
+      "heldout_dataset": "2wikimultihopqa",
+      "root_method_accuracy": 0.16666666666666666,
+      "test_n": 24,
+      "train_datasets": "hotpotqa|musique|qasper",
+      "train_n": 34
+    },
+    {
+      "dataset_feature_used": 0,
+      "heldout_dataset": "hotpotqa",
+      "root_method_accuracy": 0.1875,
+      "test_n": 16,
+      "train_datasets": "2wikimultihopqa|musique|qasper",
+      "train_n": 50
+    },
+    {
+      "dataset_feature_used": 0,
+      "heldout_dataset": "musique",
+      "root_method_accuracy": 0.2777777777777778,
+      "test_n": 18,
+      "train_datasets": "2wikimultihopqa|hotpotqa|qasper",
+      "train_n": 40
+    },
+    {
+      "dataset_feature_used": 0,
+      "heldout_dataset": "qasper",
+      "root_method_accuracy": 0.25,
+      "test_n": 16,
+      "train_datasets": "2wikimultihopqa|hotpotqa|musique",
+      "train_n": 50
+    }
+  ],
+  "examples": 132,
+  "factorized_join_examples": 32,
+  "factorized_join_is_composition_only": true,
+  "fixed_pair": [
+    "bm25",
+    "native_semantic"
+  ],
+  "heldout_examples": 74,
+  "heldout_oracle_transition_counts": {
+    "approx->approximate_new_address": 2,
+    "approx->bm25_state": 1,
+    "approx->exact_new_address": 3,
+    "approx->hybrid_state": 1,
+    "approx->native_semantic": 6,
+    "bm25->approximate_new_address": 2,
+    "bm25->bm25_state": 2,
+    "bm25->exact_new_address": 1,
+    "bm25->native_semantic": 6,
+    "exact->approximate_new_address": 1,
+    "exact->bm25_state": 2,
+    "exact->exact_new_address": 5,
+    "exact->native_semantic": 4,
+    "hybrid->bm25_state": 3,
+    "hybrid->exact_new_address": 2,
+    "hybrid->hybrid_state": 1,
+    "hybrid->native_semantic": 5,
+    "semantic->approximate_new_address": 4,
+    "semantic->bm25_state": 2,
+    "semantic->exact_new_address": 4,
+    "semantic->hybrid_state": 2,
+    "semantic->native_semantic": 9
+  },
+  "heldout_policy_summary": {
+    "C0_nonlearned_cascade": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.24003652054537414,
+      "n": 68,
+      "policy": "C0_nonlearned_cascade",
+      "precision": 0.11764705882352941,
+      "recall": 0.0475888765467873,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 133178.26470588235
+    },
+    "S0_fixed_same": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.17915459113476076,
+      "n": 68,
+      "policy": "S0_fixed_same",
+      "precision": 0.04411764705882353,
+      "recall": 0.010787600480805348,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 201362.26470588235
+    },
+    "S1_dataset_fixed_diagnostic": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.233711618568885,
+      "n": 68,
+      "policy": "S1_dataset_fixed_diagnostic",
+      "precision": 0.08088235294117647,
+      "recall": 0.02802673768157938,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 157499.54411764705
+    },
+    "S2_static_hybrid": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.22926369460171142,
+      "n": 68,
+      "policy": "S2_static_hybrid",
+      "precision": 0.08823529411764706,
+      "recall": 0.03482471532674373,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 201549.42647058822
+    },
+    "S3_fixed_pair": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.22872887992674917,
+      "n": 68,
+      "policy": "S3_fixed_pair",
+      "precision": 0.08088235294117647,
+      "recall": 0.029931499586341285,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 42271.294117647056
+    },
+    "S4_adaptive_root": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.2115453014773427,
+      "n": 68,
+      "policy": "S4_adaptive_root",
+      "precision": 0.08088235294117647,
+      "recall": 0.037149256254225826,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 27021.20588235294
+    },
+    "S5_adaptive_successor": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.20825757255787058,
+      "n": 68,
+      "policy": "S5_adaptive_successor",
+      "precision": 0.07352941176470588,
+      "recall": 0.023614972975697025,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 106879.44117647059
+    },
+    "S6_adaptive_both": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.22516245712778282,
+      "n": 68,
+      "policy": "S6_adaptive_both",
+      "precision": 0.07352941176470588,
+      "recall": 0.03223089265485825,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 131444.75
+    },
+    "S7_oracle_both": {
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.6153056094232565,
+      "n": 68,
+      "policy": "S7_oracle_both",
+      "precision": 0.35294117647058826,
+      "recall": 0.14307315409382979,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 125350.75
+    }
+  },
+  "learned_retry_action_accuracy": 0.22058823529411764,
+  "materialization_performed_by_method_study": false,
+  "paper2_6_action_spec_sha256": "15a9f31bb85215b6319e167f6d804c2f5da672a515f793580b968903cdabd531",
+  "query_region_method_interaction": [
+    {
+      "decision": "defer interaction-aware head",
+      "distinct_layouts": 2,
+      "examples": 130,
+      "method_interaction_identifiable": 0,
+      "query_region_layout": "0"
+    },
+    {
+      "decision": "defer interaction-aware head",
+      "distinct_layouts": 2,
+      "examples": 2,
+      "method_interaction_identifiable": 0,
+      "query_region_layout": "1"
+    }
+  ],
+  "retry_final_recall": {
+    "always_switch_channel": 0.02257855840987069,
+    "initial_no_retry": 0.03223089265485825,
+    "learned_targeted_retry": 0.03710621234795288,
+    "oracle_correction": 0.14307315409382979
+  },
+  "root_method_headroom": {
+    "heldout_fixed_recall": 0.06593307593307593,
+    "heldout_oracle_recall": 0.10406092582563171,
+    "oracle_gain": 0.038127849892555785,
+    "validation_selected_method": "exact"
+  },
+  "root_successor_independent": true,
+  "schema_version": "1.0",
+  "self_embedding_gate": [
+    {
+      "coverage_note": "Four-fold identity-grouped OOF; cache covers HotpotQA/QASPER test identities only",
+      "datasets": "hotpotqa|qasper",
+      "heldout_n": 32,
+      "representation": "R0_observable",
+      "root_method_accuracy": 0.3125,
+      "validation_n": 0
+    },
+    {
+      "coverage_note": "Four-fold identity-grouped OOF; cache covers HotpotQA/QASPER test identities only",
+      "datasets": "hotpotqa|qasper",
+      "heldout_n": 32,
+      "representation": "S2_embed_last",
+      "root_method_accuracy": 0.4375,
+      "validation_n": 0
+    },
+    {
+      "coverage_note": "Four-fold identity-grouped OOF; cache covers HotpotQA/QASPER test identities only",
+      "datasets": "hotpotqa|qasper",
+      "heldout_n": 32,
+      "representation": "R0_plus_S2_embed_last",
+      "root_method_accuracy": 0.3125,
+      "validation_n": 0
+    }
+  ],
+  "study": "adaptive_search_method_selection",
+  "successor_method_headroom": {
+    "heldout_combined_oracle_recall": 0.14307315409382979,
+    "heldout_conditional_oracle_recall": 0.08210299680014309,
+    "heldout_fixed_pair_recall": 0.029931499586341285
+  },
+  "useful_address_gate": {
+    "positive_rate": 0.12162162162162163,
+    "precision": 0.0,
+    "predicted_positive_rate": 0.0,
+    "recall": 0.0
+  },
+  "validation_examples": 58
+}
