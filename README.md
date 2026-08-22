@@ -304,3 +304,19 @@ The evaluation should compare at least:
 ## Important caution
 
 The first standalone version can use simple learned absolute position embeddings. For real models such as Llama/Qwen/Mistral, RoPE, GQA/MQA, cache layout, and attention masks must be preserved. For pretrained models, prefer a **cross-attention adapter branch** first instead of direct K/V injection.
+
+## Distributed experiments
+
+Reusable distributed experiment infrastructure lives under `src/common/`. Existing local
+commands keep their one-process behavior when no worker or cluster is configured. Optional
+YAML can define process/SSH workers, clusters, independent seed or sweep jobs, cooperative
+DDP/FSDP trials, and local/S3/GCS artifact storage.
+
+```bash
+pra config validate -c config/distributed.example.yml
+pra experiment run common-five-seeds -c config/distributed.example.yml
+pra train --seeds 0:5
+```
+
+See `src/common/README.md` and `config/distributed.example.yml` for the callable contract,
+artifact layout, resume semantics, remote Mac setup, and CPU/Gloo validation path.

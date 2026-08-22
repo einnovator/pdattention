@@ -365,13 +365,14 @@ def _pra_batch_step(
     ``[B,T,V]``. Routing/materialization remain row-local inside that forward.
     """
     batch = move_batch(batch, device)
+    pra_model = model.module if hasattr(model, "module") else model
     caches = []
     cache_build_duration = 0.0
     # Do not share a sample's URI table or selected memory with another batch row.
     for metadata in batch["metadata"]:
         cache_start = time.perf_counter()
         cache = build_cache_from_metadata(
-            model,
+            pra_model,
             tokenizer,
             [metadata],
             device,
@@ -384,13 +385,13 @@ def _pra_batch_step(
 
     prepared = None
     should_prepare_prompt = (
-        model.cfg.prompt_overflow_mode != "truncate"
-        or model.cfg.max_prompt_direct_tokens is not None
+        pra_model.cfg.prompt_overflow_mode != "truncate"
+        or pra_model.cfg.max_prompt_direct_tokens is not None
     )
     if should_prepare_prompt:
         preparation_start = time.perf_counter()
         prepared = prepare_prompt_batch_for_pra(
-            model,
+            pra_model,
             tokenizer,
             batch["input_ids"],
             attention_mask=batch.get("attention_mask"),
@@ -409,7 +410,7 @@ def _pra_batch_step(
     # URI strings may collide safely because the wrapper routes query row i only
     # through caches[i]. It never creates a flattened cross-row namespace.
     batch_cache = PRABatchedMemoryCache(caches)
-    model.set_pra_cache(batch_cache)
+    pra_model.set_pra_cache(batch_cache)
 
     # This is the single expensive prompt Transformer execution for the logical batch.
     _synchronize_for_timing(device)
@@ -423,11 +424,11 @@ def _pra_batch_step(
     prompt_forward_duration = time.perf_counter() - prompt_start
 
     batch_size = int(batch["input_ids"].shape[0])
-    selections = _selections_by_row(model.selected_chunks_by_layer(), batch_size)
-    diagnostics = model.pra_diagnostics_by_layer()
+    selections = _selections_by_row(pra_model.selected_chunks_by_layer(), batch_size)
+    diagnostics = pra_model.pra_diagnostics_by_layer()
     loss = F.cross_entropy(logits.view(-1, logits.size(-1)), batch["labels"].view(-1), ignore_index=0)
     retrieval_metrics = _retrieval_metrics(
-        caches, selections, batch["metadata"], model.cfg, diagnostics
+        caches, selections, batch["metadata"], pra_model.cfg, diagnostics
     )
     retrieval_metrics["cache_build_duration_seconds"] = cache_build_duration / max(
         len(caches), 1
@@ -491,6 +492,7 @@ def evaluate_pra_model(
     preserve URI/chunk selections, bucket statistics, and recursive paths so a
     result can be causally inspected rather than inferred from loss alone.
     """
+    model = model.module if hasattr(model, "module") else model
     resolver_config = ResolverServiceConfig.from_value(resolver_config or train_config.resolver_config)
     cache_config = CacheServiceConfig.from_value(cache_config or train_config.cache_config)
     was_training = model.training
@@ -1247,12 +1249,20 @@ def train_pra_model(
             cache_config=cache_config,
         )
 
+    from common.distributed.context import distribute_dataloader
+
+    distributed = state.distributed
+    train_loader = distribute_dataloader(
+        datamodule.train_loader(), distributed, shuffle=train_config.shuffle
+    )
+    val_loader = distribute_dataloader(datamodule.val_loader(), distributed, shuffle=False)
+    test_loader = distribute_dataloader(datamodule.test_loader(), distributed, shuffle=False)
     return train_model(
         model=state.model,
         train_config=train_config,
-        train_loader=datamodule.train_loader(),
-        val_loader=datamodule.val_loader(),
-        test_loader=datamodule.test_loader(),
+        train_loader=train_loader,
+        val_loader=val_loader,
+        test_loader=test_loader,
         batch_step=batch_step,
         eval_step=eval_step,
         state=state,

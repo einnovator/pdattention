@@ -1,0 +1,86 @@
+# Optional experiment infrastructure. With no file, implicit local defaults behave the same.
+storage:
+  local-results:
+    type: local
+    path: ./out/experiments
+
+workers:
+  local-process-a:
+    host: localhost
+    transport: process
+    device: auto
+    role: worker
+    tags: [local]
+    max_jobs: 1
+
+  local-process-b:
+    host: localhost
+    transport: process
+    device: auto
+    role: worker
+    tags: [local]
+    max_jobs: 1
+
+  # Future macOS workers need a synchronized checkout and key-based OpenSSH access.
+  # mac-a:
+  #   host: mac-a.local
+  #   transport: ssh
+  #   user: researcher
+  #   python: /opt/homebrew/bin/python3.10
+  #   workdir: /Users/researcher/src/pdattention
+  #   staging_dir: /tmp/pra-experiments
+  #   device: mps
+  #   memory_gb: 32
+  #   tags: [mac, mps]
+  #   default_storage: local-results
+
+clusters:
+  local-process-pool:
+    workers: [local-process-a, local-process-b]
+    distribution: trials
+    default_storage: local-results
+    max_parallel_trials: 2
+
+  local-ddp:
+    workers:
+      - {name: local-process-a, role: rank0}
+      - {name: local-process-b, role: rank1}
+    distribution: ddp
+    backend: gloo
+    default_storage: local-results
+    weight_update_transport: network
+
+experiments:
+  common-five-seeds:
+    module: common.experiments.smoke
+    function: scalar
+    cluster: local-process-pool
+    distribution: seeds
+    storage: local-results
+    parameters:
+      offset: 0.5
+    sweep:
+      seed: [0, 1, 2, 3, 4]
+
+  pra-five-seeds:
+    module: pra_torch.experiment_adapter
+    function: run_pra_training_experiment
+    cluster: local-process-pool
+    distribution: seeds
+    storage: local-results
+    parameters:
+      dataset_stage: stage0_synthetic_memory
+      steps: 100
+      batch_size: 4
+    sweep:
+      seed: [0, 1, 2, 3, 4]
+
+  common-ddp-smoke:
+    module: common.experiments.smoke
+    function: scalar
+    cluster: local-ddp
+    distribution: ddp
+    storage: local-results
+    resources:
+      workers: 2
+      device: auto

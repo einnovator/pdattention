@@ -19,6 +19,12 @@ from .checkpointing import load_checkpoint, serializable_config
 from .config import TrainConfig
 from .logging import build_logger
 from .metrics import RunningAverages, cuda_memory_allocated, grad_norm, perplexity
+from .distributed.context import (
+    DistributedContext,
+    init_process_group,
+    reduce_metrics,
+    wrap_model,
+)
 
 
 @dataclass
@@ -42,6 +48,7 @@ class TrainingState:
     epoch_history: list[dict] = field(default_factory=list)  # Completed epoch summaries.
     checkpoint_extra: Callable[[], dict] | None = None  # Lazy model-specific payload.
     logger_closed: bool = False  # Prevents duplicate close/finalization calls.
+    distributed: DistributedContext = field(default_factory=DistributedContext)  # Rank identity.
 
 
 def resolve_device(device: str) -> str:
@@ -84,7 +91,18 @@ def create_training_state(
     """Create optimizer, scheduler, logging, checkpoint, and resume state."""
     seed_everything(train_config.seed)
     device = resolve_device(train_config.device)
+    distributed = DistributedContext.from_environment(strategy=train_config.distribution_strategy)
+    if distributed.distributed:
+        if device.startswith("cuda"):
+            device = f"cuda:{distributed.local_rank}"
+            torch.cuda.set_device(distributed.local_rank)
+        distributed = init_process_group(
+            distributed,
+            backend=train_config.distributed_backend,
+            device=device,
+        )
     model.to(device)
+    model = wrap_model(model, distributed, device)
     optimizer = optimizer or torch.optim.AdamW(
         model.parameters(),
         lr=train_config.learning_rate,
@@ -100,6 +118,8 @@ def create_training_state(
 
     # Artifact services are created once and shared by functional/object APIs.
     run_dir = Path(train_config.output_dir) / train_config.experiment_name
+    if not distributed.is_main:
+        run_dir = run_dir / "ranks" / f"rank-{distributed.rank}"
     checkpoint = ModelCheckpoint(run_dir / "checkpoints")
     logger = build_logger(train_config, run_dir)
     logger.log_config(train_config)
@@ -117,6 +137,7 @@ def create_training_state(
         else None,
         early_stopping=EarlyStopping(train_config.early_stopping_patience),
         checkpoint_extra=checkpoint_extra,
+        distributed=distributed,
     )
     if train_config.resume_from:
         resume_training_state(state, train_config.resume_from)
@@ -125,9 +146,10 @@ def create_training_state(
 
 def resume_training_state(state: TrainingState, path: str | Path) -> dict:
     """Restore model and optimizer state into an existing runtime."""
+    checkpoint_model = state.model.module if hasattr(state.model, "module") else state.model
     checkpoint = load_checkpoint(
         path,
-        state.model,
+        checkpoint_model,
         state.optimizer,
         state.scheduler,
         map_location=state.device,
@@ -143,9 +165,15 @@ def resume_training_state(state: TrainingState, path: str | Path) -> dict:
 def save_training_state(state: TrainingState, path: str | Path, epoch: int) -> Path:
     """Save a complete functional training checkpoint."""
     path = Path(path)
+    if not state.distributed.is_main:
+        return path
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "model": state.model.state_dict(),
+        "model": (
+            state.model.module.state_dict()
+            if hasattr(state.model, "module")
+            else state.model.state_dict()
+        ),
         "optimizer": state.optimizer.state_dict(),
         "scheduler": state.scheduler.state_dict() if state.scheduler is not None else None,
         "config": serializable_config(state.train_config),
@@ -273,6 +301,7 @@ def train_model(
         synchronize()
         start = time.perf_counter()
         values = eval_step(model, loader, state.device, split=split)
+        values = reduce_metrics(values, state.distributed)
         synchronize()
         duration = max(time.perf_counter() - start, 1e-9)
         values[f"{split}_duration_seconds"] = duration
@@ -409,7 +438,7 @@ def train_model(
                 stop_training = True
 
         # Epoch summaries preserve evolution separately from noisy batch history.
-        epoch_metrics = averages.compute()
+        epoch_metrics = reduce_metrics(averages.compute(), state.distributed)
         epoch_elapsed = max(time.perf_counter() - epoch_start, 1e-9)
         if "train_loss" in epoch_metrics:
             epoch_metrics["perplexity"] = perplexity(epoch_metrics["train_loss"])

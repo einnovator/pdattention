@@ -8,7 +8,7 @@ import click
 import torch
 import yaml
 
-from common.config import deep_update, read_yaml as read_yaml_file
+from common.config import deep_update, load_config_sources, read_yaml as read_yaml_file
 from common.train import resolve_device
 from config.model_size import estimate_model_size
 from data.datamodules import PRADataModule
@@ -16,6 +16,8 @@ from data.datasets import read_jsonl
 from .config import CacheServiceConfig, PRAConfig, ResolverServiceConfig, TrainConfig
 from .eval import run_evaluation
 from .pra_train import train_pra_model
+from .experiment_adapter import run_pra_training_config
+from .distributed_cli import register_distributed_commands, run_training_request
 
 
 DEFAULT_CONFIG_PATH = Path("config") / "config.yml"
@@ -147,11 +149,20 @@ def apply_named_model(cfg: dict, model_name: str = "default") -> dict:
     return cfg
 
 
-def load_config(config_path: str | None = None, model_name: str = "default") -> dict:
+def load_config(config_path: str | tuple[str, ...] | list[str] | None = None, model_name: str = "default") -> dict:
     cfg = copy.deepcopy(BUILTIN_CONFIG)
     deep_update(cfg, read_yaml(DEFAULT_CONFIG_PATH))
-    if config_path:
-        deep_update(cfg, read_yaml(Path(config_path)))
+    paths = ([config_path] if isinstance(config_path, str) else list(config_path or ()))
+    existing_paths = []
+    for path in paths:
+        if Path(path).exists():
+            existing_paths.append(path)
+        else:
+            click.echo(f"Warning: config file not found: {path}", err=True)
+    if existing_paths:
+        loaded, sources = load_config_sources(*existing_paths)
+        deep_update(cfg, loaded)
+        cfg["_config_sources"] = sources
     return apply_named_model(cfg, model_name)
 
 
@@ -347,7 +358,7 @@ def cli():
 
 
 @cli.command()
-@click.option("-c", "--config", "config_path", type=click.Path(dir_okay=False))
+@click.option("-c", "--config", "config_path", type=click.Path(file_okay=True, dir_okay=True), multiple=True)
 @click.option("--model", "model_name", default="default", show_default=True, help="Named model profile from the models section.")
 @click.option("-s", "--steps", type=int)
 @click.option("-b", "--batch-size", type=int)
@@ -361,6 +372,18 @@ def cli():
 @click.option("-i/-I", "--pin-memory/--no-pin-memory", default=None)
 @click.option("-W/-N", "--persistent-workers/--no-persistent-workers", default=None)
 @click.option("-q/-Q", "--shuffle/--no-shuffle", default=None)
+@click.option("-C", "--cluster", type=str)
+@click.option("-E", "--experiment", type=str)
+@click.option("--distribution", type=click.Choice(["local", "trials", "seeds", "sweep", "ddp", "fsdp", "pipeline"]))
+@click.option("--storage", type=str)
+@click.option("--seeds", type=str, help="Comma list or half-open range, for example 0:5.")
+@click.option("--num-seeds", type=int)
+@click.option("--base-seed", type=int, default=0, show_default=True)
+@click.option("--resume", is_flag=True)
+@click.option("--dry-run", is_flag=True)
+@click.option("--max-trials", type=click.IntRange(min=1))
+@click.option("--fail-fast", is_flag=True)
+@click.option("--param", "parameters", multiple=True, help="Config override PATH=YAML_VALUE; -P remains PRA layer IDs.")
 @common_service_options
 @common_model_options
 def train(config_path, model_name, **options):
@@ -376,76 +399,40 @@ def train(config_path, model_name, **options):
         if key in train_cfg:
             train_cfg[key] = value
 
-    device = resolve_device(train_cfg["device"])
-    datamodule = PRADataModule(
-        dataset_stage=train_cfg["dataset_stage"],
-        data_dir=train_cfg["data_dir"],
-        max_examples=train_cfg["max_examples"],
-        batch_size=int(train_cfg["batch_size"]),
-        max_seq_len=int(cfg["model"]["max_seq_len"]),
-        shuffle=bool(train_cfg["shuffle"]),
-        num_workers=int(train_cfg["num_workers"]),
-        pin_memory=bool(train_cfg["pin_memory"]),
-        persistent_workers=bool(train_cfg["persistent_workers"]),
-    ).load()
-    pra_cfg = build_pra_config(
-        cfg,
-        vocab_size=datamodule.tokenizer.vocab_size,
-        batch_size=int(train_cfg["batch_size"]),
-        lr=float(train_cfg["lr"]),
-        steps=int(train_cfg["steps"]),
-        device=device,
-    )
-    out_path = Path(train_cfg["out"])
-    train_runtime_cfg = TrainConfig(
-        experiment_name=out_path.stem,
-        output_dir=str(out_path.parent if out_path.parent != Path(".") else "out"),
-        device=device,
-        epochs=1,
-        max_steps=int(train_cfg["steps"]) if int(train_cfg["steps"]) > 0 else None,
-        batch_size=int(train_cfg["batch_size"]),
-        grad_accum_steps=1,
-        learning_rate=float(train_cfg["lr"]),
-        max_seq_len=int(cfg["model"]["max_seq_len"]),
-        num_workers=int(train_cfg["num_workers"]),
-        pin_memory=bool(train_cfg["pin_memory"]),
-        persistent_workers=bool(train_cfg["persistent_workers"]),
-        dataset_stage=train_cfg["dataset_stage"],
-        data_dir=train_cfg["data_dir"],
-        max_examples=train_cfg["max_examples"],
-        shuffle=bool(train_cfg["shuffle"]),
-        eval_every_steps=max(int(train_cfg["steps"]) + 1, 1),
-        save_every_steps=max(int(train_cfg["steps"]) + 1, 1),
-        log_every_steps=1,
-        use_tensorboard=False,
-        resolver_config=ResolverServiceConfig.from_value(cfg["resolver"]),
-        cache_config=CacheServiceConfig.from_value(cfg["cache"]),
-    )
+    from common.config import apply_overrides
 
-    result = train_pra_model(
-        cfg=pra_cfg,
-        train_config=train_runtime_cfg,
-        datamodule=datamodule,
-        resolver_config=train_runtime_cfg.resolver_config,
-        cache_config=train_runtime_cfg.cache_config,
+    apply_overrides(cfg, options.get("parameters") or ())
+    orchestration_keys = (
+        "cluster", "experiment", "distribution", "storage", "seeds", "num_seeds",
+        "resume", "dry_run", "max_trials", "fail_fast",
     )
-    torch.save(
-        {
-            "model": result["model"].state_dict(),
-            "cfg": pra_cfg.__dict__,
-            "stoi": datamodule.tokenizer.stoi,
-            "itos": datamodule.tokenizer.itos,
-            "dataset_stage": train_cfg["dataset_stage"],
-            "resolver_config": train_runtime_cfg.resolver_config.__dict__,
-            "cache_config": train_runtime_cfg.cache_config.__dict__,
-        },
-        train_cfg["out"],
-    )
+    orchestration_requested = any(options.get(key) for key in orchestration_keys)
+    if options.get("cluster") == "local" and not any(
+        options.get(key) for key in orchestration_keys if key != "cluster"
+    ):
+        orchestration_requested = False
+    if orchestration_requested:
+        return run_training_request(
+            cfg,
+            cluster=options.get("cluster"),
+            experiment=options.get("experiment"),
+            distribution=options.get("distribution"),
+            storage=options.get("storage"),
+            seeds=options.get("seeds"),
+            num_seeds=options.get("num_seeds"),
+            base_seed=options.get("base_seed", 0),
+            resume=bool(options.get("resume")),
+            dry_run=bool(options.get("dry_run")),
+            max_trials=options.get("max_trials"),
+            fail_fast=bool(options.get("fail_fast")),
+        )
+
+    run_pra_training_config(cfg)
     click.echo(f"saved {train_cfg['out']}")
 
 
 @cli.command(name="eval")
-@click.option("-c", "--config", "config_path", type=click.Path(dir_okay=False))
+@click.option("-c", "--config", "config_path", type=click.Path(file_okay=True, dir_okay=True), multiple=True)
 @click.option("-K", "--ckpt", type=str)
 @click.option("-d", "--device", type=str)
 @click.option("-e", "--examples", type=int)
@@ -502,14 +489,28 @@ def config():
 
 
 @config.command()
-@click.option("-c", "--config", "config_path", type=click.Path(dir_okay=False))
+@click.option("-c", "--config", "config_path", type=click.Path(file_okay=True, dir_okay=True), multiple=True)
 def show(config_path):
     """Show merged default configuration."""
     click.echo(yaml.safe_dump(load_config(config_path), sort_keys=False))
 
 
+@config.command()
+@click.option("-c", "--config", "config_path", type=click.Path(file_okay=True, dir_okay=True), multiple=True)
+def validate(config_path):
+    """Validate merged workers, clusters, storage, and experiments."""
+    from common.config import resolve_infrastructure
+
+    cfg = load_config(config_path)
+    infrastructure = resolve_infrastructure(cfg, sources=cfg.get("_config_sources", ()))
+    click.echo(
+        f"valid: {len(infrastructure.workers)} workers, {len(infrastructure.clusters)} clusters, "
+        f"{len(infrastructure.storage)} storage backends, {len(infrastructure.experiments)} experiments"
+    )
+
+
 @cli.command()
-@click.option("-c", "--config", "config_path", type=click.Path(dir_okay=False))
+@click.option("-c", "--config", "config_path", type=click.Path(file_okay=True, dir_okay=True), multiple=True)
 @click.option("--model", "model_name", default="default", show_default=True, help="Named model profile from the models section.")
 @click.option("-v", "--vocab-size", type=int, default=128, show_default=True)
 @click.option("-b", "--batch-size", type=int)
@@ -537,7 +538,7 @@ def dataset():
 
 
 @dataset.command()
-@click.option("-c", "--config", "config_path", type=click.Path(dir_okay=False))
+@click.option("-c", "--config", "config_path", type=click.Path(file_okay=True, dir_okay=True), multiple=True)
 @click.option("-g", "--dataset-stage", type=str)
 @click.option("-D", "--data-dir", type=str)
 @click.option("-m", "--max-examples", type=int)
@@ -564,6 +565,9 @@ def show(config_path, dataset_stage, data_dir, max_examples):
         "expected_anchors": expected_anchors,
     }
     click.echo(yaml.safe_dump(stats, sort_keys=False))
+
+
+register_distributed_commands(cli, load_config)
 
 
 if __name__ == "__main__":
