@@ -656,16 +656,44 @@ class TokenNativeIndex:
             policy,
             explicit_reference_uris,
         )
+        extended_token_modes = {
+            "token_weighted",
+            "token_approx",
+            "union",
+            "token_semantic_rerank",
+            "semantic_token_rerank",
+            "cascade",
+            "iterative_hybrid",
+        }
+        needs_token_features = not sparse or policy.mode in {
+            "token_exact",
+            *extended_token_modes,
+        }
+        needs_ngram = not sparse or policy.mode == "token_ngram" or (
+            policy.enable_extended_channels and policy.mode in extended_token_modes
+        )
+        needs_edit = not sparse or policy.mode == "token_edit" or (
+            policy.enable_extended_channels and policy.mode in extended_token_modes
+        )
+        needs_sequence = not sparse or policy.mode in {"token_approx", "cascade"}
+        needs_bm25 = not sparse or policy.mode in {"bm25", "cascade"}
+        needs_embedding = not sparse or policy.mode == "token_embedding" or (
+            policy.enable_extended_channels and policy.mode in extended_token_modes
+        )
         evaluated_rows = (
             sorted(candidate_rows) if sparse else list(range(len(self.records)))
         )
         bm25_values = {
             index: self._bm25(bm25_query, self.records[index])
             for index in evaluated_rows
-            if index in candidate_rows
+            if index in candidate_rows and needs_bm25
         }
         bm25_scale = max(max(bm25_values.values(), default=0.0), 1e-12)
-        embedding_scores = self._embedding_scores(raw_query, token_embedding_weight)
+        embedding_scores = (
+            self._embedding_scores(raw_query, token_embedding_weight)
+            if needs_embedding
+            else None
+        )
         query_ngrams = set(_ngrams(normalized_query, policy.ngram_sizes))
         query_text = " ".join(normalized_query)
         raw_rows: list[tuple[int, dict[str, Any]]] = []
@@ -674,12 +702,12 @@ class TokenNativeIndex:
             evaluated = index in candidate_rows
             raw_length, _, raw_start = (
                 _longest_common_span(raw_query, record.token_ids)
-                if evaluated
+                if evaluated and needs_token_features
                 else (0, -1, -1)
             )
             norm_length, _, norm_start = (
                 _longest_common_span(normalized_query, record.normalized_tokens)
-                if evaluated
+                if evaluated and needs_token_features
                 else (0, -1, -1)
             )
             denominator = max(1, min(8, len(record.normalized_tokens)))
@@ -698,7 +726,11 @@ class TokenNativeIndex:
             if policy.stop_token_strategy == "fixed":
                 query_content -= _FIXED_STOP_TOKENS
                 record_content -= _FIXED_STOP_TOKENS
-            intersection = query_content & record_content if evaluated else set()
+            intersection = (
+                query_content & record_content
+                if evaluated and needs_token_features
+                else set()
+            )
             if policy.stop_token_strategy == "idf":
                 weighted_denominator = sum(
                     self.idf.get(token, 0.0) for token in record_content
@@ -710,7 +742,7 @@ class TokenNativeIndex:
                 weighted = len(intersection) / max(len(record_content), 1)
             ordered = (
                 _ordered_overlap(normalized_query, record.normalized_tokens)
-                if evaluated
+                if evaluated and needs_token_features
                 else 0.0
             )
             record_ngrams = set(
@@ -721,7 +753,7 @@ class TokenNativeIndex:
             )
             ngram = (
                 len(query_ngrams & record_ngrams) / max(len(record_ngrams), 1)
-                if evaluated
+                if evaluated and needs_ngram
                 else 0.0
             )
             edit = (
@@ -731,15 +763,14 @@ class TokenNativeIndex:
                     policy.ngram_sizes,
                     policy.approximate_max_distance,
                 )
-                if evaluated
-                and (policy.enable_extended_channels or policy.mode == "token_edit")
+                if evaluated and needs_edit
                 else 0.0
             )
             sequence = (
                 SequenceMatcher(
                     None, normalized_query, record.normalized_tokens, autojunk=False
                 ).ratio()
-                if evaluated
+                if evaluated and needs_sequence
                 else 0.0
             )
             approximate = max(sequence, edit)

@@ -44,6 +44,21 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+def _read_checkpoint(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def _append_checkpoint(path: Path, row: dict) -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(row, sort_keys=True) + "\n")
+
+
 def _aggregate(rows: list[dict]) -> list[dict]:
     groups = defaultdict(list)
     for row in rows:
@@ -134,10 +149,23 @@ def _plot(summary: list[dict], output: Path) -> None:
 
 def run(args) -> dict:
     args.output.mkdir(parents=True, exist_ok=True)
+    checkpoint = args.output / "hybrid_interaction_checkpoint.jsonl"
     examples = _fresh_examples(
         args.cache_dir, args.examples_per_dataset, args.offset, args.seed
     )
-    rows = []
+    rows = _read_checkpoint(checkpoint)
+    completed = {
+        (
+            row["model"],
+            row["dataset"],
+            row["example_id"],
+            int(row["chunk_tokens"]),
+            int(row["routing_layer_offset"]),
+            int(row["chunk_budget"]),
+            row["channel"],
+        )
+        for row in rows
+    }
     model_manifest = {}
     for model_name in args.models:
         for chunk_tokens in args.chunk_tokens:
@@ -164,6 +192,22 @@ def run(args) -> dict:
                 for layer in layer_choices:
                     offset = layer - int(pra.model.config.num_hidden_layers)
                     for budget in args.chunk_budgets:
+                        pending = [
+                            channel
+                            for channel in CHANNELS
+                            if (
+                                model_name,
+                                raw["dataset"],
+                                raw["id"],
+                                chunk_tokens,
+                                offset,
+                                budget,
+                                channel,
+                            )
+                            not in completed
+                        ]
+                        if not pending:
+                            continue
                         _, local = _route_channels(
                             pra,
                             tokenizer,
@@ -175,6 +219,8 @@ def run(args) -> dict:
                             chunk_budget=budget,
                         )
                         for row in local:
+                            if row["channel"] not in pending:
+                                continue
                             row.update(
                                 model=model_name,
                                 dataset=raw["dataset"],
@@ -185,6 +231,18 @@ def run(args) -> dict:
                                 chunk_budget=budget,
                             )
                             rows.append(row)
+                            _append_checkpoint(checkpoint, row)
+                            completed.add(
+                                (
+                                    model_name,
+                                    raw["dataset"],
+                                    raw["id"],
+                                    chunk_tokens,
+                                    offset,
+                                    budget,
+                                    row["channel"],
+                                )
+                            )
                 print(
                     f"[{model_name} chunk={chunk_tokens} {example_index}/{len(examples)}] "
                     f"{raw['dataset']} {raw['id']}",
@@ -194,6 +252,15 @@ def run(args) -> dict:
             gc.collect()
             if args.device == "cuda":
                 torch.cuda.empty_cache()
+    unique = {}
+    for row in rows:
+        key = (
+            row["model"], row["dataset"], row["example_id"],
+            int(row["chunk_tokens"]), int(row["routing_layer_offset"]),
+            int(row["chunk_budget"]), row["channel"],
+        )
+        unique[key] = row
+    rows = list(unique.values())
     summary = _aggregate(rows)
     _write_csv(args.output / "hybrid_interaction_rows.csv", rows)
     _write_csv(args.output / "hybrid_interaction_summary.csv", summary)

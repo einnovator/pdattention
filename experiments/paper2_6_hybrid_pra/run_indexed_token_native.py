@@ -367,8 +367,73 @@ def _plot_stop_strategies(rows, output: Path) -> None:
     plt.close(figure)
 
 
+def _refresh_indexed_latency(args) -> dict:
+    """Refresh only optimized indexed queries while freezing exhaustive rows."""
+    path = args.output / "indexed_latency.csv"
+    if not path.exists():
+        raise FileNotFoundError("Run the complete latency benchmark before refreshing it.")
+    with path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    for name in args.tokenizers:
+        model_id, revision = MODEL_SPECS[name]
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_id, revision=revision, local_files_only=args.local_files_only
+        )
+        for size in sorted({int(row["corpus_chunks"]) for row in rows if row["tokenizer"] == name}):
+            index, _ = _build(tokenizer, size)
+            for row in [
+                value
+                for value in rows
+                if value["tokenizer"] == name and int(value["corpus_chunks"]) == size
+            ]:
+                query_index = int(row["query_target"])
+                query = f"Find Project Helios{query_index} using AX-{query_index:05d}."
+                _, cold, _ = _rank(
+                    index,
+                    tokenizer,
+                    query,
+                    row["mode"],
+                    indexed=True,
+                    pool=args.candidate_pool,
+                )
+                durations = [
+                    _rank(
+                        index,
+                        tokenizer,
+                        query,
+                        row["mode"],
+                        indexed=True,
+                        pool=args.candidate_pool,
+                    )[1]
+                    for _ in range(args.repeats)
+                ]
+                warm = statistics.median(durations)
+                row["indexed_cold_ms"] = 1000 * cold
+                row["indexed_ms"] = 1000 * warm
+                row["speedup"] = float(row["exhaustive_ms"]) / max(1000 * warm, 1e-12)
+            print(f"[{name} refresh] corpus_chunks={size}", flush=True)
+    _write_csv(path, rows)
+    _plot_latency(rows, args.output)
+    findings_path = args.output / "indexed_token_native_findings.json"
+    findings = json.loads(findings_path.read_text(encoding="utf-8"))
+    findings.update(
+        mean_speedup=statistics.fmean(float(row["speedup"]) for row in rows),
+        mean_candidate_fraction=statistics.fmean(
+            float(row["indexed_candidate_fraction"]) for row in rows
+        ),
+        warm_repeats=args.repeats,
+        optimized_indexed_refresh=True,
+    )
+    findings_path.write_text(
+        json.dumps(findings, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    return findings
+
+
 def run(args: argparse.Namespace) -> dict:
     args.output.mkdir(parents=True, exist_ok=True)
+    if args.refresh_indexed_only:
+        return _refresh_indexed_latency(args)
     latency_rows = []
     invariance_rows = []
     manifests = {}
@@ -439,6 +504,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-pool", type=int, default=64)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--local-files-only", action="store_true")
+    parser.add_argument("--refresh-indexed-only", action="store_true")
     parser.add_argument(
         "--output",
         type=Path,

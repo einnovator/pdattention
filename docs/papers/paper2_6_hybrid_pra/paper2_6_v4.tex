@@ -2,7 +2,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs,amsmath,amssymb,enumitem,tabularx,graphicx,float}
 \usepackage[hidelinks]{hyperref}
-\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{../shared/results/paper2_6_hybrid_pra/channel_selection/}{../shared/results/paper2_6_hybrid_pra/channel_selection/normalized_efficiency/}{../shared/results/paper2_6_hybrid_pra/final_iteration/}{docs/papers/shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_geometry/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/normalized_efficiency/}{docs/papers/shared/results/paper2_6_hybrid_pra/final_iteration/}}
+\graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{../shared/results/paper2_6_hybrid_pra/channel_selection/}{../shared/results/paper2_6_hybrid_pra/channel_selection/normalized_efficiency/}{../shared/results/paper2_6_hybrid_pra/final_iteration/}{../shared/results/paper2_6_hybrid_pra/indexed_confirmation/}{../shared/results/paper2_6_hybrid_pra/end_to_end_confirmation/}{../shared/results/paper2_6_hybrid_pra/interaction_confirmation/}{docs/papers/shared/results/paper2_6_hybrid_pra/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_geometry/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/}{docs/papers/shared/results/paper2_6_hybrid_pra/channel_selection/normalized_efficiency/}{docs/papers/shared/results/paper2_6_hybrid_pra/final_iteration/}{docs/papers/shared/results/paper2_6_hybrid_pra/indexed_confirmation/}{docs/papers/shared/results/paper2_6_hybrid_pra/end_to_end_confirmation/}{docs/papers/shared/results/paper2_6_hybrid_pra/interaction_confirmation/}}
 \setlength{\emergencystretch}{3em}
 \title{Multi-Representational Reference Discovery for Progressive Retrieval Attention:\\Semantic, Lexical, and Iterative Routing Across Four Evidence Tasks}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
@@ -36,6 +36,8 @@ At hop $h$, let
 \]
 Candidates retain URI/chunk identity, layer, raw channel scores, discovery hop, parent, provenance, rank, confidence, and an explicit calibration-status flag. Exact handles may resolve deterministically; approximate channels generate candidates.
 
+An application can also pass stable reference handles with a generation request. The model validates those URIs against its registered reference cache and forwards the resolved URI set to every routing hop. Matching rows receive deterministic priority with provenance \texttt{explicit\_reference}; unknown handles fail before generation. This is product wiring rather than an oracle: the caller must possess the URI, and no evidence annotation enters the resolver.
+
 The implementation compares a progressive resolution cascade, candidate union, score fusion, token-native scoring followed by semantic reranking, semantic scoring followed by token-native reranking, and iterative hybrid traversal. Classical BM25 over decoded word terms is retained as a strong baseline rather than absorbed into the proposed mechanism.
 
 \section{Token-Native Reference Matching}
@@ -66,9 +68,20 @@ The present token-native score uses token-space inverse document frequency,
 \[
 w(t)=\log\frac{N+1}{df(t)+1},
 \]
-which can automatically downweight domain-generic tokens. Ordered subsequence overlap preserves multi-token identity while tolerating intervening material. Fixed stop-token removal and explicit token $n$-grams remain ablations.
+which can automatically downweight domain-generic tokens. Ordered subsequence overlap preserves multi-token identity while tolerating intervening material. A fixed stop list can instead remove common function words before retrieval. Token $n$-gram posting lists preserve local order without requiring an exact full-span match.
 
-Approximate matching is attempted only after exact or high-confidence matching fails or remains ambiguous. The current implementation uses sequence similarity over normalized subword pieces. Bounded token edit distance and similarity in the host model's input-token embedding matrix remain open ablations rather than assumed defaults.
+Approximate matching is attempted only after exact or high-confidence matching fails or remains ambiguous. Character-trigram postings first narrow the candidate set; sequence similarity is then evaluated only in that pool. Two additional diagnostic channels use bounded token edit distance over short subspans and cosine similarity between mean host-model input embeddings. The latter reuses the model's own embedding matrix rather than adding an independently trained representation. These channels are available for measurement, but are not silently folded into the product default.
+
+\subsection{Indexed Candidate Generation}
+Exhaustive scoring obscures the systems question because every query pays for every logical chunk. The production sidecar therefore stores postings for raw token IDs, normalized pieces, token $n$-grams, BM25 terms, character trigrams, and explicit reference URIs. A query forms the deduplicated union
+\[
+\mathcal U(q)=\mathcal P_{tok}(q)\cup\mathcal P_{ngram}(q)
+\cup\mathcal P_{bm25}(q)\cup\mathcal P_{char}(q)
+\cup\mathcal P_{uri}(q),
+\]
+then applies the requested channel only to rows in $\mathcal U(q)$, capped by a fixed candidate-pool budget. Semantic routing remains a tensor operation over gist states; indexed lexical retrieval narrows the token-native work. Channel unions deduplicate stable row identities before ranking.
+
+Index extension is immutable: adding references rebuilds corpus document frequencies and row-aligned postings and returns a new sidecar. This costs more than an in-place append, but prevents stale IDF statistics and lets concurrent readers retain a consistent snapshot. We consequently report construction, warm-query, memory, and update costs separately.
 
 Classical word-level BM25 remains a strong baseline~\cite{robertson2009bm25}. Approximate string matching is likewise a mature field~\cite{navarro2001approx}. The scientific question is whether these representations complement native semantic gists inside PRA's stateful discovery process, not whether conventional information retrieval is unnecessary.
 
@@ -146,7 +159,7 @@ For a fixed referent $r$, construct controlled variants
 r_{\mathrm{hyphen}},r_{\mathrm{split}},r_{\mathrm{typo}},
 r_{\mathrm{abbr}},r_{\mathrm{alias}},\ldots\}.
 \]
-The controlled suite covers case, punctuation, one-character misspellings, aliases, near entities, shared prefixes, numeric identifiers, URL/domain overlap, same-name and same-class ambiguity, wrong relations, stale aliases, two plausible references, and contradictory high-overlap names. Whitespace, hyphenation, naturally induced alternate subword segmentation, and corpus-derived alias tables remain open.
+The expanded controlled suite covers case, punctuation, leading-space artifacts, whitespace splitting, hyphenation, concatenation, one-character misspellings, abbreviations, aliases, full-width Unicode and mathematical-letter compatibility forms, near entities, shared prefixes, numeric identifiers, URL/domain overlap, same-name and same-class ambiguity, wrong relations, stale aliases, two plausible references, and contradictory high-overlap names. Normalization uses Unicode NFKC before case folding. Conservative aliases are extracted automatically from headings and parenthetical names; application-supplied aliases remain available when a stronger entity registry exists.
 
 We measure degradation separately for exact-span, weighted/ordered, approximate-token, cascade, and iterative-hybrid conditions. The objective is an invariance curve showing how rapidly each mechanism loses referent accuracy as the surface form moves away from exact token identity.
 
@@ -474,6 +487,55 @@ The observable UsefulAddress proxy combines address presence, rarity, uniqueness
 \caption{Calibration of the deployment-observable UsefulAddress proxy. The proxy is only weakly informative and remains unsuitable as a standalone action gate.}
 \label{fig:useful-proxy}
 \end{figure}
+
+\section{Indexed and End-to-End Confirmation}
+\subsection{Production-Index Scaling}
+We generated aligned sidecars containing 256, 1,024, and 4,096 chunks for both the Qwen3-0.6B and SmolLM2-135M tokenizers. Each query was measured exhaustively and through a 64-row indexed pool. The indexed path reproduced the exhaustive top four in every paired query. Table~\ref{tab:index-systems} reports warm single-query measurements at 4,096 chunks. The candidate fraction is 64/4,096=1.56\%; it is a work bound, not the fraction ultimately materialized.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Warm routing at 4,096 chunks. Times are milliseconds per query; speedup compares the same Python channel implementation before and after posting-list narrowing.}
+\label{tab:index-systems}
+\begin{tabular}{llrrrr}
+\toprule
+Tokenizer & Channel & Exhaustive & Indexed & Speedup & Index MiB\\
+\midrule
+Qwen & exact & 33557 & 119 & 283$\times$ & 10.06\\
+Qwen & weighted & 31375 & 530 & 59$\times$ & 10.06\\
+Qwen & approximate & 31141 & 499 & 62$\times$ & 10.06\\
+Qwen & cascade & 30965 & 556 & 56$\times$ & 10.06\\
+SmolLM & exact & 37048 & 125 & 300$\times$ & 10.94\\
+SmolLM & weighted & 37440 & 649 & 58$\times$ & 10.94\\
+SmolLM & approximate & 37005 & 632 & 59$\times$ & 10.94\\
+SmolLM & cascade & 36886 & 577 & 64$\times$ & 10.94\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 4,096 chunks, cold construction cost 3.37~s for Qwen and 2.76~s for SmolLM. Adding 64 chunks by immutable full-statistics rebuild took 0.80~s for either tokenizer. These conservative research implementations are a substantial improvement over exhaustive Python scoring, but the 0.50--0.65~s fuzzy paths are not yet serving-ready. The measurements support candidate-narrowing and parity claims, not competitive production latency.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{indexed_token_native_latency.pdf}
+\caption{Exhaustive and indexed routing latency. The indexed candidate pool stays bounded while the logical corpus grows.}
+\label{fig:indexed-latency}
+\end{figure}
+
+\subsection{Tokenizer and Surface-Form Replication}
+Across 13 controlled perturbations, cascade recall@4 was 0.985 with corpus IDF and 0.969 with either no stop suppression or the fixed list, identically for both tokenizers. Exact matching reached 0.923, token $n$-grams 0.754, approximate matching 0.262, and bounded edit matching 0.246. Thus the cascade is portable across these two tokenizers because its stages compensate for different failure modes; the weak fuzzy channels do not by themselves solve referential ambiguity.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{tokenizer_invariance.pdf}
+\caption{Controlled target recovery under tokenizer and surface-form perturbations. NFKC normalization covers compatibility forms; exact identity still fails under genuinely changed token sequences, where the cascade supplies fallback.}
+\label{fig:tokenizer-invariance}
+\end{figure}
+
+\subsection{Native-K/V Gate B Protocol}
+The confirmation uses two frozen model/tokenizer families and identities that are disjoint from the original 24-example-per-dataset Paper~2.6 cohort. For each model, 20 new examples per dataset tune only the observable channel selector, and 50 further examples per dataset form the held-out test. Sources are evidence-preserving bounded to 1,536 tokens, partitioned into 32-token chunks, and all routed conditions receive four chunks and at most 128 physical native-K/V tokens across four late consumption layers. Semantic, exact, BM25, approximate, hybrid, a five-seed validation-trained selector, and a padded evidence oracle share this budget.
+
+Generation controls hold the prompt and frozen model fixed: disabled and empty use no memory; shuffled uses the selected budget from another location; irrelevant uses non-evidence chunks; and bounded direct context places the same bounded source in the ordinary prompt. We report evidence recall/precision, EM, token F1, mean gold-answer token log probability, generation time, physical K/V counts, and paired bootstrap intervals. The oracle is an annotated diagnostic ceiling and never participates in channel training.
 
 \section{Evaluation}
 Discovery metrics include supporting-document/fact recall, MRR, NDCG, precision, missed-evidence rate, hop success, and path completion. Resource metrics include discovered, requested, and materialized chunks/tokens, active fraction, distractor materialization, index construction, cold/warm routing, repeated-hop cost, transfer, and end-to-end latency.
