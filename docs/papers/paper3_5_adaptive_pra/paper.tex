@@ -14,7 +14,7 @@
 \lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,frame=single,columns=fullflexible}
 
 \title{Adaptive Progressive Retrieval Attention:\\
-Interpretation, Search-Method Selection, Admission, and Bounded Retry}
+Interpretation, Search-Method Selection, Root-State Callbacks, and Bounded Retry}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \hypersetup{pdftitle={Adaptive Progressive Retrieval Attention},pdfauthor={Jorge Simao}}
@@ -63,14 +63,19 @@ real headroom, but the present small controller does not capture it.  Learned ta
 .032 only to .037, while an oracle correction reaches .143.  These are matched-budget discovery
 metrics, not generated-answer or K/V-materialization gains.
 
-We then strengthen the one-shot request/reply baseline before introducing callbacks.  A fresh CUDA
-replay over 74 frozen query states adds global, syntactic, multiscale, graph, and hierarchical
-syntactic-to-graph facet construction.  On a post-hoc identity-disjoint 45/29 controller split,
-five-seed graph-facet choice reaches .117 evidence recall, joint facet/root choice with a matched
-successor reaches .179, and learned per-facet routing reaches $.198\pm.020$, versus .273 for the
-best whole-query one-shot configuration.  A type rule reaches .224 and the per-facet oracle .283.
-These are four-chunk root-discovery results.  They do not replace the separate full root/successor
-traversal result or yet establish a callback gain.
+We then strengthen request/reply with global, structural, multiscale, graph, and hierarchical
+structural-to-graph facets and execute the complete matched surface: 29,700 actions over the original
+58 validation and 74 test identities, with five root and five successor methods.  A validation-fixed
+global policy reaches .205 test evidence recall.  Five-seed query-only one-shot control reaches
+$.180\pm.022$ without graph and $.180\pm.023$ with graph.  A learned single callback after root
+selection falls to .168; a validation-tuned uncertainty rule reaches $.188\pm.024$ while invoking
+graph refinement on 16.5\% of cases.  Complete-action and stage-wise evaluator oracles both reach
+.365 exactly.  Their equality is important: on this measured Cartesian surface, observing root
+state creates no additional oracle action, and learned callbacks do not justify serving complexity.
+A stratified eight-example frozen Qwen decode check maps four conceptual selections to 128 native
+K/V tokens across eight consumer layers.  One-shot and threshold policies raise exact match/token
+F1 from .375 without memory to .500; the callback result is .375.  This small confirmation verifies
+materialization and generation but is not a benchmark-quality answer comparison.
 
 Query interpretation is itself an action.  Explicit and structural regions remove recent-head
 serialization sensitivity in matched controls and remain stable through 8K following tokens.
@@ -115,7 +120,7 @@ where $Q$ is held-out output or retrieval quality and $C$ includes conceptual se
 generation retries, and measured latency.  Equation~\ref{eq:adaptive-goal} is not guaranteed on
 every dataset.  If almost every query is hard, the correct controller should spend the high budget.
 
-This paper makes twelve contributions:
+This paper makes thirteen contributions:
 \begin{enumerate}
 \item It defines a public PRA control vector and freezes three monotonic effort profiles rather
 than predicting unconstrained continuous parameters.
@@ -142,7 +147,11 @@ the Paper-2.6 action contract by content hash, and compares fixed, cascade, lear
 method policies on four natural evidence tasks.
 \item It integrates tensor-native semantic query graphs into the same one-shot request/reply action,
 adds hierarchical syntactic-to-graph facets and per-facet channel policies, and reports graph cost,
-overlap, five-seed controller, and oracle-headroom measurements before any callback experiment.
+overlap, five-seed controller, and oracle-headroom measurements.
+\item It implements one opt-in \texttt{ROOT\_SELECTED} callback, executes a matched 29,700-action
+root/successor surface, compares learned and threshold controls under standard and
+leave-one-dataset-out splits, and confirms selected identities through native-K/V materialization
+and frozen decode.
 \end{enumerate}
 
 Full-weight PRA retraining is deliberately absent.  That intervention belongs to Paper~4.  Here the
@@ -1079,13 +1088,14 @@ for serving claims.  A production controller should optimize measured downstream
 per-system resource constraints, not a fabricated scalar that treats one posting lookup as one GPU
 dot product.
 
-\section{Strengthened Request/Reply: Graph Facets Before Callbacks}
+\section{Strengthened Request/Reply and a Single Root-State Callback}
 \label{sec:request-reply-graph}
 
 The preceding controller selected how many cached facets to use, but not how those facets were
 constructed.  That omission would make a callback comparison unfair: a callback with semantic
-graphs would have a larger interpretation space than its one-shot baseline.  We therefore add the
-graph action to request/reply first and defer callback experiments.
+graphs would have a larger interpretation space than its one-shot baseline.  We therefore first add
+the graph action to request/reply, then execute the same root/successor surface with and without one
+post-root callback.
 
 \subsection{Five facet modes and one hierarchical representation}
 
@@ -1226,10 +1236,153 @@ applicable; static and oracle rows have one deterministic value.}
 
 The inherited full root/successor study remains a different measurement scope: S6 recall is .032
 and its oracle is .143 over 68 successor-bearing examples.  We preserve those rows separately and
-do not compare their magnitudes directly with four-chunk root discovery.  A full Cartesian execution
-of every facet mode, independent successor method, effort setting, and per-facet policy would be
-combinatorial and has not been imputed.  The present result completes the fair one-shot capability
-baseline needed before callbacks; it does not yet estimate B5--B3 callback value.
+do not compare their magnitudes directly with the preceding four-chunk root-discovery replay.  The
+next experiment closes that scope gap by executing every facet/root/successor action at one fixed
+two-root plus two-successor budget.
+
+\subsection{One bounded \texttt{ROOT\_SELECTED} event}
+
+The serving contract permits exactly one event:
+\begin{equation}
+ q\rightarrow a_0\rightarrow \mathcal R_1\rightarrow z_{\mathrm{root}}
+ \xrightarrow{\texttt{ROOT\_SELECTED}}d_1\rightarrow \mathcal S_1.
+ \label{eq:root-callback}
+\end{equation}
+Here $a_0$ chooses facet and root method, $\mathcal R_1$ is the selected root set,
+$z_{\mathrm{root}}$ contains observable post-search state, and $d_1$ chooses one successor method
+or conditional graph refinement.  There is no second event and no generation retry.  The callback
+cannot inspect dataset identity, gold evidence, or answers.
+
+The state records ordered root identities and scores, top-score gap, candidate entropy, channel
+agreement, newly exposed lexical addresses, facet agreement, root dispersion, mean root gist, and
+remaining conceptual and K/V budgets.  \texttt{RootState} begins at
+\path{src/pra_hf/root_callback.py}:48, the bounded \texttt{RootDecision} at line 145, and the
+single-event dispatcher at line 207.  The dispatcher calls a root executor once, invokes
+\texttt{on\_root\_selected} once, and passes the decision to a successor executor.  Existing static
+execution remains unchanged unless a controller is supplied.
+
+\subsection{Complete measured action surface}
+
+We retain the original 58 validation and 74 test identities rather than creating another post-hoc
+split.  Each identity executes nine facet profiles: global with one facet, and structural,
+multiscale, graph, and structural-to-graph with two and four requested facets.  Crossing these with
+five root methods and five successor methods gives
+\begin{equation}
+132\times 9\times 5\times 5=29{,}700
+\end{equation}
+measured actions.  Every action retains two roots, follows two successors, and admits at most four
+32-token conceptual chunks.  Thus quality comparisons do not hide broader callback search or K/V
+admission.  Root search persists 5,940 reusable states; fitting a new callback does not repeat
+retrieval.  Root-state construction is at
+\path{experiments/paper3_5_adaptive_pra/request_reply_full_surface.py}:215 and successor execution at
+line 280.  The latter caches duplicate root/channel score computations across actions but emits the
+same rankings and per-action cost estimates; a checked smoke replay reproduced every selection and
+quality field exactly.
+
+Graph construction is not free.  On the test partition, global, structural, multiscale, graph, and
+structural-to-graph construction take .43, 1.86, 18.85, 32.22, and 33.90 prototype ms/example.
+The global graph performs 424.5 pairwise evaluations in one call.  Structural-to-graph reduces this
+to 368.0 evaluations across 1.08 local calls, but control overhead removes a wall-clock advantage in
+the Python prototype.  Its mean parent/child overlap is .564.  These timings identify work; they do
+not establish optimized serving latency.
+
+\subsection{Matched one-shot and callback results}
+
+Table~\ref{tab:root-callback} is the controlled $2\times2$ comparison.  B1 and B3 exclude graph;
+B2 and B4 permit it initially.  B5 permits conditional graph refinement.  B5t is a transparent
+validation-tuned uncertainty rule over root gap, entropy, and channel disagreement.  Learned rows
+average five bootstrap seeds; dataset and evaluator fields are absent.  All rows have the same
+.0719 active conceptual fraction and 225.3 mean prototype comparisons.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Full-surface test retrieval.  Values are evidence recall; learned and threshold rows show
+mean $\pm$ standard deviation across five seeds.  B6/B7 are evaluator-only ceilings.}
+\label{tab:root-callback}
+\begin{tabular}{lll}
+\toprule
+ID & policy & recall \\
+\midrule
+B0 & validation-fixed global request/reply & .205 \\
+B1 & query-only one-shot, no graph & $.180\pm.022$ \\
+B2 & query-only one-shot, graph available & $.180\pm.023$ \\
+B3 & root callback, no graph & $.168\pm.021$ \\
+B4 & root callback, graph available initially & $.167\pm.019$ \\
+B5 & learned conditional graph refinement & $.167\pm.021$ \\
+B5t & threshold conditional graph refinement & $.188\pm.024$ \\
+B6 & complete-action oracle & .365 \\
+B7 & stage-wise oracle & .365 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/root_callback/controller/callback_quality.pdf}
+\caption{Matched request/reply results on all 74 frozen test identities.  Error bars show variation
+across controller seeds, not example-level uncertainty.}
+\label{fig:root-callback-quality}
+\end{figure}
+
+The result does not support the callback hypothesis.  B3--B5 trail their matched one-shot controls.
+Adding the compact root gist to callback features raises B5 to .177 in an ablation, still below B1.
+The threshold controller is stronger: it gains .008 recall over B1, correcting 21.6\% and harming
+17.6\% of test decisions while graph-refining 16.5\%.  It nevertheless remains below B0.  Three of
+five threshold seeds invoke no graph refinement; the gain is partly a simpler factorization of
+initial and successor choices, not a stable value-of-information result for graphs.
+
+The oracle result is more fundamental.  B6 chooses the best complete measured action per example.
+B7 first chooses the root action and then its best successor from the same Cartesian surface.  They
+must coincide when both evaluator oracles optimize the same realized rows, and they do: both reach
+.3649 recall, .5777 precision, .7964 MRR, and .0270 complete recovery.  Calling their difference an
+intrinsic sequential gain would be incorrect.  The oracle chooses global facets for 83.8\% of
+examples, structural facets for 13.5\%, and graph facets for 2.7\%; no other graph profile survives
+the deterministic quality/cost tie-break.
+
+Leave-one-dataset-out transfer strengthens the negative conclusion.  B1, B2, B3, and B5t reach
+.167, .170, .155, and .180 recall, respectively, versus .190 for the validation-fixed policy and
+.365 for the oracle.  QASPER is the weakest transfer case: the same rows reach .029, .031, .035,
+and .042, compared with a .200 oracle.  More controller capacity is not warranted before features
+or supervision change.
+
+\subsection{Native-K/V and frozen decode confirmation}
+
+A retrieval score does not prove that chosen identities reach the consumer.  We therefore select
+two deterministic test examples per dataset and compare no memory, B0, B1, B3, B5t, and B6 with
+frozen Qwen3-0.6B.  The live adapter maps each frozen conceptual span explicitly to its native cache
+span; it never assumes that experimental and runtime chunk identifiers match.  The mapping begins at
+\path{experiments/paper3_5_adaptive_pra/request_reply_end_to_end.py}:124 and live execution at line
+208.  All memory conditions map four conceptual chunks to four physical chunks, materialize 128
+unique native-K/V tokens across layers 20--27, expose 1,024 token-layer states (4 MiB), and activate
+7.75\% of source tokens on average.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Eight-example native-K/V decode confirmation.  $\Delta\log p$ is mean gold-token log
+probability relative to no memory.  The sample is a mechanism check, not a benchmark estimate.}
+\label{tab:root-callback-e2e}
+\begin{tabular}{lrrrr}
+\toprule
+Condition & retrieval recall & exact/F1 & $\Delta\log p$ & K/V tokens \\
+\midrule
+No memory & .000 & .375 & .000 & 0 \\
+B0 fixed & .279 & .375 & +.567 & 128 \\
+B1 one-shot & .358 & .500 & +.770 & 128 \\
+B3 callback & .228 & .375 & +.912 & 128 \\
+B5t threshold & .360 & .500 & +.687 & 128 \\
+B6 oracle & .533 & .500 & +.639 & 128 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every memory condition improves gold-token likelihood, confirming that selected native K/V enters
+the frozen consumer.  Generated exact/F1 improves for B1 and B5t but does not increase monotonically
+with retrieval recall; B6 ties them, and B3 obtains the largest likelihood gain without improving
+generated accuracy.  With eight examples, that non-monotonicity is a warning against substituting
+retrieval metrics for answer quality.  The SDK therefore keeps frozen request/reply as the default
+and exposes the callback as research-only, opt-in control.
 
 \section{Self-Encoded Query Routing: Letting the Backbone Read the Task Before Allocating Memory}
 \label{sec:self-routing}
@@ -1662,7 +1815,8 @@ specific span mapping and a lightweight learned span scorer remain untested.
 The factorized endpoint is frozen-score evidence-chain recovery, not generated-answer quality.
 The original factorized surface ranks existing cached facets.  Section~\ref{sec:request-reply-graph}
 adds parameter-free facet construction from frozen query states, but it is not a trained semantic
-interpreter and its 45/29 split is post-hoc within the prior test cohort.  Search-order
+interpreter.  Its first 45/29 analysis is post-hoc within the prior test cohort; the subsequent
+full-surface callback study restores the original 58/74 partition.  Search-order
 admission does not exploit $B_s>B_{kv}$ in any held-out minimum-cost oracle.  The targeted correction
 audit uses evaluator success to choose an action and must not be read as an oracle-free retry result.
 Five QASPER units remain unsolved throughout the measured lattice.
@@ -1678,13 +1832,14 @@ Paper-2.6 test split; it is not a validation-frozen downstream result.  Query-re
 interaction is unidentifiable because only two examples use the minority layout.  Unlike method
 operations are intentionally not collapsed into one systems-cost scalar.
 
-The graph-facet extension measures root discovery, not every Cartesian combination with successor
-method, hop depth, effort, and physical admission.  B3 therefore carries a matched successor name
-but is not a newly executed successor traversal.  Per-facet reciprocal-rank fusion uses four
-retrieved chunks and no generated answers.  Hierarchical overlap counts coarse parent/child reuse;
-global hard-community overlap is zero by construction.  The prototype graph timings include Python
-control flow and synchronization.  Most importantly, no callback event or post-root policy is
-evaluated here; B5--B3 remains the next controlled question.
+The first graph-facet replay measures root discovery only and uses a post-hoc 45/29 split.  The newer
+29,700-action study repairs both limitations for one fixed two-root/two-successor budget, but it does
+not cross hop depth, effort, per-facet routing, or variable physical admission.  Hierarchical overlap
+counts coarse parent/child reuse; global hard-community overlap is zero by construction.  Prototype
+graph timings include Python control flow and are not serving measurements.  The single callback is
+tested with small ridge and threshold controllers over 58 validation identities; B7 is an evaluator
+oracle, not a deployable policy.  The eight-example decode cohort verifies native-K/V propagation but
+is too small for dataset-level answer-quality claims.
 
 Finally, no full PRA backbone is trained here.  Learned consumer adaptation and full-weight scaling
 are deferred to Paper~4.
@@ -1718,13 +1873,14 @@ until selection improves.  C0 is the strongest measured deployable cascade, not 
 it loses to the fixed pair on QASPER and MuSiQue.  Always switching methods hurts; learned targeted
 retry raises recall only from .032 to .037.
 
-Graph faceting completes the capability side of that baseline without solving prediction.  On the
-post-hoc 29-identity holdout, graph-facet choice alone reaches .117 recall, joint facet/root action
-.179, learned per-facet routing $.198\pm.020$, and the one-shot oracle .273.  A type rule reaches
-.224.  Hierarchical faceting reduces MuSiQue pairwise query-graph work from 796 to 570 while
-preserving graph recall within .002, but graph+hybrid gains remain small and mixed across datasets.
-The next callback study can now compare against a one-shot controller with the same facet and
-per-facet method capabilities; any future gain need not be credited to an action-space mismatch.
+Graph faceting completes the capability side of that baseline without solving prediction.  The
+exploratory post-hoc split shows per-facet headroom, but the stronger full-surface result is
+conservative: B1 and B2 both reach about .180 recall, while B3--B5 reach .167--.168.  The transparent
+threshold policy reaches .188 but does not beat the .205 validation-fixed global policy.  B6 and B7
+are identical at .365, so this action surface provides no stage-wise oracle gain.  The callback API
+is useful as an experimental boundary and trace format, not as the SDK default.  A future callback
+iteration needs different supervision, state, or legal actions; more capacity on the same labels is
+not the next justified step.
 
 Adaptive PRA must also decide what the query is.  Explicit roles remain preferred; structural and
 recent interpretations should compete under confidence because either can fail under serialization
@@ -1762,6 +1918,9 @@ factorized composition, operation-specific cost accounting, claim audit, finding
 \item request/reply natural replay rows for five facet modes, per-facet method outcomes, graph calls,
 density, overlap, pairwise work and latency, five-seed B1--B4 controllers, B7 oracle, scope audit,
 findings JSON, and two figures;
+\item the complete 29,700-row request/reply surface, 5,940 persisted root states, five-seed standard
+and leave-one-dataset-out one-shot/callback rows, threshold and feature ablations, graph accounting,
+native-K/V decode rows, findings manifests, and callback figures;
 \item inherited systems and matched-proxy rows retained for Paper-5.5 provenance, not counted as
 Paper-3.5 contributions.
 \end{itemize}
@@ -1776,6 +1935,10 @@ python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
 python -m experiments.paper3_5_adaptive_pra.adaptive_search_methods
 python -m experiments.paper2_7_query_graph.run_natural_retrieval --device cuda
 python -m experiments.paper3_5_adaptive_pra.request_reply_graph_study
+python -m experiments.paper3_5_adaptive_pra.precompute_request_reply_query_states --device cuda
+python -m experiments.paper3_5_adaptive_pra.request_reply_full_surface --device cuda
+python -m experiments.paper3_5_adaptive_pra.root_callback_study
+python -m experiments.paper3_5_adaptive_pra.request_reply_end_to_end --device cuda
 python -m pytest
 \end{lstlisting}
 

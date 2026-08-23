@@ -45,6 +45,9 @@ FACET_MODE_ALIASES = {
     "last_span": "global",
     "multi_span": "syntactic",
     "multi_scale": "multiscale",
+    "structural": "syntactic",
+    "structural->graph": "syntactic_graph",
+    "structural_to_graph": "syntactic_graph",
     "syntactic->graph": "syntactic_graph",
     "syntactic_to_graph": "syntactic_graph",
 }

@@ -19,6 +19,10 @@ python -m experiments.paper3_5_adaptive_pra.precompute_self_router_features --de
 python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
 python -m experiments.paper2_7_query_graph.run_natural_retrieval --device cuda
 python -m experiments.paper3_5_adaptive_pra.request_reply_graph_study
+python -m experiments.paper3_5_adaptive_pra.precompute_request_reply_query_states --device cuda
+python -m experiments.paper3_5_adaptive_pra.request_reply_full_surface --device cuda
+python -m experiments.paper3_5_adaptive_pra.root_callback_study
+python -m experiments.paper3_5_adaptive_pra.request_reply_end_to_end --device cuda
 ```
 
 Adaptive quality uses validation-frozen Paper 2.5 traces. Output calibration
@@ -47,12 +51,16 @@ selection uses validation CV by example identity. The compact pooled feature
 cache is committed with its model revision and SHA-256 manifest; no token-level
 hidden-state cache is retained.
 
-The request/reply graph extension reuses the identity-frozen Paper 2.7 cohort.
-It measures five facet-construction modes and per-facet root channels, then
-creates an explicitly post-hoc 45/29 identity split for five-seed controller
-analysis. Root-discovery and inherited full root/successor scopes remain in
-separate tables. No callback result is reported by this extension.
+The first request/reply graph extension reuses the identity-frozen Paper 2.7
+cohort and an explicitly post-hoc 45/29 split. The stronger callback study uses
+the original 58/74 Paper 2.6 validation/test boundary and executes 29,700
+facet/root/successor actions. It compares matched one-shot, threshold, learned
+callback, conditional-graph, complete-oracle, and stage-oracle policies across
+five seeds and leave-one-dataset-out transfer. A smaller eight-example run maps
+the selected conceptual spans to live native K/V and frozen generation.
 
-Paper 3.5 ends at adaptive initial control plus one bounded retry. Existing
+Paper 3.5 ends at adaptive initial control, one root-state callback, and one
+bounded retry. The callback remains opt-in because it does not beat the static
+request/reply default on the measured cohort. Existing
 kernel, cache, page, batching, and serving artifacts are retained as historical
 handoff evidence for Paper 5.5; first-class vLLM integration belongs to Paper 6.

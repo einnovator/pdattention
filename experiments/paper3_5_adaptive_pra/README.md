@@ -43,6 +43,23 @@ The final command reports candidate-normalized search and admission breadth,
 evidence-normalized working-set overhead, physical native-K/V tokens, and
 bounded-retry increments without collapsing them into one abstract cost.
 
+Run the strengthened graph-faceted request/reply and single-callback study with:
+
+```powershell
+python -m experiments.paper3_5_adaptive_pra.precompute_request_reply_query_states --device cuda --local-files-only
+python -m experiments.paper3_5_adaptive_pra.request_reply_full_surface --device cuda --local-files-only
+python -m experiments.paper3_5_adaptive_pra.root_callback_study
+python -m experiments.paper3_5_adaptive_pra.request_reply_end_to_end --device cuda --local-files-only
+```
+
+The surface executes all five root methods, five successor methods, and global,
+structural, multiscale, graph, and structural-to-graph facets on the inherited
+58/74 validation/test split. The controller study uses five bootstrap seeds and
+leave-one-dataset-out transfer. The callback receives one persisted root state
+and may make one bounded successor or graph-refinement decision; it cannot enter
+a retry loop. The final command is a smaller stratified native-K/V and frozen
+decode confirmation, not a replacement for the full retrieval cohort.
+
 This runner imports the deterministic Paper 2.6 action specification, replays
 its frozen four-dataset channel rows, and learns validation-only root,
 successor, useful-address, and targeted-retry selectors. It keeps search
