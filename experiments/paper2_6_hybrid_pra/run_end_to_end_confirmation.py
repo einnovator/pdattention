@@ -146,6 +146,47 @@ def _fresh_examples(cache_dir, count: int, offset: int, seed: int) -> list[dict]
     return output
 
 
+def _cohort_audit(args) -> dict:
+    legacy = load_split_examples(
+        args.cache_dir, LEGACY_EXAMPLES_PER_DATASET, 0, LEGACY_COHORT_SEED
+    )
+    groups = {
+        "legacy": {(row["dataset"], row["id"]) for row in legacy},
+        "validation": {
+            (row["dataset"], row["id"])
+            for row in _fresh_examples(
+                args.cache_dir,
+                args.validation_examples_per_dataset,
+                args.validation_offset,
+                args.seed,
+            )
+        },
+        "test": {
+            (row["dataset"], row["id"])
+            for row in _fresh_examples(
+                args.cache_dir,
+                args.test_examples_per_dataset,
+                args.test_offset,
+                args.seed,
+            )
+        },
+        "interaction": {
+            (row["dataset"], row["id"])
+            for row in _fresh_examples(args.cache_dir, 8, 70, args.seed)
+        },
+    }
+    intersections = {
+        f"{left}_x_{right}": len(groups[left] & groups[right])
+        for index, left in enumerate(groups)
+        for right in tuple(groups)[index + 1 :]
+    }
+    return {
+        "identity_counts": {name: len(values) for name, values in groups.items()},
+        "pairwise_intersections": intersections,
+        "all_disjoint": all(value == 0 for value in intersections.values()),
+    }
+
+
 def _capture_query(pra, prompt_ids, prompt_mask, routing_layer: int | None = None):
     device = pra.device
     positions = torch.arange(prompt_ids.shape[1], device=device).unsqueeze(0)
@@ -213,10 +254,11 @@ def _route_channels(
     )
     root_ids = prompt_ids[0][prompt_mask[0].bool()].detach().cpu().tolist()
     iterative = IterativeGistRouter(index)
+    per_hop_width = max(1, math.ceil(chunk_budget / 2))
     config = IterativeRoutingConfig(
         depth=2,
-        branch_top_k=2,
-        beam_size=2,
+        branch_top_k=per_hop_width,
+        beam_size=per_hop_width,
         max_unique_chunks=chunk_budget,
         root_anchor_alpha=0.0,
         path_score_mode="last",
@@ -689,35 +731,105 @@ def _paired_effects(rows: list[dict]) -> list[dict]:
     return output
 
 
-def _plot(aggregates, output):
-    core = [*CORE_CHANNELS, "adaptive", "oracle"]
-    figure, axes = plt.subplots(1, 2, figsize=(11, 4.2))
-    for model in sorted({row["model"] for row in aggregates}):
-        values = [row for row in aggregates if row["model"] == model]
-        logp = [
-            statistics.fmean(
-                row["gold_logprob_delta_vs_disabled"]
-                for row in values
-                if row["condition"] == condition
-            )
-            for condition in core
-        ]
-        f1 = [
-            statistics.fmean(row["f1"] for row in values if row["condition"] == condition)
-            for condition in core
-        ]
-        axes[0].plot(core, logp, marker="o", label=model)
-        axes[1].plot(core, f1, marker="o", label=model)
-    axes[0].axhline(0, color="black", linewidth=0.8)
-    axes[0].set_ylabel("Gold log-probability delta vs disabled")
-    axes[1].set_ylabel("Generated token F1")
-    for axis in axes:
-        axis.tick_params(axis="x", rotation=35)
-        axis.grid(alpha=0.25)
-        axis.legend(fontsize=8)
+def _panel_plot(aggregates, output, *, metric, conditions, stem, ylabel):
+    models = sorted({row["model"] for row in aggregates})
+    datasets = sorted({row["dataset"] for row in aggregates})
+    lookup = {
+        (row["model"], row["dataset"], row["condition"]): float(row[metric])
+        for row in aggregates
+    }
+    figure, axes = plt.subplots(
+        len(models), len(datasets),
+        figsize=(6.1 * len(datasets), 3.9 * len(models)),
+        squeeze=False,
+    )
+    for model_index, model in enumerate(models):
+        for dataset_index, dataset in enumerate(datasets):
+            axis = axes[model_index][dataset_index]
+            values = [lookup[(model, dataset, condition)] for condition in conditions]
+            colors = [
+                "#4477AA" if condition in CORE_CHANNELS else
+                "#228833" if condition == "adaptive" else
+                "#EE6677" if condition == "oracle" else
+                "#BBBBBB"
+                for condition in conditions
+            ]
+            axis.bar(range(len(conditions)), values, color=colors, width=0.78)
+            if "delta" in metric:
+                axis.axhline(0.0, color="black", linewidth=0.8)
+            axis.set_title(f"{model} / {dataset}")
+            axis.set_ylabel(ylabel)
+            axis.set_xticks(range(len(conditions)), conditions, rotation=38, ha="right")
+            axis.grid(axis="y", alpha=0.25)
     figure.tight_layout()
     for suffix in ("png", "pdf"):
-        figure.savefig(output / f"end_to_end_confirmation.{suffix}", dpi=190)
+        figure.savefig(output / f"{stem}.{suffix}", dpi=190)
+    plt.close(figure)
+
+
+def _plot(aggregates, output):
+    discovery = (*CORE_CHANNELS, "adaptive", "oracle")
+    causal = (
+        *discovery, "shuffled", "irrelevant", "disabled",
+        "bounded_direct_context",
+    )
+    _panel_plot(
+        aggregates, output,
+        metric="evidence_recall", conditions=discovery,
+        stem="end_to_end_retrieval", ylabel="Evidence recall",
+    )
+    _panel_plot(
+        aggregates, output,
+        metric="gold_logprob_delta_vs_disabled", conditions=causal,
+        stem="end_to_end_confirmation",
+        ylabel="Gold log-probability delta vs disabled",
+    )
+    _panel_plot(
+        aggregates, output,
+        metric="f1", conditions=causal,
+        stem="end_to_end_f1", ylabel="Generated token F1",
+    )
+
+
+def _plot_calibration(calibration, output):
+    models = sorted({row["model"] for row in calibration})
+    datasets = sorted({row["dataset"] for row in calibration})
+    figure, axes = plt.subplots(
+        len(models), len(datasets),
+        figsize=(6.1 * len(datasets), 3.9 * len(models)),
+        squeeze=False,
+    )
+    for model_index, model in enumerate(models):
+        for dataset_index, dataset in enumerate(datasets):
+            axis = axes[model_index][dataset_index]
+            rows = [
+                row for row in calibration
+                if row["model"] == model and row["dataset"] == dataset
+            ]
+            channels = [row["channel"] for row in rows]
+            x = list(range(len(rows)))
+            axis.bar(
+                [value - 0.18 for value in x],
+                [float(row["top1_accuracy"]) for row in rows],
+                width=0.36, label="top-1 accuracy", color="#4477AA",
+            )
+            axis.bar(
+                [value + 0.18 for value in x],
+                [float(row["selective_coverage"]) for row in rows],
+                width=0.36, label="coverage at >=.80 validation precision",
+                color="#CCBB44",
+            )
+            axis.set(
+                title=f"{model} / {dataset}",
+                ylabel="Fraction",
+                ylim=(0.0, 1.0),
+            )
+            axis.set_xticks(x, channels, rotation=38, ha="right")
+            axis.grid(axis="y", alpha=0.25)
+            axis.legend(fontsize=7)
+    figure.tight_layout()
+    for suffix in ("png", "pdf"):
+        figure.savefig(output / f"natural_wrong_reference_calibration.{suffix}", dpi=190)
     plt.close(figure)
 
 
@@ -768,6 +880,10 @@ def _load_model(name, args):
 
 def run(args):
     args.output.mkdir(parents=True, exist_ok=True)
+    cohort_audit = _cohort_audit(args)
+    (args.output / "cohort_audit.json").write_text(
+        json.dumps(cohort_audit, indent=2, sort_keys=True), encoding="utf-8"
+    )
     checkpoint = args.output / "end_to_end_checkpoint.jsonl"
     completed_rows = _read_jsonl(checkpoint)
     completed = {
@@ -959,6 +1075,7 @@ def run(args):
     paired_effects = _paired_effects(completed_rows)
     _write_csv(args.output / "paired_causal_effects.csv", paired_effects)
     _plot(aggregates, args.output)
+    _plot_calibration(calibration, args.output)
     manifest = {
         "schema_version": "1.0",
         "device": args.device,
@@ -975,6 +1092,7 @@ def run(args):
             "seed": LEGACY_COHORT_SEED,
             "examples_per_dataset": LEGACY_EXAMPLES_PER_DATASET,
         },
+        "cohort_audit": cohort_audit,
         "channels": list(CHANNELS),
         "generated_conditions": [*CORE_CHANNELS, "adaptive", "oracle", *CONTROL_CONDITIONS],
         "matched_chunk_budget": 4,

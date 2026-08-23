@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import platform
 import statistics
 import sys
 import time
@@ -40,6 +41,17 @@ MODEL_SPECS = {
     "qwen3_0_6b": ("Qwen/Qwen3-0.6B", "c1899de289a04d12100db370d81485cdf75e47ca"),
     "smollm2_135m": ("HuggingFaceTB/SmolLM2-135M", "93efa2f097d58c2a74874c7e644dbc9b0cee75a2"),
 }
+
+
+def _system_manifest() -> dict[str, str]:
+    return {
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+    }
+
+
 MODES = (
     "token_exact",
     "token_ngram",
@@ -423,6 +435,7 @@ def _refresh_indexed_latency(args) -> dict:
         ),
         warm_repeats=args.repeats,
         optimized_indexed_refresh=True,
+        system=_system_manifest(),
     )
     findings_path.write_text(
         json.dumps(findings, indent=2, sort_keys=True), encoding="utf-8"
@@ -488,6 +501,7 @@ def run(args: argparse.Namespace) -> dict:
         ),
         "stop_token_strategies": list(STOP_STRATEGIES),
         "update_contract": "measured immutable full-statistics rebuild after adding 64 chunks",
+        "system": _system_manifest(),
     }
     (args.output / "indexed_token_native_findings.json").write_text(
         json.dumps(findings, indent=2, sort_keys=True), encoding="utf-8"

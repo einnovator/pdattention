@@ -120,7 +120,7 @@ def _plot(summary: list[dict], output: Path) -> None:
                 if row["model"] == model
                 and row["dataset"] == dataset
                 and int(row["routing_layer_offset"]) == -1
-                and int(row["chunk_budget"]) == 4
+                and int(row["chunk_tokens"]) * int(row["chunk_budget"]) == 128
             ]
             for channel in CHANNELS:
                 channel_rows = [row for row in values if row["channel"] == channel]
@@ -134,7 +134,7 @@ def _plot(summary: list[dict], output: Path) -> None:
                     label=channel,
                 )
             axis.set(
-                title=f"{model} / {dataset}",
+                title=f"{model} / {dataset} (128 routed tokens)",
                 xlabel="Routing chunk tokens",
                 ylabel="Evidence recall",
                 ylim=(-0.03, 1.03),
@@ -147,9 +147,50 @@ def _plot(summary: list[dict], output: Path) -> None:
     plt.close(figure)
 
 
+def _plot_budget(summary: list[dict], output: Path) -> None:
+    models = sorted({row["model"] for row in summary})
+    datasets = sorted({row["dataset"] for row in summary})
+    figure, axes = plt.subplots(
+        len(models), len(datasets),
+        figsize=(6.0 * len(datasets), 4.2 * len(models)),
+        squeeze=False,
+    )
+    for model_index, model in enumerate(models):
+        for dataset_index, dataset in enumerate(datasets):
+            axis = axes[model_index][dataset_index]
+            values = [
+                row for row in summary
+                if row["model"] == model
+                and row["dataset"] == dataset
+                and int(row["routing_layer_offset"]) == -1
+                and int(row["chunk_tokens"]) == 32
+            ]
+            for channel in CHANNELS:
+                channel_rows = [row for row in values if row["channel"] == channel]
+                channel_rows.sort(key=lambda row: int(row["chunk_budget"]))
+                axis.plot(
+                    [int(row["chunk_budget"]) for row in channel_rows],
+                    [float(row["evidence_recall"]) for row in channel_rows],
+                    marker="o", label=channel,
+                )
+            axis.set(
+                title=f"{model} / {dataset} (32-token chunks)",
+                xlabel="Selected chunk budget",
+                ylabel="Evidence recall",
+                ylim=(-0.03, 1.03),
+                xticks=(2, 4, 8),
+            )
+            axis.grid(alpha=0.25)
+            axis.legend(fontsize=7, ncol=2)
+    figure.tight_layout()
+    for suffix in ("png", "pdf"):
+        figure.savefig(output / f"hybrid_budget_interactions.{suffix}", dpi=190)
+    plt.close(figure)
+
+
 def run(args) -> dict:
     args.output.mkdir(parents=True, exist_ok=True)
-    checkpoint = args.output / "hybrid_interaction_checkpoint.jsonl"
+    checkpoint = args.output / "hybrid_interaction_checkpoint_budget_reachable.jsonl"
     examples = _fresh_examples(
         args.cache_dir, args.examples_per_dataset, args.offset, args.seed
     )
@@ -229,6 +270,8 @@ def run(args) -> dict:
                                 routing_layer=layer,
                                 routing_layer_offset=offset,
                                 chunk_budget=budget,
+                                branch_top_k=max(1, (budget + 1) // 2),
+                                beam_size=max(1, (budget + 1) // 2),
                             )
                             rows.append(row)
                             _append_checkpoint(checkpoint, row)
@@ -265,6 +308,7 @@ def run(args) -> dict:
     _write_csv(args.output / "hybrid_interaction_rows.csv", rows)
     _write_csv(args.output / "hybrid_interaction_summary.csv", summary)
     _plot(summary, args.output)
+    _plot_budget(summary, args.output)
     findings = {
         "schema_version": "1.0",
         "models": model_manifest,
@@ -273,6 +317,30 @@ def run(args) -> dict:
         "offset": args.offset,
         "chunk_tokens": list(args.chunk_tokens),
         "chunk_budgets": list(args.chunk_budgets),
+        "budget_to_branch_top_k": {
+            str(budget): max(1, (budget + 1) // 2)
+            for budget in args.chunk_budgets
+        },
+        "selected_chunk_counts_by_budget": {
+            str(budget): sorted(
+                {
+                    int(row["selected_chunks"])
+                    for row in rows
+                    if int(row["chunk_budget"]) == budget
+                }
+            )
+            for budget in args.chunk_budgets
+        },
+        "matched_physical_token_budget": 128,
+        "candidate_pool_saturated": all(
+            abs(float(row["scored_candidate_fraction"]) - 1.0) < 1e-9
+            for row in summary
+        ),
+        "scope_note": (
+            "This small interaction cohort measures channel, granularity, budget, "
+            "and layer geometry. Its bounded candidate pools saturate the token index, "
+            "so indexed scaling and latency are reported by the separate systems run."
+        ),
         "routing_layer_offsets": sorted({row["routing_layer_offset"] for row in rows}),
         "channels": list(CHANNELS),
         "rows": len(rows),

@@ -47,6 +47,10 @@ routing layers, and Top-2/4/8 chunk budgets on a separate held-out slice:
 python -m experiments.paper2_6_hybrid_pra.run_hybrid_interactions --local-files-only
 ```
 
+This runner also uses an append-only JSONL checkpoint and skips completed
+`(model, dataset, example, chunk size, layer, budget, channel)` rows when
+resumed.
+
 ## Final iteration
 
 Replay the frozen 132-identity cohort, export detailed confidence provenance,
