@@ -1,7 +1,7 @@
-# Paper 2.7: Query-Graph Facet Discovery
+# Paper 2.7: Latent Query Decomposition from Frozen Transformer State Graphs
 
-This paper evaluates sparse graph structure over frozen query representations as
-an opt-in facet generator for the unchanged Paper 2.6 PRA memory scorer.
+This paper evaluates whether sparse graph structure over frozen decoder query
+states recovers natural query facets and improves matched-budget retrieval.
 
 ## Build
 
@@ -25,6 +25,11 @@ python -m experiments.paper2_7_query_graph.run_algorithm_cross
 python -m experiments.paper2_7_query_graph.run_controlled_facets
 python -m experiments.paper2_7_query_graph.run_natural_retrieval --local-files-only
 python -m experiments.paper2_7_query_graph.run_encoding_mode_pilot
+python experiments/paper2_7_query_graph/build_natural_facet_benchmark.py
+python experiments/paper2_7_query_graph/run_llm_decomposition.py --help
+python experiments/paper2_7_query_graph/run_natural_facet_validation.py --help
+python experiments/paper2_7_query_graph/run_fresh_retrieval.py --help
+python experiments/paper2_7_query_graph/summarize_next_iteration.py
 ```
 
 The natural runner expects inherited frozen feature artifacts documented in
@@ -32,6 +37,7 @@ The natural runner expects inherited frozen feature artifacts documented in
 Results are written under
 [`../shared/results/paper2_7_query_graph`](../shared/results/paper2_7_query_graph).
 
-The study evaluates retrieval selections at four requested 32-token chunks. It
-does not perform physical native-K/V materialization, memory attention, answer
-generation, or LLM judging.
+The historical study evaluates four requested 32-token chunks. The standalone
+iteration adds a fresh four-document endpoint. Its native-K/V gate fails, so it
+does not perform physical materialization, memory attention, or answer
+generation.
