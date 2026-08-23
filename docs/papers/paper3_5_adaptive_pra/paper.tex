@@ -48,9 +48,9 @@ change, while compound fallback remains necessary elsewhere.  This is retry head
 online policy.
 
 Normalized candidate accounting exposes a different controller tradeoff from the abstract cost
-alone.  On QASPER, the factorized oracle recovers .917 of evidence parents while admitting 10.9%
-of candidates; targeted retry reaches the same recall at 19.0%.  On HotpotQA, targeted retry raises
-evidence-parent recall from .733 to .948, but expands admission from 69.7% to 75.6%.  These are
+alone.  On QASPER, the factorized oracle recovers .917 of evidence parents while admitting 10.9\%
+of candidates; targeted retry reaches the same recall at 19.0\%.  On HotpotQA, targeted retry raises
+evidence-parent recall from .733 to .948, but expands admission from 69.7\% to 75.6\%.  These are
 identity-level discovery and native-K/V activation measurements, not generated-answer gains.
 
 A separate four-dataset study treats retrieval representation itself as an action.  It replays 132
@@ -62,6 +62,15 @@ cascade reaches .048, and the joint method oracle reaches .143.  The method spac
 real headroom, but the present small controller does not capture it.  Learned targeted retry raises
 .032 only to .037, while an oracle correction reaches .143.  These are matched-budget discovery
 metrics, not generated-answer or K/V-materialization gains.
+
+We then strengthen the one-shot request/reply baseline before introducing callbacks.  A fresh CUDA
+replay over 74 frozen query states adds global, syntactic, multiscale, graph, and hierarchical
+syntactic-to-graph facet construction.  On a post-hoc identity-disjoint 45/29 controller split,
+five-seed graph-facet choice reaches .117 evidence recall, joint facet/root choice with a matched
+successor reaches .179, and learned per-facet routing reaches $.198\pm.020$, versus .273 for the
+best whole-query one-shot configuration.  A type rule reaches .224 and the per-facet oracle .283.
+These are four-chunk root-discovery results.  They do not replace the separate full root/successor
+traversal result or yet establish a callback gain.
 
 Query interpretation is itself an action.  Explicit and structural regions remove recent-head
 serialization sensitivity in matched controls and remain stable through 8K following tokens.
@@ -106,7 +115,7 @@ where $Q$ is held-out output or retrieval quality and $C$ includes conceptual se
 generation retries, and measured latency.  Equation~\ref{eq:adaptive-goal} is not guaranteed on
 every dataset.  If almost every query is hard, the correct controller should spend the high budget.
 
-This paper makes eleven contributions:
+This paper makes twelve contributions:
 \begin{enumerate}
 \item It defines a public PRA control vector and freezes three monotonic effort profiles rather
 than predicting unconstrained continuous parameters.
@@ -131,6 +140,9 @@ targets, and supplies an exact pre-consumer query-prefill reuse path with cost a
 \item It makes root and successor retrieval representations independent controller actions, imports
 the Paper-2.6 action contract by content hash, and compares fixed, cascade, learned, and oracle
 method policies on four natural evidence tasks.
+\item It integrates tensor-native semantic query graphs into the same one-shot request/reply action,
+adds hierarchical syntactic-to-graph facets and per-facet channel policies, and reports graph cost,
+overlap, five-seed controller, and oracle-headroom measurements before any callback experiment.
 \end{enumerate}
 
 Full-weight PRA retraining is deliberately absent.  That intervention belongs to Paper~4.  Here the
@@ -142,7 +154,7 @@ scientific object is adaptive inference over frozen routing and consumer behavio
 
 At attempt $t$, the runtime selects
 \begin{equation}
- a_t=(\mathcal Q,S_r,S_s,F,R,K,H,B_s,B_{kv},\theta,L_s,L_c,G,M),
+ a_t=(\mathcal Q,F_m,P_c,\theta_g,S_r,S_s,F,R,K,H,B_s,B_{kv},\theta,L_s,L_c,G,M),
 \end{equation}
 where $\mathcal Q$ is one or more functional query regions, $S_r$ and $S_s$ are the root and
 successor search representations, $F$ is the facet policy, $R$ retained roots, $K$ candidate
@@ -152,6 +164,11 @@ $M$ disclosure policy.  We separate $B_s$ and $B_{kv}$ because Paper~3 found tha
 remain compatible with compact evidence-only activation.  We also do not force $S_r=S_s$: an
 admitted chunk changes the successor query state and can expose an address best resolved in another
 representation.
+Here $F_m\in\{\text{global},\text{syntactic},\text{multiscale},\text{graph},
+\text{syntactic}\rightarrow\text{graph}\}$ is the facet-construction mode, $P_c$ is the coarse
+partition policy, and $\theta_g$ denotes the query-graph similarity, threshold, top-$k$, and
+component constraints.  Keeping $F_m$ separate from facet count prevents a controller from treating
+``four windows'' and ``four graph communities'' as the same interpretation action.
 
 The first public implementation uses three profiles (Table~\ref{tab:profiles}).  They are not
 universal hyperparameters; they are a stable SDK contract and an initial experimental ladder.
@@ -905,11 +922,11 @@ The serving contract is implemented in
 \begin{center}
 \path{src/pra_hf/adaptive_search.py}
 \end{center}
-\texttt{AdaptiveSearchAction} begins at line 72 and carries independent methods around the existing
-factorized effort action.  Strict action-spec import begins at line 130; dataset identity, gold
-geometry, oracle labels, and answer correctness are rejected from controller features at line 163.
-The deterministic method oracle at line 177 is evaluator-only.  Useful-address scoring, targeted
-method-delta naming, and operation-specific accounting begin at lines 198, 228, and 242.  The study
+\texttt{AdaptiveSearchAction} begins at line 81 and carries independent methods around the existing
+factorized effort action.  Strict action-spec import begins at line 188; dataset identity, gold
+geometry, oracle labels, and answer correctness are rejected from controller features at line 221.
+The deterministic method oracle at line 235 is evaluator-only.  Useful-address scoring, targeted
+method-delta naming, and operation-specific accounting begin at lines 256, 286, and 314.  The study
 runner derives oracle rows at line 221, evaluates policies at line 420, performs leave-one-dataset-out
 tests at line 509, and starts bounded method retry at line 639.  These line references make the
 interpret/search/admit boundary independently reproducible without coupling it to the paper script.
@@ -1061,6 +1078,158 @@ prototype latency are retained in separate columns.  The exhaustive Python timin
 for serving claims.  A production controller should optimize measured downstream quality under
 per-system resource constraints, not a fabricated scalar that treats one posting lookup as one GPU
 dot product.
+
+\section{Strengthened Request/Reply: Graph Facets Before Callbacks}
+\label{sec:request-reply-graph}
+
+The preceding controller selected how many cached facets to use, but not how those facets were
+constructed.  That omission would make a callback comparison unfair: a callback with semantic
+graphs would have a larger interpretation space than its one-shot baseline.  We therefore add the
+graph action to request/reply first and defer callback experiments.
+
+\subsection{Five facet modes and one hierarchical representation}
+
+The one-shot action now chooses
+\begin{equation}
+ F_m\in\{\mathrm{global},\mathrm{syntactic},\mathrm{multiscale},
+ \mathrm{graph},\mathrm{syntactic}\rightarrow\mathrm{graph}\}.
+\end{equation}
+Global uses the final contextual query state.  Syntactic pools deterministic clauses and relation
+neighborhoods.  Multiscale pools overlapping windows.  Graph constructs a sparse top-$k$ graph over
+contextual query tokens and pools connected components.  The hierarchical mode first partitions
+sentences, clauses, delimiters, or fixed regions and then constructs a local semantic graph inside
+each region.  It retains the global root, coarse regions, and graph children as distinct scoring
+views.
+
+Each tree node records its parent and children, possibly non-contiguous token indices and spans,
+embedding and centroid, entities, query-rare tokens, lexical statistics, component density and
+weight, and confidence.  This is provenance, not hidden evaluator state.  The graph sees one
+already contextualized query pass; it neither re-encodes windows nor inspects evidence labels.
+Component minimum and maximum sizes are enforced after clustering and before pooling.
+
+The reusable Paper-2.7 graph primitives are in \path{query_graph.py},
+\path{query_graph_cluster.py}, and \path{query_graph_facets.py}.  The adaptive contract begins with
+\texttt{GraphFacetConfig} at \path{adaptive_facets.py}:72 and the auditable tree node at line 111.
+Graph-region construction begins at line 323; the five-mode builder begins at line 400.
+\texttt{AdaptiveSearchAction} at \path{adaptive_search.py}:81 adds facet mode, coarse partition,
+graph similarity, threshold, top-$k$, component bounds, fusion, channel profile, and per-facet policy
+to the existing independent root/successor action.  Existing callers remain global/fixed by default.
+
+\subsection{Per-facet search methods}
+
+Heterogeneous facets need not share one retrieval representation.  A route now has the form
+\begin{equation}
+ (q_f,S_{r,f},S_{s,f},K_{r,f},K_{s,f}).
+\end{equation}
+The fixed baseline applies one pair to every facet.  The type rule sends entity/rare-identifier
+facets to exact or BM25 search, relational facets to semantic search, and mixed facets to hybrid
+search.  A ridge classifier predicts a root/successor pair from lexical, structural, confidence,
+and graph metadata.  The oracle chooses the best measured pair independently per facet and is never
+available to serving code.  \texttt{FacetRoute} is defined at \path{facet_routing.py}:31, the linear
+selector at line 79, the evaluator-only oracle at line 139, and common routing dispatch at line 168.
+
+\subsection{Frozen replay and graph accounting}
+
+We rerun the 74 identity-frozen Paper-2.7 test queries on CUDA: 16 QASPER, 16 HotpotQA, 24 2Wiki,
+and 18 MuSiQue.  Qwen3-0.6B query states, memory gists, chunk identities, and positives are reused;
+no model weights are updated and no K/V is materialized.  Every condition requests four 32-token
+chunks.  The selected graph policy is contextual similarity, union symmetrization, top-$2$, threshold
+.45, and connected components, selected previously on controlled validation.  Paper-2.6 global and
+hybrid selections reproduce exactly.
+
+Table~\ref{tab:graph-facet-cost} reports semantic-only graph rows.  Hierarchical faceting preserves
+or nearly preserves global-graph recall.  Its main measurable advantage appears on MuSiQue, where
+partitioning reduces pairwise similarity work from 796 to 570; it makes 1.33 local graph calls and
+introduces .384 mean parent/child facet overlap.  Hard global graph communities are disjoint, hence
+their overlap is zero.  Python/CUDA construction times include synchronization and vary across runs;
+they characterize this prototype, not a production speedup.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Graph versus hierarchical syntactic-to-graph root discovery.  Work is mean pairwise
+similarity evaluations; time is graph construction plus clustering in ms/example.}
+\label{tab:graph-facet-cost}
+\begin{tabular}{lrrrrrr}
+\toprule
+Dataset & graph recall & hier. recall & graph work & hier. work & graph ms & hier. ms \\
+\midrule
+QASPER & .033 & .064 & 90 & 90 & 31.9 & 18.8 \\
+HotpotQA & .234 & .212 & 524 & 524 & 70.2 & 35.5 \\
+2Wiki & .175 & .175 & 288 & 288 & 40.1 & 31.1 \\
+MuSiQue & .090 & .092 & 796 & 570 & 39.1 & 36.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Adding graph facets to the inherited hybrid channel changes recall by $-.0078$ on QASPER,
+$+.0156$ on HotpotQA, $0$ on 2Wiki, and $-.0078$ on MuSiQue.  Hierarchical hybrid has the same
+recall as global-graph hybrid on these four aggregates.  Thus graph construction adds useful
+example-level alternatives but is not an unconditional replacement for the global hybrid channel.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\textwidth]{../shared/results/paper3_5_adaptive_pra/request_reply_graph/controller/graph_facet_quality_cost.pdf}
+\caption{Measured graph-facet quality and construction cost by dataset.  Points are aggregate
+root-discovery conditions, not generated-answer quality or optimized serving latency.}
+\label{fig:graph-facet-quality-cost}
+\end{figure}
+
+\subsection{Five-seed one-shot and per-facet controllers}
+
+The Paper-2.7 cohort was originally a test cohort.  To test learnability without reusing the same
+identities for fitting and evaluation, we create an explicitly post-hoc, dataset-stratified 45/29
+identity split.  This is an exploratory controller split, not a new untouched benchmark test set.
+Fourteen observable query/facet aggregates are used; dataset identity and evidence labels are absent.
+Five bootstrap seeds train each ridge selector.  B2 chooses facet construction under semantic root
+search.  B3 chooses facet construction and root method, with the matched successor name carried in
+the action contract.  B4 chooses methods per facet and fuses four chunks by reciprocal rank.  B7 is
+the best measured whole-query one-shot action.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out root discovery at four chunks.  Learned rows average five seeds; B7 is one
+evaluator-only oracle.  B3 does not claim a newly executed full successor traversal.}
+\label{tab:request-reply-graph-baselines}
+\begin{tabular}{llrrr}
+\toprule
+ID & policy & recall & precision & MRR \\
+\midrule
+B2 & learned graph-facet choice & .117 & .222 & .323 \\
+B3 & learned facet/root action & .179 & .303 & .548 \\
+B4 & learned per-facet methods & .198 & .328 & .621 \\
+B7 & whole-query one-shot oracle & .273 & .457 & .704 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+B2 underperforms the existing global-channel request/reply controller (.183 recall): choosing facet
+construction alone is too difficult for this small feature set.  Opening the root channel restores
+most of that loss.  Per-facet learning improves mean recall by .018 over B3, with standard deviation
+.020 and a .179--.231 seed range.  The remaining B7--B3 gap is .093 recall.  The action space is
+therefore useful, but one-shot action prediction remains the limiting component.
+
+The per-facet controls sharpen that conclusion.  Fixed semantic fusion reaches .120 recall, the
+hand-written type rule .224, learned routing $.198\pm.020$, and the evaluator-only per-facet oracle
+.283.  The simple type rule exceeds the learned mean on this small split, while the oracle shows
+that channel heterogeneity exists below the whole-query level.  This is evidence for better
+calibration and training data, not for making the oracle or dataset identity a serving feature.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\textwidth]{../shared/results/paper3_5_adaptive_pra/request_reply_graph/controller/request_reply_baselines.pdf}
+\caption{Strengthened request/reply baselines.  Error bars are across five router seeds where
+applicable; static and oracle rows have one deterministic value.}
+\label{fig:request-reply-baselines}
+\end{figure}
+
+The inherited full root/successor study remains a different measurement scope: S6 recall is .032
+and its oracle is .143 over 68 successor-bearing examples.  We preserve those rows separately and
+do not compare their magnitudes directly with four-chunk root discovery.  A full Cartesian execution
+of every facet mode, independent successor method, effort setting, and per-facet policy would be
+combinatorial and has not been imputed.  The present result completes the fair one-shot capability
+baseline needed before callbacks; it does not yet estimate B5--B3 callback value.
 
 \section{Self-Encoded Query Routing: Letting the Backbone Read the Task Before Allocating Memory}
 \label{sec:self-routing}
@@ -1491,7 +1660,9 @@ The adversarial structural failure shows that ambiguous role resolution remains 
 specific span mapping and a lightweight learned span scorer remain untested.
 
 The factorized endpoint is frozen-score evidence-chain recovery, not generated-answer quality.
-Facet selection ranks existing cached facets; it is not a newly learned interpreter.  Search-order
+The original factorized surface ranks existing cached facets.  Section~\ref{sec:request-reply-graph}
+adds parameter-free facet construction from frozen query states, but it is not a trained semantic
+interpreter and its 45/29 split is post-hoc within the prior test cohort.  Search-order
 admission does not exploit $B_s>B_{kv}$ in any held-out minimum-cost oracle.  The targeted correction
 audit uses evaluator success to choose an action and must not be read as an oracle-free retry result.
 Five QASPER units remain unsolved throughout the measured lattice.
@@ -1506,6 +1677,14 @@ method comparison is four-fold out-of-fold because all overlapping cache identit
 Paper-2.6 test split; it is not a validation-frozen downstream result.  Query-region$\times$method
 interaction is unidentifiable because only two examples use the minority layout.  Unlike method
 operations are intentionally not collapsed into one systems-cost scalar.
+
+The graph-facet extension measures root discovery, not every Cartesian combination with successor
+method, hop depth, effort, and physical admission.  B3 therefore carries a matched successor name
+but is not a newly executed successor traversal.  Per-facet reciprocal-rank fusion uses four
+retrieved chunks and no generated answers.  Hierarchical overlap counts coarse parent/child reuse;
+global hard-community overlap is zero by construction.  The prototype graph timings include Python
+control flow and synchronization.  Most importantly, no callback event or post-root policy is
+evaluated here; B5--B3 remains the next controlled question.
 
 Finally, no full PRA backbone is trained here.  Learned consumer adaptation and full-weight scaling
 are deferred to Paper~4.
@@ -1524,9 +1703,9 @@ One bounded oracle corrective action exposes substantial retry headroom, but com
 five unsolved QASPER units prevent a stronger online claim.
 
 Candidate normalization explains where that headroom comes from.  QASPER's factorized oracle reaches
-.917 evidence-parent recall and .796 precision while admitting 10.9% of candidates, compared with
-.750, .450, and 18.2% for R0.  Retry reaches the oracle recall but admits 19.0% and has lower
-precision.  HotpotQA retry raises recall to .948 at a denser 75.6% admission fraction.  Thus adaptive
+.917 evidence-parent recall and .796 precision while admitting 10.9\% of candidates, compared with
+.750, .450, and 18.2\% for R0.  Retry reaches the oracle recall but admits 19.0\% and has lower
+precision.  HotpotQA retry raises recall to .948 at a denser 75.6\% admission fraction.  Thus adaptive
 control can expose sparse working sets, especially on QASPER, but the learned controller has not yet
 found them reliably.
 
@@ -1538,6 +1717,14 @@ therefore remain independent actions, but a validation-fixed pair remains the co
 until selection improves.  C0 is the strongest measured deployable cascade, not a universal policy:
 it loses to the fixed pair on QASPER and MuSiQue.  Always switching methods hurts; learned targeted
 retry raises recall only from .032 to .037.
+
+Graph faceting completes the capability side of that baseline without solving prediction.  On the
+post-hoc 29-identity holdout, graph-facet choice alone reaches .117 recall, joint facet/root action
+.179, learned per-facet routing $.198\pm.020$, and the one-shot oracle .273.  A type rule reaches
+.224.  Hierarchical faceting reduces MuSiQue pairwise query-graph work from 796 to 570 while
+preserving graph recall within .002, but graph+hybrid gains remain small and mixed across datasets.
+The next callback study can now compare against a one-shot controller with the same facet and
+per-facet method capabilities; any future gain need not be credited to an action-space mismatch.
 
 Adaptive PRA must also decide what the query is.  Explicit roles remain preferred; structural and
 recent interpretations should compete under confidence because either can fail under serialization
@@ -1572,6 +1759,9 @@ and figures;
 \item adaptive-search action specification, root/successor oracles, transition matrix, fixed/cascade/
 learned policy rows, leave-one-dataset-out and self-query controls, useful-address and retry rows,
 factorized composition, operation-specific cost accounting, claim audit, findings, and ten figures;
+\item request/reply natural replay rows for five facet modes, per-facet method outcomes, graph calls,
+density, overlap, pairwise work and latency, five-seed B1--B4 controllers, B7 oracle, scope audit,
+findings JSON, and two figures;
 \item inherited systems and matched-proxy rows retained for Paper-5.5 provenance, not counted as
 Paper-3.5 contributions.
 \end{itemize}
@@ -1584,6 +1774,8 @@ python -m experiments.paper3_5_adaptive_pra.normalized_efficiency
 python -m experiments.paper3_5_adaptive_pra.precompute_self_router_features --device cuda
 python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
 python -m experiments.paper3_5_adaptive_pra.adaptive_search_methods
+python -m experiments.paper2_7_query_graph.run_natural_retrieval --device cuda
+python -m experiments.paper3_5_adaptive_pra.request_reply_graph_study
 python -m pytest
 \end{lstlisting}
 
@@ -1629,7 +1821,7 @@ context tokens and is never presented as a free in-flight signal.
   "attempt": 1,
   "effort": "E1_medium",
   "control_vector": {
-    "F": {"policy": "multi_span", "count": 2},
+    "F": {"policy": "syntactic", "count": 2},
     "R": 2, "K": 4, "H": 1,
     "B": {"conceptual_parents": 4, "native_kv_tokens": 512},
     "theta": 0.45,

@@ -1,0 +1,128 @@
+{
+  "schema_version": "1.0",
+  "scope": "post_hoc_identity_disjoint_request_reply_controller_split",
+  "controller_features": [
+    "facet_count",
+    "mean_token_count",
+    "mean_unique_tokens",
+    "mean_rare_fraction",
+    "mean_entities",
+    "mean_relation_cues",
+    "mean_confidence",
+    "mean_component_nodes",
+    "mean_component_density",
+    "mean_component_weight",
+    "mean_token_spans",
+    "entity_facet_fraction",
+    "relational_facet_fraction",
+    "mixed_facet_fraction"
+  ],
+  "dataset_identity_used": false,
+  "train_identities": 45,
+  "heldout_identities": 29,
+  "router_seeds": [
+    1,
+    7,
+    21,
+    42,
+    87
+  ],
+  "action_spaces": {
+    "B1_existing_request_reply": [
+      "global_semantic",
+      "paper26_bm25",
+      "paper26_hybrid"
+    ],
+    "B2_graph_facet_choice": [
+      "global_semantic",
+      "paper25_clause",
+      "paper25_multiscale",
+      "graph_cc",
+      "syntactic_graph"
+    ],
+    "B3_facet_root_matched_successor": [
+      "global_semantic",
+      "paper25_clause",
+      "paper25_multiscale",
+      "paper26_bm25",
+      "paper26_hybrid",
+      "graph_cc",
+      "graph_label_propagation",
+      "graph_cc_hybrid",
+      "graph_label_propagation_hybrid",
+      "syntactic_graph",
+      "syntactic_graph_hybrid"
+    ]
+  },
+  "root_discovery_comparison": [
+    {
+      "baseline": "B2",
+      "policy": "B2_graph_facet_choice",
+      "scope": "root_discovery_at_four_chunks",
+      "seeds": 5,
+      "recall": 0.11727661227661228,
+      "precision": 0.22241379310344828,
+      "mrr": 0.32298850574712645
+    },
+    {
+      "baseline": "B3",
+      "policy": "B3_facet_root_matched_successor",
+      "scope": "root_discovery_at_four_chunks",
+      "seeds": 5,
+      "recall": 0.17949617432376053,
+      "precision": 0.30344827586206896,
+      "mrr": 0.5477011494252874
+    },
+    {
+      "baseline": "B4",
+      "policy": "B4_learned_per_facet",
+      "scope": "root_discovery_at_four_chunks",
+      "seeds": 5,
+      "recall": 0.1977933943451185,
+      "precision": 0.3275862068965517,
+      "mrr": 0.621264367816092
+    },
+    {
+      "baseline": "B7",
+      "policy": "B7_oracle_one_shot",
+      "scope": "root_discovery_at_four_chunks",
+      "seeds": 1,
+      "recall": 0.272511205269826,
+      "precision": 0.45689655172413796,
+      "mrr": 0.7040229885057472
+    }
+  ],
+  "full_root_successor_reference": [
+    {
+      "baseline": "B3",
+      "scope": "inherited_full_root_successor",
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.22516245712778282,
+      "n": 68,
+      "policy": "S6_adaptive_both",
+      "precision": 0.07352941176470588,
+      "recall": 0.03223089265485825,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 131444.75
+    },
+    {
+      "baseline": "B7",
+      "scope": "inherited_full_root_successor",
+      "complete_recovery": 0.0,
+      "dataset": "all",
+      "materialized_kv_tokens": 0.0,
+      "mrr": 0.6153056094232565,
+      "n": 68,
+      "policy": "S7_oracle_both",
+      "precision": 0.35294117647058826,
+      "recall": 0.14307315409382979,
+      "root_comparisons": 78.17647058823529,
+      "successor_comparisons": 156.35294117647058,
+      "token_span_operations": 125350.75
+    }
+  ],
+  "comparability_note": "Root-discovery B rows and inherited full traversal rows are separate scopes."
+}

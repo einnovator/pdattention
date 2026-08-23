@@ -17,6 +17,8 @@ python -m experiments.paper3_5_adaptive_pra.factorized_study
 python -m experiments.paper3_5_adaptive_pra.normalized_efficiency
 python -m experiments.paper3_5_adaptive_pra.precompute_self_router_features --device cuda
 python -m experiments.paper3_5_adaptive_pra.self_router_study --device cuda
+python -m experiments.paper2_7_query_graph.run_natural_retrieval --device cuda
+python -m experiments.paper3_5_adaptive_pra.request_reply_graph_study
 ```
 
 Adaptive quality uses validation-frozen Paper 2.5 traces. Output calibration
@@ -44,6 +46,12 @@ states, native Q/K, and a contextual diagnostic upper bound. Representation
 selection uses validation CV by example identity. The compact pooled feature
 cache is committed with its model revision and SHA-256 manifest; no token-level
 hidden-state cache is retained.
+
+The request/reply graph extension reuses the identity-frozen Paper 2.7 cohort.
+It measures five facet-construction modes and per-facet root channels, then
+creates an explicitly post-hoc 45/29 identity split for five-seed controller
+analysis. Root-discovery and inherited full root/successor scopes remain in
+separate tables. No callback result is reported by this extension.
 
 Paper 3.5 ends at adaptive initial control plus one bounded retry. Existing
 kernel, cache, page, batching, and serving artifacts are retained as historical

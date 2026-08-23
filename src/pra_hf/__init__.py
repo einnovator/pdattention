@@ -50,6 +50,19 @@ from .adaptive_search import (
     load_search_method_action_spec,
     method_retry_action,
 )
+from .adaptive_facets import (
+    AdaptiveFacetTree,
+    FacetConstructionMetrics,
+    GraphFacetConfig,
+    HierarchicalFacetNode,
+    build_adaptive_query_facets,
+)
+from .facet_routing import (
+    FacetRoute,
+    LinearPerFacetRouter,
+    route_query_facets,
+    select_per_facet_oracle,
+)
 from .self_router import (
     QueryPrefillAccounting,
     QwenPrefixState,
@@ -70,6 +83,9 @@ from .query_regions import (
     render_segments,
     token_offsets,
 )
+from .query_graph import QueryGraph, QueryUnitProvenance, build_query_graph
+from .query_graph_cluster import connected_components, weighted_label_propagation
+from .query_graph_facets import GraphQueryFacetSet, pool_hard_graph_facets
 from .iterative import (
     GistIndex,
     HierarchicalGistIndex,
@@ -87,19 +103,26 @@ __all__ = [
     "ActionField",
     "AdaptiveRetryAgent",
     "AdaptiveSearchAction",
+    "AdaptiveFacetTree",
     "AutoregressiveEffortRouter",
     "ControllerFeatures",
     "EffortProfile",
     "EffortDecision",
+    "FacetConstructionMetrics",
+    "FacetRoute",
     "GistIndex",
     "HierarchicalGistIndex",
     "HierarchicalLocalGistRouter",
     "HandRuleController",
     "HashingQueryEncoder",
+    "GraphFacetConfig",
+    "GraphQueryFacetSet",
+    "HierarchicalFacetNode",
     "IterativeGistRouter",
     "IterativeRoutingConfig",
     "IterativeRoutingResult",
     "LinearEffortController",
+    "LinearPerFacetRouter",
     "MultiHeadEffortRouter",
     "NativeQKIndex",
     "PRAConfig",
@@ -113,6 +136,8 @@ __all__ = [
     "QueryRegion",
     "QueryRegionSelection",
     "QueryRegionSelector",
+    "QueryGraph",
+    "QueryUnitProvenance",
     "RouterActionSpace",
     "SUCCESSOR_METHODS",
     "SearchMethodActionSpec",
@@ -121,12 +146,19 @@ __all__ = [
     "StopPolicy",
     "default_effort_profiles",
     "choose_successor_cascade",
+    "build_adaptive_query_facets",
+    "build_query_graph",
+    "connected_components",
     "evaluate_router_features",
     "fused_gather_kv",
     "pack_ragged",
+    "pool_hard_graph_facets",
     "load_search_method_action_spec",
     "method_retry_action",
+    "route_query_facets",
+    "select_per_facet_oracle",
     "profile_actions",
     "render_segments",
     "token_offsets",
+    "weighted_label_propagation",
 ]

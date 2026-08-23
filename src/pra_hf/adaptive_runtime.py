@@ -16,6 +16,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 import torch
 
+from .adaptive_facets import normalize_facet_mode
+
 
 _ORACLE_MARKERS = ("oracle", "gold", "ground_truth", "answer_correct", "evidence_recall")
 
@@ -64,6 +66,7 @@ class EffortProfile:
             raise ValueError("Effort profiles require search and consumer layers.")
         if not self.query_region_policy:
             raise ValueError("Effort profiles require a query-region policy.")
+        normalize_facet_mode(self.facet_policy)
 
     @property
     def control_vector(self) -> dict[str, Any]:
@@ -71,7 +74,7 @@ class EffortProfile:
 
         return {
             "Q": {"policy": self.query_region_policy},
-            "F": {"policy": self.facet_policy, "count": self.facet_count},
+            "F": {"policy": normalize_facet_mode(self.facet_policy), "count": self.facet_count},
             "R": self.retained_roots,
             "K": self.neighbors_per_expansion,
             "H": self.hop_depth,
@@ -157,15 +160,15 @@ def default_effort_profiles() -> tuple[EffortProfile, ...]:
     return validate_effort_ladder(
         (
             EffortProfile(
-                "E0_low", 0, "last_span", 1, 1, 2, 0, 2, 256, 0.65,
+                "E0_low", 0, "global", 1, 1, 2, 0, 2, 256, 0.65,
                 (27,), (27,), 256, "evidence_centered", "head",
             ),
             EffortProfile(
-                "E1_medium", 1, "multi_span", 2, 2, 4, 1, 4, 512, 0.45,
+                "E1_medium", 1, "syntactic", 2, 2, 4, 1, 4, 512, 0.45,
                 (24, 27), (26, 27), 128, "evidence_centered", "structural",
             ),
             EffortProfile(
-                "E2_high", 2, "multi_scale", 4, 4, 8, 3, 8, 1024, 0.25,
+                "E2_high", 2, "syntactic_graph", 4, 4, 8, 3, 8, 1024, 0.25,
                 (20, 24, 27), (24, 25, 26, 27), 64, "threshold_gated_radius", "multi_region",
             ),
         )

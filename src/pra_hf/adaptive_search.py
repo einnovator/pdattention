@@ -16,6 +16,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .adaptive_facets import (
+    COARSE_PARTITION_MODES,
+    FACET_MODES,
+    GRAPH_SIMILARITY_MODES,
+    normalize_facet_mode,
+)
 from .factorized_control import FactorizedEffortAction
 
 
@@ -35,6 +41,9 @@ MATCHED_SUCCESSOR = {
     "approx": "approximate_new_address",
     "hybrid": "hybrid_state",
 }
+FUSION_METHODS = ("rank", "score", "reciprocal_rank", "learned")
+CHANNEL_PROFILES = ("global", "semantic", "lexical", "hybrid", "facet_type")
+PER_FACET_POLICIES = ("fixed", "type_rule", "learned", "oracle")
 _FORBIDDEN_FEATURE_MARKERS = (
     "dataset",
     "gold",
@@ -82,6 +91,16 @@ class AdaptiveSearchAction:
     successor_method: str
     effort: FactorizedEffortAction
     query_region_policy: str = "structural"
+    facet_mode: str = "global"
+    coarse_partition_mode: str = "clause"
+    graph_threshold: float = 0.45
+    graph_similarity_mode: str = "contextual"
+    graph_top_k: int = 2
+    graph_min_component_size: int = 1
+    graph_max_component_size: int | None = None
+    fusion_method: str = "rank"
+    channel_profile: str = "global"
+    per_facet_policy: str = "fixed"
 
     def __post_init__(self) -> None:
         if self.root_method not in ROOT_METHODS:
@@ -90,17 +109,56 @@ class AdaptiveSearchAction:
             raise ValueError(f"Unsupported successor_method={self.successor_method!r}.")
         if not self.query_region_policy:
             raise ValueError("query_region_policy must be nonempty.")
+        normalize_facet_mode(self.facet_mode)
+        if self.coarse_partition_mode not in COARSE_PARTITION_MODES:
+            raise ValueError(
+                f"Unsupported coarse_partition_mode={self.coarse_partition_mode!r}."
+            )
+        if self.graph_similarity_mode not in GRAPH_SIMILARITY_MODES:
+            raise ValueError(
+                f"Unsupported graph_similarity_mode={self.graph_similarity_mode!r}."
+            )
+        if not 0.0 <= self.graph_threshold <= 1.0:
+            raise ValueError("graph_threshold must lie in [0, 1].")
+        if self.graph_top_k <= 0 or self.graph_min_component_size <= 0:
+            raise ValueError("Graph top-k and component sizes must be positive.")
+        if (
+            self.graph_max_component_size is not None
+            and self.graph_max_component_size < self.graph_min_component_size
+        ):
+            raise ValueError("Maximum graph component size cannot be below the minimum.")
+        if self.fusion_method not in FUSION_METHODS:
+            raise ValueError(f"Unsupported fusion_method={self.fusion_method!r}.")
+        if self.channel_profile not in CHANNEL_PROFILES:
+            raise ValueError(f"Unsupported channel_profile={self.channel_profile!r}.")
+        if self.per_facet_policy not in PER_FACET_POLICIES:
+            raise ValueError(f"Unsupported per_facet_policy={self.per_facet_policy!r}.")
 
     @property
     def identifier(self) -> str:
-        return f"Sr-{self.root_method}_Ss-{self.successor_method}_{self.effort.identifier}"
+        return (
+            f"Fm-{normalize_facet_mode(self.facet_mode)}_Sr-{self.root_method}_"
+            f"Ss-{self.successor_method}_{self.effort.identifier}"
+        )
 
     @property
     def control_vector(self) -> dict[str, Any]:
         return {
             "Q_regions": self.query_region_policy,
+            "F_mode": normalize_facet_mode(self.facet_mode),
+            "F_coarse": self.coarse_partition_mode,
+            "F_graph": {
+                "threshold": self.graph_threshold,
+                "similarity": self.graph_similarity_mode,
+                "top_k": self.graph_top_k,
+                "min_component_size": self.graph_min_component_size,
+                "max_component_size": self.graph_max_component_size,
+            },
             "S_root": self.root_method,
             "S_succ": self.successor_method,
+            "S_per_facet": self.per_facet_policy,
+            "fusion": self.fusion_method,
+            "channel_profile": self.channel_profile,
             "F": self.effort.facets,
             "R": self.effort.roots,
             "K": self.effort.neighbors,
@@ -233,6 +291,20 @@ def method_retry_action(before: AdaptiveSearchAction, after: AdaptiveSearchActio
         changed.append("change_root_method")
     if before.successor_method != after.successor_method:
         changed.append("change_successor_method")
+    for name in (
+        "facet_mode",
+        "coarse_partition_mode",
+        "graph_threshold",
+        "graph_similarity_mode",
+        "graph_top_k",
+        "graph_min_component_size",
+        "graph_max_component_size",
+        "fusion_method",
+        "channel_profile",
+        "per_facet_policy",
+    ):
+        if getattr(before, name) != getattr(after, name):
+            changed.append(f"change_{name}")
     for name in ("facets", "roots", "neighbors", "hops", "search_budget", "kv_budget"):
         if getattr(before.effort, name) != getattr(after.effort, name):
             changed.append(f"change_{name}")
