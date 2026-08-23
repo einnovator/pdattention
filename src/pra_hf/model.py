@@ -372,7 +372,14 @@ class PRAForCausalLM:
         return rows
 
     @torch.no_grad()
-    def _route_once(self, input_ids, attention_mask, position_ids):
+    def _route_once(
+        self,
+        input_ids,
+        attention_mask,
+        position_ids,
+        *,
+        explicit_reference_uris: set[str] | None = None,
+    ):
         adapter = self._handle.adapters[self.routing_layer]
         self._handle.configure_memory_layers(set())
         adapter.begin_capture(position_ids)
@@ -425,7 +432,18 @@ class PRAForCausalLM:
             if self.config.routing_mode == "iterative":
                 results = iterative.route_batch(query, self.config.iterative_config)
             else:
-                token_index = TokenNativeIndex.from_gist_index(index, self.tokenizer)
+                embedding_weight = (
+                    self.model.get_input_embeddings().weight
+                    if self.config.hybrid_use_token_embeddings
+                    else None
+                )
+                token_index = TokenNativeIndex.from_gist_index(
+                    index,
+                    self.tokenizer,
+                    automatic_aliases=self.config.hybrid_automatic_aliases,
+                    ngram_sizes=self.config.hybrid_ngram_sizes,
+                    token_embedding_weight=embedding_weight,
+                )
                 results = []
                 for row_index, row in enumerate(query):
                     prompt_ids = input_ids[row_index][attention_mask[row_index].bool()]
@@ -437,6 +455,8 @@ class PRAForCausalLM:
                             root_token_ids=prompt_ids.detach().cpu().tolist(),
                             tokenizer=self.tokenizer,
                             discovery_policy=self.config.hybrid_discovery_policy,
+                            explicit_reference_uris=explicit_reference_uris,
+                            token_embedding_weight=embedding_weight,
                         )
                     )
             selected = [iterative.selected_chunks(result) for result in results]
@@ -468,6 +488,7 @@ class PRAForCausalLM:
         *,
         max_new_tokens: int = 64,
         return_details: bool = False,
+        explicit_references: Iterable[str | ReferenceHandle] | None = None,
         **generation_kwargs,
     ) -> str | GenerationResult:
         """Route references once, then generate with bounded layer-native memory."""
@@ -480,9 +501,21 @@ class PRAForCausalLM:
         rankings: list[list[dict]] = [[]]
         query_seconds = routing_seconds = 0.0
         retrieval_graphs: list[dict[str, Any]] = []
+        explicit_reference_uris = {
+            reference.uri if isinstance(reference, ReferenceHandle) else str(reference)
+            for reference in (explicit_references or ())
+        }
+        unknown = explicit_reference_uris - {
+            entry.uri for entry in self._handle.cache.all_entries()
+        }
+        if unknown:
+            raise KeyError(f"Unknown explicit PRA references: {sorted(unknown)}")
         if self.config.enabled and not self._handle.cache.is_empty():
             selected, rankings, query_seconds, routing_seconds, retrieval_graphs = self._route_once(
-                input_ids, attention_mask, position_ids
+                input_ids,
+                attention_mask,
+                position_ids,
+                explicit_reference_uris=explicit_reference_uris,
             )
         else:
             self._handle.configure_memory_layers(set())
@@ -532,6 +565,7 @@ class PRAForCausalLM:
             "query_encoding_seconds": query_seconds,
             "routing_seconds": routing_seconds,
             "retrieval_graphs": retrieval_graphs,
+            "explicit_reference_uris": sorted(explicit_reference_uris),
             "generation_seconds": latency,
             "diagnostics_by_layer": diagnostics,
             "head_tokens": prepared.head_tokens,

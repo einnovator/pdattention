@@ -422,6 +422,7 @@ class IterativeGistRouter:
         tokenizer: Any | None = None,
         discovery_policy: HybridDiscoveryPolicy | None = None,
         explicit_reference_uris: set[str] | None = None,
+        token_embedding_weight: torch.Tensor | None = None,
     ) -> IterativeRoutingResult:
         """Traverse compact gists and stop before any native K/V is requested.
 
@@ -437,7 +438,15 @@ class IterativeGistRouter:
                 )
             token_index.validate_alignment(self.index)
             discovery_policy = discovery_policy or HybridDiscoveryPolicy()
-        elif any(value is not None for value in (root_token_ids, tokenizer, discovery_policy)):
+        elif any(
+            value is not None
+            for value in (
+                root_token_ids,
+                tokenizer,
+                discovery_policy,
+                token_embedding_weight,
+            )
+        ):
             raise ValueError("Token discovery arguments require token_index.")
         if root_query.ndim == 2:
             if root_query.shape[0] != 1:
@@ -456,7 +465,7 @@ class IterativeGistRouter:
             )
         root_scores_t, _ = self._scores(root.unsqueeze(0))
         semantic_direct_scores = root_scores_t[0]
-        root_candidates: list[DiscoveryCandidate] | None = None
+        root_candidates: dict[int, DiscoveryCandidate] | None = None
         if hybrid_enabled:
             root_candidates = token_index.score(
                 root_token_ids,
@@ -466,10 +475,14 @@ class IterativeGistRouter:
                 hop=1,
                 parent_id="__root__",
                 explicit_reference_uris=explicit_reference_uris,
+                token_embedding_weight=token_embedding_weight,
+                sparse=True,
             )
-            direct_scores = semantic_direct_scores.new_tensor(
-                [2.0 * candidate.selected_score - 1.0 for candidate in root_candidates]
+            direct_scores = semantic_direct_scores.new_full(
+                semantic_direct_scores.shape, float("-inf")
             )
+            for index, candidate in root_candidates.items():
+                direct_scores[index] = 2.0 * candidate.selected_score - 1.0
         else:
             direct_scores = semantic_direct_scores
         graph = RetrievalGraph(
@@ -501,6 +514,12 @@ class IterativeGistRouter:
         ]
         comparisons = duplicates = proposals = 0
         token_comparisons = 0
+        token_index_queries = int(hybrid_enabled)
+        indexed_token_comparisons = int(
+            token_index.last_search_stats.get("expensive_comparisons", 0)
+            if hybrid_enabled
+            else 0
+        )
         overlap_ratios: list[float] = []
         accepted_per_hop: list[int] = []
         stop_reason = "depth"
@@ -509,29 +528,39 @@ class IterativeGistRouter:
             queries = torch.stack([item.query for item in frontier])
             semantic_scores, frontier_winners = self._scores(queries)
             frontier_scores = semantic_scores
-            frontier_candidates: list[list[DiscoveryCandidate] | None] = [
+            frontier_candidates: list[dict[int, DiscoveryCandidate] | None] = [
                 None for _ in frontier
             ]
             if hybrid_enabled:
                 hybrid_rows = []
                 for parent_row, parent in enumerate(frontier):
-                    candidates = token_index.score(
-                        parent.token_ids,
-                        semantic_scores[parent_row],
-                        tokenizer,
-                        discovery_policy,
-                        hop=hop,
-                        parent_id=parent.node_id,
-                        explicit_reference_uris=explicit_reference_uris,
-                    )
-                    frontier_candidates[parent_row] = candidates
-                    hybrid_rows.append(
-                        semantic_scores.new_tensor(
-                            [2.0 * candidate.selected_score - 1.0 for candidate in candidates]
+                    if hop == 1 and parent.index is None:
+                        candidates = root_candidates
+                    else:
+                        candidates = token_index.score(
+                            parent.token_ids,
+                            semantic_scores[parent_row],
+                            tokenizer,
+                            discovery_policy,
+                            hop=hop,
+                            parent_id=parent.node_id,
+                            explicit_reference_uris=explicit_reference_uris,
+                            token_embedding_weight=token_embedding_weight,
+                            sparse=True,
                         )
+                        indexed_token_comparisons += int(
+                            token_index.last_search_stats.get("expensive_comparisons", 0)
+                        )
+                        token_index_queries += 1
+                    frontier_candidates[parent_row] = candidates
+                    hybrid = semantic_scores.new_full(
+                        (len(self.index.records),), float("-inf")
                     )
+                    for index, candidate in candidates.items():
+                        hybrid[index] = 2.0 * candidate.selected_score - 1.0
+                    hybrid_rows.append(hybrid)
+                    token_comparisons += len(candidates)
                 frontier_scores = torch.stack(hybrid_rows)
-                token_comparisons += int(frontier_scores.numel())
             comparisons += int(frontier_scores.numel())
             candidate_parents: dict[
                 int, list[tuple[float, int, float, float, int, DiscoveryCandidate | None]]
@@ -561,7 +590,7 @@ class IterativeGistRouter:
                     )
                     winner = int(frontier_winners[parent_row, index].item())
                     candidate = (
-                        frontier_candidates[parent_row][index]
+                        frontier_candidates[parent_row].get(index)
                         if frontier_candidates[parent_row] is not None
                         else None
                     )
@@ -736,6 +765,9 @@ class IterativeGistRouter:
             "candidate_overlap_mean": sum(overlap_ratios) / max(len(overlap_ratios), 1),
             "semantic_gist_comparisons": comparisons,
             "token_index_comparisons": token_comparisons,
+            "token_index_queries": token_index_queries,
+            "token_index_scored_candidates": indexed_token_comparisons,
+            "token_index_bytes": token_index.memory_bytes() if hybrid_enabled else 0,
             "native_qk_comparisons": 0,
             "local_nodes_explored": 0,
         }

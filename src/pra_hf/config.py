@@ -62,9 +62,19 @@ class PRAConfig:
     hybrid_later_token_weight: float = 0.75
     hybrid_exact_min_tokens: int = 2
     hybrid_cascade_threshold: float = 0.25
+    hybrid_indexed: bool = True
+    hybrid_candidate_pool_size: int = 64
+    hybrid_ngram_sizes: tuple[int, ...] = (2, 3)
+    hybrid_approximate_max_distance: int = 2
+    hybrid_stop_token_strategy: str = "idf"
+    hybrid_automatic_aliases: bool = True
+    hybrid_enable_extended_channels: bool = True
+    hybrid_use_token_embeddings: bool = False
+    hybrid_embedding_weight: float = 0.20
 
     def __post_init__(self) -> None:
         self.consumption_layers = tuple(int(layer) for layer in self.consumption_layers)
+        self.hybrid_ngram_sizes = tuple(int(size) for size in self.hybrid_ngram_sizes)
         if not self.consumption_layers:
             raise ValueError("consumption_layers cannot be empty.")
         if self.selected_fraction is not None and not 0 < self.selected_fraction <= 1:
@@ -149,6 +159,14 @@ class PRAConfig:
             later_token_weight=self.hybrid_later_token_weight,
             exact_min_tokens=self.hybrid_exact_min_tokens,
             cascade_threshold=self.hybrid_cascade_threshold,
+            indexed=self.hybrid_indexed,
+            candidate_pool_size=self.hybrid_candidate_pool_size,
+            ngram_sizes=self.hybrid_ngram_sizes,
+            approximate_max_distance=self.hybrid_approximate_max_distance,
+            stop_token_strategy=self.hybrid_stop_token_strategy,
+            automatic_aliases=self.hybrid_automatic_aliases,
+            enable_extended_channels=self.hybrid_enable_extended_channels,
+            embedding_weight=self.hybrid_embedding_weight,
         )
 
     def resolved_layers(self, model_config_or_layer_count) -> tuple[int, tuple[int, ...]]:

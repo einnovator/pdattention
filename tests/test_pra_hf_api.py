@@ -199,6 +199,39 @@ def test_hybrid_iterative_product_path_preserves_discovery_materialization_bound
     assert result.stats["requested_chunks"] <= 2
 
 
+def test_explicit_reference_handle_is_wired_into_product_routing():
+    torch.manual_seed(306)
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(
+            routing_mode="token_iterative",
+            routing_depth=1,
+            branch_top_k=1,
+            beam_size=1,
+            max_unique_chunks=1,
+            selected_fraction=None,
+        ),
+    )
+    pra.add_reference("memory://first", text="alpha material")
+    second = pra.add_reference("memory://second", text="beta material")
+
+    result = pra.generate(
+        "opaque question",
+        explicit_references=[second],
+        max_new_tokens=1,
+        return_details=True,
+    )
+    assert result.stats["selected"][0]["reference_uri"] == second.uri
+    assert result.stats["explicit_reference_uris"] == [second.uri]
+    with pytest.raises(KeyError, match="Unknown explicit PRA references"):
+        pra.generate(
+            "opaque question",
+            explicit_references=["memory://missing"],
+            max_new_tokens=1,
+        )
+
+
 def test_local_iterative_config_maps_parent_and_local_scales():
     config = PRAConfig(
         routing_mode="local_iterative",

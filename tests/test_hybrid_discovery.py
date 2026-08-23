@@ -130,6 +130,7 @@ def test_iterative_token_routing_exposes_a_later_hop_anchor():
     assert [node.hop for node in result.graph.nodes] == [1, 2]
     assert result.graph.nodes[1].discovery_channels["associative_score"] > 0
     assert result.graph.costs["token_index_comparisons"] == 6
+    assert result.graph.costs["token_index_queries"] == 2
 
 
 def test_iterative_hybrid_uses_semantic_entry_then_token_association():
@@ -193,3 +194,128 @@ def test_public_config_exposes_token_and_hybrid_iterative_modes():
     assert hybrid.hybrid_discovery_policy.mode == "iterative_hybrid"
     assert hybrid.hybrid_discovery_policy.token_weight == 0.6
     assert hybrid.selection_policy == "hybrid_iterative_closure"
+
+
+def test_indexed_scoring_retains_exact_hit_with_bounded_candidate_work():
+    tokenizer = WhitespaceTokenizer()
+    entries = [
+        _entry(f"R{index}", f"topic{index} unique{index}", [1.0, 0.0, 0.0])
+        for index in range(24)
+    ]
+    index = GistIndex.from_entries(entries, 0)
+    token_index = TokenNativeIndex.from_gist_index(index, tokenizer)
+    query = tokenizer("topic17 unique17")["input_ids"]
+    candidates = token_index.score(
+        query,
+        torch.zeros(len(entries)),
+        tokenizer,
+        HybridDiscoveryPolicy(
+            mode="token_exact", indexed=True, candidate_pool_size=6
+        ),
+        hop=1,
+        parent_id="__root__",
+    )
+    assert token_index.raw_ngram_postings
+
+    winner = min(candidates, key=lambda candidate: candidate.rank or 10_000)
+    assert winner.reference_uri == "R17"
+    assert token_index.last_search_stats["candidate_rows"] <= 6
+    assert token_index.last_search_stats["candidate_fraction"] < 0.5
+
+
+def test_indexed_sparse_scoring_does_not_materialize_full_python_result_set():
+    tokenizer = WhitespaceTokenizer()
+    entries = [
+        _entry(f"R{index}", f"topic{index} unique{index}", [1.0, 0.0, 0.0])
+        for index in range(24)
+    ]
+    gist_index = GistIndex.from_entries(entries, 0)
+    token_index = TokenNativeIndex.from_gist_index(gist_index, tokenizer)
+    candidates = token_index.score(
+        tokenizer("topic17 unique17")["input_ids"],
+        torch.zeros(len(entries)),
+        tokenizer,
+        HybridDiscoveryPolicy(
+            mode="token_exact", indexed=True, candidate_pool_size=6
+        ),
+        hop=1,
+        parent_id="__root__",
+        sparse=True,
+    )
+
+    assert isinstance(candidates, dict)
+    assert len(candidates) <= 6
+    assert token_index.last_search_stats["returned_rows"] == len(candidates)
+    winner = min(candidates.values(), key=lambda candidate: candidate.rank or 10_000)
+    assert winner.reference_uri == "R17"
+
+
+def test_extended_channels_populate_ngram_edit_and_embedding_scores():
+    tokenizer, index, _ = _fixture()
+    query = tokenizer("bridge betx")["input_ids"]
+    torch.manual_seed(305)
+    embedding = torch.randn(max(tokenizer.pieces) + 1, 5)
+    token_index = TokenNativeIndex.from_gist_index(
+        index, tokenizer, token_embedding_weight=embedding, ngram_sizes=(2,)
+    )
+    candidates = token_index.score(
+        query,
+        torch.zeros(len(index.records)),
+        tokenizer,
+        HybridDiscoveryPolicy(
+            mode="token_edit",
+            ngram_sizes=(2,),
+            approximate_max_distance=1,
+            enable_extended_channels=True,
+        ),
+        hop=1,
+        parent_id="__root__",
+        token_embedding_weight=embedding,
+    )
+
+    assert candidates[0].edit_score > 0
+    assert candidates[0].embedding_score is not None
+    assert token_index.memory_bytes() > 0
+
+
+def test_automatic_alias_extraction_is_label_independent():
+    tokenizer = WhitespaceTokenizer()
+    index = GistIndex.from_entries(
+        [_entry("memory://facts", "Ada Lovelace designed an engine", [1.0, 0.0, 0.0])],
+        0,
+    )
+    token_index = TokenNativeIndex.from_gist_index(
+        index, tokenizer, automatic_aliases=True
+    )
+    assert "ada lovelace" in token_index.records[0].aliases
+
+
+def test_index_extension_recomputes_corpus_statistics_and_preserves_rows():
+    tokenizer, index, token_index = _fixture()
+    extra_index = GistIndex.from_entries(
+        [_entry("D", "delta bridge", [0.0, 0.0, 1.0])], 0
+    )
+    extra = TokenNativeIndex.from_gist_index(extra_index, tokenizer).records
+    extended = token_index.extended(extra)
+
+    assert len(extended.records) == len(token_index.records) + 1
+    assert extended.records[-1].reference_uri == "D"
+    assert extended.idf["bridge"] != token_index.idf["bridge"]
+
+
+def test_explicit_uri_overrides_a_stronger_semantic_distractor():
+    tokenizer, index, token_index = _fixture()
+    candidates = token_index.score(
+        tokenizer("opaque query")["input_ids"],
+        torch.tensor([-1.0, 1.0, 0.5]),
+        tokenizer,
+        HybridDiscoveryPolicy(mode="iterative_hybrid"),
+        hop=1,
+        parent_id="__root__",
+        explicit_reference_uris={"A"},
+    )
+
+    winner = min(candidates, key=lambda candidate: candidate.rank or 10_000)
+    assert winner.reference_uri == "A"
+    assert winner.selected_channel == "explicit_reference"
+    assert winner.selected_score == 1.0
