@@ -6,19 +6,24 @@ import torch
 from pra_hf.qk_compression import (
     NativeLandmarkSelector,
     QueryConditionedLandmarkSelector,
+    chunk_routing_loss,
     differentiable_landmark_scores,
     farthest_first_indices,
     gather_landmarks,
     gqa_head_map,
     greedy_qk_landmarks,
+    kmeans_centroids,
+    kmeans_medoid_indices,
     landmark_features,
     landmark_training_loss,
     last_token_indices,
+    low_rank_response_scores,
     masked_mean_keys,
     qk_response_scores,
     random_token_indices,
     response_metrics,
     routing_metrics,
+    stable_topk_indices,
     token_query_key_dots,
 )
 
@@ -111,6 +116,104 @@ def test_query_conditioned_selector_is_bounded_and_changes_with_query():
     assert torch.isneginf(first[:, 0, -1]).all()
     assert not torch.allclose(first[mask], second[mask])
     assert sum(parameter.numel() for parameter in selector.parameters()) < 100_000
+
+
+@pytest.mark.parametrize(
+    ("use_salience", "use_interaction"), [(True, True), (True, False), (False, True)]
+)
+def test_cached_query_conditioned_scoring_matches_uncached(
+    use_salience, use_interaction
+):
+    features = torch.randn(2, 3, 4, 8)
+    query = torch.randn(2, 6)
+    mask = torch.ones(2, 3, 4, dtype=torch.bool)
+    mask[:, 0, -1] = False
+    selector = QueryConditionedLandmarkSelector(
+        6,
+        hidden_width=4,
+        rank=3,
+        use_salience=use_salience,
+        use_interaction=use_interaction,
+    )
+    expected = selector(features, query, mask)
+    cached = selector.cache_features(features)
+    actual = selector.score_cached(*cached, query, mask)
+    assert torch.equal(torch.isneginf(expected), torch.isneginf(actual))
+    assert torch.allclose(expected[mask], actual[mask])
+
+
+def test_selector_ablation_parameter_counts_include_only_active_terms():
+    salience = QueryConditionedLandmarkSelector(
+        6, feature_width=8, hidden_width=4, rank=3, use_interaction=False
+    )
+    bilinear = QueryConditionedLandmarkSelector(
+        6, feature_width=8, hidden_width=4, rank=3, use_salience=False
+    )
+    assert sum(parameter.numel() for parameter in salience.parameters()) == 8 * 4 + 4 + 4 + 1
+    assert sum(parameter.numel() for parameter in bilinear.parameters()) == 6 * 3 + 8 * 3
+
+
+def test_stable_topk_and_centroids_are_deterministic_on_short_chunks():
+    tied = torch.tensor([2.0, 2.0, 1.0, 2.0])
+    assert stable_topk_indices(tied, 2).tolist() == [0, 1]
+    values = torch.tensor(
+        [
+            [[0.0, 0.0], [2.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+            [[0.0, 0.0], [1.0, 0.0], [9.0, 0.0], [10.0, 0.0]],
+        ]
+    )
+    mask = torch.tensor([[True, True, False, False], [True, True, True, True]])
+    centroids, centroid_mask = kmeans_centroids(values, mask, 4)
+    repeated, repeated_mask = kmeans_centroids(values, mask, 4)
+    assert torch.equal(centroid_mask, repeated_mask)
+    assert torch.equal(centroids, repeated)
+    assert centroid_mask.tolist() == [
+        [True, True, False, False],
+        [True, True, True, True],
+    ]
+    one, one_mask = kmeans_centroids(values, mask, 1)
+    assert torch.allclose(one[0, 0], torch.tensor([1.0, 0.0]))
+    assert one_mask.all()
+    medoids = kmeans_medoid_indices(values, mask, 2)
+    assert medoids == kmeans_medoid_indices(values, mask, 2)
+    assert all(mask[chunk, row].all() for chunk, row in enumerate(medoids))
+
+
+def test_low_rank_scoring_and_direct_losses_are_finite_and_differentiable():
+    queries = torch.randn(2, 3, requires_grad=True)
+    tokens = torch.randn(2, 5, 3, requires_grad=True)
+    mask = torch.tensor(
+        [[True, True, True, False, False], [True, True, True, True, True]]
+    )
+    scores = low_rank_response_scores(queries, tokens, mask, top_r=2)
+    assert scores.shape == (2, 2)
+    positives = torch.tensor([[True, False], [False, True]])
+    candidates = torch.ones_like(positives)
+    loss, components = chunk_routing_loss(
+        "combined",
+        scores,
+        positives,
+        candidates,
+        teacher_scores=torch.randn_like(scores),
+        budget=1,
+    )
+    assert torch.isfinite(loss)
+    assert set(components) == {"listwise", "response", "boundary"}
+    loss.backward()
+    assert torch.isfinite(queries.grad).all()
+    assert torch.isfinite(tokens.grad).all()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+def test_low_rank_scoring_cpu_cuda_parity():
+    query = torch.randn(3)
+    tokens = torch.randn(2, 5, 3)
+    mask = torch.tensor(
+        [[True, True, True, False, False], [True, True, True, True, True]]
+    )
+    cpu = low_rank_response_scores(query, tokens, mask, top_r=2)
+    cuda = low_rank_response_scores(query.cuda(), tokens.cuda(), mask.cuda(), top_r=2)
+    assert torch.allclose(cpu, cuda.cpu(), atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize(

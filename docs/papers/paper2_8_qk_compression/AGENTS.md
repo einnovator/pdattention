@@ -76,6 +76,43 @@ G5 - Test streaming recurrent key memory only if the offline compressor passes.
 
 Stop at the first failed gate and write the negative boundary clearly.
 
+## Post-G3 diagnostic extension
+
+The original G0-G3 sequence above is immutable: G3 failed, and G4/G5 remain
+closed. A later diagnostic extension may test why the learned selector failed,
+but must report its decisions as E0-E6 rather than retroactively reopening G3.
+
+The extension keeps the frozen Qwen3-0.6B revision, layer 27 pre-RoPE keys,
+32-token candidates, four-chunk materialization budget, validation/test
+identities, five seeds, and paired bootstrap procedure. It adds:
+
+- matched native-K k-means, medoid, and farthest-first controls for
+  `m in {1,2,4,8}`;
+- matched combined-loss salience-only, bilinear-only, and
+  salience-plus-bilinear selector ablations;
+- direct cached low-rank token routing for `r in {8,16,32}`;
+- static low-rank k-means, medoid, and farthest-first indexes for `m in {4,8}`;
+- separate routing-index, backing K/V, transfer, active materialization,
+  construction, cached latency, native-dot, and low-rank-dot accounting.
+
+Extension gates are:
+
+- E0: frozen artifact, model, cache, and identity parity;
+- E1: query/response-aware methods add utility beyond matched geometry;
+- E2: query conditioning improves key-only selection without a cross-dataset
+  regression larger than 0.02;
+- E3: ranking/decision-aware training improves retrieval over oracle imitation;
+- E4: a low-rank route retains at least 95% of the best full-dimensional gain
+  on a natural dataset with at least 4x less routing state;
+- E5: joint token/rank compression matches or beats the QASPER semantic gist
+  while improving the quality-bytes-latency frontier;
+- E6: 2Wiki/MuSiQue expansion opens only after E2-E5 form a credible frontier.
+
+Test-selected query-conditioned results remain exploratory. A diagnostic pass
+cannot be promoted to a confirmatory result without a fresh identity-disjoint
+cohort and validation-only configuration selection. Recurrent memory and
+synthetic slots remain out of scope.
+
 ## Implementation tasks
 1. Add feature extraction for per-layer/per-head Q and K streams, preserving token spans and evidence group IDs.
 2. Add full-K teacher score computation: max, top-r mean, log-sum-exp, attention-mass proxy.

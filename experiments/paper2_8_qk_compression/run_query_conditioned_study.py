@@ -231,11 +231,17 @@ def _fit_selector(
     steps: int,
     learning_rate: float,
     device: torch.device,
+    use_salience: bool = True,
+    use_interaction: bool = True,
 ) -> tuple[QueryConditionedLandmarkSelector, list[dict], float]:
     torch.manual_seed(seed)
     query_width = batch["queries"].shape[-1]
     selector = QueryConditionedLandmarkSelector(
-        query_width, hidden_width=32, rank=rank
+        query_width,
+        hidden_width=32,
+        rank=rank,
+        use_salience=use_salience,
+        use_interaction=use_interaction,
     ).to(device)
     optimizer = torch.optim.AdamW(
         selector.parameters(), lr=learning_rate, weight_decay=1e-4
