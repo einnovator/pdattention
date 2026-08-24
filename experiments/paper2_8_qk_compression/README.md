@@ -67,3 +67,35 @@ The primary controller reaches HotpotQA recall `0.1667` and QASPER recall
 near exact routing at `0.1776`, but its paired intervals include zero. The best
 response-imitation controller recovers `47.3%` of greedy-oracle preservation
 gain, still below the prespecified `80%` G3 threshold.
+
+## Post-G3 low-rank frontier
+
+The diagnostic extension preserves G0-G3 and adds matched native geometry,
+matched selector ablations, and direct low-rank routing:
+
+```powershell
+python experiments/paper2_8_qk_compression/run_low_rank_frontier.py --device cuda
+python experiments/paper2_8_qk_compression/run_selector_ablation.py --device cuda
+python experiments/paper2_8_qk_compression/summarize_low_rank_frontier.py
+```
+
+The direct router projects flattened native keys (`1024 -> r`) and native
+queries (`2048 -> r`) at ranks `8,16,32`. The projected token index is cached;
+online routing performs only the query projection and low-rank dots. Static
+k-means, medoid, and farthest-first indexes then test joint token and feature
+compression at four and eight representatives. These routing summaries never
+replace the selected chunks' native K/V during materialization.
+
+`low_rank_frontier/` keeps routing-index bytes separate from backing native-K/V
+bytes, selected-K/V transfer, active materialization, construction time, cached
+online latency, native dots, low-rank dots, and eager GPU peak deltas. The
+extension is diagnostic: its E0-E6 decisions do not revise the original failed
+G3 or open recurrent/synthetic memory.
+
+On the frozen cohort, the all-token rank-16 router reaches QASPER evidence
+recall `0.2542` with `2048` routing-index bytes per chunk. Rank 32 is the best
+direct HotpotQA row at `0.1454`, still far below lexical controls. Joint
+compression with rank-8, eight-centroid indexes reaches QASPER recall `0.1829`
+using `256` bytes per chunk. These are evidence-supervised routing results, not
+faithful teacher compression: teacher top-four overlap remains low. E2 is
+inconclusive, so the extension does not expand to new datasets.

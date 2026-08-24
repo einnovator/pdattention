@@ -200,6 +200,37 @@ def _seed_statistics(rows: list[dict]) -> list[dict]:
     return output
 
 
+def _cost_frontier(summary: list[dict]) -> list[dict]:
+    full_native_bytes = 32 * 1024 * 4
+    mean_native_bytes = 1024 * 4
+    native_m8_bytes = 8 * 1024 * 4
+    output = []
+    for row in summary:
+        index_bytes = float(row["index_bytes_per_chunk"])
+        output.append(
+            {
+                "dataset": row["dataset"],
+                "method": row["method"],
+                "rank": int(row["rank"]),
+                "m": int(row["m"]),
+                "evidence_recall": float(row["evidence_recall"]),
+                "index_bytes_per_chunk": index_bytes,
+                "compression_vs_full_native_32d": full_native_bytes / index_bytes,
+                "compression_vs_mean_native_d": mean_native_bytes / index_bytes,
+                "compression_vs_native_m8": native_m8_bytes / index_bytes,
+                "cached_online_ms": float(row["cached_online_ms"]),
+                "construction_ms": float(row["construction_ms"]),
+                "native_dots": float(row["native_dots"]),
+                "low_rank_dots": float(row["low_rank_dots"]),
+                "backing_native_kv_bytes": float(row["backing_native_kv_bytes"]),
+                "transfer_bytes": float(row["transfer_bytes"]),
+                "materialized_kv_tokens": float(row["materialized_kv_tokens"]),
+                "peak_delta_gpu_bytes": float(row["peak_delta_gpu_bytes"]),
+            }
+        )
+    return output
+
+
 def _query_summary() -> list[dict]:
     rows = _read(RESULTS / "query_conditioned/summary.csv")
     for row in rows:
@@ -644,8 +675,10 @@ def main() -> dict:
     seed_rows = _read(OUTPUT / "seed_stability.csv")
     paired = _paired_effects(rows)
     seed_statistics = _seed_statistics(rows)
+    cost_frontier = _cost_frontier(summary)
     _write_csv(OUTPUT / "paired_effects.csv", paired)
     _write_csv(OUTPUT / "seed_statistics.csv", seed_statistics)
+    _write_csv(OUTPUT / "cost_frontier.csv", cost_frontier)
     changed = _changed_selection(rows, summary)
     _write_csv(OUTPUT / "changed_selection.csv", changed)
     gates = _gate_decisions(summary, paired)

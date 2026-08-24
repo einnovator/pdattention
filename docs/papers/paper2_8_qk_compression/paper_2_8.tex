@@ -17,7 +17,7 @@
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (\pra) uses compact routing gists to choose long-memory chunks, then materializes the selected chunks' unchanged native key/value (\kv) states. Mean gists are inexpensive but erase sparse token-level address signals. We ask whether one to eight actual pretrained keys can preserve a frozen transformer's full chunk-response surface. Validation uses 16 identity-disjoint \hotpot/\qasper questions; testing uses the frozen 32-question Paper 2.5/2.6 cohort, a fixed four-chunk materialization budget, and five seeds. A key-only selector improves \qasper over the Paper 2.6 semantic gist but recovers only 40.5\% of oracle response-preservation gain. We then cross low-rank query conditioning $r\in\{8,16,32\}$, $m\in\{4,8\}$ landmarks, and four losses: oracle imitation, evidence-listwise ranking, ranking plus response distillation, and a top-four-boundary loss. The prespecified combined $r=16,m=4$ controller raises \hotpot recall from 0.1235 to 0.1667, paired difference 0.0432 with 95\% interval $[-0.0112,0.0970]$, but falls below strong lexical channels and reduces \qasper recall to 0.0574. Exploratorily, decision-aware $r=32,m=8$ reaches \qasper recall 0.1718, close to exact routing at 0.1776; its five seed means span 0.1639--0.1796, but paired intervals against exact and the key-only selector include zero. Query conditioning raises maximum oracle-gain recovery only to 47.3\%, below the prespecified 80\% gate. Native response compression therefore does not yield one universal controller: evidence utility depends jointly on dataset, landmark budget, and training objective.
+Progressive Retrieval Attention (\pra) uses compact routing gists to choose long-memory chunks, then materializes the selected chunks' unchanged native key/value (\kv) states. Mean gists are inexpensive but erase sparse token-level address signals. We ask whether compact native-key indexes can preserve a frozen transformer's chunk-response surface and retrieve evidence. Validation uses 16 identity-disjoint \hotpot/\qasper questions; testing uses the frozen 32-question Paper 2.5/2.6 cohort, a fixed four-chunk materialization budget, and five seeds. A key-only selector recovers only 40.5\% of oracle response-preservation gain. A 120-controller query-conditioned sweep raises maximum recovery to 47.3\%, below the prespecified 80\% gate: its primary controller improves \hotpot but harms \qasper, while a test-selected controller reaches 0.1718 \qasper recall. A separate post-G3 diagnostic projects every 1,024-wide native key and the 2,048-wide query into rank 8, 16, or 32 and trains for combined evidence ranking and response distillation. Rank 16 reaches 0.2542 \qasper recall with 2,048 routing-index bytes per chunk, versus 0.0976 for a 4,096-byte mean key and 0.1776 for exact lexical routing; its paired gain over exact is 0.0766 with 95\% interval $[-0.0791,0.2763]$. On \hotpot, rank 32 reaches only 0.1454 and remains far below lexical channels. A static rank-8, eight-centroid index reaches 0.1829 \qasper recall using 256 bytes per chunk. These task-supervised low-rank indexes improve retrieval without reproducing the teacher: response overlap remains low, gains are dataset-specific, and downstream generation is untested. Compact native interaction subspaces are therefore promising routing features, not yet universal response compressors.
 \end{abstract}
 
 \section{Introduction}
@@ -33,7 +33,8 @@ The contributions are:
   \item matched native-key controllers, response metrics, routing metrics, changed-selection audits, and synchronized CUDA cost measurements;
   \item a controlled 32--256-token suite and a frozen natural evaluation aligned with the Paper 2.5/2.6 32-token chunk and four-chunk budget;
   \item a measured boundary: oracle landmarks show natural QASPER headroom, while a 321-parameter key-only selector recovers too little of that headroom to pass deployment gates;
-  \item a 120-controller query-conditioned sweep separating a prespecified primary result from test-selected exploratory findings and showing that response preservation, evidence ranking, and dataset utility are not interchangeable.
+  \item a 120-controller query-conditioned sweep separating a prespecified primary result from test-selected exploratory findings and showing that response preservation, evidence ranking, and dataset utility are not interchangeable;
+  \item a post-G3 diagnostic frontier that crosses matched native geometry with direct rank-8/16/32 native-key projections, four/eight static low-rank representatives, and measured routing-index bytes and latency without changing native-K/V materialization.
 \end{enumerate}
 
 \section{Native response distillation}
@@ -73,6 +74,20 @@ Training uses a piecewise-differentiable surrogate only to move selector logits.
 
 Four objectives are prespecified. \emph{Oracle imitation} applies token-level weighted binary cross-entropy to greedy response-preserving selections. \emph{Listwise} minimizes cross-entropy from the chunk softmax to a uniform distribution over evidence chunks. \emph{Combined} adds $\mathrm{KL}(\operatorname{softmax}S^*\|\operatorname{softmax}\widetilde S)$ to listwise ranking. \emph{Decision-aware} adds pairwise softplus penalties between evidence chunks and non-evidence chunks nearest the fourth-place routing threshold. We cross all four objectives with both landmark counts, all three ranks, and five seeds: 120 controllers, each trained for 300 AdamW steps on validation only. Combined $r=16,m=4$ is the prespecified primary configuration; every other test comparison is reported without replacing it.
 
+\subsection{Post-G3 native geometry and low-rank routing}
+The original preregistration stops at G3. A separate diagnostic extension asks whether simple multimodal geometry explains the landmark result and whether routing needs full native-key width. First, deterministic Euclidean $k$-means centroids, cluster medoids, and farthest-first actual keys are constructed inside every 32-token chunk for $m\in\{1,2,4,8\}$. Centroids are routing-only; selected chunks still materialize their unchanged token K/V. These controls use the same top-four-mean response reduction as the frozen teacher.
+
+For direct low-rank routing, flatten the eight native key heads into $u_i\in\mathbb{R}^{1024}$ and the 16 native query heads into $\bar q\in\mathbb{R}^{2048}$. A validation-derived scalar RMS normalizes keys without changing relative token norms. The learned score is
+\begin{equation}
+  \ell_i=\frac{(W_q\bar q)^\top(W_k u_i)}{\sqrt r},\qquad
+  W_q\in\mathbb{R}^{r\times2048},\quad W_k\in\mathbb{R}^{r\times1024},
+\end{equation}
+for $r\in\{8,16,32\}$. The models contain 24,576, 49,152, and 98,304 parameters. Combined listwise evidence ranking and native-response distillation train the projections for 300 steps on validation identities. The backbone, native projections, and test identities remain frozen.
+
+At index-construction time, $z_i=W_ku_i$ is cached. Online work is $z_q=W_q\bar q$ followed by rank-$r$ dots; no deployable low-rank row scans full native keys. We evaluate all 32 projected tokens and static $k$-means, medoid, and farthest-first indexes with $m\in\{4,8\}$. Thus token compression ($32\rightarrow m$) and interaction compression ($1024\rightarrow r$) are measured separately and jointly. With FP32 routing indexes, a chunk uses $131{,}072$ bytes for $32\times1024$ full native keys, $4{,}096$ for one mean key, $4mr$ for static low-rank representatives, and $128r$ for all projected tokens.
+
+This accounting separates routing-index residency from backing native K/V, selected-K/V transfer, and active materialization. Query-conditioned native landmark selection also needs its full token selector index because landmark identities vary with the query; it cannot honestly be counted as only $m$ persistent native keys. Construction time, cached online latency, native dots, low-rank dots, and eager peak-GPU deltas are recorded independently.
+
 \subsection{Matched materialization}
 The intervention changes only routing summaries. Candidate units are the same 32-token local chunks. Every method requests four chunks, so it materializes approximately 128 native \kv tokens: 126.1 on \hotpot because of short final chunks and 128.0 on \qasper. Active memory fractions are 8.8\% and 3.3\%, respectively. Values are never compressed, projected, or synthesized.
 
@@ -96,6 +111,8 @@ The prespecified gates are:
   \item G3: the learned selector recovers at least 80\% of oracle gain, improves recall or completion on one natural dataset, and regresses by less than 0.02 elsewhere;
   \item G4/G5: synthetic slots and streaming memory run only after G3 passes.
 \end{itemize}
+
+The post-G3 extension uses E0--E6 and does not revise G3. E0 verifies frozen artifact, cache, model, and identity parity. E1 compares query/response-aware selection with matched native geometry. E2 applies a cross-dataset non-regression rule to query conditioning; test-selected rows remain exploratory. E3 compares ranking/decision objectives with oracle imitation. E4 requires at least 95\% retention of the best full-dimensional retrieval gain on a natural dataset and at least $4\times$ less routing state. E5 asks whether joint $m,r$ compression matches the QASPER semantic gist on a better quality--bytes--latency point. E6 opens 2Wiki/MuSiQue only if E2--E5 form a credible frontier.
 
 \section{Results}
 \subsection{Teacher sanity and oracle headroom}
@@ -178,6 +195,50 @@ Response preservation does not select the same controller as retrieval utility. 
 
 The primary selector has 33,217 parameters and trains in 36.2 seconds per seed; the exploratory selector has 66,113 parameters and trains in 50.2 seconds per seed on the GTX 950M. Synchronized selector-plus-top-$m$ latency is 42.6/117.0 ms for the primary and 42.9/120.5 ms for the exploratory controller on \hotpot/\qasper. These continuation timings exclude compact-key QK scoring and materialization, so they are component measurements rather than direct replacements for Table~\ref{tab:cost}.
 
+\subsection{Post-G3 low-rank frontier}
+Simple native geometry does not explain the continuation result. At matched $m=2$, farthest-first is the strongest geometric control on both datasets, reaching 0.1423 \hotpot and 0.1303 \qasper recall. Increasing to four or eight centroids, medoids, or farthest points is not monotone. In particular, four native centroids reach only 0.0332 on \qasper despite 0.453 teacher top-four overlap. Preserving several modes of native-key geometry is therefore insufficient by itself.
+
+Direct low-rank native interaction gives a different result. Scoring all 32 projected tokens at rank 16 reaches 0.2542 \qasper recall, a gain of 0.1566 over the native mean with paired interval $[0.0462,0.3001]$. It also exceeds the test-selected query-conditioned controller by 0.0825, interval $[0.0366,0.1337]$. The gain over Paper 2.6 exact routing is 0.0766, but its interval $[-0.0791,0.2763]$ includes zero. Five seed means are 0.1940--0.3027. Rank 8 is close at 0.2456; rank 32 falls to 0.2179 and has the largest seed standard deviation, 0.0666. Extra rank is not reliably useful.
+
+\begin{table}[t]
+\centering
+\caption{Post-G3 diagnostic frontier. Bytes are persistent FP32 routing-index bytes per 32-token chunk; cached latency excludes index construction and native-\kv materialization. Low-rank rows average five seeds.}
+\label{tab:lowrank-frontier}
+\begin{tabular}{lrrrr}
+\toprule
+Method & Bytes/chunk & Cached ms & \hotpot & \qasper \\
+\midrule
+Native mean, $d=1024$ & 4,096 & 1.11/1.19 & 0.124 & 0.098 \\
+Native farthest, $m=2$ & 8,192 & 2.76/5.27 & 0.142 & 0.130 \\
+Low-rank all, $r=8$ & 1,024 & 0.86/0.88 & 0.104 & 0.246 \\
+Low-rank all, $r=16$ & 2,048 & 0.90/0.96 & 0.121 & \textbf{0.254} \\
+Low-rank all, $r=32$ & 4,096 & 0.90/0.92 & \textbf{0.145} & 0.218 \\
+Low-rank $k$-means, $r=8,m=8$ & \textbf{256} & 0.90/0.96 & 0.100 & 0.183 \\
+Paper 2.6 exact & --- & --- & 0.287 & 0.178 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The all-token rank-16 index is $64\times$ smaller than the $32\times1024$ full native-key stream and $2\times$ smaller than one full-width mean key. Joint token/rank compression is more aggressive: rank-8 $k$-means with eight representatives uses 256 bytes per chunk, $512\times$ below the full stream and $16\times$ below the mean, while reaching 0.1829 \qasper recall. Its gain over exact is only 0.0052 with interval $[-0.1250,0.1675]$. Index construction is expensive in this reference implementation (2.26 seconds per \qasper example for rank-8 $k$-means), but it is offline and cacheable; cached online scoring is 0.96 ms. These timings are component measurements on the GTX 950M, not production throughput claims.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\linewidth]{../shared/results/paper2_8_qk_compression/low_rank_frontier/recall_vs_index_bytes.pdf}
+\caption{Evidence recall against persistent routing-index bytes per chunk. Direct low-rank routing creates a new QASPER quality--memory frontier; Hotpot remains dominated by lexical routing.}
+\label{fig:lowrank-bytes}
+\end{figure}
+
+Low teacher overlap limits the interpretation. Rank-16 all-token routing overlaps the teacher's top four by only 0.228 on \qasper and 0.309 on \hotpot. The selected chunks differ from the mean-key selection for every test identity. This controller has learned an evidence-bearing interaction subspace from validation labels; it has not distilled the frozen teacher faithfully.
+
+Structural ablations reinforce the dataset asymmetry. On \hotpot, query-independent salience at $m=4$ reaches 0.1813, above every bilinear variant in the ablation. On \qasper, bilinear-only rank 32, $m=8$ reaches 0.1488, above its salience-plus-bilinear counterpart at 0.1161. These are test-matrix diagnostics, not prespecified winners. They show that query interaction contributes on QASPER while learned token importance can suffice on Hotpot; simply adding both terms does not guarantee a better selector.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_8_qk_compression/low_rank_frontier/selector_ablation.pdf}
+\caption{Selector structure ablation at four and eight landmarks. Salience and bilinear query interaction have different dataset roles, and their combination is not uniformly additive. Points average five seeds.}
+\label{fig:selector-ablation}
+\end{figure}
+
 \subsection{Comparison with Paper 2.6}
 Figure~\ref{fig:paper26} compares the same frozen identities and four-chunk budget. Learned QK $m=8$ is not a new overall frontier. On \hotpot its 0.124 recall is below Paper 2.6 BM25 (0.398), exact (0.287), and iterative hybrid (0.279), with paired intervals excluding zero against all three. On \qasper it reaches 0.139: above Paper 2.6's semantic gist (0.038) by 0.1010, with paired interval $[0.00004,0.2270]$; above iterative hybrid (0.081) by 0.0579, interval $[-0.0610,0.1974]$; and below exact routing (0.178) by 0.0387, interval $[-0.1951,0.1334]$. The positive, defensible claim is dataset-specific: native response distillation improves the old QASPER semantic-gist baseline, but does not displace lexical exact matching and does not transfer to Hotpot.
 
@@ -238,8 +299,27 @@ G5 & Closed & Streaming recurrent memory requires an offline compressor pass. \\
 \end{tabularx}
 \end{table}
 
+\begin{table}[H]
+\centering
+\caption{Post-G3 diagnostic decisions. These extension gates do not reopen or revise G3.}
+\label{tab:extension-gates}
+\begin{tabularx}{\linewidth}{llX}
+\toprule
+Gate & Status & Evidence \\
+\midrule
+E0 & Pass & Frozen rows, hashes, model revision, feature caches, and identity partitions reproduce. \\
+E1 & Pass & Query/response-aware selectors are not explained by matched native geometry alone. \\
+E2 & Inconclusive & The prespecified query-conditioned controller improves Hotpot but regresses QASPER; a test-selected row cannot pass a confirmatory gate. \\
+E3 & Exploratory pass & Decision-aware training exceeds oracle imitation by 0.0300/0.0488 recall on Hotpot/QASPER. \\
+E4 & Pass & Direct low-rank routing retains the measured retrieval gain with at least $32\times$ less state than the full token-key stream. \\
+E5 & Pass & Rank-8, $m=8$ static compression exceeds the old QASPER semantic gist at 256 bytes per chunk. \\
+E6 & Closed & Cross-dataset expansion requires a credible confirmatory E2--E5 frontier. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \section{What the result means}
-Three observations explain the outcome.
+Four observations explain the outcome.
 
 First, a full-key teacher is not automatically an evidence oracle. Native attention keys encode many functions besides document retrieval, and a question's final layer-27 query can respond to syntactic, discourse, and answer-format features. Top-four mean is the best validated reduction here, but its natural advantage over a mean key is small.
 
@@ -247,20 +327,22 @@ Second, response approximation and top-four selection are different objectives. 
 
 Third, query conditioning addresses the key-only selector's missing information need, but does not remove objective mismatch. The combined loss gives the best \hotpot result and a poor \qasper result; decision-aware training gives the best \qasper result; oracle imitation gives the best response preservation. Capacity alone is not the explanation: increasing rank and landmark count is not monotone, and a controller can reproduce the teacher while retrieving less evidence.
 
-The next justified experiment is a fresh, larger, identity-disjoint confirmation in which dataset-specific objective selection occurs entirely on validation. It should prespecify combined $r=16,m=4$ for \hotpot and decision-aware $r=32,m=8$ for \qasper, retain BM25/exact/hybrid controls, and include downstream native-\kv answer generation. Synthetic slots and recurrent state remain premature because no native-key selector closes the response-recovery gate.
+Fourth, direct projection changes the problem. Instead of choosing a few full-width keys and asking them to imitate a native response, it learns a compact interaction space in which evidence chunks rank highly. The QASPER gain survives a 64-fold reduction from the full native-key stream at rank 16, and an eight-centroid rank-8 index preserves a smaller gain at 256 bytes per chunk. Yet low teacher overlap and the Hotpot failure mean this is task-adapted routing, not general native-response distillation. The result supports low-rank native features as one channel inside a selector, not as a replacement for exact, lexical, or hybrid discovery.
+
+The next justified experiment is a fresh, larger, identity-disjoint confirmation in which dataset-specific objective and rank selection occurs entirely on validation. It should retain BM25/exact/hybrid controls, compare rank-16 all-token and rank-8 eight-centroid indexes, and include downstream native-\kv answer generation. Synthetic slots and recurrent state remain premature because no native-key selector closes the original response-recovery gate.
 
 \section{Relation to prior PRA results}
 Paper 1 established mean-gist routing and selected native \kv. Paper 2.5 tested iterative associative closure and showed that local/native propagation can solve controlled bridges without yielding a uniform natural gain. Paper 2.6 demonstrated strong channel asymmetry: lexical evidence is particularly effective for Hotpot and exact matching for QASPER. Paper 2.7 moved structure discovery to the query side and found that better natural facet recovery could still reduce retrieval.
 
-Paper 2.8 does not rename those mechanisms. It changes the memory-summary objective. Its primary \hotpot improvement does not overturn Paper 2.6: lexical relational discovery still dominates a native response summary. Its exploratory \qasper result adds something narrower: decision-aware selection of eight native keys can approach, but does not resolve an advantage over, exact matching under the same four-chunk budget. Query-graph facets remain a query-side control and are not used to train the memory selector.
+Paper 2.8 does not rename those mechanisms. It changes the memory-summary objective. Its primary \hotpot improvement does not overturn Paper 2.6: lexical relational discovery still dominates a native response summary. Its exploratory \qasper landmark result adds something narrower: decision-aware selection of eight native keys can approach, but does not resolve an advantage over, exact matching under the same four-chunk budget. The post-G3 rank-16 router improves further on QASPER while using half the routing state of one full-width mean key, but it is evidence-supervised and its interval against exact routing includes zero. Query-graph facets remain a query-side control and are not used to train the memory selector.
 
 \section{Limitations}
-The natural cohort has 32 test identities and one frozen model, layer, tokenizer, chunk size, and materialization budget. Five seeds quantify selector initialization, not dataset sampling uncertainty. The 24 query-conditioned configurations create a multiple-comparison surface, and the decision-aware \qasper row was selected on the test matrix; it is explicitly exploratory. Its paired intervals include zero. A larger identity-disjoint cohort must choose the objective and rank on validation before any confirmatory claim. Hotpot and QASPER do not cover 2Wiki/MuSiQue, and the controlled suite contains only 20 schematic cases.
+The natural cohort has 32 test identities and one frozen model, layer, tokenizer, chunk size, and materialization budget. Five seeds quantify selector initialization, not dataset sampling uncertainty. Both the 24 query-conditioned configurations and post-G3 low-rank frontier reuse the same test matrix; test-selected rows are explicitly exploratory. A larger identity-disjoint cohort must choose the objective, rank, and static-representative rule on validation before any confirmatory claim. Hotpot and QASPER do not cover 2Wiki/MuSiQue, and the controlled suite contains only 20 schematic cases.
 
-The teacher does not include post-RoPE distance, value utility, downstream answer log-probability, or layer combinations. Greedy oracle landmarks see the evaluation query and cannot be deployed; oracle-imitation targets inherit their errors. Evidence-supervised losses use validation labels, so they test a small task-adapted controller rather than unsupervised compression. Runtime uses eager Python/PyTorch on an old mobile GPU; continuation latency covers selection but not QK scoring or materialization. No native \kv answer generation is run because G3 remains closed.
+The teacher does not include post-RoPE distance, value utility, downstream answer log-probability, or layer combinations. Greedy oracle landmarks see the evaluation query and cannot be deployed; oracle-imitation targets inherit their errors. Evidence-supervised losses use validation labels, so they test a small task-adapted controller rather than unsupervised compression. Direct low-rank indexes cache all projected tokens unless a static representative rule is used; they reduce routing state, not backing native \kv. Runtime uses eager Python/PyTorch on an old mobile GPU. No native \kv answer generation is run because G3 remains closed.
 
 \section{Conclusion}
-Compact native keys can preserve more of a frozen transformer's chunk-response geometry than one mean key, but response fidelity is not retrieval utility. Query conditioning produces a modest prespecified \hotpot improvement and an exploratory decision-aware \qasper result near exact routing. Neither is a universal frontier: strong lexical channels remain better on \hotpot, uncertainty is large, and maximum oracle-gain recovery rises only from 40.5\% to 47.3\%. The gate sequence therefore stops before synthetic slots and streaming memory. The next step is confirmation, not a broader search: freeze dataset-specific objectives on validation, enlarge the held-out cohorts, and test whether the selected native keys improve downstream answer generation.
+Compact native keys can preserve more of a frozen transformer's chunk-response geometry than one mean key, but response fidelity is not retrieval utility. Query-conditioned landmark selection does not pass the original recovery gate. Direct low-rank native interaction nevertheless exposes a useful QASPER frontier: rank 16 reaches 0.2542 recall with 2,048 bytes per chunk, and rank-8 eight-centroid routing reaches 0.1829 with 256 bytes. Neither is universal. Hotpot remains a lexical-routing problem in this cohort, uncertainty is substantial, and low teacher overlap shows that the projections learn evidence utility rather than faithful response compression. The next step is a validation-selected, larger-cohort confirmation with downstream answer generation, not a claim that compact QK routing has replaced lexical or hybrid discovery.
 
 \appendix
 \section{Reimplementation map}
@@ -271,6 +353,7 @@ The implementation separates mechanism from experiment policy.
   \item \texttt{experiments/paper2\_8\_qk\_compression/run\_gated\_study.py} selects the teacher on validation, runs gates in order, trains five seeds only after G2, and emits row-level artifacts.
   \item \texttt{run\_cost\_benchmark.py} times uncached controller construction separately from cached quality evaluation; \texttt{summarize\_results.py} builds matched Paper 2.5/2.6 tables and plots.
   \item \texttt{run\_query\_conditioned\_study.py} executes the 120-controller matrix with durable row-level checkpoints; \texttt{summarize\_query\_conditioned.py} computes paired comparisons, response recovery, stability, and plots.
+  \item \texttt{run\_low\_rank\_frontier.py} evaluates native geometry and trains direct native-$Q/K$ projections; \texttt{run\_selector\_ablation.py} isolates salience and bilinear terms; \texttt{summarize\_low\_rank\_frontier.py} emits paired effects, seed stability, normalized cost frontiers, plots, and E0--E6 decisions.
 \end{itemize}
 
 The core serving path is:
@@ -286,8 +369,18 @@ materialize_native_kv(chunks)                     # unchanged 32-token K/V
 \end{verbatim}
 The query-conditioned path replaces the fourth line with \texttt{z = selector(x, q)}. The oracle substitutes a query-aware greedy search and must not be used online.
 
+The direct low-rank serving path avoids full native-width online dots:
+\begin{verbatim}
+Zk = cache(Wk @ flatten_native_keys(K))           # [C, T, r]
+zq = Wq @ flatten_native_query(q)                 # [r]
+scores = chunk_reduce(Zk @ zq / sqrt(r))          # [C]
+chunks = stable_topk(scores, k=4)
+materialize_native_kv(chunks)                     # unchanged K/V
+\end{verbatim}
+Static joint compression replaces each chunk's $T$ projected tokens with four or eight deterministic centroids, medoids, or farthest representatives. Only the routing index changes; the selected chunk still contributes all of its original native \kv.
+
 \section{Artifacts}
-Tracked results live under \texttt{docs/papers/shared/results/paper2\_8\_qk\_compression/}. The directory contains natural and synthetic row CSVs, teacher validation, paired effects, changed-selection audits, matched Paper 2.6 and historical Paper 2.5 controls, selector checkpoints, synchronized cost rows, plots, gate decisions, and manifests. The \texttt{query\_conditioned/} subtree adds all 120 controller runs, training histories, seed stability, primary/exploratory comparisons, and response-recovery artifacts. The 329 MB validation, 621 MB test, and 8.3 MB prepared feature caches are ignored; manifests provide hashes and regeneration commands. The full test cache hash is \texttt{edc589cc...75993ae8}; validation is \texttt{87b85b25...7533cf8}.
+Tracked results live under \texttt{docs/papers/shared/results/paper2\_8\_qk\_compression/}. The directory contains natural and synthetic row CSVs, teacher validation, paired effects, changed-selection audits, matched Paper 2.6 and historical Paper 2.5 controls, selector checkpoints, synchronized cost rows, plots, gate decisions, and manifests. The \texttt{query\_conditioned/} subtree adds all 120 controller runs. The \texttt{low\_rank\_frontier/} and \texttt{selector\_ablation/} subtrees add 3,776 frontier rows, 1,280 ablation rows, 15 projection checkpoints, paired identity bootstraps, seed statistics, byte/latency accounting, plots, and extension decisions. The 329 MB validation, 621 MB test, and 8.3 MB prepared feature caches are ignored; manifests provide hashes and regeneration commands. The full test cache hash is \texttt{edc589cc...75993ae8}; validation is \texttt{87b85b25...7533cf8}.
 
 \begin{thebibliography}{9}
 \bibitem{pra1} Sim\~ao, J. Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory. Project manuscript, 2026.
