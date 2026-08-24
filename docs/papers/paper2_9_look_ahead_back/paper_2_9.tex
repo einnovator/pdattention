@@ -1,0 +1,89 @@
+\documentclass[11pt]{article}
+\usepackage[margin=.9in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,enumitem,hyperref,microtype}
+\title{Temporal Semantic Discovery for Progressive Retrieval Attention\\
+\large Look-Behind, Delayed Commitment, and Look-Ahead Routing}
+\author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{August 2026}
+\begin{document}\maketitle
+\begin{abstract}
+Progressive Retrieval Attention (PRA) separates logical-memory discovery from native-K/V materialization, but semantic discovery commonly treats one current token or one compressed query state as the routing unit. Language is not naturally organized at that granularity: adjacent tokens are correlated, names and relations often become discriminative only after several tokens, and memory chunks may themselves be represented by only one or a few gists. We study temporal semantic discovery: routing from short spans of past, current, and, when available, future token representations. We separate causal look-behind with delayed commitment, prompt-prefill look-ahead through a non-causal routing sidecar, and optional predictive look-ahead during generation. Paper 2.6 indexed lexical retrieval remains the preferred path for explicitly structured memories such as tool/API registries. The central hypothesis is that retrieval can operate on a slower span-level clock while autoregressive generation remains token-causal.
+\end{abstract}
+
+\section{Position in the PRA series}
+Paper 2.5 establishes iterative associative traversal and separates root entry, propagation, stopping, and query formulation. Paper 2.6 establishes multi-representational discovery, including exact-token, n-gram, BM25, approximate, sparse indexed, and hybrid retrieval. Paper 2.7 shows that plausible hidden-state query partitions need not improve retrieval: graph facets recover structure but can degrade evidence recall, making facet-to-query consolidation a key bottleneck. Paper 2.8 attacks memory-side compression: one mean gist can erase sparse native QK responses, yet compact native-key landmarks do not yield one universal controller. Paper 2.9 changes the \emph{temporal extent of the semantic query} while holding downstream materialization fixed.
+
+For tool names, API paths, URIs, headings, symbol tables, and other explicitly indexable sources, Paper 2.6 lexical/indexed retrieval is the default. Paper 2.9 targets natural-language composition, implicit relations, ambiguous phrases, and streaming generation where the complete query is not yet available.
+
+\section{Research questions}
+\begin{enumerate}[leftmargin=*]
+\item Does causal look-behind improve semantic retrieval over a current-token/current-state query at equal chunk budget?
+\item How much oracle look-ahead gain can be recovered simply by delaying commitment until future tokens become history?
+\item During prompt prefill, can a small non-causal routing sidecar exploit already-known future tokens without altering causal backbone states?
+\item Is mean pooling enough, or is token--gist late interaction needed?
+\item How does temporal query extent interact with one versus multiple chunk gists/landmarks?
+\item Can routing run less frequently than token generation and be reused across layers?
+\end{enumerate}
+
+\section{Temporal routing}
+At layer $\ell$ and token $t$, let $H^\ell_{a:b}=\{h^\ell_a,\ldots,h^\ell_b\}$. The baseline is $r_{t,\ell}=h^\ell_t$. Causal look-behind uses
+\[
+r^B_{t,\ell}=R_B(H^\ell_{t-B+1:t}),
+\]
+and oracle/prefill look-around uses
+\[
+r^{B,F}_{t,\ell}=R_{B,F}(H^\ell_{t-B+1:t+F}).
+\]
+Use $B\in\{1,2,4,8,16\}$ and $F\in\{0,1,2,4,8\}$. Whole-query routing is an upper/reference condition rather than the default streaming policy.
+
+\subsection{Query aggregation}
+Mean pooling is the minimal baseline,
+\[
+\bar q=|W|^{-1}\sum_{i\in W}q_i.
+\]
+Weighted/attention pooling uses $\sum_i a_iq_i$. Late interaction retains the query set and scores chunk $c$ with representatives $g_{c,j}$:
+\[
+S_{\rm LI}(c)=\sum_{i\in W}w_i\max_j\cos(q_i,g_{c,j}).
+\]
+Facet routing reduces the span to a small set $Z=\{z_1,\ldots,z_f\}$ and applies a similar score. Paper 2.7 raw graph communities are a baseline, not an assumed winner; facets require consolidation and weighting.
+
+\subsection{Memory-side representations}
+Cross query methods with $m\in\{1,2,4,8\}$ representatives per chunk. Begin with the inherited mean gist, then add local/prototype gists and compatible Paper 2.8 native-key landmarks. Do not confound temporal-query gains with a larger memory index.
+
+\section{Delayed commitment}
+A streaming router need not materialize memory at the first ambiguous token. Let $p_t(c)$ be the candidate distribution and $H_t$ its entropy. Retain or prefetch candidates while uncertainty is high; commit when a validation-fixed entropy/margin threshold is crossed, a phrase boundary occurs, or maximum delay $D$ is reached. Compare
+\[
+{\rm immediate}(B)\quad vs\quad {\rm delayed}(B,D)\quad vs\quad {\rm oracle/prefill}(B,F).
+\]
+Delayed commitment is a causal approximation to look-ahead because future tokens eventually become observed history.
+
+\section{Prefill and predictive look-ahead}
+During prompt prefill all query tokens are known. Test a tiny local bidirectional routing sidecar over token embeddings or frozen states; it must not write into causal backbone states. For generation, predictive look-ahead is conditional on oracle headroom. Candidate methods are expected next-token embedding, a lightweight future-routing probe, and direct prediction of a coarse PRA destination. Every predictive method must beat an equal-latency delayed-routing baseline.
+
+\section{Slower routing clock}
+Test routing every $s\in\{1,2,4,8\}$ tokens and at sparse layer checkpoints. Reuse the previous decision until confidence drops, selected identities change materially, or representation drift crosses a threshold. Report router calls/token, candidates scored/token, latency, and selected-memory churn.
+
+\section{Experimental design}
+Use inherited identity-disjoint HotpotQA, QASPER, 2WikiMultiHopQA, and MuSiQue cohorts where frozen features permit matched comparisons. Add controlled temporal-ambiguity fixtures: shared prefixes, compositional phrases, entity/relation ambiguity, order reversal, and distractor-heavy memories. Tool-like fixtures are mechanism controls only.
+
+Required baselines are current-token semantic routing, global/whole-query semantic routing, Paper 2.6 exact/BM25/approximate/best hybrid where applicable, fixed windows, Paper 2.7 syntax/graph facets, and inherited one-mean-gist routing. Hold the final unique-chunk materialization budget fixed.
+
+Primary metrics: evidence recall/precision, complete-evidence recovery, MRR, candidate entropy, candidate-set size, routing delay, selected-set churn, router calls, candidates scored, routing latency, and physical K/V materialized. Bootstrap identities rather than token windows.
+
+\section{Predeclared gates}
+\begin{description}[leftmargin=1.3cm,style=nextline]
+\item[G0] Reproduce inherited matched baselines from Papers 2.6--2.8.
+\item[G1] A causal look-behind condition beats $B=1$ with paired 95\% CI above zero on one natural dataset and no $>0.02$ regression on the other primary dataset.
+\item[G2] Delayed commitment recovers at least 70\% of oracle look-ahead gain with median delay at most four tokens. If oracle look-ahead is negligible, predictive look-ahead is closed.
+\item[G3] Prefill non-causal routing improves retrieval while disabled-PRA backbone logits/states remain unchanged.
+\item[G4] Late interaction or multi-gist routing must justify its added routing cost relative to mean pooling.
+\item[G5] Predictive future probes run only if substantial unrecovered oracle headroom remains and must beat equal-latency delayed commitment.
+\item[G6] Native-K/V consumption/generation runs only after retrieval improvement survives matched budgets.
+\end{description}
+
+\section{Falsification}
+A useful negative result is that $h_t$ already retains enough history that explicit look-behind adds little. Another is that delayed commitment recovers nearly all oracle future gain, making predictive look-ahead unnecessary. If late interaction helps only with multiple memory representatives, memory-side compression rather than temporal query compression is the bottleneck. Explicitly structured sources are expected to remain better served by Paper 2.6 indexing.
+
+\section{Conclusion}
+Autoregressive generation is token sequential; semantic memory discovery need not be. PRA can preserve a causal frozen backbone while routing from several observed tokens, waiting for uncertainty to fall, or during prefill using a small non-causal sidecar. The decisive experiment is whether span-level routing improves retrieval at matched memory budget and whether causal delay recovers most apparent look-ahead benefit.
+\end{document}
