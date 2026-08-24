@@ -8,9 +8,13 @@ four-chunk materialization budget, and five learned-selector seeds.
 The gate sequence stops at G3. A query-aware greedy oracle establishes
 response-preservation and QASPER retrieval headroom, but the 321-parameter
 key-only selector recovers 40.5% of oracle gain rather than the required 80%.
-It improves the inherited QASPER semantic-gist baseline but does not beat exact
-routing, does not improve Hotpot, and is seed-sensitive. Synthetic slots and
-streaming recurrent memory are therefore not run.
+A 120-controller continuation then crosses low-rank query conditioning,
+landmark count, and four training losses. Prespecified combined `r16/m4`
+improves HotpotQA recall to 0.1667 but reduces QASPER recall to 0.0574.
+Exploratory decision-aware `r32/m8` reaches 0.1718 on QASPER, near exact
+routing at 0.1776, with paired intervals that include zero. Maximum oracle-gain
+recovery rises only to 47.3%. Synthetic slots and streaming recurrent memory
+are therefore not run.
 
 Files:
 
@@ -21,6 +25,11 @@ Files:
 - `../shared/results/paper2_8_qk_compression/`: row-level metrics, bootstrap
   effects, changed-selection audits, plots, selector checkpoints, costs, gates,
   and manifests.
+
+The `query_conditioned/` result subtree contains all 120 controller runs,
+training histories, seed-stability summaries, paired effects, response
+recovery, and publication plots. The test-selected QASPER configuration is
+marked exploratory throughout the paper and artifacts.
 
 The large validation/test QK feature tensors are reproducible and intentionally
 ignored. Their hashes and generation commands are recorded in `manifest.json`.

@@ -17,6 +17,12 @@ from torch import nn
 
 
 TEACHER_FUNCTIONS = ("max", "top_r_mean", "logsumexp", "attention_mass")
+LANDMARK_TRAINING_OBJECTIVES = (
+    "oracle_imitation",
+    "listwise",
+    "combined",
+    "decision_aware",
+)
 
 
 def gqa_head_map(query_heads: int, key_heads: int, *, device=None) -> torch.Tensor:
@@ -358,6 +364,196 @@ class NativeLandmarkSelector(nn.Module):
             count = min(int(m), int(mask.sum().item()))
             selections.append(row.topk(count).indices.sort().values.tolist())
         return selections
+
+
+class QueryConditionedLandmarkSelector(nn.Module):
+    """Score token landmarks from cached key features and the current native query.
+
+    The low-rank interaction is bounded by ``rank`` and leaves the frozen
+    transformer's query/key projections unchanged. Inputs are ``[...,C,T,F]``
+    key features, ``[...,Q]`` flattened query features, and ``[...,C,T]`` masks.
+    """
+
+    def __init__(
+        self,
+        query_width: int,
+        *,
+        feature_width: int = 8,
+        hidden_width: int = 32,
+        rank: int = 16,
+    ) -> None:
+        super().__init__()
+        if query_width <= 0 or feature_width <= 0 or hidden_width <= 0 or rank <= 0:
+            raise ValueError("Selector widths and rank must be positive.")
+        self.query_width = int(query_width)
+        self.feature_width = int(feature_width)
+        self.rank = int(rank)
+        self.salience = nn.Sequential(
+            nn.Linear(feature_width, hidden_width),
+            nn.GELU(),
+            nn.Linear(hidden_width, 1),
+        )
+        self.query_projection = nn.Linear(query_width, rank, bias=False)
+        self.feature_projection = nn.Linear(feature_width, rank, bias=False)
+        self.interaction_scale = rank**-0.5
+
+    def forward(
+        self,
+        features: torch.Tensor,
+        query_features: torch.Tensor,
+        token_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        if features.shape[:-1] != token_mask.shape:
+            raise ValueError("Selector features and token mask are not aligned.")
+        if features.shape[-1] != self.feature_width:
+            raise ValueError("Unexpected selector feature width.")
+        if query_features.shape[-1] != self.query_width:
+            raise ValueError("Unexpected query feature width.")
+        if features.shape[:-3] != query_features.shape[:-1]:
+            raise ValueError("Query batch dimensions do not match selector features.")
+        salience = self.salience(features).squeeze(-1)
+        query = self.query_projection(query_features)
+        singleton_dims = features.ndim - query.ndim
+        query = query.reshape(
+            *query.shape[:-1], *([1] * singleton_dims), query.shape[-1]
+        )
+        interaction = (
+            self.feature_projection(features) * query
+        ).sum(dim=-1) * self.interaction_scale
+        return (salience + interaction).masked_fill(~token_mask, float("-inf"))
+
+
+def differentiable_landmark_scores(
+    selector_logits: torch.Tensor,
+    token_responses: torch.Tensor,
+    token_mask: torch.Tensor,
+    m: int,
+    *,
+    temperature: float = 0.5,
+) -> torch.Tensor:
+    """Approximate chunk response using the selector's hard top-``m`` support.
+
+    Top-k membership is piecewise constant, while softmax weights on the chosen
+    logits carry gradients. Final evaluation must gather native keys and call
+    :func:`qk_response_scores`; this surrogate is only a training objective.
+    """
+    if selector_logits.shape != token_responses.shape or token_mask.shape != selector_logits.shape:
+        raise ValueError("Selector logits, token responses, and masks must align.")
+    if m <= 0 or temperature <= 0:
+        raise ValueError("m and temperature must be positive.")
+    count = min(int(m), selector_logits.shape[-1])
+    top_logits, top_indices = selector_logits.topk(count, dim=-1)
+    top_responses = token_responses.gather(-1, top_indices)
+    finite = torch.isfinite(top_logits)
+    weights = torch.softmax(top_logits / temperature, dim=-1)
+    weights = weights.masked_fill(~finite, 0)
+    weights = weights / weights.sum(dim=-1, keepdim=True).clamp_min(1e-8)
+    return (weights * top_responses).sum(dim=-1)
+
+
+def landmark_training_loss(
+    objective: str,
+    selector_logits: torch.Tensor,
+    token_responses: torch.Tensor,
+    token_mask: torch.Tensor,
+    positive_chunks: torch.Tensor,
+    *,
+    m: int,
+    teacher_scores: torch.Tensor | None = None,
+    oracle_targets: torch.Tensor | None = None,
+    budget: int = 4,
+    margin: float = 0.1,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Compute one of the prespecified Paper 2.8 selector objectives.
+
+    ``listwise`` ranks evidence chunks, ``combined`` adds full-QK response
+    distillation, and ``decision_aware`` upweights negatives nearest the final
+    top-``budget`` routing boundary. All tensors may include leading batch axes.
+    """
+    if objective not in LANDMARK_TRAINING_OBJECTIVES:
+        raise ValueError(f"Unsupported landmark objective: {objective}")
+    if selector_logits.shape != token_mask.shape:
+        raise ValueError("Selector logits and masks must align.")
+    if positive_chunks.shape != token_mask.shape[:-1]:
+        raise ValueError("Positive-chunk mask must omit only the token axis.")
+    if budget <= 0:
+        raise ValueError("budget must be positive.")
+    chunk_scores = differentiable_landmark_scores(
+        selector_logits, token_responses, token_mask, m
+    )
+    candidate_mask = token_mask.any(dim=-1)
+    flat_scores = chunk_scores.reshape(-1, chunk_scores.shape[-1])
+    flat_candidates = candidate_mask.reshape_as(flat_scores)
+    flat_positives = positive_chunks.reshape_as(flat_scores) & flat_candidates
+
+    listwise_terms = []
+    response_terms = []
+    boundary_terms = []
+    teacher_flat = (
+        teacher_scores.reshape_as(flat_scores) if teacher_scores is not None else None
+    )
+    for index, (scores, candidates, positives) in enumerate(
+        zip(flat_scores, flat_candidates, flat_positives)
+    ):
+        valid_scores = scores[candidates]
+        valid_positives = positives[candidates]
+        if bool(valid_positives.any()):
+            target = valid_positives.to(valid_scores.dtype)
+            target = target / target.sum()
+            listwise_terms.append(-(target * torch.log_softmax(valid_scores, dim=-1)).sum())
+        if teacher_flat is not None:
+            target_distribution = torch.softmax(teacher_flat[index][candidates], dim=-1)
+            response_terms.append(
+                torch.nn.functional.kl_div(
+                    torch.log_softmax(valid_scores, dim=-1),
+                    target_distribution,
+                    reduction="sum",
+                )
+            )
+        negative_mask = ~valid_positives
+        if bool(valid_positives.any()) and bool(negative_mask.any()):
+            boundary_rank = min(int(budget), len(valid_scores)) - 1
+            threshold = valid_scores.detach().topk(boundary_rank + 1).values[-1]
+            negative_scores = valid_scores[negative_mask]
+            boundary_count = min(max(2 * int(budget), 1), len(negative_scores))
+            nearest = (negative_scores.detach() - threshold).abs().topk(
+                boundary_count, largest=False
+            ).indices
+            boundary_negatives = negative_scores.index_select(0, nearest)
+            positive_scores = valid_scores[valid_positives]
+            boundary_terms.append(
+                torch.nn.functional.softplus(
+                    margin + boundary_negatives.unsqueeze(0) - positive_scores.unsqueeze(1)
+                ).mean()
+            )
+
+    zero = selector_logits[torch.isfinite(selector_logits)].sum() * 0
+    components = {
+        "oracle": zero,
+        "listwise": torch.stack(listwise_terms).mean() if listwise_terms else zero,
+        "response": torch.stack(response_terms).mean() if response_terms else zero,
+        "boundary": torch.stack(boundary_terms).mean() if boundary_terms else zero,
+    }
+    if objective == "oracle_imitation":
+        if oracle_targets is None or oracle_targets.shape != token_mask.shape:
+            raise ValueError("Oracle imitation requires aligned token targets.")
+        valid_logits = selector_logits[token_mask]
+        valid_targets = oracle_targets[token_mask].to(valid_logits.dtype)
+        positives = valid_targets.sum().clamp_min(1)
+        positive_weight = ((valid_targets.numel() - positives) / positives).clamp(max=20)
+        components["oracle"] = torch.nn.functional.binary_cross_entropy_with_logits(
+            valid_logits, valid_targets, pos_weight=positive_weight
+        )
+        total = components["oracle"]
+    elif objective == "listwise":
+        total = components["listwise"]
+    elif objective == "combined":
+        if teacher_scores is None:
+            raise ValueError("Combined training requires full-QK teacher scores.")
+        total = components["listwise"] + components["response"]
+    else:
+        total = components["listwise"] + 2.0 * components["boundary"]
+    return total, components
 
 
 @dataclass(frozen=True)

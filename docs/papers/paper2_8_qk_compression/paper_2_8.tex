@@ -17,7 +17,7 @@
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (\pra) uses compact routing gists to choose long-memory chunks, then materializes the selected chunks' unchanged native key/value (\kv) states. Mean gists are inexpensive but erase sparse token-level address signals. We test a narrower alternative: preserve the frozen transformer's full key-stream response rather than reconstructing key vectors, clustering tokens, or generating text summaries. A full-\qk teacher scores each 32-token chunk from all native keys. Controllers retain one to eight actual keys: last-token, random, farthest-first, a query-aware greedy oracle, or a 321-parameter key-only selector trained from oracle labels. Validation uses 16 identity-disjoint \hotpot/\qasper questions; testing uses the frozen 32-question Paper 2.5/2.6 cohort, a fixed four-chunk materialization budget, and five selector seeds. The selected top-four-mean teacher passes a controlled sanity gate and improves natural recall over a mean key gist by 0.0004 on \hotpot and 0.0276 on \qasper. Greedy landmarks expose headroom: at four keys they improve \qasper recall by 0.0802, although its paired 95\% interval $[-0.0142,0.2233]$ includes zero. The learned eight-key selector improves \qasper recall by 0.0413 over the mean-key control and by 0.1010 over Paper 2.6's semantic gist baseline; only the latter interval excludes zero, narrowly. It is unchanged on \hotpot, varies substantially across seeds, and recovers 40.5\% of the oracle top-four-overlap gain, below the prespecified 80\% gate. We therefore stop before synthetic slots or streaming memory. The result identifies both an opportunity and a boundary: native response geometry contains useful QASPER signal, but a tiny query-independent token selector does not reliably distill it across routing regimes.
+Progressive Retrieval Attention (\pra) uses compact routing gists to choose long-memory chunks, then materializes the selected chunks' unchanged native key/value (\kv) states. Mean gists are inexpensive but erase sparse token-level address signals. We ask whether one to eight actual pretrained keys can preserve a frozen transformer's full chunk-response surface. Validation uses 16 identity-disjoint \hotpot/\qasper questions; testing uses the frozen 32-question Paper 2.5/2.6 cohort, a fixed four-chunk materialization budget, and five seeds. A key-only selector improves \qasper over the Paper 2.6 semantic gist but recovers only 40.5\% of oracle response-preservation gain. We then cross low-rank query conditioning $r\in\{8,16,32\}$, $m\in\{4,8\}$ landmarks, and four losses: oracle imitation, evidence-listwise ranking, ranking plus response distillation, and a top-four-boundary loss. The prespecified combined $r=16,m=4$ controller raises \hotpot recall from 0.1235 to 0.1667, paired difference 0.0432 with 95\% interval $[-0.0112,0.0970]$, but falls below strong lexical channels and reduces \qasper recall to 0.0574. Exploratorily, decision-aware $r=32,m=8$ reaches \qasper recall 0.1718, close to exact routing at 0.1776; its five seed means span 0.1639--0.1796, but paired intervals against exact and the key-only selector include zero. Query conditioning raises maximum oracle-gain recovery only to 47.3\%, below the prespecified 80\% gate. Native response compression therefore does not yield one universal controller: evidence utility depends jointly on dataset, landmark budget, and training objective.
 \end{abstract}
 
 \section{Introduction}
@@ -32,7 +32,8 @@ The contributions are:
   \item a tensor-native definition of chunk response distillation under grouped-query attention, with max, top-$r$, log-sum-exp, and attention-mass teachers;
   \item matched native-key controllers, response metrics, routing metrics, changed-selection audits, and synchronized CUDA cost measurements;
   \item a controlled 32--256-token suite and a frozen natural evaluation aligned with the Paper 2.5/2.6 32-token chunk and four-chunk budget;
-  \item a measured boundary: oracle landmarks show natural QASPER headroom, while a 321-parameter key-only selector recovers too little of that headroom to pass deployment gates.
+  \item a measured boundary: oracle landmarks show natural QASPER headroom, while a 321-parameter key-only selector recovers too little of that headroom to pass deployment gates;
+  \item a 120-controller query-conditioned sweep separating a prespecified primary result from test-selected exploratory findings and showing that response preservation, evidence ranking, and dataset utility are not interchangeable.
 \end{enumerate}
 
 \section{Native response distillation}
@@ -60,6 +61,17 @@ All deployable landmark outputs are actual pretrained keys. Mean is the only syn
 \end{description}
 
 Oracle selections for $m=8$ supervise the learned model. Five seeds train for 400 AdamW steps on 16 validation identities. The backbone, native projections, tokenizer, and all natural test identities remain frozen. The selector receives no question vector, evidence label, dataset identifier, lexical feature, or chunk-level answer supervision at inference.
+
+\subsection{Query-conditioned continuation}
+The continuation addresses the key-only selector's missing information need without changing native keys. Let $f_i\in\mathbb{R}^8$ be token $i$'s normalized key-only features and let $\bar q\in\mathbb{R}^{H_qd_h}$ be the flattened, RMS-scaled native query. The selector logit is
+\begin{equation}
+  z_i=\operatorname{MLP}(f_i)+\frac{(W_q\bar q)^\top(W_ff_i)}{\sqrt r},
+\end{equation}
+where $r\in\{8,16,32\}$. The resulting models have 16,769, 33,217, and 66,113 parameters. Hard top-$m$ selects actual native keys at inference.
+
+Training uses a piecewise-differentiable surrogate only to move selector logits. Within each chunk, the hard top-$m$ support is retained while a softmax over its logits weights scalar native token responses. This gives a chunk surrogate $\widetilde S(q,C)$. Final evaluation discards the surrogate, gathers hard-selected keys, and recomputes $\hat S(q,C)$ with the exact grouped-query native-\qk function.
+
+Four objectives are prespecified. \emph{Oracle imitation} applies token-level weighted binary cross-entropy to greedy response-preserving selections. \emph{Listwise} minimizes cross-entropy from the chunk softmax to a uniform distribution over evidence chunks. \emph{Combined} adds $\mathrm{KL}(\operatorname{softmax}S^*\|\operatorname{softmax}\widetilde S)$ to listwise ranking. \emph{Decision-aware} adds pairwise softplus penalties between evidence chunks and non-evidence chunks nearest the fourth-place routing threshold. We cross all four objectives with both landmark counts, all three ranks, and five seeds: 120 controllers, each trained for 300 AdamW steps on validation only. Combined $r=16,m=4$ is the prespecified primary configuration; every other test comparison is reported without replacing it.
 
 \subsection{Matched materialization}
 The intervention changes only routing summaries. Candidate units are the same 32-token local chunks. Every method requests four chunks, so it materializes approximately 128 native \kv tokens: 126.1 on \hotpot because of short final chunks and 128.0 on \qasper. Active memory fractions are 8.8\% and 3.3\%, respectively. Values are never compressed, projected, or synthesized.
@@ -124,10 +136,52 @@ The learned selector does not recover the oracle. At $m=8$, it captures 40.5\% o
 
 Seed variation is material. \hotpot $m=8$ recall ranges from 0.1173 to 0.1298. \qasper ranges from 0.0478 to 0.1821; four seeds are at or above 0.119, while seed 37 collapses. Teacher top-four overlap is more stable than evidence recall, showing that response imitation and evidence utility are related but not interchangeable.
 
+\subsection{Query conditioning: objective-dependent utility}
+The prespecified combined $r=16,m=4$ controller improves \hotpot recall from the full-key teacher's 0.1235 to 0.1667, a paired difference of 0.0432 with interval $[-0.0112,0.0970]$. It also improves over the key-only $m=8$ selector by 0.0427, interval $[-0.0015,0.0907]$. This is the best \hotpot result in the 24-configuration continuation, but remains below BM25, exact, and hybrid routing. The same controller reaches only 0.0574 on \qasper, 0.0402 below the mean-key control and 0.1202 below exact routing. Query conditioning therefore does not produce a dataset-uniform primary result.
+
+The test-selected exploratory result is more encouraging but is not confirmatory. Decision-aware $r=32,m=8$ reaches 0.1718 \qasper recall, compared with 0.1776 for Paper 2.6 exact routing, 0.1389 for the key-only selector, and 0.0976 for the mean key. Its paired differences are $-0.0059$ against exact, interval $[-0.1831,0.2049]$, and $+0.0328$ against key-only, interval $[-0.0292,0.1073]$. Five seed means span 0.1639--0.1796. The narrow seed range shows optimization stability for this configuration; the wide identity-bootstrap intervals show that 16 test questions per dataset are still too few to resolve comparative retrieval utility.
+
+\begin{table}[t]
+\centering
+\caption{Matched four-chunk evidence recall. ``Primary'' was fixed before test evaluation. ``Exploratory'' is the best \qasper row selected after inspecting the 24-configuration test matrix.}
+\label{tab:query-conditioned}
+\begin{tabular}{lcc}
+\toprule
+Method & \hotpot & \qasper \\
+\midrule
+QK mean & 0.124 & 0.098 \\
+Key-only learned, $m=8$ & 0.124 & 0.139 \\
+Paper 2.6 BM25 & 0.398 & 0.042 \\
+Paper 2.6 exact & 0.287 & 0.178 \\
+Paper 2.6 hybrid & 0.279 & 0.081 \\
+Primary combined, $r=16,m=4$ & \textbf{0.167} & 0.057 \\
+Exploratory decision-aware, $r=32,m=8$ & 0.143 & \textbf{0.172} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper2_8_qk_compression/query_conditioned/objective_rank_recall.pdf}
+\caption{Evidence recall across objective, low-rank width, and landmark count. Objective choice changes both the level and the dataset direction; additional rank or landmarks are not monotonically beneficial. Points average five selector seeds.}
+\label{fig:query-conditioned}
+\end{figure}
+
+Response preservation does not select the same controller as retrieval utility. Oracle-imitation $r=32,m=8$ gives the best aggregate teacher top-four overlap, 0.717 versus 0.555 for mean and 0.898 for greedy oracle, recovering 47.3\% of oracle gain. Yet across the 24 configurations, teacher overlap and evidence recall correlate negatively on \hotpot ($r=-0.665$) and positively on \qasper ($r=0.682$). These descriptive correlations do not establish causality, but they make the failure mode visible: matching a frozen layer's response can preserve preferences that are not evidence-bearing.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper2_8_qk_compression/query_conditioned/recall_vs_preservation.pdf}
+\caption{Response preservation versus evidence recall for all 24 query-conditioned configurations. The opposing dataset trends explain why the highest-fidelity compressor is not a universal retrieval controller.}
+\label{fig:preservation-recall}
+\end{figure}
+
+The primary selector has 33,217 parameters and trains in 36.2 seconds per seed; the exploratory selector has 66,113 parameters and trains in 50.2 seconds per seed on the GTX 950M. Synchronized selector-plus-top-$m$ latency is 42.6/117.0 ms for the primary and 42.9/120.5 ms for the exploratory controller on \hotpot/\qasper. These continuation timings exclude compact-key QK scoring and materialization, so they are component measurements rather than direct replacements for Table~\ref{tab:cost}.
+
 \subsection{Comparison with Paper 2.6}
 Figure~\ref{fig:paper26} compares the same frozen identities and four-chunk budget. Learned QK $m=8$ is not a new overall frontier. On \hotpot its 0.124 recall is below Paper 2.6 BM25 (0.398), exact (0.287), and iterative hybrid (0.279), with paired intervals excluding zero against all three. On \qasper it reaches 0.139: above Paper 2.6's semantic gist (0.038) by 0.1010, with paired interval $[0.00004,0.2270]$; above iterative hybrid (0.081) by 0.0579, interval $[-0.0610,0.1974]$; and below exact routing (0.178) by 0.0387, interval $[-0.1951,0.1334]$. The positive, defensible claim is dataset-specific: native response distillation improves the old QASPER semantic-gist baseline, but does not displace lexical exact matching and does not transfer to Hotpot.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.94\linewidth]{../shared/results/paper2_8_qk_compression/paper2_6_matched_comparison.pdf}
 \caption{Matched Paper 2.6 comparison. Full-K and greedy rows are non-deployable upper bounds. Learned QK is competitive on QASPER but not Hotpot.}
@@ -177,7 +231,7 @@ Gate & Status & Evidence \\
 G0 & Pass & 224 inherited Paper 2.6 rows reproduce with zero aggregate mismatches. \\
 G1 & Pass & Controlled recall 1.00 vs. 0.95; full-K improves QASPER mean-key recall by 0.0276. \\
 G2 & Pass & Greedy $m=8$ top-four overlap $+0.3438$; greedy $m=4$ QASPER recall $+0.0802$. \\
-G3 & Fail & Learned selector recovers 40.5\% of oracle gain, below 80\%; natural intervals include zero. \\
+G3 & Fail & Key-only recovers 40.5\%; the best query-conditioned oracle-imitation row recovers 47.3\%. Both are below 80\%. \\
 G4 & Closed & Synthetic off-manifold slots require G3. \\
 G5 & Closed & Streaming recurrent memory requires an offline compressor pass. \\
 \bottomrule
@@ -191,31 +245,32 @@ First, a full-key teacher is not automatically an evidence oracle. Native attent
 
 Second, response approximation and top-four selection are different objectives. Greedy $m=8$ nearly reproduces the teacher ranking on \hotpot yet does not improve recall. On \qasper, $m=4$ retrieves more evidence than $m=8$ despite lower teacher overlap. Additional landmarks can faithfully restore teacher preferences that are irrelevant or harmful to evidence selection. A future objective should combine teacher distillation with validation-only ranking calibration rather than treating the teacher as ground truth.
 
-Third, the key-only selector cannot condition on the current information need. It learns generic token salience from norm, novelty, position, and local change. That is enough to improve the old QASPER semantic baseline, where sparse technical terms and localized evidence are useful, but not enough for Hotpot's cross-document relational routing. The oracle/learned gap is therefore plausibly a missing conditioning signal, not merely insufficient MLP width.
+Third, query conditioning addresses the key-only selector's missing information need, but does not remove objective mismatch. The combined loss gives the best \hotpot result and a poor \qasper result; decision-aware training gives the best \qasper result; oracle imitation gives the best response preservation. Capacity alone is not the explanation: increasing rank and landmark count is not monotone, and a controller can reproduce the teacher while retrieving less evidence.
 
-The next justified experiment is a query-conditioned but still bounded selector, for example a low-rank bilinear score between a cached token feature and the current native query, trained with listwise chunk-ranking loss. It should be evaluated against QASPER exact routing and Hotpot BM25/hybrid, not only against a mean gist. Synthetic slots and recurrent state are premature until a native-key selector closes more of the oracle gap.
+The next justified experiment is a fresh, larger, identity-disjoint confirmation in which dataset-specific objective selection occurs entirely on validation. It should prespecify combined $r=16,m=4$ for \hotpot and decision-aware $r=32,m=8$ for \qasper, retain BM25/exact/hybrid controls, and include downstream native-\kv answer generation. Synthetic slots and recurrent state remain premature because no native-key selector closes the response-recovery gate.
 
 \section{Relation to prior PRA results}
 Paper 1 established mean-gist routing and selected native \kv. Paper 2.5 tested iterative associative closure and showed that local/native propagation can solve controlled bridges without yielding a uniform natural gain. Paper 2.6 demonstrated strong channel asymmetry: lexical evidence is particularly effective for Hotpot and exact matching for QASPER. Paper 2.7 moved structure discovery to the query side and found that better natural facet recovery could still reduce retrieval.
 
-Paper 2.8 does not rename those mechanisms. It changes the memory-summary objective. Its negative Hotpot result agrees with Paper 2.6: lexical relational discovery dominates a native response summary. Its QASPER result adds something narrower: an eight-key response-distilled controller can outperform the original semantic gist and approach, but not exceed, exact matching under the same four-chunk budget. Query-graph facets remain a query-side control and are not used to train the memory selector.
+Paper 2.8 does not rename those mechanisms. It changes the memory-summary objective. Its primary \hotpot improvement does not overturn Paper 2.6: lexical relational discovery still dominates a native response summary. Its exploratory \qasper result adds something narrower: decision-aware selection of eight native keys can approach, but does not resolve an advantage over, exact matching under the same four-chunk budget. Query-graph facets remain a query-side control and are not used to train the memory selector.
 
 \section{Limitations}
-The natural cohort has 32 test identities and one frozen model, layer, tokenizer, chunk size, and materialization budget. Five seeds quantify selector initialization, not dataset sampling uncertainty. The QASPER gain over the Paper 2.6 semantic baseline is barely separated from zero and should be replicated on a larger identity-disjoint cohort. Hotpot and QASPER do not cover the 2Wiki/MuSiQue settings proposed in the initial plan because G3 failed before expansion. The controlled suite contains only 20 cases and is deliberately schematic.
+The natural cohort has 32 test identities and one frozen model, layer, tokenizer, chunk size, and materialization budget. Five seeds quantify selector initialization, not dataset sampling uncertainty. The 24 query-conditioned configurations create a multiple-comparison surface, and the decision-aware \qasper row was selected on the test matrix; it is explicitly exploratory. Its paired intervals include zero. A larger identity-disjoint cohort must choose the objective and rank on validation before any confirmatory claim. Hotpot and QASPER do not cover 2Wiki/MuSiQue, and the controlled suite contains only 20 schematic cases.
 
-The teacher is selected from five predefined reductions but does not include post-RoPE distance, value utility, downstream answer log-probability, or layer combinations. Oracle landmarks see the test query and cannot be deployed. Learned targets are generated by that expensive oracle and inherit its errors. The learned selector is query-independent and uses only eight hand-designed key features. Runtime is measured with eager Python/PyTorch on an old mobile GPU; optimized batched kernels would change absolute latency. No native \kv answer generation is run because the routing-quality gate fails.
+The teacher does not include post-RoPE distance, value utility, downstream answer log-probability, or layer combinations. Greedy oracle landmarks see the evaluation query and cannot be deployed; oracle-imitation targets inherit their errors. Evidence-supervised losses use validation labels, so they test a small task-adapted controller rather than unsupervised compression. Runtime uses eager Python/PyTorch on an old mobile GPU; continuation latency covers selection but not QK scoring or materialization. No native \kv answer generation is run because G3 remains closed.
 
 \section{Conclusion}
-Compact native keys can preserve more of a frozen transformer's chunk-response geometry than one mean key, and that geometry contains useful QASPER routing signal. The result is not a general learned-compressor victory. Full-K itself is a weak natural evidence teacher; greedy landmarks show uncertain oracle headroom; and a tiny key-only selector captures 40.5\% of the preservation gain, varies across seeds, loses to strong Hotpot channels, and does not beat QASPER exact matching. The gate sequence therefore stops before synthetic slots and streaming memory. The clearest next step is not more unconditional capacity, but bounded query-conditioned selection with an evidence-calibrated ranking objective.
+Compact native keys can preserve more of a frozen transformer's chunk-response geometry than one mean key, but response fidelity is not retrieval utility. Query conditioning produces a modest prespecified \hotpot improvement and an exploratory decision-aware \qasper result near exact routing. Neither is a universal frontier: strong lexical channels remain better on \hotpot, uncertainty is large, and maximum oracle-gain recovery rises only from 40.5\% to 47.3\%. The gate sequence therefore stops before synthetic slots and streaming memory. The next step is confirmation, not a broader search: freeze dataset-specific objectives on validation, enlarge the held-out cohorts, and test whether the selected native keys improve downstream answer generation.
 
 \appendix
 \section{Reimplementation map}
 The implementation separates mechanism from experiment policy.
 \begin{itemize}[leftmargin=*]
-  \item \texttt{src/pra\_hf/qk\_compression.py} defines GQA head mapping, full-key teachers, landmark gathering, no-training selectors, the 321-parameter selector, response metrics, and routing metrics.
+  \item \texttt{src/pra\_hf/qk\_compression.py} defines GQA head mapping, full-key teachers, landmark gathering, no-training selectors, the key-only and query-conditioned selectors, four training losses, response metrics, and routing metrics.
   \item The Paper 2.5 feature precomputer, \texttt{precompute\_native\_qk\_features.py}, now supports identity-disjoint validation/test offsets while retaining the historical default.
   \item \texttt{experiments/paper2\_8\_qk\_compression/run\_gated\_study.py} selects the teacher on validation, runs gates in order, trains five seeds only after G2, and emits row-level artifacts.
   \item \texttt{run\_cost\_benchmark.py} times uncached controller construction separately from cached quality evaluation; \texttt{summarize\_results.py} builds matched Paper 2.5/2.6 tables and plots.
+  \item \texttt{run\_query\_conditioned\_study.py} executes the 120-controller matrix with durable row-level checkpoints; \texttt{summarize\_query\_conditioned.py} computes paired comparisons, response recovery, stability, and plots.
 \end{itemize}
 
 The core serving path is:
@@ -229,10 +284,10 @@ scores = top4_mean(q @ landmarks / sqrt(Dh))      # [C]
 chunks = stable_topk(scores, k=4)
 materialize_native_kv(chunks)                     # unchanged 32-token K/V
 \end{verbatim}
-The oracle substitutes a query-aware greedy search for \texttt{selector(x)} and must not be used online.
+The query-conditioned path replaces the fourth line with \texttt{z = selector(x, q)}. The oracle substitutes a query-aware greedy search and must not be used online.
 
 \section{Artifacts}
-Tracked results live under \texttt{docs/papers/shared/results/paper2\_8\_qk\_compression/}. The directory contains natural and synthetic row CSVs, teacher validation, paired effects, changed-selection audits, matched Paper 2.6 and historical Paper 2.5 controls, five small selector checkpoints, synchronized cost rows, plots, gate decisions, and manifests. The 329 MB validation and 621 MB test Q/K tensors are ignored; manifests provide their hashes and regeneration commands. The full test cache hash is \texttt{edc589cc...75993ae8}; validation is \texttt{87b85b25...7533cf8}.
+Tracked results live under \texttt{docs/papers/shared/results/paper2\_8\_qk\_compression/}. The directory contains natural and synthetic row CSVs, teacher validation, paired effects, changed-selection audits, matched Paper 2.6 and historical Paper 2.5 controls, selector checkpoints, synchronized cost rows, plots, gate decisions, and manifests. The \texttt{query\_conditioned/} subtree adds all 120 controller runs, training histories, seed stability, primary/exploratory comparisons, and response-recovery artifacts. The 329 MB validation, 621 MB test, and 8.3 MB prepared feature caches are ignored; manifests provide hashes and regeneration commands. The full test cache hash is \texttt{edc589cc...75993ae8}; validation is \texttt{87b85b25...7533cf8}.
 
 \begin{thebibliography}{9}
 \bibitem{pra1} Sim\~ao, J. Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory. Project manuscript, 2026.

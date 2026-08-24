@@ -43,3 +43,27 @@ python experiments/paper2_8_qk_compression/summarize_results.py
 indices are reused across `m`. Use `controller_cost_rows.csv` and
 `controller_cost_summary.csv` for end-to-end controller construction plus QK
 scoring latency.
+
+## Query-conditioned continuation
+
+Run the low-rank query-conditioned matrix after the gated key-only study:
+
+```powershell
+python experiments/paper2_8_qk_compression/run_query_conditioned_study.py `
+  --device cuda
+python experiments/paper2_8_qk_compression/summarize_query_conditioned.py
+```
+
+The matrix crosses ranks `8,16,32`, landmark counts `4,8`, four objectives,
+and five seeds, for 120 trained controllers. `combined/r16/m4` is fixed as the
+primary configuration before test evaluation. All other best-of-matrix rows
+are exploratory. The runner is resumable and writes row-level results after
+each configuration. Its small prepared-feature cache is regenerable and
+ignored; controller checkpoints, histories, comparisons, and plots are kept
+under `query_conditioned/`.
+
+The primary controller reaches HotpotQA recall `0.1667` and QASPER recall
+`0.0574`. Exploratory decision-aware `r32/m8` reaches QASPER recall `0.1718`,
+near exact routing at `0.1776`, but its paired intervals include zero. The best
+response-imitation controller recovers `47.3%` of greedy-oracle preservation
+gain, still below the prespecified `80%` G3 threshold.

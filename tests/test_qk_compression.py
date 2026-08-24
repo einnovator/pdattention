@@ -5,11 +5,14 @@ import torch
 
 from pra_hf.qk_compression import (
     NativeLandmarkSelector,
+    QueryConditionedLandmarkSelector,
+    differentiable_landmark_scores,
     farthest_first_indices,
     gather_landmarks,
     gqa_head_map,
     greedy_qk_landmarks,
     landmark_features,
+    landmark_training_loss,
     last_token_indices,
     masked_mean_keys,
     qk_response_scores,
@@ -95,6 +98,52 @@ def test_selector_features_are_query_independent_and_masked():
     selected = selector.select(keys, mask, 2)
     assert all(len(row) == 2 for row in selected)
     assert sum(parameter.numel() for parameter in selector.parameters()) < 100_000
+
+
+def test_query_conditioned_selector_is_bounded_and_changes_with_query():
+    features = torch.randn(2, 3, 4, 8)
+    mask = torch.ones(2, 3, 4, dtype=torch.bool)
+    mask[:, 0, -1] = False
+    selector = QueryConditionedLandmarkSelector(6, hidden_width=4, rank=3)
+    first = selector(features, torch.zeros(2, 6), mask)
+    second = selector(features, torch.ones(2, 6), mask)
+    assert first.shape == mask.shape
+    assert torch.isneginf(first[:, 0, -1]).all()
+    assert not torch.allclose(first[mask], second[mask])
+    assert sum(parameter.numel() for parameter in selector.parameters()) < 100_000
+
+
+@pytest.mark.parametrize(
+    "objective", ["oracle_imitation", "listwise", "combined", "decision_aware"]
+)
+def test_retrieval_aware_losses_are_finite_and_differentiable(objective):
+    logits = torch.randn(2, 4, 5, requires_grad=True)
+    responses = torch.randn(2, 4, 5)
+    mask = torch.ones(2, 4, 5, dtype=torch.bool)
+    positives = torch.tensor(
+        [[True, False, False, False], [False, True, False, False]]
+    )
+    oracle = torch.zeros_like(logits)
+    oracle[:, :, :2] = 1
+    teacher = torch.randn(2, 4)
+    surrogate = differentiable_landmark_scores(logits, responses, mask, 2)
+    assert surrogate.shape == positives.shape
+    loss, components = landmark_training_loss(
+        objective,
+        logits,
+        responses,
+        mask,
+        positives,
+        m=2,
+        teacher_scores=teacher,
+        oracle_targets=oracle,
+        budget=2,
+    )
+    assert torch.isfinite(loss)
+    assert set(components) == {"oracle", "listwise", "response", "boundary"}
+    loss.backward()
+    assert logits.grad is not None
+    assert torch.isfinite(logits.grad).all()
 
 
 def test_response_and_routing_metrics_cover_requested_contract():
