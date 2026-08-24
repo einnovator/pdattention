@@ -1,0 +1,67 @@
+{
+  "backbone_frozen": true,
+  "candidate_chunk_tokens": 32,
+  "commands": {
+    "study": "python experiments/paper2_8_qk_compression/run_gated_study.py --device cuda",
+    "validation_cache": "python experiments/paper2_5_iterative_pra/precompute_native_qk_features.py --device cuda --split validation --offset 0 --examples 8 --output-dir docs/papers/shared/results/paper2_8_qk_compression"
+  },
+  "feature_artifacts": {
+    "test": {
+      "bytes": 620984671,
+      "path": "docs\\papers\\shared\\results\\paper2_8_qk_compression\\native_qk_features_test.pt",
+      "sha256": "edc589cc7886ba843ee598e89e6dab97e500084df8b7ee8dc8ab44ea75993ae8",
+      "tracked": false
+    },
+    "validation": {
+      "bytes": 329018883,
+      "path": "docs\\papers\\shared\\results\\paper2_8_qk_compression\\native_qk_features_validation.pt",
+      "sha256": "87b85b257a3ed49a962af44181fc03668714e5552ac97f379536ad7387533cf8",
+      "tracked": false
+    }
+  },
+  "head_reduction": "mean",
+  "m_values": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "materialization_budget_chunks": 4,
+  "model_id": "Qwen/Qwen3-0.6B",
+  "model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "natural_examples": {
+    "test": {
+      "hotpotqa": 16,
+      "qasper": 16
+    },
+    "validation": {
+      "hotpotqa": 8,
+      "qasper": 8
+    }
+  },
+  "python": "3.10.11",
+  "representation": "pre_rope_native_qk",
+  "routing_layer": 27,
+  "runtime": {
+    "cuda_available": true,
+    "cuda_runtime": "12.6",
+    "device": "NVIDIA GeForce GTX 950M",
+    "git_branch": "research/paper2-8-qk-compression",
+    "git_sha": "e44285c5444b8dc49a372cd8da459e3f24298518",
+    "python": "3.10.11",
+    "timestamp_utc": "2026-08-23T23:44:40.539966+00:00",
+    "torch": "2.12.1+cu126",
+    "transformers": "4.55.4"
+  },
+  "schema_version": "1.0",
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "selector_parameter_count": 321,
+  "teacher_function": "top_r_mean",
+  "torch": "2.12.1+cu126"
+}

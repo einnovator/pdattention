@@ -186,7 +186,10 @@ def run(args: argparse.Namespace) -> dict:
             collect_routing_metrics=False,
         ),
     )
-    examples = load_split_examples(args.cache_dir, args.examples, 8, args.seed)
+    offset = args.offset
+    if offset is None:
+        offset = 0 if args.split == "validation" else 8
+    examples = load_split_examples(args.cache_dir, args.examples, offset, args.seed)
     features = []
     for index, example in enumerate(examples, start=1):
         features.append(_feature(handle, tokenizer, example, device))
@@ -196,12 +199,14 @@ def run(args: argparse.Namespace) -> dict:
             flush=True,
         )
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    feature_path = args.output_dir / "native_qk_features_test.pt"
+    feature_path = args.output_dir / f"native_qk_features_{args.split}.pt"
     torch.save(features, feature_path)
     adapter = next(iter(handle.adapters.values()))
     config = model.config
     manifest = {
         "schema_version": "1.0",
+        "split": args.split,
+        "offset_per_dataset": offset,
         "runtime": runtime_metadata(),
         "model_id": args.model_id,
         "model_revision": args.model_revision,
@@ -229,11 +234,17 @@ def run(args: argparse.Namespace) -> dict:
             "tracked": False,
             "regenerate_with": (
                 "python experiments/paper2_5_iterative_pra/"
-                "precompute_native_qk_features.py --device cuda"
+                "precompute_native_qk_features.py --device cuda "
+                f"--split {args.split} --offset {offset}"
             ),
         },
     }
-    (args.output_dir / "native_qk_feature_manifest.json").write_text(
+    manifest_name = (
+        "native_qk_feature_manifest.json"
+        if args.split == "test"
+        else f"native_qk_feature_manifest_{args.split}.json"
+    )
+    (args.output_dir / manifest_name).write_text(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
     )
     return manifest
@@ -249,6 +260,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=20260811)
     parser.add_argument("--examples", type=int, default=16)
+    parser.add_argument("--split", choices=("validation", "test"), default="test")
+    parser.add_argument("--offset", type=int)
     parser.add_argument("--cache-dir", type=Path, default=ROOT / "data/.hf_cache")
     parser.add_argument(
         "--output-dir",
