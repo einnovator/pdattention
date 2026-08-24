@@ -274,12 +274,26 @@ def _plot_context_scaling(output: Path, rows: list[dict[str, object]]) -> None:
 def _plot_policy_frontier(output: Path, rows: list[dict[str, object]]) -> None:
     largest = max(int(row["catalog_size"]) for row in rows)
     values = [row for row in rows if int(row["catalog_size"]) == largest]
+    offsets = {
+        "adaptive": (-34, -14),
+        "user_hint": (-16, 8),
+        "fixed_hybrid": (4, 8),
+        "auto": (-4, 8),
+        "fixed_index": (4, -12),
+    }
     plt.figure(figsize=(7.4, 4.8))
     for row in values:
         x = float(row["estimated_discovery_ms"])
         y = float(row["top1_accuracy"])
         plt.scatter(x, y, s=50)
-        plt.annotate(str(row["policy"]).replace("fixed_", ""), (x, y), xytext=(4, 4), textcoords="offset points", fontsize=8)
+        policy = str(row["policy"])
+        plt.annotate(
+            policy.replace("fixed_", ""),
+            (x, y),
+            xytext=offsets.get(policy, (4, 4)),
+            textcoords="offset points",
+            fontsize=8,
+        )
     plt.xscale("log")
     plt.xlabel("Estimated measured discovery-component cost (ms/query)")
     plt.ylabel("Held-out top-1 accuracy")

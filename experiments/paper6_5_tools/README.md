@@ -28,9 +28,25 @@ native-K/V transport. Discovery produces stable resource identities and an
 auditable path; selected identities can later resolve to existing PRA cache
 entries.
 
+## Completed M0 study
+
+The deterministic study is reproducible with:
+
+```powershell
+python experiments/paper6_5_tools/run_m0_policy_study.py
+python experiments/paper6_5_tools/summarize_m0_policy_study.py
+```
+
+It evaluates 8--8,192 resource catalogs over five seeds and writes raw traces,
+seed summaries, index costs, findings, and figures to
+`docs/papers/shared/results/paper6_5_tools`. The checked-in run contains 31,680
+policy traces. M0 measures typed discovery and selected-definition accounting;
+it does not run a language model, materialize native K/V, or execute tools.
+
 ## Stages
 
-1. `M0`: deterministic catalog generation and policy/index evaluation.
+1. `M0`: deterministic catalog generation and policy/index evaluation
+   (complete).
 2. `M1`: toy decoder with opaque tool identities.
 3. `M2`: Qwen3-0.6B bridge for selection and safe call construction.
 4. Hierarchical skills, persistent sessions, mutation, and inheritance.

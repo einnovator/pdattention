@@ -1,10 +1,11 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
-\usepackage{booktabs,amsmath,amssymb,enumitem,tabularx}
+\usepackage{booktabs,amsmath,amssymb,enumitem,graphicx,tabularx,float}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
 
-\title{Persistent Agent Context with Progressive Retrieval Attention:\\Adaptive Discovery of Tools, Skills, History, and Hierarchical Sessions}
+\title{Persistent Agent Context with Progressive Retrieval Attention:\\
+Typed Resource Discovery Before Neural Materialization}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 
@@ -12,167 +13,342 @@
 \maketitle
 
 \begin{abstract}
-LLM agents commonly represent system instructions, tool schemas, skills, conversation history, observations, and project state as an append-only prompt. This is convenient for vanilla autoregressive K/V caching but causes context growth, repeated definition cost, lossy compaction, and expensive context transfer to subagents. Progressive Retrieval Attention (PRA) suggests a different architecture: a bounded native workspace over persistent, typed, addressable memory. This paper studies the agent-specific discovery problem that follows from that architecture. Tool and skill references vary from explicit names to approximate token matches and purely semantic intent; large stable catalogs can additionally support persistent indexes. We therefore expose discovery policy as a PRA SDK concern, with explicit, token-native, indexed, semantic, hybrid, and adaptive modes plus confidence-triggered fallback. Experiments progress from deterministic and toy-model lookup with opaque synthetic tools, through Qwen3-0.6B tool use, stronger small-model replication, hierarchical skills, persistent sessions, and integration through an OpenAI-compatible PRA endpoint. The central hypothesis is that logical agent state and resource catalogs can grow substantially faster than the active native K/V working set while maintaining selection and task quality, and that policy hints plus adaptive fallback can approach oracle discovery without paying hybrid retrieval cost on every request.
+Agent runtimes often place every tool definition in every prompt. This makes a
+large but mostly inactive catalog consume native context before the model has
+decided which resource it needs. We separate that decision into a typed
+resource-discovery layer for Progressive Retrieval Attention (PRA). The layer
+supports explicit, lexical, indexed, semantic, hybrid, hinted, and adaptive
+policies; preserves discovery provenance; and turns calibrated confidence into
+select, ask, or abstain decisions. We evaluate the deterministic M0 mechanism
+on opaque synthetic catalogs from 8 to 8,192 resources, five seeds, six
+positive reference forms, and ambiguous and nonexistent controls. At 8,192
+resources, both request hints and adaptive fallback obtain 100\% top-1
+selection, 100\% actionable outcome accuracy, and no false action on the ten
+negative cases. Hints require 1.08 retrieval stages on average, compared with
+2.39 for adaptive fallback. A fixed hybrid policy also ranks every target
+first, but acts on 98.3\% of positive requests and has the largest policy-cost
+regret. An unguided automatic policy ranks five of six positive forms correctly
+but acts on none after calibration, showing that ranking and safe use are
+different objectives. An 8,192-resource catalog contains 147,456 logical
+definition tokens while a selected definition contains 18 tokens
+(0.0122\%); this is accounting evidence, not yet native-K/V or end-to-end agent
+evidence. The results establish the discovery mechanism and identify
+production indexing, neural materialization, and tool execution as separate
+gates.
 \end{abstract}
 
-\section{Motivation}
-Append-only context couples logical session lifetime to native transformer context. Tool definitions and skill instructions are repeatedly exposed even when only a few resources are relevant. Compaction reduces context but can destroy provenance. Subagents either receive too little context or duplicate large parent prompts.
+\section{The Agent Catalog Problem}
+An append-only agent prompt couples the size of the logical environment to the
+transformer's active context. Tool schemas, skills, system instructions,
+artifacts, and old observations are repeatedly exposed even when a turn uses
+only one of them. Compaction can reduce prompt length, but it may erase
+provenance or stale-versus-current distinctions.
 
-PRA instead targets
+PRA suggests a different decomposition:
 \[
-\mathrm{agent\ state} =
-\mathrm{bounded\ active\ workspace}+
-\mathrm{persistent\ addressable\ memory}.
+  \mathrm{agent\ state} =
+  \mathrm{bounded\ native\ workspace} +
+  \mathrm{persistent\ addressable\ resources}.
 \]
-The agent setting adds a discovery problem not solved by semantic gists alone. A request may explicitly name a tool, approximately name it, describe it semantically, or refer to a previously used resource. The resource universe may be small and dynamic or large and stable enough to justify a persistent index.
+This decomposition does not make storage free. Source text, indexes, cached
+representations, resident K/V, transferred K/V, and attention-visible K/V are
+different costs. It instead introduces a concrete question before
+materialization: which resource identity should be resolved, by which
+discovery mechanism, and with enough confidence to act?
 
-\section{Typed Resources and Discovery Policies}
-We consider typed identities such as
+This paper reports the first mechanism gate. It asks whether a typed resolver
+can preserve selection quality as a catalog grows, whether policy hints reduce
+unnecessary search, and whether confidence prevents an accurate ranker from
+becoming an unsafe selector. It does not yet claim improved model generation,
+tool execution, persistent-session recall, or native-K/V savings.
+
+\section{Typed, Versioned Resources}
+A resource has a stable typed identity, versioned source, aliases, schema,
+side-effect class, tenant, and revocation state. Representative identifiers are
 \begin{verbatim}
-!!ref:tool:github:create_issue:v3!!
+!!ref:tool:calendar:create_event:v3!!
 !!ref:skill:paper-review:v2!!
-!!ref:artifact:paper-2-6-results!!
-!!ref:session:parent/architecture-decision-14!!
+!!ref:artifact:experiment-17!!
+!!ref:session:parent/decision-14!!
 \end{verbatim}
-plus the implicit PRA history object \texttt{\#\_\_head}. Identity is distinct from source text, token index, semantic gist, cached K/V, residency, and active materialization.
+Identity is distinct from text, index entries, semantic summaries, cached K/V,
+and current residency. A cache fingerprint therefore includes source/version,
+model, tokenizer, routing configuration, and any position-sensitive encoding
+state.
 
-The PRA SDK should permit a discovery hint
+The implementation in \texttt{src/pra\_hf/agent\_resources.py} enforces tenant,
+revocation, and allowed-URI filters before ranking. Discovery returns a trace,
+not only a winner: the executed channel path, per-candidate provenance,
+confidence, fallback count, and final select/ask/abstain decision remain
+available to the caller. The resolver never authorizes or executes a tool.
+
+\section{Discovery Channels and Policy}
+The SDK exposes
 \[
 \pi\in\{\mathrm{auto,explicit,token,index,semantic,hybrid,adaptive}\}.
 \]
-Hints may be attached to a collection, namespace, resource or request. With strict mode disabled, a hint is a preferred starting policy and the runtime may fall back when confidence is insufficient.
+Hints can be attached to a request or inherited from a resource collection.
+Strict hints execute one channel. Non-strict hints specify a starting point and
+permit calibrated fallback.
 
-A candidate retains provenance and confidence
-\[
-c_i\approx P(r_i\ \mathrm{is\ intended}\mid q,\mathbf{s}_i,p_i).
-\]
-Confidence supports select/materialize, search-more, ask/disambiguate, or abstain. For side-effecting tools, selection confidence does not authorize execution.
+\paragraph{Explicit.}
+A typed URI is resolved by exact map lookup. This is deterministic after access
+checks.
 
-\section{Policy Selection and Adaptive Fallback}
-No discovery mechanism should be assumed universally best. Explicit handles should resolve deterministically. Named resources favor exact or approximate token matching. Large stable registries can amortize a persistent index. Paraphrased or implicit requests require semantic discovery. Hybrid retrieval may improve recall but costs more.
+\paragraph{Token.}
+Names, aliases, descriptions, and token n-grams are compared lexically. The M0
+implementation is deliberately exhaustive and therefore a correctness control,
+not a production latency path.
 
-A representative escalation path is
+\paragraph{Index.}
+Persistent exact, token-posting, n-gram, and BM25 structures narrow the
+candidate set before scoring. Index fingerprints make freshness auditable.
+
+\paragraph{Semantic.}
+M0 uses a declared 96-dimensional signed-hash control over the resource's
+action, object, and family concepts. It contains no resource ID. This idealized
+control isolates the policy mechanism; it is not evidence about a learned
+embedding model.
+
+\paragraph{Hybrid and adaptive.}
+Hybrid fuses all available evidence in one expensive stage. Adaptive begins
+cheaply and escalates only when calibrated confidence is insufficient. A
+representative ladder is
 \[
 \mathrm{explicit}\rightarrow\mathrm{token}\rightarrow\mathrm{index}
 \rightarrow\mathrm{semantic}\rightarrow\mathrm{hybrid}
-\rightarrow\mathrm{ask/abstain},
+\rightarrow\mathrm{ask/abstain}.
 \]
-but ordering is an experimental variable. The central question is whether user/SDK hints and a cheap automatic selector can approach oracle per-query policy while avoiding hybrid cost on every request.
+The concrete path is recorded per request.
 
-\section{Persistent Indexes}
-Stable tool and skill registries are natural candidates for pre-built indexes. We compare no index, token postings over names and aliases, token-IDF and token $n$-gram indexes, BM25/FTS, semantic gist indexes, and combined token-plus-gist registries.
-
-Index construction, update, and invalidation are measured separately from query latency. Index hits still resolve to PRA resources whose detailed K/V can remain nonresident until selected. Thus indexing accelerates discovery rather than replacing PRA materialization.
-
-\section{Model Strategy}
-The experiments separate discovery competence from general tool-use competence.
-
-\paragraph{M0: deterministic resolver.}
-Pure lookup needs no LLM and can scale to very large synthetic catalogs.
-
-\paragraph{M1: toy custom transformer.}
-A small decoder is trained on synthetic tool-use language with opaque identities such as \texttt{tool\_zaf\_193}. Tool semantics exist only in supplied definitions. This permits causal study of
+\subsection{Confidence is part of correctness}
+For candidate $r_i$, the calibrator estimates
 \[
-\mathrm{discover}\rightarrow\mathrm{materialize}\rightarrow
-\mathrm{call}\rightarrow\mathrm{observe}\rightarrow\mathrm{continue}
+c_i\approx P(r_i\ \text{is intended}\mid q,\mathbf{s}_i,p_i),
 \]
-without pretraining priors.
+where $\mathbf{s}_i$ denotes channel scores and $p_i$ their provenance. High
+confidence permits selection; intermediate confidence asks or searches more;
+low confidence abstains. For a positive request, the actionable outcome is
+correct only when the right resource is ranked first \emph{and} the decision is
+\texttt{select}. For an ambiguous or nonexistent request, it is correct only
+when the decision is \texttt{ask} or \texttt{abstain}. This definition prevents
+a low-confidence ranker from receiving operational credit merely because its
+latent top candidate was right.
 
-\paragraph{M2: Qwen3-0.6B.}
-The first pretrained bridge uses Qwen3-0.6B, matching the existing PRA pretrained integration and providing native instruction/tool-use competence. Both opaque synthetic and realistic tools are tested.
+\section{M0 Experimental Design}
+\subsection{Opaque catalogs}
+The generator in \texttt{src/data/agent\_resources.py} creates identifiers such
+as \texttt{tool\_zaf\_193}. Each resource combines held-out action, object, and
+family concepts with aliases, a schema, a version, and a side-effect class.
+The opaque names prevent pretrained knowledge from solving the benchmark.
+Catalogs contain 8, 32, 128, 512, 2,048, and 8,192 resources.
 
-\paragraph{M3: replication.}
-A selected subset is replicated on a second roughly 1B family and on SmolLM3-3B as a stronger small tool-use model. Dense sweeps remain concentrated on M0--M2.
+Each held-out identity produces six positive requests: explicit URI, exact
+name, alias, typo, semantic paraphrase, and descriptive reference. Each split
+also contains one ambiguous and one nonexistent request. Validation identities
+calibrate thresholds; test identities are disjoint. At sizes 32--8,192, each
+policy is evaluated on 540 positive and 10 negative test requests across seeds
+$\{11,23,37,53,71\}$. The 8-resource condition uses 180 positive and 10
+negative requests. The complete artifact contains 31,680 validation and test
+policy traces.
 
-\section{Controlled Tool Catalog Benchmark}
-Catalogs scale from small sets through thousands of resources, and lookup-only/index experiments may extend farther. Vary schema length, parameter count, name and semantic similarity, aliases, distractor families, duplicate-looking resources, and mutation frequency.
+\subsection{Policies and metrics}
+We compare five fixed policies (explicit, token, index, semantic, and hybrid),
+unguided \texttt{auto}, a request-level hint, and adaptive fallback. The oracle
+is the least-cost fixed policy that ranks the target first on that query.
+Reported metrics include top-1 accuracy, selection coverage, selective and
+actionable outcome accuracy, safe nonaction and false-action rates, retrieval
+stages, fallback count, Brier score, expected calibration error (ECE), quality
+regret, and policy-cost regret. Confidence thresholds are fitted only on the
+validation split. Intervals are percentile bootstrap intervals over five seed
+means; deterministic outcomes can consequently have zero-width intervals.
 
-Prompt strata include explicit URI, exact name, typo/alias, semantic paraphrase, implicit contextual reference, ambiguous/nonexistent reference, multi-tool request, and combined tool--skill request.
+\subsection{Systems accounting}
+Cold index construction and a full immutable rebuild after mutating one percent
+of resource versions are timed separately. Warm component latency is the mean
+of repeated CPU Python calls. Policy-path latency is reconstructed by summing
+the measured components actually executed by each trace. These timings exclude
+tokenization, a model forward pass, native-K/V encoding or transfer, attention,
+and tool execution. They characterize this reference implementation, not an
+optimized serving system.
 
-The experimental ladder separates:
-\begin{enumerate}[leftmargin=*]
-\item lookup only: output resource identity;
-\item lookup plus schema/arguments;
-\item safe execution plus observation;
-\item tool plus skill composition;
-\item persistent-session use;
-\item real-harness integration.
-\end{enumerate}
-Opaque synthetic tools are mandatory controls because pretrained models may already know common tool names.
+\section{Results}
+\subsection{Selection scales, but policies differ operationally}
+Table~\ref{tab:policy} reports the largest catalog. Hinted and adaptive policies
+select every positive target and safely reject every negative request. Their
+equal quality hides a meaningful systems difference: hints reduce the mean
+path from 2.39 stages to 1.08 and the measured component estimate from
+1,084 to 691 ms per request. The fixed hybrid ranker also attains 100\% top-1,
+but calibration leaves 1.7\% of positive requests unselected. Its exhaustive
+1,405 ms component cost and 4.17 cost-regret units make it a poor default.
 
-\section{Discovery Policy Benchmark}
-Compare fixed token, fixed index, fixed semantic, fixed hybrid, SDK/user hints, heuristic \texttt{auto}, confidence-triggered adaptive fallback, and oracle per-query policy.
+\begin{table}[H]
+\centering
+\small
+\caption{Held-out M0 results at 8,192 resources. Top-1 is computed on 540
+positive requests; outcome includes ten ambiguous/nonexistent controls.
+Time is reconstructed CPU Python discovery-component time.}
+\label{tab:policy}
+\begin{tabular}{lrrrrrr}
+\toprule
+Policy & Top-1 & Coverage & Outcome & Safe neg. & Stages & ms/query \\
+\midrule
+Explicit & .167 & .167 & .182 & 1.000 & 1.00 & 5 \\
+Token & .713 & .537 & .545 & 1.000 & 1.00 & 1,174 \\
+Index & .833 & .000 & .018 & 1.000 & 1.00 & 27 \\
+Semantic & .333 & .000 & .018 & 1.000 & 1.00 & 339 \\
+Hybrid & 1.000 & .983 & .984 & 1.000 & 1.00 & 1,405 \\
+Auto & .833 & .000 & .018 & 1.000 & 1.00 & 24 \\
+User hint & \textbf{1.000} & \textbf{1.000} & \textbf{1.000} & \textbf{1.000} & 1.08 & 691 \\
+Adaptive & \textbf{1.000} & \textbf{1.000} & \textbf{1.000} & \textbf{1.000} & 2.39 & 1,084 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Cross these with catalog strata: small/dynamic, large/stable, semantically dense, name-dense, and frequently mutated. Measure selection quality, latency, number of retrieval stages, fallback count, index/K/V reuse, materialized tokens, and oracle-policy regret.
+The unguided automatic policy exposes why ranking is insufficient. It ranks
+explicit, name, alias, typo, and description requests correctly, misses the
+semantic-paraphrase stratum, and obtains .833 top-1. Calibration nevertheless
+causes it to ask on every positive request, so its actionable outcome accuracy
+is only $2/110=.018$ per seed: the two safe negative decisions. Fixed index has
+the same operational pattern. Conversely, fixed token acts selectively and is
+always right when it acts, but covers only .537 of positive requests.
 
-The target is a policy Pareto frontier: near-oracle selection quality without invoking expensive hybrid/adaptive retrieval on every query.
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper6_5_tools/m0_policy_scaling.pdf}
+\caption{Positive-request top-1 accuracy as catalog size increases. Ranking
+alone does not encode whether confidence permits selection.}
+\label{fig:scaling}
+\end{figure}
 
-\section{Tokenization, Ambiguity, and Confidence}
-Resource-name robustness mirrors the token-native tests of the preceding discovery work: case, whitespace, punctuation, hyphen/underscore/camel-case, aliases, minor typos, generic-token insertion, namespace omission, and long multi-token names.
+Figure~\ref{fig:scaling} shows that hints and adaptive fallback maintain 1.0
+top-1 at every tested size. The result is not uniformly safe at the smallest
+size: in the 8-resource condition each policy attains 1.0 positive top-1, but
+hinted and adaptive routing each falsely select the ambiguous held-out case in
+all five seeds. Their overall outcome accuracy is .974 and safe-nonaction rate
+is .5. From 32 resources onward, both negative cases are handled correctly in
+all seeds. This inversion is a calibration artifact of the controlled score
+distribution and cautions against treating larger catalogs as automatically
+harder along every axis.
 
-Wrong-selection stress tests include near-duplicate tools, same verb/different object, same object/different action, deprecated/current versions, high-token-overlap distractors, nonexistent resources, and cases in which token and semantic evidence disagree.
+\subsection{No fixed channel is the oracle everywhere}
+At 8,192 resources, the least-cost correct oracle chooses explicit lookup for
+16.7\% of positive requests, indexed lookup for 66.7\%, and semantic lookup for
+16.7\%. Neither token nor hybrid is ever the least-cost correct choice. User
+hints have zero quality regret and 0.083 cost-regret units, compared with zero
+quality regret and 0.5 cost regret for adaptive fallback. This supports a
+narrow claim: when callers know the reference form, passing that information
+avoids discovery work; adaptive escalation remains useful when they do not.
 
-Confidence is evaluated with Brier score, calibration error, reliability and risk--coverage curves. Intermediate confidence should trigger further search or clarification rather than confident selection.
+\begin{figure}[H]
+\centering
+\includegraphics[width=.76\linewidth]{../shared/results/paper6_5_tools/m0_policy_frontier.pdf}
+\caption{Largest-catalog ranking quality versus measured discovery-component
+cost. The log axis is needed because explicit and exhaustive hybrid paths
+differ by more than two orders of magnitude.}
+\label{fig:frontier}
+\end{figure}
 
-\section{Skills as Hierarchical Resources}
-Skills differ from tools because they can contain long instructions, examples, scripts and supporting documents. We evaluate progressive disclosure
+\subsection{Logical catalog size is not active materialization}
+Every generated definition contains 18 accounting tokens. The largest catalog
+therefore contains 147,456 logical definition tokens, whereas resolving one
+resource requests 18 tokens, or 0.0122\% of the catalog. Figure
+\ref{fig:context} makes that distinction visible. The number is an accounting
+upper bound on selected source text; M0 does not encode definitions into native
+K/V and therefore does not establish attention-memory or latency savings.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\linewidth]{../shared/results/paper6_5_tools/m0_context_scaling.pdf}
+\caption{Logical catalog definitions grow with catalog size while the one-item
+selected-definition accounting remains at 18 tokens. The axes intentionally
+separate logical storage from active materialization.}
+\label{fig:context}
+\end{figure}
+
+\subsection{Persistent indexing helps, but is not yet production-ready}
+At 8,192 resources, index construction takes 1.727 s, a full rebuild after a
+one-percent version mutation takes 1.753 s, and the estimated Python index
+payload is 5.27 MiB. Warm indexed lookup takes 27.4 ms and scores 966 candidates
+on average (11.8\% of the catalog). By comparison, exhaustive semantic, token,
+and hybrid controls take 339, 1,174, and 1,405 ms. The index build amortizes to
+44.6 ms/query after 100 uses and 29.1 ms after 1,000 uses.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.75\linewidth]{../shared/results/paper6_5_tools/m0_index_latency.pdf}
+\caption{Warm CPU Python component latency. Exhaustive channels scale poorly;
+the indexed path narrows candidates but still touches about 11.8\% at 8K.}
+\label{fig:index}
+\end{figure}
+
+These numbers establish an optimization target rather than a speed claim.
+Production token postings should avoid Python object traversal, semantic search
+should use an approximate vector index, unions should be deduplicated before
+scoring, and mutation should update affected postings rather than rebuild the
+entire immutable index. Cold/warm serving measurements must also include
+tokenization and downstream native-K/V work.
+
+\section{What the M0 Gate Establishes}
+The mechanism satisfies four narrow requirements. First, typed resources can be
+resolved without exposing the full catalog to a language model. Second,
+different reference forms favor different channels. Third, request hints can
+match adaptive quality with fewer stages. Fourth, action-aware calibration can
+distinguish a correct ranking from a decision safe enough to use.
+
+The experiment does \emph{not} yet satisfy the paper's broader context gate.
+The 18-token active count is not a measured model working set. There is no
+native-K/V materialization, argument generation, execution, observation,
+persistent-history recall, skill composition, or subagent inheritance. The
+negative controls are small, and the semantic control is idealized. Accordingly
+we describe M0 as resolver evidence, not evidence that PRA improves agents.
+
+\section{Next Experimental Gates}
+\paragraph{M1: causal toy model.}
+Train a small decoder on opaque tool-use language so semantics exist only in
+the supplied definitions. Compare eager definitions with
+discover--materialize--call under matched active-definition budgets.
+
+\paragraph{M2: pretrained bridge.}
+Use Qwen3-0.6B for schema/argument generation after a fixed resource identity
+has been selected. Run disabled, shuffled, irrelevant, empty, and oracle
+materialization controls. No side-effect executes unless host authorization and
+an execution-specific gate both pass.
+
+\paragraph{M3: replication and realistic catalogs.}
+Replicate selected conditions on another tokenizer/model family. Replace the
+idealized semantic control with declared embedding baselines and add naturally
+ambiguous resource names.
+
+\paragraph{Persistent skills and sessions.}
+After tool selection passes, test hierarchical skill disclosure, version
+mutation and revocation, bounded \texttt{\#\_\_head} history, superseded facts,
+and permission-scoped child sessions
 \[
-\mathrm{skill\ identity/summary}\rightarrow
-\mathrm{instructions}\rightarrow
-\mathrm{selected\ supporting\ files}.
+M_{\mathrm{child}}=R(M_{\mathrm{parent}})\cup\Delta M_{\mathrm{child}}.
 \]
-Baselines include eager full-skill injection, description-only disclosure, token/index selection, semantic gist selection, hybrid/adaptive selection, and oracle skill/supporting-file selection.
+The OpenAI-compatible endpoint belongs after these mechanism checks, so harness
+behavior does not hide resolver or materialization failures.
 
-The benchmark measures both correct skill selection and correct within-skill materialization. It also tests whether indexes should cover only the skill registry or internal sections and files.
-
-\section{Persistent Sessions}
-Let $H_t$ denote logical session history and $W_t$ the active native working set. PRA targets
-\[
-|W_t|\le B,\qquad H_t\subseteq M_t.
-\]
-The \texttt{\#\_\_head} retains bounded recent context while displaced history remains addressable.
-
-Long project trajectories contain stable and superseded requirements, artifacts, tool results, renamed objects, contradictory decisions, and revisited old state. Compare append-only context, sliding truncation, periodic compaction, summary plus conventional retrieval, and PRA persistent history.
-
-\section{Mutation, Freshness, and Index Invalidation}
-Persistent memory and indexes must track tool schema changes, skill updates, revoked resources, deleted artifacts, aliases, and superseded decisions. Cache/index identity includes content/version, model, tokenizer, routing, and relevant positional configuration.
-
-A stale hit is a correctness failure. Report stale-memory use separately from ordinary retrieval misses and measure index rebuild/update amortization.
-
-\section{Hierarchical Sessions and Subagents}
-A child session is modeled as
-\[
-M_{\mathrm{child}}=R(M_{\mathrm{parent}})\cup\Delta M_{\mathrm{child}},
-\]
-where $R$ is a permission-scoped read view. Compare no inheritance, delegation prompt, compacted summary, copied relevant history, and PRA shared references. Ambiguous-parent-reference cases test search/ask/abstain rather than blind inheritance.
-
-\section{OpenAI-Compatible Integration}
-The preferred systems boundary is
-\[
-\mathrm{existing\ harness}\rightarrow
-\mathrm{OpenAI\mbox{-}compatible\ PRA\ endpoint}
-\rightarrow\mathrm{PRA\ runtime/model}.
-\]
-Transparent mode uses ordinary messages/tools where possible; PRA-native mode exposes stable typed references and discovery hints. The host remains responsible for authentication, permissions, execution, and side effects.
-
-\section{Evaluation}
-Quality metrics include selection accuracy/recall/MRR, argument validity, task success, old-state recovery, supersession accuracy, and subagent success.
-
-Policy metrics include selected discovery mode, hint compliance, fallback/escalation count, stages per query, oracle-policy regret, and quality/cost Pareto curves.
-
-Systems metrics include native prompt tokens, requested/materialized tokens, index build/update time, queries per rebuild, index/cache bytes, cold/warm latency, K/V transfer, attention time, throughput, and peak device/host memory.
-
-Confidence/safety metrics include Brier score, calibration error, selective accuracy, risk--coverage, ask/abstain rate, and false-act rate by side-effect class.
-
-\section{Success Gates and Falsification}
-A context/discovery result requires equal or better selection/history retrieval at materially lower native-context/materialization cost, or better quality at matched cost, under robustness and isolation controls. An agent-capability claim additionally requires improved end-to-end task success, lower failure cost, or better long-session/subagent continuity. Side-effecting tool claims additionally require controlled false-action risk under selective execution.
-
-The adaptive-policy thesis is weakened if one simple fixed policy dominates realistic strata, SDK hints do not improve quality/cost over \texttt{auto}, fallback invokes hybrid search so frequently that its cost advantage disappears, or index construction/update does not amortize under realistic reuse.
-
-\section{Expected Contributions}
-The intended contributions are: (1) a PRA SDK discovery-policy abstraction for agent resources; (2) evidence on when token, index, semantic, hybrid, and adaptive discovery are preferable; (3) a controlled synthetic-to-pretrained tool-use methodology; (4) hierarchical skill disclosure; (5) bounded persistent session experiments; and (6) an OpenAI-compatible integration path that tests PRA as a context substrate rather than a new agent framework.
+\section{Reproducibility}
+The benchmark entry points are
+\texttt{experiments/paper6\_5\_tools/run\_m0\_policy\_study.py} and
+\texttt{summarize\_m0\_policy\_study.py}. Machine-readable outputs include the
+manifest, one row per policy/query trace, index costs, seed summaries,
+stratum summaries, oracle distributions, and plots under
+\texttt{docs/papers/shared/results/paper6\_5\_tools}. The recorded environment
+is Python 3.10.11 on Windows, Intel64 Family 6 Model 94. All reported M0 results
+are deterministic conditional on the five catalog seeds.
 
 \section{Conclusion}
-PRA makes it possible to separate a growing logical agent environment from the smaller neural working set required at a given step. The agent problem is therefore not merely how to retrieve a tool, but how to choose the cheapest reliable discovery mechanism for the current reference, catalog, and confidence state. Explicit SDK hints, reusable indexes, semantic gists, and adaptive fallback provide complementary mechanisms whose quality--cost frontier can be measured directly.
+A large agent catalog should not be mistaken for the context needed on every
+turn. In this controlled M0 study, typed discovery resolves one resource from
+8,192 while keeping the selected-definition accounting at 18 tokens. Hinted
+and adaptive policies attain perfect largest-catalog selection and safe
+nonaction, but hints use less search. The same study also produces two useful
+negative findings: an accurate unguided ranker can be too uncertain to act, and
+small-catalog ambiguity can defeat calibration even when positive selection is
+perfect. These results justify proceeding to neural materialization and tool
+use, but they do not substitute for those experiments.
 
 \end{document}
