@@ -16,3 +16,19 @@ Execution is gated:
 Large feature caches and resumable shards are local artifacts. Manifests retain
 their hashes and provenance; compact tables, plots, and selected checkpoints are
 tracked with the paper.
+
+Capture tokenwise queries while reusing the local Paper 2.8 source-key caches:
+
+```powershell
+python experiments/paper2_9_look_ahead_back/precompute_temporal_queries.py --device cuda
+```
+
+Run the frozen-index retrieval study. CPU is usually faster than an older GPU
+for the many small routing matrices; this stage does not execute the backbone:
+
+```powershell
+python experiments/paper2_9_look_ahead_back/run_temporal_study.py --device cpu
+```
+
+Both commands checkpoint their expensive phases and resume by default. Pass
+`--no-resume` only when intentionally replacing a completed local run.
