@@ -93,6 +93,7 @@ def _seed_policy_metrics(rows: list[dict[str, str]]) -> dict[str, float]:
         "mean_retrieval_stages": mean(float(row["retrieval_stages"]) for row in rows),
         "mean_fallback_count": mean(float(row["fallback_count"]) for row in rows),
         "mean_policy_us": mean(float(row["policy_us"]) for row in rows),
+        "estimated_discovery_ms": mean(float(row["estimated_discovery_ms"]) for row in rows),
         "quality_regret": mean(regrets) if regrets else 0.0,
         "cost_regret": mean(cost_regrets) if cost_regrets else 0.0,
         "queries": float(len(rows)),
@@ -125,6 +126,7 @@ def summarize_policy(rows: list[dict[str, str]]) -> tuple[list[dict[str, object]
         "mean_retrieval_stages",
         "mean_fallback_count",
         "mean_policy_us",
+        "estimated_discovery_ms",
         "quality_regret",
         "cost_regret",
     )
@@ -274,11 +276,12 @@ def _plot_policy_frontier(output: Path, rows: list[dict[str, object]]) -> None:
     values = [row for row in rows if int(row["catalog_size"]) == largest]
     plt.figure(figsize=(7.4, 4.8))
     for row in values:
-        x = float(row["mean_retrieval_stages"])
+        x = float(row["estimated_discovery_ms"])
         y = float(row["top1_accuracy"])
         plt.scatter(x, y, s=50)
         plt.annotate(str(row["policy"]).replace("fixed_", ""), (x, y), xytext=(4, 4), textcoords="offset points", fontsize=8)
-    plt.xlabel("Mean retrieval stages per query")
+    plt.xscale("log")
+    plt.xlabel("Estimated measured discovery-component cost (ms/query)")
     plt.ylabel("Held-out top-1 accuracy")
     plt.ylim(0.0, 1.03)
     plt.grid(alpha=0.25)
@@ -312,6 +315,27 @@ def summarize(args: argparse.Namespace) -> None:
     output = Path(args.results)
     policy_rows = _read_csv(output / "m0_policy_per_query.csv")
     cost_rows = _read_csv(output / "m0_index_costs.csv")
+    latency_groups: dict[tuple[int, int, str], list[float]] = defaultdict(list)
+    for row in cost_rows:
+        latency_groups[(int(row["catalog_size"]), int(row["seed"]), row["mode"])].append(
+            float(row["warm_query_mean_ms"])
+        )
+    latency = {key: mean(values) for key, values in latency_groups.items()}
+    for row in policy_rows:
+        if row["expected_decision"] == "select":
+            row["outcome_correct"] = str(
+                int(row["top1_correct"] == "1" and row["decision"] == "select")
+            )
+        else:
+            row["outcome_correct"] = str(int(row["decision"] in {"ask", "abstain"}))
+        path = tuple(value for value in row["executed_path"].split(">") if value)
+        row["estimated_discovery_ms"] = sum(
+            latency.get((int(row["catalog_size"]), int(row["seed"]), mode), 0.0)
+            for mode in path
+        )
+    # Persist the derived fields so machine readers see the same actionable
+    # outcome and measured-path cost used by every summary and figure.
+    _write_csv(output / "m0_policy_per_query.csv", policy_rows)
     policy_summary, stratum_summary = summarize_policy(policy_rows)
     index_summary = summarize_index(cost_rows)
     _write_csv(output / "m0_policy_summary.csv", policy_summary)

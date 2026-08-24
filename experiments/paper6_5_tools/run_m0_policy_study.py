@@ -106,7 +106,10 @@ def _top1_correct(selected: tuple[str, ...], query: CatalogQuery) -> bool | None
 
 def _outcome_correct(trace, query: CatalogQuery) -> bool:
     if query.expected_decision == "select":
-        return bool(_top1_correct(trace.selected_uris, query))
+        return bool(
+            _top1_correct(trace.selected_uris, query)
+            and trace.decision == DiscoveryDecision.SELECT
+        )
     return trace.decision in {DiscoveryDecision.ASK, DiscoveryDecision.ABSTAIN}
 
 
