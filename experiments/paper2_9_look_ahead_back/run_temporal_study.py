@@ -210,14 +210,19 @@ class ExampleScorer:
         self.mean_mask = torch.ones(
             len(keys), 1, dtype=torch.bool, device=device
         )
-        self.memory = {
-            "rank16": projected_memory(
-                source, checkpoints[16], centroids=None, device=device
-            ),
-            "rank8_centroid8": projected_memory(
-                source, checkpoints[8], centroids=8, device=device
-            ),
-        }
+        self.memory = {}
+
+    def routing_memory(self, memory: str):
+        """Build each frozen routing index only when a policy first requests it."""
+        if memory not in self.memory:
+            rank = 16 if memory == "rank16" else 8
+            self.memory[memory] = projected_memory(
+                self.source,
+                self.checkpoints[rank],
+                centroids=None if memory == "rank16" else 8,
+                device=self.device,
+            )
+        return self.memory[memory]
 
     def query_states(self, layer: int) -> torch.Tensor:
         return self.temporal["pre_query_by_layer"][str(layer)].to(
@@ -248,8 +253,9 @@ class ExampleScorer:
         projected_queries = torch.stack(
             [F.linear(flattened, checkpoint["wq"]) for checkpoint in self.checkpoints[rank]]
         )
-        values = torch.stack([row[0] for row in self.memory[memory]])
-        masks = torch.stack([row[1] for row in self.memory[memory]])
+        routing_memory = self.routing_memory(memory)
+        values = torch.stack([row[0] for row in routing_memory])
+        masks = torch.stack([row[1] for row in routing_memory])
         interactions = torch.einsum("sqr,scmr->sqcm", projected_queries, values)
         interactions = interactions / math.sqrt(float(rank))
         interactions = interactions.masked_fill(~masks[:, None], float("-inf"))
@@ -436,6 +442,7 @@ def select_policies(validation_rows: list[dict]) -> dict:
                     and item["split"] == "validation"
                     and item["memory"] == "rank16"
                     and item["layer"] == 27
+                    and item["reducer"] != "current"
                 ],
                 ("condition", "reducer", "look_behind"),
             )
