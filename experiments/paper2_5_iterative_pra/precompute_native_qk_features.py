@@ -52,7 +52,12 @@ def _sha256(path: Path) -> str:
 
 
 @torch.no_grad()
-def _capture_source(handle, source_ids: torch.Tensor) -> dict:
+def _capture_source(
+    handle,
+    source_ids: torch.Tensor,
+    *,
+    include_local_pre_query: bool = True,
+) -> dict:
     """Encode bounded parents once and retain aligned local routing tensors."""
     adapter = next(iter(handle.adapters.values()))
     device = handle.device
@@ -81,42 +86,59 @@ def _capture_source(handle, source_ids: torch.Tensor) -> dict:
         for local_start in range(0, block_end - block_start, LOCAL_TOKENS):
             local_end = min(local_start + LOCAL_TOKENS, block_end - block_start)
             length = local_end - local_start
-            q = torch.zeros(
-                (LOCAL_TOKENS, pre_query.shape[1], pre_query.shape[2]),
-                dtype=torch.float16,
-            )
+            q = None
+            if include_local_pre_query:
+                q = torch.zeros(
+                    (LOCAL_TOKENS, pre_query.shape[1], pre_query.shape[2]),
+                    dtype=torch.float16,
+                )
             k = torch.zeros(
                 (LOCAL_TOKENS, pre_key.shape[1], pre_key.shape[2]),
                 dtype=torch.float16,
             )
             mask = torch.zeros(LOCAL_TOKENS, dtype=torch.bool)
-            q[:length] = pre_query[local_start:local_end].to("cpu", torch.float16)
+            if q is not None:
+                q[:length] = pre_query[local_start:local_end].to("cpu", torch.float16)
             k[:length] = pre_key[local_start:local_end].to("cpu", torch.float16)
             mask[:length] = True
-            local_pre_query.append(q)
+            if q is not None:
+                local_pre_query.append(q)
             local_pre_key.append(k)
             local_masks.append(mask)
             local_hidden.append(hidden[local_start:local_end].mean(dim=0).cpu())
             local_spans.append((block_start + local_start, block_start + local_end))
             local_parents.append(parent_index)
-    return {
+    output = {
         "parent_hidden": torch.stack(parent_hidden),
         "parent_spans": parent_spans,
         "local_hidden": torch.stack(local_hidden),
         "local_spans": local_spans,
         "local_parent_indices": torch.tensor(local_parents, dtype=torch.long),
-        "local_pre_query": torch.stack(local_pre_query),
         "local_pre_key": torch.stack(local_pre_key),
         "local_token_mask": torch.stack(local_masks),
     }
+    if include_local_pre_query:
+        output["local_pre_query"] = torch.stack(local_pre_query)
+    return output
 
 
 @torch.no_grad()
-def _feature(handle, tokenizer, example: dict, device: torch.device) -> dict:
+def _feature(
+    handle,
+    tokenizer,
+    example: dict,
+    device: torch.device,
+    *,
+    include_local_pre_query: bool = True,
+) -> dict:
     source_ids = tokenizer(
         example["source"], return_tensors="pt", add_special_tokens=False
     ).input_ids
-    captured = _capture_source(handle, source_ids)
+    captured = _capture_source(
+        handle,
+        source_ids,
+        include_local_pre_query=include_local_pre_query,
+    )
     hidden, _, prompt_tokens, question_span = _capture_query_features(
         handle, tokenizer, example, device
     )

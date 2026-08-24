@@ -149,3 +149,46 @@ python experiments/paper2_8_qk_compression/run_production_index_benchmark.py --d
 The benchmark reports projection and cold construction separately from warm
 search. Static centroid construction remains an offline cost; warm routing is
 an online measurement and never replaces backing native K/V.
+
+## 2WikiMultiHopQA and MuSiQue extension
+
+The cross-dataset patch reuses the identity-disjoint Paper 2.7 cohort: 20
+validation and 100 test identities for each dataset. Dataset-authored supporting
+facts and paragraphs are converted to uniquely marked source segments by
+`pra_hf.multihop_routing_data`; no answer-derived evidence labels are used.
+
+Capture layer-27 pre-RoPE native keys and frozen query projections in resumable
+per-example shards, then consolidate them into ignored feature caches:
+
+```powershell
+python experiments/paper2_8_qk_compression/precompute_multidataset_native_qk.py --device cuda
+```
+
+Run the frozen architecture family with five seeds:
+
+```powershell
+python experiments/paper2_8_qk_compression/run_multidataset_extension.py --device cuda
+```
+
+The runner compares inherited zero-shot, dataset-specific retraining, and a
+balanced four-dataset projection. Exact, BM25, approximate token matching,
+inherited hybrid routing, native mean, and farthest-first native controls share
+the same candidate chunks and native-K/V budget. Fusion weights and the
+secondary budget are selected on validation only; test identities are used once
+for final row emission.
+
+Tracked outputs live under `multi_dataset/` in the Paper 2.8 result tree. Large
+`native_qk_features_*.pt` files and resumable shards are regenerable and ignored;
+manifests, compact checkpoints, row CSVs, paired effects, gate decisions, and
+plots are tracked.
+
+After the quality matrix is complete, run the synchronized serving-cost audit:
+
+```powershell
+python experiments/paper2_8_qk_compression/run_multidataset_cost_audit.py --device cuda
+```
+
+The quality runner's `routing_setup_plus_score_ms` is an uncached diagnostic.
+Serving claims use only the cost audit, which separates index construction from
+warm lookup and records lexical scoring, low-rank dots, serialized/index bytes,
+backing native-K/V residency, selected transfer bytes, and materialized tokens.

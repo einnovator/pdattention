@@ -1029,7 +1029,9 @@ def routing_metrics(
     budget: int,
 ) -> dict[str, float]:
     """Compute Paper 2.5/2.6-style evidence metrics at a fixed chunk budget."""
-    selected = list(ranking[: min(int(budget), len(ranking))])
+    selected = [
+        int(index) for index in ranking[: min(int(budget), len(ranking))]
+    ]
     positives = set(torch.nonzero(positive_mask, as_tuple=False).flatten().tolist())
     hits = [index in positives for index in selected]
     true_positive = sum(hits)

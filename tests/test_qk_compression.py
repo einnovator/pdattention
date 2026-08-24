@@ -294,7 +294,9 @@ def test_response_and_routing_metrics_cover_requested_contract():
     assert preservation.topk_overlap[1] == 1.0
     assert preservation.spearman == pytest.approx(1.0)
     routing = routing_metrics(
-        [2, 0, 1, 3], torch.tensor([True, False, True, False]), budget=2
+        torch.tensor([2, 0, 1, 3]),
+        torch.tensor([True, False, True, False]),
+        budget=2,
     )
     assert routing["evidence_recall"] == 1.0
     assert routing["evidence_precision"] == 1.0

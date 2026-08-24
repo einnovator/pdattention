@@ -7,6 +7,8 @@
 \newcommand{\kv}{\textsc{K/V}\xspace}
 \newcommand{\hotpot}{HotpotQA\xspace}
 \newcommand{\qasper}{QASPER\xspace}
+\newcommand{\twowiki}{2WikiMultiHopQA\xspace}
+\newcommand{\musique}{MuSiQue\xspace}
 \setlength{\emergencystretch}{3em}
 
 \title{Distilling Native Query--Key Responses into Compact Memory Landmarks}
@@ -17,7 +19,7 @@
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (\pra) uses compact routing indexes to choose long-memory chunks, then materializes the selected chunks' unchanged native key/value (\kv) states. We ask whether low-rank native query--key interactions recover address signals erased by one mean gist. An initial gated study and a 120-controller sweep fail a prespecified response-distillation gate, but expose an evidence-supervised rank-16 QASPER frontier. We then freeze that configuration and evaluate 64 fresh \hotpot and 64 fresh \qasper identities with five seeds and a fixed four-chunk budget. On \qasper, rank-16 recall is 0.258 versus 0.117 for a native mean (paired $+0.141$, 95\% interval $[0.080,0.210]$); on \hotpot it is 0.120 versus 0.125, while BM25 reaches 0.386. A Llama-family SmolLM2 replication preserves the \qasper-over-mean effect ($+0.064$, interval $[0.019,0.115]$), but exact routing remains stronger. Native-\kv generation separates routing from memory use: rank-16 improves Hotpot gold-token log-probability by 0.074, yet on \qasper it is $-0.212$ versus no memory while remaining $+0.312$ above shuffled memory. Better routing therefore mitigates wrong memory without solving frozen late-layer integration. A vectorized index stores rank-16 projected tokens in FP16 or INT8, supports stable batched top-$k$ and append updates, and leaves backing native \kv unchanged. Compact native interaction subspaces are a portable QASPER routing channel, not a universal response compressor or a complete memory-use solution.
+Progressive Retrieval Attention (\pra) uses compact routing indexes to choose long-memory chunks, then materializes the selected chunks' unchanged native key/value (\kv) states. We ask whether low-rank native query--key interactions recover address signals erased by one mean gist. An initial gated study and a 120-controller sweep fail a prespecified response-distillation gate, but expose an evidence-supervised rank-16 QASPER frontier. We freeze that configuration and evaluate 64 fresh \hotpot and 64 fresh \qasper identities with five seeds and a fixed four-chunk budget. On \qasper, rank-16 recall is 0.258 versus 0.117 for a native mean (paired $+0.141$, 95\% interval $[0.080,0.210]$); on \hotpot it is 0.120 versus 0.125, while BM25 reaches 0.386. A further 100+100 identity study finds architecture transfer rather than universality: on \twowiki, zero-shot and retrained rank 16 improve over mean by 0.033 and 0.093, while rank-8/eight-centroid routing retains 84.9\% of the latter gain at 256 FP32 bytes/chunk. On \musique, low-rank gains are unresolved; lexical routing remains stronger, and validation-selected lexical--low-rank fusion regresses on both new test cohorts. A Llama-family SmolLM2 replication preserves the \qasper-over-mean effect, while native-\kv generation shows that informed routing can still fail under a frozen late-layer consumer. Compact native interaction subspaces are a reusable QASPER/2Wiki routing channel, not a universal response compressor, lexical replacement, or complete memory-use solution.
 \end{abstract}
 
 \section{Introduction}
@@ -34,7 +36,8 @@ The contributions are:
   \item a controlled 32--256-token suite and a frozen natural evaluation aligned with the Paper 2.5/2.6 32-token chunk and four-chunk budget;
   \item a measured boundary: oracle landmarks show natural QASPER headroom, while a 321-parameter key-only selector recovers too little of that headroom to pass deployment gates;
   \item a 120-controller query-conditioned sweep separating a prespecified primary result from test-selected exploratory findings and showing that response preservation, evidence ranking, and dataset utility are not interchangeable;
-  \item a post-G3 diagnostic frontier that crosses matched native geometry with direct rank-8/16/32 native-key projections, four/eight static low-rank representatives, and measured routing-index bytes and latency without changing native-K/V materialization.
+  \item a post-G3 diagnostic frontier that crosses matched native geometry with direct rank-8/16/32 native-key projections, four/eight static low-rank representatives, and measured routing-index bytes and latency without changing native-K/V materialization;
+  \item an identity-disjoint \twowiki/\musique extension separating frozen zero-shot transfer, dataset-specific projection retraining, balanced four-dataset training, and validation-selected lexical--low-rank fusion under matched budgets;
   \item a 128-identity confirmation with native-\kv generation and causal controls, a Llama-family/tokenizer replication, and a quantized vectorized serving index.
 \end{enumerate}
 
@@ -98,6 +101,15 @@ We reuse Qwen3-0.6B revision \texttt{c1899de2}, layer 27, 16 query heads, eight 
 
 Validation contains eight \hotpot and eight \qasper identities. Test contains 16 of each, matching the frozen Paper 2.5/2.6 identities and excluding validation identities. Feature tensors are 329 MB and 621 MB, respectively; manifests record SHA-256 hashes. Paper 2.6's 224 test rows are re-aggregated exactly at G0. Paper 2.5's 256-token-parent, 20\%-budget rows are retained only as historical context because their candidate unit and budget are not numerically matched.
 
+\subsection{Cross-dataset transfer cohort}
+The extension reuses Paper 2.7's separately frozen natural identities: each of \twowiki and \musique contributes 20 validation and 100 test questions~\cite{ho2020twowiki,trivedi2022musique}. The 200 test identities are disjoint from validation and from the historical 74-query cohort. \twowiki supporting-fact sentences and \musique supporting paragraphs supply evidence; answers and model outputs never define labels. Unique document/sentence markers make each authored evidence item an exact source substring before fast-tokenizer alignment. Manifests record source hashes, identity hashes, candidate counts, evidence counts, model/tokenizer revision, and feature-cache hashes.
+
+The model contract remains Qwen3-0.6B revision \texttt{c1899de2}, layer 27, pre-RoPE native keys, 16 query heads, eight \kv heads, head width 128, 256-token bounded source calls, and 32-token routing chunks. Sources contain 315--4,897 tokens but no model call exceeds 256 source tokens. The backbone and backing native \kv stay frozen.
+
+Three transfer regimes share the fixed rank-8/rank-16 architecture and combined ranking--response objective. \emph{Zero-shot} applies the inherited Hotpot/QASPER projection unchanged. \emph{Retrained} fits only $W_q,W_k$ on the new dataset's 20 validation identities. \emph{Mixed} balances 20 samples from each of Hotpot, QASPER, 2Wiki, and MuSiQue by cycling the smaller inherited validation cohorts. Each regime uses five seeds; neither rank nor objective is selected from new test identities.
+
+All examples have two to four authored evidence items, so four selected chunks can in principle touch every chain item. Full supporting spans are longer: they occupy 3--60 physical chunks, and only 11.7\% fit completely in four chunks. We therefore retain $K=4$ as primary and add validation-fixed $K=6$ for \twowiki and bounded $K=8$ for \musique. The latter rows are sensitivity analyses, not claims that every supporting token can be materialized. Evidence recall counts positive physical chunks; evidence-group completion asks whether at least one chunk from every contiguous authored evidence region is selected.
+
 \subsection{Controlled suite}
 Twenty synthetic cases cross chunk sizes $n\in\{32,64,128,256\}$. Each case has 16 candidate chunks. An evidence chunk contains sparse query-aligned native keys while a distractor has a coherent but weaker mean. This tests whether full-key and landmark controllers preserve a sparse address that averaging can hide. The suite is a mechanism check, not evidence for natural language performance.
 
@@ -114,6 +126,8 @@ The prespecified gates are:
 \end{itemize}
 
 The post-G3 extension uses E0--E6 and does not revise G3. E0 verifies frozen artifact, cache, model, and identity parity. E1 compares query/response-aware selection with matched native geometry. E2 applies a cross-dataset non-regression rule to query conditioning; test-selected rows remain exploratory. E3 compares ranking/decision objectives with oracle imitation. E4 requires at least 95\% retention of the best full-dimensional retrieval gain on a natural dataset and at least $4\times$ less routing state. E5 asks whether joint $m,r$ compression matches the QASPER semantic gist on a better quality--bytes--latency point. E6 opens 2Wiki/MuSiQue only if E2--E5 form a credible frontier.
+
+The reopened cross-dataset study uses M0--M5 without revising G3 or E0--E6. M0 audits frozen rows, feature semantics, identity separation, and evidence alignment. M1 requires rank-16 to improve over mean with a paired interval excluding zero, or an explicitly material effect with strong directional consistency. M2 asks whether rank-8/eight-centroid routing retains at least 70\% of the rank-16 gain while using at least $8\times$ less routing state than mean. M3 requires lexical--low-rank fusion to beat the best validation-selected lexical channel at fixed $K$. M4 requires a useful unchanged architecture family on at least two of QASPER, 2Wiki, and MuSiQue; dataset-specific weights are permitted. M5 opens native-\kv generation only for a dataset that passes M1 or M3.
 
 \section{Results}
 \subsection{Teacher sanity and oracle headroom}
@@ -239,6 +253,47 @@ Structural ablations reinforce the dataset asymmetry. On \hotpot, query-independ
 \caption{Selector structure ablation at four and eight landmarks. Salience and bilinear query interaction have different dataset roles, and their combination is not uniformly additive. Points average five seeds.}
 \label{fig:selector-ablation}
 \end{figure}
+
+\subsection{Cross-dataset extension: 2WikiMultiHopQA and MuSiQue}
+The extension passes its feature audit: all 240 identities have exact authored-evidence substrings, validation and test are disjoint, and every source call respects the 256-token model bound. The primary $K=4$ result is mixed. On \twowiki, inherited rank 16 improves over mean by 0.0328, interval $[0.0025,0.0638]$; dataset-specific retraining improves by 0.0926, interval $[0.0582,0.1289]$; and balanced four-dataset training improves by 0.0777, interval $[0.0407,0.1128]$. The unchanged architecture therefore transfers both weakly without new labels and more strongly after projection-only adaptation.
+
+It does not become the best channel. Validation selects exact routing on \twowiki, whose held-out recall is 0.282 versus 0.190 for retrained rank 16. The paired difference is $-0.0918$, interval $[-0.1446,-0.0397]$. On \musique, zero-shot, retrained, and mixed rank-16 effects over mean are $-0.0010$, $+0.0043$, and $+0.0051$; every interval crosses zero. Validation selects BM25 at 0.122 recall, while held-out exact reaches 0.130 as a reported but test-unselected diagnostic. \twowiki thus adds a second useful low-rank regime beside QASPER; \musique behaves more like the lexical/entity-dominated Hotpot regime.
+
+\begin{table}[H]
+\centering
+\caption{Fresh cross-dataset routing at four chunks. R is physical evidence-chunk recall; C is contiguous authored evidence-group completion. Learned rows ensemble five seeds. Bold marks the highest reported held-out value, not a validation-selected replacement.}
+\label{tab:multidataset}
+\begin{tabular}{lrrrr}
+\toprule
+& \multicolumn{2}{c}{\twowiki} & \multicolumn{2}{c}{\musique} \\
+Method & R & C & R & C \\
+\midrule
+Native mean & .098 & .10 & .067 & .13 \\
+Exact & \textbf{.282} & .18 & \textbf{.130} & \textbf{.24} \\
+BM25 & .267 & \textbf{.24} & .122 & .20 \\
+Rank 16, zero-shot & .130 & .10 & .066 & .11 \\
+Rank 16, retrained & .190 & .18 & .071 & .15 \\
+Rank 16, mixed & .175 & .20 & .072 & .15 \\
+Rank 8, eight centroids, retrained & .176 & .15 & .068 & .14 \\
+Lexical + rank 16, retrained & .228 & .21 & .094 & .14 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper2_8_qk_compression/multi_dataset/recall_by_channel.pdf}
+\caption{Fresh-cohort evidence recall at the fixed four-chunk budget. Low-rank transfer is resolved on 2Wiki, but exact routing remains stronger; MuSiQue remains lexical. The lexical-plus-rank-16 row uses validation-selected weights and illustrates failed calibration rather than an oracle fusion.}
+\label{fig:multidataset-recall}
+\end{figure}
+
+Compression survives where the native channel helps. On \twowiki, rank-8/eight-centroid recall is 0.176; its gain over mean is 0.0786, interval $[0.0437,0.1143]$. It retains 84.9\% of the rank-16 gain while using 256 rather than 2,048 FP32 routing bytes/chunk and $16\times$ less state than a full-width mean. On \musique the corresponding retention ratio is only 31.8\%, because neither numerator nor rank-16 gain is resolved. M2 therefore passes on \twowiki, not as a dataset-independent compression law.
+
+More budget improves coverage without changing channel order. At $K=6$, \twowiki exact recall is 0.330 and retrained rank 16 is 0.274; their completion values are 0.26 and 0.34. At $K=8$, \musique's validation-selected BM25 reaches 0.183 recall and 0.36 completion, versus 0.130 and 0.26 for retrained rank 16. These rows materialize about 191 and 255 tokens, respectively, and remain separate sensitivity analyses.
+
+Static fusion fails M3. The retrained lexical--low-rank policy is selected at 0.928 validation recall on \twowiki but falls to 0.228 on test, 0.0544 below exact with interval $[-0.0995,-0.0093]$. On \musique it is selected at 0.627 validation recall and reaches 0.094 on test, 0.0281 below validation-selected BM25 with interval $[-0.0473,-0.0099]$. Selection disagreement is real, but not automatically useful: retrained low rank adds 0.73/0.77 unique evidence chunks per 2Wiki/MuSiQue example relative to the selected lexical channel, while lexical routing adds 1.26/1.37. Under a fixed budget, complementary distractors and 20-example validation overfit outweigh the added evidence.
+
+Seed behavior makes the same caution visible. Retrained rank-16 per-seed recall spans 0.115--0.186 on \twowiki and 0.053--0.075 on \musique; mean pairwise selected-set Jaccard is only 0.188 and 0.157. Score ensembling improves the headline 2Wiki row, but a deployed single index should not inherit ensemble cost silently. The serving audit below therefore fixes seed 11.
 
 \subsection{Fresh confirmation and causal memory use}
 We froze rank 16, rank-8/eight-centroid construction, five checkpoints, chunk size, and four-chunk budget before opening a new offset-24 cohort of 64 identities per dataset. No confirmation identity overlaps the earlier natural matrix. Table~\ref{tab:confirmation} shows that the low-rank effect is reproducible but dataset-specific. Rank 16 improves \qasper recall over mean by 0.1407, interval $[0.0795,0.2099]$, and over hybrid by 0.1149, interval $[0.0562,0.1796]$. Its $-0.0600$ difference from exact remains unresolved. Neither low-rank index improves \hotpot over mean, and all remain far below lexical channels.
@@ -371,6 +426,17 @@ The learned selector is 4.5--5.0 times faster than farthest-first and about 237-
 \label{fig:cost}
 \end{figure}
 
+The 2Wiki/MuSiQue extension adds a separate 20-example-per-dataset audit of one frozen seed-11 production index. It separates cold index construction from ten synchronized warm lookups; source encoding and native-\kv materialization are excluded. Rank 16 averages 1.44/1.65 ms warm routing on 2Wiki/MuSiQue, below native mean at 1.92/2.62 ms and exhaustive Python lexical scoring at about 12.8/21.0 ms. These component times do not establish end-to-end throughput. The token-native sidecar remains an exhaustive Python reference implementation, whereas low-rank search is one vectorized tensor operation.
+
+The persistent FP32 rank-16 index, including masks, occupies 2,080 bytes/chunk; rank-8/eight-centroid occupies 264 bytes; native mean occupies 4,097 bytes. Rank-16 construction is 2.46/3.95 ms per example. Deterministic centroid construction is offline but expensive at 0.71/1.22 seconds. The four-chunk rows transfer approximately 0.50 MB of unchanged native \kv, while backing \kv averages 7.15/10.35 MB in the fixed cost cohort. Routing-index compression therefore changes address residency and search cost, not the backing-memory obligation.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper2_8_qk_compression/multi_dataset/cost_audit/recall_vs_cached_latency.pdf}
+\caption{Full-test quality against synchronized warm component latency. Latency uses 20 fixed identities per dataset and one seed-11 learned index; quality uses all 100 held-out identities and the five-seed score ensemble. The axes therefore compare measured components, not an ensemble serving configuration.}
+\label{fig:multidataset-cost}
+\end{figure}
+
 \subsection{Gate summary}
 \begin{table}[H]
 \centering
@@ -408,8 +474,26 @@ E6 & Reopened separately & A later frozen 64+64 confirmation validates the QASPE
 \end{tabularx}
 \end{table}
 
+\begin{table}[H]
+\centering
+\caption{Cross-dataset extension decisions. These gates concern the frozen low-rank architecture family and do not revise G3.}
+\label{tab:multidataset-gates}
+\begin{tabularx}{\linewidth}{llX}
+\toprule
+Gate & Status & Evidence \\
+\midrule
+M0 & Pass & 240 identities, exact evidence spans, cache hashes, bounded source calls, and disjoint partitions audit cleanly. \\
+M1 & Pass on 2Wiki & Zero-shot/retrained rank 16 improve over mean by .033/.093 with intervals excluding zero; MuSiQue is unresolved. \\
+M2 & Pass on 2Wiki & Rank-8/eight-centroid retains 84.9\% of rank-16 gain at 256 FP32 bytes/chunk excluding masks. \\
+M3 & Fail & Validation-selected lexical--low-rank fusion regresses on both held-out cohorts. \\
+M4 & Pass & The unchanged rank-16 architecture family is useful on QASPER and 2Wiki, with dataset-specific weights. \\
+M5 & Eligible on 2Wiki & M1 opens a future native-\kv generation replay; this routing extension does not execute it. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \section{What the result means}
-Four observations explain the outcome.
+Five observations explain the outcome.
 
 First, a full-key teacher is not automatically an evidence oracle. Native attention keys encode many functions besides document retrieval, and a question's final layer-27 query can respond to syntactic, discourse, and answer-format features. Top-four mean is the best validated reduction here, but its natural advantage over a mean key is small.
 
@@ -419,20 +503,22 @@ Third, query conditioning addresses the key-only selector's missing information 
 
 Fourth, direct projection changes the problem. Instead of choosing a few full-width keys and asking them to imitate a native response, it learns a compact interaction space in which evidence chunks rank highly. The QASPER gain survives a 64-fold reduction from the full native-key stream at rank 16, and an eight-centroid rank-8 index preserves a smaller gain at 256 bytes per chunk. Yet low teacher overlap and the Hotpot failure mean this is task-adapted routing, not general native-response distillation. The result supports low-rank native features as one channel inside a selector, not as a replacement for exact, lexical, or hybrid discovery.
 
-The confirmation changes the next question. More selector search is not the priority: QASPER retrieval transfers across cohorts and model families, while generation controls identify frozen memory integration as the limiting stage. The next experiment should keep the selector fixed and train or calibrate bounded multi-layer memory consumption, with shuffled and bottom-ranked controls retained throughout. Synthetic slots and recurrent state remain premature because neither improves the demonstrated consumer bottleneck.
+Fifth, architecture transfer and channel fusion are different claims. The same low-rank interaction family gives resolved gains on QASPER and 2Wiki and even a smaller zero-shot 2Wiki gain, but it remains below exact routing and does not help MuSiQue. Its selected chunks contain unique evidence, yet a static convex fusion overfits 20 validation identities and spends the fixed budget less effectively on test. A reusable semantic channel therefore still needs a calibrated per-example channel selector; complementarity alone does not provide one.
+
+The confirmations leave two next questions rather than one. For QASPER, routing transfers across cohorts and model families while generation controls identify frozen memory integration as the limiting stage; bounded multi-layer consumption should be trained with shuffled and bottom-ranked controls retained. For cross-dataset routing, larger calibration cohorts must test channel selection before another fusion architecture. Synthetic slots and recurrent state remain premature because neither addresses these demonstrated bottlenecks.
 
 \section{Relation to prior PRA results}
 Paper 1 established mean-gist routing and selected native \kv. Paper 2.5 tested iterative associative closure and showed that local/native propagation can solve controlled bridges without yielding a uniform natural gain. Paper 2.6 demonstrated strong channel asymmetry: lexical evidence is particularly effective for Hotpot and exact matching for QASPER. Paper 2.7 moved structure discovery to the query side and found that better natural facet recovery could still reduce retrieval.
 
-Paper 2.8 does not rename those mechanisms. It changes the memory-summary objective. Its primary \hotpot improvement does not overturn Paper 2.6: lexical relational discovery still dominates a native response summary. Its exploratory \qasper landmark result adds something narrower: decision-aware selection of eight native keys can approach, but does not resolve an advantage over, exact matching under the same four-chunk budget. The post-G3 rank-16 router improves further on QASPER while using half the routing state of one full-width mean key, but it is evidence-supervised and its interval against exact routing includes zero. Query-graph facets remain a query-side control and are not used to train the memory selector.
+Paper 2.8 does not rename those mechanisms. It changes the memory-summary objective. Its \hotpot result does not overturn Paper 2.6: lexical relational discovery still dominates a native response summary. The post-G3 rank-16 router improves further on QASPER while using half the routing state of one full-width mean key, but it is evidence-supervised and exact remains a strong control. The fresh extension narrows the relation further: low-rank native interaction transfers to 2Wiki, including zero-shot, while exact remains stronger; it does not transfer to MuSiQue. Paper 2.6's channel asymmetry is therefore replicated rather than erased. Query-graph facets remain a query-side control and are not used to train the memory selector.
 
 \section{Limitations}
-The fresh confirmation has 128 identities, but only two datasets, two small frozen models, one late routing layer per model, one 32-token chunk size, and one four-chunk budget. Five seeds quantify selector initialization, while identity bootstrap intervals quantify cohort variation; neither establishes broader domain generalization. The original 24-configuration and post-G3 matrices remain exploratory even though the frozen rank-16/rank-8 choices now have a separate confirmation. Hotpot and QASPER do not cover 2Wiki/MuSiQue, and the controlled suite contains only 20 schematic cases.
+The fresh Hotpot/QASPER confirmation has 128 identities, and the transfer extension adds 200 held-out 2Wiki/MuSiQue identities. Even so, the extension retains one small frozen Qwen model, one late routing layer, one 32-token chunk size, and one primary four-chunk budget. Five seeds quantify projection initialization, while identity-bootstrap intervals quantify cohort variation; neither establishes broader domain generalization. The 20-example validation split per new dataset is small enough for task-specific projections and channel weights to overfit. Secondary six/eight-chunk rows are fixed from validation evidence-span feasibility and must not be read as a new universal budget. The controlled suite contains only 20 schematic cases.
 
 The teacher does not include post-RoPE distance, value utility, or layer combinations. Greedy oracle landmarks see the evaluation query and cannot be deployed; evidence-supervised projections use validation labels and are task-adapted rather than unsupervised compression. Native-\kv generation uses a single frozen late layer and 12 greedy tokens; its negative QASPER result does not test trained memory integration, multiple consumption layers, or larger instruction models. Direct low-rank indexes reduce routing state, not backing native \kv. Runtime uses eager PyTorch on an old mobile GPU; INT8 is dequantized for scoring rather than using a fused integer kernel, and centroid construction is an offline Python reference path.
 
 \section{Conclusion}
-Compact native-key response imitation fails as a universal objective, but evidence-supervised low-rank native interaction yields a reproducible QASPER routing channel. On 64 fresh QASPER identities, rank 16 improves recall over a mean key by 0.141; the gain transfers to a Llama-family model at smaller magnitude. It does not transfer to Hotpot, and exact lexical routing remains stronger on QASPER. Native-\kv controls sharpen the boundary: informed memory is substantially better than shuffled or bottom-ranked memory, yet frozen late-layer integration can still underperform no memory. Routing and reading must therefore be trained and evaluated separately. The vectorized quantized index makes the routing mechanism operational at 137--1,056 bytes per chunk without changing native \kv, but does not resolve memory use. The next justified step is trained or calibrated multi-layer memory integration on the confirmed QASPER selector, not a claim that low-rank QK routing replaces lexical discovery.
+Compact native-key response imitation fails as a universal objective, but evidence-supervised low-rank native interaction yields a reproducible QASPER routing channel and a second, weaker 2Wiki regime. On 64 fresh QASPER identities, rank 16 improves recall over a mean key by 0.141 and transfers to a Llama-family model. On 100 fresh 2Wiki identities, zero-shot and retrained gains are 0.033 and 0.093; a 256-byte rank-8/eight-centroid index retains 84.9\% of the latter gain. The mechanism does not improve MuSiQue, exact/BM25 remain stronger, and static fusion overfits. Native-\kv controls sharpen a separate boundary: informed memory can beat shuffled or bottom-ranked memory while a frozen late-layer consumer still underperforms no memory. Routing, channel selection, and reading must therefore be trained and evaluated separately. The justified next steps are larger channel-calibration cohorts and bounded multi-layer memory integration, not a claim that low-rank QK routing replaces lexical discovery.
 
 \appendix
 \section{Reimplementation map}
@@ -444,6 +530,7 @@ The implementation separates mechanism from experiment policy.
   \item \texttt{run\_cost\_benchmark.py} times uncached controller construction separately from cached quality evaluation; \texttt{summarize\_results.py} builds matched Paper 2.5/2.6 tables and plots.
   \item \texttt{run\_query\_conditioned\_study.py} executes the 120-controller matrix with durable row-level checkpoints; \texttt{summarize\_query\_conditioned.py} computes paired comparisons, response recovery, stability, and plots.
   \item \texttt{run\_low\_rank\_frontier.py} evaluates native geometry and trains direct native-$Q/K$ projections; \texttt{run\_selector\_ablation.py} isolates salience and bilinear terms; \texttt{summarize\_low\_rank\_frontier.py} emits paired effects, seed stability, normalized cost frontiers, plots, and E0--E6 decisions.
+  \item \path{src/pra_hf/multihop_routing_data.py} reconstructs the frozen 2Wiki/MuSiQue identities with unique evidence markers. \path{precompute_multidataset_native_qk.py} captures resumable frozen features; \path{run_multidataset_extension.py} runs the three transfer regimes and M0--M5; \path{run_multidataset_cost_audit.py} separates cold construction from warm routing on a fixed representative checkpoint.
   \item Confirmation selection uses \path{run_confirmation.py}. It freezes and replays five-seed selections on the offset-24 cohort.
   \item Generation replay uses \path{run_confirmation_generation.py}. It maps exact chunk identities to unchanged native \kv and emits causal controls with crash-safe row checkpoints.
   \item \path{run_cross_model_replication.py} retrains the same projection contracts on SmolLM2/Llama native geometry; \path{run_production_index_benchmark.py} measures quantized vectorized serving, index residency, and append cost.
@@ -474,7 +561,7 @@ materialize_native_kv(chunks)                     # unchanged K/V
 Static joint compression replaces each chunk's $T$ projected tokens with four or eight deterministic centroids, medoids, or farthest representatives. Only the routing index changes; the selected chunk still contributes all of its original native \kv.
 
 \section{Artifacts}
-Tracked results live under \texttt{docs/papers/shared/results/paper2\_8\_qk\_compression/}. The directory contains natural and synthetic row CSVs, teacher validation, paired effects, changed-selection audits, matched Paper 2.6 and historical Paper 2.5 controls, selector checkpoints, synchronized cost rows, plots, gate decisions, and manifests. The \texttt{query\_conditioned/} subtree adds all 120 controller runs. The \texttt{low\_rank\_frontier/} and \texttt{selector\_ablation/} subtrees add 3,776 frontier rows, 1,280 ablation rows, 15 projection checkpoints, paired identity bootstraps, seed statistics, byte/latency accounting, plots, and extension decisions. The 329 MB validation, 621 MB test, and 8.3 MB prepared feature caches are ignored; manifests provide hashes and regeneration commands. The full test cache hash is \texttt{edc589cc...75993ae8}; validation is \texttt{87b85b25...7533cf8}.
+Tracked results live under \texttt{docs/papers/shared/results/paper2\_8\_qk\_compression/}. The directory contains natural and synthetic row CSVs, teacher validation, paired effects, changed-selection audits, matched Paper 2.6 and historical Paper 2.5 controls, selector checkpoints, synchronized cost rows, plots, gate decisions, and manifests. The \texttt{query\_conditioned/} subtree adds all 120 controller runs. The \texttt{low\_rank\_frontier/} and \texttt{selector\_ablation/} subtrees add 3,776 frontier rows, 1,280 ablation rows, 15 projection checkpoints, paired identity bootstraps, seed statistics, byte/latency accounting, plots, and extension decisions. The \texttt{multi\_dataset/} subtree adds evidence-alignment audits, five-seed zero-shot/retrained/mixed rows, changed-selection and paired-effect tables, compact checkpoints, M0--M5 decisions, and a separate synchronized cost audit. Large frozen feature caches remain ignored; manifests retain their hashes and exact regeneration commands. The original full test cache hash is \texttt{edc589cc...75993ae8}; validation is \texttt{87b85b25...7533cf8}.
 
 \begin{thebibliography}{9}
 \bibitem{pra1} Sim\~ao, J. Progressive Retrieval Attention: Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory. Project manuscript, 2026.
@@ -483,6 +570,8 @@ Tracked results live under \texttt{docs/papers/shared/results/paper2\_8\_qk\_com
 \bibitem{pra27} Sim\~ao, J. Latent Query Decomposition from Frozen Transformer State Graphs. Project manuscript, 2026.
 \bibitem{hotpot} Yang, Z. et al. HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering. EMNLP, 2018.
 \bibitem{qasper} Dasigi, P. et al. A Dataset of Information-Seeking Questions and Answers Anchored in Research Papers. NAACL, 2021.
+\bibitem{ho2020twowiki} Ho, X., Nguyen, A.-K. D., Sugawara, S., and Aizawa, A. Constructing a Multi-hop QA Dataset for Comprehensive Evaluation of Reasoning Steps. COLING, 2020.
+\bibitem{trivedi2022musique} Trivedi, H., Khot, T., Hartmann, A., Mottaghi, R., and Sabharwal, A. MuSiQue: Multihop Questions via Single-hop Question Composition. TACL 10, 2022.
 \end{thebibliography}
 
 \end{document}
