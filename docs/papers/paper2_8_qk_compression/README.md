@@ -1,28 +1,30 @@
-# Paper 2.8: QK-response distilled memory landmarks
+# Paper 2.8: Low-rank native-QK routing
 
-Paper 2.8 tests whether a small subset of native keys can preserve the frozen
-transformer's full-key chunk ranking better than one mean key. The study uses
-the frozen Paper 2.5/2.6 Qwen3-0.6B cohort, 32-token candidate chunks, a matched
-four-chunk materialization budget, and five learned-selector seeds.
+Paper 2.8 studies a compact address index for Progressive Retrieval Attention.
+Frozen native queries and keys are projected into a small interaction space;
+the resulting rows select chunk identities, while selected chunks still supply
+their unchanged original native K/V. The paper therefore measures routing-index
+residency separately from backing-memory storage and active materialization.
 
-The gate sequence stops at G3. A query-aware greedy oracle establishes
-response-preservation and QASPER retrieval headroom, but the 321-parameter
-key-only selector recovers 40.5% of oracle gain rather than the required 80%.
-A 120-controller continuation then crosses low-rank query conditioning,
-landmark count, and four training losses. Prespecified combined `r16/m4`
-improves HotpotQA recall to 0.1667 but reduces QASPER recall to 0.0574.
-Exploratory decision-aware `r32/m8` reaches 0.1718 on QASPER, near exact
-routing at 0.1776, with paired intervals that include zero. Maximum oracle-gain
-recovery rises only to 47.3%. Synthetic slots and streaming recurrent memory
-are therefore not run.
+On 64 fresh QASPER identities, rank-16 routing raises four-chunk evidence recall
+from 0.117 for one full-width mean key to 0.258. The architecture transfers to
+2WikiMultiHopQA: mean recall is 0.0977, inherited rank-16 reaches 0.1305, and
+dataset-specific training reaches 0.1903. A rank-8/eight-centroid index retains
+84.9% of the 2Wiki rank-16 gain at about 256 FP32 bytes per chunk. A SmolLM2
+replication preserves the QASPER effect across a second model family and
+tokenizer.
 
-A separately labeled post-G3 diagnostic tests native geometric controls and
-direct low-rank native-QK routing without changing materialization. All-token
-rank 16 reaches QASPER evidence recall 0.2542 with 2,048 index bytes per chunk;
-rank-8, eight-centroid routing reaches 0.1829 with 256 bytes. HotpotQA remains
-dominated by lexical routing. Because the projections have low teacher overlap
-and use validation evidence supervision, the paper interprets them as compact
-task-adapted routing features rather than faithful native-response compressors.
+The channel is deliberately bounded. BM25 remains strongest on HotpotQA,
+MuSiQue remains lexical, and validation-selected static fusion regresses on both
+new cohorts. Native-K/V causal controls also show that better evidence routing
+does not guarantee beneficial use by a frozen late-layer consumer. The paper
+positions low-rank native-QK as one compact routing channel, not a universal
+retriever, an active K/V compressor, or a complete memory-consumption method.
+
+The original response-distillation, landmark-selection, 120-controller, and
+geometry studies remain in the appendices. They document why teacher-response
+fidelity was rejected as the organizing objective and why direct
+evidence-supervised low-rank interaction became the main mechanism.
 
 Files:
 
@@ -34,10 +36,15 @@ Files:
   effects, changed-selection audits, plots, selector checkpoints, costs, gates,
   and manifests.
 
-The `query_conditioned/` result subtree contains all 120 controller runs,
-training histories, seed-stability summaries, paired effects, response
-recovery, and publication plots. The test-selected QASPER configuration is
-marked exploratory throughout the paper and artifacts.
+The `confirmation/`, `multi_dataset/`, `low_rank_frontier/`,
+`cross_model_smollm2/`, and `confirmation_generation/` result subtrees contain
+the main fresh-cohort evidence, paired effects, cost frontier, cross-model
+replication, and causal controls.
+
+The `query_conditioned/` subtree retains all 120 historical controller runs,
+training histories, seed-stability summaries, response-recovery diagnostics,
+and appendix plots. Its test-selected QASPER configuration remains explicitly
+exploratory.
 
 The `low_rank_frontier/` and `selector_ablation/` subtrees contain the direct
 projection and joint-compression sweeps, five-seed structural ablations,
