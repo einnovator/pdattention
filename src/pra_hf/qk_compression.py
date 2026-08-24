@@ -23,6 +23,7 @@ LANDMARK_TRAINING_OBJECTIVES = (
     "combined",
     "decision_aware",
 )
+LOW_RANK_INDEX_DTYPES = ("float32", "float16", "bfloat16", "int8")
 
 
 def gqa_head_map(query_heads: int, key_heads: int, *, device=None) -> torch.Tensor:
@@ -357,6 +358,122 @@ def low_rank_response_scores(
         top_r=top_r,
         temperature=temperature,
     ).squeeze(-1)
+
+
+@dataclass(frozen=True)
+class LowRankRoutingIndex:
+    """Persistent projected-token index for vectorized online chunk routing.
+
+    ``tokens`` is ``[chunks,representatives,rank]``. INT8 indexes retain one
+    symmetric FP32 scale per rank dimension; all other modes store the named
+    floating dtype directly. The backing native K/V remains outside this index.
+    """
+
+    tokens: torch.Tensor
+    token_mask: torch.Tensor
+    storage_dtype: str
+    scales: torch.Tensor | None = None
+
+    @classmethod
+    def build(
+        cls,
+        projected_tokens: torch.Tensor,
+        token_mask: torch.Tensor,
+        *,
+        storage_dtype: str = "float16",
+        representatives: int | None = None,
+    ) -> "LowRankRoutingIndex":
+        if projected_tokens.ndim != 3 or token_mask.shape != projected_tokens.shape[:2]:
+            raise ValueError("Projected tokens must be [chunks,tokens,rank] with a matching mask.")
+        if storage_dtype not in LOW_RANK_INDEX_DTYPES:
+            raise ValueError(f"Unsupported low-rank index dtype: {storage_dtype}")
+        values = projected_tokens.detach()
+        mask = token_mask.detach().to(device=values.device, dtype=torch.bool)
+        if representatives is not None:
+            if representatives <= 0:
+                raise ValueError("representatives must be positive.")
+            values, mask = kmeans_centroids(values, mask, representatives)
+        scales = None
+        if storage_dtype == "int8":
+            valid = values.float()[mask]
+            scales = valid.abs().amax(dim=0).clamp_min(1e-8) / 127.0
+            stored = (values.float() / scales).round().clamp(-127, 127).to(torch.int8)
+        else:
+            dtype = {
+                "float32": torch.float32,
+                "float16": torch.float16,
+                "bfloat16": torch.bfloat16,
+            }[storage_dtype]
+            stored = values.to(dtype)
+        return cls(stored.contiguous(), mask.contiguous(), storage_dtype, scales)
+
+    @property
+    def rank(self) -> int:
+        return int(self.tokens.shape[-1])
+
+    @property
+    def chunk_count(self) -> int:
+        return int(self.tokens.shape[0])
+
+    @property
+    def storage_bytes(self) -> int:
+        tensors = (self.tokens, self.token_mask, self.scales)
+        return sum(t.numel() * t.element_size() for t in tensors if t is not None)
+
+    def decoded_tokens(self, *, device: torch.device | str | None = None) -> torch.Tensor:
+        target = self.tokens.device if device is None else torch.device(device)
+        if self.storage_dtype == "int8":
+            return self.tokens.to(target, torch.float32) * self.scales.to(target)
+        return self.tokens.to(target)
+
+    def score(
+        self,
+        projected_queries: torch.Tensor,
+        *,
+        function: str = "top_r_mean",
+        top_r: int = 4,
+    ) -> torch.Tensor:
+        """Score one or more ``[queries,rank]`` vectors against every chunk."""
+        device = projected_queries.device
+        values = self.decoded_tokens(device=device)
+        if values.dtype == torch.bfloat16 and device.type == "cuda" and torch.cuda.get_device_capability(device)[0] < 8:
+            values = values.float()
+        queries = projected_queries.to(values.dtype)
+        return low_rank_response_scores(
+            queries,
+            values,
+            self.token_mask.to(device),
+            function=function,
+            top_r=top_r,
+        )
+
+    def search(
+        self,
+        projected_queries: torch.Tensor,
+        k: int,
+        *,
+        top_r: int = 4,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return vectorized stable top-k scores and chunk ids per query."""
+        if k <= 0:
+            raise ValueError("k must be positive.")
+        scores = self.score(projected_queries, top_r=top_r)
+        order = torch.argsort(scores, dim=-1, descending=True, stable=True)
+        indices = order[..., : min(k, self.chunk_count)]
+        return scores.gather(-1, indices), indices
+
+    def append(self, other: "LowRankRoutingIndex") -> "LowRankRoutingIndex":
+        """Return an index with new chunks appended without rebuilding old rows."""
+        if self.storage_dtype != other.storage_dtype or self.tokens.shape[1:] != other.tokens.shape[1:]:
+            raise ValueError("Appended indexes must have identical storage and shape contracts.")
+        if self.storage_dtype == "int8" and not torch.equal(self.scales, other.scales):
+            raise ValueError("INT8 append requires a shared quantization scale.")
+        return LowRankRoutingIndex(
+            torch.cat((self.tokens, other.tokens), dim=0),
+            torch.cat((self.token_mask, other.token_mask), dim=0),
+            self.storage_dtype,
+            self.scales,
+        )
 
 
 def chunk_routing_loss(

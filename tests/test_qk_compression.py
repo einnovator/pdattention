@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from pra_hf.qk_compression import (
+    LowRankRoutingIndex,
     NativeLandmarkSelector,
     QueryConditionedLandmarkSelector,
     chunk_routing_loss,
@@ -202,6 +203,43 @@ def test_low_rank_scoring_and_direct_losses_are_finite_and_differentiable():
     loss.backward()
     assert torch.isfinite(queries.grad).all()
     assert torch.isfinite(tokens.grad).all()
+
+
+@pytest.mark.parametrize("storage_dtype", ["float32", "float16", "bfloat16", "int8"])
+def test_production_low_rank_index_has_batched_search_and_bounded_error(storage_dtype):
+    tokens = torch.randn(5, 8, 6)
+    mask = torch.ones(5, 8, dtype=torch.bool)
+    mask[0, -2:] = False
+    queries = torch.randn(3, 6)
+    index = LowRankRoutingIndex.build(tokens, mask, storage_dtype=storage_dtype)
+    scores, selected = index.search(queries, 4)
+    reference = low_rank_response_scores(queries, tokens, mask)
+    tolerance = 0.04 if storage_dtype == "int8" else 0.01
+    assert scores.shape == selected.shape == (3, 4)
+    assert torch.allclose(index.score(queries).float(), reference, atol=tolerance, rtol=tolerance)
+    assert index.storage_bytes == sum(
+        tensor.numel() * tensor.element_size()
+        for tensor in (index.tokens, index.token_mask, index.scales)
+        if tensor is not None
+    )
+
+
+def test_production_low_rank_index_centroids_and_append_are_deterministic():
+    tokens = torch.randn(4, 8, 5)
+    mask = torch.ones(4, 8, dtype=torch.bool)
+    first = LowRankRoutingIndex.build(
+        tokens[:2], mask[:2], storage_dtype="float16", representatives=4
+    )
+    second = LowRankRoutingIndex.build(
+        tokens[2:], mask[2:], storage_dtype="float16", representatives=4
+    )
+    combined = first.append(second)
+    repeated = LowRankRoutingIndex.build(
+        tokens, mask, storage_dtype="float16", representatives=4
+    )
+    assert combined.chunk_count == 4
+    assert torch.equal(combined.tokens, repeated.tokens)
+    assert torch.equal(combined.token_mask, repeated.token_mask)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")

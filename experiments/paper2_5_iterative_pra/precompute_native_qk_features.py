@@ -38,6 +38,11 @@ PARENT_TOKENS = 256
 LOCAL_TOKENS = 32
 
 
+def _default_offset(split: str) -> int:
+    """Keep validation, historical test, and fresh confirmation identities disjoint."""
+    return {"validation": 0, "test": 8, "confirmation": 24}[split]
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -115,6 +120,9 @@ def _feature(handle, tokenizer, example: dict, device: torch.device) -> dict:
     hidden, _, prompt_tokens, question_span = _capture_query_features(
         handle, tokenizer, example, device
     )
+    query_hidden = aggregate_query_states(hidden, REGISTRY["last"].strategy)[0]
+    adapter = next(iter(handle.adapters.values()))
+    query, _, _ = adapter.project_qkv(query_hidden.view(1, 1, -1))
     evidence_spans = evidence_token_spans(
         tokenizer, example["source"], example["evidence"]
     )
@@ -131,9 +139,8 @@ def _feature(handle, tokenizer, example: dict, device: torch.device) -> dict:
     return {
         "dataset": example["dataset"],
         "example_id": example["id"],
-        "query_hidden": aggregate_query_states(
-            hidden, REGISTRY["last"].strategy
-        )[0].float().cpu(),
+        "query_hidden": query_hidden.float().cpu(),
+        "query_pre_query": query[0, :, 0].float().cpu(),
         **captured,
         "parent_positive_mask": parent_positive,
         "local_positive_mask": local_positive,
@@ -188,7 +195,7 @@ def run(args: argparse.Namespace) -> dict:
     )
     offset = args.offset
     if offset is None:
-        offset = 0 if args.split == "validation" else 8
+        offset = _default_offset(args.split)
     examples = load_split_examples(args.cache_dir, args.examples, offset, args.seed)
     features = []
     for index, example in enumerate(examples, start=1):
@@ -216,7 +223,7 @@ def run(args: argparse.Namespace) -> dict:
         "query_heads": int(config.num_attention_heads),
         "kv_heads": int(config.num_key_value_heads),
         "head_dim": int(adapter.original_attention.head_dim),
-        "representation": "layer_27_pre_rope_native_qk",
+        "representation": f"layer_{adapter.layer_idx}_pre_rope_native_qk",
         "contextual_encoding_tokens": PARENT_TOKENS,
         "associative_local_tokens": LOCAL_TOKENS,
         "local_windows_reencoded": False,
@@ -260,7 +267,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=20260811)
     parser.add_argument("--examples", type=int, default=16)
-    parser.add_argument("--split", choices=("validation", "test"), default="test")
+    parser.add_argument(
+        "--split", choices=("validation", "test", "confirmation"), default="test"
+    )
     parser.add_argument("--offset", type=int)
     parser.add_argument("--cache-dir", type=Path, default=ROOT / "data/.hf_cache")
     parser.add_argument(

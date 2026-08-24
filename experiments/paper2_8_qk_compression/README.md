@@ -99,3 +99,53 @@ compression with rank-8, eight-centroid indexes reaches QASPER recall `0.1829`
 using `256` bytes per chunk. These are evidence-supervised routing results, not
 faithful teacher compression: teacher top-four overlap remains low. E2 is
 inconclusive, so the extension does not expand to new datasets.
+
+## Fresh confirmation, generation, and portability
+
+Capture the untouched offset-24 cohort, confirm the frozen five-seed selectors,
+and replay the exact saved chunk identities through unchanged layer-27 K/V:
+
+```powershell
+python experiments/paper2_5_iterative_pra/precompute_native_qk_features.py `
+  --device cuda --split confirmation --offset 24 --examples 64 `
+  --output-dir docs/papers/shared/results/paper2_8_qk_compression
+python experiments/paper2_8_qk_compression/run_confirmation.py --device cuda
+python experiments/paper2_8_qk_compression/run_confirmation_generation.py --device cuda
+```
+
+The 64+64 confirmation preserves the QASPER result: rank-16 recall is `0.258`
+versus `0.117` for native mean (`+0.141`, 95% CI `[0.080,0.210]`). HotpotQA
+does not confirm (`0.120` versus `0.125`), and BM25 remains strongest (`0.386`).
+During generation, rank-16 memory improves Hotpot gold-token log-probability by
+`0.074`, but is not distinguishable from shuffled memory. On QASPER it is
+`-0.212` versus no memory, while remaining `+0.312` above shuffled and `+0.470`
+above bottom-ranked memory. Routing improves, but frozen late-layer memory use
+is the downstream bottleneck.
+
+The Llama-family replication uses SmolLM2-135M at layer 29 with its own
+tokenizer and 9:3 GQA layout. Generate validation and confirmation features by
+passing its pinned model ID/revision to the same precomputer, then run:
+
+```powershell
+python experiments/paper2_8_qk_compression/run_cross_model_replication.py --device cuda
+```
+
+Rank-16 QASPER recall is `0.155` versus mean `0.092` (`+0.064`, CI
+`[0.019,0.115]`); rank-8/eight-centroid recall is `0.165` (`+0.074`, CI
+`[0.023,0.134]`). Both remain below exact (`0.298`). The dataset-specific
+low-rank signal therefore transfers across model family and tokenizer.
+
+## Production index
+
+`LowRankRoutingIndex` stores projected tokens in FP32, FP16, BF16, or symmetric
+INT8, optionally after deterministic eight-centroid compression. It exposes
+vectorized batched search, stable top-k, exact resident-byte accounting, and
+append updates. Benchmark it on the fresh Qwen cohort with:
+
+```powershell
+python experiments/paper2_8_qk_compression/run_production_index_benchmark.py --device cuda
+```
+
+The benchmark reports projection and cold construction separately from warm
+search. Static centroid construction remains an offline cost; warm routing is
+an online measurement and never replaces backing native K/V.

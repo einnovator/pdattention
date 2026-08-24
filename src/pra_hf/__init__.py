@@ -23,6 +23,7 @@ from .iterative import (
 from .query_graph import QueryGraph, QueryUnitProvenance, build_query_graph
 from .query_graph_cluster import connected_components, weighted_label_propagation
 from .query_graph_facets import GraphQueryFacetSet, pool_hard_graph_facets
+from .qk_compression import LOW_RANK_INDEX_DTYPES, LowRankRoutingIndex
 
 __version__ = "0.2.0rc1"
 
@@ -35,6 +36,8 @@ __all__ = [
     "IterativeGistRouter",
     "IterativeRoutingConfig",
     "IterativeRoutingResult",
+    "LOW_RANK_INDEX_DTYPES",
+    "LowRankRoutingIndex",
     "HybridDiscoveryPolicy",
     "PRAConfig",
     "PRAForCausalLM",
