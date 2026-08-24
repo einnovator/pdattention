@@ -1,0 +1,178 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,amsmath,amssymb,enumitem,tabularx}
+\usepackage[hidelinks]{hyperref}
+\setlength{\emergencystretch}{3em}
+
+\title{Persistent Agent Context with Progressive Retrieval Attention:\\Adaptive Discovery of Tools, Skills, History, and Hierarchical Sessions}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+LLM agents commonly represent system instructions, tool schemas, skills, conversation history, observations, and project state as an append-only prompt. This is convenient for vanilla autoregressive K/V caching but causes context growth, repeated definition cost, lossy compaction, and expensive context transfer to subagents. Progressive Retrieval Attention (PRA) suggests a different architecture: a bounded native workspace over persistent, typed, addressable memory. This paper studies the agent-specific discovery problem that follows from that architecture. Tool and skill references vary from explicit names to approximate token matches and purely semantic intent; large stable catalogs can additionally support persistent indexes. We therefore expose discovery policy as a PRA SDK concern, with explicit, token-native, indexed, semantic, hybrid, and adaptive modes plus confidence-triggered fallback. Experiments progress from deterministic and toy-model lookup with opaque synthetic tools, through Qwen3-0.6B tool use, stronger small-model replication, hierarchical skills, persistent sessions, and integration through an OpenAI-compatible PRA endpoint. The central hypothesis is that logical agent state and resource catalogs can grow substantially faster than the active native K/V working set while maintaining selection and task quality, and that policy hints plus adaptive fallback can approach oracle discovery without paying hybrid retrieval cost on every request.
+\end{abstract}
+
+\section{Motivation}
+Append-only context couples logical session lifetime to native transformer context. Tool definitions and skill instructions are repeatedly exposed even when only a few resources are relevant. Compaction reduces context but can destroy provenance. Subagents either receive too little context or duplicate large parent prompts.
+
+PRA instead targets
+\[
+\mathrm{agent\ state} =
+\mathrm{bounded\ active\ workspace}+
+\mathrm{persistent\ addressable\ memory}.
+\]
+The agent setting adds a discovery problem not solved by semantic gists alone. A request may explicitly name a tool, approximately name it, describe it semantically, or refer to a previously used resource. The resource universe may be small and dynamic or large and stable enough to justify a persistent index.
+
+\section{Typed Resources and Discovery Policies}
+We consider typed identities such as
+\begin{verbatim}
+!!ref:tool:github:create_issue:v3!!
+!!ref:skill:paper-review:v2!!
+!!ref:artifact:paper-2-6-results!!
+!!ref:session:parent/architecture-decision-14!!
+\end{verbatim}
+plus the implicit PRA history object \texttt{\#\_\_head}. Identity is distinct from source text, token index, semantic gist, cached K/V, residency, and active materialization.
+
+The PRA SDK should permit a discovery hint
+\[
+\pi\in\{\mathrm{auto,explicit,token,index,semantic,hybrid,adaptive}\}.
+\]
+Hints may be attached to a collection, namespace, resource or request. With strict mode disabled, a hint is a preferred starting policy and the runtime may fall back when confidence is insufficient.
+
+A candidate retains provenance and confidence
+\[
+c_i\approx P(r_i\ \mathrm{is\ intended}\mid q,\mathbf{s}_i,p_i).
+\]
+Confidence supports select/materialize, search-more, ask/disambiguate, or abstain. For side-effecting tools, selection confidence does not authorize execution.
+
+\section{Policy Selection and Adaptive Fallback}
+No discovery mechanism should be assumed universally best. Explicit handles should resolve deterministically. Named resources favor exact or approximate token matching. Large stable registries can amortize a persistent index. Paraphrased or implicit requests require semantic discovery. Hybrid retrieval may improve recall but costs more.
+
+A representative escalation path is
+\[
+\mathrm{explicit}\rightarrow\mathrm{token}\rightarrow\mathrm{index}
+\rightarrow\mathrm{semantic}\rightarrow\mathrm{hybrid}
+\rightarrow\mathrm{ask/abstain},
+\]
+but ordering is an experimental variable. The central question is whether user/SDK hints and a cheap automatic selector can approach oracle per-query policy while avoiding hybrid cost on every request.
+
+\section{Persistent Indexes}
+Stable tool and skill registries are natural candidates for pre-built indexes. We compare no index, token postings over names and aliases, token-IDF and token $n$-gram indexes, BM25/FTS, semantic gist indexes, and combined token-plus-gist registries.
+
+Index construction, update, and invalidation are measured separately from query latency. Index hits still resolve to PRA resources whose detailed K/V can remain nonresident until selected. Thus indexing accelerates discovery rather than replacing PRA materialization.
+
+\section{Model Strategy}
+The experiments separate discovery competence from general tool-use competence.
+
+\paragraph{M0: deterministic resolver.}
+Pure lookup needs no LLM and can scale to very large synthetic catalogs.
+
+\paragraph{M1: toy custom transformer.}
+A small decoder is trained on synthetic tool-use language with opaque identities such as \texttt{tool\_zaf\_193}. Tool semantics exist only in supplied definitions. This permits causal study of
+\[
+\mathrm{discover}\rightarrow\mathrm{materialize}\rightarrow
+\mathrm{call}\rightarrow\mathrm{observe}\rightarrow\mathrm{continue}
+\]
+without pretraining priors.
+
+\paragraph{M2: Qwen3-0.6B.}
+The first pretrained bridge uses Qwen3-0.6B, matching the existing PRA pretrained integration and providing native instruction/tool-use competence. Both opaque synthetic and realistic tools are tested.
+
+\paragraph{M3: replication.}
+A selected subset is replicated on a second roughly 1B family and on SmolLM3-3B as a stronger small tool-use model. Dense sweeps remain concentrated on M0--M2.
+
+\section{Controlled Tool Catalog Benchmark}
+Catalogs scale from small sets through thousands of resources, and lookup-only/index experiments may extend farther. Vary schema length, parameter count, name and semantic similarity, aliases, distractor families, duplicate-looking resources, and mutation frequency.
+
+Prompt strata include explicit URI, exact name, typo/alias, semantic paraphrase, implicit contextual reference, ambiguous/nonexistent reference, multi-tool request, and combined tool--skill request.
+
+The experimental ladder separates:
+\begin{enumerate}[leftmargin=*]
+\item lookup only: output resource identity;
+\item lookup plus schema/arguments;
+\item safe execution plus observation;
+\item tool plus skill composition;
+\item persistent-session use;
+\item real-harness integration.
+\end{enumerate}
+Opaque synthetic tools are mandatory controls because pretrained models may already know common tool names.
+
+\section{Discovery Policy Benchmark}
+Compare fixed token, fixed index, fixed semantic, fixed hybrid, SDK/user hints, heuristic \texttt{auto}, confidence-triggered adaptive fallback, and oracle per-query policy.
+
+Cross these with catalog strata: small/dynamic, large/stable, semantically dense, name-dense, and frequently mutated. Measure selection quality, latency, number of retrieval stages, fallback count, index/K/V reuse, materialized tokens, and oracle-policy regret.
+
+The target is a policy Pareto frontier: near-oracle selection quality without invoking expensive hybrid/adaptive retrieval on every query.
+
+\section{Tokenization, Ambiguity, and Confidence}
+Resource-name robustness mirrors the token-native tests of the preceding discovery work: case, whitespace, punctuation, hyphen/underscore/camel-case, aliases, minor typos, generic-token insertion, namespace omission, and long multi-token names.
+
+Wrong-selection stress tests include near-duplicate tools, same verb/different object, same object/different action, deprecated/current versions, high-token-overlap distractors, nonexistent resources, and cases in which token and semantic evidence disagree.
+
+Confidence is evaluated with Brier score, calibration error, reliability and risk--coverage curves. Intermediate confidence should trigger further search or clarification rather than confident selection.
+
+\section{Skills as Hierarchical Resources}
+Skills differ from tools because they can contain long instructions, examples, scripts and supporting documents. We evaluate progressive disclosure
+\[
+\mathrm{skill\ identity/summary}\rightarrow
+\mathrm{instructions}\rightarrow
+\mathrm{selected\ supporting\ files}.
+\]
+Baselines include eager full-skill injection, description-only disclosure, token/index selection, semantic gist selection, hybrid/adaptive selection, and oracle skill/supporting-file selection.
+
+The benchmark measures both correct skill selection and correct within-skill materialization. It also tests whether indexes should cover only the skill registry or internal sections and files.
+
+\section{Persistent Sessions}
+Let $H_t$ denote logical session history and $W_t$ the active native working set. PRA targets
+\[
+|W_t|\le B,\qquad H_t\subseteq M_t.
+\]
+The \texttt{\#\_\_head} retains bounded recent context while displaced history remains addressable.
+
+Long project trajectories contain stable and superseded requirements, artifacts, tool results, renamed objects, contradictory decisions, and revisited old state. Compare append-only context, sliding truncation, periodic compaction, summary plus conventional retrieval, and PRA persistent history.
+
+\section{Mutation, Freshness, and Index Invalidation}
+Persistent memory and indexes must track tool schema changes, skill updates, revoked resources, deleted artifacts, aliases, and superseded decisions. Cache/index identity includes content/version, model, tokenizer, routing, and relevant positional configuration.
+
+A stale hit is a correctness failure. Report stale-memory use separately from ordinary retrieval misses and measure index rebuild/update amortization.
+
+\section{Hierarchical Sessions and Subagents}
+A child session is modeled as
+\[
+M_{\mathrm{child}}=R(M_{\mathrm{parent}})\cup\Delta M_{\mathrm{child}},
+\]
+where $R$ is a permission-scoped read view. Compare no inheritance, delegation prompt, compacted summary, copied relevant history, and PRA shared references. Ambiguous-parent-reference cases test search/ask/abstain rather than blind inheritance.
+
+\section{OpenAI-Compatible Integration}
+The preferred systems boundary is
+\[
+\mathrm{existing\ harness}\rightarrow
+\mathrm{OpenAI\mbox{-}compatible\ PRA\ endpoint}
+\rightarrow\mathrm{PRA\ runtime/model}.
+\]
+Transparent mode uses ordinary messages/tools where possible; PRA-native mode exposes stable typed references and discovery hints. The host remains responsible for authentication, permissions, execution, and side effects.
+
+\section{Evaluation}
+Quality metrics include selection accuracy/recall/MRR, argument validity, task success, old-state recovery, supersession accuracy, and subagent success.
+
+Policy metrics include selected discovery mode, hint compliance, fallback/escalation count, stages per query, oracle-policy regret, and quality/cost Pareto curves.
+
+Systems metrics include native prompt tokens, requested/materialized tokens, index build/update time, queries per rebuild, index/cache bytes, cold/warm latency, K/V transfer, attention time, throughput, and peak device/host memory.
+
+Confidence/safety metrics include Brier score, calibration error, selective accuracy, risk--coverage, ask/abstain rate, and false-act rate by side-effect class.
+
+\section{Success Gates and Falsification}
+A context/discovery result requires equal or better selection/history retrieval at materially lower native-context/materialization cost, or better quality at matched cost, under robustness and isolation controls. An agent-capability claim additionally requires improved end-to-end task success, lower failure cost, or better long-session/subagent continuity. Side-effecting tool claims additionally require controlled false-action risk under selective execution.
+
+The adaptive-policy thesis is weakened if one simple fixed policy dominates realistic strata, SDK hints do not improve quality/cost over \texttt{auto}, fallback invokes hybrid search so frequently that its cost advantage disappears, or index construction/update does not amortize under realistic reuse.
+
+\section{Expected Contributions}
+The intended contributions are: (1) a PRA SDK discovery-policy abstraction for agent resources; (2) evidence on when token, index, semantic, hybrid, and adaptive discovery are preferable; (3) a controlled synthetic-to-pretrained tool-use methodology; (4) hierarchical skill disclosure; (5) bounded persistent session experiments; and (6) an OpenAI-compatible integration path that tests PRA as a context substrate rather than a new agent framework.
+
+\section{Conclusion}
+PRA makes it possible to separate a growing logical agent environment from the smaller neural working set required at a given step. The agent problem is therefore not merely how to retrieve a tool, but how to choose the cheapest reliable discovery mechanism for the current reference, catalog, and confidence state. Explicit SDK hints, reusable indexes, semantic gists, and adaptive fallback provide complementary mechanisms whose quality--cost frontier can be measured directly.
+
+\end{document}
