@@ -167,7 +167,8 @@ def test_semantic_only_and_nonindexable_metadata_change_available_channels():
         indexable=False,
     )
     rows = {row.uri: row for row in PersistentResourceIndex((semantic_only, dynamic)).score(
-        DiscoveryRequest(query="weather forecast", tenant_id="tenant-a")
+        DiscoveryRequest(query="weather forecast", tenant_id="tenant-a"),
+        channels=("token", "index", "semantic"),
     )}
     assert rows[semantic_only.uri].token == 0.0
     assert rows[semantic_only.uri].index == 0.0
@@ -233,3 +234,20 @@ def test_auto_prefers_exact_token_and_adaptive_logs_actual_path():
     assert adaptive.executed_path
     assert adaptive.requested_hint == "adaptive"
     assert adaptive.selected_uris[0] == weather.uri
+
+
+def test_precomputed_channel_scores_preserve_policy_result():
+    weather = _resource("weather", "retrieve atmospheric conditions")
+    calendar = _resource("calendar", "list scheduled meetings")
+    engine = _engine(weather, calendar)
+    request = DiscoveryRequest(
+        query="weather",
+        hint=DiscoveryHint("token", strict=True),
+        tenant_id="tenant-a",
+    )
+    rows = engine.index.score(request, channels=("token", "index", "semantic"))
+    direct = engine.discover(request)
+    replay = engine.discover(request, scored_candidates=rows)
+    assert replay.selected_uris == direct.selected_uris
+    assert replay.executed_path == direct.executed_path
+    assert replay.confidence == direct.confidence

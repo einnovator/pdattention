@@ -369,25 +369,59 @@ class PersistentResourceIndex:
             values.append(resource)
         return tuple(values)
 
-    def score(self, request: DiscoveryRequest) -> tuple[ResourceScore, ...]:
+    def score(
+        self,
+        request: DiscoveryRequest,
+        *,
+        channels: Iterable[DiscoveryMode | str] | None = None,
+    ) -> tuple[ResourceScore, ...]:
         """Compute all discovery channels once for policy comparison and fallback."""
 
+        requested_channels = {
+            DiscoveryMode(value).value for value in (channels or (DiscoveryMode.HYBRID,))
+        }
+        if "hybrid" in requested_channels:
+            requested_channels.update(("token", "index", "semantic"))
+        need_token = "token" in requested_channels
+        need_index = "index" in requested_channels
+        need_semantic = "semantic" in requested_channels
         eligible = self._eligible(request)
         eligible_uris = {resource.uri for resource in eligible}
         query_normalized = normalize_text(request.query)
         query_terms = terms(request.query)
-        query_grams = _char_ngrams(request.query)
-        query_vector = tuple(float(value) for value in self.semantic_encoder(request.query))
+        query_grams = _char_ngrams(request.query) if need_token or need_index else frozenset()
+        query_vector = (
+            tuple(float(value) for value in self.semantic_encoder(request.query))
+            if need_semantic
+            else ()
+        )
         explicit_uris = set(request.explicit_reference_uris)
         explicit_uris.update(re.findall(r"!!ref:[^!]+!!", request.query, flags=re.IGNORECASE))
         exact_hits = self.exact.get(query_normalized, set())
+        max_posting = max(8, math.ceil(len(self.resources) * 0.10))
+        informative_terms = tuple(
+            token
+            for token in set(query_terms)
+            if 0 < len(self.postings.get(token, ())) <= max_posting
+        )
+        informative_grams = tuple(
+            gram
+            for gram in query_grams
+            if 0 < len(self.ngram_postings.get(gram, ())) <= max_posting
+        )
         posting_candidates = set().union(
-            *(self.postings.get(token, set()) for token in set(query_terms))
-        ) if query_terms else set()
+            *(self.postings.get(token, set()) for token in informative_terms)
+        ) if need_index and informative_terms else set()
         ngram_candidates = set().union(
-            *(self.ngram_postings.get(gram, set()) for gram in query_grams)
-        ) if query_grams else set()
+            *(self.ngram_postings.get(gram, set()) for gram in informative_grams)
+        ) if need_index and informative_grams else set()
         index_candidates = (posting_candidates | ngram_candidates | exact_hits) & eligible_uris
+        if requested_channels == {DiscoveryMode.EXPLICIT.value}:
+            eligible = tuple(resource for resource in eligible if resource.uri in explicit_uris)
+        elif requested_channels == {DiscoveryMode.INDEX.value}:
+            # A persistent index must narrow the candidate set rather than merely
+            # attach scores to an exhaustive Python scan.
+            eligible = tuple(resource for resource in eligible if resource.uri in index_candidates)
         bm25_raw: dict[str, float] = {}
         for uri in index_candidates:
             document = self.resource_terms[uri]
@@ -410,24 +444,36 @@ class PersistentResourceIndex:
                 resource.uri in explicit_uris
                 or query_normalized in {normalize_text(name) for name in names}
             )
-            name_similarity = max(
-                (SequenceMatcher(None, query_normalized, normalize_text(name)).ratio() for name in names),
-                default=0.0,
+            name_similarity = (
+                max(
+                    (SequenceMatcher(None, query_normalized, normalize_text(name)).ratio() for name in names),
+                    default=0.0,
+                )
+                if need_token
+                else 0.0
             )
             resource_grams = self.resource_ngrams[resource.uri]
-            ngram_overlap = len(query_grams & resource_grams) / max(
-                len(query_grams | resource_grams), 1
+            ngram_overlap = (
+                len(query_grams & resource_grams) / max(len(query_grams | resource_grams), 1)
+                if need_token
+                else 0.0
             )
             query_set = set(query_terms)
             resource_set = set(self.resource_terms[resource.uri])
-            term_overlap = len(query_set & resource_set) / max(len(query_set), 1)
+            term_overlap = (
+                len(query_set & resource_set) / max(len(query_set), 1) if need_token else 0.0
+            )
             token_score = max(exact, 0.50 * name_similarity + 0.30 * ngram_overlap + 0.20 * term_overlap)
             if resource.semantic_only:
                 token_score = 0.0
             index_score = max(exact, bm25_raw.get(resource.uri, 0.0) / bm25_scale)
             if not resource.indexable or resource.semantic_only:
                 index_score = 0.0
-            semantic = max(0.0, _cosine(query_vector, self.semantic_vectors[resource.uri]))
+            semantic = (
+                max(0.0, _cosine(query_vector, self.semantic_vectors[resource.uri]))
+                if need_semantic
+                else 0.0
+            )
             hybrid = max(exact, 0.45 * token_score + 0.20 * index_score + 0.35 * semantic)
             rows.append(
                 ResourceScore(
@@ -554,11 +600,29 @@ class ResourceDiscoveryEngine:
         margin = top - second
         return confidence, margin, confidence >= self.select_threshold and margin >= self.margin_threshold
 
-    def discover(self, request: DiscoveryRequest) -> DiscoveryTrace:
+    def discover(
+        self,
+        request: DiscoveryRequest,
+        *,
+        scored_candidates: Sequence[ResourceScore] | None = None,
+    ) -> DiscoveryTrace:
         """Select stable resource IDs and retain every attempted policy stage."""
 
-        rows = self.index.score(request)
         hint = self.hints.resolve(request, self.index.by_uri)
+        if hint.mode in {DiscoveryMode.AUTO, DiscoveryMode.ADAPTIVE} or not hint.strict:
+            score_channels = (
+                DiscoveryMode.TOKEN,
+                DiscoveryMode.INDEX,
+                DiscoveryMode.SEMANTIC,
+                DiscoveryMode.HYBRID,
+            )
+        elif hint.mode == DiscoveryMode.HYBRID:
+            score_channels = (DiscoveryMode.HYBRID,)
+        else:
+            score_channels = (hint.mode,)
+        rows = tuple(scored_candidates) if scored_candidates is not None else self.index.score(
+            request, channels=score_channels
+        )
         mode = hint.mode
         if mode == DiscoveryMode.AUTO:
             mode = self._auto_mode(request, rows)
