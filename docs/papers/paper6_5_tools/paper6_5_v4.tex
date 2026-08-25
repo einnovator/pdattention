@@ -11,6 +11,7 @@ Typed Resource Discovery Before Neural Materialization}
 \input{../shared/results/paper6_5_tools/m1/generated_m1_results.tex}
 \input{../shared/results/paper6_5_tools/m2_m6_summary/generated_m2_m6_results.tex}
 \input{../shared/results/paper6_5_tools/semantic_summary/generated_semantic_results.tex}
+\input{../shared/results/paper6_5_tools/auto_union_records/generated_auto_union_results.tex}
 
 \begin{document}
 \maketitle
@@ -42,8 +43,14 @@ selects on \PaperSixFiveSemanticCoverage{} of requests at
 \PaperSixFiveSemanticSelectiveAccuracy{} selective accuracy. M7 reevaluates
 frozen native geometry on the same rows: native mean K, full token QK, and two
 transferred compressors obtain only .049--.063 Top-1. The supported path is
-therefore model-independent semantic discovery followed by reactive disclosure;
-graph speculation and native-Q/K discovery remain bounded experimental modes.
+therefore model-independent semantic discovery followed by reactive disclosure.
+M8 removes the manual-registration assumption: ordinary Python signatures and
+docstrings reach \PaperSixFiveAutoTopOne{} Top-1, compared with
+\PaperSixFiveManualTopOne{} for the rich manual hybrid. Bounded candidate
+palettes and authoritative typed slices preserve full selected schemas, but
+diversity union does not beat fused Top-K at matched budgets. Graph speculation,
+union-default disclosure, and native-Q/K discovery remain bounded experimental
+modes.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -77,7 +84,10 @@ justify a tighter deployment boundary. M6.5 asks how far an external semantic
 resolver can go when canonical lexical overlap disappears, and M7 repeats the
 native comparison on exactly that frozen semantic-hard test set. Persistent-
 session recall, production speed at large catalog sizes, and external side
-effects remain outside these gates.
+effects remain outside these gates. M8 asks whether ordinary callable metadata
+is sufficient for registration, whether bounded candidate unions improve the
+recall--context frontier, and whether PRA should honor externally selected tool
+records as atomic authoritative units.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -791,6 +801,142 @@ latency on this small catalog.}
 \label{fig:m7-frontier}
 \end{figure}
 
+\section{M8: Automatic Tool Records and Record-Aware Materialization}
+\subsection{Ordinary callables become typed resources}
+M6.5's curated registration metadata raises an adoption question: must every
+function author learn a PRA-specific vocabulary? M8 adds
+\texttt{tool\_record\_from\_callable}, which inspects but never invokes a Python
+callable. It preserves module and qualified name, sync/async status, signature,
+parameter kinds and defaults, input and return annotations, and descriptions
+parsed from Google, NumPy, or Sphinx-style docstrings. A provider-independent
+\texttt{ToolSchema} exports to provider formats only at the boundary. Its type
+cache covers primitives, generic containers, optional and union types,
+\texttt{Literal}, enumerations, dataclasses, \texttt{TypedDict}, annotated
+classes, and Pydantic when installed; no optional dependency is required.
+
+Semantic enrichment remains auditable. Function-name terms, parameter and
+return types, docstring terms, canonical operation/object concepts, and
+dictionary expansions retain source and deterministic weight. Curated and
+automatic tags occupy separate fields. Generic verbs such as \texttt{get} and
+\texttt{read} can establish operation type without receiving the same lexical
+weight as \texttt{delete} or \texttt{update}. Name-inferred destructive
+operations are conservatively hidden from ordinary disclosure, but this hint
+does not grant or replace host execution authority.
+
+E1 aligns 18 ordinary annotated callables with the existing rich catalog and
+uses the same 144 frozen test requests. Fusion weights are selected only on the
+144 validation requests. The automatic hybrid obtains
+\PaperSixFiveAutoTopOne{} Top-1 and \PaperSixFiveAutoRecallThree{} Recall@3,
+compared with \PaperSixFiveManualTopOne{} Top-1 for the rich manual hybrid.
+Thus automatic metadata retains all measured gain over its lexical baseline in
+this controlled catalog. This is evidence for a low-annotation registration
+path, not evidence that docstrings are always complete or that inferred risk
+metadata is authorization.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/auto_union_records/auto_vs_manual_quality.pdf}
+\caption{E1 frozen-test quality. Ordinary signatures and docstrings recover
+the rich catalog result after validation-only fusion selection.}
+\label{fig:m8-auto}
+\end{figure}
+
+\subsection{Candidate palettes do not reduce to one winner}
+The resolver can now return a bounded \texttt{CandidateSet} rather than only a
+Top-1 URI. Every candidate retains all channel hits and its admission source;
+deduplication uses stable URI. E2 sweeps budgets
+$K\in\{1,2,3,4,5,6,8,10\}$ and compares the best single channel, normalized
+score fusion, raw union, and a diversity-aware union that admits one unseen
+candidate from each enabled channel before filling remaining slots. Metrics
+include required/useful recall, useful precision, unsafe exposure, schema
+tokens, and provenance diversity.
+
+At $K=4$, fused Top-K reaches \PaperSixFiveFusedKFourRecall{} required-tool
+recall versus \PaperSixFiveUnionKFourRecall{} for diversity union. Recall rises
+with larger palettes, but useful precision falls and labeled unsafe exposure
+increases. The requested default-union gate is therefore negative: candidate
+sets are first-class and union remains configurable, while validation-selected
+fusion remains the supported semantic palette policy for this cohort.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper6_5_tools/auto_union_records/union_recall_frontier.pdf}
+\caption{E2 required-tool recall against candidate count and serialized schema
+cost. Diversity preserves channel representation but does not dominate fused
+Top-K at matched budgets.}
+\label{fig:m8-union}
+\end{figure}
+
+\subsection{Selection authority and atomic tool records}
+M8 separates selection from materialization. The agent resolver owns catalog
+semantics, execution state, tenant and safety filters, and the candidate budget.
+It emits an authoritative \texttt{TOOL\_CATALOG\_SLICE} whose children are
+atomic \texttt{TOOL\_DEFINITION} records. PRA preserves child identity,
+version, fingerprint, parent relation, field boundaries, and channel
+provenance, then materializes every admitted child in full. It does not rerank
+or prune chunks inside a selected schema.
+
+If the slice exceeds the declared budget, the runtime must request a narrower
+slice, return an error, use an explicitly allowed temporary expansion, or drop
+whole records in candidate-priority order. Silent partial-schema fallback is
+invalid. The same substrate can construct tool responses, logs, terminal
+outputs, database results, and RAG chunks, but progressive field reduction and
+detail expansion remain future work rather than hidden behavior in this paper.
+
+E4 reruns the three frozen workflows across five prompt presentations with
+Top-1 JIT, diversity-union JIT at $K=2,4,6,8$, static required-set and graph
+sets, and all safe tools. The frozen Qwen3-0.6B Q4 model obtains
+\PaperSixFiveTopOneJITSuccess{} strict task success at Top-1 and
+\PaperSixFiveUnionKTwoSuccess{}, \PaperSixFiveUnionKFourSuccess{},
+\PaperSixFiveUnionKSixSuccess{}, and \PaperSixFiveUnionKEightSuccess{} at the
+four union budgets. All-tools reaches only \PaperSixFiveAllToolsSuccess{} despite
+complete candidate recall. The prompt presentations are robustness conditions,
+not training seeds; no model parameter changes. Figure~\ref{fig:m8-jit} and
+Table~\ref{tab:m8-jit} report execution success against disclosure cost rather
+than treating set recall as execution success.
+
+\begin{table}[H]
+\centering
+\small
+\input{../shared/results/paper6_5_tools/auto_union_records/generated_union_jit_table.tex}
+\caption{E4 aggregate over 15 workflows per policy. Schema tokens are cumulative
+over attempted JIT steps; disclosed tools count unique definitions per workflow.}
+\label{tab:m8-jit}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\linewidth]{../shared/results/paper6_5_tools/auto_union_records/union_jit_frontier.pdf}
+\caption{E4 strict workflow success against cumulative visible schema tokens.
+The frozen model, host authorization, and pure handlers are unchanged across
+candidate policies.}
+\label{fig:m8-jit}
+\end{figure}
+
+E5--E6 compare provider-structured full records, flat textual serialization,
+parameters without a description, descriptions without parameters, and a
+schema with one required field deliberately removed. Across 20 calls per
+condition, full atomic records obtain \PaperSixFiveAtomicCallValidity{} accepted
+execution. Parameter-bearing structured records also reach 1.000 on these simple
+single-step calls, while description-only records reach
+\PaperSixFiveDescriptionOnlyValidity{}. An explicit content-only internal-chunk
+router, which selects either the description or parameter-schema segment,
+likewise reaches only \PaperSixFiveGenericChunkValidity{}. Dropping one required
+field lowers acceptance to
+\PaperSixFiveDroppedFieldValidity{} and causes required-argument omission at
+rate \PaperSixFiveDroppedFieldOmission{}. These controls support full selected-
+tool materialization as the default; they do not support progressive detail
+expansion, which is explicitly outside M8.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/auto_union_records/tool_atomicity_controls.pdf}
+\caption{E5--E6 exact calls and required-argument omissions. The generic router
+selects one internal schema segment; all partial-schema conditions are
+experimental controls, not runtime fallback policies.}
+\label{fig:m8-atomic}
+\end{figure}
+
 \section{Next Experimental Gates}
 The next gates return to the broader persistent-context thesis: hierarchical
 skills, mutation and revocation, bounded \texttt{\#\_\_head} history,
@@ -806,6 +952,16 @@ endpoint belongs after these mechanism checks, so harness behavior does not
 hide resolver, disclosure, or execution failures.
 
 \section{Reproducibility}
+M8's E1--E3 driver is \path{run_auto_union_records.py}. Candidate sets for E4
+are frozen by \path{run_union_jit_records.py} with
+\texttt{--prepare-only}. The five-presentation E4--E6 driver is
+\path{run_union_jit_ollama.py}. It uses the official
+\texttt{qwen3:0.6b} Q4\_K\_M artifact on CPU with temperature zero, no GPU
+offload, per-call unloading, and deterministic host-side schema validation.
+This low-memory runtime is separate from the exact-FP16 M2--M7 rows. The runner
+checkpoints at each completed condition. The companion summarizer regenerates
+tables, macros, findings, and all four M8 figures.
+
 The M0 benchmark entry points are
 \texttt{experiments/paper6\_5\_tools/run\_m0\_policy\_study.py} and
 \texttt{summarize\_m0\_policy\_study.py}. Machine-readable outputs include the
@@ -864,7 +1020,13 @@ fallback, calibrated ASK, minimal or reactive disclosure, independently
 authorized execution, and typed observations. This path works with an opaque
 generation API. Speculative graph neighborhoods remain auditable fixed
 candidates, and native-Q/K remains an optional model-server research interface.
-Persistent skills, history, mutation, and session inheritance are the next
+M8 adds a practical entry path: ordinary annotated callables become useful typed
+records automatically, a resolver returns a bounded provenance-bearing palette,
+and PRA transports that authoritative selection without pruning inside tool
+schemas. Automatic metadata matches the rich manual result in this controlled
+catalog, while the union-default gate remains closed because diversity union
+does not dominate fusion and execution varies non-monotonically with palette
+size. Persistent skills, history, mutation, and session inheritance are the next
 untested parts of the broader program.
 
 \end{document}

@@ -88,8 +88,10 @@ real-tool evidence.
    frozen H0--H5 semantic-hard benchmark (complete).
 9. `M7`: frozen native-Q/K rerun on the identical semantic-hard test identities
    (complete; tool-specific training gate closed).
-10. Hierarchical skills, persistent sessions, mutation, and inheritance.
-11. OpenAI-compatible serving, cross-model replication, and maintained harness
+10. `M8`: automatic Python tool records, bounded candidate palettes, and
+    authoritative record-aware materialization (complete).
+11. Hierarchical skills, persistent sessions, mutation, and inheritance.
+12. OpenAI-compatible serving, cross-model replication, and maintained harness
    integration.
 
 Each stage is gated. A later model or execution stage is not evidence for an
@@ -169,3 +171,41 @@ and zero-shot Paper-2.8 rank-16 and rank-8/eight-centroid projections obtain
 The required native diagnostic is absent, so tool-specific native-Q/K training
 does not open. Generated paired effects, calibration tables, and figures live
 under `docs/papers/shared/results/paper6_5_tools/semantic_summary`.
+
+## M8 automatic records and bounded candidate palettes
+
+M8 converts 18 ordinary annotated Python callables into provider-independent
+tool records without executing them and without manual PRA tags. It then
+evaluates automatic metadata and four candidate-set strategies on the same
+frozen semantic-hard identities. Candidate selection becomes an authoritative
+typed catalog slice: PRA materializes each selected tool definition fully or
+returns an explicit budget outcome; it never silently reranks schema fragments.
+E5 includes a content-only internal-chunk rerouter as an explicit negative
+control for that default.
+
+Reproduce E1--E3 and prepare the compact-encoder candidate sets with:
+
+```powershell
+$env:PYTHONPATH='src;.'
+python -m experiments.paper6_5_tools.run_auto_union_records --device cuda
+python -m experiments.paper6_5_tools.run_union_jit_records `
+  --device cuda --prepare-only
+```
+
+The second command runs separately so the compact encoder is released before
+the generation model is loaded. The checked-in E4--E6 matrix used the official
+Ollama `qwen3:0.6b` Q4_K_M artifact on CPU, with deterministic host validation
+and model unloading after every call. Run it and regenerate figures/macros with:
+
+```powershell
+python -m experiments.paper6_5_tools.run_union_jit_ollama `
+  --model qwen3:0.6b --seeds 11,23,37,53,71
+python -m experiments.paper6_5_tools.summarize_auto_union_records
+```
+
+The runner checkpoints every completed condition and resumes automatically;
+pass `--fresh` to discard an incomplete checkpoint. Q4 E4--E6 results are kept
+separate from the exact-FP16 M2--M7 evidence. The low-memory backend was required
+because the GTX 950M lacked forward-pass workspace and the host could not sustain
+the exact-FP16 CPU allocation. Model weights remain frozen and third-party files
+are not committed.
