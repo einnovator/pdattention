@@ -48,6 +48,16 @@ from .tool_records import (
     ToolSchema,
     tool_record_from_callable,
 )
+from .auto_tool_discovery import (
+    AutoEvidenceSource,
+    AutoSemanticEvidence,
+    AutoToolSemanticView,
+    auto_tag_score,
+    automatic_semantic_view,
+    evidence_provenance_counts,
+    inferred_concept_score,
+    weighted_keyword_score,
+)
 from .union_discovery import (
     CandidateProvenance,
     CandidateSet,
@@ -81,6 +91,9 @@ __all__ = [
     "ChannelHit",
     "ContextRecord",
     "AgentResource",
+    "AutoEvidenceSource",
+    "AutoSemanticEvidence",
+    "AutoToolSemanticView",
     "DiscoveryDecision",
     "DiscoveryHint",
     "DiscoveryMode",
@@ -131,9 +144,13 @@ __all__ = [
     "ToolSchema",
     "UnionStrategy",
     "build_query_graph",
+    "auto_tag_score",
+    "automatic_semantic_view",
     "connected_components",
     "evaluate_router_features",
     "discover_candidate_set",
+    "evidence_provenance_counts",
+    "inferred_concept_score",
     "materialize_authoritative_slice",
     "pool_hard_graph_facets",
     "resource_uri",
@@ -141,4 +158,5 @@ __all__ = [
     "tool_definition_record",
     "tool_record_from_callable",
     "weighted_label_propagation",
+    "weighted_keyword_score",
 ]

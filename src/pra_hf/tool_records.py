@@ -333,6 +333,7 @@ class ToolRecord:
     keyword_evidence: tuple[KeywordEvidence, ...] = ()
     operation_concepts: frozenset[str] = frozenset()
     object_concepts: frozenset[str] = frozenset()
+    field_provenance: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def to_agent_resource(self) -> AgentResource:
@@ -377,6 +378,7 @@ class ToolRecord:
                 "keyword_evidence": tuple(asdict(row) for row in self.keyword_evidence),
                 "operation_kind": operation,
                 "object_types": tuple(sorted(self.object_concepts)),
+                "auto_field_provenance": dict(self.field_provenance),
                 "consumes": consumes,
                 "produces": produces,
                 "auto_enrichment": True,
@@ -484,6 +486,13 @@ def tool_record_from_callable(
         if token not in operations and token not in _OPERATION_CANONICAL
     )
     auto_tags = frozenset((*operations, *objects, *(row.compatible_type_id for row in schema.inputs))) - {"unknown"}
+    field_provenance = {
+        "keywords": tuple(sorted(f"{row.term}:{row.source}" for row in evidence)),
+        "operation_concepts": tuple(sorted(f"{value}:function_name" for value in operations)),
+        "object_concepts": tuple(sorted(f"{value}:function_name" for value in objects)),
+        "auto_tags": tuple(sorted(f"{value}:derived" for value in auto_tags)),
+        "embedding_fields": ("name", "docstring", "parameter_schema", "return_schema", "module_namespace"),
+    }
     return ToolRecord(
         name=name,
         qualified_name=qualified_name,
@@ -504,5 +513,6 @@ def tool_record_from_callable(
         keyword_evidence=evidence,
         operation_concepts=operations,
         object_concepts=objects,
+        field_provenance=field_provenance,
         metadata=dict(metadata or {}),
     )

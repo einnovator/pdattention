@@ -209,3 +209,27 @@ separate from the exact-FP16 M2--M7 evidence. The low-memory backend was require
 because the GTX 950M lacked forward-pass workspace and the host could not sustain
 the exact-FP16 CPU allocation. Model weights remain frozen and third-party files
 are not committed.
+
+## M8 automatic-discovery source ablations
+
+The follow-up A0--A7 experiment freezes one callable-derived `ToolRecord` per
+tool and isolates raw text, weighted keywords, a global synonym dictionary,
+inferred concepts, automatic tags, compact embeddings, fusion, and bounded
+channel union. It also measures source removal, type/schema contribution,
+docstring and function-name quality, hardness strata, gain retention, and
+per-channel complementarity. Reproduce the CUDA run and all generated paper
+inputs with:
+
+```powershell
+$env:PYTHONPATH='src;.'
+python -m experiments.paper6_5_tools.run_auto_discovery_ablation --device cuda
+python -m experiments.paper6_5_tools.summarize_auto_discovery_ablation
+```
+
+Outputs live under
+`docs/papers/shared/results/paper6_5_tools/auto_discovery_ablation`. The
+validation-frozen automatic hybrid reaches 0.812 Top-1 and 0.938 Recall@3 on
+the 144 frozen test requests, versus 0.806 and 0.910 for the manual-rich
+control. This near-parity is catalog-specific. The automatic-union JIT gate is
+closed because union does not improve matched-budget validation recall without
+greater unsafe exposure; `union_jit_ablation.csv` records the stopped run.

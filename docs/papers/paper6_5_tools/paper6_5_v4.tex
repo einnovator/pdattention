@@ -12,6 +12,7 @@ Typed Resource Discovery Before Neural Materialization}
 \input{../shared/results/paper6_5_tools/m2_m6_summary/generated_m2_m6_results.tex}
 \input{../shared/results/paper6_5_tools/semantic_summary/generated_semantic_results.tex}
 \input{../shared/results/paper6_5_tools/auto_union_records/generated_auto_union_results.tex}
+\input{../shared/results/paper6_5_tools/auto_discovery_ablation/generated_auto_discovery_results.tex}
 
 \begin{document}
 \maketitle
@@ -47,10 +48,16 @@ therefore model-independent semantic discovery followed by reactive disclosure.
 M8 removes the manual-registration assumption: ordinary Python signatures and
 docstrings reach \PaperSixFiveAutoTopOne{} Top-1, compared with
 \PaperSixFiveManualTopOne{} for the rich manual hybrid. Bounded candidate
-palettes and authoritative typed slices preserve full selected schemas, but
-diversity union does not beat fused Top-K at matched budgets. Graph speculation,
-union-default disclosure, and native-Q/K discovery remain bounded experimental
-modes.
+palettes and authoritative typed slices preserve full selected schemas. A
+controlled zero-configuration ablation attributes the largest isolated gain to
+a generic synonym dictionary: Top-1 rises from
+\PaperSixFiveAblationKeywordTopOne{} for extracted keywords to
+\PaperSixFiveAblationSynonymTopOne{}. Validation-frozen automatic fusion reaches
+\PaperSixFiveAblationAutoTopOne{}, statistically unresolved from the
+\PaperSixFiveAblationManualTopOne{} manual ceiling on this cohort. Automatic
+union does not beat fused Top-K at matched budgets, so its generative JIT gate
+remains closed. Graph speculation, union-default disclosure, and native-Q/K
+discovery remain bounded experimental modes.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -87,7 +94,10 @@ session recall, production speed at large catalog sizes, and external side
 effects remain outside these gates. M8 asks whether ordinary callable metadata
 is sufficient for registration, whether bounded candidate unions improve the
 recall--context frontier, and whether PRA should honor externally selected tool
-records as atomic authoritative units.
+records as atomic authoritative units. Its final ablation isolates raw text,
+automatic keywords, generic synonyms, inferred concepts, automatic tags,
+compact embeddings, and bounded channel union without changing the frozen
+catalog or test identities.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -841,6 +851,92 @@ the rich catalog result after validation-only fusion selection.}
 \label{fig:m8-auto}
 \end{figure}
 
+\subsection{A zero-configuration ladder identifies the useful signals}
+The combined E1 result does not show which automatically derived fields matter.
+We therefore freeze one \texttt{ToolRecord} per callable and score every policy
+against the same 144 test requests. The record contains only function and
+qualified names, module, signature, parameter and return annotations,
+descriptions parsed from the docstring, and deterministic fields derived from
+them. Every derived term records whether it came from a name, docstring,
+parameter, return, type schema, dictionary expansion, inferred operation or
+object, automatic tag, or embedding field. No condition receives a per-tool
+alias, tag, operation, object, or capability edge.
+
+Table~\ref{tab:m8-auto-ablation} gives the complete ladder. Raw BM25 reaches
+\PaperSixFiveAblationRawTopOne{} Top-1. Reweighting automatically extracted
+keywords alone raises Recall@3 but lowers Top-1 to
+\PaperSixFiveAblationKeywordTopOne{}; extraction is therefore not itself a
+semantic resolver. The global, tool-independent synonym dictionary supplies
+the largest isolated gain, reaching \PaperSixFiveAblationSynonymTopOne{}
+Top-1. Adding inferred concepts and tags by elementwise score maxima does not
+improve that ranker in isolation. The selected name-plus-description embedding
+is complementary rather than sufficient. A validation-selected mixture of
+synonym, automatic-tag, and embedding scores reaches
+\PaperSixFiveAblationAutoTopOne{} Top-1 and
+\PaperSixFiveAblationAutoRecallThree{} Recall@3, versus
+\PaperSixFiveAblationManualTopOne{} and
+\PaperSixFiveAblationManualRecallThree{} for manually enriched registration.
+The one-row Top-1 difference is not evidence that automatic metadata is
+generally superior; it is a parity result on one controlled catalog.
+
+\begin{table}[H]
+\centering
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/auto_discovery_ablation/generated_auto_discovery_table.tex}}
+\caption{Frozen-test automatic discovery ladder. A7 has no unique Top-1:
+R@3 and R@5 evaluate caps three and five, while validation selects raw union at
+$K=10$ for its maximum set recall. ``Manual'' denotes per-tool authored
+semantic metadata; all A0--A7 fields come from the same callable record.}
+\label{tab:m8-auto-ablation}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper6_5_tools/auto_discovery_ablation/auto_discovery_ladder.pdf}
+\caption{A0--A6 contribution ladder and the manual-rich control. A5 is an
+independent embedding condition rather than an incremental addition to A4;
+A6 is the validation-frozen fusion.}
+\label{fig:m8-auto-ladder}
+\end{figure}
+
+The hardness decomposition in Figure~\ref{fig:m8-auto-hardness} clarifies the
+complementarity. BM25 is already strong on direct H0 requests but degrades on
+implicit and contextual requests. The generic dictionary dominates the
+multilingual H5 fixtures, whereas the English compact embedding is strongest
+on H2--H4 paraphrastic and implicit English requests. Their fusion is therefore
+more stable than either channel alone. These multilingual rows test the frozen
+dictionary coverage, not open-domain translation.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/auto_discovery_ablation/auto_discovery_by_hardness.pdf}
+\caption{Top-1 by frozen semantic-hardness stratum. The automatic hybrid tracks
+the manual ceiling while using different channels for lexical, implicit, and
+multilingual requests.}
+\label{fig:m8-auto-hardness}
+\end{figure}
+
+One-at-a-time source controls locate practical SDK requirements. Removing
+docstring terms lowers A1 Recall@3 from .597 to
+\PaperSixFiveDocstringRemovalRecallThree{}; type/schema terms add
+\PaperSixFiveTypeRecallThreeGain{} Recall@3, although they do not improve A1
+Top-1 and do not alter A4. With no docstring, embedding Top-1 falls from .556 to
+\PaperSixFiveNoDocEmbeddingTopOne{}. Replacing descriptive names with opaque
+identifiers while retaining the docstring and signature yields
+\PaperSixFiveOpaqueNameEmbeddingTopOne{}. Thus registration remains useful with
+weak names, but documentation quality matters, especially to the embedding
+fallback. Figure~\ref{fig:m8-auto-quality} reports these controlled variants;
+they do not modify the frozen request text.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/auto_discovery_ablation/auto_callable_quality_sensitivity.pdf}
+\caption{Sensitivity to callable documentation and naming. Each intervention
+changes only the named source while preserving signatures, target identities,
+and requests.}
+\label{fig:m8-auto-quality}
+\end{figure}
+
 \subsection{Candidate palettes do not reduce to one winner}
 The resolver can now return a bounded \texttt{CandidateSet} rather than only a
 Top-1 URI. Every candidate retains all channel hits and its admission source;
@@ -865,6 +961,38 @@ fusion remains the supported semantic palette policy for this cohort.
 cost. Diversity preserves channel representation but does not dominate fused
 Top-K at matched budgets.}
 \label{fig:m8-union}
+\end{figure}
+
+The isolated A7 rerun reaches the same decision with five strictly automatic
+channels: BM25, extracted keywords, keyword-plus-synonym scores,
+automatic-tag/concept scores, and the selected embedding. At $K=4$, fused
+Top-K obtains \PaperSixFiveAutoFusedKFourRecall{} required-tool recall, versus
+\PaperSixFiveAutoRawUnionKFourRecall{} for raw union and
+\PaperSixFiveAutoDiversityKFourRecall{} for diversity union. Validation selects
+raw union at $K=10$ if recall is optimized alone; on test it reaches
+\PaperSixFiveAutoSelectedUnionRecall{} recall but exposes at least one labeled
+unsafe candidate on \PaperSixFiveAutoSelectedUnionUnsafe{} of requests and
+serializes 811 mean schema tokens. Channel complementarity is real but sparse:
+8 of 144 targets are recovered only by the embedding, 3 only by an automatic
+lexical/concept channel, 129 by multiple channels, and 4 by none at per-channel
+$K=3$. Larger set size, rather than broad unique recovery, explains most of the
+raw-union frontier.
+
+The preregistered automatic-union JIT gate therefore remains closed. No new
+generative run is performed: on validation, neither union variant materially
+exceeds matched-budget fusion while holding unsafe exposure within one
+percentage point. This is an intentional stopped experiment, not missing data.
+Candidate provenance and union remain exposed by the SDK for diagnostics and
+future cohorts, but validation-frozen fusion remains the default.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper6_5_tools/auto_discovery_ablation/auto_union_vs_fusion.pdf}
+\caption{A7 frozen-test frontier. Union does not dominate fused Top-K in
+required-tool recall and raises unsafe-candidate exposure rapidly as the
+palette grows. Discovery exposure is diagnostic; host authorization remains a
+separate execution boundary.}
+\label{fig:m8-auto-union}
 \end{figure}
 
 \subsection{Selection authority and atomic tool records}
@@ -962,6 +1090,17 @@ This low-memory runtime is separate from the exact-FP16 M2--M7 rows. The runner
 checkpoints at each completed condition. The companion summarizer regenerates
 tables, macros, findings, and all four M8 figures.
 
+The zero-configuration source, type, quality, and A0--A7 channel ablations use
+\path{run_auto_discovery_ablation.py};
+\path{summarize_auto_discovery_ablation.py} regenerates its table, macros, four
+figures, and machine-readable summary. The driver constructs one frozen record
+for each of the same 18 callables, selects embedding representation and fusion
+weights only on validation, and evaluates all reported policies on 144 test
+requests. It used the compact BGE encoder on an NVIDIA GeForce GTX 950M and
+completed in 103 seconds. The manifest records every automatic field's source.
+The A7 JIT status is a checked-in gate-closed artifact because no union condition
+met the validation recall-and-safety criterion.
+
 The M0 benchmark entry points are
 \texttt{experiments/paper6\_5\_tools/run\_m0\_policy\_study.py} and
 \texttt{summarize\_m0\_policy\_study.py}. Machine-readable outputs include the
@@ -1014,19 +1153,15 @@ zero-shot native benefit on those same hard rows. These are positive external-
 resolver results and bounded native stop results, not evidence that all tool
 semantics are lexical or that trained native geometry cannot work.
 
-The supported architecture is therefore conservative: explicit identity,
-indexed lexical search, provenance-bearing dictionary/tags, compact embedding
-fallback, calibrated ASK, minimal or reactive disclosure, independently
-authorized execution, and typed observations. This path works with an opaque
-generation API. Speculative graph neighborhoods remain auditable fixed
-candidates, and native-Q/K remains an optional model-server research interface.
-M8 adds a practical entry path: ordinary annotated callables become useful typed
-records automatically, a resolver returns a bounded provenance-bearing palette,
-and PRA transports that authoritative selection without pruning inside tool
-schemas. Automatic metadata matches the rich manual result in this controlled
-catalog, while the union-default gate remains closed because diversity union
-does not dominate fusion and execution varies non-monotonically with palette
-size. Persistent skills, history, mutation, and session inheritance are the next
-untested parts of the broader program.
+The supported architecture combines explicit identity, indexed lexical search,
+provenance-bearing dictionaries, compact embedding fallback, calibrated ASK,
+reactive disclosure, host-authorized execution, and typed observations. It
+works with an opaque generation API; graph neighborhoods and native Q/K remain
+optional research interfaces. M8 adds ordinary callables as typed records and
+atomic PRA transport of the selected palette. On this catalog, generic synonyms
+supply most of the isolated gain, and fusion with automatic tags and embeddings
+matches the rich manual result. Union remains optional because it does not
+dominate fusion and raises unsafe exposure as the palette grows. Persistent
+skills, history, mutation, and session inheritance remain untested.
 
 \end{document}

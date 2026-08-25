@@ -42,6 +42,43 @@ def test_diversity_union_deduplicates_and_enforces_maximum() -> None:
     assert result.candidate_uris[:3] == (resources[0].uri, resources[1].uri, resources[4].uri)
 
 
+def test_diversity_union_admits_a_candidate_unique_to_embedding() -> None:
+    resources = realistic_tool_catalog()
+    scores = _scores(resources)
+    scores["embedding"] = {resources[6].uri: 1.0, resources[1].uri: 0.7}
+    result = discover_candidate_set(
+        "semantic request",
+        resources,
+        scores,
+        ToolDiscoveryPolicy(mode="union", strategy="diversity_union", max_candidates=4),
+    )
+
+    assert resources[6].uri in result.candidate_uris
+    assert result.provenance_for(resources[6].uri).sources[0].channel == "embedding"
+
+
+def test_custom_automatic_channel_names_are_not_filtered() -> None:
+    resources = realistic_tool_catalog()
+    scores = {
+        "auto_keyword": {resources[0].uri: 1.0},
+        "keyword_synonym": {resources[1].uri: 1.0},
+        "auto_tag_concept": {resources[2].uri: 1.0},
+    }
+    result = discover_candidate_set(
+        "semantic request",
+        resources,
+        scores,
+        ToolDiscoveryPolicy(
+            mode="union",
+            strategy="diversity_union",
+            max_candidates=3,
+            channels=tuple(scores),
+        ),
+    )
+
+    assert result.candidate_uris == (resources[0].uri, resources[1].uri, resources[2].uri)
+
+
 def test_candidate_provenance_retains_every_channel_hit() -> None:
     resources = realistic_tool_catalog()
     result = discover_candidate_set(

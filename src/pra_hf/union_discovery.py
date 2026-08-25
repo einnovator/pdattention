@@ -42,6 +42,7 @@ class ToolDiscoveryPolicy:
     graph: bool = False
     allow_unsafe: bool = False
     preferred_channel: str | None = None
+    channels: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", ToolDiscoveryMode(self.mode))
@@ -53,6 +54,8 @@ class ToolDiscoveryPolicy:
 
     @property
     def enabled_channels(self) -> tuple[str, ...]:
+        if self.channels is not None:
+            return tuple(dict.fromkeys(self.channels))
         enabled = []
         for channel, active in (
             ("lexical", self.lexical),
@@ -188,6 +191,9 @@ def discover_candidate_set(
     if explicit:
         scores = {"explicit": {uri: 1.0 for uri in explicit}, **scores}
     rankings = _rankings(scores, eligible)
+    channel_order = tuple(
+        dict.fromkeys((*policy.enabled_channels, *(_CHANNEL_ORDER), *(rankings.keys())))
+    )
     hits = _all_hits(rankings)
     selected: list[tuple[str, str]] = []
 
@@ -197,7 +203,7 @@ def discover_candidate_set(
 
     strategy = policy.strategy
     if strategy == UnionStrategy.SINGLE_CHANNEL:
-        channel = policy.preferred_channel or next((name for name in _CHANNEL_ORDER if rankings.get(name)), "")
+        channel = policy.preferred_channel or next((name for name in channel_order if rankings.get(name)), "")
         for uri, _ in rankings.get(channel, ()):
             admit(uri, channel)
     elif strategy == UnionStrategy.FUSED_SCORE:
@@ -214,7 +220,7 @@ def discover_candidate_set(
         for uri, (_, _, channel) in sorted(pool.items(), key=lambda row: (row[1], row[0])):
             admit(uri, channel)
     else:
-        for channel in _CHANNEL_ORDER:
+        for channel in channel_order:
             for uri, _ in rankings.get(channel, ()):
                 before = len(selected)
                 admit(uri, channel)
@@ -222,7 +228,7 @@ def discover_candidate_set(
                     break
         depth = 1
         while len(selected) < policy.max_candidates and any(len(rows) > depth for rows in rankings.values()):
-            for channel in _CHANNEL_ORDER:
+            for channel in channel_order:
                 rows = rankings.get(channel, ())
                 if len(rows) > depth:
                     admit(rows[depth][0], channel)
