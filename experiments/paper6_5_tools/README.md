@@ -43,11 +43,40 @@ seed summaries, index costs, findings, and figures to
 policy traces. M0 measures typed discovery and selected-definition accounting;
 it does not run a language model, materialize native K/V, or execute tools.
 
+## Completed M1 causal toy gate
+
+M1 trains a 506,400-parameter decoder on an opaque tool-use language. The host
+discovers a stable resource URI and binds it to a temporary slot; the model must
+use the selected definition's hidden schema to construct the exact call and
+continue after a deterministic observation. This deliberately separates
+selection, model-side call construction, and host-side execution.
+
+Reproduce the checked-in five-seed CUDA run and summaries with:
+
+```powershell
+$env:PYTHONPATH='src;.'
+python -m experiments.paper6_5_tools.run_m1_toy_model `
+  --seeds 11,23,37,53,71 `
+  --catalog-sizes 8,32,128 `
+  --steps 3000 `
+  --examples-per-size 8 `
+  --device cuda `
+  --output-dir docs/papers/shared/results/paper6_5_tools/m1
+python -m experiments.paper6_5_tools.summarize_m1_toy_model
+```
+
+Discovered and oracle native-K/V conditions obtain end-to-end success of
+1.000, .950, and .925 at 8, 32, and 128 resources. Shuffled and disabled memory
+obtain zero at every size. The eager catalog fits the 512-token native window
+only at size 8, where it obtains .025. These are causal mechanism results for a
+synthetic grammar and idealized semantic discovery, not pretrained-agent or
+real-tool evidence.
+
 ## Stages
 
 1. `M0`: deterministic catalog generation and policy/index evaluation
    (complete).
-2. `M1`: toy decoder with opaque tool identities.
+2. `M1`: causal toy decoder with opaque tool identities (complete).
 3. `M2`: Qwen3-0.6B bridge for selection and safe call construction.
 4. Hierarchical skills, persistent sessions, mutation, and inheritance.
 5. OpenAI-compatible serving and maintained harness integration.

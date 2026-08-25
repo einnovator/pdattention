@@ -389,3 +389,14 @@ Narrow the adaptive-policy claim if:
 11. Replicate selected conditions on a second small model and SmolLM3-3B.
 12. Integrate one maintained open-source harness through the OpenAI-compatible endpoint.
 13. Run matched end-to-end, risk-coverage and policy-regret analyses.
+
+## J. Current implementation status
+
+M0 and M1 are complete. M1 uses a 506,400-parameter decoder with PRA native-K/V
+at layers 1 and 3, five seeds, 3,000 steps per seed, and catalog sizes 8, 32,
+and 128. The host owns stable-URI discovery and temporary slot binding; the
+model owns schema-conditioned argument construction. Oracle and idealized
+discovered memory are at parity, while shuffled and disabled memory fail, so
+the selected definition is causally used. This is a synthetic mechanism gate,
+not evidence for pretrained agents, production discovery, or side-effecting
+execution. M2 remains the next gate.

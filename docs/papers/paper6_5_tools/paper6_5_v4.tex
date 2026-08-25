@@ -8,33 +8,31 @@
 Typed Resource Discovery Before Neural Materialization}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
+\input{../shared/results/paper6_5_tools/m1/generated_m1_results.tex}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Agent runtimes often place every tool definition in every prompt. This makes a
-large but mostly inactive catalog consume native context before the model has
-decided which resource it needs. We separate that decision into a typed
-resource-discovery layer for Progressive Retrieval Attention (PRA). The layer
-supports explicit, lexical, indexed, semantic, hybrid, hinted, and adaptive
-policies; preserves discovery provenance; and turns calibrated confidence into
-select, ask, or abstain decisions. We evaluate the deterministic M0 mechanism
-on opaque synthetic catalogs from 8 to 8,192 resources, five seeds, six
-positive reference forms, and ambiguous and nonexistent controls. At 8,192
-resources, both request hints and adaptive fallback obtain 100\% top-1
-selection, 100\% actionable outcome accuracy, and no false action on the ten
-negative cases. Hints require 1.08 retrieval stages on average, compared with
-2.39 for adaptive fallback. A fixed hybrid policy also ranks every target
-first, but acts on 98.3\% of positive requests and has the largest policy-cost
-regret. An unguided automatic policy ranks five of six positive forms correctly
-but acts on none after calibration, showing that ranking and safe use are
-different objectives. An 8,192-resource catalog contains 147,456 logical
-definition tokens while a selected definition contains 18 tokens
-(0.0122\%); this is accounting evidence, not yet native-K/V or end-to-end agent
-evidence. The results establish the discovery mechanism and identify
-production indexing, neural materialization, and tool execution as separate
-gates.
+Agent runtimes often place every tool definition in every prompt, consuming
+native context before the model has decided which resource it needs. We
+separate that decision into a typed resource-discovery layer for Progressive
+Retrieval Attention (PRA). It supports explicit, lexical, indexed, semantic,
+hybrid, hinted, and adaptive policies; preserves provenance; and turns
+calibrated confidence into select, ask, or abstain decisions. In M0, opaque
+catalogs scale from 8 to 8,192 resources over five seeds. At 8,192 resources,
+request hints and adaptive fallback obtain 100\% top-1 selection, 100\%
+actionable outcome accuracy, and no false action on ten negative cases; hints
+use 1.08 retrieval stages on average versus 2.39 for adaptive fallback. The
+largest catalog contains 147,456 logical definition tokens while one selected
+definition contains 18 (0.0122\%), an accounting result. M1 then trains a
+506,400-parameter decoder on an opaque tool-use grammar. Correctly discovered
+native K/V obtains end-to-end success of 1.000, .950, and .925 at catalog sizes
+8, 32, and 128, exactly matching oracle memory. Shuffled and disabled memory
+obtain zero at every size; eager injection exceeds the 512-token native window
+at sizes 32 and 128. These results establish typed discovery and causal use of
+selected memory in a toy model. They do not establish pretrained-agent
+competence, production retrieval speed, or safe real-tool execution.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -56,11 +54,13 @@ different costs. It instead introduces a concrete question before
 materialization: which resource identity should be resolved, by which
 discovery mechanism, and with enough confidence to act?
 
-This paper reports the first mechanism gate. It asks whether a typed resolver
-can preserve selection quality as a catalog grows, whether policy hints reduce
+This paper reports two mechanism gates. M0 asks whether a typed resolver can
+preserve selection quality as a catalog grows, whether policy hints reduce
 unnecessary search, and whether confidence prevents an accurate ranker from
-becoming an unsafe selector. It does not yet claim improved model generation,
-tool execution, persistent-session recall, or native-K/V savings.
+becoming an unsafe selector. M1 asks whether a small decoder causally uses one
+selected definition after it is encoded as native K/V. Neither gate claims
+pretrained-model transfer, persistent-session recall, production speed, or safe
+execution of real side effects.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -296,19 +296,113 @@ different reference forms favor different channels. Third, request hints can
 match adaptive quality with fewer stages. Fourth, action-aware calibration can
 distinguish a correct ranking from a decision safe enough to use.
 
-The experiment does \emph{not} yet satisfy the paper's broader context gate.
-The 18-token active count is not a measured model working set. There is no
-native-K/V materialization, argument generation, execution, observation,
-persistent-history recall, skill composition, or subagent inheritance. The
-negative controls are small, and the semantic control is idealized. Accordingly
-we describe M0 as resolver evidence, not evidence that PRA improves agents.
+M0 alone does \emph{not} satisfy the paper's broader context gate. Its 18-token
+active count is not a measured model working set. There is no model-side
+argument generation, observation-conditioned continuation, persistent-history
+recall, skill composition, or subagent inheritance. Its negative controls are
+small and its semantic control is idealized. We therefore treat M0 as resolver
+evidence rather than evidence that PRA improves agents.
+
+\section{M1: A Causal Toy-Model Gate}
+\subsection{Protocol separates discovery, generation, and execution}
+The synthetic language gives each tool an opaque identity and a compact
+definition. Semantics appear only in that definition. A held-out query states
+an action, object, family, and raw argument, but contains neither the resource
+identity nor one of four formatting schemas. The host first discovers a stable
+URI and binds it to a temporary slot such as \texttt{@0}. The model must emit
+\texttt{slot|schema|argument}; the host resolves the slot and accepts the call
+only when the selected URI, schema, and formatted argument are all exact. A
+deterministic observation is then supplied and the model must continue with the
+expected answer. No external side effect is performed.
+
+This boundary matters. Discovery quality is measured by stable URI identity.
+The model is responsible for schema-conditioned call construction. The host is
+responsible for binding and validation. A correct retrieval cannot receive
+end-to-end credit for an incorrect call, and a memorized call string cannot
+receive selection credit for an incorrect resource.
+
+\subsection{Model, training, and causal conditions}
+The character-level decoder has 506,400 parameters, four layers, hidden width
+96, feed-forward width 384, RoPE, and PRA native-K/V at layers 1 and 3. Each of
+five seeds trains for 3,000 steps with a mixture of native-memory examples
+(50\%), directly presented selected definitions (30\%), and eager eight-item
+catalogs (20\%). Loss is applied only to the call and post-observation
+continuation. Evaluation uses eight examples per seed at catalog sizes 8, 32,
+and 128.
+
+We compare oracle memory, idealized semantically discovered memory, shuffled
+memory, disabled memory, the selected definition directly in the native prompt,
+and the eager catalog. All conditions share model weights. Shuffling preserves
+memory presence and size but selects the wrong definition; disabling removes
+memory. Eager conditions that exceed the 512-token native window are recorded
+as context overflow and are not truncated into an easier task.
+
+\subsection{Selected native K/V is used causally}
+Table~\ref{tab:m1-e2e} reports the strict end-to-end metric: correct resource,
+exact call, and exact continuation. Discovered memory matches oracle memory at
+all three sizes. Shuffled and disabled conditions obtain zero, so performance
+cannot be explained by the query alone or by generic memory activation.
+
+\begin{table}[H]
+\centering
+\small
+\caption{M1 end-to-end success, averaged over five seeds and eight held-out
+examples per seed. A dash denotes native-window overflow rather than failure.}
+\label{tab:m1-e2e}
+\begin{tabular}{lrrrrrr}
+\toprule
+Catalog & Discovered & Oracle & Direct & Shuffled & Disabled & Eager \\
+\midrule
+8 & \PaperSixFiveMOneDiscoveredEight & \PaperSixFiveMOneOracleEight & \PaperSixFiveMOneDirectEight & \PaperSixFiveMOneShuffledEight & \PaperSixFiveMOneDisabledEight & \PaperSixFiveMOneEagerEight \\
+32 & \PaperSixFiveMOneDiscoveredThirtyTwo & \PaperSixFiveMOneOracleThirtyTwo & \PaperSixFiveMOneDirectThirtyTwo & \PaperSixFiveMOneShuffledThirtyTwo & \PaperSixFiveMOneDisabledThirtyTwo & -- \\
+128 & \PaperSixFiveMOneDiscoveredOneTwentyEight & \PaperSixFiveMOneOracleOneTwentyEight & \PaperSixFiveMOneDirectOneTwentyEight & \PaperSixFiveMOneShuffledOneTwentyEight & \PaperSixFiveMOneDisabledOneTwentyEight & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/m1/figures/m1_end_to_end_scaling.pdf}
+\caption{M1 end-to-end success. Oracle and discovered curves overlap; shuffled
+and disabled controls remain at zero. Eager evaluation is defined only where
+the complete catalog fits.}
+\label{fig:m1-e2e}
+\end{figure}
+
+Every seed favors oracle memory over shuffled and disabled memory at every
+catalog size. With five paired seeds, however, the minimum attainable exact
+two-sided sign-flip value is $p=.0625$. Oracle and discovered memory have zero
+paired difference. Direct presentation is lower by .075 at size 8 and .125 at
+sizes 32 and 128, but those paired differences are not statistically decisive.
+We report the direction without claiming that PRA presentation is intrinsically
+better than direct presentation.
+
+\subsection{Logical growth is separated from active K/V}
+Figure~\ref{fig:m1-context} measures the neural working set that M0 could only
+account for. Logical catalog text grows with catalog size and crosses the
+native window before size 32. The selected native-K/V payload remains near one
+definition per PRA layer. Direct selected-definition prompts also remain
+bounded, making them the relevant non-PRA control. This is evidence of bounded
+active materialization in the toy implementation, not a production memory or
+latency claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\linewidth]{../shared/results/paper6_5_tools/m1/figures/m1_context_accounting.pdf}
+\caption{M1 logical catalog text, materialized native K/V per PRA layer, direct
+selected prompt length, and the 512-token native window. Logical storage and
+attention-visible working memory are distinct quantities.}
+\label{fig:m1-context}
+\end{figure}
+
+The causal result remains narrow. The semantic discoverer is an idealized
+control, not a learned production index. The grammar is synthetic, the executor
+is pure and deterministic, and the decoder is trained specifically for this
+task. The experiment establishes that the selected native K/V carries necessary
+information through call construction and observation-conditioned continuation;
+it does not establish general tool use.
 
 \section{Next Experimental Gates}
-\paragraph{M1: causal toy model.}
-Train a small decoder on opaque tool-use language so semantics exist only in
-the supplied definitions. Compare eager definitions with
-discover--materialize--call under matched active-definition budgets.
-
 \paragraph{M2: pretrained bridge.}
 Use Qwen3-0.6B for schema/argument generation after a fixed resource identity
 has been selected. Run disabled, shuffled, irrelevant, empty, and oracle
@@ -331,7 +425,7 @@ The OpenAI-compatible endpoint belongs after these mechanism checks, so harness
 behavior does not hide resolver or materialization failures.
 
 \section{Reproducibility}
-The benchmark entry points are
+The M0 benchmark entry points are
 \texttt{experiments/paper6\_5\_tools/run\_m0\_policy\_study.py} and
 \texttt{summarize\_m0\_policy\_study.py}. Machine-readable outputs include the
 manifest, one row per policy/query trace, index costs, seed summaries,
@@ -340,15 +434,25 @@ stratum summaries, oracle distributions, and plots under
 is Python 3.10.11 on Windows, Intel64 Family 6 Model 94. All reported M0 results
 are deterministic conditional on the five catalog seeds.
 
+M1 is reproduced by \texttt{run\_m1\_toy\_model.py} followed by
+\texttt{summarize\_m1\_toy\_model.py}. Checked-in artifacts include all 720
+evaluation rows, per-step training histories, seed and aggregate summaries,
+paired effects, a manifest, and generated figures. The run used PyTorch on an
+NVIDIA GeForce GTX 950M and seeds $\{11,23,37,53,71\}$. Exact configuration and
+runtime metadata are recorded in
+\texttt{paper6\_5\_tools/m1/m1\_manifest.json}.
+
 \section{Conclusion}
 A large agent catalog should not be mistaken for the context needed on every
-turn. In this controlled M0 study, typed discovery resolves one resource from
-8,192 while keeping the selected-definition accounting at 18 tokens. Hinted
-and adaptive policies attain perfect largest-catalog selection and safe
-nonaction, but hints use less search. The same study also produces two useful
-negative findings: an accurate unguided ranker can be too uncertain to act, and
-small-catalog ambiguity can defeat calibration even when positive selection is
-perfect. These results justify proceeding to neural materialization and tool
-use, but they do not substitute for those experiments.
+turn. M0 resolves one typed resource from 8,192 while accounting for only its
+18-token definition; hints match adaptive quality with less search. M1 moves
+one gate further: a small decoder uses the discovered definition as native K/V
+to construct an exact call and continue after an observation. Its discovered
+condition matches oracle memory from 8 through 128 resources, while shuffled
+and disabled controls fail. At the same time, calibration can still reject an
+accurate ranker, eager catalogs can exceed the native window, and a synthetic
+decoder cannot stand in for a pretrained agent. The next credible claim thus
+requires a pretrained bridge with realistic schemas, complete causal controls,
+production indexing, and host authorization kept separate from retrieval.
 
 \end{document}

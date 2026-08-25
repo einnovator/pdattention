@@ -394,7 +394,7 @@ class TinyPRAModel(nn.Module):
         selections = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
-            if attention is not None:
+            if isinstance(attention, PRAttention):
                 selections[block.layer_id] = [list(items) for items in attention.last_selected_chunks]
         return selections
 
@@ -403,7 +403,7 @@ class TinyPRAModel(nn.Module):
         rankings = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
-            if attention is not None:
+            if isinstance(attention, PRAttention):
                 rankings[block.layer_id] = [
                     list(items) for items in attention.last_routing_rankings
                 ]
@@ -528,7 +528,7 @@ class TinyPRAModel(nn.Module):
         diagnostics = {}
         for block in self.blocks:
             attention = getattr(block, "attn", None) or getattr(block, "pra_attn", None)
-            if attention is not None:
+            if isinstance(attention, PRAttention):
                 diagnostics[block.layer_id] = {
                     **attention.last_diagnostics,
                     "batching": attention.last_memory_batching_stats,
