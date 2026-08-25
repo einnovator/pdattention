@@ -1,0 +1,556 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\usepackage[hidelinks]{hyperref}
+\input{../shared/macros.tex}
+\input{../shared/results/paper4_training/tier0/generated_results.tex}
+\input{../shared/results/paper4_training/external_memory/generated_external_results.tex}
+\setlength{\emergencystretch}{3em}
+
+\title{Learning to Use Sparse Native-KV Memory:\\A Controlled Adaptation Ladder for Progressive Retrieval Attention}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{\today}
+\hypersetup{
+  pdftitle={Learning to Use Sparse Native-KV Memory},
+  pdfauthor={Jorge Simao}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Progressive Retrieval Attention (PRA) can route to external references and
+materialize their layer-native key/value (K/V) state, yet a transformer trained
+only with ordinary self-attention need not know how to use that state. We isolate
+this consumer-learning problem in a controlled associative-chain model. Reference
+identities are fixed by an oracle, reference K/V remains inside the autograd graph,
+and memory joins local K/V under the model's ordinary attention softmax. Starting
+from one matched LocalSA checkpoint per seed, we compare Frozen PRA, three LoRA
+scopes, full-weight continued training, and PRA-native training from scratch. Each
+regime is evaluated with no memory, matched distractors, exact evidence, and the
+whole parent. Across \PaperFourSeedCount{} paired seeds, the best change in the
+correct-memory margin effect over Frozen is \PaperFourBestMarginEffect{} for
+\PaperFourBestMarginRegime{}. Evidence-only accuracy rises from
+\PaperFourFrozenEvidenceAccuracy{} Frozen to \PaperFourConsumerEvidenceAccuracy{}
+with Consumer LoRA and \PaperFourNativeEvidenceAccuracy{} from scratch, while
+whole-parent accuracy plateaus near one half. The controlled gate passes
+\PaperFourCriteriaPassed{} preregistered criteria and yields the decision
+\texttt{\PaperFourGateDecision}. These results concern oracle-selected memory
+consumption in a sub-million-parameter diagnostic model. They do not establish
+learned routing, language-model scaling, or deployment efficiency.
+We additionally specify and exercise the complete read-side external-memory
+lifecycle---cold descriptors, authenticated lazy admission, scoped warm native
+encodings, and hot K/V---and prepare exact-slot Gemma~3 1B adaptation. The
+systems fixture validates lifecycle and security behavior, not answer quality;
+the Gemma training run is held behind a compute gate.
+\end{abstract}
+
+\section{Introduction}
+
+Retrieval-augmented systems are often evaluated as if selecting the right text
+were sufficient. Selection is only one boundary. The downstream transformer must
+also turn retrieved state into a useful residual update without being distracted
+by irrelevant state. Architectures trained with retrieval in the loop, including
+REALM, RAG, and RETRO, make this interface part of learning
+\cite{guu2020realm,lewis2020rag,borgeaud2022retro}. A frozen transformer retrofitted
+with a new memory path has no such guarantee.
+
+PRA makes this distinction unusually visible. It stores historical token K/V in
+the same representation used by a transformer's attention layers, while compact
+gists are only an address index. Once a reference is selected, full token K/V is
+placed before local K/V under a joint softmax. This avoids a separate
+cross-attention value space, but native format does not imply native use. Queries,
+memory keys, values, output projections, and downstream feed-forward layers were
+all optimized for a different context topology.
+
+This paper asks a deliberately narrower question before spending compute on a
+larger language model:
+
+\begin{quote}
+When memory identity and physical K/V are correct, how much transformer
+plasticity is needed before sparse memory improves the answer?
+\end{quote}
+
+The experiment is a causal gate, not a benchmark race. We reuse randomized
+associative chains, hold the PRA topology fixed, and change only adaptation
+capacity. The design follows a strict ladder from no trainable parameters through
+targeted low-rank updates \cite{hu2022lora} to full and from-scratch training.
+Four memory interventions separate useful state from the generic effect of adding
+tokens. Layerwise attention and representation-portability measurements then show
+where any output change enters the network.
+
+PRA also needs a boundary before the native cache. A document on the Web, in an
+object store, or in a private registry is not yet transformer memory. It first
+exists as cheap metadata; after admission it may be fetched and encoded; only a
+selected subset becomes accelerator-resident K/V. Treating those states as one
+opaque ``external memory'' hides authorization, invalidation, and first-use
+cost. We therefore add the read-side hierarchy required by the subsequent
+pretrained experiment while keeping memory writes and consolidation out of
+scope.
+
+\paragraph{Contributions.}
+We provide (i) a differentiable native-KV training path that preserves the same
+joint attention operation used at inference; (ii) a matched six-rung PRA
+adaptation ladder plus GlobalSA and LocalSA controls; (iii) causal metrics linking
+memory identity to attention, residual state, answer margin, and prediction; and
+(iv) a stage-gated result that explicitly decides whether larger-model work is
+warranted; and (v) a resolver-neutral cold/warm/hot lifecycle with executable
+security invariants and an exact native-global-slot Gemma training gate.
+
+\section{Why a Native Interface May Still Be Foreign}
+
+Consider a decoder layer $\ell$ with local hidden state $H_L^{(\ell)}$ and a
+separately encoded memory sequence $H_M^{(\ell)}$. PRA reuses the layer's ordinary
+projections:
+\begin{align}
+Q_L^{(\ell)} &= W_Q^{(\ell)}\operatorname{LN}(H_L^{(\ell)}),\\
+K_M^{(\ell)},V_M^{(\ell)}
+ &= W_{K,V}^{(\ell)}\operatorname{LN}(H_M^{(\ell)}),\\
+K_L^{(\ell)},V_L^{(\ell)}
+ &= W_{K,V}^{(\ell)}\operatorname{LN}(H_L^{(\ell)}).
+\end{align}
+After the configured positional transform, memory and local keys share one
+normalizer:
+\begin{equation}
+A^{(\ell)} = \operatorname{softmax}\!\left(
+\frac{Q_L^{(\ell)}[K_M^{(\ell)};K_L^{(\ell)}]^\top}{\sqrt{d_h}}
++ \mathcal{M}_{\mathrm{causal}}
+\right),
+\quad
+U^{(\ell)} = W_O^{(\ell)}A^{(\ell)}[V_M^{(\ell)};V_L^{(\ell)}].
+\end{equation}
+Memory positions are visible to every local query; the local block remains causal.
+
+This operation introduces no cross-attention projection. Nevertheless, four
+mismatches can remain. A query may not score remote keys correctly. Memory keys
+may depend too strongly on the context in which they were encoded. Memory values
+may point in directions the downstream residual stream does not interpret. Later
+layers may erase a useful update. Frozen evaluation conflates all four. The
+adaptation ladder opens them in a controlled order.
+
+\section{Differentiable Oracle-Memory Training}
+
+Offline PRA caches detach reference state so one encoding can serve many queries.
+That is the correct inference boundary but the wrong training boundary. During
+Gate 0, the selected reference tokens are encoded in the same forward graph as the
+query. Immediately before each PRA consumer layer, the model captures
+$K_M^{(\ell)},V_M^{(\ell)}$ with detachment disabled. The query then consumes those
+tensors through the native joint softmax above. Gradients can reach Q/K/V/O,
+reference production, and subsequent consumers according to the selected regime.
+
+\begin{verbatim}
+memory_h = embed(reference_tokens)
+for layer in decoder:
+    if layer is PRA:
+        memory_kv[layer] = project_kv(LN(memory_h), detach=False)
+    memory_h = layer.local_forward(memory_h)
+
+query_h = embed(query_tokens)
+for layer in decoder:
+    if layer is PRA:
+        update = native_joint_attention(LN(query_h), memory_kv[layer])
+        query_h = query_h + update
+        query_h = query_h + FFN(LN(query_h))
+    else:
+        query_h = layer.local_forward(query_h)
+\end{verbatim}
+
+Oracle selection is intentional. Training a router, materializer, and consumer at
+once would make a negative output result uninterpretable. Evidence masks are used
+only after the forward pass to divide final-token attention into evidence and
+distractor mass. They never enter model input or loss.
+
+\section{Hierarchical External Memory Admission}
+
+The differentiable experiment begins with already selected token memory. A
+deployed read path begins earlier. For an external document $D$, let
+$g_{\mathrm{ext}}(D)$ denote a cheap descriptor such as a title, sparse index,
+embedding, summary, or content hash. It is distinct from both a model-native PRA
+gist and the detailed K/V later supplied to attention:
+\begin{equation}
+g_{\mathrm{ext}}(D)
+\longrightarrow \text{admit/fetch}
+\longrightarrow g_{\mathrm{PRA}}(D),K_D,V_D
+\longrightarrow K_{D,S},V_{D,S}.
+\end{equation}
+The final subset $S$ is the materialization decision. External retrieval may be
+BM25, dense, hybrid, a manual URI, or a service call; it is modular and need not
+be differentiable in Paper~4.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=4.2mm,
+  box/.style={draw,rounded corners=2pt,align=center,text width=.72\linewidth,
+    minimum height=7mm,fill=blue!3},
+  arrow/.style={-{Latex[length=2mm]},thick}
+]
+\node[box] (query) {Query and security-scoped session state};
+\node[box,below=of query] (cold) {Cold router: BM25, embedding, hybrid, or explicit URI over $g_{\mathrm{ext}}$};
+\node[box,below=of cold] (admit) {Lazy admission through an authenticated resolver};
+\node[box,below=of admit] (warm) {Warm source/native cache: versioned K/V, PRA gists, offsets, model and encoding fingerprints};
+\node[box,below=of warm] (search) {PRA-native gist search and traversal};
+\node[box,below=of search] (hot) {Hot bounded K/V materialization on the accelerator};
+\node[box,below=of hot] (consume) {LocalSA/PRA consumer and output};
+\foreach \a/\b in {query/cold,cold/admit,admit/warm,warm/search,search/hot,hot/consume}
+  \draw[arrow] (\a) -- (\b);
+\end{tikzpicture}
+\caption{Paper~4's complete read-side path. Standard RAG stops after fetching
+text and concatenates it into a prompt. RAG--PRA uses the same cold retriever,
+then creates reusable native memory and selectively exposes K/V. Paper~4.5 owns
+the separate write/consolidation path.}
+\label{fig:external-lifecycle}
+\end{figure}
+
+We implement four encoding modes. \texttt{eager} fetches and encodes at
+registration; \texttt{lazy} waits for admission; \texttt{cached\_lazy} reuses a
+valid warm encoding; and \texttt{metadata\_only} may route but cannot become
+native memory without a later permission/fetch transition. Resolvers implement
+asynchronous \texttt{stat}, \texttt{fetch}, and \texttt{external\_gist}
+operations behind scheme plugins. HTTP, cloud stores, local files, Hugging Face,
+and private registries therefore share one lifecycle rather than entering PRA as
+special cases.
+
+Cache reuse is keyed by security scope, canonical URI, source version, model and
+tokenizer fingerprints, and encoding/position configuration. Every reuse calls
+the resolver again to revalidate authorization. Credentials remain opaque
+provider handles passed only from the session's authorization context to the
+resolver; they never enter prompts, model inputs, cache keys, logs, or artifacts.
+Session teardown removes ephemeral entries, and global reuse is legal only for
+resources explicitly marked public.
+
+\subsection{Read-side mechanism check}
+
+A deterministic eight-resource fixture exercises the entire transition and
+records each latency component separately. Its simple lexical descriptor router
+admits the required document in \PaperFourExternalDocRecall{} of cases, with
+false-admission rate \PaperFourExternalFalseAdmission{}. One ambiguous descriptor
+accounts for the miss; this is useful because it demonstrates that document
+admission recall and conditional within-document evidence recovery must be
+reported separately.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{lXrX}
+\toprule
+State & Work paid on access & Mean (ms) & Quality meaning \\
+\midrule
+Cold & route, fetch, encode, materialize & \PaperFourColdLatency{} & document availability only \\
+Warm & route, cached native encode, materialize & \PaperFourWarmLatency{} & document availability only \\
+Hot & route, cached accelerator K/V & \PaperFourHotLatency{} & document availability only \\
+\bottomrule
+\end{tabularx}
+\caption{Synthetic lifecycle decomposition over \PaperFourExternalExamples{}
+resources. Delays include a deterministic resolver fixture and operating-system
+scheduling; they validate cost ownership and cache ordering, not production
+latency or language-model answer quality.}
+\label{tab:lifecycle}
+\end{table}
+
+Executable tests verify stale-version invalidation, private cross-user cache
+isolation, public-cache restrictions, ACL revalidation, credential redaction,
+metadata-only behavior, and ephemeral teardown. The same external router is used
+for the standard-RAG and lazy-RAG--PRA rows in the generated artifacts, preventing
+first-stage retrieval differences from being attributed to the native memory
+interface. The latency artifact also separates fetched bytes, newly encoded
+tokens, warm native-memory bytes, hot active K/V bytes, and a materialization
+transfer-time proxy. Actual answer EM/F1 and neural encoding FLOPs remain pending
+the pretrained training gate.
+
+\section{Controlled Experiment}
+
+\subsection{Task and matched architectures}
+
+Each example draws fresh entity and relation symbols, builds a path of one to four
+facts, adds relation-sharing and label-relation distractors, and asks for the final
+entity. Stable entity-to-answer memorization is therefore unavailable. Facts are
+independently addressable references. The complete parent trains matched GlobalSA
+and LocalSA models; PRA receives a short query as direct context and selected facts
+as external K/V.
+
+All models have 64 hidden dimensions, eight decoder layers, four heads, RoPE, and
+a 256-token operation limit. LocalSA uses a 16-token window. PRA replaces attention
+at zero-indexed layers 3 and 7, leaving LocalSA/FFN assimilation between memory
+interventions. This model is far below the nominal $<100$M Tier-0 ceiling: the goal
+is mechanistic discrimination at low cost.
+
+\subsection{Adaptation ladder}
+
+GlobalSA and LocalSA use identical random initial weights within each seed; only
+their attention windows differ. Every converted PRA regime starts from that
+seed's trained LocalSA checkpoint.
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Frozen}: conversion only; no trainable parameters.
+\item \textbf{Consumer LoRA}: low-rank updates to PRA Q/O and the immediately
+following FFNs.
+\item \textbf{Interface LoRA}: Consumer LoRA plus PRA K/V.
+\item \textbf{Broad LoRA}: low-rank updates to every decoder linear module.
+\item \textbf{Full weight}: all converted-model parameters continue training.
+\item \textbf{Native scratch}: the same PRA topology is present from
+initialization and all weights train end to end.
+\end{enumerate}
+
+LoRA rank is eight with scale $\alpha/r=2$. Baselines train for 800 steps;
+converted trainable regimes continue for 500; native scratch trains for the
+matched total of 1,300. We use five fixed model seeds, 4,096 deterministic
+training examples, and 512 held-out examples. The objective is answer-token cross
+entropy. No held-out result selects a checkpoint.
+
+\subsection{Causal interventions and metrics}
+
+For answer token $y$ and final logits $z$, define the margin
+\begin{equation}
+m = z_y - \max_{v\ne y} z_v.
+\end{equation}
+The primary usefulness effect compares correct and equally sized incorrect
+memory:
+\begin{equation}
+G_m = m_{\mathrm{evidence}} - m_{\mathrm{matched\ distractor}}.
+\end{equation}
+We also report no-memory, evidence-only, and whole-parent conditions. Memory
+modularity is measured by
+\begin{equation}
+\Delta\mathrm{NLL}=
+\mathrm{NLL}_{\mathrm{evidence}}-\mathrm{NLL}_{\mathrm{parent}},
+\end{equation}
+with analogous accuracy and margin differences. Evidence selectivity is evidence
+attention mass divided by total memory attention mass in the whole-parent
+condition.
+
+To test whether memory objects become less dependent on neighboring facts, we
+encode the same evidence tokens alone and in the whole parent. At PRA-facing layer
+$\ell$, key portability is
+\begin{equation}
+D_K^{(\ell)} = 1-\cos\!\left(K_{e,\mathrm{alone}}^{(\ell)},
+K_{e,\mathrm{parent}}^{(\ell)}\right),
+\end{equation}
+averaged over heads, tokens, examples, and seeds; values are measured likewise.
+
+\section{Results}
+
+\subsection{Adaptation capacity and causal usefulness}
+
+Table~\ref{tab:ladder} reports the complete ladder. ``Margin gain'' is $G_m$;
+its uncertainty column is the across-seed standard deviation. The best paired
+improvement over Frozen is \PaperFourBestMarginEffect{} for
+\PaperFourBestMarginRegime{}. This comparison is more diagnostic than
+evidence-versus-no-memory because it controls the number of imported tokens.
+Accuracy supplies the same practical picture. Frozen reaches
+\PaperFourFrozenEvidenceAccuracy{} on evidence-only memory. Consumer,
+Interface, Broad, Full, and Native reach
+\PaperFourConsumerEvidenceAccuracy{}/\PaperFourInterfaceEvidenceAccuracy{}/
+\PaperFourBroadEvidenceAccuracy{}/\PaperFourFullEvidenceAccuracy{}/
+\PaperFourNativeEvidenceAccuracy{}, respectively. Thus even the narrowest
+trainable consumer scope recovers a large part of the oracle-memory ceiling, while
+additional capacity continues to increase margin and confidence.
+
+\begin{table}[t]
+\centering
+\small
+\input{../shared/results/paper4_training/tier0/generated_ladder_table.tex}
+\caption{Five-seed controlled adaptation ladder. Trainable is the parameter
+fraction exposed during adaptation; $\Delta$NLL compares evidence-only with the
+whole parent; selectivity is evidence's share of whole-parent memory attention.}
+\label{tab:ladder}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper4_training/tier0/figures/causal_memory_and_modularity.pdf}
+\caption{Left: answer-margin benefit of exact evidence over matched distractor
+memory. Right: evidence-only versus whole-parent NLL. Error bars are across-seed
+standard deviations, not confidence intervals.}
+\label{fig:causal}
+\end{figure}
+
+\subsection{Memory modularity and layer specialization}
+
+Whole-parent accuracy also improves: Frozen reaches
+\PaperFourFrozenParentAccuracy{}, while Consumer, Interface, Broad, Full, and
+Native reach \PaperFourConsumerParentAccuracy{}/\PaperFourInterfaceParentAccuracy{}/
+\PaperFourBroadParentAccuracy{}/\PaperFourFullParentAccuracy{}/
+\PaperFourNativeParentAccuracy{}. This is a real noisy-memory gain, but it is much
+smaller than the evidence-only gain. No regime reduces the absolute
+evidence-versus-parent NLL gap; the least unfavorable change is
+\PaperFourBestModularityEffect{} under \PaperFourBestModularityRegime{}. Gate 0
+therefore rejects the strong modularity hypothesis. Whole-parent attention
+provides a stricter view:
+an adapted consumer should allocate its fixed memory mass to evidence rather than
+merely increase attention to every imported token. The strongest paired
+selectivity change is \PaperFourBestSelectivityEffect{} for
+\PaperFourBestSelectivityRegime{}. It has the same direction in all seeds but is
+small in magnitude. Adaptation mainly changes what the network can do with clean
+memory; it does not yet create a strong token-level filter among distractors.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{../shared/results/paper4_training/tier0/figures/consumer_layer_selectivity.pdf}
+\caption{Evidence share of final-token memory attention at each PRA consumer.
+Evidence labels are diagnostic only and were not available to the model.}
+\label{fig:layers}
+\end{figure}
+
+\subsection{Retention and chain depth}
+
+Converted LoRA models largely retain the original no-memory full-context path.
+Accuracy is \PaperFourFrozenRetention{} Frozen,
+\PaperFourConsumerRetention{} Consumer, \PaperFourInterfaceRetention{} Interface,
+and \PaperFourBroadRetention{} Broad. Full-weight continuation reaches
+\PaperFourFullRetention{}. Native scratch reaches only
+\PaperFourNativeRetention{} because it was trained through the sparse-memory path
+rather than the original full-context interface. The strongest oracle ceiling is
+therefore not the safest direct replacement for a pretrained model.
+
+Evidence-only accuracy remains high through the four-hop stratum: Full and Native
+both reach \PaperFourFullDepthFour{} and \PaperFourNativeDepthFour{}, respectively.
+We do not interpret the upward shape of some curves as a causal depth benefit.
+Each stratum is a different randomized sample, and the generator was designed to
+prevent label leakage rather than calibrate equal difficulty by depth.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{../shared/results/paper4_training/tier0/figures/accuracy_by_chain_depth.pdf}
+\caption{Evidence-only accuracy by associative-chain depth. Adaptation gains
+persist through depth four; cross-depth slopes are descriptive because difficulty
+is not calibrated across strata.}
+\label{fig:depth}
+\end{figure}
+
+\subsection{Representation portability}
+
+Figure~\ref{fig:portability} measures a different property from output quality.
+A low value means the same evidence token produces similar keys when encoded alone
+or amid distractors. A regime can improve answer use without making keys portable,
+or make keys portable without teaching downstream layers to interpret values.
+Reporting both prevents an output-only explanation from being mistaken for a
+representation result.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{../shared/results/paper4_training/tier0/figures/representation_portability.pdf}
+\caption{Context dependence of evidence keys at PRA-facing layers. Values near
+zero indicate more portable representations across evidence-only and parent
+encodings.}
+\label{fig:portability}
+\end{figure}
+
+\subsection{Gate decision}
+
+The native-scratch evidence-memory accuracy minus LocalSA full-context accuracy is
+\PaperFourNativeMinusLocalAccuracy{} on average. In total,
+\PaperFourCriteriaPassed{} preregistered signals pass, producing
+\texttt{\PaperFourGateDecision}. With five paired seeds, these results remain
+descriptive: even a same-direction effect in all seeds has a minimum exact
+two-sided sign-flip $p=0.0625$. We therefore use the gate to decide the next
+experiment, not to claim a population-level scaling law.
+
+\section{Pretrained Gate: Exact-Slot Gemma-PRA}
+
+The next model is the pinned \texttt{google/gemma-3-1b-it} checkpoint at revision
+\texttt{dcc83ea8...cf78752}; the complete immutable hash is recorded in the
+machine-readable gate artifact. Its configuration declares 26
+decoder layers, a 512-token local window, and full-attention layers at zero-based
+indices 5, 11, 17, and 23. The primary conversion replaces exactly those four
+global slots with PRA and leaves all 22 local-attention layers unchanged. The map
+is generated from the checkpoint's \texttt{layer\_types}; it is not a hard-coded
+Gemma-family assumption.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{lXl}
+\toprule
+Stage & Same-checkpoint intervention & Status \\
+\midrule
+G0 & Native Gemma local/global schedule & measured baseline pending \\
+G1 & Frozen exact-slot Gemma-PRA & measured baseline pending \\
+G2 & Consumer LoRA: PRA Q/O and following MLP & implementation and scope tests ready \\
+G3 & Interface LoRA: PRA Q/K/V/O and following MLP & implementation and scope tests ready \\
+G4 & Broad decoder LoRA & implementation and scope tests ready \\
+G5 & Full-weight exact-slot Gemma-PRA & compute benchmark pending \\
+G6 & Gemma-like PRA-native scratch & gated on G5 \\
+\bottomrule
+\end{tabularx}
+\caption{The pretrained adaptation ladder. No row is reported as an empirical
+quality result until its fixed-data training and evaluation artifacts exist.}
+\label{tab:gemma-gate}
+\end{table}
+
+Rank-8 parameter estimates are approximately 0.91M for Consumer LoRA, 1.00M for
+Interface LoRA, and 6.52M for Broad LoRA; rank 32 is retained as the single compact
+capacity control. These are architecture-derived estimates and will be replaced
+by loaded-model counts in the measured run. Full-weight mixed-precision Adam has
+an 11.2~GiB lower-bound state cost for this one-billion-parameter checkpoint
+before activations, temporary buffers, reference K/V, and checkpoint staging.
+The available GTX~950M has 4~GiB. In accordance with the benchmark-before-budget
+rule, G2--G5 training is therefore not launched here: the next action is to
+configure distributed or larger-memory execution, then run 100--500 measured
+steps before approving any longer schedule.
+
+\section{Related Work}
+
+Sparse-attention methods reduce which token pairs interact inside a sequence
+\cite{beltagy2020longformer,zaheer2020bigbird,roy2021routing}. Recurrent and
+compressed-memory transformers carry state across segments
+\cite{dai2019transformerxl,rae2020compressive}; Memorizing Transformers retrieve
+stored representations \cite{wu2022memorizing}. PRA differs in separating compact
+routing metadata from full-detail, layer-native K/V materialized under a bounded
+operation. This paper studies the learning interface after selection rather than
+proposing another retrieval score.
+
+Retrieval-augmented language models train retrieval and generation jointly or in
+coordinated stages \cite{guu2020realm,lewis2020rag,borgeaud2022retro}. Our oracle
+stage is intentionally simpler. It provides a causal upper-bound question: if the
+correct physical memory is already present, can adaptation make it useful? A
+negative answer would make router optimization premature; a positive answer
+justifies reconnecting learned routing at the next gate.
+
+\section{Limitations and Next Gate}
+
+The controlled vocabulary, answer-only objective, sub-million-parameter model,
+and short schedule do not demonstrate ordinary language modeling. Oracle memory
+removes identity errors and does not test top-$k$ recall, graph traversal, or
+materialization budgets. The reported attention masses are correlates of use;
+the matched-distractor margin is the stronger causal output control. We do not
+measure production throughput because references remain in the training graph.
+
+The next tier should preserve the same intervention structure while adding an
+ordinary-language objective, local-only cases, remote-memory cases,
+multi-resource evidence, and distractor-rich memory. Consumer and Interface LoRA
+are the conservative first measured Gemma conditions because they capture most
+of the toy evidence-only gain while limiting trainable state. Learned routing is
+reintroduced alongside fixed-oracle, shuffled, disabled, matched-distractor, and
+whole-parent controls. The lifecycle fixture uses synthetic descriptors and
+simulated resolver latency; it does not establish public-Web retrieval quality,
+production cache speed, or authenticated cloud-provider correctness. Gemma
+quality retention, memory modularity, active-global K/V reduction, and logical
+memory scaling all remain unmeasured until the compute gate is funded.
+
+\section{Conclusion}
+
+Sparse memory has two learning problems: finding the right state and making that
+state computationally useful. By fixing the first, this study measures the second
+directly. The differentiable native-KV path and matched adaptation ladder turn a
+previously ambiguous frozen result into a testable training question. The outcome
+supports a stage-gated research program in which consumer plasticity is established
+before router complexity and model scale are increased.
+The accompanying read-side hierarchy also makes the deployment premise explicit:
+cold external resources become scoped, versioned native memory lazily, while only
+a bounded hot subset reaches attention. The completed toy gate justifies the
+pretrained experiment; it does not substitute for it.
+
+\small
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+\end{document}

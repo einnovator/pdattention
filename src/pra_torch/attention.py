@@ -148,10 +148,28 @@ class PRAttention(nn.Module):
             rankings=[[] for _ in memory_k],
             budget_stats=[],
         )
-        heads, _stats, _duration = self.pra_core.apply_pra_attention(
+        heads, stats, duration = self.pra_core.apply_pra_attention(
             q, k, v, prepared, attention_mask=attention_mask
         )
-        return self.o_proj(self.merge_heads(heads))
+        output = self.o_proj(self.merge_heads(heads))
+        self.last_memory_batching_stats = stats
+        self.last_diagnostics = {
+            **stats.as_metrics(),
+            "direct_context_tokens": float(x.shape[1]),
+            "memory_budget_tokens": float(stats.valid_positions),
+            "memory_tokens_requested": float(stats.valid_positions),
+            "memory_tokens_materialized": float(stats.valid_positions),
+            "retrieved_token_kv": float(stats.valid_positions),
+            "retrieved_physical_kv_tokens": float(stats.valid_positions),
+            "memory_transport_native_kv": 1.0,
+            "attention_output_norm": float(output.detach().norm().cpu()),
+            "model_max_context_tokens": float(
+                self.config.effective_model_max_context_tokens
+            ),
+        }
+        if self.config.collect_detailed_timing:
+            self.last_diagnostics["memory_attention_duration_seconds"] = duration
+        return output
 
     # Compatibility entry points retained for notebooks/tests; implementation is shared.
     def _expand_full_references(self, selected: list[SelectedChunk]) -> list[SelectedChunk]:

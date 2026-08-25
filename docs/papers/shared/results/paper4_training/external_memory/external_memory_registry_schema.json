@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PRA external memory resource",
+  "type": "object",
+  "required": [
+    "uri",
+    "resolver",
+    "encoding_mode",
+    "cache_scope"
+  ],
+  "properties": {
+    "uri": {
+      "type": "string"
+    },
+    "resolver": {
+      "type": "string"
+    },
+    "encoding_mode": {
+      "enum": [
+        "eager",
+        "lazy",
+        "cached_lazy",
+        "metadata_only"
+      ]
+    },
+    "cache_scope": {
+      "enum": [
+        "session",
+        "user",
+        "tenant",
+        "global_public"
+      ]
+    },
+    "external_gist": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model_fingerprint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tokenizer_fingerprint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "encoding_config_fingerprint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tier": {
+      "enum": [
+        "cold",
+        "warm",
+        "hot"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
