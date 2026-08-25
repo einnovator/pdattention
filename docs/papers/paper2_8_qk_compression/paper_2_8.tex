@@ -11,6 +11,7 @@
 \newcommand{\qasper}{QASPER\xspace}
 \newcommand{\twowiki}{2WikiMultiHopQA\xspace}
 \newcommand{\musique}{MuSiQue\xspace}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \setlength{\emergencystretch}{3em}
 
 \title{Low-Rank Native Query--Key Routing:\\Compact Memory Indexes without K/V Compression}
@@ -25,18 +26,21 @@ Progressive Retrieval Attention (\pra) can retain full native key/value (\kv)
 memory outside the active attention working set, but it still needs a compact
 persistent index to decide which chunks to materialize. One mean native key per
 chunk is cheap, yet averaging can erase a sparse key that is strongly aligned
-with a future query. We therefore learn low-rank projections of frozen native
-queries and keys, cache projected key rows as an address index, and rank chunks
-in the resulting interaction space. The index is used only for selection;
-chosen chunks contribute their unchanged original native \kv.
+with a future query. We therefore learn discriminative low-rank projections of
+frozen native queries and keys, cache projected key rows as an address index,
+and rank chunks in the resulting interaction space. The objective preserves
+evidence-ranking utility rather than reconstructing the full native attention
+response. The index is used only for selection; chosen chunks contribute their
+unchanged original native \kv.
 
 On 64 fresh \qasper identities, rank-16 routing raises four-chunk evidence
 recall from 0.117 for a full-width mean key to 0.258 (paired $+0.141$, 95\%
-interval $[0.080,0.210]$). The same architecture transfers to \twowiki: an
-inherited projection gains 0.033 over mean, and dataset-specific retraining
-raises recall from 0.0977 to 0.1903. A rank-8 index with eight static centroids
-retains 84.9\% of that \twowiki gain at approximately 256 FP32 bytes per chunk,
-excluding masks. A SmolLM2/Llama-family replication preserves the \qasper
+interval $[0.080,0.210]$). The same architecture transfers to \twowiki: the
+projection trained on prior Hotpot/QASPER validation identities gains 0.033
+over mean without target supervision, and dataset-specific retraining raises
+recall from 0.0977 to 0.1903. A rank-8 index with eight static centroids
+retains 84.9\% of that \twowiki gain at approximately 256 FP32 routing-index
+bytes per chunk, excluding masks. A SmolLM2/Llama-family replication preserves the \qasper
 effect. The channel is not universal: BM25 dominates on \hotpot, lexical
 routing remains stronger on \musique, and validation-selected static
 lexical--low-rank fusion regresses on both new cohorts. Native-\kv causal
@@ -84,6 +88,17 @@ substituted for native values or attention-visible keys. The core boundary is
   \label{eq:address-boundary}
 \end{equation}
 
+The map $(q,K)\mapsto(W_q q,W_k K)$ is discriminative, not reconstructive.
+Its target is evidence ordering at the materialization boundary:
+\begin{equation}
+  \boxed{\text{preserve evidence-ranking utility}}
+  \quad\text{rather than}\quad
+  \boxed{\text{minimize native-response reconstruction error}}.
+  \label{eq:discriminative}
+\end{equation}
+Low teacher overlap and non-monotonic rank later support this interpretation;
+they do not make it a theorem about native attention geometry.
+
 The strongest result is a dataset-specific retrieval channel. Low-rank native
 interaction substantially improves over a mean key on fresh \qasper and
 transfers to \twowiki, including a smaller zero-shot gain. It remains weaker
@@ -104,7 +119,8 @@ The contributions are:
   \item cross-dataset evidence that the architecture transfers to \twowiki,
   including zero-shot gain, while \musique remains lexical;
   \item a routing-index frontier in which rank-8/eight-centroid routing retains
-  84.9\% of the \twowiki rank-16 gain at about 256 FP32 bytes/chunk;
+  84.9\% of the \twowiki rank-16 gain at approximately 256 FP32
+  routing-index bytes/chunk, excluding masks;
   \item a SmolLM2/Llama-family \qasper replication with different native
   geometry and tokenizer;
   \item native-\kv causal controls that separate improved routing from
@@ -116,7 +132,7 @@ to this mechanism did not pass its deployment gate. We retain that negative
 study in the appendices rather than making it the paper's organizing story.
 
 \section{Low-Rank Native-QK Routing}
-\subsection{Three representations with different obligations}
+\subsection{A discriminative projection with a narrow obligation}
 For a chunk $C$ of $T$ tokens, frozen pre-RoPE keys are
 \begin{equation}
   K_C\in\mathbb{R}^{T\times H_{kv}\times d_h}.
@@ -132,9 +148,11 @@ For Qwen3-0.6B at the measured layer, $H_{kv}d_h=1024$ and the flattened query
 width is 2048. We evaluate $r\in\{8,16,32\}$. The bilinear projection contains
 24,576, 49,152, or 98,304 learned parameters; the backbone remains frozen.
 Training uses validation-only evidence ranking plus native-response
-distillation. Low teacher overlap in the final models shows that the useful
-subspace is task-adapted rather than a faithful reconstruction of full native
-attention.
+distillation. Evidence ranking defines the operational target; response
+distillation is a regularizer, not a reconstruction contract. Low teacher
+overlap in the final models shows that the learned map is best interpreted as a
+discriminative projection of native attention geometry for memory addressing,
+not a faithful reconstruction of the full native \qk response.
 
 \subsection{Persistent index and unchanged memory}
 At index construction, the system caches $Z_C=W_kU_C$. Online routing projects
@@ -146,6 +164,15 @@ representatives. This compresses two independent axes:
   \text{interaction width: }&1024\rightarrow r,\\
   \text{routing rows: }&32\rightarrow m.
 \end{align}
+Width compression maps $d_{\mathrm{native}}=1024$ to $r\in\{8,16,32\}$;
+multiplicity compression maps $T=32$ projected token rows to $m\in\{4,8\}$
+representatives. Up to dtype and masks, routing-index residency therefore obeys
+\begin{equation}
+  B_{\mathrm{index}}\propto mr.
+  \label{eq:index-factorization}
+\end{equation}
+More representatives need not require more storage when their interaction
+width is compressed aggressively.
 
 Figure~\ref{fig:architecture} makes the ownership boundary explicit. The
 routing index stores neither native values nor the keys later supplied to
@@ -190,19 +217,21 @@ For FP32 routing rows, a 32-token Qwen chunk requires 131,072 bytes for the full
 $32\times1024$ native-key stream, 4,096 bytes for one full-width mean key,
 $128r$ bytes for all low-rank token rows, and $4mr$ bytes for static low-rank
 representatives. Thus rank-16 all-token routing uses 2,048 bytes/chunk, while
-rank-8/eight-centroid routing uses 256 bytes/chunk before masks. Backing native
-\kv, selected-\kv transfer, and active attention \kv are not included in these
-index figures.
+rank-8/eight-centroid routing uses 256 bytes/chunk before masks. In particular,
+the latter replaces the 4,096-byte full-width mean index with eight projected
+representatives at 256 bytes/chunk. Backing native \kv, selected-\kv transfer,
+and active attention \kv are not included in these index figures.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Representations used in the main experiments. ``Reads as'' identifies
-what enters the frozen attention consumer after routing.}
+\caption{Representations used in the main experiments. Attention-visible state
+identifies what enters the frozen consumer after routing. Byte counts are FP32
+routing-index residency per chunk and exclude masks and backing \kv.}
 \label{tab:representation}
 \begin{tabularx}{\linewidth}{lrrrX}
 \toprule
-Routing representation & Rows & Width & FP32 B/chunk & Reads as \\
+Routing representation & Rows & Width & FP32 B/chunk & Attention-visible state \\
 \midrule
 Full native-key stream & 32 & 1024 & 131,072 & unchanged selected native \kv \\
 Native mean & 1 & 1024 & 4,096 & unchanged selected native \kv \\
@@ -212,6 +241,7 @@ Rank-8/eight-centroid & 8 & 8 & 256 & unchanged selected native \kv \\
 \end{tabularx}
 \end{table}
 
+\clearpage
 \section{Experimental Setup}
 \subsection{Model and chunk contract}
 The primary model is Qwen3-0.6B revision \texttt{c1899de2}, layer 27, with 16
@@ -233,10 +263,12 @@ its own validation features and evaluates the fresh Hotpot/QASPER cohort.
 
 \subsection{Training regimes}
 Rank-8 and rank-16 projections train for five seeds on validation identities
-only. \twowiki and \musique compare an inherited Hotpot/QASPER projection
-(zero-shot), dataset-specific retraining, and balanced four-dataset training.
-Neither rank nor objective is selected from the new test identities. The static
-lexical--low-rank fusion weight is validation-selected.
+only. For \twowiki and \musique, \emph{zero-shot} uses the projection trained
+on the prior Hotpot/QASPER validation cohort with no target-dataset
+supervision. \emph{Dataset-specific retraining} uses only target validation
+identities. \emph{Mixed training} uses a balanced four-dataset validation
+cohort. Neither rank nor objective is selected from the new test identities.
+The static lexical--low-rank fusion weight is validation-selected.
 
 \subsection{Metrics}
 Primary routing quality is physical evidence-chunk recall at $K=4$. Contiguous
@@ -298,8 +330,9 @@ identity-paired intervals rather than a single-checkpoint claim.
 
 \section{Cross-Dataset Transfer: 2Wiki versus MuSiQue}
 The unchanged architecture transfers to a second positive dataset, but not to
-every multi-hop benchmark. On \twowiki, mean recall is 0.0977. The inherited
-rank-16 projection reaches 0.1305, a zero-shot gain of 0.0328 with interval
+every multi-hop benchmark. On \twowiki, mean recall is 0.0977. The rank-16
+projection trained on the prior Hotpot/QASPER validation cohort reaches 0.1305
+without \twowiki supervision, a zero-shot gain of 0.0328 with interval
 $[0.0025,0.0638]$. Dataset-specific retraining reaches 0.1903, gain 0.0926 with
 interval $[0.0582,0.1289]$; balanced training reaches 0.1754. This separates
 architecture transfer from weight transfer: a useful geometry survives
@@ -359,12 +392,15 @@ fixed budget:
 \begin{equation}
   \text{channel complementarity}\ne\text{reliable static fusion}.
 \end{equation}
+A useful new routing channel expands the action space; it does not solve
+channel selection.
 
 \section{Compression Frontier: Quality versus Index Residency}
 Where the native channel helps, aggressive index compression preserves much of
 its value. On \twowiki, rank-8/eight-centroid recall is 0.1763. Its gain over
 mean is 0.0786, interval $[0.0437,0.1143]$, retaining 84.9\% of the rank-16
-gain while reducing FP32 index state from 2,048 to 256 bytes/chunk. It is
+gain while reducing FP32 routing-index state from 2,048 to 256 bytes/chunk,
+excluding masks. It is
 $16\times$ smaller than one full-width mean key and $512\times$ smaller than
 the full 32-token native-key stream. On \musique the same retention ratio is
 not meaningful because neither low-rank gain is resolved.
@@ -373,7 +409,11 @@ The earlier QASPER frontier shows the complementary width result. Rank-16
 all-token routing reaches 0.254 recall at 2,048 bytes/chunk, rank 8 reaches
 0.246 at 1,024 bytes, and rank-8/eight-centroid reaches 0.183 at 256 bytes.
 Rank 32 falls to 0.218 despite more state and higher seed variance. More rank is
-not monotonically useful.
+not monotonically useful. This is consistent with the smaller projections
+acting partly as task-selective regularization: increasing rank may reintroduce
+native-response dimensions irrelevant to evidence ordering. The experiment
+does not isolate those dimensions, so this remains an interpretation rather
+than a causal claim.
 
 \begin{figure}[H]
 \centering
@@ -414,6 +454,22 @@ does not establish a full model-by-dataset matrix: a SmolLM2 \twowiki feature
 capture would require a separate model-specific preprocessing run and is left
 for replication rather than added after the fact to this frozen study.
 
+\begin{table}[H]
+\centering
+\small
+\caption{What the portability evidence covers. ``Not tested'' is an unfilled
+replication cell, not a negative result.}
+\label{tab:portability}
+\begin{tabular}{lcc}
+\toprule
+Dataset & Qwen3-0.6B & SmolLM2-135M \\
+\midrule
+\qasper & positive & positive \\
+\twowiki & positive & not tested \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \section{Routing Is Not Reading}
 Saved chunk identities are replayed through unchanged layer-27 native \kv.
 Table~\ref{tab:generation} compares informed, shuffled, bottom-ranked, oracle,
@@ -428,6 +484,17 @@ The frozen late-layer consumer can distinguish better from worse memory without
 integrating selected native \kv beneficially. This is not a routing failure;
 it is a downstream consumption bottleneck and a direct motivation for
 PRA-aware training.
+
+The experiment therefore separates four stages that are often conflated:
+\begin{equation}
+  \boxed{\text{Discover}}\rightarrow
+  \boxed{\text{Select}}\rightarrow
+  \boxed{\text{Materialize}}\rightarrow
+  \boxed{\text{Consume}}.
+  \label{eq:four-stages}
+\end{equation}
+Paper 2.8 improves selection. It does not claim to have solved the frozen
+consumer's use of the materialized state.
 
 \begin{table}[H]
 \centering
@@ -544,23 +611,25 @@ stage.
 
 \begin{table}[H]
 \centering
-\scriptsize
-\caption{Taxonomy by the state a method compresses or selects. ``Multi'' means
-more than one vector/statistic can represent an object or page.}
+\footnotesize
+\caption{Coarse taxonomy by addressed state and attention-visible outcome.
+Labels intentionally avoid implementation details that are not shared across
+members of a method family.}
 \label{tab:taxonomy}
-\begin{tabularx}{\linewidth}{lcccccX}
+\begin{tabularx}{\linewidth}{lYYY}
 \toprule
-Method family & Route index & Active/backing \kv & Query-aware & Multi & Learned & Scope \\
+Method & Address or summary state & Online query role & Attention-visible outcome / scope \\
 \midrule
-Mean \pra gist & yes & no & at score & no & no & external logical memory \\
-Paper 2.8 low rank & yes & no & yes & yes & yes & external logical memory \\
-Quest & page metadata & selects active & yes & page stats & no & active sequence \kv \\
-RetrievalAttention & vector index & selects active & yes & yes & no & active sequence \kv \\
-Palu/Eigen/SALS & no separate & compress/reconstruct & yes & latent & yes/derived & active sequence \kv \\
-H$_2$O/SnapKV & policy state & evict/select & partly & token/head & no & active sequence \kv \\
-ColBERTv2 & yes & n/a & yes & yes & yes & document corpus \\
-Landmark Attention & landmarks & trained context & yes & block & yes & model context \\
-Gist/AutoCompressor & summaries & replaces context & indirect & few & yes & compressed context \\
+Paper 2.8 & learned low-rank native-key rows & projected query--key scoring & selected original native \kv; external logical memory \\
+Quest & per-page key bounds & query estimates critical pages & selected existing \kv pages; active sequence \\
+RetrievalAttention & attention-aware CPU vector index & query retrieves relevant rows & retrieved original \kv rows; active sequence \\
+Palu & low-rank cached intermediates & no separate retrieval stage & reconstructed keys/values; active cache \\
+Eigen Attention & derived low-rank cache & attention in low-rank space & low-rank attention state; active cache \\
+SALS & latent compressed cache & latent sparse token selection & sparse/reconstructed state; active cache \\
+H$_2$O/SnapKV/RocketKV/ClusterKV & token, head, page, or cluster policy state & policy-dependent selection & retained or recalled \kv subset; active sequence \\
+ColBERTv2 & residual-coded token vectors & query--document late interaction & document retrieval result; corpus index \\
+Landmark Attention & learned block landmarks & attention selects blocks & selected context blocks; model context \\
+Gist/AutoCompressor & learned summary activations & no external retrieval stage & summary state stands in for context \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -572,7 +641,8 @@ can increase teacher top-four overlap while reducing evidence recall. Native
 attention keys encode syntax, discourse, generation state, and other functions
 besides document retrieval. The successful projection changes the objective
 from imitating every teacher preference to fitting an evidence-bearing
-interaction subspace.
+interaction subspace. It is therefore a discriminative address projection, not
+a conventional compressor that succeeds by reconstructing the native response.
 
 \paragraph{One mean erases useful native address information.}
 Fresh QASPER and \twowiki results establish this claim under matched chunk and
@@ -593,6 +663,12 @@ PRA-aware training should therefore retain shuffled, bottom-ranked, oracle, and
 no-memory controls. Otherwise consumption adaptation can be mistaken for
 routing progress or vice versa.
 
+\paragraph{Compactness factorizes into width and multiplicity.}
+Equation~\ref{eq:index-factorization} explains why eight low-width
+representatives can occupy less index state than one full-width mean. The
+measured $4{,}096\rightarrow256$ FP32 routing-index bytes/chunk reduction,
+excluding masks, neither removes nor compresses the backing native \kv.
+
 \section{Limitations}
 The study uses one small Qwen model for all four datasets and one smaller
 SmolLM2 model for Hotpot/QASPER only. It tests one late routing layer, 32-token
@@ -600,7 +676,10 @@ chunks, and a primary four-chunk budget. Five seeds quantify projection
 initialization, while identity bootstraps quantify cohort variation; neither
 establishes broad domain generalization. The 20-identity validation splits for
 \twowiki and \musique are small enough for task-specific projections and
-fusion weights to overfit. A SmolLM2-by-\twowiki replication remains open.
+fusion weights to overfit. The study separately establishes cross-model
+transfer on \qasper and cross-dataset transfer from QASPER/Hotpot to \twowiki;
+it does not establish their full Cartesian product. SmolLM2-by-\twowiki remains
+an explicitly untested replication cell.
 
 Evidence supervision makes the projection task-adapted, not an unsupervised
 compressor. The index excludes backing native \kv, which still requires host or
@@ -612,17 +691,25 @@ centroid construction is an offline Python path. The controlled response suite
 contains only 20 schematic cases.
 
 \section{Conclusion}
+\paragraph{Representation.}
 Low-rank native query--key projection preserves useful query-dependent address
 information that one mean key erases. The effect is reproducible on fresh
 \qasper, transfers to a second model family, and extends to \twowiki, where a
-rank-8/eight-centroid index retains 84.9\% of the rank-16 gain at about 256
-FP32 bytes/chunk. The actual memory remains full-fidelity native \kv.
+rank-8/eight-centroid index retains 84.9\% of the rank-16 gain at approximately
+256 FP32 routing-index bytes/chunk, excluding masks. The useful map is best
+understood as a discriminative projection for evidence ranking, not a faithful
+reconstruction of the full native response.
 
-The boundaries are equally important. Hotpot and \musique remain lexical;
-exact and BM25 are not obsolete; static fusion overfits; and better-selected
-native \kv can still harm a frozen consumer. Low-rank native-\qk is therefore
-one compact routing channel inside a broader memory system. Adaptive channel
-selection and PRA-aware consumption training are separate next problems.
+\paragraph{Boundary.}
+The auxiliary index does not compress backing native \kv and is not a universal
+retriever. Hotpot and \musique remain lexical, exact and BM25 remain necessary,
+static fusion fails, and better-selected native \kv can still harm a frozen
+consumer.
+
+\paragraph{Next problem.}
+The practical implication is to preserve low-rank native-\qk as one compact
+address channel, while treating channel selection and memory consumption as
+independent problems for adaptive control and PRA-aware training.
 
 \appendix
 \section{Full Response-Distillation Teacher Study}
@@ -870,7 +957,7 @@ required for reading the result tables. The original test cache hash is
 \bibitem{wang2020linformer} Wang, S., Li, B. Z., Khabsa, M., Fang, H., and Ma, H. Linformer: Self-Attention with Linear Complexity. arXiv:2006.04768, 2020.
 \bibitem{saxena2024eigen} Saxena, U., Saha, G., Choudhary, S., and Roy, K. Eigen Attention: Attention in Low-Rank Space for KV Cache Compression. Findings of EMNLP, 2024.
 \bibitem{chang2025palu} Chang, C.-C. et al. Palu: KV-Cache Compression with Low-Rank Projection. ICLR, 2025.
-\bibitem{zhang2025sals} Zhang, Y. et al. SALS: Sparse Attention in Latent Space for KV Cache Compression. arXiv:2510.24273, 2025.
+\bibitem{zhang2025sals} Zhang, Y. et al. SALS: Sparse Attention in Latent Space for KV Cache Compression. NeurIPS, 2025.
 \bibitem{zhang2023h2o} Zhang, Z. et al. H$_2$O: Heavy-Hitter Oracle for Efficient Generative Inference of Large Language Models. NeurIPS, 2023.
 \bibitem{li2024snapkv} Li, Y. et al. SnapKV: LLM Knows What You Are Looking for before Generation. NeurIPS, 2024.
 \bibitem{xiao2024streaming} Xiao, G., Tian, Y., Chen, B., Han, S., and Lewis, M. Efficient Streaming Language Models with Attention Sinks. ICLR, 2024.
@@ -878,7 +965,7 @@ required for reading the result tables. The original test cache hash is
 \bibitem{liu2024clusterkv} Liu, G., Li, C., Zhao, J., Zhang, C., and Guo, M. ClusterKV: Manipulating LLM KV Cache in Semantic Space for Recallable Compression. arXiv:2412.03213, 2024.
 \bibitem{khattab2020colbert} Khattab, O. and Zaharia, M. ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT. SIGIR, 2020.
 \bibitem{santhanam2022colbertv2} Santhanam, K., Khattab, O., Saad-Falcon, J., Potts, C., and Zaharia, M. ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction. NAACL, 2022.
-\bibitem{mohtashami2023landmark} Mohtashami, A. and Jaggi, M. Landmark Attention: Random-Access Infinite Context Length for Transformers. arXiv:2305.16300, 2023.
+\bibitem{mohtashami2023landmark} Mohtashami, A. and Jaggi, M. Landmark Attention: Random-Access Infinite Context Length for Transformers. NeurIPS, 2023.
 \bibitem{mu2023gist} Mu, J., Li, X. L., and Goodman, N. Learning to Compress Prompts with Gist Tokens. NeurIPS, 2023.
 \bibitem{chevalier2023autocompressors} Chevalier, A., Wettig, A., Ajith, A., and Chen, D. Adapting Language Models to Compress Contexts. EMNLP, 2023.
 \bibitem{borgeaud2022retro} Borgeaud, S. et al. Improving Language Models by Retrieving from Trillions of Tokens. ICML, 2022.

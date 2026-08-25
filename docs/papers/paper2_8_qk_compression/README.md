@@ -1,16 +1,26 @@
 # Paper 2.8: Low-rank native-QK routing
 
+**Status:** EXPERIMENTALLY FROZEN; READY FOR EXTERNAL REVIEW.
+
+Future changes are limited to reviewer-requested controls, citation
+corrections, clarity edits, and venue formatting.
+
 Paper 2.8 studies a compact address index for Progressive Retrieval Attention.
 Frozen native queries and keys are projected into a small interaction space;
 the resulting rows select chunk identities, while selected chunks still supply
 their unchanged original native K/V. The paper therefore measures routing-index
 residency separately from backing-memory storage and active materialization.
+The learned map is a discriminative projection for evidence ordering, not a
+reconstructive compressor of the native attention response.
 
 On 64 fresh QASPER identities, rank-16 routing raises four-chunk evidence recall
 from 0.117 for one full-width mean key to 0.258. The architecture transfers to
-2WikiMultiHopQA: mean recall is 0.0977, inherited rank-16 reaches 0.1305, and
-dataset-specific training reaches 0.1903. A rank-8/eight-centroid index retains
-84.9% of the 2Wiki rank-16 gain at about 256 FP32 bytes per chunk. A SmolLM2
+2WikiMultiHopQA: mean recall is 0.0977, the rank-16 projection trained on the
+prior Hotpot/QASPER validation cohort reaches 0.1305 without target
+supervision, and dataset-specific training reaches 0.1903. A
+rank-8/eight-centroid index retains
+84.9% of the 2Wiki rank-16 gain at about 256 FP32 routing-index bytes per chunk,
+excluding masks. A SmolLM2
 replication preserves the QASPER effect across a second model family and
 tokenizer.
 
