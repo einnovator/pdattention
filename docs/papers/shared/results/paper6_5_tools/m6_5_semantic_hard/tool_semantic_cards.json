@@ -1,0 +1,369 @@
+[
+  {
+    "description": "Find a user account by email address.",
+    "effect": "read",
+    "inputs": [
+      "email"
+    ],
+    "name": "search_user",
+    "objects": [
+      "user"
+    ],
+    "operation": "search",
+    "outputs": [
+      "user id"
+    ],
+    "tags": [
+      "account",
+      "search",
+      "user"
+    ],
+    "uri": "!!ref:tool:paper6_5:search_user:v1!!"
+  },
+  {
+    "description": "Retrieve one user account by user identifier.",
+    "effect": "read",
+    "inputs": [
+      "user_id"
+    ],
+    "name": "get_user",
+    "objects": [
+      "user"
+    ],
+    "operation": "get",
+    "outputs": [
+      "user record"
+    ],
+    "tags": [
+      "account",
+      "read",
+      "user"
+    ],
+    "uri": "!!ref:tool:paper6_5:get_user:v1!!"
+  },
+  {
+    "description": "Validate whether a user account may be changed.",
+    "effect": "read",
+    "inputs": [
+      "user_id"
+    ],
+    "name": "validate_user",
+    "objects": [
+      "user"
+    ],
+    "operation": "validate",
+    "outputs": [
+      "validation"
+    ],
+    "tags": [
+      "user",
+      "validate"
+    ],
+    "uri": "!!ref:tool:paper6_5:validate_user:v1!!"
+  },
+  {
+    "description": "Update the status of a user account.",
+    "effect": "write",
+    "inputs": [
+      "status",
+      "user_id"
+    ],
+    "name": "update_user",
+    "objects": [
+      "user"
+    ],
+    "operation": "update",
+    "outputs": [
+      "user change"
+    ],
+    "tags": [
+      "account",
+      "user",
+      "write"
+    ],
+    "uri": "!!ref:tool:paper6_5:update_user:v1!!"
+  },
+  {
+    "description": "Notify a user about an account change.",
+    "effect": "write",
+    "inputs": [
+      "message",
+      "user_id"
+    ],
+    "name": "notify_user",
+    "objects": [
+      "user"
+    ],
+    "operation": "notify",
+    "outputs": [
+      "notification"
+    ],
+    "tags": [
+      "notification",
+      "user"
+    ],
+    "uri": "!!ref:tool:paper6_5:notify_user:v1!!"
+  },
+  {
+    "description": "Permanently delete a user account.",
+    "effect": "destructive",
+    "inputs": [
+      "user_id"
+    ],
+    "name": "delete_user",
+    "objects": [
+      "user"
+    ],
+    "operation": "delete",
+    "outputs": [],
+    "tags": [
+      "delete",
+      "unsafe",
+      "user"
+    ],
+    "uri": "!!ref:tool:paper6_5:delete_user:v1!!"
+  },
+  {
+    "description": "Find a document by title.",
+    "effect": "read",
+    "inputs": [
+      "title"
+    ],
+    "name": "search_document",
+    "objects": [
+      "document"
+    ],
+    "operation": "search",
+    "outputs": [
+      "document id"
+    ],
+    "tags": [
+      "document",
+      "search"
+    ],
+    "uri": "!!ref:tool:paper6_5:search_document:v1!!"
+  },
+  {
+    "description": "Read a document by document identifier.",
+    "effect": "read",
+    "inputs": [
+      "document_id"
+    ],
+    "name": "read_document",
+    "objects": [
+      "document"
+    ],
+    "operation": "read",
+    "outputs": [
+      "document text"
+    ],
+    "tags": [
+      "document",
+      "read"
+    ],
+    "uri": "!!ref:tool:paper6_5:read_document:v1!!"
+  },
+  {
+    "description": "Extract metadata from document text.",
+    "effect": "read",
+    "inputs": [
+      "document_id"
+    ],
+    "name": "extract_metadata",
+    "objects": [
+      "document"
+    ],
+    "operation": "inspect",
+    "outputs": [
+      "document metadata"
+    ],
+    "tags": [
+      "document",
+      "metadata"
+    ],
+    "uri": "!!ref:tool:paper6_5:extract_metadata:v1!!"
+  },
+  {
+    "description": "Update a document title.",
+    "effect": "write",
+    "inputs": [
+      "document_id",
+      "title"
+    ],
+    "name": "update_document",
+    "objects": [
+      "document"
+    ],
+    "operation": "update",
+    "outputs": [
+      "document change"
+    ],
+    "tags": [
+      "document",
+      "write"
+    ],
+    "uri": "!!ref:tool:paper6_5:update_document:v1!!"
+  },
+  {
+    "description": "Export a document in a requested format.",
+    "effect": "read",
+    "inputs": [
+      "document_id",
+      "format"
+    ],
+    "name": "export_document",
+    "objects": [
+      "document"
+    ],
+    "operation": "export",
+    "outputs": [
+      "artifact id"
+    ],
+    "tags": [
+      "document",
+      "export"
+    ],
+    "uri": "!!ref:tool:paper6_5:export_document:v1!!"
+  },
+  {
+    "description": "Find a source repository by name.",
+    "effect": "read",
+    "inputs": [
+      "name"
+    ],
+    "name": "search_repository",
+    "objects": [
+      "repository"
+    ],
+    "operation": "search",
+    "outputs": [
+      "repository id"
+    ],
+    "tags": [
+      "repository",
+      "search"
+    ],
+    "uri": "!!ref:tool:paper6_5:search_repository:v1!!"
+  },
+  {
+    "description": "Retrieve repository details.",
+    "effect": "read",
+    "inputs": [
+      "repository_id"
+    ],
+    "name": "get_repository",
+    "objects": [
+      "repository"
+    ],
+    "operation": "get",
+    "outputs": [
+      "repository record"
+    ],
+    "tags": [
+      "read",
+      "repository"
+    ],
+    "uri": "!!ref:tool:paper6_5:get_repository:v1!!"
+  },
+  {
+    "description": "Create a work-tracking issue in a repository.",
+    "effect": "write",
+    "inputs": [
+      "repository_id",
+      "title"
+    ],
+    "name": "create_issue",
+    "objects": [
+      "issue"
+    ],
+    "operation": "create",
+    "outputs": [
+      "issue id"
+    ],
+    "tags": [
+      "issue",
+      "repository",
+      "write"
+    ],
+    "uri": "!!ref:tool:paper6_5:create_issue:v1!!"
+  },
+  {
+    "description": "Update the status of a work-tracking issue.",
+    "effect": "write",
+    "inputs": [
+      "issue_id",
+      "status"
+    ],
+    "name": "update_issue",
+    "objects": [
+      "issue"
+    ],
+    "operation": "update",
+    "outputs": [
+      "issue change"
+    ],
+    "tags": [
+      "issue",
+      "write"
+    ],
+    "uri": "!!ref:tool:paper6_5:update_issue:v1!!"
+  },
+  {
+    "description": "Create a report from an artifact.",
+    "effect": "write",
+    "inputs": [
+      "artifact_id",
+      "title"
+    ],
+    "name": "create_report",
+    "objects": [
+      "report"
+    ],
+    "operation": "create",
+    "outputs": [
+      "report id"
+    ],
+    "tags": [
+      "artifact",
+      "report"
+    ],
+    "uri": "!!ref:tool:paper6_5:create_report:v1!!"
+  },
+  {
+    "description": "Archive a completed report.",
+    "effect": "write",
+    "inputs": [
+      "report_id"
+    ],
+    "name": "archive_report",
+    "objects": [
+      "report"
+    ],
+    "operation": "archive",
+    "outputs": [],
+    "tags": [
+      "archive",
+      "report"
+    ],
+    "uri": "!!ref:tool:paper6_5:archive_report:v1!!"
+  },
+  {
+    "description": "Permanently purge an archived artifact.",
+    "effect": "destructive",
+    "inputs": [
+      "artifact_id"
+    ],
+    "name": "purge_archive",
+    "objects": [
+      "artifact"
+    ],
+    "operation": "delete",
+    "outputs": [],
+    "tags": [
+      "artifact",
+      "delete",
+      "unsafe"
+    ],
+    "uri": "!!ref:tool:paper6_5:purge_archive:v1!!"
+  }
+]

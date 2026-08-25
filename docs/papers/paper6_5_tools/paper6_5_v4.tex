@@ -10,6 +10,7 @@ Typed Resource Discovery Before Neural Materialization}
 \date{\today}
 \input{../shared/results/paper6_5_tools/m1/generated_m1_results.tex}
 \input{../shared/results/paper6_5_tools/m2_m6_summary/generated_m2_m6_results.tex}
+\input{../shared/results/paper6_5_tools/semantic_summary/generated_semantic_results.tex}
 
 \begin{document}
 \maketitle
@@ -31,10 +32,18 @@ extension: a metadata/schema graph raises required-tool recall to .933 but
 obtains 0/15 task success under static disclosure. M6 also stops negatively:
 indexed lexical discovery reaches 1.000 single-step Top-1 and token routing
 reaches .889 multi-step required-tool recall, while native mean K, full token
-QK, and zero-shot Paper-2.8 projections are worse. The resulting architecture
-keeps calibrated typed discovery and reactive disclosure as the supported
-path; graph speculation and native-Q/K discovery remain bounded experimental
-modes rather than defaults.
+QK, and zero-shot Paper-2.8 projections are worse. M6.5 then tests 306 authored
+canonical, paraphrastic, colloquial, implicit, contextual, and multilingual
+requests. On 144 frozen test rows, BM25 falls to
+\PaperSixFiveSemanticBMTopOne{} Top-1; typed tags reach
+\PaperSixFiveSemanticTagsTopOne{} and a dictionary/embedding hybrid reaches
+\PaperSixFiveSemanticHybridTopOne{}. A validation-calibrated staged resolver
+selects on \PaperSixFiveSemanticCoverage{} of requests at
+\PaperSixFiveSemanticSelectiveAccuracy{} selective accuracy. M7 reevaluates
+frozen native geometry on the same rows: native mean K, full token QK, and two
+transferred compressors obtain only .049--.063 Top-1. The supported path is
+therefore model-independent semantic discovery followed by reactive disclosure;
+graph speculation and native-Q/K discovery remain bounded experimental modes.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -64,8 +73,11 @@ selected definition after it is encoded as native K/V. M2--M4 add a frozen
 pretrained model, typed execution, and multi-step reactive discovery. M5 asks
 whether capability neighborhoods should be disclosed before planning. M6 asks
 whether model-native query/key state improves resource discovery enough to
-justify a tighter deployment boundary. Persistent-session recall, production
-speed, and external side effects remain outside these gates.
+justify a tighter deployment boundary. M6.5 asks how far an external semantic
+resolver can go when canonical lexical overlap disappears, and M7 repeats the
+native comparison on exactly that frozen semantic-hard test set. Persistent-
+session recall, production speed at large catalog sizes, and external side
+effects remain outside these gates.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -113,7 +125,10 @@ candidate set before scoring. Index fingerprints make freshness auditable.
 M0 uses a declared 96-dimensional signed-hash control over the resource's
 action, object, and family concepts. It contains no resource ID. This idealized
 control isolates the policy mechanism; it is not evidence about a learned
-embedding model.
+embedding model. M6.5 replaces that control with two deployable external
+families: typed operation/object concepts with source provenance, and compact
+local encoders whose tool vectors are precomputed at registration. Neither
+family calls the generation model or reads its hidden state.
 
 \paragraph{Hybrid and adaptive.}
 Hybrid fuses all available evidence in one expensive stage. Adaptive begins
@@ -597,6 +612,185 @@ Consequently the supported generic architecture remains external
 explicit/token/index discovery. Model-server native routing is an optional
 research interface whose tighter coupling is not justified by these results.
 
+\section{M6.5: External Semantic-Hard Discovery}
+\subsection{Frozen benchmark and split discipline}
+M6 answers a canonical-language question; it does not show that lexical search
+is sufficient for sloppy intent. We therefore freeze 306 single-tool requests
+over the same 18-tool catalog. Each identity has one held-out test and one
+validation realization in H0 (canonical), H1 (synonym), H2 (colloquial), H3
+(implicit goal), H4 (bounded context plus shorthand), and H5 (Portuguese,
+Spanish, or French against English tool definitions). Eighteen additional
+audit rows cover the catalog. Validation and test contain 144 identities each;
+the complete query fingerprint is
+\texttt{e348334ad2362f284a217f1f852f175917a17540dd403f79953d7d2a7ebd7adb}.
+For H2 and later, tests reject exact tool names and aliases. H4 gives every
+channel the same context. No test wording selects an encoder, representation,
+fusion weight, or confidence threshold.
+
+This is a controlled, project-authored fixture rather than a naturally sampled
+user corpus. Its multilingual mappings and tool tags share the benchmark's
+typed concept inventory. Their accuracy measures the value of registration-time
+semantic metadata under those declared assumptions, not open-domain translation
+or multilingual generalization. The benchmark evaluates discovery only; the
+multi-step planning and execution boundaries remain those measured in M4--M5.
+
+\subsection{External policies}
+The concept map resolves domain-bounded operation/object phrases and retains
+language, source, and weight for every expansion. Tool registration emits four
+representations: description; name plus description; a deterministic card with
+purpose, operation, object, input/output types, and side effect; and three
+separate vectors for those fields. Three compact encoders are selected on
+validation only: all-MiniLM-L6-v2, BGE-small-en-v1.5, and multilingual
+MiniLM-L12-v2, all pinned by revision. Validation selects BGE with description
+cards and context-plus-query for English, and multilingual MiniLM with
+structured cards and query-only encoding for H5. Tool vectors are persisted;
+third-party weights are not copied into the repository.
+
+The policy ladder compares token overlap (P0), BM25 (P1), typed dictionary
+expansion (P2), registration-time tags (P3), their lexical combinations,
+English and multilingual embeddings, a validation-frozen hybrid, and an
+identity oracle. A staged P10 resolver tries lexical, dictionary/tags, and the
+embedding hybrid before asking. Its four thresholds are fitted on validation.
+
+\begin{table}[H]
+\centering
+\small
+\caption{M6.5 results on \PaperSixFiveSemanticTestQueries{} frozen test
+requests. Latency is the median measured end-to-end resolver time for this
+18-candidate Python implementation; embedding registration is amortized.}
+\label{tab:m65}
+\begin{tabular}{lrrrr}
+\toprule
+Policy & Top-1 & MRR & Recall@3 & Median ms \\
+\midrule
+Token & .257 & .398 & .403 & 8.6 \\
+BM25 & \PaperSixFiveSemanticBMTopOne & .485 & .514 & 8.6 \\
+Typed dictionary & .729 & .812 & .868 & 8.6 \\
+Registration tags & \PaperSixFiveSemanticTagsTopOne & .823 & .875 & 8.6 \\
+English embedding & .563 & .682 & .750 & 12.3 \\
+Multilingual embedding & .556 & .690 & .785 & 10.8 \\
+Dictionary/embedding hybrid & \PaperSixFiveSemanticHybridTopOne & .809 & \PaperSixFiveSemanticHybridRecallThree & 12.3 \\
+Identity oracle & 1.000 & 1.000 & 1.000 & 8.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tags improve Top-1 over BM25 by \PaperSixFiveSemanticTagGain{} (paired
+identity bootstrap 95\% interval
+[\PaperSixFiveSemanticTagGainLow{}, \PaperSixFiveSemanticTagGainHigh{}]; exact
+discordance $p<10^{-10}$). The gain is not uniform. English BGE is strongest
+on H3 implicit goals (.722), tags on H4 context (.556), and curated tags are
+perfect on H5 because all three languages are represented in the frozen
+concept inventory. The hybrid improves H2 to .667 and H5 to .963 but does not
+dominate each specialized channel. This is why the deployment policy is a
+calibrated ladder, not a claim that one embedding replaces lexical metadata.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper6_5_tools/semantic_summary/semantic_quality_by_hardness.pdf}
+\caption{External discovery by hardness. Lexical quality declines as canonical
+wording disappears; typed metadata and embeddings recover different strata.}
+\label{fig:m65-hardness}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper6_5_tools/semantic_summary/semantic_quality_vs_lexical_distance.pdf}
+\caption{Required quality-versus-distance analysis. Bins contain 21, 37, 11,
+and 75 test identities from lower to higher lexical distance. Dictionary and
+hybrid channels retain substantial accuracy when token overlap is zero.}
+\label{fig:m65-distance}
+\end{figure}
+
+\subsection{Selective action and deployment cost}
+On test, staged P10 selects 86 of 144 requests and asks on 58: coverage is
+\PaperSixFiveSemanticCoverage{}, selective accuracy is
+\PaperSixFiveSemanticSelectiveAccuracy{}, actionable accuracy is .542, and the
+false-action rate is \PaperSixFiveSemanticFalseAction{}. No selected top tool
+is in the row's unsafe set. Its Brier score is \PaperSixFiveSemanticBrier{} and
+10-bin ECE is \PaperSixFiveSemanticECE{}. These held-out numbers are weaker than
+validation (.949 selective accuracy), which is a reason to retain ASK rather
+than lower thresholds after seeing test outcomes.
+
+The 384-dimensional persistent tool vectors occupy 27.6 kB. The selected BGE
+encoder has 133.4 MB of parameters, loads into the process in 3.75 s, and encodes the full
+306-query cohort in 1.13 s on the recorded CUDA host; its median per-query
+resolver path is 12.3 ms versus 8.6 ms for dictionary/tags. The multilingual
+encoder is larger (470.6 MB) and is not selected for the generic fusion.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/semantic_summary/semantic_multilingual_quality.pdf}
+\caption{H5 retrieval against English tool definitions. The curated dictionary
+and tag channels encode the three tested languages by construction; the
+multilingual encoder is an independent model-backed control.}
+\label{fig:m65-language}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/semantic_summary/semantic_staged_escalation.pdf}
+\caption{Validation-calibrated P10 stage outcomes on test. More semantic-hard
+rows reach the hybrid or ASK stages instead of forcing a low-confidence call.}
+\label{fig:m65-stages}
+\end{figure}
+
+\section{M7: Native Geometry on the Frozen Hard Set}
+M7 reuses all \PaperSixFiveSemanticTestQueries{} test identities without
+changing wording, tool cards, or external policies. Frozen Qwen3-0.6B layer-27
+pre-RoPE state supplies native mean K and full token QK. The Paper-2.8 rank-16
+ensemble and rank-8/eight-centroid ensemble are transferred from five
+HotpotQA/QASPER checkpoints without tool supervision. Query encoding is charged
+online; raw native state is not persisted.
+
+\begin{table}[H]
+\centering
+\small
+\caption{M7 matched semantic-hard comparison. Model bytes include the frozen
+Qwen required to reproduce native queries; index bytes exclude backing model
+weights. The rank-8 timing includes the current per-query centroid construction
+and is not a production index latency.}
+\label{tab:m7}
+\begin{tabular}{lrrrr}
+\toprule
+Mode & Top-1 & MRR & Recall@3 & Median ms \\
+\midrule
+BM25 & .347 & .485 & .514 & 8.6 \\
+Tags & .743 & .823 & .875 & 8.6 \\
+English embedding & .563 & .682 & .750 & 12.3 \\
+External hybrid & .729 & .809 & .875 & 12.3 \\
+Native mean K & \PaperSixFiveMSevenMeanTopOne & .233 & .313 & 116.7 \\
+Native token QK & \PaperSixFiveMSevenTokenTopOne & .220 & .181 & 115.9 \\
+Paper-2.8 rank-16 & \PaperSixFiveMSevenRankSixteenTopOne & .194 & .167 & 122.9 \\
+Paper-2.8 rank-8/8-centroid & \PaperSixFiveMSevenRankEightTopOne & .190 & .167 & 1,658.4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The native Top-1 range, .049--.063, contains the uniform catalog chance rate
+$1/18=.056$. Tags exceed native mean K by .688 (paired bootstrap 95\% interval
+[.604,.764]) and full token QK by .681 ([.597,.764]). Thus the harder wording
+does not reveal a frozen native advantage hidden by M6's canonical queries.
+This result is narrower than ``native Q/K cannot encode tool intent'': it says
+that one frozen layer, two direct reducers, and QA-trained low-rank projections
+do not expose it zero-shot for this catalog.
+
+Tool-specific native training does not open. External accuracy leaves oracle
+headroom, but none of the four frozen native diagnostics supplies the required
+positive signal, and reproducing native queries requires a 1.19 GB model plus
+co-location or a model-server extension. The next justified experiment would
+need tool-supervised evidence independent of this test set, not adaptation to
+the 144 held-out requests.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.90\linewidth]{../shared/results/paper6_5_tools/semantic_summary/semantic_quality_latency_frontier.pdf}
+\caption{M7 quality--latency frontier on matched queries. External typed
+semantics dominates the tested frozen native modes in both quality and online
+latency on this small catalog.}
+\label{fig:m7-frontier}
+\end{figure}
+
 \section{Next Experimental Gates}
 The next gates return to the broader persistent-context thesis: hierarchical
 skills, mutation and revocation, bounded \texttt{\#\_\_head} history,
@@ -604,10 +798,12 @@ superseded facts, and permission-scoped child sessions
 \[
 M_{\mathrm{child}}=R(M_{\mathrm{parent}})\cup\Delta M_{\mathrm{child}}.
 \]
-Cross-model replication is also required because M2--M6 use one frozen Qwen
-checkpoint. The OpenAI-compatible endpoint belongs after these mechanism
-checks, so harness behavior does not hide resolver, disclosure, or execution
-failures.
+Cross-model replication is also required because M2--M7 use one frozen Qwen
+checkpoint for pretrained/native mechanisms. Natural semantic-hard requests,
+larger catalogs, and a tool-identity-disjoint benchmark should test whether the
+authored tag advantage survives distribution shift. The OpenAI-compatible
+endpoint belongs after these mechanism checks, so harness behavior does not
+hide resolver, disclosure, or execution failures.
 
 \section{Reproducibility}
 The M0 benchmark entry points are
@@ -635,7 +831,14 @@ macros, and figures are generated by \texttt{summarize\_m2\_m6.py}. Raw rows
 contain one call, workflow step, policy/task, or routing-query record as
 appropriate. Manifests record the frozen model revision, CUDA device,
 presentation seeds, index accounting, checkpoint provenance, and the fact that
-all execution handlers are pure in-memory fixtures.
+all execution handlers are pure in-memory fixtures. M6.5 uses
+\texttt{run\_m6\_5\_external\_semantics.py}; M7 uses
+\texttt{run\_m7\_semantic\_native.py}; and
+\texttt{summarize\_semantic\_hard.py} regenerates paired effects, tables,
+macros, and figures. Their manifests pin query fingerprints, split discipline,
+encoder/model revisions, representation selection, thresholds, and CUDA
+runtime. Tool vectors are committed, but third-party encoder weights and raw
+native Q/K are not.
 
 \section{Conclusion}
 A large agent catalog should not be mistaken for the context needed on every
@@ -648,16 +851,20 @@ static disclosure in this cohort.
 
 The extensions also locate two boundaries. M5 capability graphs improve set
 recall but not task success; more useful tools visible at once are still more
-actions for a small model to sequence. M6 model-native Q/K is neither necessary
-nor beneficial for this catalog: indexed lexical discovery is stronger and
-crosses a much simpler deployment boundary. These are stop results, not pending
-positive claims.
+actions for a small model to sequence. M6's canonical queries favor lexical
+indexing, whereas M6.5 shows that authored tags, dictionaries, and compact
+embeddings recover semantic-hard intent that BM25 misses. M7 then finds no
+zero-shot native benefit on those same hard rows. These are positive external-
+resolver results and bounded native stop results, not evidence that all tool
+semantics are lexical or that trained native geometry cannot work.
 
-The supported architecture is therefore conservative: typed identities,
-calibrated external discovery, minimal or reactive disclosure, independently
-authorized execution, and typed observations. Speculative graph neighborhoods
-remain auditable fixed candidates, and native-Q/K remains an optional
-model-server research interface. Persistent skills, history, mutation, and
-session inheritance are the next untested parts of the broader program.
+The supported architecture is therefore conservative: explicit identity,
+indexed lexical search, provenance-bearing dictionary/tags, compact embedding
+fallback, calibrated ASK, minimal or reactive disclosure, independently
+authorized execution, and typed observations. This path works with an opaque
+generation API. Speculative graph neighborhoods remain auditable fixed
+candidates, and native-Q/K remains an optional model-server research interface.
+Persistent skills, history, mutation, and session inheritance are the next
+untested parts of the broader program.
 
 \end{document}

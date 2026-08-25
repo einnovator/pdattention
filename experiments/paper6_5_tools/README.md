@@ -82,10 +82,14 @@ real-tool evidence.
 5. `M4`: three-to-five-step reactive discovery (complete).
 6. `M5`: graph-based speculative capability disclosure (complete; negative
    task-success gate).
-7. `M6`: optional co-located/server-native QK discovery (complete; negative
-   comparison against lexical/index discovery).
-8. `M7`: hierarchical skills, persistent sessions, mutation, and inheritance.
-9. OpenAI-compatible serving, cross-model replication, and maintained harness
+7. `M6`: optional co-located/server-native QK discovery on canonical queries
+   (complete; negative comparison against lexical/index discovery).
+8. `M6.5`: model-independent dictionary, tags, and compact embeddings on a
+   frozen H0--H5 semantic-hard benchmark (complete).
+9. `M7`: frozen native-Q/K rerun on the identical semantic-hard test identities
+   (complete; tool-specific training gate closed).
+10. Hierarchical skills, persistent sessions, mutation, and inheritance.
+11. OpenAI-compatible serving, cross-model replication, and maintained harness
    integration.
 
 Each stage is gated. A later model or execution stage is not evidence for an
@@ -136,3 +140,32 @@ multi-step required-tool recall. Native and transferred low-rank modes are
 worse. Only the co-located mode is executed; shared-memory projected-query and
 identity-only model-server interfaces are implemented as architectural
 boundaries. Raw Q/K is not persisted.
+
+## Completed M6.5 semantic-hard external discovery
+
+```powershell
+python experiments/paper6_5_tools/run_m6_5_external_semantics.py --device cuda
+```
+
+The frozen authored benchmark contains 306 rows over 18 tools: 18 audit, 144
+validation, and 144 test queries spanning canonical, synonymous, colloquial,
+implicit-goal, contextual, and Portuguese/Spanish/French requests. Compact
+encoder and representation selection, fusion weights, calibration, and staged
+thresholds use validation only. On test, BM25 obtains .347 Top-1, typed tags
+.743, and the dictionary/embedding hybrid .729. The staged resolver selects on
+.597 of requests at .907 selective accuracy and asks on the remainder. This is
+a controlled concept-inventory result, not a natural multilingual benchmark.
+
+## Completed M7 frozen native rerun
+
+```powershell
+python experiments/paper6_5_tools/run_m7_semantic_native.py --device cuda
+python experiments/paper6_5_tools/summarize_semantic_hard.py
+```
+
+M7 reuses exactly the 144 frozen test identities. Native mean K, full token QK,
+and zero-shot Paper-2.8 rank-16 and rank-8/eight-centroid projections obtain
+.049--.063 Top-1, around the 1/18 catalog chance rate, versus .743 for tags.
+The required native diagnostic is absent, so tool-specific native-Q/K training
+does not open. Generated paired effects, calibration tables, and figures live
+under `docs/papers/shared/results/paper6_5_tools/semantic_summary`.

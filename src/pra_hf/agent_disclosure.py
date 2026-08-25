@@ -34,10 +34,19 @@ class DisclosureMode(str, Enum):
 
 @dataclass(frozen=True)
 class DiscoveryPolicy:
-    """Resource-ranking policy embedded in the combined SDK configuration."""
+    """Resource-ranking policy embedded in the combined SDK configuration.
+
+    The semantic controls are deliberately independent of disclosure breadth.
+    They describe an agent-side resolver ladder; ``native_qk`` is an optional
+    deeper integration and remains disabled for remote or opaque model APIs.
+    """
 
     mode: DiscoveryMode | str = DiscoveryMode.ADAPTIVE
     strict: bool = False
+    lexical_index: bool = True
+    dictionary_semantics: bool = False
+    embedding_backend: str | None = None
+    native_qk: bool = False
 
     def hint(self) -> DiscoveryHint:
         return DiscoveryHint(self.mode, self.strict)

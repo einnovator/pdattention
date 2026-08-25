@@ -163,20 +163,21 @@ def _lowrank_scores(query, keys, mask, selectors, *, centroids: bool, device):
     flat_keys = keys.flatten(2).to(device)
     mask = mask.to(device)
     rows = []
-    for selector, checkpoint in selectors:
-        projected = selector.feature_projection(flat_keys / float(checkpoint["native_key_rms_scale"]))
-        projected_mask = mask
-        if centroids:
-            projected, projected_mask = kmeans_centroids(projected, projected_mask, 8)
-        projected_query = selector.query_projection(query_feature)
-        score = low_rank_response_scores(
-            projected_query,
-            projected,
-            projected_mask,
-            function="top_r_mean",
-            top_r=4,
-        )[0]
-        rows.append(_unit(score.float()))
+    with torch.inference_mode():
+        for selector, checkpoint in selectors:
+            projected = selector.feature_projection(flat_keys / float(checkpoint["native_key_rms_scale"]))
+            projected_mask = mask
+            if centroids:
+                projected, projected_mask = kmeans_centroids(projected, projected_mask, 8)
+            projected_query = selector.query_projection(query_feature)
+            score = low_rank_response_scores(
+                projected_query,
+                projected,
+                projected_mask,
+                function="top_r_mean",
+                top_r=4,
+            )[0]
+            rows.append(_unit(score.float()))
     return torch.stack(rows).mean(dim=0).cpu()
 
 
