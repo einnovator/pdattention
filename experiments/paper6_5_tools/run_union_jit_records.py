@@ -409,7 +409,9 @@ def _kv_bytes_per_token(model) -> int:
 
 
 def _materialization_row(model, candidates, resources, *, row_id: str, budget_bytes: int | None = None):
-    parent, children = tool_catalog_slice_records(candidates, resources, slice_id=f"slice:{row_id}")
+    parent, children = tool_catalog_slice_records(
+        candidates, resources, slice_id=f"slice:{row_id}", child_view="full"
+    )
     required = sum(row.size_bytes for row in children) + max(len(children) - 1, 0)
     result = materialize_authoritative_slice(
         parent,
@@ -623,7 +625,12 @@ def run_e5_e6(model, resources, seeds):
                         explicit_reference_uris=(target.uri,),
                     )
                     full = _materialization_row(model, candidates, resources, row_id=f"e5-{seed}-{task.task_id}")
-                    parent, children = tool_catalog_slice_records(candidates, resources, slice_id=f"slice:e5-overflow-{seed}-{task.task_id}")
+                    parent, children = tool_catalog_slice_records(
+                        candidates,
+                        resources,
+                        slice_id=f"slice:e5-overflow-{seed}-{task.task_id}",
+                        child_view="full",
+                    )
                     narrow = materialize_authoritative_slice(
                         parent,
                         children,

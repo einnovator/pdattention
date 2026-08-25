@@ -25,7 +25,9 @@ def test_callable_union_slice_materializes_every_selected_schema_whole() -> None
         scores,
         ToolDiscoveryPolicy(max_candidates=2, embedding=False, dictionary=False),
     )
-    parent, children = tool_catalog_slice_records(candidates, resources, slice_id="slice:test")
+    parent, children = tool_catalog_slice_records(
+        candidates, resources, slice_id="slice:test", child_view="full"
+    )
     required_bytes = sum(row.size_bytes for row in children) + len(children) - 1
     result = materialize_authoritative_slice(
         parent,

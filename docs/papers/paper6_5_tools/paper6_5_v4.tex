@@ -14,6 +14,7 @@ Typed Resource Discovery Before Neural Materialization}
 \input{../shared/results/paper6_5_tools/auto_union_records/generated_auto_union_results.tex}
 \input{../shared/results/paper6_5_tools/auto_discovery_ablation/generated_auto_discovery_results.tex}
 \input{../shared/results/paper6_5_tools/auto_discovery_scaling/generated_scaled_auto_results.tex}
+\input{../shared/results/paper6_5_tools/progressive_disclosure/generated_progressive_results.tex}
 
 \begin{document}
 \maketitle
@@ -64,7 +65,11 @@ confusable catalogs from 32 to 8,192 tools. Frozen hybrid Top-1 declines from
 recovers \PaperSixFiveScaleEightKUnionRecallTen{} of required tools, but useful
 precision is only \PaperSixFiveScaleEightKUnionPrecisionTen{}. Graph
 speculation, union-default disclosure, and native-Q/K discovery therefore
-remain bounded experimental modes.
+remain bounded experimental modes. M9 adds deterministic typed views for tools
+and declarative skills. At $K=8$, selection-to-full skill execution matches
+full-all strict success at \PaperSixFiveMNineSkillKEightProgressiveSuccess{}
+while exposing \PaperSixFiveMNineSkillKEightDisclosure{} of its capability
+tokens. The two-pass mechanism uses neither callbacks nor dynamic expansion.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -106,6 +111,9 @@ automatic keywords, generic synonyms, inferred concepts, automatic tags,
 compact embeddings, and bounded channel union without changing the frozen
 catalog or test identities. Its final scale test preserves those identities
 while adding seeded callable-derived distractors through 8,192 tools.
+M9 finally separates the information needed to choose a capability from the
+information needed to use it. It compares full-all, selection-only,
+selection-to-full, and oracle-full views for tools and declarative skills.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -1127,8 +1135,9 @@ If the slice exceeds the declared budget, the runtime must request a narrower
 slice, return an error, use an explicitly allowed temporary expansion, or drop
 whole records in candidate-priority order. Silent partial-schema fallback is
 invalid. The same substrate can construct tool responses, logs, terminal
-outputs, database results, and RAG chunks, but progressive field reduction and
-detail expansion remain future work rather than hidden behavior in this paper.
+outputs, database results, and RAG chunks. M9 adds only predefined selection and
+full views for capability records; dynamic field reduction and detail expansion
+remain future work rather than hidden behavior in this paper.
 
 E4 reruns the three frozen workflows across five prompt presentations with
 Top-1 JIT, diversity-union JIT at $K=2,4,6,8$, static required-set and graph
@@ -1172,8 +1181,8 @@ likewise reaches only \PaperSixFiveGenericChunkValidity{}. Dropping one required
 field lowers acceptance to
 \PaperSixFiveDroppedFieldValidity{} and causes required-argument omission at
 rate \PaperSixFiveDroppedFieldOmission{}. These controls support full selected-
-tool materialization as the default; they do not support progressive detail
-expansion, which is explicitly outside M8.
+tool materialization as the default. M9 retains that atomic full view after
+selection; it does not introduce progressive detail expansion inside a schema.
 
 \begin{figure}[H]
 \centering
@@ -1183,6 +1192,196 @@ selects one internal schema segment; all partial-schema conditions are
 experimental controls, not runtime fallback policies.}
 \label{fig:m8-atomic}
 \end{figure}
+
+\section{M9: Typed Progressive Disclosure}
+
+Tool and skill records require different detail during choice and use. A model
+can often choose between capabilities from identity, signature or applicability,
+and a short description. It needs the complete parameter schema only when
+constructing a call, and the complete instruction body only when applying a
+skill. M9 represents this distinction as two deterministic views of one typed,
+versioned record:
+\[
+R_{\mathrm{select}}\longrightarrow R_{\mathrm{full}}.
+\]
+This transition is not token truncation or learned summarization. Field
+selection is defined by record type, and both views remain semantic record
+units. A full view is admitted atomically or not at all.
+
+\subsection{Records and explicit two-phase execution}
+
+A tool selection view contains stable name, call signature, short description,
+and side-effect class. Its full view contains the complete nested input schema,
+required and optional fields, enums and defaults, return schema, identity,
+version, and authorization-relevant metadata. A declarative skill selection
+view contains name, description, and when-to-use text. Its full view additionally
+contains ordered instructions, constraints, examples, dependencies, references,
+namespace, tenant, and version metadata. M9 supports text-only skills; it rejects
+script or executable payload metadata.
+
+The runtime performs two ordinary model invocations. Phase A materializes the
+selection view of every externally bounded candidate and requests one structured
+capability identity. A validated \texttt{CapabilityTransition} permits only
+\texttt{selection}$\rightarrow$\texttt{full}. Phase B removes non-selected
+candidates, materializes the selected full record, and asks the model to produce
+arguments or follow the selected instructions. Discovery and materialization do
+not grant execution authority; the existing host validator still checks selected
+identity, schema, side-effect policy, and request-scoped authorization.
+
+The implementation is deliberately simple. Named views and policy validation
+live in \path{src/pra_hf/context_records.py}; the transition and token/KV
+accounting live in \path{src/pra_hf/progressive_disclosure.py}; and declarative
+skill records live in \path{src/pra_hf/skill_records.py}. There is no generation
+callback, decoder interruption, confidence-triggered expansion, arbitrary
+compression, or mid-token materialization. Those dynamic mechanisms belong to
+a later large-record study.
+
+For candidate full-view tokens $F_K$, Phase-A selection tokens $A_K$, and the
+selected full-view tokens $B$, we report
+\[
+  \mathrm{DisclosureRatio}=\frac{A_K}{F_K},\qquad
+  \mathrm{TotalDisclosureRatio}=\frac{A_K+B}{F_K}.
+\]
+The latter counts both model phases and therefore does not hide the second
+invocation.
+
+\subsection{Protocol}
+
+The tool experiment freezes \PaperSixFiveMNineToolCases{} semantic-hard requests
+over the 18 M8 callables. The skill benchmark contains
+\PaperSixFiveMNineSkillCatalog{} realistic, semantically confusable declarative
+skills and 50 name-blind requests split evenly between validation and test.
+Validation selects the same external BM25, automatic semantic, compact-embedding,
+and fused discovery stack used for tools. Generation uses
+\PaperSixFiveMNineSkillCases{} held-out skill requests. Both experiments compare
+full-all (T0/S0), selection-only (T1/S1), selection-to-full (T2/S2), and
+oracle-full (T3/S3) at $K\in\{2,4,6,8\}$, followed by all-18-tool and all-25-skill
+stress controls.
+
+All generation rows use the exact frozen Qwen3-0.6B revision in FP16 on an
+NVIDIA GeForce GTX 950M, deterministic decoding, and no parameter updates. The
+small eight-request generation cohorts are mechanism checks, not population
+estimates. Tool evaluation separates required Recall@$K$, capability choice,
+schema validity, argument semantics, host acceptance, and strict success. Skill
+evaluation uses deterministic identity markers, required output headings, and
+forbidden external-action claims. Timing includes CUDA synchronization,
+serialization, both TTFTs, and both generations.
+
+\subsection{Discovery and view size}
+
+The shared discovery stack transfers without a second skill-specific retrieval
+system. On the 25-query skill test split, BM25 obtains
+\PaperSixFiveMNineSkillBmTwentyTopOne{} Top-1, compact embeddings obtain 0.800,
+and validation-selected fusion obtains \PaperSixFiveMNineSkillFusedTopOne{}.
+The corresponding tool bars in Figure~\ref{fig:m9-discovery} reuse M8's 144
+test requests and should not be read as a paired cross-type comparison.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper6_5_tools/progressive_disclosure/capability_discovery_generalization.pdf}
+\caption{The same external discovery families applied to tools and declarative
+skills. Cohort sizes differ; the figure tests substrate reuse, not which
+resource type is intrinsically easier.}
+\label{fig:m9-discovery}
+\end{figure}
+
+Full tool schemas contain a median 233.5 tokens (p95 244), and their selection
+views retain a median 0.368 of that count. Full skill instructions contain a
+median 468 tokens (p95 480), while skill selection views retain 0.215. These
+bodies are intentionally nontrivial: full-all instruction cost therefore grows
+linearly with the candidate palette.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper6_5_tools/progressive_disclosure/capability_view_size_distribution.pdf}
+\caption{Median full-view tokens and median selection/full token ratio for the
+18 tool schemas and 25 declarative skills. Ratios are percentages in the red
+bars; no view is formed by first-$N$-token truncation.}
+\label{fig:m9-view-size}
+\end{figure}
+
+\subsection{Tools: choice improves at moderate budgets, not at catalog scale}
+
+Table~\ref{tab:m9-tools} reports the full tool matrix. At $K=4$, T2 raises
+choice accuracy from \PaperSixFiveMNineToolKFourFullChoice{} to
+\PaperSixFiveMNineToolKFourProgressiveChoice{} and strict success from
+\PaperSixFiveMNineToolKFourFullSuccess{} to
+\PaperSixFiveMNineToolKFourProgressiveSuccess{}, while exposing
+\PaperSixFiveMNineToolKFourDisclosure{} of T0's capability tokens. At $K=8$,
+T0 and T2 both obtain \PaperSixFiveMNineToolKEightProgressiveChoice{} choice
+accuracy; T2 uses \PaperSixFiveMNineToolKEightDisclosure{} of full-all tokens
+but adds \PaperSixFiveMNineToolKEightWallOverhead{} seconds mean wall time.
+At all 18 tools, T2 choice falls to 0.375 versus 0.625 for T0. Compact views do
+not remove the need for bounded discovery.
+
+\begin{table}[!t]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/progressive_disclosure/generated_tool_progressive_table.tex}}
+\caption{Tool progressive-disclosure matrix. $n$ is the number of context-fitting
+generation cases. ``Valid/follow'' is schema-valid call rate. Strict success
+also requires the exact benchmark arguments and accepted host execution.}
+\label{tab:m9-tools}
+\end{table}
+
+Selection-only obtains no strict successes: compact signatures are sufficient
+for choosing in some rows, but are not a reliable replacement for full provider
+schemas during argument construction. T3 obtains 1.000 schema validity and host
+acceptance at every budget, yet only 0.375 strict success because five of eight
+requests elicit non-exact argument values even when the correct tool is supplied
+alone. This oracle ceiling is why M9 does not interpret low strict success as a
+routing-only failure.
+
+\subsection{Skills: context economy without loss at \texorpdfstring{$K=8$}{K=8}}
+
+Skill full views consistently recover the deterministic instruction contract.
+At $K=8$, S2 and S0 both obtain
+\PaperSixFiveMNineSkillKEightProgressiveSuccess{} strict success. S2 exposes
+\PaperSixFiveMNineSkillKEightDisclosure{} of S0's capability tokens and reduces
+mean wall time from \PaperSixFiveMNineSkillKEightFullWall{} to
+\PaperSixFiveMNineSkillKEightProgressiveWall{} seconds despite two model
+invocations. This is a measured property of quadratic SDPA on the stated 4-GB
+GPU, not a general latency claim. S1 fails the required identity and output
+contract, confirming that compact applicability text cannot replace the full
+instructions.
+
+\clearpage
+\begin{table}[H]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/progressive_disclosure/generated_skill_progressive_table.tex}}
+\caption{Declarative-skill progressive-disclosure matrix. ``Valid/follow'' is
+deterministic instruction-contract success. The $K=25$ S0 row has $n=0$ because
+all eight 11,765--11,771-token prompts exceeded the declared 8,192-token runtime
+limit before generation.}
+\label{tab:m9-skills}
+\end{table}
+
+At $K=25$, the 11,702 capability tokens of S0 cannot run under the measured GPU
+limit, whereas S2 fits at 2,929 mean capability tokens and obtains 0.500 strict
+success. This stress result establishes feasibility under one hardware envelope;
+it does not imply that larger-memory runtimes cannot execute full-all.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.90\linewidth]{../shared/results/paper6_5_tools/progressive_disclosure/progressive_disclosure_pareto.pdf}
+\caption{Strict task success against total capability tokens exposed at $K=8$.
+Totals include both phases for T2/S2. The oracle points isolate the call or
+instruction-following ceiling after externally correct selection.}
+\label{fig:m9-pareto}
+\end{figure}
+
+\subsection{Gate decision}
+
+The architectural gate opens: typed selection/full views, explicit transitions,
+atomic selected records, and shared tool/skill discovery work without callback
+machinery. The skill inclusion gate also opens because fused discovery exceeds
+BM25 by 0.160 Top-1 and selected-full execution cuts instruction context while
+remaining deterministically evaluable. The deployment gate is conditional.
+Selection-to-full is the SDK policy for an already bounded capability palette,
+but the resolver must retain its calibrated candidate limit and host safety
+checks. This small cohort does not establish statistical non-inferiority, and
+the all-tool result rejects using compact views as a substitute for discovery.
 
 \section{Next Experimental Gates}
 The next gates return to the broader persistent-context thesis: hierarchical
@@ -1232,6 +1431,17 @@ regenerates the table, macros, four figures, and machine-readable findings.
 The raw rows distinguish index construction, query encoding, channel scoring,
 candidate construction, component memory, logical schema tokens, and selected
 schema tokens.
+
+M9 is prepared by \path{prepare_progressive_disclosure.py}, executed by
+\path{run_progressive_disclosure.py}, and summarized by
+\path{summarize_progressive_disclosure.py}. The preparation stage freezes
+selection/full views, the 25-skill catalog, 50 semantic-hard skill queries,
+validation-selected fusion weights, candidate sets, and disclosure costs. The
+generation runner checkpoints each condition and records prompt/context fit,
+native-K/V bytes, both TTFTs, transition overhead, wall time, raw output, and
+deterministic evaluator fields. The summarizer regenerates two full condition
+tables, three figures, macros, and machine-readable findings. No model or
+encoder weights are committed.
 
 The M0 benchmark entry points are
 \texttt{experiments/paper6\_5\_tools/run\_m0\_policy\_study.py} and
@@ -1297,7 +1507,16 @@ dominate fusion on the original cohort. Under five semantically confusable
 catalog seeds, frozen hybrid ranking degrades faster than lexical evidence;
 bounded union restores part of the 8K recall but leaves low useful precision
 and nonzero unsafe exposure. The result motivates indexed high-recall retrieval
-followed by calibrated reranking, not default broad disclosure. Persistent
-skills, history, mutation, and session inheritance remain untested.
+followed by calibrated reranking, not default broad disclosure.
+
+M9 narrows the cost after discovery. Deterministic selection views preserve a
+bounded choice palette; the runtime then removes losing candidates and exposes
+one complete authoritative tool schema or declarative skill. The skill result
+shows equal $K=8$ strict success at roughly one third of full-all capability
+tokens, while the all-skill full prompt does not fit the measured runtime
+envelope. The tool result is less uniform and degrades at all-catalog scale, so
+progressive disclosure complements rather than replaces calibrated discovery.
+Basic declarative skills are now covered; hierarchical skills, persistent
+history, mutation, revocation, and session inheritance remain untested.
 
 \end{document}

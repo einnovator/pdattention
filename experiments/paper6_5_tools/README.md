@@ -257,3 +257,46 @@ required-tool recall from 0.553 for A6 to 0.662, but useful precision is 0.078
 and unsafe-candidate exposure is 0.110. The default-union/JIT gate remains
 closed; this experiment supports indexed high-recall candidate generation
 followed by calibrated reranking.
+
+## M9 typed progressive disclosure
+
+M9 adds deterministic `selection` and `full` views to typed records. Tool
+selection views contain identity, signature, description, and side-effect
+class; skill selection views contain identity, description, and applicability.
+The full views retain complete schemas or declarative instruction bodies as
+atomic records. The primary runtime performs two ordinary model calls:
+
+1. Materialize every bounded candidate's selection view and request a
+   structured capability identity.
+2. Remove non-selected candidates, materialize only the selected full record,
+   and generate the call or skill-guided response.
+
+There is no decoder callback, mid-token interruption, learned summary, or
+dynamic detail expansion. Those mechanisms remain outside Paper 6.5.
+
+Prepare the 18-tool and 25-skill catalogs, run the exact frozen Qwen3-0.6B CUDA
+matrix, and regenerate the reports with:
+
+```powershell
+$env:PYTHONPATH='src;.'
+python experiments/paper6_5_tools/prepare_progressive_disclosure.py --device cuda
+python experiments/paper6_5_tools/run_progressive_disclosure.py --device cuda
+python experiments/paper6_5_tools/summarize_progressive_disclosure.py
+```
+
+The generation matrix uses eight frozen tool requests and eight held-out skill
+requests at `K=2,4,6,8`, plus separate 18-tool and 25-skill stress controls. The
+same external discovery substrate is evaluated over all 50 skill queries. Skill
+fused discovery reaches 0.880 Top-1 on the 25-query test split versus 0.720 for
+BM25. At `K=8`, skill selection-to-full matches full-all strict success at
+0.625 while exposing 0.341 of its capability tokens. The 25-skill full-all
+prompt exceeds the measured 8,192-token runtime limit on the 4 GB GPU; compact
+selection and selected-full execution remain feasible. Tool results separate
+choice, schema validity, argument semantics, host acceptance, and strict task
+success because the frozen 0.6B model misses exact write arguments even under
+oracle tool selection.
+
+The runner checkpoints every condition. `--fresh` starts a new protocol and
+`--no-include-all` omits the catalog-wide stress controls. Raw rows, summaries,
+figures, generated TeX, manifests, and disclosure accounting live under
+`docs/papers/shared/results/paper6_5_tools/progressive_disclosure`.

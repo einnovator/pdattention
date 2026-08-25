@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from typing import Callable, Mapping, Sequence
 
@@ -71,6 +71,29 @@ class OverflowBehavior(str, Enum):
     DROP_WHOLE_RECORDS = "drop_whole_records"
 
 
+class RecordViewName(str, Enum):
+    """Predefined typed representations of one semantic record."""
+
+    SELECTION = "selection"
+    FULL = "full"
+
+
+@dataclass(frozen=True)
+class RecordView:
+    """One deterministic, type-aware representation of a record."""
+
+    name: RecordViewName | str
+    payload: Mapping[str, object] | str
+    fields: tuple[str, ...]
+    token_count: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", RecordViewName(self.name))
+        object.__setattr__(self, "fields", tuple(dict.fromkeys(self.fields)))
+        if self.token_count < 0:
+            raise ValueError("Record-view token_count cannot be negative.")
+
+
 @dataclass(frozen=True)
 class RecordPolicy:
     """Orthogonal selection, authority, atomicity, and materialization policy."""
@@ -81,6 +104,8 @@ class RecordPolicy:
     atomicity: RecordAtomicity | str
     materialization: MaterializationPolicy | str
     allow_partial_tools: bool = False
+    initial_view: RecordViewName | str = RecordViewName.FULL
+    selected_view: RecordViewName | str = RecordViewName.FULL
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "record_type", RecordType(self.record_type))
@@ -88,15 +113,19 @@ class RecordPolicy:
         object.__setattr__(self, "authority", SelectionAuthority(self.authority))
         object.__setattr__(self, "atomicity", RecordAtomicity(self.atomicity))
         object.__setattr__(self, "materialization", MaterializationPolicy(self.materialization))
+        object.__setattr__(self, "initial_view", RecordViewName(self.initial_view))
+        object.__setattr__(self, "selected_view", RecordViewName(self.selected_view))
         if self.record_type == RecordType.TOOL_CATALOG_SLICE:
             if self.selection != RecordSelectionPolicy.ALL_CHILDREN:
                 raise ValueError("Tool catalog slices must select all authoritative children.")
             if self.materialization != MaterializationPolicy.FULL:
                 raise ValueError("Tool catalog slices materialize full child records.")
-        if self.record_type == RecordType.TOOL_DEFINITION:
+        if self.record_type in {RecordType.TOOL_DEFINITION, RecordType.SKILL}:
             partial = self.atomicity != RecordAtomicity.RECORD or self.materialization != MaterializationPolicy.FULL
             if partial and not self.allow_partial_tools:
-                raise ValueError("Partial tool definitions require an explicit experimental override.")
+                raise ValueError("Partial capability records require an explicit experimental override.")
+            if not self.allow_partial_tools and self.selected_view != RecordViewName.FULL:
+                raise ValueError("Selected capabilities must transition to the full view.")
 
 
 def default_record_policy(record_type: RecordType | str) -> RecordPolicy:
@@ -108,7 +137,14 @@ def default_record_policy(record_type: RecordType | str) -> RecordPolicy:
             record_type, RecordSelectionPolicy.ALL_CHILDREN, SelectionAuthority.AUTHORITATIVE,
             RecordAtomicity.RECORD, MaterializationPolicy.FULL,
         )
-    if record_type in {RecordType.TOOL_DEFINITION, RecordType.SYSTEM_INSTRUCTION}:
+    if record_type in {RecordType.TOOL_DEFINITION, RecordType.SKILL}:
+        return RecordPolicy(
+            record_type, RecordSelectionPolicy.AUTHORITATIVE_PARENT, SelectionAuthority.AUTHORITATIVE,
+            RecordAtomicity.RECORD, MaterializationPolicy.FULL,
+            initial_view=RecordViewName.SELECTION,
+            selected_view=RecordViewName.FULL,
+        )
+    if record_type == RecordType.SYSTEM_INSTRUCTION:
         return RecordPolicy(
             record_type, RecordSelectionPolicy.AUTHORITATIVE_PARENT, SelectionAuthority.AUTHORITATIVE,
             RecordAtomicity.RECORD, MaterializationPolicy.FULL,
@@ -152,6 +188,7 @@ class ContextRecord:
     policy: RecordPolicy | None = None
     version: str = "v1"
     source_fingerprint: str = ""
+    views: Mapping[RecordViewName | str, RecordView] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         record_type = RecordType(self.record_type)
@@ -164,29 +201,86 @@ class ContextRecord:
             raise ValueError("Record policy type does not match ContextRecord type.")
         if not self.record_id:
             raise ValueError("record_id is required.")
+        normalized_views = {
+            RecordViewName(name): view if isinstance(view, RecordView) else RecordView(name, view, ())
+            for name, view in self.views.items()
+        }
+        if RecordViewName.FULL not in normalized_views:
+            fields = tuple(self.payload) if isinstance(self.payload, Mapping) else ("body",)
+            normalized_views[RecordViewName.FULL] = RecordView(
+                RecordViewName.FULL, self.payload, fields
+            )
+        if normalized_views[RecordViewName.FULL].payload != self.payload:
+            raise ValueError("ContextRecord payload must equal its full view payload.")
+        for required_view in (self.policy.initial_view, self.policy.selected_view):
+            if required_view not in normalized_views:
+                raise ValueError(f"Record policy requires missing {required_view.value!r} view.")
+        object.__setattr__(self, "views", normalized_views)
         if not self.source_fingerprint:
             source = json.dumps(self.payload, sort_keys=True, default=str) if not isinstance(self.payload, str) else self.payload
             object.__setattr__(self, "source_fingerprint", hashlib.sha256(source.encode("utf-8")).hexdigest())
 
     @property
     def size_bytes(self) -> int:
-        return len(serialize_record(self).encode("utf-8"))
+        return len(serialize_record(self, view=RecordViewName.FULL).encode("utf-8"))
+
+    def materialize(
+        self,
+        view: RecordViewName | str = RecordViewName.FULL,
+        *,
+        token_counter: Callable[[str], int] | None = None,
+    ) -> RecordView:
+        """Return one complete named view with optional serialized token cost."""
+
+        view_name = RecordViewName(view)
+        if view_name not in self.views:
+            raise ValueError(f"Record {self.record_id!r} has no {view_name.value!r} view.")
+        value = self.views[view_name]
+        tokens = token_counter(serialize_record(self, view=view_name)) if token_counter else value.token_count
+        return replace(value, token_count=tokens)
 
 
 def _payload_text(payload: Mapping[str, object] | str) -> str:
     return payload if isinstance(payload, str) else json.dumps(payload, sort_keys=True, ensure_ascii=True)
 
 
-def serialize_record(record: ContextRecord) -> str:
+def serialize_record(
+    record: ContextRecord,
+    view: RecordViewName | str = RecordViewName.FULL,
+) -> str:
     """Serialize one record with explicit identity/type/version delimiters."""
 
-    header = json.dumps({
+    view_name = RecordViewName(view)
+    if view_name not in record.views:
+        raise ValueError(f"Record {record.record_id!r} has no {view_name.value!r} view.")
+    header_fields = {
         "id": record.record_id,
         "type": record.record_type.value,
         "version": record.version,
-        "fingerprint": record.source_fingerprint,
-    }, sort_keys=True)
-    return f"<<<PRA_RECORD {header}>>>\n{_payload_text(record.payload)}\n<<<END_PRA_RECORD {record.record_id}>>>"
+        "view": view_name.value,
+    }
+    if view_name == RecordViewName.FULL:
+        header_fields["fingerprint"] = record.source_fingerprint
+    header = json.dumps(header_fields, sort_keys=True)
+    payload = record.views[view_name].payload
+    return f"<<<PRA_RECORD {header}>>>\n{_payload_text(payload)}\n<<<END_PRA_RECORD {record.record_id}>>>"
+
+
+def _tool_selection_signature(resource: AgentResource, schema: Mapping[str, object]) -> str:
+    """Build a compact provider-neutral signature from typed parameters."""
+
+    declared = resource.metadata.get("signature")
+    if declared:
+        return f"{resource.name}{declared}" if str(declared).startswith("(") else str(declared)
+    function = schema.get("function", {})
+    parameters = function.get("parameters", {}) if isinstance(function, Mapping) else {}
+    properties = parameters.get("properties", {}) if isinstance(parameters, Mapping) else {}
+    required = set(parameters.get("required", ())) if isinstance(parameters, Mapping) else set()
+    rendered = []
+    for name, value in properties.items() if isinstance(properties, Mapping) else ():
+        type_name = value.get("type", "any") if isinstance(value, Mapping) else "any"
+        rendered.append(f"{name}: {type_name}{'' if name in required else ' = optional'}")
+    return f"{resource.name}({', '.join(rendered)})"
 
 
 def tool_definition_record(
@@ -204,6 +298,11 @@ def tool_definition_record(
         "schema": schema,
         "side_effect": resource.side_effect_class.value,
     }
+    selection_payload = "\n".join((
+        _tool_selection_signature(resource, schema),
+        resource.description,
+        f"Effect: {resource.side_effect_class.value}",
+    ))
     text = json.dumps(payload, sort_keys=True)
     boundaries = []
     for name in ("uri", "version", "schema", "side_effect"):
@@ -224,6 +323,18 @@ def tool_definition_record(
         source_fingerprint=hashlib.sha256(
             json.dumps(resource.fingerprint_payload(), sort_keys=True).encode("utf-8")
         ).hexdigest(),
+        views={
+            RecordViewName.SELECTION: RecordView(
+                RecordViewName.SELECTION,
+                selection_payload,
+                ("name", "signature", "description", "side_effect"),
+            ),
+            RecordViewName.FULL: RecordView(
+                RecordViewName.FULL,
+                payload,
+                ("uri", "version", "schema", "side_effect"),
+            ),
+        },
     )
 
 
@@ -232,9 +343,11 @@ def tool_catalog_slice_records(
     resources: Sequence[AgentResource],
     *,
     slice_id: str,
+    child_view: RecordViewName | str = RecordViewName.SELECTION,
 ) -> tuple[ContextRecord, tuple[ContextRecord, ...]]:
     """Convert one external candidate decision into an authoritative record tree."""
 
+    child_view = RecordViewName(child_view)
     by_uri = {resource.uri: resource for resource in resources}
     children = []
     for uri in candidates.candidate_uris:
@@ -256,6 +369,7 @@ def tool_catalog_slice_records(
             "mode": candidates.mode.value,
             "strategy": candidates.strategy.value,
             "max_candidates": candidates.max_candidates,
+            "child_view": child_view.value,
         },
         child_ids=tuple(row.record_id for row in children),
         selection_provenance={"owner": "agent_resolver", "authoritative": True},
@@ -287,6 +401,7 @@ class RecordMaterializationResult:
     atomicity_violations: int
     upstream_selection_preserved: bool
     overflow_behavior: OverflowBehavior
+    materialized_view: RecordViewName = RecordViewName.FULL
 
 
 def materialize_authoritative_slice(
@@ -298,6 +413,7 @@ def materialize_authoritative_slice(
     token_counter: Callable[[str], int] | None = None,
     native_kv_bytes_per_token: int = 0,
     temporary_max_bytes: int | None = None,
+    view: RecordViewName | str | None = None,
 ) -> RecordMaterializationResult:
     """Materialize selected tools as whole records or return an explicit overflow."""
 
@@ -315,7 +431,10 @@ def materialize_authoritative_slice(
             raise ValueError("Tool children in an authoritative slice must remain authoritative.")
         if row.policy.atomicity != RecordAtomicity.RECORD or row.policy.materialization != MaterializationPolicy.FULL:
             raise ValueError("Authoritative tool children must use full record atomicity.")
-    serialized = [serialize_record(row) for row in selected]
+    selected_view = RecordViewName(
+        view or parent.payload.get("child_view", parent.policy.initial_view.value)
+    )
+    serialized = [serialize_record(row, view=selected_view) for row in selected]
     total = sum(len(value.encode("utf-8")) for value in serialized)
     effective_limit = max_bytes
     if total > max_bytes and overflow == OverflowBehavior.EXPAND_TEMPORARILY:
@@ -338,7 +457,7 @@ def materialize_authoritative_slice(
                 admitted.append(row)
                 used += size
         status = "whole_records_dropped"
-    admitted_text = [serialize_record(row) for row in admitted]
+    admitted_text = [serialize_record(row, view=selected_view) for row in admitted]
     payload = "\n".join(admitted_text)
     byte_count = len(payload.encode("utf-8"))
     token_count = token_counter(payload) if token_counter is not None and payload else 0
@@ -359,6 +478,7 @@ def materialize_authoritative_slice(
         atomicity_violations=0,
         upstream_selection_preserved=len(admitted) == len(selected),
         overflow_behavior=overflow,
+        materialized_view=selected_view,
     )
 
 
