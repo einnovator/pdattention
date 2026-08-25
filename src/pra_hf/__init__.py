@@ -43,6 +43,43 @@ from .pra_aware_training import (
     hf_parameter_summary,
     install_hf_adaptation_regime,
 )
+from .agent_execution import (
+    ExecutionAuthorization,
+    SafeToolExecutor,
+    ToolCall,
+    ToolExecutionResult,
+    parse_tool_call,
+)
+from .agent_resources import (
+    AgentResource,
+    DiscoveryDecision,
+    DiscoveryMode,
+    DiscoveryRequest,
+    DiscoveryTrace,
+    PersistentResourceIndex,
+    ResourceDiscoveryEngine,
+    SideEffectClass,
+)
+from .runtime import (
+    CompilationMode,
+    HuggingFaceBackend,
+    KVInterval,
+    KVLayout,
+    KVMaterializer,
+    MaterializationPlan,
+    MaterializedKV,
+    NativeKV,
+    PackedNativeKVStore,
+    PRARuntime,
+    PRARuntimeConfig,
+    RuntimeBackend,
+    RuntimeKVCache,
+    RuntimeProfiler,
+    SelectedKVGather,
+    VLLMThinBackend,
+    VLLMThinRequest,
+    runtime_capabilities,
+)
 
 __version__ = "0.2.0rc1"
 
@@ -89,4 +126,38 @@ __all__ = [
     "install_hf_adaptation_regime",
     "pool_hard_graph_facets",
     "weighted_label_propagation",
+]
+
+__all__ += [
+    "AgentResource",
+    "CompilationMode",
+    "DiscoveryDecision",
+    "DiscoveryMode",
+    "DiscoveryRequest",
+    "DiscoveryTrace",
+    "ExecutionAuthorization",
+    "HuggingFaceBackend",
+    "KVInterval",
+    "KVLayout",
+    "KVMaterializer",
+    "MaterializationPlan",
+    "MaterializedKV",
+    "NativeKV",
+    "PackedNativeKVStore",
+    "PRARuntime",
+    "PRARuntimeConfig",
+    "PersistentResourceIndex",
+    "ResourceDiscoveryEngine",
+    "RuntimeBackend",
+    "RuntimeKVCache",
+    "RuntimeProfiler",
+    "SelectedKVGather",
+    "SafeToolExecutor",
+    "SideEffectClass",
+    "ToolCall",
+    "ToolExecutionResult",
+    "VLLMThinBackend",
+    "VLLMThinRequest",
+    "parse_tool_call",
+    "runtime_capabilities",
 ]

@@ -1,0 +1,563 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.88in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,graphicx,tabularx,array,enumitem,float}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\graphicspath{{../shared/results/paper4_5_runtime/}}
+\input{../shared/results/paper4_5_runtime/generated_runtime_results.tex}
+
+\title{From Sparse Selection to Physical Savings:\\
+A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
+\author{PRA Research Program}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Progressive Retrieval Attention (PRA) lets a query select a bounded subset of
+URI-addressed, model-native key/value memory.  Earlier work established the
+model interface, external-memory lifecycle, and typed tool-resource boundary,
+but those parts did not yet form one product surface, and logical sparsity did
+not by itself establish lower latency or accelerator memory.  We introduce a
+unified runtime that preserves the existing Hugging Face API while adding
+versioned systems configuration, authenticated sessions, typed resource
+discovery, independently authorized tool execution, deduplicated K/V interval
+planning, physical byte accounting, bounded caching, profiling, and a
+scheduler-unaware serving handoff.  On a CUDA 12.6 host with an NVIDIA GTX 950M,
+gathering 512 of 8,192 native-K/V tokens takes a median
+\RuntimeCudaIndexBatchOneMs{} ms at batch one, and packing eight selected
+intervals takes \RuntimeCudaPackBatchOneMs{} ms.  The same packed payload costs
+\RuntimeCudaHBMMs{} ms when HBM-resident, \RuntimeCudaPinnedMs{} ms from pinned
+CPU memory, and \RuntimeCudaOrdinaryMs{} ms from ordinary CPU memory.  Thus,
+off-device transfer is \RuntimePinnedRatio{}--\RuntimeOrdinaryRatio{} times the
+HBM-resident packing cost on this host.  Compilation is a negative capability
+gate: the CPU toolchain lacks an available compiler and the GPU is below the
+Triton capability floor.  No optional serving engine is installed.  The result
+is therefore a tested portable eager baseline and reproducible measurement
+contract, not a fused-kernel or serving-engine speed claim.
+\end{abstract}
+
+\section{Introduction}
+
+PRA changes what a model must keep logically available.  A long-lived resource
+may remain addressable through a compact routing representation while only a
+small selected part of its native K/V participates in one attention operation.
+That distinction is algorithmically useful, but it leaves a systems question
+unanswered.  A selected set can be small while the runtime still stores every
+detail tensor in HBM, launches many tiny gathers, copies the same bytes
+repeatedly, constructs temporary concatenations, or serializes requests around
+Python control flow.  In that case sparsity exists in a trace but not in the
+resource bill.
+
+This paper asks how to turn PRA into a portable inference primitive before a
+serving engine becomes semantically aware of PRA memory.  The immediate task is
+not to design a new scheduler.  It is to define an execution boundary that can
+be measured, optimized, and later replaced without changing the meaning of a
+selected reference.
+
+Three previously separate interfaces must meet at that boundary.  The Paper 2
+SDK supplies \texttt{PRAForCausalLM}, model-family injection, routing, and
+generation.  Paper 4 supplies authenticated resolvers and the cold, warm, and
+hot external-memory lifecycle.  Paper 6.5 supplies stable typed identities,
+capability discovery, bounded disclosure, and host-authorized tool execution.
+We retain these responsibilities and place one orchestration facade above them.
+This is integration by contract rather than by collapsing distinct policies.
+
+The contributions are:
+
+\begin{itemize}[leftmargin=*]
+\item a unified \texttt{PRARuntime} API over model memory, external resources,
+typed capabilities, and safe execution;
+\item an explicit physical K/V contract with native grouped-query heads,
+deduplicated intervals, hard token budgets, transfer accounting, and a
+byte-bounded LRU;
+\item stage-level instrumentation and a structured benchmark that separates
+cold compilation, warm primitives, memory residency, and unsupported paths;
+\item a thin serving handoff that withholds semantic scores from the scheduler,
+thereby defining the boundary before deep vLLM integration; and
+\item a measured eager baseline plus negative compiler and engine gates on the
+available host.
+\end{itemize}
+
+\section{The Systems Gap}
+
+\subsection{Logical and physical memory are different quantities}
+
+Consider $L$ decoder layers.  Each reference has $T$ tokens, $H_{kv}$ physical
+key/value heads, head width $D$, and $b$ bytes per scalar.  Storing complete K/V
+for the reference requires
+\begin{equation}
+B_{\mathrm{detail}} = 2 L H_{kv} T D b,
+\end{equation}
+where the factor two accounts for keys and values.  If routing selects $S$
+unique tokens, the active payload is
+\begin{equation}
+B_{\mathrm{active}} = 2 L_{c} H_{kv} S D b,
+\end{equation}
+where $L_c$ is the number of memory-consuming layers.  The ratio
+$B_{\mathrm{active}}/B_{\mathrm{detail}}$ is a logical opportunity.  It is not
+peak HBM.  Peak HBM also includes model weights, local K/V, routing indices,
+allocator slack, transfer staging, and temporary packed tensors.
+
+Grouped-query and multi-query attention make the distinction especially
+important.  Warm storage should preserve $H_{kv}$ physical heads.  Expanding
+them to the larger number of query heads before materialization duplicates
+memory without adding information.  The runtime therefore represents every
+native tensor as
+\begin{equation}
+K,V \in \mathbb{R}^{B \times H_{kv} \times T \times D}
+\end{equation}
+and leaves head expansion to the model-family attention adapter.
+
+\subsection{Latency is a sum of visible stages}
+
+For one request, PRA overhead is not a single routing timer.  We decompose it as
+\begin{equation}
+t_{\mathrm{PRA}} = t_{\mathrm{lookup}} + t_{\mathrm{graph}} +
+t_{\mathrm{plan}} + t_{\mathrm{gather}} + t_{\mathrm{transfer}} +
+t_{\mathrm{pack}} + t_{\mathrm{position}} + t_{\mathrm{metadata}}.
+\end{equation}
+Generation and attention follow this preparation.  Cold requests also pay
+source fetch and native encoding; compiled paths pay graph capture and code
+generation.  Reporting only warm attention can therefore reverse the practical
+conclusion.
+
+\section{A Unified Runtime Contract}
+
+\subsection{One facade, separate authorities}
+
+Figure~\ref{fig:architecture} shows the runtime.  The facade does not make every
+component interchangeable in meaning.  It gives them one lifecycle and one
+inspection surface while retaining their ownership boundaries.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.91\linewidth}
+\centering
+Application / CLI / notebook\\[3pt]
+$\downarrow$\\[3pt]
+\textbf{PRARuntime}: config, sessions, traces, cache accounting\\[5pt]
+\begin{tabular}{c@{\qquad}c@{\qquad}c}
+\textbf{Model path} & \textbf{Resource path} & \textbf{Tool path}\\
+PRAForCausalLM & ExternalMemoryManager & ResourceDiscoveryEngine\\
+route $\rightarrow$ select & cold $\rightarrow$ warm $\rightarrow$ hot & discover $\rightarrow$ disclose\\
+native K/V consume & resolver + scoped caches & SafeToolExecutor
+\end{tabular}\\[6pt]
+$\downarrow$\\[3pt]
+deduplicated plan $\rightarrow$ gather/transfer/pack $\rightarrow$ HF or thin engine handoff
+\end{minipage}}
+\caption{The unified SDK.  Stable URIs join the paths, but routing does not
+authorize source access or tool side effects.}
+\label{fig:architecture}
+\end{figure}
+
+The public configuration has two layers.  \texttt{PRAConfig} continues to
+specify semantic behavior: routing layers, chunking, closure mode, and material-
+ization budget.  \texttt{PRARuntimeConfig} specifies physical behavior:
+backend, compilation mode, K/V layout, page size, cache bounds, prefetch policy,
+and timing synchronization.  Both serialize to a versioned JSON artifact.  A
+runtime optimization is valid only when changing the second layer preserves
+selected identities and output parity under fixed model semantics.
+
+\subsection{Stable resources and authenticated sessions}
+
+A stable URI is the common identity for text memory, native K/V, tools, and
+typed observations.  Paper 4's \texttt{PRASession} retains tenant, user,
+session, cache scope, admitted resources, and warm/hot handles.  Credentials
+remain opaque callbacks passed only to resolvers; they are absent from prompts,
+snapshots, and artifacts.  Cache presence never grants authorization.
+
+Paper 6.5's tool resources enter through the same runtime but a separate
+decision path.  Discovery can identify a tool.  Disclosure can expose its
+schema.  A model can propose a call.  Only \texttt{SafeToolExecutor}, given a
+request-scoped \texttt{ExecutionAuthorization}, can validate identity,
+arguments, write authority, and destructive authority.  Its result becomes a
+typed observation resource with producer and call provenance.  This separation
+prevents a high retrieval score from turning into ambient execution privilege.
+
+\subsection{User workflow}
+
+The supported workflow is deliberately small:
+
+\begin{verbatim}
+config = PRARuntimeConfig(pra=PRAConfig(...))
+runtime = PRARuntime.from_pretrained(model_id, runtime_config=config)
+session = runtime.open_session(...)
+runtime.add_reference("memory://facts", text=document)
+answer = runtime.generate(prompt, return_details=True)
+trace = runtime.inspect()
+\end{verbatim}
+
+The same facade can receive an \texttt{ExternalMemoryManager}, typed discovery
+engine, and safe executor.  The executed notebook demonstrates all four paths
+with an offline Hugging Face model and pure in-memory tools.
+
+\section{Physical Materialization}
+
+\subsection{Planning before copying}
+
+Routing produces logical half-open intervals
+$I_i=(u_i,\ell_i,a_i,b_i)$, naming URI $u_i$, layer $\ell_i$, and token range
+$[a_i,b_i)$.  The planner groups intervals by URI and layer, sorts them, merges
+overlaps, and then applies a global token budget.  If two requested intervals
+overlap, their common tokens are copied once.  The trace reports requested,
+unique, and dropped token counts, making deduplication and budget truncation
+auditable.
+
+The portable materializer slices source tensors, transfers selected slices when
+needed, and packs them by consumption layer.  It reports output bytes, transfer
+bytes, and temporary bytes.  It does not infer peak HBM from these values; CUDA
+profiling records peak allocator state separately.
+
+\subsection{Caching and reload amplification}
+
+The runtime includes a thread-safe, byte-bounded LRU for opaque warm or hot
+payloads.  Besides hits, misses, and evictions, it records loaded and reused
+bytes.  We define reload amplification as
+\begin{equation}
+A_{\mathrm{reload}} = \frac{B_{\mathrm{loaded}}}{\max(B_{\mathrm{resident}},1)}.
+\end{equation}
+An apparently high hit rate can still be costly if the misses repeatedly load
+large references.  Conversely, byte reuse can be high even when object-level
+hit rate is modest.  Both views are needed.
+
+\section{Compilation and Engine Boundaries}
+
+\subsection{Compilation ladder}
+
+The eager path is the correctness baseline.  The first compiled primitive is a
+paired \texttt{index\_select} over K and V with dynamic selected-token count.
+Cold compile time and warm latency are separate rows, and parity is checked
+against eager outputs.  Failure never falls back into an eager row.
+
+Triton, custom CUDA, and fusion follow profiling rather than precede it.  The
+candidate hot paths are interval gather, deduplication/remap, packing, and
+position preparation.  A kernel is justified only if it improves the complete
+request after launch, transfer, and synchronization costs.  This ordering
+prevents a fast isolated kernel from becoming a misleading end-to-end result.
+
+\subsection{Thin vLLM handoff}
+
+PagedAttention showed how virtualized K/V blocks improve serving utilization
+and batching~\cite{kwon2023vllm}.  Deep PRA integration would additionally make
+logical PRA blocks, semantic residency, and retrieval-aware prefetch visible to
+the scheduler.  That is outside this paper's boundary.
+
+The implemented \texttt{VLLMThinBackend} instead emits a
+\texttt{VLLMThinRequest}: prompt, stable selected URIs, materialized token count,
+and ordinary K/V metadata.  Semantic scores do not cross the boundary.  An
+ordinary engine can consume already selected memory without owning retrieval
+policy.  When no executor is installed, the backend produces the handoff for
+inspection and raises on generation rather than pretending to serve.
+
+\section{Relation to Existing Systems}
+
+PRA is complementary to several kinds of memory optimization.  H2O and SnapKV
+select or retain influential cache entries inside an active sequence
+\cite{zhang2023h2o,li2024snapkv}.  PRA begins from stable external identities and
+query-time addressability, so its inactive detail K/V may live outside the
+accelerator.  These methods can eventually share page layouts or eviction
+mechanisms, but their selection semantics differ.
+
+Prompt Cache and CacheBlend reuse precomputed prompt or retrieved-knowledge
+state~\cite{gim2023promptcache,yao2024cacheblend}.  Their lesson is directly
+relevant: recomputation and transfer can dominate.  PRA adds bounded semantic
+selection before native K/V consumption.  RetrievalAttention similarly joins
+vector retrieval with long-context attention, reinforcing the need to count
+index and transfer work rather than only selected attention work.
+
+GQA reduces the number of physical K/V heads~\cite{ainslie2023gqa}.  Our runtime
+preserves this layout through warm storage and materialization.  It does not
+expand K/V to query-head count as an implementation convenience.
+
+\section{Experimental Design}
+
+\subsection{Questions and claim levels}
+
+The initial gate asks four narrow questions.  First, does the portable selected-
+K/V implementation preserve exact tensor parity?  Second, how large are eager
+gather and interval-pack costs?  Third, how much does CPU residency add for the
+same selected payload?  Fourth, can the local toolchain execute the compiled
+path?  Quality and routing selection remain frozen.
+
+Claims are labeled by evidence.  \emph{Measured} means executed on the recorded
+host.  \emph{Inherited} means read from a checked-in earlier experiment with
+its own protocol.  \emph{Contract only} means code exists but no external
+engine ran.  \emph{Architectural} means only an interface comparison is made.
+
+\subsection{Portable primitive protocol}
+
+The new benchmark uses PyTorch 2.12.1 with CUDA 12.6 on Windows 10, Python
+3.10.11, and an NVIDIA GeForce GTX 950M with compute capability 5.0.  Each
+synthetic tensor has four physical K/V heads, width 64, and 8,192 candidate
+tokens in float32.  Selection admits 512 tokens (6.25\%).  Batch sizes are one
+and four.  CPU rows use five warmups and 30 timed repetitions; CUDA rows use ten
+warmups and 50 repetitions.  Every CUDA timing synchronizes before and after
+the operation.
+
+Indexed gather uses evenly distributed selected token IDs.  Interval packing
+uses eight intervals under the same 512-token budget.  The hierarchy comparison
+holds intervals and output bytes fixed while moving sources among HBM, pinned
+CPU, and ordinary CPU.  Compiler errors are artifact rows.  The benchmark is a
+mechanism profile, not TTFT or throughput for a language model.
+
+The layout sweep holds 8,192 total source tokens across four references and two
+layers.  It packs 32-token pages in layer-major, reference-major, chunk-major,
+or block-major order, then restores an identical 512-token logical selection.
+Store construction is a cold cost; reported layout gather latency follows the
+same warmup and repetition protocol as the other device rows.
+
+\subsection{Inherited profiles}
+
+Two earlier artifacts answer adjacent questions.  The Paper 2 public-API demo
+ran frozen Qwen3-0.6B over two QASPER and two HotpotQA examples.  It records
+reference ingest, query encoding, routing, generation, K/V fractions, transfers,
+and peak GPU allocation.  The Paper 4 lifecycle fixture ran eight deterministic
+resources through authenticated cold, warm, and hot states.  Its answer proxy
+is required-document availability, not language quality.  We do not pool these
+measurements with the new microbenchmark or compute cross-host speedups.
+
+\section{Results}
+
+\subsection{Portable eager primitives}
+
+\begin{table}[H]
+\centering
+\caption{Median warm latency in milliseconds.  All measured outputs match the
+eager reference exactly.  Each output contains 512 selected tokens per request.}
+\label{tab:portable}
+\begin{tabular}{llrr}
+\toprule
+Device & Primitive & Batch 1 & Batch 4\\
+\midrule
+CPU & indexed gather & \RuntimeCpuIndexBatchOneMs{} & \RuntimeCpuIndexBatchFourMs{}\\
+CPU & interval pack & \RuntimeCpuPackBatchOneMs{} & \RuntimeCpuPackBatchFourMs{}\\
+CUDA & indexed gather & \RuntimeCudaIndexBatchOneMs{} & \RuntimeCudaIndexBatchFourMs{}\\
+CUDA & interval pack & \RuntimeCudaPackBatchOneMs{} & \RuntimeCudaPackBatchFourMs{}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{portable_primitive_latency.pdf}
+\caption{Portable primitive latency.  This older GPU does not make small
+batch-one gathers faster than the CPU, but CUDA scales better at batch four.}
+\end{figure}
+
+The indexed CUDA path is \RuntimeCudaIndexBatchOneMs{} ms at batch one.  The
+eight-interval pack is \RuntimeCudaPackBatchOneMs{} ms because it launches and
+concatenates multiple slices.  At batch four, CUDA indexed throughput increases
+to roughly \RuntimeCudaIndexBatchFourThroughput{} million selected tokens/s,
+whereas the CPU reaches about \RuntimeCpuIndexBatchFourThroughput{} million
+million.  These values identify packing and fragmentation as optimization
+targets; they do not include routing or attention.
+
+\subsection{Residency dominates the selected payload}
+
+\begin{table}[H]
+\centering
+\caption{Median CUDA interval materialization latency for an identical selected
+payload.  Output size is 1 MiB at batch one and 4 MiB at batch four.}
+\label{tab:hierarchy}
+\begin{tabular}{lrr}
+\toprule
+Source residency & Batch 1 (ms) & Batch 4 (ms)\\
+\midrule
+HBM resident & \RuntimeCudaHBMMs{} & \RuntimeCudaHBMBatchFourMs{}\\
+Pinned CPU $\rightarrow$ CUDA & \RuntimeCudaPinnedMs{} & \RuntimeCudaPinnedBatchFourMs{}\\
+Ordinary CPU $\rightarrow$ CUDA & \RuntimeCudaOrdinaryMs{} & \RuntimeCudaOrdinaryBatchFourMs{}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{memory_hierarchy_latency.pdf}
+\caption{The same logical selection has different physical cost depending on
+residency.  Pinned transfer helps, but does not erase the hierarchy boundary.}
+\end{figure}
+
+At batch one, pinned transfer is \RuntimePinnedRatio{} times the HBM-resident
+cost, and ordinary CPU transfer is \RuntimeOrdinaryRatio{} times that cost.
+This is the central result of the initial systems gate.  A configuration that
+moves inactive K/V off accelerator reduces residency, but request latency then
+depends on locality, cache reuse, and transfer overlap.  Any future headline
+must report both memory and latency.
+
+\subsection{Physical layout is secondary to fragmented remapping}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{layout_gather_latency.pdf}
+\caption{Warm materialization from four physically distinct contiguous stores.
+Every layout restores the same logical per-layer K/V before attention.}
+\end{figure}
+
+Layer-major, reference-major, chunk-major, and block-major stores place the same
+four-reference, two-layer native K/V in different contiguous orders.  A compact
+placement index maps URI, layer, and logical page offsets back to physical
+ranges.  All outputs match the unpacked reference exactly.  On CUDA, the
+slowest and fastest medians differ by only \RuntimeLayoutSpreadBatchOne{} at
+batch one and \RuntimeLayoutSpreadBatchFour{} at batch four.  The nominal
+fastest layouts are \RuntimeLayoutFastestBatchOne{} and
+\RuntimeLayoutFastestBatchFour{}, respectively, but those small differences do
+not justify a universal preference on this synthetic cohort.
+
+More importantly, all layout-remap paths take roughly 1.4--1.7 ms on CUDA,
+several times the single-source interval pack.  They reconstruct selected
+logical ranges across Python placement records and page fragments.  The next
+optimization target is therefore indexed vectorized remapping and fewer
+launches, not a claim that one physical ordering has won.
+
+\subsection{Compilation is a negative capability gate}
+
+The \texttt{torch.compile} API is present, but neither local compiled path is
+valid.  CPU Inductor cannot find the Microsoft C/C++ compiler.  CUDA compilation
+rejects compute capability 5.0 because the Triton backend requires capability
+7.0 or newer.  No warm compiled latency is reported and no eager result is
+relabeled as compiled.  Triton and custom CUDA therefore remain untested.
+
+\subsection{Earlier profiles locate larger costs}
+
+The new primitive measurements explain the cost of moving an already selected
+payload.  Earlier end-to-end artifacts provide the complementary scale: how
+much time was spent before and after materialization when the public model API
+and authenticated resource lifecycle were exercised.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\linewidth]{inherited_end_to_end_profile.pdf}
+\caption{Inherited Paper 2 Qwen3-0.6B profile over four examples.  The log scale
+shows that routing time is small relative to native reference encoding and
+generation on that protocol.}
+\end{figure}
+
+The inherited profile reports \InheritedRoutingMs{} ms mean routing time,
+\InheritedIngestSeconds{} s mean reference ingest, and
+\InheritedGenerateSeconds{} s mean routed generation wall time.  Mean evidence
+recall is 0.667 and materialized detail K/V is 0.066 of the candidate total.
+This supports optimizing cache reuse and encoding amortization before replacing
+the router with a custom kernel.  The cohort contains only four examples, so it
+does not establish a general workload distribution.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.68\linewidth]{cold_warm_hot_profile.pdf}
+\caption{Inherited Paper 4 lifecycle proxy over eight examples.  Cold includes
+fetch and native encoding; warm reuses native encoding; hot reuses selected K/V.}
+\end{figure}
+
+The lifecycle TTFT proxy falls from \LifecycleColdMs{} ms cold to
+\LifecycleWarmMs{} ms warm and \LifecycleHotMs{} ms hot.  Required-document
+recall is 0.875.  The result validates state transitions and shows the size of
+the reuse opportunity, but it is not an LM answer-quality or production-serving
+measurement.
+
+\section{Compatibility and Product Boundary}
+
+\begin{table}[H]
+\centering
+\caption{Implementation status on the measured branch and host.}
+\begin{tabularx}{\linewidth}{l l Y}
+\toprule
+Runtime & Status & Boundary\\
+\midrule
+HF/PyTorch eager & measured & Native PRA model API and portable K/V primitives\\
+\texttt{torch.compile} & blocked on host & API implemented; compiler/GPU gates recorded\\
+Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
+vLLM thin & contract only & Scheduler-unaware identity and K/V handoff\\
+SGLang/TensorRT-LLM/MLX & architectural only & Not installed on measured host\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The product surface includes installable package metadata, Hugging Face loading,
+runtime config serialization, direct and external reference registration,
+session isolation, typed resource discovery, safe execution, generation,
+inspection, benchmark commands, and two executed notebooks.  The CLI exposes
+\texttt{runtime init}, \texttt{inspect}, \texttt{capabilities},
+\texttt{benchmark}, and \texttt{prepare-vllm}.  A deployment can therefore
+discover unsupported paths before serving.
+
+\section{Limitations and Next Gates}
+
+The current evidence is intentionally incomplete.  The GPU is old, the
+benchmark is synthetic, and no full serving engine is installed.  We have not
+measured continuous batching, request-level p95/p99, asynchronous transfer
+overlap, a production page allocator, prefetch, multi-session contention, or
+fused attention preparation.  The LRU fixture validates byte accounting but is
+not a production cache policy study.  The inherited language-model cohort is
+too small for quality claims.
+
+The next experiment should move to a compute-capability 8.0 or newer GPU with a
+pinned software stack.  It should first reproduce eager parity, then measure
+\texttt{torch.compile} cold and warm paths.  Only measured hot spots should move
+to Triton.  Layout and hierarchy sweeps should cross contiguous versus indexed
+selection, whole chunks versus intervals, GQA head count, batch heterogeneity,
+and warm-cache locality.  End-to-end runs should report TTFT, inter-token
+latency, throughput, peak HBM, off-device bytes, temporary bytes, transfers,
+and reload amplification together.
+
+The first engine integration should remain thin: external routing, selected
+native-K/V materialization, then ordinary vLLM execution.  Disabled-PRA parity,
+native positions, masks, GQA, and batching must pass before speed comparisons.
+If useful behavior requires semantic residency, retrieval-aware scheduling, or
+cross-request PRA block sharing, that work belongs to the deep engine paper.
+
+\section{Conclusion}
+
+PRA's selected-memory fraction is an algorithmic fact, not a systems result.
+This paper turns that distinction into code and measurement.  One runtime now
+connects the public model API, authenticated memory lifecycle, typed resources,
+safe execution, physical K/V planning, caching, profiling, and backend handoff.
+The eager primitives are exact and inexpensive in isolation, but off-device
+transfer multiplies their cost on the measured host.  Compilation and optional
+engines remain negative or unmeasured gates.  The practical conclusion is
+conservative: cache locality and physical residency deserve attention before
+kernel novelty, and every future speed claim must match semantics while
+accounting for the whole request.
+
+\appendix
+\section{Reimplementation Guide}
+
+The stable public entry points live in \texttt{src/pra\_hf/runtime.py}.  A
+reimplementation needs five small contracts.  First, represent warm K/V as
+equal-shaped tensors $[B,H_{kv},T,D]$.  Second, express selections as stable URI,
+layer, and half-open token intervals.  Third, merge overlaps before applying a
+hard global token budget.  Fourth, pack selected tensors by consumption layer
+without expanding grouped-query heads.  Fifth, emit stage times and physical
+bytes independently of routing-quality metrics.
+
+The model adapter only needs \texttt{add\_reference}, \texttt{generate}, and
+\texttt{inspect}.  The thin serving request contains selected identities and
+materialized-token metadata, never semantic scores.  Tool execution receives a
+separate authorization object after discovery.  These boundaries allow another
+runtime to reproduce the interface without adopting the Python implementation.
+
+\section{Artifact Map}
+
+\begin{tabularx}{\linewidth}{lY}
+\toprule
+Artifact & Role\\
+\midrule
+\texttt{src/pra\_hf/runtime.py} & Unified facade, plans, materializer, cache,
+profiler, HF adapter, thin vLLM contract\\
+\texttt{src/pra\_hf/runtime\_benchmark.py} & Structured eager/compiled and
+hierarchy microbenchmark\\
+\texttt{src/pra\_hf/agent\_resources.py} & Typed resource identities and
+discovery\\
+\texttt{src/pra\_hf/agent\_execution.py} & Schema validation and independent
+host authorization\\
+\texttt{src/pra\_hf/external\_memory.py} & Resolver-neutral cold/warm/hot
+lifecycle and scoped caches\\
+\texttt{pra-hf-demo/pra\_runtime\_productization.ipynb} & Executed user workflow\\
+\bottomrule
+\end{tabularx}
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+
+\end{document}

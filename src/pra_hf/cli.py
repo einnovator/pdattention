@@ -12,6 +12,8 @@ from .evaluation import evaluate_router_features
 from .model import PRAForCausalLM
 from .router import PRARouter
 from .training import load_feature_rows, train_router
+from .runtime import PRARuntimeConfig, VLLMThinBackend, runtime_capabilities
+from .runtime_benchmark import run_runtime_microbenchmark, write_runtime_benchmark
 
 
 def _echo_json(value) -> None:
@@ -21,6 +23,92 @@ def _echo_json(value) -> None:
 @click.group()
 def cli() -> None:
     """Attach sparse, URI-addressed native-K/V memory to supported HF models."""
+
+
+@cli.group("runtime")
+def runtime_cli() -> None:
+    """Configure, inspect, and benchmark the unified PRA runtime."""
+
+
+@runtime_cli.command("init")
+@click.argument("directory", type=click.Path(path_type=Path))
+@click.option("--backend", type=click.Choice(["huggingface", "vllm_thin"]), default="huggingface")
+@click.option("--compilation", type=click.Choice(["eager", "torch_compile"]), default="eager")
+@click.option("--kv-layout", type=click.Choice(["layer_major", "chunk_major", "block_major", "reference_major"]), default="layer_major")
+def runtime_init(directory: Path, backend: str, compilation: str, kv_layout: str) -> None:
+    """Create a versioned, non-secret runtime configuration artifact."""
+
+    config = PRARuntimeConfig(
+        backend=backend,
+        compilation=compilation,
+        kv_layout=kv_layout,
+    )
+    path = config.save_pretrained(directory)
+    _echo_json({"config": str(path), **config.to_dict()})
+
+
+@runtime_cli.command("inspect")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def runtime_inspect(directory: Path) -> None:
+    """Inspect a serialized runtime config and local optional backends."""
+
+    _echo_json(
+        {
+            "config": PRARuntimeConfig.from_pretrained(directory).to_dict(),
+            "capabilities": runtime_capabilities(),
+        }
+    )
+
+
+@runtime_cli.command("capabilities")
+def runtime_capability_report() -> None:
+    """Report optional compiler and serving-engine availability."""
+
+    _echo_json(runtime_capabilities())
+
+
+@runtime_cli.command("benchmark")
+@click.option("--output", required=True, type=click.Path(path_type=Path))
+@click.option("--device", default="auto", show_default=True)
+@click.option("--candidate-tokens", default=4096, show_default=True)
+@click.option("--selected-tokens", default=256, show_default=True)
+@click.option("--batch", "batches", multiple=True, type=int, default=(1, 4), show_default=True)
+@click.option("--warmups", default=3, show_default=True)
+@click.option("--repeats", default=10, show_default=True)
+def runtime_benchmark(output, device, candidate_tokens, selected_tokens, batches, warmups, repeats) -> None:
+    """Run the portable selected-K/V mechanism benchmark."""
+
+    result = run_runtime_microbenchmark(
+        device=device,
+        candidate_tokens=candidate_tokens,
+        selected_tokens=selected_tokens,
+        batches=batches,
+        warmups=warmups,
+        repeats=repeats,
+    )
+    paths = write_runtime_benchmark(result, output)
+    _echo_json(
+        {
+            "artifacts": {name: str(path) for name, path in paths.items()},
+            "summary": result["summary"],
+            "cache": result["cache"],
+        }
+    )
+
+
+@runtime_cli.command("prepare-vllm")
+@click.argument("prompt")
+@click.option("--selected-uri", "selected_uris", multiple=True)
+@click.option("--materialized-tokens", type=int, default=0, show_default=True)
+def runtime_prepare_vllm(prompt: str, selected_uris, materialized_tokens: int) -> None:
+    """Emit the scheduler-agnostic payload for a thin vLLM integration."""
+
+    request = VLLMThinBackend().prepare(
+        prompt,
+        selected_uris=selected_uris,
+        materialized_tokens=materialized_tokens,
+    )
+    _echo_json(request.__dict__)
 
 
 @cli.command()
@@ -144,3 +232,7 @@ def chat(model, routing_adapter, references) -> None:
         answer = pra.chat(messages)
         click.echo(f"assistant> {answer}")
         messages.append({"role": "assistant", "content": answer})
+
+
+if __name__ == "__main__":
+    cli()
