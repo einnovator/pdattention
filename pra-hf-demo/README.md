@@ -3,11 +3,18 @@
 The demo directory contains two executed, user-facing notebooks:
 
 - `pra_hf_model_families.ipynb` covers Qwen 3, Llama, and Gemma 3 model integration.
-- `pra_runtime_productization.ipynb` covers the unified model, memory, typed-resource,
-  authorization, materialization, inspection, and thin serving-backend workflow.
+- `pra_runtime_productization.ipynb` is the comprehensive Paper 4.5 systems walkthrough. It
+  covers runtime configuration, direct and external cold/warm/hot memory, exact native-K/V
+  planning, four physical layouts, cache and profiler accounting, typed discovery and graph
+  disclosure, safe execution, mechanism benchmarking, inspection, and thin serving handoff.
 
 Both import the library directly from this checkout's `src/` directory and run tiny offline
 models by default.
+
+The model-family notebook answers whether PRA attaches correctly to Qwen, Llama, and Gemma. The
+runtime notebook instead follows one Llama request through the mechanisms that turn logical PRA
+selection into physical state and a deployable SDK boundary. Its opening table maps the differences
+in detail.
 
 Rebuild and execute it from this directory with:
 

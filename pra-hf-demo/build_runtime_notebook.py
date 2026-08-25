@@ -1,4 +1,4 @@
-"""Build the executable unified PRA runtime notebook."""
+"""Build the executable, comprehensive Paper 4.5 PRA runtime notebook."""
 
 from pathlib import Path
 
@@ -18,81 +18,124 @@ def code(source: str):
 
 
 cells = [
+    md(
+        r'''
+# PRA Runtime Productization: All Mechanisms
+
+This is the Paper 4.5 systems notebook. It follows selected memory from a stable reference URI to
+physical native K/V, cache residency, measurement, typed resource disclosure, safe execution, and
+a thin serving-engine handoff.
+
+The notebook is deliberately offline. A tiny random Llama exercises the real Hugging Face/PRA
+adapter, while deterministic in-memory resources exercise lifecycle and safety boundaries. The
+generated language is not meaningful; tensor parity, state transitions, accounting, and API
+behavior are the objects under test.
+'''
+    ),
+    md(
+        r'''
+## How this differs from the Paper 2 model-family demo
+
+The two notebooks are complementary, not replacements.
+
+| Question | `pra_hf_model_families.ipynb` (Paper 2) | This notebook (Paper 4.5) |
+|---|---|---|
+| Primary concern | Does PRA attach to supported HF model families? | Does sparse selection become a controllable physical runtime? |
+| Models exercised | Qwen 3, Llama, and Gemma 3 sessions | One tiny Llama, keeping attention on systems mechanisms |
+| References | Direct text references through `PRAForCausalLM` | Direct references plus authenticated external cold/warm/hot resources |
+| K/V internals | Model-level routing and generation statistics | Exact intervals, budgets, GQA/MQA shape, layouts, transfer and temporary bytes |
+| Runtime state | Per-model examples | Versioned config, sessions, LRU reuse, eviction, and stage profiler |
+| Tools | Outside scope | Typed discovery, capability-graph disclosure, and independent execution authority |
+| Serving | Ordinary HF generation | Capability gates and scheduler-unaware vLLM handoff |
+
+Use the Paper 2 notebook to validate a model family. Use this notebook to understand and reproduce
+the unified SDK and the boundary between logical selection and physical execution.
+'''
+    ),
     code(
         r'''
 from pathlib import Path
+import json
+import platform
 import sys
+import tempfile
+from types import SimpleNamespace
 
 DEMO_DIR = Path.cwd().resolve()
 PROJECT_ROOT = DEMO_DIR.parent
 SOURCE_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SOURCE_ROOT))
 
-from pra_hf import (
-    DiscoveryRequest,
-    ExecutionAuthorization,
-    KVInterval,
-    KVMaterializer,
-    MaterializationPlan,
-    NativeKV,
-    PersistentResourceIndex,
-    PRAConfig,
-    PRARuntime,
-    PRARuntimeConfig,
-    ResourceDiscoveryEngine,
-    VLLMThinBackend,
-    runtime_capabilities,
-)
-
-print(f"Using source package: {SOURCE_ROOT}")
-'''
-    ),
-    md(
-        r'''
-# One PRA SDK from Memory to Tools
-
-This notebook uses the unified runtime interface introduced for Paper 4.5. The interface layers
-systems controls over the existing Paper 2 model API rather than replacing it:
-
-```text
-PRARuntime
-  -> PRAForCausalLM              model loading, routing, generation
-  -> ExternalMemoryManager       authenticated cold/warm/hot resources
-  -> ResourceDiscoveryEngine     typed capability identities
-  -> SafeToolExecutor            schema and host-authorization boundary
-```
-
-The examples are deliberately offline. A tiny random Llama exercises the real Hugging Face/PRA
-integration, while deterministic in-memory tools demonstrate execution safety without external
-side effects. Generated language is therefore meaningless; lifecycle and tensor behavior are the
-things being tested.
-'''
-    ),
-    code(
-        r'''
-import platform
-from types import SimpleNamespace
-
 import torch
 import transformers
 from transformers import LlamaConfig, LlamaForCausalLM
 
+from pra_hf import (
+    AuthContext,
+    DiscoveryRequest,
+    EncodingContext,
+    ExecutionAuthorization,
+    ExternalMemoryManager,
+    HotMemoryHandle,
+    KVInterval,
+    KVMaterializer,
+    MaterializationPlan,
+    NativeEncoding,
+    NativeKV,
+    PackedNativeKVStore,
+    PersistentResourceIndex,
+    PRAConfig,
+    PRARuntime,
+    PRARuntimeConfig,
+    ResolverRegistry,
+    ResourceDiscoveryEngine,
+    ResourceStat,
+    RuntimeKVCache,
+    RuntimeProfiler,
+    SelectedKVGather,
+    VLLMThinBackend,
+    runtime_capabilities,
+)
+from pra_hf.agent_disclosure import ToolCapabilityGraph, disclosure_policy_for_profile
+from pra_hf.runtime_benchmark import run_runtime_microbenchmark
+from data.agent_workflows import realistic_tool_catalog, workflow_executor, workflow_tasks
+
+torch.manual_seed(7)
 torch.set_grad_enabled(False)
+
+print(f"Using source package: {SOURCE_ROOT}")
 print({
     "python": platform.python_version(),
     "torch": torch.__version__,
     "transformers": transformers.__version__,
-    **runtime_capabilities(),
 })
 '''
     ),
     md(
         r'''
-## Configure semantics and physical execution separately
+## 1. Capability discovery is a claim boundary
 
-`PRAConfig` controls which memory is logically selected and consumed. `PRARuntimeConfig` controls
-how selected K/V is packed, cached, compiled, and handed to a backend. Changing the runtime layout
-or compiler mode must preserve the selected identities and generated semantics.
+The runtime reports optional systems without importing them. Availability is not performance:
+`torch.compile`, Triton, vLLM, SGLang, TensorRT-LLM, and MLX remain unsupported or contract-only
+until the corresponding path is actually executed and measured on the current host.
+'''
+    ),
+    code(
+        r'''
+capabilities = runtime_capabilities()
+capabilities
+'''
+    ),
+    md(
+        r'''
+## 2. Separate PRA semantics from systems policy
+
+`PRAConfig` controls routing and memory consumption semantics. `PRARuntimeConfig` layers physical
+choices over it: backend, compilation mode, K/V layout, page size, cache limits, prefetch policy,
+and profiler behavior. A runtime optimization is valid only when changing these systems fields
+preserves model semantics.
+
+The config artifact contains no credentials or model weights.
 '''
     ),
     code(
@@ -112,18 +155,36 @@ runtime_config = PRARuntimeConfig(
     backend="huggingface",
     compilation="eager",
     kv_layout="layer_major",
+    page_tokens=4,
     cache_max_bytes=1 << 20,
+    cache_max_entries=8,
 )
-runtime_config.to_dict()
+
+with tempfile.TemporaryDirectory() as directory:
+    config_path = runtime_config.save_pretrained(directory)
+    restored_config = PRARuntimeConfig.from_pretrained(directory)
+    config_artifact = json.loads(config_path.read_text(encoding="utf-8"))
+
+{
+    "round_trip_equal": restored_config == runtime_config,
+    "schema_version": config_artifact["schema_version"],
+    "systems_policy": {
+        key: config_artifact[key]
+        for key in ("backend", "compilation", "kv_layout", "page_tokens", "cache_max_bytes")
+    },
+}
 '''
     ),
     md(
         r'''
-## Load once, then reuse references
+## 3. One facade over the Paper 2 model API
 
-`PRARuntime.from_model` wraps an already loaded model. In a deployed application,
-`PRARuntime.from_pretrained` performs the equivalent Hugging Face load. Stable URIs let logs,
-caches, authorization, and selected K/V refer to the same resource identity.
+`PRARuntime.from_model` wraps an existing HF model through `PRAForCausalLM`. In deployment,
+`from_pretrained` performs the equivalent model and tokenizer load. Stable URIs connect references,
+routing traces, caches, authorization, and physical K/V without using filenames as identity.
+
+The tiny tokenizer is only an offline fixture. The model path itself is the real Llama adapter,
+including grouped-query attention with fewer physical K/V heads than query heads.
 '''
     ),
     code(
@@ -144,114 +205,503 @@ class TinyTokenizer:
         return [str(int(value)) for value in token_ids]
 
 
-model_config = LlamaConfig(
-    vocab_size=67,
-    hidden_size=32,
-    intermediate_size=64,
-    num_hidden_layers=2,
-    num_attention_heads=4,
-    num_key_value_heads=2,
-    max_position_embeddings=64,
-    bos_token_id=1,
-    eos_token_id=66,
-    pad_token_id=0,
+def build_tiny_runtime(config):
+    model_config = LlamaConfig(
+        vocab_size=67,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        max_position_embeddings=64,
+        bos_token_id=1,
+        eos_token_id=66,
+        pad_token_id=0,
+    )
+    model_config._attn_implementation = "eager"
+    model = LlamaForCausalLM(model_config).eval()
+    return PRARuntime.from_model(model, TinyTokenizer(), runtime_config=config)
+
+
+runtime = build_tiny_runtime(runtime_config)
+handle = runtime.add_reference(
+    "memory://demo/facts",
+    text="Paris is the capital of France.",
 )
-model_config._attn_implementation = "eager"
-model = LlamaForCausalLM(model_config).eval()
-runtime = PRARuntime.from_model(model, TinyTokenizer(), runtime_config=runtime_config)
-handle = runtime.add_reference("memory://demo/facts", text="Paris is the capital of France.")
-result = runtime.generate("Question: capital of France? Answer:", max_new_tokens=1, return_details=True)
+generation = runtime.generate(
+    "Question: capital of France? Answer:",
+    max_new_tokens=1,
+    return_details=True,
+)
 {
-    "reference": handle,
-    "generated_text": result.text,
-    "selected": result.stats["selected"],
-    "runtime": runtime.inspect(),
+    "reference_uri": handle.uri,
+    "generated_token_fixture": generation.text,
+    "selected": generation.stats["selected"],
+    "materialized_kv_tokens": generation.stats["materialized_kv_tokens"],
+    "backend": runtime.inspect()["backend"],
 }
 '''
     ),
     md(
         r'''
-## Inspect physical native-K/V packing
+## 4. Authenticated external memory: cold, warm, and hot
 
-The portable materializer consumes exact half-open intervals. Native K/V uses shape
-`[batch, kv_heads, tokens, head_dim]`; grouped-query heads are not expanded in storage. Overlapping
-intervals are merged before the hard token budget is applied.
+Direct text is convenient, but production memory often starts as a URI. The external-memory
+manager keeps three distinct states:
+
+1. **Cold:** authorized descriptor and cheap external gist; source bytes are not encoded.
+2. **Warm:** source is fetched and encoded into model-specific native memory.
+3. **Hot:** the selected native K/V is materialized for immediate use.
+
+Authorization is rechecked at the resolver boundary. Credentials remain opaque and are absent from
+session snapshots and metrics. The example resolver is in-memory so it has no external side effect.
 '''
     ),
     code(
         r'''
-key = torch.arange(1 * 2 * 16 * 4, dtype=torch.float32).reshape(1, 2, 16, 4)
-source = NativeKV(key, key + 1000)
+class NotebookMemoryResolver:
+    name = "mem"
+
+    def __init__(self):
+        self.documents = {}
+        self.fetches = 0
+
+    def put(self, uri, text, version="v1"):
+        self.documents[uri] = {"text": text, "version": version}
+
+    def _authorized(self, uri, auth_context):
+        if uri not in auth_context.authorization_scopes:
+            raise PermissionError(f"Resource not authorized: {uri}")
+        auth_context.credentials_for(self.name, uri)
+        return self.documents[uri]
+
+    async def stat(self, uri, auth_context, session):
+        document = self._authorized(uri, auth_context)
+        payload = document["text"].encode()
+        return ResourceStat(
+            uri=uri,
+            resolver=self.name,
+            version=document["version"],
+            size_bytes=len(payload),
+            title=document["text"],
+        )
+
+    async def fetch(self, uri, auth_context, session, byte_range=None):
+        document = self._authorized(uri, auth_context)
+        self.fetches += 1
+        payload = document["text"].encode()
+        return payload if byte_range is None else payload[slice(*byte_range)]
+
+    async def external_gist(self, uri, metadata, auth_context, session):
+        return metadata.title or uri
+
+
+def notebook_encoder(source, metadata, context):
+    tokens = tuple(source.decode().split())
+    return NativeEncoding(
+        uri=metadata.uri,
+        source_version=metadata.version,
+        model_fingerprint=context.model_fingerprint,
+        tokenizer_fingerprint=context.tokenizer_fingerprint,
+        config_fingerprint=context.config_fingerprint,
+        token_count=len(tokens),
+        byte_count=len(source),
+        pra_gists=(" ".join(tokens[:3]),),
+        logical_offsets=((0, len(tokens)),),
+        payload=tokens,
+    )
+
+
+def notebook_materializer(encoding, selected_token_ids):
+    tokens = encoding.payload
+    if selected_token_ids is not None:
+        tokens = tuple(tokens[index] for index in selected_token_ids)
+    return HotMemoryHandle(
+        uri=encoding.uri,
+        source_version=encoding.source_version,
+        selected_token_count=len(tokens),
+        byte_count=sum(len(token.encode()) for token in tokens),
+        payload=tokens,
+    )
+
+
+resolver = NotebookMemoryResolver()
+registry = ResolverRegistry()
+registry.register("mem", resolver)
+manager = ExternalMemoryManager(
+    encoding_context=EncodingContext(
+        model_fingerprint="tiny-llama",
+        tokenizer_fingerprint="tiny-tokenizer",
+        encoding_config={"block_tokens": 32, "position": "rope"},
+    ),
+    encoder=notebook_encoder,
+    materializer=notebook_materializer,
+    resolvers=registry,
+)
+'''
+    ),
+    code(
+        r'''
+uri = "mem://documents/alpha"
+resolver.put(uri, "alpha evidence connects beta")
+auth = AuthContext(
+    tenant_id="demo-tenant",
+    user_id="demo-user",
+    session_id="demo-session",
+    authorization_scopes=frozenset({uri}),
+    credential_provider=lambda _resolver, _uri: "opaque-demo-token",
+)
+memory_runtime = PRARuntime(
+    config=runtime.config,
+    backend=runtime.backend,
+    external_memory=manager,
+)
+session = memory_runtime.open_session(
+    session_id="demo-session",
+    user_id="demo-user",
+    tenant_id="demo-tenant",
+    auth_context=auth,
+)
+record = await memory_runtime.add_external_reference(session, uri=uri, encoding_mode="lazy")
+cold_tier = record.tier
+candidates = await manager.route_candidates(session, "alpha evidence")
+await manager.admit(session, candidates, max_admitted=1)
+warm_tier = record.tier
+first_hot = await manager.ensure_hot(session, uri, selected_token_ids=(0, 2))
+hot_tier = record.tier
+second_hot = await manager.ensure_hot(session, uri)
+third_hot = await manager.ensure_hot(session, uri)
+
+safe_state = memory_runtime.inspect()
+{
+    "tier_transitions": [cold_tier, warm_tier, hot_tier],
+    "selected_hot_payload": first_hot.payload,
+    "reused_full_hot_handle": second_hot == third_hot,
+    "resolver_fetches": resolver.fetches,
+    "lifecycle_metrics": safe_state["external_memory"],
+    "session_snapshot": safe_state["sessions"][0],
+    "credential_leaked": "opaque-demo-token" in json.dumps(safe_state),
+}
+'''
+    ),
+    md(
+        r'''
+## 5. Exact interval planning before physical K/V work
+
+Routing produces logical selections. `MaterializationPlan` turns them into stable half-open
+`[start, end)` intervals grouped by URI and layer. Overlaps are merged before the global token
+budget is enforced, preventing repeated K/V from consuming capacity twice.
+'''
+    ),
+    code(
+        r'''
 plan = MaterializationPlan.build(
     [
-        KVInterval("memory://demo/facts", 1, 0, 8),
-        KVInterval("memory://demo/facts", 1, 4, 12),
+        KVInterval("memory://demo/a", 0, 0, 8),
+        KVInterval("memory://demo/a", 0, 4, 12),
+        KVInterval("memory://demo/b", 0, 0, 8),
     ],
-    max_tokens=10,
+    max_tokens=16,
 )
-packed = KVMaterializer().materialize({("memory://demo/facts", 1): source}, plan)
 {
-    "plan": plan,
-    "packed_shape": tuple(packed.layers[1].key.shape),
-    "physical_bytes": packed.physical_bytes,
-    "transfer_bytes": packed.transfer_bytes,
+    "requested_tokens": plan.requested_tokens,
+    "unique_tokens_after_merge_and_budget": plan.unique_tokens,
+    "dropped_tokens": plan.dropped_tokens,
+    "physical_intervals": plan.intervals,
 }
 '''
     ),
     md(
         r'''
-## Discovering a tool never authorizes it
+## 6. Native K/V shape and grouped-query attention
 
-Paper 6.5's typed resources now share the SDK. Discovery returns stable URIs. The model may then
-propose a JSON call, but a host-provided `ExecutionAuthorization` independently decides whether
-that disclosed identity can execute. Write and destructive permissions are separate flags.
+Warm K/V is stored as `[batch, physical_kv_heads, tokens, head_dim]`. It is not expanded to the
+larger number of query heads. For GQA and MQA, preserving physical K/V heads is essential to the
+memory claim; head expansion belongs at attention consumption, not in persistent memory.
 '''
     ),
     code(
         r'''
-from data.agent_workflows import realistic_tool_catalog, workflow_executor, workflow_tasks
+def native_kv(tokens, offset=0.0):
+    key = torch.arange(1 * 2 * tokens * 4, dtype=torch.float32).reshape(1, 2, tokens, 4)
+    key = key + offset
+    return NativeKV(key, key + 1000)
 
+
+sources = {
+    ("memory://demo/a", 0): native_kv(12),
+    ("memory://demo/b", 0): native_kv(8, 100),
+}
+materialized = KVMaterializer().materialize(sources, plan)
+{
+    "source_shape": tuple(sources[("memory://demo/a", 0)].key.shape),
+    "packed_shape": tuple(materialized.layers[0].key.shape),
+    "logical_tokens": materialized.logical_tokens,
+    "physical_bytes": materialized.physical_bytes,
+    "transfer_bytes": materialized.transfer_bytes,
+    "temporary_bytes": materialized.temporary_bytes,
+}
+'''
+    ),
+    md(
+        r'''
+## 7. Four physical layouts, one logical result
+
+The store can be ordered layer-major, reference-major, chunk-major, or block-major. A placement
+index remaps logical URI/layer/page coordinates into contiguous physical ranges. Layout is a
+systems choice only: every layout must reconstruct identical per-layer K/V before attention.
+'''
+    ),
+    code(
+        r'''
+layout_rows = []
+reference = KVMaterializer().materialize(sources, plan)
+for layout in ("layer_major", "reference_major", "chunk_major", "block_major"):
+    store = PackedNativeKVStore(sources, layout=layout, page_tokens=4)
+    restored = KVMaterializer(layout=layout).materialize(store, plan)
+    parity = all(
+        torch.equal(restored.layers[layer].key, reference.layers[layer].key)
+        and torch.equal(restored.layers[layer].value, reference.layers[layer].value)
+        for layer in reference.layers
+    )
+    layout_rows.append({
+        "layout": layout,
+        "parity": parity,
+        "store_bytes": store.nbytes,
+        "placement_index_bytes": store.index_bytes,
+        "placements": len(store.placements),
+    })
+layout_rows
+'''
+    ),
+    md(
+        r'''
+## 8. Portable eager selected-token gather
+
+`SelectedKVGather` gathers token positions from both K and V along dimension 2. The eager path is
+the correctness baseline. A compiled wrapper is a separate capability gate: failure to compile is
+reported, never relabeled as eager performance.
+'''
+    ),
+    code(
+        r'''
+indices = torch.tensor([0, 3, 7, 11], dtype=torch.long)
+gather = SelectedKVGather("eager")
+gathered = gather(sources[("memory://demo/a", 0)], indices)
+{
+    "gather_state": gather.inspect(),
+    "indices": indices.tolist(),
+    "output_shape": tuple(gathered.key.shape),
+    "exact_key_parity": torch.equal(
+        gathered.key,
+        sources[("memory://demo/a", 0)].key.index_select(2, indices),
+    ),
+}
+'''
+    ),
+    md(
+        r'''
+## 9. Byte-bounded hot-cache behavior
+
+The runtime LRU limits both bytes and entries. It reports loaded and reused bytes separately, so a
+high hit rate cannot conceal reload amplification or an oversized resident set.
+'''
+    ),
+    code(
+        r'''
+cache = RuntimeKVCache(max_bytes=10, max_entries=3)
+cache.put("reference-a", "A", nbytes=6)
+first_reuse = cache.get("reference-a")
+cache.put("reference-b", "B", nbytes=6)  # evicts A to restore the byte budget
+evicted_lookup = cache.get("reference-a")
+{
+    "first_reuse": first_reuse,
+    "evicted_lookup": evicted_lookup,
+    "accounting": cache.snapshot(),
+}
+'''
+    ),
+    md(
+        r'''
+## 10. Stage-level profiling and physical accounting
+
+The profiler records stage latency, input/output bytes, metadata, and peak CUDA allocation. CUDA
+timings synchronize only around explicitly profiled regions. Routing quality and runtime costs stay
+in separate records.
+'''
+    ),
+    code(
+        r'''
+profiler = RuntimeProfiler(device="cpu")
+with profiler.stage(
+    "selected_kv_materialization",
+    input_bytes=sum(memory.nbytes for memory in sources.values()),
+    metadata={"layout": "layer_major", "selected_tokens": plan.unique_tokens},
+) as accounting:
+    profiled_materialized = KVMaterializer().materialize(sources, plan)
+    accounting["output_bytes"] = profiled_materialized.physical_bytes
+
+profiler.snapshot()
+'''
+    ),
+    md(
+        r'''
+## 11. Structured mechanism benchmark
+
+This small run exercises indexed gather, interval packing, physical layouts, hierarchy rows where
+available, and cache accounting. It is a mechanism benchmark, not end-to-end TTFT. The paper uses
+larger repeated runs and stores every sample as JSON/CSV before plotting.
+'''
+    ),
+    code(
+        r'''
+benchmark = run_runtime_microbenchmark(
+    device="cpu",
+    candidate_tokens=256,
+    selected_tokens=32,
+    batches=(1, 2),
+    kv_heads=2,
+    head_dim=16,
+    warmups=1,
+    repeats=2,
+    include_compile=False,
+)
+[
+    {
+        "study": row["study"],
+        "mode": row["mode"],
+        "batch": row["batch"],
+        "status": row["status"],
+        "median_ms": (
+            round(row["median_seconds"] * 1000, 4)
+            if row["median_seconds"] is not None
+            else None
+        ),
+        "parity": row["parity"],
+        "error": row["error"],
+    }
+    for row in benchmark["summary"]
+]
+'''
+    ),
+    md(
+        r'''
+## 12. Typed resource discovery
+
+Paper 6.5 resources are now part of the same SDK. Each capability has a stable URI, tenant, input
+schema, output schema, side-effect class, and searchable metadata. Discovery chooses identities;
+it does not disclose every schema or authorize execution.
+'''
+    ),
+    code(
+        r'''
 resources = realistic_tool_catalog()
 task = workflow_tasks()[0]
-runtime.discovery = ResourceDiscoveryEngine(
+discovery = ResourceDiscoveryEngine(
     PersistentResourceIndex(resources),
     select_threshold=0.0,
     ask_threshold=0.0,
     margin_threshold=0.0,
 )
-runtime.executor = workflow_executor(resources, task)
-trace = runtime.discover_resources(
-    DiscoveryRequest(query="search documents", tenant_id="paper6_5", top_k=1)
+tool_runtime = PRARuntime(
+    config=runtime.config,
+    backend=runtime.backend,
+    discovery=discovery,
+    executor=workflow_executor(resources, task),
 )
-search = next(resource for resource in resources if resource.name == "search_document")
-proposal = '<tool_call>{"name":"search_document","arguments":{"title":"quarterly"}}</tool_call>'
-denied = runtime.execute_tool(
-    proposal,
-    selected_uris=(search.uri,),
-    authorization=ExecutionAuthorization(frozenset()),
-    call_id="denied",
-)
-accepted = runtime.execute_tool(
-    proposal,
-    selected_uris=(search.uri,),
-    authorization=ExecutionAuthorization(frozenset((search.uri,))),
-    call_id="accepted",
+discovery_trace = tool_runtime.discover_resources(
+    DiscoveryRequest(query="search documents", tenant_id="paper6_5", top_k=3)
 )
 {
-    "discovered": trace.selected_uris,
-    "denied_reason": denied.reason,
-    "accepted": accepted.executed,
-    "typed_observation": accepted.observation.uri,
+    "decision": discovery_trace.decision,
+    "selected_uris": discovery_trace.selected_uris,
+    "top_scores": [
+        {"uri": row.uri, "score": round(row.selected_score, 3), "mode": row.selected_mode}
+        for row in discovery_trace.candidates[:3]
+    ],
 }
 '''
     ),
     md(
         r'''
-## Thin serving-engine handoff
+## 13. Capability-graph disclosure
 
-The Paper 4.5 vLLM boundary intentionally keeps semantic routing outside the scheduler. It passes
-only selected stable identities, materialized-token accounting, and ordinary request metadata.
-This notebook does not claim a measured vLLM integration when vLLM is not installed.
+Disclosure is a second, bounded step. Starting from direct discovery roots, a policy may add local
+family neighbors or schema-compatible predecessors/successors. Provenance records why each tool
+became visible. Destructive capabilities remain suppressed unless policy explicitly allows them.
+'''
+    ),
+    code(
+        r'''
+graph = ToolCapabilityGraph(resources)
+root_uris = discovery_trace.selected_uris[:1]
+disclosure = graph.disclose(
+    root_uris,
+    disclosure_policy_for_profile("planning", max_tools=6),
+    root_confidence=1.0,
+)
+{
+    "graph_density": round(graph.density, 4),
+    "roots": disclosure.root_uris,
+    "disclosed": disclosure.disclosed_uris,
+    "graph_expansions": disclosure.graph_expansions,
+    "unsafe_suppressed": disclosure.unsafe_suppressed,
+    "provenance": [
+        {"uri": row.uri, "source": row.source, "depth": row.graph_depth}
+        for row in disclosure.provenance
+    ],
+}
+'''
+    ),
+    md(
+        r'''
+## 14. Discovery and disclosure still do not authorize execution
+
+The model may emit a structured call only to a disclosed identity. `SafeToolExecutor` then checks
+selection, host authorization, side-effect permission, and argument schema. This keeps model
+visibility and host authority independent.
+'''
+    ),
+    code(
+        r'''
+search = next(resource for resource in resources if resource.name == "search_document")
+proposal = '<tool_call>{"name":"search_document","arguments":{"title":"quarterly"}}</tool_call>'
+
+not_selected = tool_runtime.execute_tool(
+    proposal,
+    selected_uris=(),
+    authorization=ExecutionAuthorization(frozenset({search.uri})),
+    call_id="not-selected",
+)
+not_authorized = tool_runtime.execute_tool(
+    proposal,
+    selected_uris=(search.uri,),
+    authorization=ExecutionAuthorization(frozenset()),
+    call_id="not-authorized",
+)
+accepted = tool_runtime.execute_tool(
+    proposal,
+    selected_uris=(search.uri,),
+    authorization=ExecutionAuthorization(frozenset({search.uri})),
+    call_id="accepted",
+)
+{
+    "not_selected": not_selected.reason,
+    "not_authorized": not_authorized.reason,
+    "accepted": accepted.executed,
+    "typed_observation_uri": accepted.observation.uri,
+}
+'''
+    ),
+    md(
+        r'''
+## 15. Thin vLLM handoff
+
+Paper 4.5 stops before a retrieval-aware serving scheduler. The thin boundary carries only stable
+selected identities, the materialized-token count, and ordinary request metadata. Semantic scores
+remain outside vLLM, so the scheduler does not acquire hidden retrieval policy.
+
+Calling `prepare` is a contract demonstration, not a vLLM speed claim.
 '''
     ),
     code(
@@ -259,21 +709,78 @@ This notebook does not claim a measured vLLM integration when vLLM is not instal
 handoff = VLLMThinBackend().prepare(
     "Question: capital of France?",
     selected_uris=(handle.uri,),
-    materialized_tokens=result.stats["materialized_kv_tokens"],
+    materialized_tokens=generation.stats["materialized_kv_tokens"],
     metadata={"kv_layout": runtime_config.kv_layout},
 )
-handoff
+{
+    "request_id_present": bool(handoff.request_id),
+    "selected_uris": handoff.selected_uris,
+    "materialized_tokens": handoff.materialized_tokens,
+    "scheduler_receives_semantic_scores": "score" in repr(handoff),
+}
 '''
     ),
     md(
         r'''
-## Production checklist
+## 16. Unified inspection and session teardown
 
-The SDK now supports versioned config artifacts, model loading, direct and external-memory
-lifecycle hooks, stable typed resources, safe tool execution, physical K/V accounting, cache
-inspection, runtime capability reports, and a benchmark command. Triton, custom CUDA, and deep
-retrieval-aware scheduler integration remain later gates and must be reported as unsupported until
-they are actually installed and measured.
+`inspect()` exposes non-secret configuration, backend state, external-memory counters, installed
+boundaries, and cache accounting. Closing a session removes its ephemeral state while preserving
+the runtime object and broader caches according to policy.
+'''
+    ),
+    code(
+        r'''
+before_close = memory_runtime.inspect()
+memory_runtime.close_session(session)
+after_close = memory_runtime.inspect()
+{
+    "before_close_sessions": len(before_close["sessions"]),
+    "after_close_sessions": len(after_close["sessions"]),
+    "session_closed": session.closed,
+    "typed_discovery_installed_on_tool_runtime": tool_runtime.inspect()["typed_discovery_installed"],
+    "safe_executor_installed_on_tool_runtime": tool_runtime.inspect()["safe_executor_installed"],
+}
+'''
+    ),
+    md(
+        r'''
+## CLI equivalents
+
+The same systems surface is available without notebook state:
+
+```powershell
+python -m pra_hf.cli runtime init ./runtime-config --kv-layout block_major
+python -m pra_hf.cli runtime inspect ./runtime-config
+python -m pra_hf.cli runtime capabilities
+python -m pra_hf.cli runtime benchmark --output ./runtime-results
+python -m pra_hf.cli runtime prepare-vllm "A user prompt" --selected-uri memory://demo/facts
+```
+
+## What this notebook proves, and what it does not
+
+Demonstrated here:
+
+- one model/memory/resource/execution facade;
+- versioned non-secret systems configuration;
+- real HF/PRA model wrapping and direct references;
+- authenticated cold-to-warm-to-hot external memory;
+- exact overlap deduplication and hard materialization budgets;
+- native `[B, Hkv, T, D]` storage and parity across four physical layouts;
+- eager gather, byte-bounded LRU reuse, stage profiling, and structured benchmarking;
+- typed discovery, bounded graph disclosure, and separate execution authorization;
+- a scheduler-unaware vLLM request contract.
+
+Not demonstrated here:
+
+- meaningful language quality from the random tiny model;
+- a supported `torch.compile` result on every host;
+- Triton/custom CUDA fusion;
+- asynchronous transfer overlap or production prefetch;
+- continuous batching, p95/p99 serving latency, or a deep vLLM scheduler integration;
+- measured SGLang, TensorRT-LLM, MLX, llama.cpp, TGI, or Ollama adapters.
+
+Those omissions are explicit capability gates, not hidden eager fallbacks.
 '''
     ),
 ]

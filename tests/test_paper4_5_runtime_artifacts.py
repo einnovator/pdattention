@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "docs" / "papers" / "shared" / "results" / "paper4_5_runtime"
 PAPER = ROOT / "docs" / "papers" / "paper4_5_runtime_productization"
+DEMO = ROOT / "pra-hf-demo" / "pra_runtime_productization.ipynb"
 
 
 def test_runtime_artifacts_are_complete_and_internally_consistent() -> None:
@@ -41,3 +42,34 @@ def test_compatibility_matrix_keeps_claim_levels_explicit() -> None:
     assert rows["torch.compile"] == "blocked on host"
     assert rows["vLLM thin"] == "contract only"
     assert rows["SGLang/TensorRT-LLM/MLX"] == "architectural only"
+
+
+def test_runtime_demo_is_executed_and_covers_the_unified_sdk() -> None:
+    notebook = json.loads(DEMO.read_text(encoding="utf-8"))
+    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
+    markdown = "\n".join(
+        "".join(cell["source"])
+        for cell in notebook["cells"]
+        if cell["cell_type"] == "markdown"
+    )
+    errors = [
+        output
+        for cell in code_cells
+        for output in cell.get("outputs", ())
+        if output.get("output_type") == "error"
+    ]
+
+    assert len(code_cells) >= 18
+    assert [cell["execution_count"] for cell in code_cells] == list(
+        range(1, len(code_cells) + 1)
+    )
+    assert not errors
+    for phrase in (
+        "How this differs from the Paper 2 model-family demo",
+        "Authenticated external memory",
+        "Four physical layouts",
+        "Byte-bounded hot-cache behavior",
+        "Capability-graph disclosure",
+        "Thin vLLM handoff",
+    ):
+        assert phrase in markdown
