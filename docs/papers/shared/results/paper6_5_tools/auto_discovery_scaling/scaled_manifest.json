@@ -1,0 +1,109 @@
+{
+  "a6_weights": {
+    "auto_tag_concept": 0.25,
+    "embedding": 0.5,
+    "keyword_synonym": 0.25
+  },
+  "candidate_budgets": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    20
+  ],
+  "catalog_sizes": [
+    32,
+    128,
+    512,
+    2048,
+    8192
+  ],
+  "channels": [
+    "bm25",
+    "auto_keyword",
+    "keyword_synonym",
+    "auto_tag_concept",
+    "embedding"
+  ],
+  "destructive_rule": "every fifth eligible distractor uses delete with the anchor object",
+  "dictionary": {
+    "active_sources": [
+      {
+        "id": "project_curated_en_v1",
+        "kind": "general English operation concepts",
+        "languages": [
+          "en"
+        ],
+        "license": "repository license"
+      },
+      {
+        "id": "project_domain_tools_v1",
+        "kind": "typed tool object concepts",
+        "languages": [
+          "en"
+        ],
+        "license": "repository license"
+      },
+      {
+        "id": "project_multilingual_v1",
+        "kind": "bounded multilingual mappings",
+        "languages": [
+          "pt",
+          "es",
+          "fr"
+        ],
+        "license": "repository license"
+      },
+      {
+        "id": "tool_author_metadata",
+        "kind": "operation, object, tags, schema inputs/outputs",
+        "languages": [
+          "en"
+        ],
+        "license": "catalog owner"
+      }
+    ],
+    "considered_not_embedded": [
+      {
+        "name": "Open English WordNet",
+        "reason": "not needed for the bounded frozen catalog; avoids shipping a broad third-party lexical database"
+      }
+    ],
+    "runtime_web_dependency": false,
+    "schema_version": "1.0"
+  },
+  "distractor_rule": "shares exactly one canonical operation/object facet with an anchor",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "embedding_representation": "name_description",
+  "embedding_revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+  "machine": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "processor": "Intel64 Family 6 Model 94 Stepping 3, GenuineIntel",
+    "python": "3.10.11"
+  },
+  "protocol_hash": "b3056c674bbff83f5af2cbfcd21603f47d358ae0929a0408e0813be67fd813a9",
+  "protocol_version": "paper6_5_scaled_auto_v1",
+  "runtime": {
+    "cuda_available": true,
+    "cuda_runtime": "12.6",
+    "device": "NVIDIA GeForce GTX 950M",
+    "git_branch": "research/paper6-5-tools",
+    "git_sha": "837a3b8a0cf4525c105a569b30cf144eb78cc5a2",
+    "python": "3.10.11",
+    "timestamp_utc": "2026-08-25T20:47:10.095418+00:00",
+    "torch": "2.12.1+cu126",
+    "transformers": "4.55.4"
+  },
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "target_tools": 18,
+  "test_queries": 144
+}

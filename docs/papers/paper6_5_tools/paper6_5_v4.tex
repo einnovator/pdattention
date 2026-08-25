@@ -13,6 +13,7 @@ Typed Resource Discovery Before Neural Materialization}
 \input{../shared/results/paper6_5_tools/semantic_summary/generated_semantic_results.tex}
 \input{../shared/results/paper6_5_tools/auto_union_records/generated_auto_union_results.tex}
 \input{../shared/results/paper6_5_tools/auto_discovery_ablation/generated_auto_discovery_results.tex}
+\input{../shared/results/paper6_5_tools/auto_discovery_scaling/generated_scaled_auto_results.tex}
 
 \begin{document}
 \maketitle
@@ -56,8 +57,14 @@ a generic synonym dictionary: Top-1 rises from
 \PaperSixFiveAblationAutoTopOne{}, statistically unresolved from the
 \PaperSixFiveAblationManualTopOne{} manual ceiling on this cohort. Automatic
 union does not beat fused Top-K at matched budgets, so its generative JIT gate
-remains closed. Graph speculation, union-default disclosure, and native-Q/K
-discovery remain bounded experimental modes.
+remains closed. A five-seed follow-up scales callable-derived, semantically
+confusable catalogs from 32 to 8,192 tools. Frozen hybrid Top-1 declines from
+\PaperSixFiveScaleThirtyTwoHybridTopOne{} to
+\PaperSixFiveScaleEightKHybridTopOne{}. At 8,192 tools and $K=10$, raw union
+recovers \PaperSixFiveScaleEightKUnionRecallTen{} of required tools, but useful
+precision is only \PaperSixFiveScaleEightKUnionPrecisionTen{}. Graph
+speculation, union-default disclosure, and native-Q/K discovery therefore
+remain bounded experimental modes.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -97,7 +104,8 @@ recall--context frontier, and whether PRA should honor externally selected tool
 records as atomic authoritative units. Its final ablation isolates raw text,
 automatic keywords, generic synonyms, inferred concepts, automatic tags,
 compact embeddings, and bounded channel union without changing the frozen
-catalog or test identities.
+catalog or test identities. Its final scale test preserves those identities
+while adding seeded callable-derived distractors through 8,192 tools.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -995,6 +1003,117 @@ separate execution boundary.}
 \label{fig:m8-auto-union}
 \end{figure}
 
+\subsection{Semantic confusion changes the large-catalog result}
+M0 established that a typed index can locate opaque resources in catalogs up
+to 8,192 entries. That result did not test whether zero-configuration semantic
+channels preserve ranking quality when thousands of plausible callable
+descriptions compete for the same intent. The scale follow-up therefore keeps
+the 18 target callables and 144 frozen H0--H5 test requests, then constructs
+catalogs of 32, 128, 512, 2,048, and 8,192 ordinary Python callables under five
+catalog seeds. Each added callable shares exactly one canonical facet with a
+target---its operation or its object---but never both. Names, docstrings,
+signatures, annotations, and modules are inspectable by the same registration
+path as the targets. Every fifth eligible distractor uses a destructive
+operation on the anchor object so unsafe exposure remains measurable. No
+generated distractor receives a manual tag or target label at ranking time.
+
+The evaluation reruns A2 lexical-plus-synonym scoring, A5 compact embeddings,
+A6 with the representation and weights frozen on the original 18-tool
+validation set, and A7 equal fusion, raw union, and diversity union. Candidate
+budgets $K\in\{2,3,4,5,6,8,10,20\}$ are matched exactly. Table~\ref{tab:m8-scale}
+reports seed means at $K=10$; ``Union P'' is useful precision and ``Unsafe'' is
+the fraction of requests whose candidate palette contains at least one labeled
+destructive non-target. Exposure is diagnostic and never grants execution
+authority.
+
+\begin{table}[H]
+\centering
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/auto_discovery_scaling/generated_scaled_auto_table.tex}}
+\caption{Five-seed semantically confusable callable-catalog scaling. A2--A6
+columns report ranking quality. Union columns report raw A7 union at matched
+$K=10$; context tokens serialize complete selected schemas.}
+\label{tab:m8-scale}
+\end{table}
+
+The original frozen hybrid remains strongest at 32 and 128 tools. Its Top-1
+advantage disappears by 512 and reverses at 2,048: at 8,192, A2 lexical
+evidence reaches \PaperSixFiveScaleEightKLexicalTopOne{} Top-1 while A6 reaches
+\PaperSixFiveScaleEightKHybridTopOne{}. The compact embedding alone falls to
+.206. Semantic similarity accumulates plausible neighbors as the catalog
+grows, whereas exact lexical evidence retains a sharper identity signal.
+Figure~\ref{fig:m8-scale-quality} shows that this is a gradual ranking failure,
+not a threshold artifact.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper6_5_tools/auto_discovery_scaling/scaled_auto_quality.pdf}
+\caption{Top-1 and Recall@10 under five seeded callable catalogs. The A6
+mixture is frozen rather than retuned at each scale.}
+\label{fig:m8-scale-quality}
+\end{figure}
+
+Channel diversity nevertheless becomes useful for bounded recovery. At 8,192
+tools and $K=10$, raw union reaches
+\PaperSixFiveScaleEightKUnionRecallTen{} required-tool recall, compared with
+\PaperSixFiveScaleEightKHybridRecallTen{} for A6. The gain is not free: useful
+precision is \PaperSixFiveScaleEightKUnionPrecisionTen{}, the palette exposes a
+labeled unsafe candidate on \PaperSixFiveScaleEightKUnionUnsafeTen{} of
+requests, and full schemas consume \PaperSixFiveScaleEightKUnionTokensTen{}
+tokens on average. The declining unsafe-exposure rate with catalog size does
+not imply safer catalogs; under fixed $K$, increasingly many non-destructive
+confusable candidates displace destructive ones from the visible palette.
+Figure~\ref{fig:m8-scale-union} therefore reports recall and exposure together.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper6_5_tools/auto_discovery_scaling/scaled_union_k10.pdf}
+\caption{Matched-$K=10$ required-tool recall and unsafe-candidate exposure.
+Raw and diversity union preserve more large-catalog recall, but neither is a
+safe or precise default disclosure policy.}
+\label{fig:m8-scale-union}
+\end{figure}
+
+Figure~\ref{fig:m8-scale-frontier} exposes the 8K budget tradeoff rather than
+selecting $K=10$ after the fact. Union's recall advantage grows with palette
+size while useful precision falls; $K=20$ is a diagnostic upper bound, not a
+recommended disclosure budget.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper6_5_tools/auto_discovery_scaling/scaled_union_frontier_8192.pdf}
+\caption{The 8,192-tool matched-budget frontier. Candidate-set recall and
+useful precision must be read together.}
+\label{fig:m8-scale-frontier}
+\end{figure}
+
+The Python reference implementation scales approximately linearly. At 8,192
+tools, exhaustive BM25 scoring takes
+\PaperSixFiveScaleEightKBMLatency{} ms/query and tensorized A7 candidate
+construction takes \PaperSixFiveScaleEightKASevenLatency{} ms/query after
+channel scores are available. Discovery components occupy
+\PaperSixFiveScaleEightKMemoryMiB{} MiB, while serializing the entire logical
+catalog would require \PaperSixFiveScaleEightKLogicalTokens{} tokens. These
+measurements establish the cost shape, not a production latency claim: an
+inverted lexical index and approximate semantic index should narrow candidates
+before exact reranking.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper6_5_tools/auto_discovery_scaling/scaled_auto_costs.pdf}
+\caption{Reference implementation latency and measured discovery-component
+memory. Both axes are logarithmic; query encoding is batched and reported
+separately in the machine-readable cost rows.}
+\label{fig:m8-scale-cost}
+\end{figure}
+
+The large-catalog result reopens A7 only as a retrieval research direction.
+It does not reopen the default-union or generative JIT gate because recall does
+not dominate useful precision, safety exposure, and schema context jointly.
+A production follow-up should use indexed candidate narrowing, calibrate
+abstention at each catalog scale, and test whether a second-stage reranker can
+retain the union's recall before any schema becomes model-visible.
+
 \subsection{Selection authority and atomic tool records}
 M8 separates selection from materialization. The agent resolver owns catalog
 semantics, execution state, tenant and safety filters, and the candidate budget.
@@ -1073,11 +1192,12 @@ superseded facts, and permission-scoped child sessions
 M_{\mathrm{child}}=R(M_{\mathrm{parent}})\cup\Delta M_{\mathrm{child}}.
 \]
 Cross-model replication is also required because M2--M7 use one frozen Qwen
-checkpoint for pretrained/native mechanisms. Natural semantic-hard requests,
-larger catalogs, and a tool-identity-disjoint benchmark should test whether the
-authored tag advantage survives distribution shift. The OpenAI-compatible
-endpoint belongs after these mechanism checks, so harness behavior does not
-hide resolver, disclosure, or execution failures.
+checkpoint for pretrained/native mechanisms. The new generated large-catalog
+study does not replace natural catalogs or a tool-identity-disjoint benchmark;
+both should test whether the observed lexical advantage and union recovery
+survive distribution shift. The OpenAI-compatible endpoint belongs after these
+mechanism checks, so harness behavior does not hide resolver, disclosure, or
+execution failures.
 
 \section{Reproducibility}
 M8's E1--E3 driver is \path{run_auto_union_records.py}. Candidate sets for E4
@@ -1100,6 +1220,18 @@ requests. It used the compact BGE encoder on an NVIDIA GeForce GTX 950M and
 completed in 103 seconds. The manifest records every automatic field's source.
 The A7 JIT status is a checked-in gate-closed artifact because no union condition
 met the validation recall-and-safety criterion.
+
+The semantically confusable scale follow-up uses
+\path{run_scaled_auto_discovery.py}; it checkpoints one gzip shard per catalog
+size and seed and resumes only when the protocol hash matches. The run covers
+five sizes, seeds $\{11,23,37,53,71\}$, 144 frozen test requests, three ranking
+policies, six matched candidate strategies, and eight budgets on CUDA.
+\path{summarize_scaled_auto_discovery.py} audits row completeness and budget
+compliance, aggregates catalog-seed means and standard deviations, and
+regenerates the table, macros, four figures, and machine-readable findings.
+The raw rows distinguish index construction, query encoding, channel scoring,
+candidate construction, component memory, logical schema tokens, and selected
+schema tokens.
 
 The M0 benchmark entry points are
 \texttt{experiments/paper6\_5\_tools/run\_m0\_policy\_study.py} and
@@ -1161,7 +1293,11 @@ optional research interfaces. M8 adds ordinary callables as typed records and
 atomic PRA transport of the selected palette. On this catalog, generic synonyms
 supply most of the isolated gain, and fusion with automatic tags and embeddings
 matches the rich manual result. Union remains optional because it does not
-dominate fusion and raises unsafe exposure as the palette grows. Persistent
+dominate fusion on the original cohort. Under five semantically confusable
+catalog seeds, frozen hybrid ranking degrades faster than lexical evidence;
+bounded union restores part of the 8K recall but leaves low useful precision
+and nonzero unsafe exposure. The result motivates indexed high-recall retrieval
+followed by calibrated reranking, not default broad disclosure. Persistent
 skills, history, mutation, and session inheritance remain untested.
 
 \end{document}

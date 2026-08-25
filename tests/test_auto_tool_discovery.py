@@ -7,10 +7,13 @@ from data.semantic_concepts import canonical_concept_map
 from pra_hf.auto_tool_discovery import (
     AutoEvidenceSource,
     auto_tag_score,
+    auto_tag_scores,
     automatic_semantic_view,
     evidence_provenance_counts,
     inferred_concept_score,
+    inferred_concept_scores,
     weighted_keyword_score,
+    weighted_keyword_scores,
 )
 from pra_hf.tool_records import tool_record_from_callable
 
@@ -94,3 +97,29 @@ def test_absent_docstring_remains_empty_and_camel_name_is_tokenized() -> None:
 
     assert record.description == ""
     assert {"update", "user", "status"} <= set(name_terms)
+
+
+def test_batched_keyword_scores_match_single_view_api() -> None:
+    concepts, _, view = _view()
+    sources = {AutoEvidenceSource.FUNCTION_NAME, AutoEvidenceSource.DICTIONARY_EXPANSION}
+    queries = ("fix the account", "delete the profile", "export a document")
+
+    for query in queries:
+        expected = weighted_keyword_score(
+            query, view, sources=sources, concepts=concepts, expand_query=True
+        )
+        observed = weighted_keyword_scores(
+            query, (view, view), sources=sources, concepts=concepts, expand_query=True
+        )
+        assert observed == (expected, expected)
+
+
+def test_batched_concept_and_tag_scores_match_single_view_api() -> None:
+    concepts, _, view = _view()
+    query = "modify the account"
+
+    concept = inferred_concept_score(query, view, concepts)
+    tag = auto_tag_score(query, view, concepts)
+
+    assert inferred_concept_scores(query, (view, view), concepts) == (concept, concept)
+    assert auto_tag_scores(query, (view, view), concepts) == (tag, tag)

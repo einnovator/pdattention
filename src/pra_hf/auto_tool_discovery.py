@@ -219,13 +219,55 @@ def weighted_keyword_score(
 ) -> float:
     """Score query-term coverage under one explicitly isolated source policy."""
 
-    query_terms = set(_informative(query))
-    if expand_query and concepts is not None:
-        query_terms.update(row.canonical for row in concepts.match(query, language=language))
+    return weighted_keyword_scores(
+        query,
+        (view,),
+        sources=sources,
+        concepts=concepts,
+        language=language,
+        expand_query=expand_query,
+    )[0]
+
+
+def weighted_keyword_scores(
+    query: str,
+    views: Iterable[AutoToolSemanticView],
+    *,
+    sources: Iterable[AutoEvidenceSource],
+    concepts: CanonicalConceptMap | None = None,
+    language: str = "en",
+    expand_query: bool = False,
+) -> tuple[float, ...]:
+    """Score aligned views while normalizing query concepts only once."""
+
+    query_terms = automatic_query_terms(
+        query,
+        concepts=concepts,
+        language=language,
+        expand=expand_query,
+    )
     if not query_terms:
-        return 0.0
-    values = view.weighted_terms(sources=sources)
-    return sum(values.get(term, 0.0) for term in query_terms) / len(query_terms)
+        return tuple(0.0 for _ in views)
+    output = []
+    for view in views:
+        values = view.weighted_terms(sources=sources)
+        output.append(sum(values.get(term, 0.0) for term in query_terms) / len(query_terms))
+    return tuple(output)
+
+
+def automatic_query_terms(
+    query: str,
+    *,
+    concepts: CanonicalConceptMap | None = None,
+    language: str = "en",
+    expand: bool = False,
+) -> frozenset[str]:
+    """Normalize one query with the same rules used by automatic keywords."""
+
+    values = set(_informative(query))
+    if expand and concepts is not None:
+        values.update(row.canonical for row in concepts.match(query, language=language))
+    return frozenset(values)
 
 
 def inferred_concept_score(
@@ -237,10 +279,25 @@ def inferred_concept_score(
 ) -> float:
     """Match weighted inferred operation/object candidates without hard labels."""
 
+    return inferred_concept_scores(query, (view,), concepts, language=language)[0]
+
+
+def inferred_concept_scores(
+    query: str,
+    views: Iterable[AutoToolSemanticView],
+    concepts: CanonicalConceptMap,
+    *,
+    language: str = "en",
+) -> tuple[float, ...]:
+    """Score aligned inferred concept views from one query expansion."""
+
     query_concepts = concepts.concepts(query, language=language)
-    operation = max((query_concepts["operation"].get(value, 0.0) for value in view.operations), default=0.0)
-    objects = max((query_concepts["object"].get(value, 0.0) for value in view.objects), default=0.0)
-    return 0.65 * operation + 0.35 * objects
+    output = []
+    for view in views:
+        operation = max((query_concepts["operation"].get(value, 0.0) for value in view.operations), default=0.0)
+        objects = max((query_concepts["object"].get(value, 0.0) for value in view.objects), default=0.0)
+        output.append(0.65 * operation + 0.35 * objects)
+    return tuple(output)
 
 
 def auto_tag_score(
@@ -252,11 +309,26 @@ def auto_tag_score(
 ) -> float:
     """Score only inferred auto-tags; manual resource tags are never consulted."""
 
+    return auto_tag_scores(query, (view,), concepts, language=language)[0]
+
+
+def auto_tag_scores(
+    query: str,
+    views: Iterable[AutoToolSemanticView],
+    concepts: CanonicalConceptMap,
+    *,
+    language: str = "en",
+) -> tuple[float, ...]:
+    """Score aligned automatic tags from one query concept expansion."""
+
     values = concepts.concepts(query, language=language)
     query_tags = set(values["operation"]) | set(values["object"])
     if not query_tags:
-        return 0.0
-    return len(query_tags & set(view.auto_tags)) / len(query_tags)
+        return tuple(0.0 for _ in views)
+    return tuple(
+        len(query_tags & set(view.auto_tags)) / len(query_tags)
+        for view in views
+    )
 
 
 def evidence_provenance_counts(views: Iterable[AutoToolSemanticView]) -> dict[str, int]:

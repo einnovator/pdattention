@@ -233,3 +233,27 @@ the 144 frozen test requests, versus 0.806 and 0.910 for the manual-rich
 control. This near-parity is catalog-specific. The automatic-union JIT gate is
 closed because union does not improve matched-budget validation recall without
 greater unsafe exposure; `union_jit_ablation.csv` records the stopped run.
+
+## M8 semantically confusable catalog scaling
+
+The large-catalog follow-up preserves the 18 target callables and 144 frozen
+H0--H5 test requests while adding ordinary callable-derived distractors that
+share either the target operation or target object, but never both. It evaluates
+catalog sizes `32, 128, 512, 2048, 8192` under seeds `11, 23, 37, 53, 71` and
+matched candidate budgets `2, 3, 4, 5, 6, 8, 10, 20`.
+
+```powershell
+$env:PYTHONPATH='src;.'
+python -m experiments.paper6_5_tools.run_scaled_auto_discovery --device cuda
+python -m experiments.paper6_5_tools.summarize_scaled_auto_discovery
+```
+
+Outputs live under
+`docs/papers/shared/results/paper6_5_tools/auto_discovery_scaling`. The runner
+checkpoints each size/seed shard and verifies a protocol hash before resuming.
+At 8,192 tools, A2 lexical-plus-synonym scoring reaches 0.451 Top-1 and the
+frozen A6 hybrid reaches 0.338. At matched `K=10`, raw A7 union improves
+required-tool recall from 0.553 for A6 to 0.662, but useful precision is 0.078
+and unsafe-candidate exposure is 0.110. The default-union/JIT gate remains
+closed; this experiment supports indexed high-recall candidate generation
+followed by calibrated reranking.
