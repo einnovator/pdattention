@@ -25,6 +25,10 @@ H4. `#__head` plus persistent history can bound active native context as a proje
 H5. Compaction can become an optional index/summary operation rather than destructive replacement of history.
 H6. Subagents can inherit selected parent memory by reference with much lower transfer cost than copying full prompts.
 H7. Transparent PRA behind an OpenAI-compatible endpoint can improve context economics with minimal harness modification; PRA-native references may improve it further.
+H8. A bounded graph-expanded capability set may improve multi-step planning relative to Top-1 or reactive disclosure at matched total context cost.
+H9. Category, family, tag, keyword, and directional schema relations may recover useful capability neighborhoods beyond similarity Top-K.
+H10. Discovery policy and disclosure breadth are independent controls and must be evaluated separately.
+H11. Native K/QK discovery is deployment-dependent and must remain optional for generic external-agent integrations.
 
 ## Resource model
 Support typed, versioned identities such as:
@@ -286,12 +290,35 @@ The toy model is evidence about mechanism, not real-world agent capability.
 ### M2 — Qwen3-0.6B primary pretrained bridge
 Use Qwen3-0.6B for the first pretrained PRA experiments because the existing PRA integration already targets Qwen3 and the instruct model supports agent/tool calling. Run both opaque synthetic tools and realistic tool schemas.
 
-### M3 — replication
-After the mechanism is stable, replicate a selected subset on:
-- a second roughly 1B family such as Llama-3.2-1B-Instruct or a controlled tool-calling adaptation;
-- SmolLM3-3B as a stronger small tool-use model.
+### M3 — execution and typed observation
+Insert a deterministic safe harness after model-side call construction. Treat
+the call as untrusted, require request-scoped host authorization, and preserve
+each result as a versioned `observation` resource with producer and schema
+provenance.
 
-Do not run every large catalog sweep on every model. Use M0/M1/M2 for dense ablations and M3 for replication.
+### M4 — multi-tool planning and reactive discovery
+Test three-to-five-step composition with just-in-time tool disclosure. Compare
+reactive refresh, static required-tool disclosure, and no-refresh controls.
+
+### M5 — speculative capability disclosure
+Separate discovery from disclosure. Build a typed capability graph from
+category/family/tag/keyword relations plus directional producer-consumer schema
+edges. Compare P0--P9 fixed policies, including matched-budget reactive and
+up-front speculative disclosure. Do not train an adaptive controller unless
+static policies establish task-success headroom without unsafe exposure.
+
+### M6 — PRA-native semantic resource discovery
+Treat native mean K and Paper-2.8 QK routing as optional co-located,
+shared-memory, model-server, or replicated-query integrations. Generic SDK use
+must remain independent of native state. Prefer exporting low-rank projected
+queries or identity-only server results, never raw Q/K by default.
+
+### M7 — persistent session and typed history
+Move persistent-history experiments after the tool discovery/disclosure and
+execution boundaries are characterized.
+
+Cross-model replication remains required after these dense Qwen gates; do not
+run every catalog ablation on every model.
 
 ## D. Synthetic-to-real experiment ladder
 Separate:
@@ -399,4 +426,39 @@ model owns schema-conditioned argument construction. Oracle and idealized
 discovered memory are at parity, while shuffled and disabled memory fail, so
 the selected definition is causally used. This is a synthetic mechanism gate,
 not evidence for pretrained agents, production discovery, or side-effecting
-execution. M2 remains the next gate.
+execution.
+
+M2--M4 are complete on frozen Qwen3-0.6B over five deterministic prompt
+presentations. Selected/oracle schema disclosure obtains 20/20 exact calls;
+shuffled, irrelevant, and empty controls obtain 0/20, while eager disclosure
+obtains 17/20. The safe in-memory executor accepts 20/20 selected calls and
+creates typed observations; 17/20 continuations include every returned value.
+Reactive JIT completes 10/15 multi-tool workflows, versus 3/15 static
+required-tool disclosure and 0/15 without refresh.
+
+M5 is implemented and its stop gate is negative. The combined graph reaches
+.933 required-tool recall without destructive exposure but obtains 0/15 static
+model task success; reactive JIT remains 10/15. Retain fixed graph policies but
+do not train an adaptive disclosure controller from this evidence.
+
+M6 is implemented as a co-located mechanism with projected-query and
+identity-only server boundary types. Indexed lexical discovery obtains 1.000
+single-step Top-1 and token routing obtains .889 multi-step required-tool
+recall. Native mean/full QK and zero-shot Paper-2.8 projections are worse, so
+native discovery is not the SDK default. Cross-model replication and M7
+persistent-history experiments remain open.
+
+## K. M5/M6 measurement and falsification addendum
+
+M5 must report required/useful recall, useful precision, related and irrelevant
+fractions, unsafe exposure, plan coverage, initial and total disclosed tools,
+mid-execution retrievals, graph edge provenance, definition tokens, and task
+success. Reject speculative disclosure when it only increases context or when
+reactive JIT is equal or better at lower cost.
+
+M6 must report model/tokenizer/layer/projection provenance, deployment mode,
+index bytes, routing latency, Top-1/MRR, required and successor recall, and
+whether raw native state crosses the process boundary. Reject native discovery
+when external token/index methods match or exceed quality with a simpler
+integration boundary. Both rejection conditions are met by the current frozen
+cohort and must remain visible in the paper.

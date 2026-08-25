@@ -9,30 +9,32 @@ Typed Resource Discovery Before Neural Materialization}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \input{../shared/results/paper6_5_tools/m1/generated_m1_results.tex}
+\input{../shared/results/paper6_5_tools/m2_m6_summary/generated_m2_m6_results.tex}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Agent runtimes often place every tool definition in every prompt, consuming
-native context before the model has decided which resource it needs. We
-separate that decision into a typed resource-discovery layer for Progressive
-Retrieval Attention (PRA). It supports explicit, lexical, indexed, semantic,
-hybrid, hinted, and adaptive policies; preserves provenance; and turns
-calibrated confidence into select, ask, or abstain decisions. In M0, opaque
-catalogs scale from 8 to 8,192 resources over five seeds. At 8,192 resources,
-request hints and adaptive fallback obtain 100\% top-1 selection, 100\%
-actionable outcome accuracy, and no false action on ten negative cases; hints
-use 1.08 retrieval stages on average versus 2.39 for adaptive fallback. The
-largest catalog contains 147,456 logical definition tokens while one selected
-definition contains 18 (0.0122\%), an accounting result. M1 then trains a
-506,400-parameter decoder on an opaque tool-use grammar. Correctly discovered
-native K/V obtains end-to-end success of 1.000, .950, and .925 at catalog sizes
-8, 32, and 128, exactly matching oracle memory. Shuffled and disabled memory
-obtain zero at every size; eager injection exceeds the 512-token native window
-at sizes 32 and 128. These results establish typed discovery and causal use of
-selected memory in a toy model. They do not establish pretrained-agent
-competence, production retrieval speed, or safe real-tool execution.
+Agent runtimes often place every tool definition in every prompt before the
+model has decided which capability it needs. We separate this process into
+typed discovery, bounded disclosure, model-side call construction, and
+host-authorized execution. M0 resolves opaque catalogs up to 8,192 resources;
+M1 shows causal use of one selected native-K/V definition in a toy decoder.
+With frozen Qwen3-0.6B, M2 obtains 20/20 exact calls from selected or oracle
+schemas, versus 0/20 from shuffled, irrelevant, or empty disclosure and 17/20
+from all 18 tools. M3 safely executes 20/20 selected calls in an in-memory
+harness and preserves every result as a typed observation; 17/20 continuations
+include every returned value. M4 completes 10/15 three-to-five-step workflows
+with reactive just-in-time disclosure, versus 3/15 with all required tools
+visible and 0/15 without refresh. M5 then falsifies the proposed speculative
+extension: a metadata/schema graph raises required-tool recall to .933 but
+obtains 0/15 task success under static disclosure. M6 also stops negatively:
+indexed lexical discovery reaches 1.000 single-step Top-1 and token routing
+reaches .889 multi-step required-tool recall, while native mean K, full token
+QK, and zero-shot Paper-2.8 projections are worse. The resulting architecture
+keeps calibrated typed discovery and reactive disclosure as the supported
+path; graph speculation and native-Q/K discovery remain bounded experimental
+modes rather than defaults.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -54,13 +56,16 @@ different costs. It instead introduces a concrete question before
 materialization: which resource identity should be resolved, by which
 discovery mechanism, and with enough confidence to act?
 
-This paper reports two mechanism gates. M0 asks whether a typed resolver can
+This paper reports a staged sequence of mechanism gates. M0 asks whether a typed resolver can
 preserve selection quality as a catalog grows, whether policy hints reduce
 unnecessary search, and whether confidence prevents an accurate ranker from
 becoming an unsafe selector. M1 asks whether a small decoder causally uses one
-selected definition after it is encoded as native K/V. Neither gate claims
-pretrained-model transfer, persistent-session recall, production speed, or safe
-execution of real side effects.
+selected definition after it is encoded as native K/V. M2--M4 add a frozen
+pretrained model, typed execution, and multi-step reactive discovery. M5 asks
+whether capability neighborhoods should be disclosed before planning. M6 asks
+whether model-native query/key state improves resource discovery enough to
+justify a tighter deployment boundary. Persistent-session recall, production
+speed, and external side effects remain outside these gates.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -134,6 +139,29 @@ correct only when the right resource is ranked first \emph{and} the decision is
 when the decision is \texttt{ask} or \texttt{abstain}. This definition prevents
 a low-confidence ranker from receiving operational credit merely because its
 latent top candidate was right.
+
+\subsection{Discovery and disclosure are different controls}
+Discovery answers how candidates are found: explicit URI, token matching,
+persistent index, semantic score, or a calibrated combination. Disclosure
+answers which bounded capability set becomes visible to the model. A request
+can therefore pair indexed discovery with minimal disclosure, or explicit
+discovery with a broader planning neighborhood. The SDK represents this as
+\[
+ \mathrm{AgentResourcePolicy}
+ = (\mathrm{DiscoveryPolicy},\mathrm{ToolDisclosurePolicy}),
+\]
+rather than overloading one \texttt{top\_k}. Resolve mode targets one identity
+$q\mapsto r^*$. Explore mode targets a set
+$(q,state)\mapsto R_K$ and requires recall, precision, unsafe exposure, plan
+coverage, and task-success metrics. Neither form authorizes execution.
+
+The M5 implementation builds a typed capability graph from category, object,
+API and operation families, curated tags, deterministic description keywords,
+and directional producer--consumer schema edges. Every disclosed identity
+retains its root, edge type, depth, weight, and inclusion source. Destructive
+neighbors are suppressed by default. Fixed \texttt{minimal}, \texttt{local},
+\texttt{planning}, \texttt{broad}, and \texttt{adaptive} profiles bound each
+signal independently.
 
 \section{M0 Experimental Design}
 \subsection{Opaque catalogs}
@@ -402,27 +430,184 @@ task. The experiment establishes that the selected native K/V carries necessary
 information through call construction and observation-conditioned continuation;
 it does not establish general tool use.
 
+\section{M2--M4: From Selection to Typed Execution}
+\subsection{Frozen pretrained bridge}
+M2 freezes Qwen3-0.6B at revision
+\texttt{c1899de289a04d12100db370d81485cdf75e47ca}. Four realistic single-tool
+tasks cross five deterministic prompt presentations. The model receives
+OpenAI-compatible function schemas and must emit one parseable
+\texttt{<tool\_call>} with the exact function and arguments. Conditions expose
+the selected tool, the identical oracle tool, a same-family shuffled tool, an
+irrelevant tool, no tools, or all 18 catalog tools. The five presentations vary
+instruction wording and eager order; they are not independent model-training
+seeds.
+
+Selected and oracle disclosure both obtain \PaperSixFiveMTwoSelected\ strict
+success (20/20). Shuffled, irrelevant, and empty conditions obtain 0/20. Eager
+disclosure obtains \PaperSixFiveMTwoEager\ (17/20). Thus the selected schema
+causes the output and a small model can use it without task-specific training;
+the eager catalog is not an oracle and already introduces interference.
+
+\subsection{Safe execution and typed observations}
+M3 inserts a host boundary after generation. The parser treats model JSON as
+untrusted. The executor checks that the function was disclosed, the stable URI
+was authorized, required arguments and types match the schema, and write or
+destructive authority was granted separately. Only registered pure in-memory
+handlers can run. A result becomes
+\begin{verbatim}
+!!ref:observation:<namespace>:<call-id>:v1!!
+\end{verbatim}
+with producer URI, result schema, call identity, tenant, and provenance. Tool
+outputs are therefore retrievable resources rather than irreversible transcript
+text. All 20 selected calls execute and create typed observations. In 17/20
+continuations (\PaperSixFiveMThreeGrounded), the model includes every returned
+value. The remaining three are consumption failures, despite correct execution.
+
+\subsection{Reactive multi-tool composition}
+M4 uses three held-out workflows of length three, four, and five. Reactive JIT
+shows only the next discovered schema after each typed result; eager-required
+shows the complete evaluator-required set at every step; no-refresh leaves only
+the initial tool visible. The same model and prompt presentations are used.
+Strict task success requires every expected identity, exact arguments, accepted
+execution, and typed observation in order.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper6_5_tools/m2_m6_summary/m2_m4_gate_summary.pdf}
+\caption{M2--M4 strict gates. Selected definitions cause exact pretrained calls;
+typed execution is reliable, while observation consumption remains imperfect.
+Reactive disclosure substantially outperforms both a static required set and a
+no-refresh control on the small workflow cohort.}
+\label{fig:m2-m4}
+\end{figure}
+
+Reactive JIT completes \PaperSixFiveMFourReactive\ (10/15), eager-required
+\PaperSixFiveMFourEager\ (3/15), and no-refresh 0/15. The three- and four-step
+families account for the reactive successes; the five-step cross-domain
+repository workflow fails after its first result in every presentation. M4 is
+therefore a positive reactive-composition gate, not general long-horizon agent
+competence.
+
+\section{M5: Speculative Capability Disclosure}
+M5 asks whether exposing a useful capability neighborhood before the first call
+improves planning relative to direct Top-1 or reactive retrieval. The 18-node
+graph has 171 typed edges. We compare all-tools eager (P0), direct Top-1 and
+Top-$K$ (P1--P2), family/category, tag/keyword, and schema expansion (P3--P5),
+their bounded union (P6), reactive JIT (P7), horizon-matched speculative
+disclosure (P8), and the exact required set (P9). Labels distinguish required,
+useful, related-but-unnecessary, irrelevant, and unsafe tools.
+
+\begin{table}[H]
+\centering
+\small
+\caption{M5 capability-set and execution results over three workflows. Recall
+and initial tool counts are averaged across tasks. Model success has 15 trials
+for P1, P6--P9; a dash denotes a set-only policy.}
+\label{tab:m5}
+\begin{tabular}{lrrrr}
+\toprule
+Policy & Required recall & Initial tools & Unsafe & Model success \\
+\midrule
+P0 all eager & 1.000 & 18.00 & 1.00 & -- \\
+P1 direct Top-1 & .261 & 1.00 & 0 & .000 \\
+P2 direct Top-$K$ & .822 & 4.00 & 0 & -- \\
+P5 schema graph & .628 & 3.67 & 0 & -- \\
+P6 combined graph & \PaperSixFiveMFiveCombinedRecall & 6.67 & 0 & \PaperSixFiveMFiveCombinedSuccess \\
+P7 reactive JIT & .261 & 1.00 & 0 & .667 \\
+P8 speculative matched & .628 & 3.67 & 0 & .000 \\
+P9 oracle capabilities & 1.000 & 4.00 & 0 & .200 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.90\linewidth]{../shared/results/paper6_5_tools/m2_m6_summary/m5_recall_vs_execution.pdf}
+\caption{Initial required-tool recall is not task success. The combined graph
+recovers most required capabilities without unsafe exposure, yet the frozen
+model does not execute successfully from the larger static set.}
+\label{fig:m5}
+\end{figure}
+
+The M5 stop/go gate is negative. P6 fully covers two workflows and reaches
+.933 mean required recall, but static P6 and P8 disclosure obtain 0/15 model
+success. Even P9 obtains only 3/15, whereas P7 reactive JIT obtains 10/15. The
+experiment does not support training an adaptive disclosure controller. The
+fixed graph remains useful for auditable candidate construction, but a useful
+capability set expands the action space; it does not solve action sequencing.
+
+\section{M6: Optional PRA-Native Resource Discovery}
+Native Q/K is not treated as another ordinary SDK function. In a generic
+deployment, the agent and resolver sit outside an opaque model API and cannot
+read hidden states, native query vectors, key vectors, or PRA cache entries.
+M6 therefore defines four explicit arrangements: co-located execution; a
+same-host shared-memory index that exports only $z_q=W_q q$; a model-server
+resolver endpoint that returns typed URIs and scores; and replicated query
+computation requiring the same model, tokenizer, layer, projection, and
+position treatment. Only the co-located mechanism is executed here. The SDK
+also implements the projected-query payload and identity-only server reply;
+raw Q/K is not persisted in artifacts.
+
+At frozen Qwen layer 27, 1,625 tokens from 18 structured definitions are
+encoded with explicit name, description, parameter, return, side-effect, and
+tag boundaries. Five prompt presentations cover four single-tool and three
+multi-tool tasks. Baselines include token and indexed lexical routing, a
+signed-hash control, input-embedding means, native mean K, full token QK, and a
+lexical/native fusion. The rank-16 and rank-8/eight-centroid projections are
+the five Paper-2.8 HotpotQA/QASPER checkpoints applied zero-shot; they receive
+no tool supervision.
+
+\begin{table}[H]
+\centering
+\small
+\caption{M6 co-located discovery. Multi-step recall uses a budget equal to the
+workflow horizon. Bytes are declared persistent routing-index payloads, not
+Python/process overhead or backing native K/V.}
+\label{tab:m6}
+\begin{tabular}{lrrrr}
+\toprule
+Mode & Single Top-1 & Multi recall & Successor recall & Index bytes \\
+\midrule
+Token & .800 & .889 & 1.000 & 13,427 \\
+Index & \PaperSixFiveMSixIndexTopOne & .862 & 1.000 & 13,427 \\
+Signed hash & .800 & .670 & .906 & 9,216 \\
+Input-embedding mean & .650 & .619 & .572 & 36,864 \\
+Lexical + rank-16 & .800 & .690 & .689 & 65,427 \\
+Native mean K & \PaperSixFiveMSixNativeMeanTopOne & .439 & .611 & 36,864 \\
+Native token QK & .000 & .439 & .611 & 3,328,000 \\
+Paper-2.8 rank-16 & .000 & \PaperSixFiveMSixRankSixteenRecall & .167 & 52,000 \\
+Paper-2.8 rank-8/8-centroid & .000 & .372 & .167 & 2,304 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.76\linewidth]{../shared/results/paper6_5_tools/m2_m6_summary/m6_quality_cost_frontier.pdf}
+\caption{M6 multi-step retrieval quality against routing-index payload. The
+compact transferred projection is inexpensive, but lexical channels dominate
+quality on this catalog. Full native-token scoring is both worse and larger.}
+\label{fig:m6}
+\end{figure}
+
+M6 also stops negatively. Native query/key state does not improve this tool
+catalog, and the QA-trained low-rank map does not transfer to capability
+language. The lexical/native fusion is below either lexical channel alone.
+Consequently the supported generic architecture remains external
+explicit/token/index discovery. Model-server native routing is an optional
+research interface whose tighter coupling is not justified by these results.
+
 \section{Next Experimental Gates}
-\paragraph{M2: pretrained bridge.}
-Use Qwen3-0.6B for schema/argument generation after a fixed resource identity
-has been selected. Run disabled, shuffled, irrelevant, empty, and oracle
-materialization controls. No side-effect executes unless host authorization and
-an execution-specific gate both pass.
-
-\paragraph{M3: replication and realistic catalogs.}
-Replicate selected conditions on another tokenizer/model family. Replace the
-idealized semantic control with declared embedding baselines and add naturally
-ambiguous resource names.
-
-\paragraph{Persistent skills and sessions.}
-After tool selection passes, test hierarchical skill disclosure, version
-mutation and revocation, bounded \texttt{\#\_\_head} history, superseded facts,
-and permission-scoped child sessions
+The next gates return to the broader persistent-context thesis: hierarchical
+skills, mutation and revocation, bounded \texttt{\#\_\_head} history,
+superseded facts, and permission-scoped child sessions
 \[
 M_{\mathrm{child}}=R(M_{\mathrm{parent}})\cup\Delta M_{\mathrm{child}}.
 \]
-The OpenAI-compatible endpoint belongs after these mechanism checks, so harness
-behavior does not hide resolver or materialization failures.
+Cross-model replication is also required because M2--M6 use one frozen Qwen
+checkpoint. The OpenAI-compatible endpoint belongs after these mechanism
+checks, so harness behavior does not hide resolver, disclosure, or execution
+failures.
 
 \section{Reproducibility}
 The M0 benchmark entry points are
@@ -442,17 +627,37 @@ NVIDIA GeForce GTX 950M and seeds $\{11,23,37,53,71\}$. Exact configuration and
 runtime metadata are recorded in
 \texttt{paper6\_5\_tools/m1/m1\_manifest.json}.
 
+M2--M4 are reproduced by \texttt{run\_m2\_m4\_pretrained.py}. M5 uses
+\texttt{run\_m5\_disclosure.py}; its direct, reactive, and oracle model rows
+reuse the frozen M4 summaries, while P6/P8 are newly executed static
+disclosures. M6 uses \texttt{run\_m6\_native\_discovery.py}. The final tables,
+macros, and figures are generated by \texttt{summarize\_m2\_m6.py}. Raw rows
+contain one call, workflow step, policy/task, or routing-query record as
+appropriate. Manifests record the frozen model revision, CUDA device,
+presentation seeds, index accounting, checkpoint provenance, and the fact that
+all execution handlers are pure in-memory fixtures.
+
 \section{Conclusion}
 A large agent catalog should not be mistaken for the context needed on every
-turn. M0 resolves one typed resource from 8,192 while accounting for only its
-18-token definition; hints match adaptive quality with less search. M1 moves
-one gate further: a small decoder uses the discovered definition as native K/V
-to construct an exact call and continue after an observation. Its discovered
-condition matches oracle memory from 8 through 128 resources, while shuffled
-and disabled controls fail. At the same time, calibration can still reject an
-accurate ranker, eager catalogs can exceed the native window, and a synthetic
-decoder cannot stand in for a pretrained agent. The next credible claim thus
-requires a pretrained bridge with realistic schemas, complete causal controls,
-production indexing, and host authorization kept separate from retrieval.
+turn. M0 resolves typed identities without exposing the catalog, and M1 shows
+that one selected native-K/V definition is used causally. M2--M4 carry the
+mechanism into a frozen pretrained model: selected schemas support exact calls,
+host authorization remains separate from generation, typed observations retain
+provenance, and reactive JIT supports bounded multi-step execution better than
+static disclosure in this cohort.
+
+The extensions also locate two boundaries. M5 capability graphs improve set
+recall but not task success; more useful tools visible at once are still more
+actions for a small model to sequence. M6 model-native Q/K is neither necessary
+nor beneficial for this catalog: indexed lexical discovery is stronger and
+crosses a much simpler deployment boundary. These are stop results, not pending
+positive claims.
+
+The supported architecture is therefore conservative: typed identities,
+calibrated external discovery, minimal or reactive disclosure, independently
+authorized execution, and typed observations. Speculative graph neighborhoods
+remain auditable fixed candidates, and native-Q/K remains an optional
+model-server research interface. Persistent skills, history, mutation, and
+session inheritance are the next untested parts of the broader program.
 
 \end{document}

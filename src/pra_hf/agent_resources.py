@@ -172,6 +172,78 @@ class AgentResource:
             )
         )
 
+    def _metadata_strings(self, name: str) -> frozenset[str]:
+        """Return one normalized set-valued capability metadata field."""
+
+        values = self.metadata.get(name, ())
+        if isinstance(values, str):
+            values = (values,)
+        return frozenset(normalize_text(str(value)) for value in values if str(value))
+
+    @property
+    def toolset_categories(self) -> frozenset[str]:
+        """Coarse, non-exclusive tool categories used for local disclosure."""
+
+        return self._metadata_strings("toolset_categories")
+
+    @property
+    def object_types(self) -> frozenset[str]:
+        """Normalized object identities operated on by this resource."""
+
+        return self._metadata_strings("object_types")
+
+    @property
+    def tags(self) -> frozenset[str]:
+        """Curated capability tags; kept distinct from extracted auto-tags."""
+
+        return self._metadata_strings("tags")
+
+    @property
+    def auto_tags(self) -> frozenset[str]:
+        """Deterministically extracted tags with separate provenance."""
+
+        return self._metadata_strings("auto_tags")
+
+    @property
+    def keywords(self) -> frozenset[str]:
+        """Description/schema keywords used only as a graph signal."""
+
+        declared = self._metadata_strings("keywords")
+        return declared or frozenset(terms(" ".join((self.name, self.description))))
+
+    @property
+    def produces(self) -> frozenset[str]:
+        """Semantic output types available to downstream tools."""
+
+        return self._metadata_strings("produces")
+
+    @property
+    def consumes(self) -> frozenset[str]:
+        """Semantic input types that may be supplied by predecessor tools."""
+
+        return self._metadata_strings("consumes")
+
+    @property
+    def api_family(self) -> str | None:
+        """Provider/API grouping used as relationship evidence, not relevance truth."""
+
+        value = self.metadata.get("api_family")
+        return normalize_text(str(value)) if value else None
+
+    @property
+    def operation_family(self) -> str | None:
+        """Object-operation family used to identify related capabilities."""
+
+        value = self.metadata.get("operation_family")
+        return normalize_text(str(value)) if value else None
+
+    @property
+    def operation_kind(self) -> str | None:
+        """Operation verb such as search, get, update, or delete."""
+
+        value = self.metadata.get("operation_kind")
+        return normalize_text(str(value)) if value else None
+
     def fingerprint_payload(self) -> dict[str, object]:
         """Return source fields that invalidate indexes and encoded caches."""
 
@@ -183,6 +255,18 @@ class AgentResource:
             "aliases": self.aliases,
             "revoked": self.revoked,
             "tenant_id": self.tenant_id,
+            "capability_metadata": {
+                "toolset_categories": sorted(self.toolset_categories),
+                "object_types": sorted(self.object_types),
+                "tags": sorted(self.tags),
+                "auto_tags": sorted(self.auto_tags),
+                "keywords": sorted(self.keywords),
+                "produces": sorted(self.produces),
+                "consumes": sorted(self.consumes),
+                "api_family": self.api_family,
+                "operation_family": self.operation_family,
+                "operation_kind": self.operation_kind,
+            },
         }
 
 
