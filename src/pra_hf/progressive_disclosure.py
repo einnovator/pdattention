@@ -68,6 +68,43 @@ class ProgressiveDisclosureCost:
     total_disclosure_ratio: float
 
 
+@dataclass(frozen=True)
+class CapabilityChoiceAccounting:
+    """Retrieval, conditional choice, and end-to-end choice decomposition."""
+
+    examples: int
+    target_in_palette: int
+    correct_choices: int
+    retrieval_recall: float
+    conditional_choice_accuracy: float
+    end_to_end_choice_accuracy: float
+
+
+def capability_choice_accounting(
+    rows: Sequence[tuple[bool, bool]],
+) -> CapabilityChoiceAccounting:
+    """Aggregate ``(target_in_palette, choice_correct)`` observations.
+
+    A correct choice outside the palette violates the bounded-choice protocol
+    and is rejected instead of silently inflating end-to-end accuracy.
+    """
+
+    values = tuple((bool(target), bool(correct)) for target, correct in rows)
+    if any(correct and not target for target, correct in values):
+        raise ValueError("A bounded capability choice cannot be correct outside its palette.")
+    examples = len(values)
+    target_count = sum(target for target, _ in values)
+    correct_count = sum(correct for _, correct in values)
+    return CapabilityChoiceAccounting(
+        examples=examples,
+        target_in_palette=target_count,
+        correct_choices=correct_count,
+        retrieval_recall=target_count / max(examples, 1),
+        conditional_choice_accuracy=correct_count / max(target_count, 1),
+        end_to_end_choice_accuracy=correct_count / max(examples, 1),
+    )
+
+
 def materialize_capability_views(
     records: Sequence[ContextRecord],
     *,

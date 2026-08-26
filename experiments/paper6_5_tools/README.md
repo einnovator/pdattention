@@ -300,3 +300,41 @@ The runner checkpoints every condition. `--fresh` starts a new protocol and
 `--no-include-all` omits the catalog-wide stress controls. Raw rows, summaries,
 figures, generated TeX, manifests, and disclosure accounting live under
 `docs/papers/shared/results/paper6_5_tools/progressive_disclosure`.
+
+## M10 large-catalog palette use and progressive disclosure
+
+M10 connects the five-seed callable-catalog scaling result to generated model
+choice, atomic selected-schema execution, and two-step JIT. Preparation freezes
+5,000 palettes plus complete compact/full views for every admitted record:
+
+```powershell
+$env:PYTHONPATH='src;.'
+python -m experiments.paper6_5_tools.prepare_missing_experiments --device cuda
+```
+
+The low-memory generated-choice phase deliberately reuses the official
+`qwen3:0.6b` Q4 Ollama artifact from M8. It covers the full seed-11 grid and all
+five seeds at the decisive 8,192-tool settings:
+
+```powershell
+python -m experiments.paper6_5_tools.run_missing_experiments `
+  --backend ollama --device cpu --phases palette full_view --fresh
+```
+
+Resume the same checkpoint with the exact local FP16 revision for provider-tool
+calls and host validation, then regenerate every summary, figure, and TeX table:
+
+```powershell
+python -m experiments.paper6_5_tools.run_missing_experiments `
+  --backend hf --device cuda --phases progressive
+python -m experiments.paper6_5_tools.summarize_missing_experiments
+```
+
+At 8,192 tools and `K=10`, diversity union obtains 0.375 target recall,
+0.667 conditional choice, and 0.250 end-to-end choice over 40 query-seed rows.
+Frozen fusion obtains 0.300, 0.083, and 0.025; the paired end-to-end effect is
+exact `p=0.0117`. At `K=8`, exact-FP16 diversity selection-to-full obtains 5/20
+strict accepted calls and exposes 0.556 of full-all capability tokens. However,
+per-step recall is only 0.250 and all ten two-step workflows fail. Fusion stays
+the SDK default; diversity union is the measured experimental high-recall mode.
+Callbacks and generated adaptive detail remain outside Paper 6.5.

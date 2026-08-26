@@ -15,6 +15,7 @@ Typed Resource Discovery Before Neural Materialization}
 \input{../shared/results/paper6_5_tools/auto_discovery_ablation/generated_auto_discovery_results.tex}
 \input{../shared/results/paper6_5_tools/auto_discovery_scaling/generated_scaled_auto_results.tex}
 \input{../shared/results/paper6_5_tools/progressive_disclosure/generated_progressive_results.tex}
+\input{../shared/results/paper6_5_tools/missing_experiments/generated_missing_results.tex}
 
 \begin{document}
 \maketitle
@@ -70,6 +71,15 @@ and declarative skills. At $K=8$, selection-to-full skill execution matches
 full-all strict success at \PaperSixFiveMNineSkillKEightProgressiveSuccess{}
 while exposing \PaperSixFiveMNineSkillKEightDisclosure{} of its capability
 tokens. The two-pass mechanism uses neither callbacks nor dynamic expansion.
+M10 closes the large-catalog downstream gate. On 40 five-seed 8,192-tool
+choices at $K=10$, diversity union obtains 0.375 target recall, 0.667
+conditional choice, and 0.250 end-to-end choice, compared with 0.300, 0.083,
+and 0.025 for fused retrieval. The paired end-to-end effect is exact
+$p=0.0117$. At $K=8$, diversity selection-to-full exposes 0.556 of full-palette
+capability tokens and obtains 5/20 strict accepted calls. All ten two-step
+workflows still fail because per-step target recall is only 0.250. Diversity
+union is therefore a useful experimental candidate generator, not the SDK
+default.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -1383,6 +1393,156 @@ but the resolver must retain its calibrated candidate limit and host safety
 checks. This small cohort does not establish statistical non-inferiority, and
 the all-tool result rejects using compact views as a substitute for discovery.
 
+\section{M10: Large-Catalog Palette Use}
+
+The 8,192-tool retrieval result leaves a downstream question open. A larger
+candidate set is useful only when the model can identify the target among its
+additional confusable tools. M10 freezes the same callable generator and eight
+M9 tool requests, then separates three probabilities:
+\[
+P(t\in C),\qquad P(\hat t=t\mid t\in C),\qquad P(\hat t=t).
+\]
+The first is resolver recall, the second is model discrimination conditional
+on a successful resolver, and the third is their end-to-end product. Every raw
+row retains the chosen identity, candidate count, channel sources and ranks,
+unsafe and useful candidates, view tokens, and wall time.
+
+\subsection{Protocol and model boundary}
+
+The full retrieval grid covers $N\in\{32,128,512,2048,8192\}$,
+$K\in\{2,4,6,8,10\}$, and BM25, frozen fusion, raw union, and diversity union.
+Seed 11 covers the Cartesian grid. The decisive $N=8192,K=10$ comparison uses
+all five catalog seeds and 40 query--seed pairs; a fixed agreement bonus is an
+additional control. Candidate identities are bound to one-digit labels and the
+official Ollama \texttt{qwen3:0.6b} Q4 artifact generates one label at
+temperature zero. This low-memory artifact is kept separate from the exact
+FP16 CUDA model used below for call construction. Catalog seeds vary generated
+distractors, not model weights.
+
+The 40-row recall values in Table~\ref{tab:m10-palette} differ from the
+144-query values in Table~\ref{tab:m8-scale} because M10 uses the smaller
+argument-annotated generation cohort. They answer different questions: M8
+estimates resolver behavior on all frozen test requests; M10 tests whether a
+model can use selected palettes on requests with executable expected calls.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper6_5_tools/missing_experiments/large_n_retrieval_frontier.pdf}
+\caption{Five-seed large-catalog Recall@10. Union increasingly helps candidate
+generation as the logical catalog grows, before any candidate is shown to the
+generation model.}
+\label{fig:m10-retrieval}
+\end{figure}
+
+\subsection{Candidate recall is not candidate use}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/missing_experiments/generated_large_palette_table.tex}}
+\caption{Generated capability choice at $N=8192,K=10$ across eight requests
+and five catalog seeds. Conditional choice excludes target-absent rows;
+end-to-end choice counts them as failures. Tokens expose compact selection
+views only.}
+\label{tab:m10-palette}
+\end{table}
+
+Raw union raises recall from 0.300 for frozen fusion to 0.375, but Qwen chooses
+none of its 15 available targets. The model cannot use raw union's additional
+hypotheses. Diversity union retains the same 0.375 recall and chooses 10/15
+available targets, yielding 0.250 end-to-end choice. Fusion obtains 1/12 and
+0.025 respectively. On paired query--seed identities, diversity wins ten rows
+that fusion loses and loses one row that fusion wins (exact two-sided
+$p=0.0117$). The fixed agreement bonus obtains 7/15 conditional successes; its
+paired effect versus fusion is unresolved ($p=0.0703$). This is evidence for
+candidate ordering and channel diversity, not for broad schema disclosure.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper6_5_tools/missing_experiments/large_catalog_palette_use.pdf}
+\caption{Conditional model choice across candidate budgets. A resolver gain
+becomes operational only when the model can distinguish target from admitted
+distractors.}
+\label{fig:m10-palette-use}
+\end{figure}
+
+The compact/full view control uses 128 matched decisions over four stratified
+requests. Compact views average 0.453 of full-view tokens and obtain 10/128
+correct choices, versus 7/128 for full views. Both rates are low and this study
+does not claim non-inferiority. It shows that exposing every nested schema field
+does not repair large-catalog selection for this small model. Three executable
+large-schema controls contain nested dataclasses, lists, optional objects,
+enums, literals, and multiple required fields; their full views contain a
+median 721 tokens (maximum 736), while selection views retain 0.219--0.279.
+
+\subsection{Selection to atomic execution}
+
+The causal execution matrix returns to the exact frozen Qwen3-0.6B FP16
+revision. At $N=8192$ and $K\in\{4,8\}$, all five catalog seeds and four
+requests compare full-all, compact-only, compact-to-full, and oracle-to-full.
+The model first selects from complete compact records. The runtime then removes
+losing records, materializes one full schema atomically, asks for arguments,
+and submits the result to the same host validator. No resolver score grants
+execution authority.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/missing_experiments/generated_large_progressive_table.tex}}
+\caption{Exact-FP16 large-catalog tool execution at $N=8192,K=8$ ($n=20$ per
+row). Strict success requires target choice, exact benchmark arguments, and
+accepted host execution. Oracle full isolates post-selection call quality.}
+\label{tab:m10-progressive}
+\end{table}
+
+Diversity compact-to-full recovers every target-present row (5/5), obtains
+5/20 strict accepted calls, and exposes 1,419 capability tokens on average,
+0.556 of its 2,558-token full-all palette. It materializes one full schema and
+avoids 2,294 full-schema tokens. Measured native-K/V accounting falls from
+293.4 MB-equivalent bytes for full-all to 162.7 MB-equivalent bytes. Raw union
+obtains 1/20 strict calls and fused obtains 2/20. Diversity versus fusion has
+the same positive direction in 4 versus 1 discordant rows, but the 20-pair
+effect is unresolved (exact $p=0.375$). Oracle-to-full obtains 15/20 strict
+calls, locating the remaining ceiling in discovery and model choice rather
+than schema execution alone.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper6_5_tools/missing_experiments/large_catalog_progressive_pareto.pdf}
+\caption{Large-catalog strict accepted calls against total capability tokens
+at $N=8192,K=8$. Two-phase totals include compact selection views and the one
+selected full schema.}
+\label{fig:m10-pareto}
+\end{figure}
+
+\subsection{Large-catalog JIT remains recall-bound}
+
+Two two-step workflows pair account retrieval with update and document search
+with export. For each step the resolver searches the full 8,192-tool logical
+catalog, exposes $K\in\{4,8\}$ compact records, materializes one selected full
+schema, validates the call, records a typed observation, and advances. The
+five catalog seeds yield ten workflows per policy.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/missing_experiments/generated_large_jit_table.tex}}
+\caption{Large-catalog two-step JIT at $K=8$. Conditional choice can be high
+while workflow success remains zero when a required step is absent from the
+palette.}
+\label{tab:m10-jit}
+\end{table}
+
+Diversity union again uses its successful palettes well: it chooses 5/5
+target-present steps. But per-step recall is only 0.250, so no policy completes
+either required step in all ten workflows. Raw union and fusion also obtain
+zero workflow success. No generated proposal is an unsafe tool, but host
+acceptance remains 0.55--0.65 because wrong identities and malformed or
+incomplete arguments are still rejected. The default-union gate therefore
+remains closed. The supported policy is frozen fusion by default, with
+diversity union exposed as an experimental high-recall mode and explicit host
+authorization after every selection.
+
 \section{Next Experimental Gates}
 The next gates return to the broader persistent-context thesis: hierarchical
 skills, mutation and revocation, bounded \texttt{\#\_\_head} history,
@@ -1390,9 +1550,10 @@ superseded facts, and permission-scoped child sessions
 \[
 M_{\mathrm{child}}=R(M_{\mathrm{parent}})\cup\Delta M_{\mathrm{child}}.
 \]
-Cross-model replication is also required because M2--M7 use one frozen Qwen
-checkpoint for pretrained/native mechanisms. The new generated large-catalog
-study does not replace natural catalogs or a tool-identity-disjoint benchmark;
+Cross-model replication is also required because M2--M10 use one Qwen model
+family for pretrained mechanisms and downstream capability choice. The
+generated large-catalog study does not replace natural catalogs or a
+tool-identity-disjoint benchmark;
 both should test whether the observed lexical advantage and union recovery
 survive distribution shift. The OpenAI-compatible endpoint belongs after these
 mechanism checks, so harness behavior does not hide resolver, disclosure, or
@@ -1442,6 +1603,20 @@ native-K/V bytes, both TTFTs, transition overhead, wall time, raw output, and
 deterministic evaluator fields. The summarizer regenerates two full condition
 tables, three figures, macros, and machine-readable findings. No model or
 encoder weights are committed.
+
+M10 is prepared by \path{prepare_missing_experiments.py}, executed by
+\path{run_missing_experiments.py}, and summarized by
+\path{summarize_missing_experiments.py}. Preparation regenerates the same five
+callable catalogs, freezes 5,000 policy/budget palettes, serializes 3,122 unique
+candidate views, and records three realistic nested-schema stress tools. The
+choice phase uses the official Ollama \texttt{qwen3:0.6b} Q4 artifact with
+persistent CPU loading and checkpoints every bounded block. The execution phase
+resumes the same checkpoint with the exact FP16 local revision on CUDA. Raw
+artifacts contain 968 compact choices, 160 matched full-view choices, 704
+execution rows, 120 JIT step rows, per-seed identities, paired exact effects,
+timing, token/KV accounting, and generated figures and tables. The split
+precision protocol is explicit in the manifests; Q4 and FP16 rows are never
+pooled as repeated seeds of one estimator.
 
 The M0 benchmark entry points are
 \texttt{experiments/paper6\_5\_tools/run\_m0\_policy\_study.py} and
@@ -1518,5 +1693,18 @@ envelope. The tool result is less uniform and degrades at all-catalog scale, so
 progressive disclosure complements rather than replaces calibrated discovery.
 Basic declarative skills are now covered; hierarchical skills, persistent
 history, mutation, revocation, and session inheritance remain untested.
+
+M10 closes the downstream large-catalog question without erasing its boundary.
+Raw union's recall gain is unusable by the Q4 chooser, whereas diversity union
+turns 10/15 target-present palettes into correct choices and significantly
+improves paired end-to-end choice over frozen fusion. In exact-FP16 execution,
+diversity selection-to-full converts all 5/5 target-present rows into strict
+accepted calls while using 0.556 of full-all capability tokens. The two-step
+JIT result nevertheless remains zero because only one quarter of required
+steps contain the target. Typed progressive disclosure therefore solves the
+cost of using a bounded palette; it does not solve large-catalog discovery.
+Fusion remains the SDK default, diversity union is a measured experimental
+high-recall mode, and callbacks or dynamic detail generation remain outside
+this paper.
 
 \end{document}

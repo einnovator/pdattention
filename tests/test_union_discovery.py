@@ -1,10 +1,13 @@
 """Tests for bounded, provenance-preserving tool candidate unions."""
 
+import pytest
+
 from data.agent_workflows import realistic_tool_catalog
 from pra_hf.union_discovery import (
     ToolDiscoveryMode,
     ToolDiscoveryPolicy,
     UnionStrategy,
+    agreement_rerank,
     discover_candidate_set,
 )
 
@@ -135,3 +138,29 @@ def test_candidate_budget_validation() -> None:
         assert "min_candidates" in str(error)
     else:
         raise AssertionError("invalid candidate budgets must fail")
+
+
+def test_agreement_rerank_preserves_palette_and_rewards_bounded_support() -> None:
+    resources = realistic_tool_catalog()
+    uris = [row.uri for row in resources[:3]]
+    scores = {
+        "lexical": {uris[0]: 1.0, uris[1]: 0.9, uris[2]: 0.1},
+        "semantic": {uris[1]: 1.0, uris[2]: 0.9, uris[0]: 0.1},
+    }
+
+    reranked = agreement_rerank(
+        scores,
+        candidate_uris=(uris[0], uris[1], uris[2]),
+        support_depth=2,
+        agreement_weight=1.0,
+    )
+
+    assert reranked[0] == uris[1]
+    assert set(reranked) == set(uris)
+
+
+def test_agreement_rerank_rejects_invalid_control_values() -> None:
+    with pytest.raises(ValueError):
+        agreement_rerank({}, candidate_uris=("x",), support_depth=0, agreement_weight=0.1)
+    with pytest.raises(ValueError):
+        agreement_rerank({}, candidate_uris=("x",), support_depth=1, agreement_weight=-0.1)

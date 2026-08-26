@@ -7,9 +7,11 @@ from enum import Enum
 
 import pytest
 
+from data.large_tool_schemas import LARGE_SCHEMA_CALLABLES
 from pra_hf.context_records import RecordAtomicity, RecordViewName, serialize_record, tool_definition_record
 from pra_hf.progressive_disclosure import (
     CapabilityTransition,
+    capability_choice_accounting,
     disclosure_cost,
     materialize_capability_views,
     transition_selected_capability,
@@ -113,3 +115,33 @@ def test_disclosure_cost_accounts_for_each_named_view() -> None:
     assert cost.phase_b_selected_full_tokens < cost.all_candidate_full_tokens
     assert 0 < cost.disclosure_ratio < 1
     assert cost.full_candidate_tokens_avoided > 0
+
+
+def test_capability_choice_accounting_separates_retrieval_from_model_choice() -> None:
+    value = capability_choice_accounting(((True, True), (True, False), (False, False)))
+
+    assert value.examples == 3
+    assert value.retrieval_recall == pytest.approx(2 / 3)
+    assert value.conditional_choice_accuracy == pytest.approx(1 / 2)
+    assert value.end_to_end_choice_accuracy == pytest.approx(1 / 3)
+
+
+def test_capability_choice_accounting_rejects_impossible_correct_choice() -> None:
+    with pytest.raises(ValueError):
+        capability_choice_accounting(((False, True),))
+
+
+def test_large_nested_callable_schemas_remain_atomic_and_executable() -> None:
+    records = [
+        tool_definition_record(
+            tool_record_from_callable(function, namespace="stress").to_agent_resource()
+        )
+        for function in LARGE_SCHEMA_CALLABLES
+    ]
+
+    for record in records:
+        schema = record.materialize("full").payload["schema"]["function"]["parameters"]
+        assert record.policy.atomicity == RecordAtomicity.RECORD
+        assert schema["properties"]
+        assert any("properties" in str(value) for value in schema["properties"].values())
+        assert record.materialize("selection").payload != record.materialize("full").payload

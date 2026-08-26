@@ -144,6 +144,49 @@ def _normalized_fusion(rankings: Mapping[str, Sequence[tuple[str, float]]]) -> l
     return sorted(fused.items(), key=lambda row: (-row[1], row[0]))
 
 
+def agreement_rerank(
+    channel_scores: Mapping[str, Mapping[str, float]],
+    *,
+    candidate_uris: Sequence[str],
+    support_depth: int,
+    agreement_weight: float,
+) -> tuple[str, ...]:
+    """Rerank a bounded palette by fused evidence plus channel agreement.
+
+    Agreement is counted only when a candidate appears in a channel's first
+    ``support_depth`` results. This avoids treating every item in a dense
+    embedding score vector as independent support. The candidate set remains
+    unchanged; this helper only orders hypotheses already admitted by another
+    bounded policy.
+    """
+
+    if support_depth <= 0:
+        raise ValueError("support_depth must be positive.")
+    if agreement_weight < 0:
+        raise ValueError("agreement_weight cannot be negative.")
+    candidates = tuple(dict.fromkeys(candidate_uris))
+    if not candidates:
+        return ()
+    eligible = set(candidates)
+    rankings = _rankings(channel_scores, eligible | {
+        uri for scores in channel_scores.values() for uri in scores
+    })
+    fused = dict(_normalized_fusion(rankings))
+    support = {uri: 0 for uri in candidates}
+    for rows in rankings.values():
+        for uri, _ in rows[:support_depth]:
+            if uri in support:
+                support[uri] += 1
+    return tuple(sorted(
+        candidates,
+        key=lambda uri: (
+            -(fused.get(uri, 0.0) + agreement_weight * support[uri]),
+            -support[uri],
+            uri,
+        ),
+    ))
+
+
 def _exact_resolution(query: str, resources: Sequence[AgentResource]) -> tuple[str, ...]:
     normalized = normalize_text(query)
     hits = []

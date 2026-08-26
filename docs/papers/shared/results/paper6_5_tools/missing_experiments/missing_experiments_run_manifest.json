@@ -1,0 +1,42 @@
+{
+  "backend": "hf",
+  "batch_choice_note": "Palette and matched full-view phases use raw Q4 one-label generation; progressive execution uses exact FP16 structured calls.",
+  "device": "cuda",
+  "full_view_choice_rows": 160,
+  "generation": {
+    "do_sample": false,
+    "temperature": 0
+  },
+  "jit_rows": 120,
+  "model_artifact": "Qwen/Qwen3-0.6B exact local revision",
+  "palette_choice_rows": 968,
+  "phases_executed": [
+    "progressive"
+  ],
+  "progressive_rows": 704,
+  "protocol_backends": {
+    "palette_and_full_view": "Ollama qwen3:0.6b Q4 raw one-label generation",
+    "progressive_execution": "Hugging Face Qwen/Qwen3-0.6B exact FP16 CUDA"
+  },
+  "replication_design": {
+    "full_grid_seed": 11,
+    "full_view_five_seed_keys": {
+      "catalog_size": 8192,
+      "max_candidates": [
+        8,
+        10
+      ]
+    },
+    "palette_five_seed_key": {
+      "catalog_size": 8192,
+      "max_candidates": 10
+    },
+    "progressive_and_jit_five_seed_keys": {
+      "catalog_size": 8192,
+      "max_candidates": [
+        4,
+        8
+      ]
+    }
+  }
+}
