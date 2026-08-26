@@ -16,6 +16,9 @@ class SkillQuery:
     query: str
     target_skill: str
     family: str
+    hardness_level: str = "H0"
+    query_style: str = "paraphrastic"
+    language: str = "en"
 
 
 @dataclass(frozen=True)
@@ -60,20 +63,77 @@ _SPECS = (
 )
 
 
+_ADDITIONAL_SPECS = (
+    _SkillSpec("github_issue_deduplication", "engineering_intake", "Group duplicate issue reports while preserving distinct symptoms and environments.", "Use when an issue queue contains repeated or near-duplicate reports.", "Find which incoming reports describe the same defect without losing meaningful differences.", "Clean up this noisy ticket queue by grouping true duplicates and keeping separate failure modes apart.", ("Compare symptoms, environments, and reproduction steps.", "Form evidence-backed duplicate groups.", "Name the canonical report and preserve unique observations."), "Do not merge reports based only on similar titles.", ("issue duplicate review",)),
+    _SkillSpec("code_security_review", "engineering_review", "Review code changes for trust-boundary violations, injection paths, and authorization gaps.", "Use when a patch touches authentication, untrusted input, secrets, or privileged operations.", "Review this sensitive patch for abuse paths and authorization mistakes.", "Look at the change as a security reviewer and identify where untrusted data or privilege could cross a boundary.", ("Map changed trust boundaries and attacker-controlled inputs.", "Trace validation, authorization, and secret handling.", "Report exploitable findings with bounded fixes."), "Do not label style issues as security vulnerabilities.", ("secure patch review",)),
+    _SkillSpec("incident_status_update", "operations", "Turn live incident evidence into a concise stakeholder status update.", "Use during an active incident when stakeholders need current impact and next update timing.", "Draft a factual status update from these incident notes.", "Tell affected teams what is happening, what is known, and when they will hear from us again.", ("State current impact and scope.", "Separate confirmed facts from investigation hypotheses.", "Name mitigation, ownership, and next update time."), "Do not claim resolution before health checks confirm it.", ("incident communication",)),
+    _SkillSpec("postmortem_action_review", "operations", "Audit postmortem actions for causal coverage, ownership, and verifiable completion.", "Use after a postmortem draft proposes corrective actions.", "Check whether these follow-up actions actually address the outage causes.", "Review the remediation list and identify vague, ownerless, or non-verifiable actions.", ("Map each action to a causal contributor.", "Check owner, deadline, and completion evidence.", "Identify residual causes without coverage."), "Do not accept training or vigilance as the sole control for a system defect.", ("corrective action audit",)),
+    _SkillSpec("contract_consistency_review", "document_analysis", "Review a contract or policy for conflicting obligations, undefined terms, and missing cases.", "Use when formal prose must be internally consistent across sections.", "Find contradictory clauses and undefined terms in this agreement.", "Check whether this policy says incompatible things in different places or leaves important cases unspecified.", ("Build a term and obligation inventory.", "Trace cross-references and conflicting conditions.", "Report ambiguity with exact source locations."), "Do not provide legal conclusions beyond the supplied text.", ("policy consistency audit",)),
+    _SkillSpec("research_claim_extraction", "document_analysis", "Extract atomic research claims with their evidence, qualifiers, and source locations.", "Use when a corpus needs a structured claim inventory rather than a narrative summary.", "Turn these papers into a traceable claim-and-evidence table.", "List exactly what each source asserts, where it supports the assertion, and what limits the claim.", ("Split compound statements into atomic claims.", "Attach evidence and source location to each claim.", "Record population, conditions, and qualifiers."), "Do not merge claims from different sources into a stronger statement.", ("claim inventory",)),
+    _SkillSpec("meeting_decision_audit", "communication", "Check meeting records for unresolved decisions, missing owners, and conflicting commitments.", "Use when meeting notes exist but execution accountability is unclear.", "Audit these notes for decisions that lack owners or contradict earlier commitments.", "Tell me which meeting outcomes are actionable and which still need a decision or accountable owner.", ("Extract decisions, proposals, and unresolved questions separately.", "Match actions to owners and dates.", "Flag conflicting or incomplete commitments."), "Do not turn a proposal into an approved decision.", ("meeting action audit",)),
+    _SkillSpec("support_case_handoff", "communication", "Prepare a support-to-engineering handoff with reproduction evidence and customer impact.", "Use when frontline troubleshooting is exhausted and engineering must investigate.", "Package this support case so engineering can act without repeating the entire conversation.", "Turn the customer thread into a concise technical escalation with evidence, impact, and attempted fixes.", ("Summarize symptoms, environment, and impact.", "List attempted remedies and observed outcomes.", "State the requested investigation and missing evidence."), "Do not omit failed troubleshooting steps that constrain diagnosis.", ("engineering support handoff",)),
+    _SkillSpec("root_cause_hypothesis_review", "engineering_diagnosis", "Rank competing root-cause hypotheses by evidence and discriminating tests.", "Use during diagnosis when several plausible explanations remain.", "Compare these explanations for the failure and decide what measurement separates them.", "Help the team stop guessing by ranking each possible cause and proposing a decisive test.", ("List hypotheses and their predicted observations.", "Score support and contradiction from current evidence.", "Choose the lowest-cost discriminating test."), "Do not declare a root cause before alternatives are falsified.", ("causal hypothesis triage",)),
+    _SkillSpec("data_contract_review", "data_governance", "Review a data contract for schema evolution, ownership, quality checks, and consumer impact.", "Use before publishing or changing an analytical or event-data interface.", "Check whether this event schema can evolve safely for all consumers.", "Review the proposed data contract for missing guarantees, ownership, and compatibility rules.", ("Inventory fields, semantics, producers, and consumers.", "Check validation and backward-compatibility rules.", "Define ownership, monitoring, and migration obligations."), "Do not treat optional fields as semantically unspecified.", ("event schema review",)),
+    _SkillSpec("threat_scenario_prioritization", "assurance", "Prioritize threat scenarios using exploitability, impact, exposure, and control strength.", "Use after threat enumeration when mitigations must be sequenced.", "Rank these attack scenarios so the team knows what to mitigate first.", "Prioritize the abuse cases using actual exposure and control gaps instead of fear or novelty.", ("Define affected assets and attacker prerequisites.", "Assess likelihood, impact, and current controls.", "Rank mitigations with residual risk."), "Do not use severity labels without stated evidence.", ("abuse case prioritization",)),
+    _SkillSpec("release_notes", "delivery", "Write audience-specific release notes from verified changes and known limitations.", "Use after release scope is frozen and users need a concise change summary.", "Turn this change list into a user-facing summary people can understand.", "Explain what changed, who is affected, and any migration or limitation without copying commit messages.", ("Group changes by user-visible outcome.", "State compatibility, migration, and known limitations.", "Link each note to verified release evidence."), "Do not advertise unverified behavior or omit breaking changes.", ("changelog drafting",)),
+    _SkillSpec("migration_readiness_review", "delivery", "Audit migration readiness against data, compatibility, rollback, and operational gates.", "Use before authorizing a planned cutover.", "Decide whether this migration has enough evidence to proceed.", "Review the cutover plan and call out any missing validation, rollback, or ownership gate.", ("Check dependencies and prerequisite completion.", "Verify rehearsal, observability, and rollback evidence.", "Issue a proceed, hold, or narrow recommendation."), "Do not approve an irreversible step without tested recovery.", ("cutover readiness",)),
+    _SkillSpec("architecture_tradeoff_review", "design_review", "Compare architecture options using explicit quality attributes and operational constraints.", "Use when a design decision has multiple viable system structures.", "Compare these architecture options against our reliability and cost constraints.", "Help choose among these designs by making the tradeoffs and assumptions explicit.", ("Define decision criteria and hard constraints.", "Compare options using common evidence.", "Recommend an option with risks and revisit triggers."), "Do not optimize one quality attribute while hiding regressions in another.", ("system design comparison",)),
+    _SkillSpec("ux_flow_review", "design_review", "Review an end-to-end user flow for clarity, recovery, accessibility, and decision burden.", "Use when a multi-step interface or journey needs product-quality review.", "Walk through this signup flow and identify where users will get lost or stuck.", "Review the journey from the user's perspective, including errors and recovery paths.", ("Identify user goal, entry state, and success state.", "Trace decisions, feedback, errors, and recovery.", "Prioritize barriers by task completion impact."), "Do not judge usability from the happy path alone.", ("journey review",)),
+    _SkillSpec("experiment_failure_analysis", "research_method", "Analyze failed or null experiments to separate intervention failure from measurement failure.", "Use when an experiment did not show the expected effect.", "Explain why this trial may have failed and what evidence distinguishes the possibilities.", "Review the null result for power, implementation, measurement, and heterogeneous effects.", ("Verify intervention delivery and measurement validity.", "Assess uncertainty, power, and subgroup patterns.", "Prioritize explanations and the next discriminating experiment."), "Do not reinterpret a null result as proof of equivalence.", ("null result diagnosis",)),
+    _SkillSpec("model_error_taxonomy", "research_method", "Build an evidence-backed taxonomy of model errors with frequencies and representative cases.", "Use when aggregate evaluation scores hide recurring behavioral failures.", "Group these model mistakes into useful failure classes and quantify them.", "Analyze the bad outputs to identify recurring mechanisms rather than listing isolated examples.", ("Define mutually intelligible error categories.", "Annotate cases and quantify category prevalence.", "Connect categories to plausible fixes and missing tests."), "Do not force ambiguous cases into one category without noting uncertainty.", ("behavior failure taxonomy",)),
+    _SkillSpec("systematic_review_protocol", "research_workflow", "Design a reproducible literature review protocol with search, screening, extraction, and synthesis rules.", "Use before starting a formal evidence review.", "Create a defensible protocol for finding and synthesizing studies on this question.", "Plan the database search, eligibility decisions, data extraction, and evidence synthesis before reading results.", ("Define question, databases, and search strategy.", "Freeze eligibility and duplicate-screening rules.", "Specify extraction, bias assessment, and synthesis."), "Do not change eligibility criteria in response to favored findings.", ("evidence review protocol",)),
+    _SkillSpec("research_methodology_review", "research_workflow", "Review a study methodology for construct validity, bias, controls, and reproducibility.", "Use when assessing whether a study design can support its intended inference.", "Audit this study design for confounding, weak measurement, and reproducibility gaps.", "Determine whether the proposed methods can answer the research question without hidden bias.", ("Map constructs to measurements and estimands.", "Check sampling, controls, confounding, and leakage.", "Identify reproducibility gaps and corrective design changes."), "Do not infer validity from methodological complexity.", ("methods audit",)),
+    _SkillSpec("project_kickoff", "people_process", "Structure a project kickoff around outcomes, scope, roles, risks, and first decisions.", "Use when a new cross-functional project needs a shared operating frame.", "Prepare the kickoff so everyone leaves with clear scope, ownership, and first actions.", "Organize this new initiative around outcomes, boundaries, risks, and decisions rather than presentation slides.", ("Define outcomes, non-goals, and decision rights.", "Map stakeholders, dependencies, and risks.", "Set milestones, communication, and immediate actions."), "Do not imply agreement where stakeholders have not committed.", ("initiative kickoff",)),
+    _SkillSpec("retrospective_facilitation", "people_process", "Facilitate a team retrospective that turns observations into bounded improvement experiments.", "Use after an iteration when a team wants to improve how it works.", "Turn these sprint observations into a constructive retrospective and a few testable changes.", "Help the team discuss what helped, what hurt, and what small process experiment to try next.", ("Collect observations without assigning blame.", "Identify patterns and controllable contributors.", "Choose owned, time-bounded improvement experiments."), "Do not convert individual criticism into an action item without shared evidence.", ("team retro",)),
+    _SkillSpec("vendor_assessment", "assurance", "Assess a vendor against security, privacy, reliability, lock-in, and operational requirements.", "Use before adopting an external service or renewing a critical supplier.", "Review whether this provider is acceptable for our data and reliability requirements.", "Compare the vendor evidence with our controls, exit needs, and operational dependencies.", ("Map service scope, data, dependencies, and criticality.", "Assess controls, contracts, incidents, and support.", "State gaps, mitigations, exit plan, and decision."), "Do not treat certifications as proof that every required control operates effectively.", ("supplier due diligence",)),
+    _SkillSpec("api_migration_guide", "delivery", "Write a client-facing API migration guide with compatibility steps and verification.", "Use when consumers must move from one interface version to another.", "Explain how clients should migrate to the new API without service interruption.", "Turn the version differences into ordered client changes, tests, and rollback advice.", ("Map old and new contracts field by field.", "Sequence compatible client and server changes.", "Provide verification, fallback, and deprecation timing."), "Do not hide behavior changes behind renamed fields.", ("client upgrade guide",)),
+    _SkillSpec("evaluation_dataset_review", "data_governance", "Review an evaluation dataset for representativeness, leakage, labeling quality, and subgroup coverage.", "Use before relying on a benchmark for model comparison or release decisions.", "Check whether this evaluation set is representative and free of obvious leakage.", "Audit the benchmark examples, labels, splits, and subgroup balance before we trust the score.", ("Inspect sampling, provenance, splits, and duplicates.", "Assess label rules, disagreement, and contamination.", "Report coverage gaps and decision risks."), "Do not use benchmark size as a substitute for representativeness.", ("benchmark data audit",)),
+    _SkillSpec("research_literature_review", "document_analysis", "Synthesize a literature corpus by themes, methods, disagreements, and evidence strength.", "Use after screening when multiple sources must support a research position.", "Synthesize these studies into themes, disagreements, and evidence gaps.", "Build a literature review that preserves methodological differences and shows where evidence converges or conflicts.", ("Group sources by question and methodological approach.", "Compare findings with evidence quality and scope.", "Identify consensus, conflict, and unanswered questions."), "Do not count papers as interchangeable votes.", ("literature synthesis",)),
+)
+
+_SPECS = _SPECS + _ADDITIONAL_SPECS
+
+
+_INSTRUCTION_SECTIONS = (
+    "Establish the decision context before applying the procedure. Identify the intended audience, the evidence supplied by the user, the unavailable evidence, and the consequence of a wrong recommendation. Preserve source wording for facts that could be disputed.",
+    "Work from observable evidence toward conclusions. For each important judgment, state the supporting observation and the uncertainty that remains. When two observations conflict, retain both and explain what additional check would resolve the conflict.",
+    "Keep the analysis operational. Distinguish findings that block action, findings that can be mitigated, and informational observations. Assign an owner or next action only when the supplied material supports one; otherwise name the missing decision explicitly.",
+    "Check edge cases and failure recovery rather than evaluating only the happy path. Consider incomplete inputs, stale information, ambiguous ownership, incompatible versions, and the possibility that the proposed action succeeds only partially.",
+    "Use concise headings and traceable evidence. The final recommendation should make the decision legible to someone who did not participate in the original discussion, without adding facts, commitments, or external actions that did not occur.",
+    "Before finalizing, run a consistency pass. Verify that priorities follow the stated criteria, that every blocker has evidence, that every proposed action addresses a named risk, and that limitations are visible beside the conclusion they qualify.",
+    "When alternatives exist, compare them on the same dimensions. Include reversibility, operational burden, security or privacy exposure, compatibility, measurement quality, and the cost of delaying the decision. Avoid declaring a universal best option.",
+    "Treat uncertainty as information. Mark assumptions, confidence, and the observation that would change the recommendation. Do not replace an absent measurement with intuition merely to make the response look complete.",
+    "Preserve authorization boundaries. This declarative skill may recommend, organize, or draft, but it does not execute tools, alter files, contact people, approve releases, or change external systems. State any required host action as a proposed next step.",
+    "End with a compact quality check: confirm the required sections are present, the mandatory constraint was followed, evidence and inference remain separated, and the next action is specific enough to verify later.",
+)
+
+
+def _instruction_body(spec: _SkillSpec, index: int) -> tuple[str, str]:
+    bucket = ("short", "medium", "long")[index % 3]
+    section_count = {"short": 2, "medium": 6, "long": 10}[bucket]
+    core = (
+        f"Apply the {spec.name} procedure to the user's supplied material. "
+        f"The ordered procedure is: (1) {spec.steps[0]} (2) {spec.steps[1]} "
+        f"(3) {spec.steps[2]} Mandatory constraint: {spec.constraint} "
+        f"Begin with `SKILL_APPLIED: {spec.name}` and then use the headings "
+        "`Decision`, `Evidence`, and `Next action`."
+    )
+    sections = "\n\n".join(_INSTRUCTION_SECTIONS[:section_count])
+    # Long records model substantial instruction manuals while remaining below
+    # the 2,000-token target. The final sections are elaborated once.
+    if bucket == "long":
+        sections += "\n\n" + "\n\n".join(
+            f"Extended check {number + 1}. {text}" for number, text in enumerate(_INSTRUCTION_SECTIONS)
+        )
+    return f"{core}\n\n{sections}", bucket
+
+
 def declarative_skill_catalog() -> tuple[SkillRecord, ...]:
-    """Return 24 non-executable skills with realistic full instruction bodies."""
+    """Return 48 non-executable skills spanning three instruction-length buckets."""
 
     records = []
-    for spec in _SPECS:
-        body = (
-            f"Apply the {spec.name} procedure to the user's supplied material. "
-            "Keep observations separate from assumptions and make the response useful to the named decision maker. "
-            f"The procedure is: (1) {spec.steps[0]} (2) {spec.steps[1]} (3) {spec.steps[2]} "
-            f"Mandatory constraint: {spec.constraint} "
-            f"Begin the final response with `SKILL_APPLIED: {spec.name}`. Then use the headings "
-            "`Decision`, `Evidence`, and `Next action`. State missing evidence rather than fabricating it. "
-            "This skill provides instructions only: never claim that an external service, file, account, or system was changed."
-        )
+    for index, spec in enumerate(_SPECS):
+        body, length_bucket = _instruction_body(spec, index)
         records.append(SkillRecord(
             name=spec.name,
             description=spec.description,
@@ -90,7 +150,11 @@ def declarative_skill_catalog() -> tuple[SkillRecord, ...]:
             ),
             dependencies=("user_supplied_material",),
             references=("paper6_5_declarative_skill_contract",),
-            metadata={"family": spec.family, "benchmark": "paper6_5_m9"},
+            metadata={
+                "family": spec.family,
+                "instruction_length_bucket": length_bucket,
+                "benchmark": "paper6_5_final",
+            },
         ))
     return tuple(records)
 
@@ -99,9 +163,26 @@ def skill_semantic_hard_queries() -> tuple[SkillQuery, ...]:
     """Return paired validation/test paraphrases without canonical skill names."""
 
     rows = []
-    for spec in _SPECS:
+    styles = ("canonical", "paraphrastic", "colloquial", "goal_oriented", "contextual")
+    for index, spec in enumerate(_SPECS):
         rows.extend((
-            SkillQuery(f"{spec.name}-validation", "validation", spec.validation_query, spec.name, spec.family),
-            SkillQuery(f"{spec.name}-test", "test", spec.test_query, spec.name, spec.family),
+            SkillQuery(
+                f"{spec.name}-validation",
+                "validation",
+                spec.validation_query,
+                spec.name,
+                spec.family,
+                f"H{index % 3}",
+                styles[index % len(styles)],
+            ),
+            SkillQuery(
+                f"{spec.name}-test",
+                "test",
+                spec.test_query,
+                spec.name,
+                spec.family,
+                f"H{1 + index % 5}",
+                styles[(index + 2) % len(styles)],
+            ),
         ))
     return tuple(rows)

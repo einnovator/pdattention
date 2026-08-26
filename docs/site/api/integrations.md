@@ -5,3 +5,17 @@ memory branch to selected decoder layers without replacing the pretrained model'
 self-attention implementation.
 
 ::: hf_wrappers.pra_wrapper
+
+## Typed Capability SDK
+
+The provider-neutral capability facade normalizes Python callables, explicit
+`Skill` objects, and OpenAI- or Anthropic-style skill folders. Compact selection
+views and complete schemas/instructions are encoded lazily by default.
+
+::: pra_hf.capability_sdk
+
+::: pra_hf.capability_runtime
+
+::: pra_hf.skill_records
+
+::: pra_hf.context_records

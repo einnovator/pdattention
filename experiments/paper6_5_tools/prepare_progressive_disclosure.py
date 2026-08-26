@@ -34,7 +34,8 @@ from pra_hf.semantic_resource_discovery import CompactEmbeddingEncoder
 
 OUTPUT = ROOT / "docs/papers/shared/results/paper6_5_tools/progressive_disclosure"
 AUTO_RESULTS = ROOT / "docs/papers/shared/results/paper6_5_tools/auto_discovery_ablation"
-K_VALUES = (2, 4, 6, 8, 18)
+TOOL_K_VALUES = (2, 4, 6, 8, 18)
+SKILL_K_VALUES = (2, 4, 8, 16, 24, 32)
 BGE_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 
 
@@ -156,6 +157,9 @@ def _skill_discovery(skills, resources, encoder) -> tuple[list[dict], dict, dict
                 "query_id": query.query_id,
                 "split": query.split,
                 "family": query.family,
+                "hardness_level": query.hardness_level,
+                "query_style": query.query_style,
+                "language": query.language,
                 "policy": policy,
                 "target_skill": query.target_skill,
                 "rank": rank,
@@ -164,9 +168,12 @@ def _skill_discovery(skills, resources, encoder) -> tuple[list[dict], dict, dict
                 "recall_at_4": int(rank <= 4),
                 "recall_at_6": int(rank <= 6),
                 "recall_at_8": int(rank <= 8),
+                "recall_at_3": int(rank <= 3),
+                "recall_at_5": int(rank <= 5),
+                "reciprocal_rank": 1.0 / rank,
             })
         order = _rank(fused)
-        for budget in (2, 4, 6, 8, len(skills)):
+        for budget in (*SKILL_K_VALUES, len(skills)):
             candidate_sets.append({
                 "resource_type": "skill",
                 "query_id": query.query_id,
@@ -203,7 +210,7 @@ def _tool_candidates() -> tuple[list[dict], list[dict]]:
             "expected_arguments": dict(case.expected_arguments),
             "hardness_level": query.hardness_level,
         })
-        for budget in K_VALUES:
+        for budget in TOOL_K_VALUES:
             names = all_names if budget == len(resources) else selected[(case.query_id, budget)]["candidate_names"].split("|")
             candidates.append({
                 "resource_type": "tool",
@@ -287,12 +294,12 @@ def run(args: argparse.Namespace) -> None:
         ("tool", tool_cases),
         ("skill", [asdict(row) for row in skill_semantic_hard_queries() if row.split == "test"]),
     ):
-        selected_cases = cases if resource_type == "tool" else cases[:8]
+        selected_cases = cases
         record_by_name = tool_records if resource_type == "tool" else skill_record_by_name
         for case in selected_cases:
             query_id = case["query_id"]
             target_name = case.get("target_name", case.get("target_skill"))
-            for budget in K_VALUES if resource_type == "tool" else (2, 4, 6, 8, len(skills)):
+            for budget in TOOL_K_VALUES if resource_type == "tool" else (*SKILL_K_VALUES, len(skills)):
                 candidate = candidates_by[(resource_type, query_id, budget)]
                 records = tuple(record_by_name[name] for name in candidate["candidate_names"])
                 selected_id = record_by_name[target_name].record_id if target_name in candidate["candidate_names"] else records[0].record_id
@@ -307,24 +314,40 @@ def run(args: argparse.Namespace) -> None:
     _write_csv(args.output / "capability_disclosure_costs.csv", costs)
 
     full_tool_sizes = sorted(row["full_schema_tokens"] for row in schema_sizes)
-    skill_view_sizes = [
-        (
-            token_counter(serialize_record(skill.to_context_record(), view="selection")),
-            token_counter(serialize_record(skill.to_context_record(), view="full")),
+    skill_view_rows = []
+    for skill in skills:
+        selection_tokens = token_counter(
+            serialize_record(skill.to_context_record(), view="selection")
         )
-        for skill in skills
+        full_tokens = token_counter(serialize_record(skill.to_context_record(), view="full"))
+        instruction_tokens = token_counter(skill.instructions)
+        length_bucket = str(skill.metadata["instruction_length_bucket"])
+        skill_view_rows.append({
+            "skill_name": skill.name,
+            "selection_tokens": selection_tokens,
+            "instruction_tokens": instruction_tokens,
+            "full_tokens": full_tokens,
+            "selection_full_ratio": selection_tokens / max(full_tokens, 1),
+            "length_bucket": length_bucket,
+        })
+    _write_csv(args.output / "skill_view_size_distribution.csv", skill_view_rows)
+    skill_view_sizes = [
+        (row["selection_tokens"], row["full_tokens"]) for row in skill_view_rows
     ]
     full_skill_sizes = sorted(full for _, full in skill_view_sizes)
     manifest = {
         "schema_version": "1.0",
         "record_views": ["selection", "full"],
-        "transition": "selection_to_full_between_model_invocations",
+        "transition": "runtime_local_exact_identity_selection_to_full",
+        "semantic_rediscovery_after_selection": False,
+        "opaque_remote_model_may_require_second_request": True,
         "callback_behavior": "not_implemented",
         "paper7_dynamic_expansion": "not_implemented",
         "tool_cases": len(tool_cases),
         "skill_catalog_size": len(skills),
         "skill_queries": len(skill_semantic_hard_queries()),
-        "candidate_budgets": list(K_VALUES),
+        "tool_candidate_budgets": list(TOOL_K_VALUES),
+        "skill_candidate_budgets": [*SKILL_K_VALUES, len(skills)],
         "skill_fusion_weights": skill_weights,
         "tool_schema_tokens": {
             "median": statistics.median(full_tool_sizes),

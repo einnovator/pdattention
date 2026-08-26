@@ -303,7 +303,8 @@ def main() -> None:
     x = list(range(len(labels)))
     plt.figure(figsize=(7.4, 3.5))
     plt.bar([value - .18 for value in x], [float(tool_by[policy]["top1"]) for policy in policies], width=.36, color="#247BA0", label="Tools (144 queries)")
-    plt.bar([value + .18 for value in x], [float(skill_by[policy]["top1"]) for policy in policies], width=.36, color="#F2A541", label="Skills (25 test queries)")
+    skill_query_count = int(next(iter(skill_by.values()))["queries"])
+    plt.bar([value + .18 for value in x], [float(skill_by[policy]["top1"]) for policy in policies], width=.36, color="#F2A541", label=f"Skills ({skill_query_count} test queries)")
     plt.xticks(x, labels)
     plt.ylim(0, 1.02)
     plt.ylabel("Top-1 discovery accuracy")
@@ -349,7 +350,7 @@ def main() -> None:
         "PaperSixFiveMNineSkillKEightDisclosure": skill_by_key[(8, "S2_selection_to_full")]["total_disclosure_ratio"],
         "PaperSixFiveMNineSkillKEightFullWall": skill_by_key[(8, "S0_full_all")]["wall_clock_seconds"],
         "PaperSixFiveMNineSkillKEightProgressiveWall": skill_by_key[(8, "S2_selection_to_full")]["wall_clock_seconds"],
-        "PaperSixFiveMNineSkillAllFullFit": skill_by_key[(25, "S0_full_all")]["context_fit_rate"],
+        "PaperSixFiveMNineSkillAllFullFit": skill_by_key[(max(key[0] for key in skill_by_key), "S0_full_all")]["context_fit_rate"],
         "PaperSixFiveMNineSkillFusedTopOne": skill_discovery["fused"]["top1"],
         "PaperSixFiveMNineSkillBmTwentyTopOne": skill_discovery["bm25"]["top1"],
     }
@@ -363,8 +364,11 @@ def main() -> None:
             "tool_cases": macros["PaperSixFiveMNineToolCases"],
             "skill_cases": macros["PaperSixFiveMNineSkillCases"],
             "skill_catalog": macros["PaperSixFiveMNineSkillCatalog"],
-            "matched_budgets": [2, 4, 6, 8],
-            "stress_budgets": {"tool": 18, "skill": 25},
+            "matched_budgets": sorted({key[0] for key in skill_by_key}),
+            "stress_budgets": {
+                "tool": max(key[0] for key in tool_by_key),
+                "skill": max(key[0] for key in skill_by_key),
+            },
         },
         "tool_k8": {key: value for key, value in tool_by_key[(8, "T2_selection_to_full")].items() if key not in {"resource_type", "max_candidates", "condition"}},
         "skill_k8": {key: value for key, value in skill_by_key[(8, "S2_selection_to_full")].items() if key not in {"resource_type", "max_candidates", "condition"}},

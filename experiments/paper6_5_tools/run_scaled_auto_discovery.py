@@ -42,7 +42,7 @@ from pra_hf.tool_records import PythonTypeSchemaCache, ToolRecord, tool_record_f
 
 SIZES = (32, 128, 512, 2048, 8192)
 SEEDS = (11, 23, 37, 53, 71)
-K_VALUES = (2, 3, 4, 5, 6, 8, 10, 20)
+K_VALUES = (1, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 48)
 BASE_KEYWORD_SOURCES = frozenset({
     AutoEvidenceSource.FUNCTION_NAME,
     AutoEvidenceSource.DOCSTRING,
@@ -55,7 +55,7 @@ BASE_KEYWORD_SOURCES = frozenset({
 DICTIONARY_SOURCES = frozenset({*BASE_KEYWORD_SOURCES, AutoEvidenceSource.DICTIONARY_EXPANSION})
 CHANNEL_ORDER = ("bm25", "auto_keyword", "keyword_synonym", "auto_tag_concept", "embedding")
 A6_WEIGHTS = {"keyword_synonym": 0.25, "auto_tag_concept": 0.25, "embedding": 0.50}
-PROTOCOL_VERSION = "paper6_5_scaled_auto_v1"
+PROTOCOL_VERSION = "paper6_5_scaled_auto_v2_final_k_curve"
 
 
 def _write_csv(path: Path, rows: Sequence[Mapping[str, object]]) -> None:

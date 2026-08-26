@@ -14,17 +14,27 @@ from pra_hf.union_discovery import CandidateSet
 
 
 class RecordType(str, Enum):
-    TOOL_DEFINITION = "tool_definition"
+    TOOL_RECORD = "tool_record"
+    TOOL_DEFINITION = "tool_record"
     TOOL_CATALOG_SLICE = "tool_catalog_slice"
+    SKILL_CATALOG_SLICE = "skill_catalog_slice"
+    CAPABILITY_SLICE = "capability_slice"
     TOOL_RESPONSE = "tool_response"
     LOG_BLOCK = "log_block"
     TERMINAL_OUTPUT = "terminal_output"
     DB_RESULT = "db_result"
     RAG_CHUNK = "rag_chunk"
     SYSTEM_INSTRUCTION = "system_instruction"
-    SKILL = "skill"
+    SKILL_RECORD = "skill_record"
+    SKILL = "skill_record"
     SESSION_RECORD = "session_record"
     GENERIC_DOCUMENT = "generic_document"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        # Read pre-lazy-record manifests without emitting legacy type names.
+        legacy = {"tool_definition": cls.TOOL_RECORD, "skill": cls.SKILL_RECORD}
+        return legacy.get(value)
 
 
 class RecordSelectionPolicy(str, Enum):
@@ -115,11 +125,15 @@ class RecordPolicy:
         object.__setattr__(self, "materialization", MaterializationPolicy(self.materialization))
         object.__setattr__(self, "initial_view", RecordViewName(self.initial_view))
         object.__setattr__(self, "selected_view", RecordViewName(self.selected_view))
-        if self.record_type == RecordType.TOOL_CATALOG_SLICE:
+        if self.record_type in {
+            RecordType.TOOL_CATALOG_SLICE,
+            RecordType.SKILL_CATALOG_SLICE,
+            RecordType.CAPABILITY_SLICE,
+        }:
             if self.selection != RecordSelectionPolicy.ALL_CHILDREN:
-                raise ValueError("Tool catalog slices must select all authoritative children.")
+                raise ValueError("Capability slices must select all authoritative children.")
             if self.materialization != MaterializationPolicy.FULL:
-                raise ValueError("Tool catalog slices materialize full child records.")
+                raise ValueError("Capability slices materialize complete named child views.")
         if self.record_type in {RecordType.TOOL_DEFINITION, RecordType.SKILL}:
             partial = self.atomicity != RecordAtomicity.RECORD or self.materialization != MaterializationPolicy.FULL
             if partial and not self.allow_partial_tools:
@@ -132,7 +146,11 @@ def default_record_policy(record_type: RecordType | str) -> RecordPolicy:
     """Return safe defaults while leaving future Paper 7 reductions unimplemented."""
 
     record_type = RecordType(record_type)
-    if record_type == RecordType.TOOL_CATALOG_SLICE:
+    if record_type in {
+        RecordType.TOOL_CATALOG_SLICE,
+        RecordType.SKILL_CATALOG_SLICE,
+        RecordType.CAPABILITY_SLICE,
+    }:
         return RecordPolicy(
             record_type, RecordSelectionPolicy.ALL_CHILDREN, SelectionAuthority.AUTHORITATIVE,
             RecordAtomicity.RECORD, MaterializationPolicy.FULL,
@@ -377,6 +395,50 @@ def tool_catalog_slice_records(
     return parent, tuple(children)
 
 
+def capability_slice_records(
+    records: Sequence[ContextRecord],
+    *,
+    slice_id: str,
+    selected_record_ids: Sequence[str] | None = None,
+    child_view: RecordViewName | str = RecordViewName.SELECTION,
+) -> tuple[ContextRecord, tuple[ContextRecord, ...]]:
+    """Create an authoritative tool, skill, or mixed capability slice.
+
+    The slice contains identities and view policy only. Full payloads remain in
+    the backing records and are activated by exact identity after model choice.
+    """
+
+    by_id = {record.record_id: record for record in records}
+    if len(by_id) != len(records):
+        raise ValueError("Capability record IDs must be unique.")
+    selected_ids = tuple(selected_record_ids or by_id)
+    if any(record_id not in by_id for record_id in selected_ids):
+        raise ValueError("Every selected capability ID must resolve to a backing record.")
+    selected = tuple(replace(by_id[record_id], parent_id=slice_id) for record_id in selected_ids)
+    record_types = {record.record_type for record in selected}
+    if not record_types <= {RecordType.TOOL_RECORD, RecordType.SKILL_RECORD}:
+        raise ValueError("Capability slices accept only TOOL_RECORD and SKILL_RECORD children.")
+    if record_types == {RecordType.TOOL_RECORD}:
+        slice_type = RecordType.TOOL_CATALOG_SLICE
+    elif record_types == {RecordType.SKILL_RECORD}:
+        slice_type = RecordType.SKILL_CATALOG_SLICE
+    else:
+        slice_type = RecordType.CAPABILITY_SLICE
+    child_view = RecordViewName(child_view)
+    parent = ContextRecord(
+        record_id=slice_id,
+        record_type=slice_type,
+        payload={
+            "candidate_uris": list(selected_ids),
+            "child_view": child_view.value,
+            "capability_types": sorted(record_type.value for record_type in record_types),
+        },
+        child_ids=selected_ids,
+        selection_provenance={"owner": "capability_runtime", "authoritative": True},
+    )
+    return parent, selected
+
+
 class RecordBudgetExceeded(ValueError):
     """Raised when authoritative whole records cannot fit the declared budget."""
 
@@ -418,19 +480,23 @@ def materialize_authoritative_slice(
     """Materialize selected tools as whole records or return an explicit overflow."""
 
     overflow = OverflowBehavior(overflow)
-    if parent.record_type != RecordType.TOOL_CATALOG_SLICE:
-        raise ValueError("Authoritative slice materialization requires TOOL_CATALOG_SLICE.")
+    if parent.record_type not in {
+        RecordType.TOOL_CATALOG_SLICE,
+        RecordType.SKILL_CATALOG_SLICE,
+        RecordType.CAPABILITY_SLICE,
+    }:
+        raise ValueError("Authoritative materialization requires a typed capability slice.")
     by_id = {row.record_id: row for row in children}
     selected = [by_id[record_id] for record_id in parent.child_ids if record_id in by_id]
     if len(selected) != len(parent.child_ids):
         raise ValueError("Every selected child ID must resolve to one ContextRecord.")
     for row in selected:
         if row.parent_id != parent.record_id:
-            raise ValueError("Tool child parent_id does not match the catalog slice.")
+            raise ValueError("Capability child parent_id does not match the catalog slice.")
         if row.policy.authority != SelectionAuthority.AUTHORITATIVE:
-            raise ValueError("Tool children in an authoritative slice must remain authoritative.")
+            raise ValueError("Capability children in an authoritative slice must remain authoritative.")
         if row.policy.atomicity != RecordAtomicity.RECORD or row.policy.materialization != MaterializationPolicy.FULL:
-            raise ValueError("Authoritative tool children must use full record atomicity.")
+            raise ValueError("Authoritative capability children must use full record atomicity.")
     selected_view = RecordViewName(
         view or parent.payload.get("child_view", parent.policy.initial_view.value)
     )

@@ -159,7 +159,7 @@ def _plot_frontier(summary: pd.DataFrame) -> None:
     for axis, ylabel in zip(axes, ("Required-tool recall", "Useful precision")):
         axis.set_xlabel("Maximum candidates K")
         axis.set_ylabel(ylabel)
-        axis.set_xticks((2, 4, 6, 8, 10, 20))
+        axis.set_xticks((1, 4, 8, 12, 16, 24, 32, 48))
         axis.set_ylim(0, 1.02)
         axis.grid(alpha=.25)
     axes[0].legend(frameon=False, fontsize=8)
@@ -214,9 +214,11 @@ def main() -> None:
     candidate_rows = pd.read_csv(RESULTS / "scaled_union_candidate_rows.csv")
     cost_rows = pd.read_csv(RESULTS / "scaled_discovery_costs.csv")
 
+    budgets = sorted(int(value) for value in candidate_rows.max_candidates.unique())
+    strategies = sorted(candidate_rows.strategy.unique())
     expected = {
         "quality_rows": 5 * 5 * 144 * len(QUALITY_POLICIES),
-        "candidate_rows": 5 * 5 * 144 * len(K10_STRATEGIES) * 8,
+        "candidate_rows": 5 * 5 * 144 * len(strategies) * len(budgets),
         "cost_rows": 5 * 5,
     }
     actual = {
@@ -266,7 +268,7 @@ def main() -> None:
             "catalog_sizes": list(SIZES),
             "catalog_seeds": sorted(int(value) for value in quality_rows.seed.unique()),
             "test_queries": int(quality_rows.query_id.nunique()),
-            "candidate_budgets": sorted(int(value) for value in candidate_rows.max_candidates.unique()),
+            "candidate_budgets": budgets,
             "rows": actual,
         },
         "eight_k": {

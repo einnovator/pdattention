@@ -6,7 +6,14 @@ import pytest
 
 from data.declarative_skills import declarative_skill_catalog, skill_semantic_hard_queries
 from pra_hf.context_records import RecordAtomicity, RecordType
-from pra_hf.skill_records import SkillRecord
+from pra_hf.skill_records import (
+    Skill,
+    SkillFolderCache,
+    SkillFolderError,
+    SkillRecord,
+    load_skill_directory,
+    load_skill_folder,
+)
 
 
 def _skill(version: str = "v1") -> SkillRecord:
@@ -73,3 +80,92 @@ def test_skill_benchmark_is_complete_confusable_and_name_blind() -> None:
     assert {query.target_skill for query in queries} == {skill.name for skill in skills}
     assert all(query.target_skill.replace("_", " ") not in query.query.casefold() for query in queries)
     assert all(len(skill.instructions.split()) >= 70 for skill in skills)
+
+
+def _write_skill(folder, frontmatter: str, body: str = "Follow the procedure exactly.") -> None:
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text(
+        f"---\n{frontmatter}\n---\n" + (f"\n# Instructions\n\n{body}\n" if body else ""),
+        encoding="utf-8",
+    )
+
+
+def test_openai_and_anthropic_skill_folders_normalize_without_scripts(tmp_path) -> None:
+    openai = tmp_path / "openai-skill"
+    _write_skill(
+        openai,
+        "name: openai-review\ndescription: Review changes when a patch needs analysis.\n"
+        "metadata:\n  short-description: Patch review\nversion: v2",
+    )
+    (openai / "agents").mkdir()
+    (openai / "agents" / "openai.yaml").write_text("interface: {}\n", encoding="utf-8")
+    anthropic = tmp_path / "anthropic-skill"
+    _write_skill(
+        anthropic,
+        "name: anthropic-review\ndescription: Review incidents when service health degrades.\n"
+        "allowed-tools: Read Glob",
+    )
+    (anthropic / "scripts").mkdir()
+    (anthropic / "scripts" / "ignored.py").write_text("raise RuntimeError()\n", encoding="utf-8")
+
+    loaded = load_skill_directory(tmp_path)
+
+    assert [skill.metadata["source_format"] for skill in loaded] == ["anthropic", "openai"]
+    assert loaded[0].metadata["unsupported_assets"] == ("scripts/ignored.py",)
+    assert all(isinstance(skill, Skill) for skill in loaded)
+
+
+def test_skill_folder_validation_and_ambiguous_auto_detection(tmp_path) -> None:
+    missing = tmp_path / "missing"
+    _write_skill(missing, "name: no-description")
+    with pytest.raises(SkillFolderError, match="description"):
+        load_skill_folder(missing)
+
+    empty = tmp_path / "empty"
+    _write_skill(empty, "name: empty\ndescription: Empty body", body="")
+    with pytest.raises(SkillFolderError, match="instruction body"):
+        load_skill_folder(empty)
+
+    ambiguous = tmp_path / "ambiguous"
+    _write_skill(
+        ambiguous,
+        "name: ambiguous\ndescription: Has conflicting provider markers.\n"
+        "metadata: {}\nallowed-tools: Read",
+    )
+    (ambiguous / "agents").mkdir()
+    (ambiguous / "agents" / "openai.yaml").write_text("interface: {}\n", encoding="utf-8")
+    with pytest.raises(SkillFolderError, match="both OpenAI- and Anthropic"):
+        load_skill_folder(ambiguous)
+    assert load_skill_folder(ambiguous, format="openai").metadata["source_format"] == "openai"
+
+
+def test_skill_folder_cache_invalidates_only_changed_source(tmp_path) -> None:
+    folder = tmp_path / "cached"
+    frontmatter = "name: cached\ndescription: Cache this procedure."
+    _write_skill(folder, frontmatter, "First instruction body.")
+    cache = SkillFolderCache()
+
+    first = cache.load(folder)
+    repeated = cache.load(folder)
+    (folder / "SKILL.md").write_text(
+        f"---\n{frontmatter}\n---\n\nSecond instruction body.\n", encoding="utf-8"
+    )
+    changed = cache.load(folder)
+
+    assert repeated is first
+    assert changed is not first
+    assert changed.version != first.version
+    assert changed.metadata["source_hash"] != first.metadata["source_hash"]
+
+
+def test_skill_folder_cache_does_not_cross_tenant_boundaries(tmp_path) -> None:
+    folder = tmp_path / "tenant-scoped"
+    _write_skill(folder, "name: scoped\ndescription: Tenant-scoped procedure.")
+    cache = SkillFolderCache()
+
+    first = cache.load(folder, tenant_id="tenant-a")
+    second = cache.load(folder, tenant_id="tenant-b")
+
+    assert first.tenant_id == "tenant-a"
+    assert second.tenant_id == "tenant-b"
+    assert first is not second

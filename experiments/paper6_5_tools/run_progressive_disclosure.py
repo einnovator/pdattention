@@ -43,6 +43,8 @@ SKILL_CONDITIONS = ("S0_full_all", "S1_selection_only", "S2_selection_to_full", 
 CAPABILITY_PATTERN = re.compile(r"\{[^{}]*\}", re.DOTALL)
 SKILL_PATTERN = re.compile(r"SKILL_APPLIED\s*:\s*([a-z0-9_]+)", re.IGNORECASE)
 MAX_RUNTIME_PROMPT_TOKENS = 8192
+SKILL_CHOICE_MAX_NEW_TOKENS = 32
+SKILL_USE_MAX_NEW_TOKENS = 72
 
 
 class _FirstTokenTimer(BaseStreamer):
@@ -392,13 +394,20 @@ def _run_skill_condition(model, condition, query, candidates, skills_by_name, re
 
     if condition == "S0_full_all":
         payload, phase_a_tokens, phase_a_materialization = _materialize(candidate_records, "full", model)
-        generated, phase_a_cost = model.generate(_skill_prompt(query.query, payload), max_new_tokens=112)
+        generated, phase_a_cost = model.generate(
+            _skill_prompt(query.query, payload), max_new_tokens=SKILL_USE_MAX_NEW_TOKENS
+        )
     elif condition == "S1_selection_only":
         payload, phase_a_tokens, phase_a_materialization = _materialize(candidate_records, "selection", model)
-        generated, phase_a_cost = model.generate(_skill_prompt(query.query, payload), max_new_tokens=112)
+        generated, phase_a_cost = model.generate(
+            _skill_prompt(query.query, payload), max_new_tokens=SKILL_USE_MAX_NEW_TOKENS
+        )
     elif condition == "S2_selection_to_full":
         payload, phase_a_tokens, phase_a_materialization = _materialize(candidate_records, "selection", model)
-        choice_text, phase_a_cost = model.generate(_choice_prompt(query.query, payload, "skill"), max_new_tokens=32)
+        choice_text, phase_a_cost = model.generate(
+            _choice_prompt(query.query, payload, "skill"),
+            max_new_tokens=SKILL_CHOICE_MAX_NEW_TOKENS,
+        )
         selected_name = _parse_capability(choice_text)
         generated = ""
         if selected_name in records_by_name and selected_name in candidates:
@@ -411,11 +420,16 @@ def _run_skill_condition(model, condition, query, candidates, skills_by_name, re
             )
             phase_b_materialization = time.perf_counter() - started
             phase_b_tokens = phase_b.serialized_tokens
-            generated, phase_b_cost = model.generate(_skill_prompt(query.query, phase_b.serialized_payload), max_new_tokens=112)
+            generated, phase_b_cost = model.generate(
+                _skill_prompt(query.query, phase_b.serialized_payload),
+                max_new_tokens=SKILL_USE_MAX_NEW_TOKENS,
+            )
             invocation_count = 2
     elif condition == "S3_oracle_full":
         payload, phase_a_tokens, phase_a_materialization = _materialize((records_by_name[target_name],), "full", model)
-        generated, phase_a_cost = model.generate(_skill_prompt(query.query, payload), max_new_tokens=112)
+        generated, phase_a_cost = model.generate(
+            _skill_prompt(query.query, payload), max_new_tokens=SKILL_USE_MAX_NEW_TOKENS
+        )
     else:
         raise ValueError(condition)
     metrics = _skill_metrics(generated, target_name)
@@ -471,10 +485,15 @@ def run(args: argparse.Namespace) -> None:
         "tool_conditions": list(TOOL_CONDITIONS),
         "skill_conditions": list(SKILL_CONDITIONS),
         "temperature": 0,
+        "skill_choice_max_new_tokens": SKILL_CHOICE_MAX_NEW_TOKENS,
+        "skill_use_max_new_tokens": SKILL_USE_MAX_NEW_TOKENS,
         "callback_behavior": "not_implemented",
+        "resource_types": list(args.resource_types),
+        "phase_transition": "runtime_local_exact_identity",
+        "semantic_rediscovery_after_selection": False,
         "runtime_prompt_token_limit": MAX_RUNTIME_PROMPT_TOKENS,
     }
-    checkpoint_path = args.output / "progressive_disclosure_checkpoint.json"
+    checkpoint_path = args.output / args.checkpoint_name
     checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8")) if checkpoint_path.exists() and not args.fresh else {}
     checkpoint_protocol = dict(checkpoint.get("protocol", {}))
     checkpoint_protocol.setdefault("runtime_prompt_token_limit", MAX_RUNTIME_PROMPT_TOKENS)
@@ -488,6 +507,38 @@ def run(args: argparse.Namespace) -> None:
     tool_rows = list(checkpoint.get("tool_rows", ()))
     requested_skill_ids = set(protocol["skill_cases"])
     skill_rows = [row for row in checkpoint.get("skill_rows", ()) if row["query_id"] in requested_skill_ids]
+    if args.finalize_only:
+        expected_skill = {
+            (query_id, budget, condition)
+            for query_id in protocol["skill_cases"]
+            for budget in skill_budgets
+            for condition in SKILL_CONDITIONS
+        } if "skill" in args.resource_types else set()
+        observed_skill = {
+            (row["query_id"], int(row["max_candidates"]), row["condition"])
+            for row in skill_rows
+        }
+        if "tool" in args.resource_types:
+            _write_csv(args.output / "tool_progressive_disclosure_results.csv", tool_rows)
+        if "skill" in args.resource_types:
+            _write_csv(args.output / "skill_progressive_disclosure_results.csv", skill_rows)
+        manifest = {
+            **protocol,
+            "tool_rows": len(tool_rows),
+            "skill_rows": len(skill_rows),
+            "native_kv_bytes_per_token": 114688,
+            "finalized_from_checkpoint": True,
+            "incomplete_skill_conditions": [
+                {"query_id": query_id, "max_candidates": budget, "condition": condition}
+                for query_id, budget, condition in sorted(expected_skill - observed_skill)
+            ],
+            "runtime": runtime_metadata(),
+        }
+        (args.output / "progressive_disclosure_run_manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        print(json.dumps(manifest, indent=2, sort_keys=True))
+        return
     model = FrozenCapabilityModel(torch.device(args.device))
 
     tool_resources = realistic_tool_catalog()
@@ -497,55 +548,59 @@ def run(args: argparse.Namespace) -> None:
         tool_resources,
         {resource.uri: (lambda _arguments, _observations: {"ok": True}) for resource in tool_resources},
     )
-    completed = {(row["query_id"], int(row["max_candidates"]), row["condition"]) for row in tool_rows}
-    for case in tool_cases:
-        for budget in tool_budgets:
-            candidates = candidate_by[("tool", case["query_id"], budget)]["candidate_names"]
-            for condition in TOOL_CONDITIONS:
-                key = (case["query_id"], budget, condition)
-                if key in completed:
-                    continue
-                metrics = _run_tool_condition(model, condition, case, candidates, resources_by_name, records_by_name, executor)
-                tool_rows.append({
-                    "query_id": case["query_id"],
-                    "hardness_level": case["hardness_level"],
-                    "max_candidates": budget,
-                    "condition": condition,
-                    "target_name": case["target_name"],
-                    "required_tool_recall_at_k": int(case["target_name"] in candidates),
-                    "candidate_names": "|".join(candidates),
-                    **metrics,
-                })
-                _write_checkpoint(checkpoint_path, {"protocol": protocol, "tool_rows": tool_rows, "skill_rows": skill_rows})
-                print(f"tool {case['query_id']} K={budget} {condition} success={metrics['task_success']}", flush=True)
+    if "tool" in args.resource_types:
+        completed = {(row["query_id"], int(row["max_candidates"]), row["condition"]) for row in tool_rows}
+        for case in tool_cases:
+            for budget in tool_budgets:
+                candidates = candidate_by[("tool", case["query_id"], budget)]["candidate_names"]
+                for condition in TOOL_CONDITIONS:
+                    key = (case["query_id"], budget, condition)
+                    if key in completed:
+                        continue
+                    metrics = _run_tool_condition(model, condition, case, candidates, resources_by_name, records_by_name, executor)
+                    tool_rows.append({
+                        "query_id": case["query_id"],
+                        "hardness_level": case["hardness_level"],
+                        "max_candidates": budget,
+                        "condition": condition,
+                        "target_name": case["target_name"],
+                        "required_tool_recall_at_k": int(case["target_name"] in candidates),
+                        "candidate_names": "|".join(candidates),
+                        **metrics,
+                    })
+                    _write_checkpoint(checkpoint_path, {"protocol": protocol, "tool_rows": tool_rows, "skill_rows": skill_rows})
+                    print(f"tool {case['query_id']} K={budget} {condition} success={metrics['task_success']}", flush=True)
 
     skills = declarative_skill_catalog()
     skill_by_name = {skill.name: skill for skill in skills}
     skill_records = {skill.name: skill.to_context_record() for skill in skills}
-    completed = {(row["query_id"], int(row["max_candidates"]), row["condition"]) for row in skill_rows}
-    for query in skill_queries:
-        for budget in skill_budgets:
-            candidates = candidate_by[("skill", query.query_id, budget)]["candidate_names"]
-            for condition in SKILL_CONDITIONS:
-                key = (query.query_id, budget, condition)
-                if key in completed:
-                    continue
-                metrics = _run_skill_condition(model, condition, query, candidates, skill_by_name, skill_records)
-                skill_rows.append({
-                    "query_id": query.query_id,
-                    "family": query.family,
-                    "max_candidates": budget,
-                    "condition": condition,
-                    "target_name": query.target_skill,
-                    "required_skill_recall_at_k": int(query.target_skill in candidates),
-                    "candidate_names": "|".join(candidates),
-                    **metrics,
-                })
-                _write_checkpoint(checkpoint_path, {"protocol": protocol, "tool_rows": tool_rows, "skill_rows": skill_rows})
-                print(f"skill {query.query_id} K={budget} {condition} success={metrics['task_success']}", flush=True)
+    if "skill" in args.resource_types:
+        completed = {(row["query_id"], int(row["max_candidates"]), row["condition"]) for row in skill_rows}
+        for query in skill_queries:
+            for budget in skill_budgets:
+                candidates = candidate_by[("skill", query.query_id, budget)]["candidate_names"]
+                for condition in SKILL_CONDITIONS:
+                    key = (query.query_id, budget, condition)
+                    if key in completed:
+                        continue
+                    metrics = _run_skill_condition(model, condition, query, candidates, skill_by_name, skill_records)
+                    skill_rows.append({
+                        "query_id": query.query_id,
+                        "family": query.family,
+                        "max_candidates": budget,
+                        "condition": condition,
+                        "target_name": query.target_skill,
+                        "required_skill_recall_at_k": int(query.target_skill in candidates),
+                        "candidate_names": "|".join(candidates),
+                        **metrics,
+                    })
+                    _write_checkpoint(checkpoint_path, {"protocol": protocol, "tool_rows": tool_rows, "skill_rows": skill_rows})
+                    print(f"skill {query.query_id} K={budget} {condition} success={metrics['task_success']}", flush=True)
 
-    _write_csv(args.output / "tool_progressive_disclosure_results.csv", tool_rows)
-    _write_csv(args.output / "skill_progressive_disclosure_results.csv", skill_rows)
+    if "tool" in args.resource_types:
+        _write_csv(args.output / "tool_progressive_disclosure_results.csv", tool_rows)
+    if "skill" in args.resource_types:
+        _write_csv(args.output / "skill_progressive_disclosure_results.csv", skill_rows)
     manifest = {
         **protocol,
         "tool_rows": len(tool_rows),
@@ -563,7 +618,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--budgets", nargs="+", type=int, default=(2, 4, 6, 8))
+    parser.add_argument("--budgets", nargs="+", type=int, default=(2, 4, 8, 16, 24, 32))
     parser.add_argument(
         "--include-all",
         action=argparse.BooleanOptionalAction,
@@ -571,8 +626,15 @@ def parse_args() -> argparse.Namespace:
         help="Add separate all-tool and all-skill stress budgets after the matched K sweep.",
     )
     parser.add_argument("--max-tool-cases", type=int, default=8)
-    parser.add_argument("--max-skill-cases", type=int, default=8)
+    parser.add_argument("--max-skill-cases", type=int, default=16)
+    parser.add_argument(
+        "--resource-types", nargs="+", choices=("tool", "skill"), default=("tool", "skill")
+    )
+    parser.add_argument(
+        "--checkpoint-name", default="progressive_disclosure_checkpoint.json"
+    )
     parser.add_argument("--fresh", action="store_true")
+    parser.add_argument("--finalize-only", action="store_true")
     return parser.parse_args()
 
 

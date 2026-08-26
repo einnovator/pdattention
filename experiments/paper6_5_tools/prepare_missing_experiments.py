@@ -43,7 +43,7 @@ OUTPUT = ROOT / "docs/papers/shared/results/paper6_5_tools/missing_experiments"
 BGE_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 SIZES = (32, 128, 512, 2048, 8192)
 SEEDS = (11, 23, 37, 53, 71)
-BUDGETS = (2, 4, 6, 8, 10)
+BUDGETS = (1, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 48)
 POLICIES = (
     "A0_bm25", "A1_fused", "A2_raw_union", "A3_diversity_union",
     "A4_agreement_union",

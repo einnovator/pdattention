@@ -13,6 +13,9 @@ from pra_hf.progressive_disclosure import (
     CapabilityTransition,
     capability_choice_accounting,
     disclosure_cost,
+    native_kv_cost,
+    bounded_candidate_ids,
+    minimum_candidate_budget,
     materialize_capability_views,
     transition_selected_capability,
 )
@@ -113,8 +116,31 @@ def test_disclosure_cost_accounts_for_each_named_view() -> None:
     assert cost.candidate_count == 2
     assert cost.phase_a_selection_tokens < cost.all_candidate_full_tokens
     assert cost.phase_b_selected_full_tokens < cost.all_candidate_full_tokens
+    assert cost.progressive_tokens == (
+        cost.phase_a_selection_tokens + cost.phase_b_selected_full_tokens
+    )
+    assert cost.tokens_saved == cost.all_candidate_full_tokens - cost.progressive_tokens
+    assert cost.token_savings_fraction == pytest.approx(
+        1 - cost.progressive_tokens / cost.all_candidate_full_tokens
+    )
     assert 0 < cost.disclosure_ratio < 1
     assert cost.full_candidate_tokens_avoided > 0
+
+    kv = native_kv_cost(cost, native_kv_bytes_per_token=256)
+    assert kv.full_all_active_bytes == cost.all_candidate_full_tokens * 256
+    assert kv.progressive_active_bytes == cost.progressive_tokens * 256
+    assert kv.bytes_saved == kv.full_all_active_bytes - kv.progressive_active_bytes
+    assert kv.savings_fraction == pytest.approx(cost.token_savings_fraction)
+
+
+def test_native_kv_cost_rejects_negative_bytes_per_token() -> None:
+    cost = disclosure_cost(
+        _records(),
+        selected_record_id=_records()[0].record_id,
+        token_counter=lambda text: len(text.split()),
+    )
+    with pytest.raises(ValueError):
+        native_kv_cost(cost, native_kv_bytes_per_token=-1)
 
 
 def test_capability_choice_accounting_separates_retrieval_from_model_choice() -> None:
@@ -129,6 +155,18 @@ def test_capability_choice_accounting_separates_retrieval_from_model_choice() ->
 def test_capability_choice_accounting_rejects_impossible_correct_choice() -> None:
     with pytest.raises(ValueError):
         capability_choice_accounting(((False, True),))
+
+
+def test_candidate_budget_cap_and_k_min_are_exact_and_deterministic() -> None:
+    ranked = ("a", "b", "b", "target", "c")
+
+    assert bounded_candidate_ids(ranked, 3) == ("a", "b", "target")
+    assert minimum_candidate_budget("target", ranked, (1, 2, 4, 8)) == 4
+    assert minimum_candidate_budget("missing", ranked, (1, 2, 4, 8)) is None
+    with pytest.raises(ValueError):
+        bounded_candidate_ids(ranked, 0)
+    with pytest.raises(ValueError):
+        minimum_candidate_budget("target", ranked, (0, 4))
 
 
 def test_large_nested_callable_schemas_remain_atomic_and_executable() -> None:

@@ -7,6 +7,7 @@ import csv
 import json
 import os
 import re
+import string
 import sys
 import time
 import urllib.request
@@ -35,14 +36,15 @@ PRIMARY_POLICIES = ("A0_bm25", "A1_fused", "A2_raw_union", "A3_diversity_union")
 FULL_VIEW_POLICIES = ("A1_fused", "A2_raw_union")
 PROGRESSIVE_POLICIES = ("A1_fused", "A2_raw_union", "A3_diversity_union")
 PROGRESSIVE_SIZES = (512, 2048, 8192)
-PROGRESSIVE_BUDGETS = (4, 8, 10)
+PROGRESSIVE_BUDGETS = (4, 8, 12, 16, 20, 24, 32)
 CONDITION_MAP = {
     "T0_full_all": "C0_full_all_one_pass",
     "T1_selection_only": "C1_compact_only",
     "T2_selection_to_full": "C2_compact_to_full",
     "T3_oracle_full": "C3_oracle_to_full",
 }
-LABEL_PATTERN = re.compile(r"(?<!\d)(\d)(?!\d)")
+LABEL_PATTERN = re.compile(r"(?<!\d)(\d+)(?!\d)")
+HF_LABELS = tuple(string.ascii_uppercase + string.ascii_lowercase)
 
 
 class OllamaLabelModel:
@@ -57,12 +59,12 @@ class OllamaLabelModel:
             prompt
             + "\n\nVALID LABELS:\n"
             + "\n".join(f"{index} = {name}" for index, name in enumerate(names))
-            + "\nReturn only the one-digit label of the best candidate.\nLABEL:"
+            + "\nReturn only the integer label of the best candidate.\nLABEL:"
         )
         payload = {
             "model": self.model_name, "stream": False, "keep_alive": "30m", "raw": True,
             "prompt": bound,
-            "options": {"temperature": 0, "num_predict": 2, "num_gpu": 0, "num_ctx": 4096, "stop": ["\n"]},
+            "options": {"temperature": 0, "num_predict": 4, "num_gpu": 0, "num_ctx": 8192, "stop": ["\n"]},
         }
         request = urllib.request.Request(
             "http://127.0.0.1:11434/api/generate",
@@ -148,9 +150,11 @@ def _batch_choose(
     rendered_prompts = []
     label_ids = []
     for prompt, names in zip(prompts, candidates):
+        if len(names) > len(HF_LABELS):
+            raise ValueError(f"At most {len(HF_LABELS)} candidates are supported by label binding.")
         labels = []
-        for index, name in enumerate(names):
-            label = str(index)
+        bound_labels = HF_LABELS[: len(names)]
+        for label in bound_labels:
             ids = tokenizer.encode(label, add_special_tokens=False)
             if len(ids) != 1:
                 raise ValueError(f"Candidate label {label!r} is not one tokenizer token.")
@@ -159,8 +163,8 @@ def _batch_choose(
         prompt = (
             prompt
             + "\n\nVALID LABELS:\n"
-            + "\n".join(f"{index} = {name}" for index, name in enumerate(names))
-            + "\nReturn only the one-digit label of the best candidate.\nLABEL:"
+            + "\n".join(f"{label} = {name}" for label, name in zip(bound_labels, names))
+            + "\nReturn only the single-character label of the best candidate.\nLABEL:"
         )
         rendered = tokenizer.apply_chat_template(
             [{"role": "user", "content": prompt}], tokenize=False,
@@ -222,15 +226,12 @@ def _run_palette_choice(model, palettes, view_by, args, checkpoint):
     prompts = []
     for palette in palettes:
         policy = str(palette["policy"])
-        replicated_key = (
-            int(palette["seed"]) == 11
-            or (int(palette["catalog_size"]) == 8192 and int(palette["max_candidates"]) == 10)
-        )
+        replicated_key = int(palette["seed"]) == 11 or int(palette["catalog_size"]) == 8192
         is_primary = policy in PRIMARY_POLICIES and replicated_key
         is_agreement_control = (
             policy == "A4_agreement_union"
             and int(palette["catalog_size"]) == 8192
-            and int(palette["max_candidates"]) == 10
+            and int(palette["max_candidates"]) in (10, 32)
         )
         if not (is_primary or is_agreement_control):
             continue
@@ -290,7 +291,7 @@ def _run_full_view_choice(model, palettes, view_by, args, checkpoint):
                 and row["query_id"] in set(args.full_view_queries)
                 and (int(row["seed"]) == 11 or (
                     int(row["catalog_size"]) == 8192
-                    and int(row["max_candidates"]) in (8, 10)
+                            and int(row["max_candidates"]) in (8, 16, 24, 32)
                 ))]
     pending = [row for row in selected if (int(row["catalog_size"]), int(row["seed"]), row["query_id"], row["policy"], int(row["max_candidates"])) not in completed]
     prompts = [_choice_prompt(str(row["query"]), _payload(view_by, row, "full"), "tool") for row in pending]
@@ -336,14 +337,15 @@ def _run_progressive(model, palettes, view_by, args, checkpoint):
                 and (
                     (row["policy"] in FULL_VIEW_POLICIES and (
                         int(row["seed"]) == 11 or (
-                            int(row["catalog_size"]) == 8192
-                            and int(row["max_candidates"]) in (4, 8)
+                            row["policy"] == "A3_diversity_union"
+                            and int(row["catalog_size"]) == 8192
+                            and int(row["max_candidates"]) in (8, 16, 24, 32)
                         )
                     ))
                     or (
                         row["policy"] == "A3_diversity_union"
                         and int(row["catalog_size"]) == 8192
-                        and int(row["max_candidates"]) in (4, 8)
+                        and int(row["max_candidates"]) in (8, 16, 24, 32)
                     )
                 )]
     for index, palette in enumerate(selected, start=1):
@@ -402,7 +404,7 @@ def _derive_jit(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]
     output = []
     for seed in (11, 23, 37, 53, 71):
         for policy in PROGRESSIVE_POLICIES:
-            for budget in (4, 8):
+            for budget in (8, 16, 24, 32):
                 for workflow, query_ids in workflows.items():
                     step_rows = [by.get((8192, seed, query_id, policy, budget, "C2_compact_to_full")) for query_id in query_ids]
                     if any(row is None for row in step_rows):
@@ -481,9 +483,16 @@ def run(args: argparse.Namespace) -> None:
         "model_artifact": args.ollama_model if args.backend == "ollama" else "Qwen/Qwen3-0.6B exact local revision",
         "replication_design": {
             "full_grid_seed": 11,
-            "palette_five_seed_key": {"catalog_size": 8192, "max_candidates": 10},
-            "full_view_five_seed_keys": {"catalog_size": 8192, "max_candidates": [8, 10]},
-            "progressive_and_jit_five_seed_keys": {"catalog_size": 8192, "max_candidates": [4, 8]},
+            "palette_five_seed_keys": {
+                "catalog_size": 8192,
+                "max_candidates": [1, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 48],
+            },
+            "full_view_five_seed_keys": {"catalog_size": 8192, "max_candidates": [8, 16, 24, 32]},
+            "progressive_and_jit_five_seed_keys": {
+                "catalog_size": 8192,
+                "policy": "A3_diversity_union",
+                "max_candidates": [8, 16, 24, 32],
+            },
         },
     }
     (args.output / "missing_experiments_run_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")

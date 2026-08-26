@@ -264,17 +264,21 @@ M9 adds deterministic `selection` and `full` views to typed records. Tool
 selection views contain identity, signature, description, and side-effect
 class; skill selection views contain identity, description, and applicability.
 The full views retain complete schemas or declarative instruction bodies as
-atomic records. The primary runtime performs two ordinary model calls:
+atomic records. The primary runtime uses two explicit model phases:
 
 1. Materialize every bounded candidate's selection view and request a
    structured capability identity.
-2. Remove non-selected candidates, materialize only the selected full record,
+2. Resolve the already-known identity locally, activate only its full record,
    and generate the call or skill-guided response.
+
+The transition does not rerun BM25, embeddings, fusion, or union. A remote
+opaque model provider can still require a second request; the guarantee is no
+semantic rediscovery roundtrip to the external agent.
 
 There is no decoder callback, mid-token interruption, learned summary, or
 dynamic detail expansion. Those mechanisms remain outside Paper 6.5.
 
-Prepare the 18-tool and 25-skill catalogs, run the exact frozen Qwen3-0.6B CUDA
+Prepare the 18-tool and 50-skill catalogs, run the frozen Qwen3-0.6B CUDA
 matrix, and regenerate the reports with:
 
 ```powershell
@@ -284,22 +288,46 @@ python experiments/paper6_5_tools/run_progressive_disclosure.py --device cuda
 python experiments/paper6_5_tools/summarize_progressive_disclosure.py
 ```
 
-The generation matrix uses eight frozen tool requests and eight held-out skill
-requests at `K=2,4,6,8`, plus separate 18-tool and 25-skill stress controls. The
-same external discovery substrate is evaluated over all 50 skill queries. Skill
-fused discovery reaches 0.880 Top-1 on the 25-query test split versus 0.720 for
-BM25. At `K=8`, skill selection-to-full matches full-all strict success at
-0.625 while exposing 0.341 of its capability tokens. The 25-skill full-all
-prompt exceeds the measured 8,192-token runtime limit on the 4 GB GPU; compact
-selection and selected-full execution remain feasible. Tool results separate
-choice, schema validity, argument semantics, host acceptance, and strict task
-success because the frozen 0.6B model misses exact write arguments even under
-oracle tool selection.
+The discovery benchmark uses 50 held-out requests over 50 confusable skills.
+Fused discovery reaches 0.680 Top-1, 0.940 Recall@4, 0.960 Recall@8, and 1.000
+Recall@16. Across all 50 cost cases, selection plus one full skill saves 0.755
+of tokens at `K=8` and 0.843 at `K=32`. The expensive model-use subset contains
+four stratified cases. At `K=8`, full-all fits 0/4 prompts, selection-to-full
+fits 4/4 and succeeds on 1/4, and oracle-full succeeds on 4/4. Three `K=32`
+postmortem rows are marked incomplete after the long selection prompt stalled
+the measured Windows GPU; no value is imputed.
 
-The runner checkpoints every condition. `--fresh` starts a new protocol and
-`--no-include-all` omits the catalog-wide stress controls. Raw rows, summaries,
+The runner checkpoints every condition. `--fresh` starts a new protocol,
+`--no-include-all` omits catalog-wide stress controls, and `--finalize-only`
+writes a transparent partial manifest after an interrupted hardware run. Raw rows, summaries,
 figures, generated TeX, manifests, and disclosure accounting live under
 `docs/papers/shared/results/paper6_5_tools/progressive_disclosure`.
+
+## SDK skill folders and lazy records
+
+`CapabilitySDK` accepts explicit `Skill` objects and/or a parent directory:
+
+    from pra_hf import AgentConfig, CapabilitySDK, Skill
+
+    sdk = CapabilitySDK(AgentConfig(
+        tools=(python_callable,),
+        skills=(Skill(
+            name="incident-triage",
+            description="Prioritize an operational incident.",
+            when_to_use="Use when service health degrades.",
+            instructions="Assess impact, evidence, and the next safe action.",
+        ),),
+        skills_path="./skills",
+        max_candidates=24,
+        selection_view_token_budget=2048,
+    ))
+
+Immediate child folders with recognized `SKILL.md` frontmatter are normalized
+from portable, OpenAI-style, or Anthropic-style layouts. Ambiguous folders fail
+closed. Scripts and assets are metadata only. Full schemas and instruction
+bodies are lazy by default; eager callers can set
+`CapabilityEncodingPolicy(lazy_selection=False, lazy_full=False)`. Access
+allowlists are applied before selection views become visible.
 
 ## M10 large-catalog palette use and progressive disclosure
 
@@ -333,7 +361,17 @@ python -m experiments.paper6_5_tools.summarize_missing_experiments
 At 8,192 tools and `K=10`, diversity union obtains 0.375 target recall,
 0.667 conditional choice, and 0.250 end-to-end choice over 40 query-seed rows.
 Frozen fusion obtains 0.300, 0.083, and 0.025; the paired end-to-end effect is
-exact `p=0.0117`. At `K=8`, exact-FP16 diversity selection-to-full obtains 5/20
+exact `p=0.0117`. A diversity-only extension at `K={12,16,24,32}` keeps target
+recall at 0.375 on the same cohort while conditional choice declines to 0.400
+and end-to-end choice to 0.150 at `K=32`. Generate or resume those rows with:
+
+```powershell
+python -u experiments/paper6_5_tools/run_final_tool_choice.py `
+  --ollama-model qwen3:0.6b --policies A3_diversity_union
+python experiments/paper6_5_tools/summarize_final_capability_curves.py
+```
+
+At `K=8`, exact-FP16 diversity selection-to-full obtains 5/20
 strict accepted calls and exposes 0.556 of full-all capability tokens. However,
 per-step recall is only 0.250 and all ten two-step workflows fail. Fusion stays
 the SDK default; diversity union is the measured experimental high-recall mode.

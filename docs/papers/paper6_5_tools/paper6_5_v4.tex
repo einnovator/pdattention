@@ -4,8 +4,8 @@
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
 
-\title{Persistent Agent Context with Progressive Retrieval Attention:\\
-Typed Resource Discovery Before Neural Materialization}
+\title{Typed Capability Context for LLM Agents:\\
+Discovery, Progressive Disclosure, and Reactive Execution}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \input{../shared/results/paper6_5_tools/m1/generated_m1_results.tex}
@@ -21,6 +21,7 @@ Typed Resource Discovery Before Neural Materialization}
 \maketitle
 
 \begin{abstract}
+\iffalse
 Agent runtimes often place every tool definition in every prompt before the
 model has decided which capability it needs. We separate this process into
 typed discovery, bounded disclosure, model-side call construction, and
@@ -80,6 +81,37 @@ capability tokens and obtains 5/20 strict accepted calls. All ten two-step
 workflows still fail because per-step target recall is only 0.250. Diversity
 union is therefore a useful experimental candidate generator, not the SDK
 default.
+\fi
+Agent runtimes commonly expose complete tool schemas and procedural
+instructions before a model knows which capability it needs. We instead treat
+tools and skills as typed, versioned, addressable records and separate five
+operations: external discovery, bounded disclosure, model choice, exact full-
+record activation, and host-authorized execution. Compact selection views are
+lazy by default; after choice, a co-located runtime activates the selected full
+view by stable identity without semantic rediscovery. On five seeded catalogs
+of 8,192 callable-derived tools, diversity-preserving candidate generation
+raises required-tool recall from 0.653 at $K=8$ to 0.701 at $K=32$ and 0.746 at
+$K=48$. The frozen model-choice study remains a separate gate: at $K=10$,
+diversity union reaches 0.667 conditional and 0.250 end-to-end choice, yet all
+tested two-step workflows fail because per-step discovery remains too weak. On
+the same executable cohort, increasing diversity palettes to $K=32$ leaves
+target recall at 0.375 but reduces conditional choice to 0.400 and end-to-end
+choice to 0.150. A new 50-skill benchmark generalizes the representation beyond
+executable tools.
+Fused retrieval reaches 0.94 recall at $K=4$, 0.96 at $K=8$, and 1.00 at
+$K=16$ across 50 name-blind held-out requests. Skill selection views use a
+median 0.150 of full-instruction tokens; selection plus one full skill saves
+0.755 of capability tokens and active native-K/V at $K=8$, rising to 0.843 at
+$K=32$. In a local Qwen3-0.6B accounting model, lazy registration takes 0.30 ms
+for 50 skills, first full encoding averages 9.36 ms, and warm exact activation
+averages 0.021 ms with zero rediscovery calls. In an eight-request mixed
+8,192-tool/50-skill check at $K=8$, retrieval recall is 0.75 for both types,
+while exact choice is 0.50 for tools and 0.25 for skills. These results support a narrow
+conclusion: broad capability search belongs outside model context, while the
+model should receive a bounded high-recall palette of compact typed views and
+only the selected complete record. Progressive disclosure makes larger
+candidate budgets affordable; it does not repair missing candidates, model
+confusion, or authorization failures.
 \end{abstract}
 
 \section{The Agent Catalog Problem}
@@ -101,6 +133,7 @@ different costs. It instead introduces a concrete question before
 materialization: which resource identity should be resolved, by which
 discovery mechanism, and with enough confidence to act?
 
+\iffalse
 This paper reports a staged sequence of mechanism gates. M0 asks whether a typed resolver can
 preserve selection quality as a catalog grows, whether policy hints reduce
 unnecessary search, and whether confidence prevents an accurate ranker from
@@ -124,6 +157,19 @@ while adding seeded callable-derived distractors through 8,192 tools.
 M9 finally separates the information needed to choose a capability from the
 information needed to use it. It compares full-all, selection-only,
 selection-to-full, and oracle-full views for tools and declarative skills.
+\fi
+
+The architecture follows a discover--disclose--choose--materialize--execute
+pipeline. Discovery can scan a large external registry, but only a bounded
+palette of compact typed views enters model-visible context. A model choice is
+a stable record identity, not permission to execute. The runtime resolves that
+already-known identity to one complete tool schema or skill instruction body;
+tool calls then cross a separate host authorization boundary. This separation
+lets the paper ask five scientific questions without conflating them: whether
+records can be registered automatically, how discovery scales, how candidate
+budget affects model choice, whether progressive disclosure preserves use
+while reducing active context, and why multi-step reactive execution fails at
+large catalog scale.
 
 \section{Typed, Versioned Resources}
 A resource has a stable typed identity, versioned source, aliases, schema,
@@ -224,6 +270,302 @@ neighbors are suppressed by default. Fixed \texttt{minimal}, \texttt{local},
 \texttt{planning}, \texttt{broad}, and \texttt{adaptive} profiles bound each
 signal independently.
 
+\section{Typed Capability Context Architecture}
+Figure~\ref{fig:capability-architecture} shows the final architecture. Tools and
+skills share identity, namespace, version, selection metadata, provenance, and
+encoding state. Their full payloads remain different: a tool carries schemas,
+side effects, and an execution binding; a skill carries applicability,
+instructions, constraints, examples, and references. Neither is flattened into
+an untyped document chunk.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper6_5_tools/final_curves/typed_capability_architecture.pdf}
+\caption{Typed capability context. Discovery searches a large backing registry.
+Only compact selection views enter the bounded palette. After model choice, the
+runtime activates the exact full record without rerunning discovery. Tool
+execution remains host-authorized; skills guide generation.}
+\label{fig:capability-architecture}
+\end{figure}
+
+\subsection{Lazy records and exact activation}
+A tool selection view contains its name, signature, short description, and
+side-effect marker; its full view contains the complete provider schema. A
+skill selection view contains name, description, and applicability; its full
+view adds complete instructions, constraints, examples, and dependencies. The
+default state machine is
+\[
+\textsc{Unencoded}\rightarrow\textsc{SelectionEncoded}
+\rightarrow\textsc{ActiveSelection}\rightarrow\textsc{FullEncoded}
+\rightarrow\textsc{ActiveFull}.
+\]
+Cached encodings permit warm activation without recomputation. Resident cache
+bytes and currently active bytes are reported separately.
+
+The SDK accepts callables, tool objects, explicit \texttt{Skill} objects, and a
+parent skill directory. Recognized \texttt{SKILL.md} folders are normalized
+from common OpenAI/Anthropic conventions. Ambiguous layouts are rejected;
+scripts and assets are recorded but never executed. An allowlist filters
+records before even a compact view is visible.
+
+After model choice, the local transition is
+\[
+(\text{palette},r^*)\longmapsto\operatorname{activate\_full}(r^*).
+\]
+It performs no BM25, embedding, fusion, or union query. A co-located runtime can
+keep this transition local. An opaque remote provider may still require a
+second model request; the narrower guarantee is no semantic rediscovery
+roundtrip to the agent.
+
+\section{Experimental Questions}
+\paragraph{Q1: Can capabilities be registered automatically?}
+Callable metadata is converted to typed records without PRA-specific tags.
+Skills reuse the same sparse, dense, fusion, and diversity channels.
+
+\paragraph{Q2: How does discovery scale?}
+Five seeded callable-derived catalogs contain 32 through 8,192 tools. Each
+large-catalog seed has 144 semantic-hard requests. Candidate budgets are
+$K\in\{1,2,4,6,8,10,12,16,20,24,32,48\}$.
+
+\paragraph{Q3: How much palette breadth can the model use?}
+Candidate recall, conditional choice given target presence, and end-to-end
+choice are reported separately.
+
+\paragraph{Q4: Does progressive disclosure preserve use at lower cost?}
+Tools and skills compare full-all, selection-only, selection-to-full, and
+oracle-full conditions with exact token and native-K/V accounting.
+
+\paragraph{Q5: Why does reactive execution fail at large scale?}
+Two-step workflows rerun discovery per decision. Actual workflow success is
+reported alongside per-step recall and conditional choice.
+
+\section{Main Results and Scaling Limits}
+\subsection{Automatic registration is viable}
+Ordinary callable names, signatures, annotations, and docstrings provide a
+usable discovery surface. Generic synonyms supply the largest isolated gain
+beyond extracted keywords, while validation-frozen automatic fusion is
+statistically unresolved from the richer manually authored ceiling. As
+semantically confusable distractors accumulate, dense/fused Top-1 degrades
+faster than exact lexical evidence. No single channel is therefore the oracle
+at every catalog size.
+
+\subsection{Candidate breadth buys recall gradually}
+Figure~\ref{fig:final-frontier} is the central operating result. At 8,192 tools,
+diversity-union recall rises from 0.653 at $K=8$ to 0.678 at $K=16$, 0.701 at
+$K=32$, and 0.746 at $K=48$. Quadrupling the palette from 8 to 32 adds only 4.9
+percentage points, while useful precision falls. Visibility is not execution
+authorization.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper6_5_tools/final_curves/final_quality_cost_frontier.pdf}
+\caption{Candidate-budget frontier. Panels separate retrieval recall,
+conditional model use, end-to-end choice, and progressive-disclosure token
+savings. High-$K$ model-choice points are measured for diversity union only;
+secondary policies are not interpolated beyond their completed budgets.}
+\label{fig:final-frontier}
+\end{figure}
+
+The model-facing gate is stricter. At $K=10$, diversity union places the target
+in 15 of 40 five-seed palettes, chooses it in 10 of those 15, and reaches 0.667
+conditional and 0.250 end-to-end choice. Frozen fusion reaches 0.300 recall,
+0.083 conditional choice, and 0.025 end-to-end choice. Better retrieval can
+help, but a larger palette introduces a second confusion cost. The targeted
+diversity-only extension in Table~\ref{tab:tool-choice-high-k} holds the same
+eight executable requests and five catalog seeds fixed. Target presence remains
+15/40 from $K=10$ through $K=32$; conditional choice falls to 0.333 at $K=24$
+and recovers only to 0.400 at $K=32$. Thus extra slots neither discover another
+target on this cohort nor preserve the chooser's earlier discrimination.
+
+\begin{table}[H]
+\centering
+\small
+\input{../shared/results/paper6_5_tools/final_curves/generated_tool_choice_high_k_table.tex}
+\caption{Measured diversity-union model choice on the fixed 40-row executable
+cohort. Conditional accuracy excludes target-absent palettes; end-to-end
+accuracy counts them as failures. No value is interpolated.}
+\label{tab:tool-choice-high-k}
+\end{table}
+
+\subsection{Skills generalize the record abstraction}
+The expanded benchmark contains 50 declarative skills in confusable families
+and 100 name-blind requests split evenly between validation and test. Requests
+include canonical, paraphrastic, colloquial, goal-oriented, contextual, and
+multilingual forms. Instruction bodies span short, medium, and long buckets;
+the median full view is 685 tokens and the median compact/full ratio is 0.150.
+
+Validation-frozen fusion obtains 0.94 target recall at $K=4$, 0.96 at $K=8$,
+and 1.00 at $K=16$ (Figure~\ref{fig:skill-k}). This supports one constrained
+generalization: tools and skills can share typed discovery and materialization
+even though their full payloads and use-time evaluators differ.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper6_5_tools/final_curves/skill_k_curve.pdf}
+\caption{Skill discovery over 50 held-out name-blind requests. Compact
+descriptors provide high-recall selection without exposing every complete
+instruction body.}
+\label{fig:skill-k}
+\end{figure}
+
+Selection plus one complete skill saves 0.628 of tokens at $K=4$, 0.755 at
+$K=8$, 0.814 at $K=16$, and 0.843 at $K=32$ relative to full-all. Active
+native-K/V savings are nearly identical because the frozen Qwen accounting uses
+114,688 bytes per active token. Cached and external storage are not counted as
+active K/V.
+
+The four-case model-use subset separates economy from quality. At $K=8$, no
+full-all prompt fits the measured 4\,GB runtime, whereas all four
+selection-to-full prompts fit. Selection-to-full chooses and applies the target
+skill in 1/4 cases; oracle-full succeeds in 4/4. Thus compact records make the
+condition executable and expose a strong full-instruction ceiling, but the
+small frozen chooser does not yet use the high-recall palette reliably. Three
+postmortem conditions at $K=32$ are explicitly incomplete after the long
+selection prompt stalled the Windows GPU; they are excluded rather than
+imputed.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Metric & Tools & Skills \\
+\midrule
+Logical catalog size & 8,192 & 50 \\
+Held-out discovery queries & $5\times144$ & 50 \\
+Recall at $K=8$ & 0.653 & 0.960 \\
+Recall at $K=32$ & 0.701 & 1.000 \\
+Conditional choice at reported gate & 0.667 ($K=10$) & 0.500 ($K=8$) \\
+Conditional choice at $K=32$ & 0.400 & --- \\
+Progressive strict task success & 0.250 ($K=8$) & 0.250 ($K=8$) \\
+Progressive token saving & 0.513 ($K=32$) & 0.843 ($K=32$) \\
+Active-K/V saving & 0.513 ($K=32$) & 0.843 ($K=32$) \\
+\bottomrule
+\end{tabular}
+\caption{Tools and skills under the shared typed-capability architecture.
+Discovery rows are larger than model-use rows. Tool recall uses diversity union;
+skill recall uses validation-frozen fusion. Conditional choice is computed only
+when the target is present and therefore uses the stated model-facing gate.}
+\label{tab:capability-comparison}
+\end{table}
+
+\subsection{Mixed palettes preserve type, but not resource discrimination}
+We finally combine 8,192 tools and 50 skills in one registry. The mixed resolver
+uses 194 validation requests to freeze a 0.25 lexical/0.75 embedding fusion,
+then evaluates eight balanced held-out requests (four per capability type) at
+$K\in\{4,8,12,16,24,32\}$. Qwen3-0.6B Q4 chooses a single bound identity;
+Figure~\ref{fig:mixed-capability} separates target recall, capability-type
+accuracy, and exact resource choice.
+
+At $K=8$, both target types obtain 0.75 retrieval recall. Type accuracy is
+1.00 for tool requests and 0.75 for skill requests, but exact resource choice
+is only 0.50 and 0.25, respectively. At $K=32$, every tool target is present,
+yet exact tool choice is 0.25; skill recall remains 0.75 while type accuracy
+falls to 0.25. The direction is useful despite the small cohort: a unified
+typed palette need not collapse tool-versus-skill identity, but additional
+candidate breadth increases within-type and eventually cross-type confusion.
+At $K=8$, progressive accounting exposes 1,442 versus 2,586 full-all tokens for
+tool targets and 1,811 versus 4,442 for skill targets. The cost saving therefore
+does not imply a quality gain.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper6_5_tools/final_curves/mixed_capability_palette.pdf}
+\caption{Mixed tool/skill palette over four held-out requests per target type.
+Retrieval, type choice, and exact resource choice are distinct gates. Values
+are descriptive mechanism checks, not confidence-bounded population estimates.}
+\label{fig:mixed-capability}
+\end{figure}
+
+\subsection{Lazy encoding changes startup and reuse cost}
+Eager encoding of all 50 skill selection/full views represents 5.39\,GB in the
+native-K/V accounting model. Lazy registration takes 0.30\,ms; encoding the
+complete selection palette takes 142.7\,ms; one cold full skill averages
+9.36\,ms; and warm exact activation averages 0.021\,ms. The corresponding
+18-tool values are 0.057, 30.4, 2.36, and 0.015\,ms.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper6_5_tools/final_curves/lazy_encoding_lifecycle.pdf}
+\caption{Local lazy-record lifecycle. Registration, first selection encoding,
+first full encoding, and warm activation are distinct costs. The vertical axis
+is logarithmic; exact activation makes zero semantic rediscovery calls.}
+\label{fig:lazy-lifecycle}
+\end{figure}
+
+These are local runtime microbenchmarks, not remote serving latency. They
+establish cache behavior and accounting boundaries, not universal zero-request
+activation for opaque providers.
+
+\subsection{Progressive disclosure does not repair missing candidates}
+Typed selection-to-full disclosure reduces the cost of a bounded palette and
+preserves one complete authoritative record. It cannot recover a target absent
+from that palette. In the 8K two-step study, all ten workflows fail while
+per-step target recall is 0.250. Fusion therefore remains the conservative SDK
+default; diversity union is an experimental high-recall mode, and host
+authorization is mandatory under either policy.
+
+\section{Related Work}
+Toolformer learns when and how to insert calls during language-model
+training~\cite{schick2023toolformer}. Gorilla combines API-call generation with
+retrieved documentation~\cite{patil2024gorilla}, while ToolLLM couples a large
+API corpus, a neural retriever, instruction tuning, and multi-step
+search~\cite{qin2024toolllm}. Those systems primarily study learned tool use,
+call correctness, or planning. This paper isolates an orthogonal runtime
+boundary: discover externally, disclose compact typed views, activate one full
+record, and authorize execution separately.
+
+The resolver follows the sparse/dense retrieval decomposition. BM25 supplies
+indexed lexical evidence; dense passage retrieval demonstrates complementary
+dual-encoder evidence~\cite{karpukhin2020dpr}; retrieval-augmented generation
+combines non-parametric retrieval with generation~\cite{lewis2020rag}. Here the
+objects are capabilities rather than factual passages, target presence is
+separate from model choice, and unsafe exposure matters even when recall rises.
+
+Query-aware KV systems such as Quest select cache pages needed by the current
+attention query~\cite{tang2024quest}. Paper~6.5 acts earlier, resolving typed
+external records before full model-visible materialization. Frozen native Q/K
+controls in the appendix do not transfer to semantic-hard tool discovery, so
+the supported path remains model-independent.
+
+Agent skills package trigger metadata, instructions, and optional resources in
+addressable folders~\cite{anthropic2026skills}. Their progressive loading
+motivates compact and full views. Our contribution is not another authoring
+format, but a provider-neutral typed runtime that normalizes common layouts,
+shares discovery with tools, filters access before visibility, and measures
+exact local selection-to-full activation.
+
+\section{Limitations}
+The generation model is a small frozen Qwen3-0.6B model, and model-choice and
+execution cohorts are smaller than retrieval cohorts. Semantic-hard prompts
+and confusable catalogs are authored or generated rather than collected from
+production traffic. Workflows are short. The reference resolver still contains
+exhaustive Python components and does not support production latency claims.
+Authorization uses an in-memory harness.
+
+Skills are declarative only: scripts and assets are identified but not
+executed. Deterministic output contracts do not measure every useful procedural
+behavior. Remote-provider request boundaries, cache eviction, and multi-tenant
+residency are untested. Decoder callbacks, dynamic compression, and
+insufficiency-triggered expansion remain outside this paper.
+
+\section{Conclusion}
+Large capability catalogs should not be copied wholesale into every model
+request. The supported architecture searches an external typed registry,
+exposes a bounded palette of compact views, lets the model choose a stable
+identity, and activates only that capability's complete record. Tools then
+cross a host authorization boundary; skills guide generation without becoming
+executable code.
+
+Automatic metadata supports useful registration, heterogeneous candidate
+generation recovers additional 8K-catalog recall, the abstraction covers 50
+declarative skills, and lazy selection-to-full activation reduces active tokens
+and K/V as $K$ grows. Yet recall gains flatten, wider palettes can confuse the
+chooser, and weak per-step discovery collapses reactive workflows. Progressive
+typed disclosure makes candidate breadth economical; it does not replace
+calibrated retrieval, conservative defaults, or host-side safety.
+
+\appendix
 \section{M0 Experimental Design}
 \subsection{Opaque catalogs}
 The generator in \texttt{src/data/agent\_resources.py} creates identifiers such
@@ -1265,8 +1607,8 @@ Validation selects the same external BM25, automatic semantic, compact-embedding
 and fused discovery stack used for tools. Generation uses
 \PaperSixFiveMNineSkillCases{} held-out skill requests. Both experiments compare
 full-all (T0/S0), selection-only (T1/S1), selection-to-full (T2/S2), and
-oracle-full (T3/S3) at $K\in\{2,4,6,8\}$, followed by all-18-tool and all-25-skill
-stress controls.
+oracle-full (T3/S3). Tool budgets retain the original bounded-palette grid;
+skills use $K\in\{2,4,8,16,24,32\}$ over the 50-record catalog.
 
 All generation rows use the exact frozen Qwen3-0.6B revision in FP16 on an
 NVIDIA GeForce GTX 950M, deterministic decoding, and no parameter updates. The
@@ -1280,9 +1622,11 @@ serialization, both TTFTs, and both generations.
 \subsection{Discovery and view size}
 
 The shared discovery stack transfers without a second skill-specific retrieval
-system. On the 25-query skill test split, BM25 obtains
+system. On the 50-query skill test split, BM25 obtains
 \PaperSixFiveMNineSkillBmTwentyTopOne{} Top-1, compact embeddings obtain 0.800,
 and validation-selected fusion obtains \PaperSixFiveMNineSkillFusedTopOne{}.
+Fused Recall@$K$ rises from 0.840 at $K=2$ to 0.940 at $K=4$, 0.960 at
+$K=8$, and 1.000 at $K=16$.
 The corresponding tool bars in Figure~\ref{fig:m9-discovery} reuse M8's 144
 test requests and should not be read as a paired cross-type comparison.
 
@@ -1297,7 +1641,7 @@ resource type is intrinsically easier.}
 
 Full tool schemas contain a median 233.5 tokens (p95 244), and their selection
 views retain a median 0.368 of that count. Full skill instructions contain a
-median 468 tokens (p95 480), while skill selection views retain 0.215. These
+median 685 tokens (p95 1,353), while skill selection views retain 0.150. These
 bodies are intentionally nontrivial: full-all instruction cost therefore grows
 linearly with the candidate palette.
 
@@ -1305,10 +1649,21 @@ linearly with the candidate palette.
 \centering
 \includegraphics[width=.72\linewidth]{../shared/results/paper6_5_tools/progressive_disclosure/capability_view_size_distribution.pdf}
 \caption{Median full-view tokens and median selection/full token ratio for the
-18 tool schemas and 25 declarative skills. Ratios are percentages in the red
+18 tool schemas and 50 declarative skills. Ratios are percentages in the red
 bars; no view is formed by first-$N$-token truncation.}
 \label{fig:m9-view-size}
 \end{figure}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/final_curves/generated_skill_length_table.tex}}
+\caption{Skill results by measured instruction-length bucket. Token columns are
+means; ``Saved'' is the mean $K=8$ progressive token saving. Choice and success
+come from four stratified generation cases (two short, one medium, one long),
+so they are mechanism diagnostics rather than bucket-level estimates.}
+\label{tab:skill-length}
+\end{table}
 
 \subsection{Tools: choice improves at moderate budgets, not at catalog scale}
 
@@ -1342,18 +1697,17 @@ requests elicit non-exact argument values even when the correct tool is supplied
 alone. This oracle ceiling is why M9 does not interpret low strict success as a
 routing-only failure.
 
-\subsection{Skills: context economy without loss at \texorpdfstring{$K=8$}{K=8}}
+\subsection{Skills: context economy under a bounded candidate set}
 
-Skill full views consistently recover the deterministic instruction contract.
-At $K=8$, S2 and S0 both obtain
-\PaperSixFiveMNineSkillKEightProgressiveSuccess{} strict success. S2 exposes
-\PaperSixFiveMNineSkillKEightDisclosure{} of S0's capability tokens and reduces
-mean wall time from \PaperSixFiveMNineSkillKEightFullWall{} to
-\PaperSixFiveMNineSkillKEightProgressiveWall{} seconds despite two model
-invocations. This is a measured property of quadratic SDPA on the stated 4-GB
-GPU, not a general latency claim. S1 fails the required identity and output
-contract, confirming that compact applicability text cannot replace the full
-instructions.
+At $K=8$, the full-all condition does not fit the declared 8,192-token runtime
+limit for any of the four stratified generation cases. Selection-to-full fits
+all four while exposing 0.300 of full-all capability tokens. It chooses and
+applies the correct skill in one case (0.250 strict success); oracle-full
+obtains 1.000. S1 fails the required identity and output contract throughout,
+confirming that compact applicability text is a choice surface rather than a
+replacement for the authoritative instructions. The four-case cohort is a
+mechanism check: it establishes feasibility and exposes the remaining choice
+error, but it is too small for a population-level quality claim.
 
 \clearpage
 \begin{table}[H]
@@ -1361,16 +1715,19 @@ instructions.
 \scriptsize
 \resizebox{\linewidth}{!}{\input{../shared/results/paper6_5_tools/progressive_disclosure/generated_skill_progressive_table.tex}}
 \caption{Declarative-skill progressive-disclosure matrix. ``Valid/follow'' is
-deterministic instruction-contract success. The $K=25$ S0 row has $n=0$ because
-all eight 11,765--11,771-token prompts exceeded the declared 8,192-token runtime
-limit before generation.}
+deterministic instruction-contract success. Quality $n$ counts rows that fit
+the runtime envelope. Full-all has no fitting rows from $K=8$ onward. Three
+$K=32$ rows per executable condition completed; the fourth stalled during the
+long selection prompt and is reported as missing, not imputed.}
 \label{tab:m9-skills}
 \end{table}
 
-At $K=25$, the 11,702 capability tokens of S0 cannot run under the measured GPU
-limit, whereas S2 fits at 2,929 mean capability tokens and obtains 0.500 strict
-success. This stress result establishes feasibility under one hardware envelope;
-it does not imply that larger-memory runtimes cannot execute full-all.
+At $K=32$, full-all would expose 26,094 mean capability tokens and cannot run
+under the measured GPU limit. Selection-to-full exposes 4,658 tokens in the
+three completed rows and obtains 0.333 strict success. Because one stratified
+case is absent, the $K=32$ value is descriptive only. This stress result
+establishes feasibility under one hardware envelope; it does not imply that
+larger-memory runtimes cannot execute full-all.
 
 \begin{figure}[H]
 \centering
@@ -1409,15 +1766,19 @@ unsafe and useful candidates, view tokens, and wall time.
 
 \subsection{Protocol and model boundary}
 
-The full retrieval grid covers $N\in\{32,128,512,2048,8192\}$,
+The base retrieval grid covers $N\in\{32,128,512,2048,8192\}$,
 $K\in\{2,4,6,8,10\}$, and BM25, frozen fusion, raw union, and diversity union.
 Seed 11 covers the Cartesian grid. The decisive $N=8192,K=10$ comparison uses
 all five catalog seeds and 40 query--seed pairs; a fixed agreement bonus is an
-additional control. Candidate identities are bound to one-digit labels and the
-official Ollama \texttt{qwen3:0.6b} Q4 artifact generates one label at
-temperature zero. This low-memory artifact is kept separate from the exact
-FP16 CUDA model used below for call construction. Catalog seeds vary generated
-distractors, not model weights.
+additional control. A targeted diversity-only extension evaluates
+$K\in\{12,16,24,32\}$ on those same 40 pairs. Target-absent palettes are
+recorded without calling the chooser, because their end-to-end outcome is
+already determined; target-present palettes use the identical frozen chooser.
+Candidate identities are bound to labels and the official Ollama
+\texttt{qwen3:0.6b} Q4 artifact generates one label at temperature zero. This
+low-memory artifact is kept separate from the exact FP16 CUDA model used below
+for call construction. Catalog seeds vary generated distractors, not model
+weights.
 
 The 40-row recall values in Table~\ref{tab:m10-palette} differ from the
 144-query values in Table~\ref{tab:m8-scale} because M10 uses the smaller
@@ -1596,7 +1957,7 @@ schema tokens.
 M9 is prepared by \path{prepare_progressive_disclosure.py}, executed by
 \path{run_progressive_disclosure.py}, and summarized by
 \path{summarize_progressive_disclosure.py}. The preparation stage freezes
-selection/full views, the 25-skill catalog, 50 semantic-hard skill queries,
+selection/full views, the 50-skill catalog, 100 name-blind skill queries,
 validation-selected fusion weights, candidate sets, and disclosure costs. The
 generation runner checkpoints each condition and records prompt/context fit,
 native-K/V bytes, both TTFTs, transition overhead, wall time, raw output, and
@@ -1686,10 +2047,11 @@ followed by calibrated reranking, not default broad disclosure.
 
 M9 narrows the cost after discovery. Deterministic selection views preserve a
 bounded choice palette; the runtime then removes losing candidates and exposes
-one complete authoritative tool schema or declarative skill. The skill result
-shows equal $K=8$ strict success at roughly one third of full-all capability
-tokens, while the all-skill full prompt does not fit the measured runtime
-envelope. The tool result is less uniform and degrades at all-catalog scale, so
+one complete authoritative tool schema or declarative skill. At $K=8$, skill
+selection-to-full remains executable at 0.300 of full-all capability tokens,
+whereas full-all no longer fits. Its 0.250 strict success and 1.000 oracle
+ceiling localize the remaining error to selection rather than instruction
+availability. The tool result is less uniform and degrades at all-catalog scale, so
 progressive disclosure complements rather than replaces calibrated discovery.
 Basic declarative skills are now covered; hierarchical skills, persistent
 history, mutation, revocation, and session inheritance remain untested.
@@ -1703,8 +2065,50 @@ accepted calls while using 0.556 of full-all capability tokens. The two-step
 JIT result nevertheless remains zero because only one quarter of required
 steps contain the target. Typed progressive disclosure therefore solves the
 cost of using a bounded palette; it does not solve large-catalog discovery.
+The diversity-only high-$K$ extension also rules out a simple breadth remedy on
+the executable cohort: target recall remains 0.375 through $K=32$, while
+conditional choice declines from 0.667 at $K=10$ to 0.400. Larger compact
+palettes are affordable, but they are not free of decision interference.
 Fusion remains the SDK default, diversity union is a measured experimental
 high-recall mode, and callbacks or dynamic detail generation remain outside
 this paper.
+
+\begin{thebibliography}{9}
+\bibitem{schick2023toolformer}
+Timo Schick, Jane Dwivedi-Yu, Roberto Dess\`i, et al.
+\newblock Toolformer: Language Models Can Teach Themselves to Use Tools.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
+
+\bibitem{patil2024gorilla}
+Shishir G. Patil, Tianjun Zhang, Xin Wang, and Joseph E. Gonzalez.
+\newblock Gorilla: Large Language Model Connected with Massive APIs.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2024.
+
+\bibitem{qin2024toolllm}
+Yujia Qin, Shihao Liang, Yining Ye, et al.
+\newblock ToolLLM: Facilitating Large Language Models to Master 16000+
+Real-World APIs.
+\newblock In \emph{International Conference on Learning Representations}, 2024.
+
+\bibitem{karpukhin2020dpr}
+Vladimir Karpukhin, Barlas Oguz, Sewon Min, et al.
+\newblock Dense Passage Retrieval for Open-Domain Question Answering.
+\newblock In \emph{Proceedings of EMNLP}, pages 6769--6781, 2020.
+
+\bibitem{lewis2020rag}
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, et al.
+\newblock Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2020.
+
+\bibitem{tang2024quest}
+Jiaming Tang, Yilong Zhao, Kan Zhu, Guangxuan Xiao, Baris Kasikci, and Song Han.
+\newblock Quest: Query-Aware Sparsity for Efficient Long-Context LLM Inference.
+\newblock In \emph{International Conference on Machine Learning}, 2024.
+
+\bibitem{anthropic2026skills}
+Anthropic.
+\newblock Agent Skills public repository and skill-creator specification.
+\newblock \url{https://github.com/anthropics/skills}, accessed August 2026.
+\end{thebibliography}
 
 \end{document}

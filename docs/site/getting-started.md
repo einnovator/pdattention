@@ -50,6 +50,31 @@ Focused suites for the core architecture are:
 python -m pytest tests/test_pra_routing.py tests/test_pra_batching.py
 ```
 
+## Register tools and skills lazily
+
+`CapabilitySDK` accepts ordinary Python callables, explicit `Skill` objects,
+and a directory whose immediate child folders contain `SKILL.md` files:
+
+```python
+from pra_hf import AgentConfig, CapabilitySDK, Skill
+
+sdk = CapabilitySDK(AgentConfig(
+    tools=(my_python_tool,),
+    skills=(Skill(
+        name="incident-triage",
+        description="Prioritize an operational incident.",
+        when_to_use="Use when service health degrades.",
+        instructions="Assess impact, evidence, ownership, and the next safe action.",
+    ),),
+    skills_path="./skills",
+    max_candidates=24,
+))
+```
+
+Discovery supplies stable record identities. `activate_candidates()` exposes
+only bounded selection views; `activate_selected()` activates the exact full
+record locally without rerunning semantic discovery.
+
 ## Build this site
 
 Generate the static HTML site under `site/`:
