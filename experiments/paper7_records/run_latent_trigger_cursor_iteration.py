@@ -54,6 +54,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "docs/papers/shared/results/paper7_records/latent_triggers"
 FIGURES = OUTPUT / "figures"
 MODEL_ID = "qwen3:0.6b"
+MODEL_REVISION = "sha256-7f4030143c1c477224c5434f8272c662a8b042079a0a584f0a27a1684fe2e1fa"
 SEEDS = (11, 23, 37, 53, 71)
 POLICIES = tuple(RecoveryPolicy)
 ADDRESS_ABLATIONS = {
@@ -140,7 +141,12 @@ def _json_object(raw: str) -> Mapping[str, object]:
         value = json.loads(raw)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", raw, re.S)
-        value = json.loads(match.group(0)) if match else {}
+        try:
+            value = json.loads(match.group(0)) if match else {}
+        except json.JSONDecodeError:
+            # A bounded generation can truncate an otherwise valid object. Treat it
+            # as an empty model decision so one malformed response cannot abort the run.
+            value = {}
     return value if isinstance(value, Mapping) else {}
 
 
@@ -276,9 +282,9 @@ def _generate_hypotheses(
         f"Generate at most {limit} short hypotheses about hidden result details that could change "
         "which candidate action is safest. Include exact candidate action IDs where relevant.\n"
         f"Goal: {query}\nCandidate action IDs: {json.dumps(list(palette))}\n"
-        'Return {"hypotheses":["..."]}.'
+        'Return one-line JSON: {"hypotheses":["..."]}.'
     )
-    response = model.chat(prompt, seed=seed, max_tokens=180)
+    response = model.chat(prompt, seed=seed, max_tokens=128)
     raw = response.value.get("hypotheses", ())
     hypotheses = tuple(str(value) for value in raw[:limit]) if isinstance(raw, list) else ()
     return hypotheses, response
@@ -581,20 +587,66 @@ def _unique_rows(rows: Sequence[dict[str, object]], keys: Sequence[str]):
 
 
 def _db_tasks() -> list[dict[str, object]]:
-    rows = [
+    latency_rows = [
         {"id": index, "status": "normal", "latency": 100 + index % 7, "owner": "core"}
         for index in range(60)
     ]
     for offset, latency in enumerate((810, 820, 830, 840, 850), start=7):
-        rows[offset] = {"id": offset, "status": "critical", "latency": latency, "owner": "edge"}
-    return [{
-        "task_id": "critical-latency-mean",
-        "goal": "Find the critical subgroup and report its mean latency.",
-        "payload": {"columns": ["id", "status", "latency", "owner"], "rows": rows},
-        "expected_filter": {"status": "critical"},
-        "expected_field": "latency",
-        "expected_answer": 830.0,
-    }]
+        latency_rows[offset] = {
+            "id": offset, "status": "critical", "latency": latency, "owner": "edge"
+        }
+
+    retry_rows = [
+        {"id": index, "severity": "normal", "retry_count": index % 3, "service": "api"}
+        for index in range(80)
+    ]
+    for offset, retries in enumerate((4, 6, 8, 10, 12), start=17):
+        retry_rows[offset] = {
+            "id": offset, "severity": "violation", "retry_count": retries,
+            "service": "gateway",
+        }
+
+    queue_rows = [
+        {"id": index, "route": "standard", "queue_depth": 20 + index % 5, "tier": "shared"}
+        for index in range(70)
+    ]
+    for offset, depth in enumerate((90, 100, 110, 120), start=29):
+        queue_rows[offset] = {
+            "id": offset, "route": "overflow", "queue_depth": depth, "tier": "priority"
+        }
+
+    return [
+        {
+            "task_id": "critical-latency-mean",
+            "goal": "Filter status=critical and report mean latency.",
+            "payload": {
+                "columns": ["id", "status", "latency", "owner"], "rows": latency_rows
+            },
+            "expected_filter": {"status": "critical"},
+            "expected_field": "latency",
+            "expected_answer": 830.0,
+        },
+        {
+            "task_id": "violation-retry-mean",
+            "goal": "Filter severity=violation and report mean retry_count.",
+            "payload": {
+                "columns": ["id", "severity", "retry_count", "service"], "rows": retry_rows
+            },
+            "expected_filter": {"severity": "violation"},
+            "expected_field": "retry_count",
+            "expected_answer": 8.0,
+        },
+        {
+            "task_id": "overflow-queue-mean",
+            "goal": "Filter route=overflow and report mean queue_depth.",
+            "payload": {
+                "columns": ["id", "route", "queue_depth", "tier"], "rows": queue_rows
+            },
+            "expected_filter": {"route": "overflow"},
+            "expected_field": "queue_depth",
+            "expected_answer": 105.0,
+        },
+    ]
 
 
 def _graph_tasks() -> list[dict[str, object]]:
@@ -885,6 +937,114 @@ def _group_summary(rows, keys, metrics):
     return result
 
 
+def _wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    if n == 0:
+        return 0.0, 0.0
+    rate = successes / n
+    denominator = 1 + z * z / n
+    center = (rate + z * z / (2 * n)) / denominator
+    margin = z * math.sqrt(rate * (1 - rate) / n + z * z / (4 * n * n)) / denominator
+    return max(0.0, center - margin), min(1.0, center + margin)
+
+
+def _trigger_policy_summary(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    metrics = (
+        "hypothesis_recall", "address_recall", "trigger_materialized", "tr_address",
+        "tr_materialize", "tr_action", "expansion_count", "false_positive_expansions",
+        "expansion_precision", "materialized_bytes", "materialized_tokens", "model_calls",
+        "retrieval_tool_calls", "proactive_expansions", "probe_count",
+    )
+    result = _group_summary(rows, ("policy", "condition"), metrics)
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[(row["policy"], row["condition"])].append(row)
+    for summary in result:
+        values = grouped[(summary["policy"], summary["condition"])]
+        for metric in ("hypothesis_recall", "address_recall", "trigger_materialized", "tr_action"):
+            successes = sum(int(row[metric]) for row in values)
+            low, high = _wilson_interval(successes, len(values))
+            summary[f"{metric}_successes"] = successes
+            summary[f"{metric}_ci_low"] = low
+            summary[f"{metric}_ci_high"] = high
+        hypothesis_count = sum(int(row["hypothesis_recall"]) for row in values)
+        address_count = sum(int(row["address_recall"]) for row in values)
+        materialized_count = sum(int(row["trigger_materialized"]) for row in values)
+        summary["address_given_hypothesis"] = (
+            sum(
+                int(row["hypothesis_recall"]) * int(row["address_recall"])
+                for row in values
+            ) / hypothesis_count
+            if hypothesis_count else 0.0
+        )
+        summary["materialize_given_address"] = (
+            sum(
+                int(row["address_recall"]) * int(row["trigger_materialized"])
+                for row in values
+            ) / address_count
+            if address_count else 0.0
+        )
+        summary["action_given_materialization"] = (
+            sum(
+                int(row["trigger_materialized"]) * int(row["tr_action"])
+                for row in values
+            ) / materialized_count
+            if materialized_count else 0.0
+        )
+    return result
+
+
+def _clustered_policy_comparisons(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Compare TR-action while resampling trigger cases rather than seed rows."""
+    pairs = (
+        ("action_conditioned", "compact_only"),
+        ("action_conditioned", "generic_proactive"),
+        ("multi_hypothesis", "compact_only"),
+        ("multi_hypothesis", "action_conditioned"),
+        ("full_context", "action_conditioned"),
+        ("ccr_proactive", "compact_only"),
+    )
+    keyed = {
+        (str(row["condition"]), str(row["case_id"]), int(row["seed"]), str(row["policy"])):
+        int(row["tr_action"])
+        for row in rows
+    }
+    output = []
+    for condition in ("explicit", "latent"):
+        case_ids = sorted({str(row["case_id"]) for row in rows if row["condition"] == condition})
+        for treatment, baseline in pairs:
+            case_deltas = []
+            row_deltas = []
+            for case_id in case_ids:
+                deltas = [
+                    keyed[(condition, case_id, seed, treatment)]
+                    - keyed[(condition, case_id, seed, baseline)]
+                    for seed in SEEDS
+                ]
+                case_deltas.append(statistics.mean(deltas))
+                row_deltas.extend(deltas)
+            rng = random.Random(_stable_seed(f"{condition}-{treatment}-{baseline}", 2027))
+            draws = sorted(
+                statistics.mean(rng.choice(case_deltas) for _ in case_deltas)
+                for _ in range(10_000)
+            )
+            output.append({
+                "condition": condition,
+                "treatment": treatment,
+                "baseline": baseline,
+                "n_cases": len(case_deltas),
+                "n_case_seed_pairs": len(row_deltas),
+                "mean_tr_action_delta": statistics.mean(case_deltas),
+                "case_cluster_bootstrap_ci_low": draws[249],
+                "case_cluster_bootstrap_ci_high": draws[9749],
+                "wins": sum(delta > 0 for delta in row_deltas),
+                "ties": sum(delta == 0 for delta in row_deltas),
+                "losses": sum(delta < 0 for delta in row_deltas),
+            })
+    return output
+
+
 def _write_csv(path: Path, rows: Sequence[Mapping[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = list(dict.fromkeys(key for row in rows for key in row))
@@ -991,21 +1151,42 @@ def _save_figure(fig, name):
     plt.close(fig)
 
 
-def render_tex(trigger_summary, db_rows, graph_rows, transport_rows):
+def render_tex(trigger_summary, comparisons, db_rows, graph_rows, transport_rows):
     lookup = {(row["policy"], row["condition"]): row for row in trigger_summary}
     db = _group_summary(db_rows, ("baseline",), ("success", "bytes_transferred"))
     graph = _group_summary(graph_rows, ("baseline",), ("success", "bytes_transferred"))
+    latent_action_delta = next(
+        row for row in comparisons
+        if row["condition"] == "latent"
+        and row["treatment"] == "action_conditioned"
+        and row["baseline"] == "compact_only"
+    )
     lines = [
         f"\\newcommand{{\\PaperSevenNextCases}}{{{len(latent_trigger_cases())}}}",
         f"\\newcommand{{\\PaperSevenNextRows}}{{{sum(row['n'] for row in trigger_summary)}}}",
         f"\\newcommand{{\\PaperSevenExplicitCCRAction}}{{{lookup[('ccr_explicit', 'explicit')]['tr_action']:.3f}}}",
         f"\\newcommand{{\\PaperSevenLatentCCRAction}}{{{lookup[('ccr_explicit', 'latent')]['tr_action']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenExplicitCompactAction}}{{{lookup[('compact_only', 'explicit')]['tr_action']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenLatentCompactAction}}{{{lookup[('compact_only', 'latent')]['tr_action']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenLatentGenericAction}}{{{lookup[('generic_proactive', 'latent')]['tr_action']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenLatentCCRProactiveAction}}{{{lookup[('ccr_proactive', 'latent')]['tr_action']:.3f}}}",
         f"\\newcommand{{\\PaperSevenLatentActionConditioned}}{{{lookup[('action_conditioned', 'latent')]['tr_action']:.3f}}}",
         f"\\newcommand{{\\PaperSevenLatentMultiHypothesis}}{{{lookup[('multi_hypothesis', 'latent')]['tr_action']:.3f}}}",
         f"\\newcommand{{\\PaperSevenLatentFullCeiling}}{{{lookup[('full_context', 'latent')]['tr_action']:.3f}}}",
         f"\\newcommand{{\\PaperSevenActionProbePrecision}}{{{lookup[('action_conditioned', 'latent')]['expansion_precision']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenActionProbeTokens}}{{{lookup[('action_conditioned', 'latent')]['materialized_tokens']:.1f}}}",
+        f"\\newcommand{{\\PaperSevenActionProbeSuccesses}}{{{lookup[('action_conditioned', 'latent')]['tr_action_successes']}}}",
+        f"\\newcommand{{\\PaperSevenActionProbeCILow}}{{{lookup[('action_conditioned', 'latent')]['tr_action_ci_low']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenActionProbeCIHigh}}{{{lookup[('action_conditioned', 'latent')]['tr_action_ci_high']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenActionDeltaCompact}}{{{latent_action_delta['mean_tr_action_delta']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenActionDeltaCILow}}{{{latent_action_delta['case_cluster_bootstrap_ci_low']:.3f}}}",
+        f"\\newcommand{{\\PaperSevenActionDeltaCIHigh}}{{{latent_action_delta['case_cluster_bootstrap_ci_high']:.3f}}}",
         f"\\newcommand{{\\PaperSevenDBCursorSuccess}}{{{next(row['success'] for row in db if row['baseline']=='cursor'):.3f}}}",
+        f"\\newcommand{{\\PaperSevenDBCursorBytes}}{{{next(row['bytes_transferred'] for row in db if row['baseline']=='cursor'):.1f}}}",
+        f"\\newcommand{{\\PaperSevenDBFullBytes}}{{{next(row['bytes_transferred'] for row in db if row['baseline']=='full'):.1f}}}",
         f"\\newcommand{{\\PaperSevenGraphCursorSuccess}}{{{next(row['success'] for row in graph if row['baseline']=='cursor'):.3f}}}",
+        f"\\newcommand{{\\PaperSevenGraphCursorBytes}}{{{next(row['bytes_transferred'] for row in graph if row['baseline']=='cursor'):.1f}}}",
+        f"\\newcommand{{\\PaperSevenGraphFullBytes}}{{{next(row['bytes_transferred'] for row in graph if row['baseline']=='full'):.1f}}}",
         f"\\newcommand{{\\PaperSevenTransportExact}}{{{statistics.mean(row['exact_recovery'] for row in transport_rows):.3f}}}",
     ]
     (OUTPUT / "generated_next_iteration_results.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1027,14 +1208,10 @@ def main() -> None:
         trigger_rows = run_trigger_study(
             model, checkpoint_path=OUTPUT / "trigger_policy_rows.csv"
         )
-    trigger_summary = _group_summary(
-        trigger_rows, ("policy", "condition"),
-        ("hypothesis_recall", "address_recall", "trigger_materialized", "tr_address",
-         "tr_materialize", "tr_action", "expansion_count", "false_positive_expansions",
-         "expansion_precision", "materialized_bytes", "materialized_tokens", "model_calls",
-         "retrieval_tool_calls", "proactive_expansions", "probe_count"),
-    )
+    trigger_summary = _trigger_policy_summary(trigger_rows)
     _write_csv(OUTPUT / "trigger_policy_summary.csv", trigger_summary)
+    comparisons = _clustered_policy_comparisons(trigger_rows)
+    _write_csv(OUTPUT / "paired_policy_comparisons.csv", comparisons)
     _write_csv(OUTPUT / "hypothesis_recall.csv", [{
         key: row[key] for key in (
             "case_id", "condition", "policy", "seed", "hypothesis_recall", "address_recall",
@@ -1067,11 +1244,21 @@ def main() -> None:
     _write_csv(OUTPUT / "trigger_cost_frontier.csv", frontier)
 
     render_figures(trigger_summary, trigger_rows, probe_rows, db_rows, graph_rows, transport_rows)
-    render_tex(trigger_summary, db_rows, graph_rows, transport_rows)
+    render_tex(trigger_summary, comparisons, db_rows, graph_rows, transport_rows)
     manifest = {
         "model": args.model,
+        "model_revision": MODEL_REVISION if args.model == MODEL_ID else "unrecorded",
         "endpoint": args.endpoint,
         "decoding": {"temperature": 0, "format": "json", "think": True},
+        "hypothesis_generation": {"maximum_hypotheses": 4, "maximum_tokens": 128},
+        "runner": "experiments/paper7_records/run_latent_trigger_cursor_iteration.py",
+        "prompt_protocols": [
+            "retrieval_decision",
+            "bounded_hypothesis_generation",
+            "typed_required_action_selection",
+            "db_cursor_operation_selection",
+            "graph_cursor_operation_selection",
+        ],
         "seeds": SEEDS,
         "case_fingerprint": trigger_case_fingerprint(latent_trigger_cases()),
         "trigger_rows": len(trigger_rows),
