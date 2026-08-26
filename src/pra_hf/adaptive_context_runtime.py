@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -35,6 +36,20 @@ class RetrievalMode(str, Enum):
     TOOL = "tool"
     MIXED = "mixed"
     PROACTIVE = "proactive"
+
+
+class CursorOperation(str, Enum):
+    """Model-selectable operations over one authorized persistent cursor."""
+
+    NEXT = "next"
+    PREVIOUS = "previous"
+    RANGE = "range"
+    FILTER = "filter"
+    AGGREGATE = "aggregate"
+    SEARCH = "search"
+    SAMPLE = "sample"
+    MATERIALIZE_FIELDS = "materialize_fields"
+    CLOSE = "close"
 
 
 class DeploymentTopology(str, Enum):
@@ -92,6 +107,7 @@ class ContextPolicy:
     native_kv_bytes_per_token: int = 0
     store_max_bytes: int | None = None
     persistent_store: bool = False
+    allow_proactive_expansion: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "storage", StoragePolicy(self.storage))
@@ -186,6 +202,33 @@ class CursorPage:
     stop: int
     total_estimate: int
     has_more: bool
+
+
+@dataclass(frozen=True)
+class CursorAction:
+    """One structured cursor decision emitted by a model or host policy."""
+
+    cursor_id: str
+    operation: CursorOperation | str
+    arguments: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.cursor_id:
+            raise ValueError("cursor_id is required.")
+        object.__setattr__(self, "operation", CursorOperation(self.operation))
+        object.__setattr__(self, "arguments", dict(self.arguments))
+
+
+@dataclass(frozen=True)
+class CursorActionResult:
+    """Result and accounting for one attempted model-selected cursor action."""
+
+    action: CursorAction
+    success: bool
+    payload: object | None
+    payload_bytes: int
+    latency_seconds: float
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -388,6 +431,26 @@ class CursorManager:
             if isinstance(item, Mapping)
         )
 
+    def refine(
+        self,
+        cursor_id: str,
+        *,
+        scope: RecordScope,
+        filters: Mapping[str, object] | None = None,
+        order: str | None = None,
+    ) -> CursorRecord:
+        """Replace bounded filter/order state without changing cursor identity."""
+
+        cursor = self._resolve(cursor_id, scope)
+        updated = _replace_cursor(
+            cursor,
+            position=0,
+            filters=dict(filters if filters is not None else cursor.filters),
+            order=order if order is not None else cursor.order,
+        )
+        self._cursors[cursor_id] = updated
+        return updated
+
     def close(self, cursor_id: str, *, scope: RecordScope) -> None:
         cursor = self._resolve(cursor_id, scope)
         self._cursors[cursor_id] = _replace_cursor(cursor, closed=True)
@@ -571,24 +634,58 @@ class AdaptiveContextRuntime:
             MaterializationEvent(record_id, level=level, selector=selector), scope=scope
         )
 
-    def search_records(self, query: str, *, top_k: int = 5) -> tuple[AdaptiveContextRecord, ...]:
-        """Search lexical/entity/rare-term address views without exposing originals."""
+    def proactive_materialize(
+        self,
+        event: MaterializationEvent,
+        *,
+        reason: str,
+        scope: RecordScope | None = None,
+    ) -> MaterializationResult:
+        """Expand hidden state only when host policy authorizes proactive reads."""
+
+        if not self.policy.allow_proactive_expansion:
+            self._audit("proactive_materialize_denied", event.record_id, reason=reason)
+            raise RecordAccessDenied(
+                "Proactive materialization is disabled by ContextPolicy."
+            )
+        result = self.materialize(event, scope=scope)
+        self._audit("proactive_materialize", event.record_id, reason=reason)
+        return result
+
+    def search_records(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        address_kinds: Sequence[str] | None = None,
+    ) -> tuple[AdaptiveContextRecord, ...]:
+        """Search selected retrieval-only views without exposing originals."""
 
         if top_k <= 0:
             raise ValueError("top_k must be positive.")
-        terms = {term.casefold() for term in query.split() if term}
+        supported = {"lexical", "entity", "rare_term", "schema", "summary", "dense"}
+        kinds = tuple(address_kinds or ("lexical", "entity", "rare_term", "schema", "summary"))
+        unknown = set(kinds) - supported
+        if unknown:
+            raise ValueError(f"Unsupported address views: {sorted(unknown)}")
+        terms = _query_terms(query)
         scored = []
         for record in self.records.values():
             addresses = record.address_views()
-            indexed = {
-                str(value).casefold()
-                for key in ("lexical", "entity", "rare_term", "schema", "summary")
-                for value in addresses.get(key, ())
-            }
-            score = len(terms & indexed)
+            indexed = _address_terms(addresses, kinds)
+            overlap = terms & indexed
+            phrase_bonus = int(bool(query.strip()) and query.casefold() in " ".join(sorted(indexed)))
+            score = len(overlap) + phrase_bonus
             if score:
                 scored.append((score, record.record_id, record))
         scored.sort(key=lambda row: (-row[0], row[1]))
+        self._audit(
+            "address_search",
+            "",
+            query=query,
+            address_kinds=list(kinds),
+            matches=len(scored),
+        )
         return tuple(row[2] for row in scored[:top_k])
 
     def open_cursor(self, record_id: str, **kwargs: object) -> CursorRecord:
@@ -600,13 +697,126 @@ class AdaptiveContextRuntime:
         self._audit("cursor_open", record_id, cursor_id=cursor.cursor_id)
         return cursor
 
-    def fetch_cursor(self, cursor_id: str, *, direction: str = "next") -> CursorPage:
+    def fetch_cursor(
+        self,
+        cursor_id: str,
+        *,
+        direction: str = "next",
+        scope: RecordScope | None = None,
+    ) -> CursorPage:
         """Fetch one bounded cursor page and account for the local operation."""
 
-        page = self.cursors.page(cursor_id, scope=self.scope, direction=direction)
+        caller_scope = scope or self.scope
+        page = self.cursors.page(cursor_id, scope=caller_scope, direction=direction)
         self._cursor_fetches += 1
+        self._account_cursor_payload(page)
         self._audit("cursor_fetch", "", cursor_id=cursor_id, start=page.start, stop=page.stop)
         return page
+
+    def execute_cursor_action(
+        self,
+        action: CursorAction,
+        *,
+        scope: RecordScope | None = None,
+    ) -> CursorActionResult:
+        """Validate, execute, and account one structured model cursor decision."""
+
+        caller_scope = scope or self.scope
+        started = time.perf_counter()
+        args = action.arguments
+        try:
+            if action.operation in {CursorOperation.NEXT, CursorOperation.PREVIOUS}:
+                payload = self.cursors.page(
+                    action.cursor_id,
+                    scope=caller_scope,
+                    direction=action.operation.value,
+                )
+            elif action.operation == CursorOperation.RANGE:
+                payload = self.cursors.range(
+                    action.cursor_id,
+                    int(args["start"]),
+                    int(args["stop"]),
+                    scope=caller_scope,
+                )
+            elif action.operation == CursorOperation.FILTER:
+                filters = args.get("filters")
+                if not isinstance(filters, Mapping):
+                    raise ValueError("filter requires a filters mapping.")
+                payload = self.cursors.refine(
+                    action.cursor_id,
+                    scope=caller_scope,
+                    filters=filters,
+                    order=str(args["order"]) if args.get("order") is not None else None,
+                )
+            elif action.operation == CursorOperation.AGGREGATE:
+                payload = self.cursors.aggregate(
+                    action.cursor_id, str(args["field"]), scope=caller_scope
+                )
+            elif action.operation == CursorOperation.SEARCH:
+                payload = self.cursors.search(
+                    action.cursor_id,
+                    str(args["query"]),
+                    scope=caller_scope,
+                    limit=int(args["limit"]) if args.get("limit") is not None else None,
+                )
+            elif action.operation == CursorOperation.SAMPLE:
+                payload = self.cursors.sample(
+                    action.cursor_id, int(args["count"]), scope=caller_scope
+                )
+            elif action.operation == CursorOperation.MATERIALIZE_FIELDS:
+                fields = args.get("fields")
+                if not isinstance(fields, Sequence) or isinstance(fields, (str, bytes)):
+                    raise ValueError("materialize_fields requires a fields sequence.")
+                payload = self.cursors.materialize_fields(
+                    action.cursor_id,
+                    tuple(str(value) for value in fields),
+                    scope=caller_scope,
+                )
+            elif action.operation == CursorOperation.CLOSE:
+                self.cursors.close(action.cursor_id, scope=caller_scope)
+                payload = {"closed": True}
+            else:  # pragma: no cover - Enum construction prevents this branch.
+                raise ValueError(f"Unsupported cursor operation: {action.operation}")
+        except (KeyError, TypeError, ValueError, RecordAccessDenied) as exc:
+            self._audit(
+                "cursor_action_error",
+                "",
+                cursor_id=action.cursor_id,
+                operation=action.operation.value,
+                error=str(exc),
+            )
+            return CursorActionResult(
+                action,
+                False,
+                None,
+                0,
+                time.perf_counter() - started,
+                f"{type(exc).__name__}: {exc}",
+            )
+        self._cursor_fetches += int(action.operation != CursorOperation.CLOSE)
+        payload_bytes = self._account_cursor_payload(payload)
+        self._audit(
+            "cursor_action",
+            "",
+            cursor_id=action.cursor_id,
+            operation=action.operation.value,
+            payload_bytes=payload_bytes,
+        )
+        return CursorActionResult(
+            action,
+            True,
+            payload,
+            payload_bytes,
+            time.perf_counter() - started,
+        )
+
+    def _account_cursor_payload(self, payload: object) -> int:
+        payload_bytes = _payload_bytes(payload)
+        self._materialized_bytes += payload_bytes
+        if self.policy.topology != DeploymentTopology.SAME_PROCESS:
+            self._network_bytes += payload_bytes
+            self._round_trips += 1
+        return payload_bytes
 
     def accounting(self) -> RuntimeAccounting:
         return RuntimeAccounting(
@@ -637,3 +847,20 @@ def _payload_bytes(payload: object) -> int:
     if isinstance(payload, str):
         return len(payload.encode("utf-8"))
     return len(json.dumps(payload, sort_keys=True, default=str).encode("utf-8"))
+
+
+_SEARCH_TOKEN = re.compile(r"[A-Za-z0-9_./:@+-]+")
+
+
+def _query_terms(value: object) -> set[str]:
+    return {token.casefold() for token in _SEARCH_TOKEN.findall(str(value))}
+
+
+def _address_terms(addresses: Mapping[str, object], kinds: Sequence[str]) -> set[str]:
+    terms: set[str] = set()
+    for kind in kinds:
+        value = addresses.get(kind, ())
+        values = value if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else (value,)
+        for item in values:
+            terms.update(_query_terms(item))
+    return terms
