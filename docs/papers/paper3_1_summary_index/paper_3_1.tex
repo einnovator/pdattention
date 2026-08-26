@@ -15,37 +15,46 @@
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (\pra) separates finding a memory from
-physically materializing its native keys and values. This separation admits an
-unusual index: a small language model can summarize each source chunk once,
-future queries can search those summaries, and a selected address can resolve
-to unchanged source-derived native \kv. We implement this identity-preserving
-sidecar and compare frozen generated summaries with lexical, typed extractive,
-and learned native-QK addresses on identity-disjoint HotpotQA, QASPER,
-2WikiMultiHopQA, and MuSiQue cohorts. Standalone summaries help QASPER but tie
-or regress elsewhere. The follow-up experiment asks the stricter question:
-does the summary add recall after lexical, extractive, and QK views already
-share the same four-parent materialization budget? Under validation-frozen
-reciprocal-rank fusion, adding the summary changes held-out recall by
+Long-memory systems must decide both \emph{what to retrieve} and \emph{how the
+model will consume it}. Progressive Retrieval Attention (\pra) separates these
+problems: compact address views discover source identities, then selected
+identities resolve to unchanged source-derived keys and values. This boundary
+makes generated summaries plausible retrieval indices without making summary
+text the evidence. We implement an identity-preserving summary sidecar and
+compare it with lexical, typed extractive, and learned native-QK addresses on
+identity-disjoint HotpotQA, QASPER, 2WikiMultiHopQA, and MuSiQue cohorts.
+Standalone summaries raise QASPER recall from $0.350$ to $0.513$ over a native
+mean-key baseline, but tie or regress elsewhere. The stricter fixed-budget test
+asks whether a summary remains useful after stronger views compete for the same
+four materialization slots. Under validation-frozen reciprocal-rank fusion,
+adding the summary changes held-out recall by
 $\PaperThreeOneHotpotRrfSummaryDelta$, $\PaperThreeOneQasperRrfSummaryDelta$,
 $\PaperThreeOneTwoWikiRrfSummaryDelta$, and
 $\PaperThreeOneMusiqueRrfSummaryDelta$, respectively. No positive paired
 interval excludes zero. Summaries nevertheless recover
 \PaperThreeOneSummaryUniqueQasper{} QASPER and
 \PaperThreeOneSummaryUniqueMusique{} MuSiQue evidence parents missed by every
-other single channel, so the failure is admission under a fixed budget rather
-than complete redundancy. Generated summaries remain optional interpretable
-semantic addresses, not the default index stack. One immutable native-memory
-record can support multiple compact typed address views, but this pilot closes
-the LoRA and downstream-generation gates until a selective policy establishes
-reproducible marginal value.
+other single channel, so the issue is admission under a fixed budget rather
+than complete redundancy. A controlled omission benchmark further shows that
+fluent summaries can lose low-salience entities and aliases needed by future
+queries. The central result is therefore that standalone value is not marginal
+value: the supported default is lexical, extractive, and QK addressing, while
+summary addresses remain optional until a selective controller establishes a
+reproducible gain.
 \end{abstract}
 
 \section{Introduction}
 
 Long-context systems face two different problems that are often collapsed into one. The first is \emph{discovery}: deciding which old source chunks might matter to the current query. The second is \emph{consumption}: presenting the corresponding information to the language model in the representation it expects. \pra treats them as separate stages. A small resident index performs discovery; only selected source identities cause native keys and values to enter the active attention set.
 
-This paper asks whether generated natural language can serve as that resident index. Consider a report whose main topic is equipment maintenance but whose appendix records the alias ``Northglass.'' A fluent summary will probably preserve the main topic. A later query about the alias, however, needs the seemingly minor appendix detail. The summary can be concise and accurate yet still be a poor retrieval address. This is the central tension: ordinary summarization preserves present salience, while routing must preserve unknown future discriminators.
+This paper asks whether generated natural language can serve as that resident
+index. Consider a report whose main topic is equipment maintenance but whose
+appendix records the alias ``Northglass.'' A fluent summary will probably
+preserve the main topic. A later query about the alias, however, needs that
+seemingly minor detail. The summary can be concise, faithful, and useful to a
+reader while still being a poor retrieval address. Ordinary summarization
+preserves what appears salient now; routing must preserve discriminators for
+queries that are not known when the index is built.
 
 We evaluate that tension without turning the experiment into text retrieval-augmented generation. Each generated address remains bound to an exact source URI, chunk identifier, token span, and source hash. A successful match materializes the original source chunk's unchanged native \kv; summary text never becomes answer evidence. The implementation therefore tests lossy discovery while preserving native consumption.
 
@@ -63,21 +72,29 @@ This study contributes five concrete results:
 \begin{enumerate}[leftmargin=*]
 \item an identity-safe summary sidecar whose output cannot leak into native-\kv materialization;
 \item a matched-budget comparison across four natural datasets and inherited lexical and learned-QK baselines;
-\item controlled omission and equal-token facet experiments that isolate coverage from fluency; and
+\item controlled omission and equal-token facet experiments that isolate coverage from fluency;
 \item a fixed-budget multi-index comparison of round-robin, reserved-slot,
 agreement, reciprocal-rank, and normalized-score admission; and
 \item measured index, ingestion, routing, and amortization costs that prevent compact storage from being confused with cheap operation.
 \end{enumerate}
 
-\section{Where summary indices fit in PRA}
+The remainder of the paper introduces the identity-safe address boundary,
+freezes the evaluation protocol, and then moves from standalone retrieval to
+omission, fixed-budget competition, and cost. Related systems and limitations
+place the negative marginal result in context. Detailed scorer, cache, facet,
+admission, and reproducibility material appears in the appendices.
+
+\section{Summary addresses in PRA}
 
 Earlier work in the \pra series narrows the question. Paper 2.5 found that iterative associative closure can expose controlled bridges but does not reliably improve natural multihop retrieval. Paper 2.6 found lexical and semantic channels to be complementary. Paper 2.7 showed that query faceting is not automatically beneficial. Paper 2.8 found that learned low-rank native-QK routing can improve selected semantic cohorts while BM25 remains strong for lexical evidence. Paper 2.9 found no reliable held-out gain from short temporal query pooling. Paper 3 then separated conceptual selection from physical native-\kv materialization.
 
-Paper 3.1 changes only the representation used for discovery. It does not compress active \kv, rewrite source state, or answer from summaries. This distinction also separates the method from conventional text RAG: retrieved language is an address that resolves to model-native evidence, not the evidence placed in the prompt.
+Paper 3.1 changes only the representation used for discovery. It does not
+compress active \kv, rewrite source state, or answer from summaries. This
+distinction also separates the method from conventional text RAG
+\cite{lewis2020rag}: retrieved language is an address that resolves to
+model-native evidence, not the evidence placed in the prompt.
 
 The result is best understood as a typed-index question. Source BM25 preserves explicit strings. A generated summary can normalize paraphrases and relations. Learned QK features preserve host-model geometry. These representations fail differently, so the scientific question is not whether one replaces all others, but whether generated language adds enough complementary discovery to justify its ingestion cost.
-
-\section{Method}
 
 \subsection{An address backed by native evidence}
 
@@ -119,22 +136,18 @@ unchanged native-\kv materializer $\rightarrow$ selected source-derived $K_i,V_i
 
 The implementation lives in \code{src/pra\_hf/summary\_index.py}. \code{SummaryIndexRecord} stores the immutable identity beside generated summary text or independently scored facets. \code{native\_kv\_request()} removes all lossy text. \code{assert\_source\_alignment()} compares the full URI, span, and hash set with the inherited native-memory registry before evaluation.
 
-Generation is deterministic and resumable. The cache key hashes the model, prompt version, token budget, facet count, and exact source text. The cache deliberately excludes the logical item identifier so identical chunks may reuse generated content. A cache hit is rebound to the requesting item identity; this detail matters because content reuse must never alias two native-memory addresses. A regression test covers duplicate-content rebinding.
+Generation is deterministic and resumable. Cache reuse is content-based, but
+every hit is rebound to the requesting immutable identity before it can reach
+the materializer. Appendix~\ref{app:cache} gives the cache key and provenance
+checks.
 
 \subsection{Scorers are separate from summaries}
 
-Summary quality and query matching are independent variables. We therefore score the same generated address with four frozen channels:
-\begin{itemize}[leftmargin=*]
-\item exact normalized query-token overlap;
-\item BM25 over summary text;
-\item cosine similarity from frozen MiniLM embeddings; and
-\item a validation-frozen convex fusion of BM25 and embedding scores.
-\end{itemize}
-For a faceted record, each facet is scored separately and the chunk receives its maximum facet score. The hybrid first min--max normalizes each channel within the source, then computes
-\[
-r_i^{\mathrm{hyb}}=\alpha\,\widetilde r_i^{\mathrm{BM25}}+(1-\alpha)\,\widetilde r_i^{\mathrm{emb}}.
-\]
-Weights $\alpha\in\{0.25,0.50,0.75\}$ are considered only on validation identities. The held-out policy is never changed after observing test results.
+Summary quality and query matching are independent variables. We therefore
+score the same generated address with exact overlap, BM25, frozen MiniLM, and a
+validation-frozen lexical--embedding fusion. This separation prevents a good
+generator from being credited for a better scorer, or vice versa. The complete
+scorer frontier and fusion equation appear in Appendix~\ref{app:frontier}.
 
 \subsection{One backing memory, multiple address views}
 
@@ -190,13 +203,10 @@ parents.
 
 Single-channel baselines retain native mean, source BM25, typed extractive,
 generated summary, rank-16 QK, rank-8/eight-centroid QK, and oracle identity.
-The multi-index matrix includes every pair, the requested three-channel stacks,
-and $L+E+S+QK$. Round-robin and agreement union are parameter-free. Reserved
-policies include $2L+2S$, $2E+2S$, $2L+2QK$, $2E+2QK$, and interpretable
-one- or two-slot lexical safety reservations. Score fusion searches only equal,
-address-weighted, semantic-weighted, summary-weighted, and QK-weighted
-templates on validation. RRF searches only $d=10$ or $60$. This is deliberately
-not a combinatorial controller search.
+The multi-index matrix includes all pairs, selected three-channel stacks, and
+$L+E+S+QK$. We compare round-robin, agreement, reserved-slot, normalized-score,
+and RRF admission. The search is deliberately small and frozen on validation;
+the full policy grid appears in Appendix~\ref{app:admission}.
 
 \subsection{Metrics and gates}
 
@@ -204,7 +214,7 @@ The primary endpoint is evidence recall at four selected parent chunks. We also 
 
 Training is gated. LoRA distillation begins only if frozen summaries show a positive held-out signal or if a teacher establishes clear headroom over a small model. Native-\kv answer generation begins only after a discovery condition passes the retrieval gate. These gates prevent capacity or downstream adaptation from obscuring a failed index hypothesis.
 
-\section{Held-out retrieval results}
+\section{Standalone retrieval}
 
 Figure~\ref{fig:headline} and Table~\ref{tab:headline} report the frozen policies. QASPER provides the only positive summary delta: recall rises from $0.350$ to $0.513$. The paired interval is broad, $[-0.400,0.688]$, and rank-16 QK reaches $0.775$. The summary is therefore a promising complementary QASPER address, not the best standalone index.
 
@@ -237,110 +247,7 @@ MuSiQue & 8 & .615 & .646 & .344 & .458 & .563 & 1.000 & -.052 [-.375,.208]\\
 
 Complete recovery follows the same pattern. The summary policies recover every evidence chunk on $0.750$, $0.375$, $0.500$, and $0.250$ of HotpotQA, QASPER, 2Wiki, and MuSiQue examples. Thus the QASPER recall gain is not merely a partial-hit artifact, but it also does not close the oracle gap.
 
-\section{Fixed-budget multi-index results}
-
-\subsection{The channels are complementary}
-
-Figure~\ref{fig:multi-overlap} classifies each evidence parent by which
-single-channel top-four lists recover it. All eight HotpotQA evidence parents
-are multi-channel recoveries. QASPER is less redundant: QK alone recovers four
-evidence parents, $S$ alone recovers \PaperThreeOneSummaryUniqueQasper{}, $L$
-alone recovers one, and six are missed by every channel. MuSiQue has
-\PaperThreeOneSummaryUniqueMusique{} summary-only, two lexical-only, and one
-extractive-only recovery. Summaries therefore contain unique routing signal;
-the remaining question is whether that signal survives competition for four
-slots.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{../shared/results/paper3_1_summary_index/multi_index/multi_index_channel_overlap.pdf}
-\caption{Evidence-parent recovery by single-channel top-four lists. ``Multi''
-means at least two of $L,E,S,QK$ recover the parent; ``miss'' means none does.
-Counts describe complementarity before a combined admission policy.}
-\label{fig:multi-overlap}
-\end{figure}
-
-\subsection{More address views do not imply more admitted evidence}
-
-Table~\ref{tab:multi-main} reports the validation-frozen RRF comparison at the
-same $K=4$ materialization budget. $L+S$ matches or exceeds either member on
-HotpotQA and MuSiQue, and $L+QK$ reaches $1.000$ on 2Wiki. The full four-view
-stack does not dominate. It ties the $L+E+QK$ base on HotpotQA and MuSiQue,
-falls on QASPER, and loses one 2Wiki evidence outcome. The cost frontier in
-Figure~\ref{fig:multi-frontier} makes the architectural accounting explicit:
-these are multiple resident address views over one backing memory, not multiple
-copies of native \kv.
-
-\begin{table}[H]
-\centering
-\small
-\resizebox{\linewidth}{!}{\input{../shared/results/paper3_1_summary_index/multi_index/generated_multi_index_table.tex}}
-\caption{Held-out evidence recall at $K=4$. Single-channel rows use their own
-rankings. Combined rows use validation-frozen RRF and the same final parent
-budget.}
-\label{tab:multi-main}
-\end{table}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.93\linewidth]{../shared/results/paper3_1_summary_index/multi_index/multi_index_recall_cost_frontier.pdf}
-\caption{Fixed-budget recall versus persistent address-index bytes per source.
-Backing source/native-\kv storage is shared and excluded from every point.}
-\label{fig:multi-frontier}
-\end{figure}
-
-\subsection{Summary marginal value depends on admission}
-
-The primary marginal test is
-\[
-\Delta_S=R(L+E+S+QK)-R(L+E+QK).
-\]
-Under RRF, Table~\ref{tab:summary-marginal} gives deltas of
-$\PaperThreeOneHotpotRrfSummaryDelta$,
-$\PaperThreeOneQasperRrfSummaryDelta$,
-$\PaperThreeOneTwoWikiRrfSummaryDelta$, and
-$\PaperThreeOneMusiqueRrfSummaryDelta$. No positive interval excludes zero.
-QASPER has one win, six ties, and one loss; the negative mean comes from the
-larger loss. On 2Wiki, one loss and three ties produce the $-0.083$ delta.
-
-\begin{table}[H]
-\centering
-\small
-\input{../shared/results/paper3_1_summary_index/multi_index/generated_summary_marginal_table.tex}
-\caption{Summary marginal recall under validation-frozen RRF. ``Base'' is
-$L+E+QK$; ``+Summary'' is $L+E+S+QK$. Intervals use 10,000 paired identity
-resamples.}
-\label{tab:summary-marginal}
-\end{table}
-
-Other admission rules reveal small but unresolved positive regimes. Round-robin
-changes QASPER by $\PaperThreeOneQasperRoundRobinSummaryDelta$
-$[\PaperThreeOneQasperRoundRobinLow,\PaperThreeOneQasperRoundRobinHigh]$ and
-MuSiQue by $\PaperThreeOneMusiqueRoundRobinSummaryDelta$
-$[\PaperThreeOneMusiqueRoundRobinLow,\PaperThreeOneMusiqueRoundRobinHigh]$.
-A fixed $2L+2S$ MuSiQue reservation reaches
-$\PaperThreeOneMusiqueReservedRecall$, a
-$\PaperThreeOneMusiqueReservedDelta$ effect versus $L$ alone, but its interval
-$[\PaperThreeOneMusiqueReservedLow,\PaperThreeOneMusiqueReservedHigh]$ also
-crosses zero. Agreement priority and normalized fusion likewise fail to produce
-a resolved positive summary marginal. The policy-level artifact reports paired
-effects against every constituent single channel, so no favorable point is
-promoted without its interval and wins/ties/losses.
-
-The distinction matters. Summaries are \emph{complementary}: they find evidence
-missed by $L,E,$ and $QK$. They do not yet show \emph{net fixed-budget utility}
-because unconditional admission can displace stronger candidates. Selective
-summary admission remains plausible; a default four-view union does not.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=.9\linewidth]{../shared/results/paper3_1_summary_index/multi_index/summary_marginal_contribution.pdf}
-\caption{Summary marginal recall across four fixed admission families. All
-comparisons hold $K=4$ constant.}
-\label{fig:summary-marginal}
-\end{figure}
-
-\section{Why summaries fail: controlled omission}
+\section{Omission and addressability}
 
 Natural retrieval cannot reveal whether a chunk was missed because the generator omitted an address or because the scorer failed to use one. We therefore construct 20 examples, four per fact type. Each example contains six topical chunks. One chunk hides a query-critical entity, alias, relation, date/number, or rare string as a minor detail. The target does not influence summary generation.
 
@@ -399,20 +306,124 @@ result conventional summary quality would mostly remeasure lexical coverage
 and compression. The direct address-retention and retrieval correlations are
 better aligned with the question tested here.
 
-\section{Equal-budget facet geometry}
+This distinction suggests three omission regimes. In \emph{explicit-answer
+omission}, the query names a missing fact and can therefore trigger direct
+recovery. In \emph{latent-evidence omission}, the missing fact is necessary but
+is not itself named. In \emph{action-trigger omission}, the omitted fact would
+have made a different tool or action relevant. The controlled benchmark
+directly tests the second regime. It motivates the third, but does not measure
+agent action selection.
 
-Facets might spread a fixed budget across more independent addresses. We compare $1\times32$, $2\times16$, $4\times8$, and $8\times4$ maximum-token geometries with a frozen 1.2B model on two validation Hotpot identities. BM25 recall is $0.50$, $0.75$, $0.50$, and $0.50$, respectively. The small diagnostic favors two medium facets, not monotonically more facets.
+\section{Fixed-budget multi-index competition}
+
+\subsection{The channels are complementary}
+
+Figure~\ref{fig:multi-overlap} classifies each evidence parent by which
+single-channel top-four lists recover it. All eight HotpotQA evidence parents
+are multi-channel recoveries. QASPER is less redundant: QK alone recovers four
+evidence parents, $S$ alone recovers \PaperThreeOneSummaryUniqueQasper{}, $L$
+alone recovers one, and six are missed by every channel. MuSiQue has
+\PaperThreeOneSummaryUniqueMusique{} summary-only, two lexical-only, and one
+extractive-only recovery. Summaries therefore contain unique routing signal;
+the remaining question is whether that signal survives competition for four
+slots.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_1_summary_index/multi_index/multi_index_channel_overlap.pdf}
+\caption{Evidence-parent recovery by single-channel top-four lists. ``Multi''
+means at least two of $L,E,S,QK$ recover the parent; ``miss'' means none does.
+Counts describe complementarity before a combined admission policy.}
+\label{fig:multi-overlap}
+\end{figure}
+
+\subsection{More address views do not imply more admitted evidence}
+
+Table~\ref{tab:multi-main} reports the validation-frozen RRF comparison at the
+same $K=4$ materialization budget. $L+S$ matches or exceeds either member on
+HotpotQA and MuSiQue, and $L+QK$ reaches $1.000$ on 2Wiki. The full four-view
+stack does not dominate. It ties the $L+E+QK$ base on HotpotQA and MuSiQue,
+falls on QASPER, and loses one 2Wiki evidence outcome. The cost frontier in
+Figure~\ref{fig:multi-frontier} makes the architectural accounting explicit:
+these are multiple resident address views over one backing memory, not multiple
+copies of native \kv.
+
+\begin{table}[H]
+\centering
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_1_summary_index/multi_index/generated_multi_index_table.tex}}
+\caption{Held-out evidence recall at $K=4$. Single-channel rows use their own
+rankings. Combined rows use validation-frozen RRF and the same final parent
+budget.}
+\label{tab:multi-main}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.93\linewidth]{../shared/results/paper3_1_summary_index/multi_index/multi_index_recall_cost_frontier.pdf}
+\caption{Fixed-budget recall versus persistent address-index bytes per source.
+Backing source/native-\kv storage is shared and excluded from every point.}
+\label{fig:multi-frontier}
+\end{figure}
+
+\subsection{Standalone value is not marginal value}
+
+The primary marginal test is
+\[
+\Delta_S=R(L+E+S+QK)-R(L+E+QK).
+\]
+Here $R(\cdot)$ is evidence recall at the shared four-parent budget. The base
+condition already has lexical ($L$), typed extractive ($E$), and learned QK
+addresses. The difference therefore measures the summary's net contribution
+after both unique recoveries and displaced base candidates are counted.
+
+Under RRF, Table~\ref{tab:summary-marginal} gives deltas of
+$\PaperThreeOneHotpotRrfSummaryDelta$,
+$\PaperThreeOneQasperRrfSummaryDelta$,
+$\PaperThreeOneTwoWikiRrfSummaryDelta$, and
+$\PaperThreeOneMusiqueRrfSummaryDelta$. No positive interval excludes zero.
+QASPER has one win, six ties, and one loss; the negative mean comes from the
+larger loss. On 2Wiki, one loss and three ties produce the $-0.083$ delta.
+
+\begin{table}[H]
+\centering
+\small
+\input{../shared/results/paper3_1_summary_index/multi_index/generated_summary_marginal_table.tex}
+\caption{Summary marginal recall under validation-frozen RRF. ``Base'' is
+$L+E+QK$; ``+Summary'' is $L+E+S+QK$. Intervals use 10,000 paired identity
+resamples.}
+\label{tab:summary-marginal}
+\end{table}
+
+Other admission rules reveal small but unresolved positive regimes. Round-robin
+changes QASPER by $\PaperThreeOneQasperRoundRobinSummaryDelta$
+$[\PaperThreeOneQasperRoundRobinLow,\PaperThreeOneQasperRoundRobinHigh]$ and
+MuSiQue by $\PaperThreeOneMusiqueRoundRobinSummaryDelta$
+$[\PaperThreeOneMusiqueRoundRobinLow,\PaperThreeOneMusiqueRoundRobinHigh]$.
+A fixed $2L+2S$ MuSiQue reservation reaches
+$\PaperThreeOneMusiqueReservedRecall$, a
+$\PaperThreeOneMusiqueReservedDelta$ effect versus $L$ alone, but its interval
+$[\PaperThreeOneMusiqueReservedLow,\PaperThreeOneMusiqueReservedHigh]$ also
+crosses zero. Agreement priority and normalized fusion likewise fail to produce
+a resolved positive summary marginal. Full policy grids appear in
+Appendix~\ref{app:admission}.
+
+The distinction matters. Summaries are \emph{complementary}: they find evidence
+missed by $L,E,$ and $QK$. They do not yet show \emph{net fixed-budget utility}
+because unconditional admission can displace stronger candidates. Selective
+summary admission remains plausible; a default four-view union does not.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=.72\linewidth]{../shared/results/paper3_1_summary_index/publication/geometry_recall.pdf}
-\caption{Diagnostic equal-budget facet geometry on two HotpotQA validation identities. The experiment is intentionally not a held-out cross-dataset claim.}
-\label{fig:geometry}
+\includegraphics[width=.9\linewidth]{../shared/results/paper3_1_summary_index/multi_index/summary_marginal_contribution.pdf}
+\caption{Summary marginal recall across four fixed admission families. All
+comparisons hold $K=4$ constant.}
+\label{fig:summary-marginal}
 \end{figure}
 
-Actual output is shorter than the maximum: the four geometries use 184, 172, 151, and 152 summary tokens per source across all candidate chunks. Ingestion takes 33.7, 33.4, 47.9, and 48.9 seconds per source. Structured output overhead therefore makes the many-facet conditions more expensive even when content-token capacity is held fixed.
+\section{Cost}
 
-\section{Storage and time accounting}
+\subsection{Storage and time accounting}
 
 Table~\ref{tab:cost} separates the persistent routing index from backing source/native-\kv storage and from the physically materialized native \kv. Pure lexical summary policies occupy only $652$--$2{,}205$ bytes per source. MuSiQue's selected hybrid occupies $16{,}793$ bytes because $15{,}744$ bytes are frozen embedding vectors; summary text itself occupies about $1{,}049$ bytes. None of these numbers includes backing native memory.
 
@@ -456,7 +467,7 @@ For $Q$ later queries to one source, measured one-time generation $C_s$ contribu
 
 These are not favorable end-to-end break-even claims. The conditions with lower routing cost do not also provide a reliable quality gain. The measurements instead establish the scale at which asynchronous ingestion could become acceptable for repeatedly queried, stable corpora.
 
-\section{Gate decisions and implications}
+\subsection{Gate decisions and implications}
 
 \paragraph{Frozen concept gate.}
 QASPER shows standalone summary value, and channel-overlap rows confirm unique
@@ -482,28 +493,115 @@ one common native-\kv materializer. The multi-index result replaces a vague
 ``hybrid'' recommendation with an explicit admission requirement: channel
 complementarity is useful only when final-slot competition is calibrated.
 
+\section{Related work}
+
+The systems nearest to this study differ less in whether they retain the
+original than in how omitted content becomes reachable again. That distinction
+matters because \emph{nothing is permanently lost} does not imply that
+\emph{everything remains discoverable at the decision point}.
+
+\paragraph{Reversible context compression.}
+Headroom applies type-aware compressors to tool outputs, database results, file
+reads, logs, and retrieved text. Its Compress--Cache--Retrieve (CCR) path keeps
+the original in a local cache, places a marker or handle in the compressed
+view, and injects a \code{headroom\_retrieve} tool. On supported proxy paths,
+the response handler resolves that tool transparently; the context tracker can
+also re-expand relevant cached content proactively
+\cite{headroomCCR,headroomArchitecture}. Type-specific handling preserves
+structure and anomalies rather than forcing every record through one language
+summary. The project's public reproducible benchmarks report large compression
+on several structured outputs and favorable QA and extraction accuracy
+\cite{headroomBenchmarks}. These are meaningful system results.
+
+Paper 3.1 asks a different question. CCR makes the original recoverable once a
+marker, model action, or tracker chooses the right cached object. We ask whether
+a compact representation preserves the unknown-future address needed to make
+that choice. The controlled benchmark supports concern about latent-evidence
+omission; it does not show that Headroom fails, that CCR cannot recover an
+original, or that its safety mechanisms are ineffective. Whether an omitted
+detail changes a later tool decision is a hypothesis for a separate agent-level
+study.
+
+\paragraph{Prompt and selective compression.}
+Selective Context prunes low-information units, while LLMLingua and
+LongLLMLingua allocate compression budgets and remove tokens to reduce prompt
+cost while preserving downstream performance
+\cite{li2023selective,jiang2023llmlingua,jiang2023longllmlingua}. These methods
+optimize the representation the model consumes. In contrast, a PRA summary is
+not consumed as evidence. It is one address view whose selected identity
+resolves to the original native representation. Conventional summary quality
+can therefore diverge from address quality, especially for low-salience future
+discriminators.
+
+\paragraph{Agent memory and programmatic state.}
+MemGPT moves information among model-managed memory tiers and uses explicit
+control flow for retrieval \cite{packer2024memgpt}. Scroll instead keeps an
+append-only event log and a typed persistent program environment; only printed
+projections enter the working view, while eviction landmarks retain exact log
+addresses \cite{lin2026scroll}. These systems preserve richer state and expose
+recovery through model actions or programs. PRA is narrower: index scoring can
+select an immutable source identity before the model emits a recovery action.
+Scroll's landmarks are particularly close in spirit to identity-backed address
+views, although its unit of consumption is a programmatically projected event
+rather than selected native \kv.
+
+\paragraph{Retrieval and KV selection.}
+RAG retrieves external documents and places text in the generator's context
+\cite{lewis2020rag}; lexical, dense, and hybrid variants mainly differ in how
+documents are ranked. RetrievalAttention indexes key vectors and retrieves a
+sparse subset of the KV cache during decoding \cite{liu2025retrievalattention}.
+PRA combines these boundaries: lexical, extractive, generated, and learned-QK
+views can all address the same source record, while a separate materializer
+controls native-\kv consumption. The contribution here is not a new universal
+retriever. It is the fixed-budget test showing that an additional address view
+must earn scarce materialization slots.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.17\linewidth}p{.21\linewidth}p{.23\linewidth}X}
+\toprule
+System family & Losslessly retained & Initial model view & Recovery path \\
+\midrule
+Headroom CCR & Cached original & Type-compressed output and marker & Model tool, proxy handler, or proactive tracker \\
+MemGPT / Scroll & Memory tier or event log & Active tier or printed projection & Model-managed memory action or program \\
+Text RAG & External document corpus & Retrieved passages & Lexical, dense, or hybrid retriever \\
+Prompt compression & Usually source outside compressed prompt & Pruned or rewritten text & Usually no identity-bound recovery path \\
+PRA here & Source identity and native \kv backing & Compact typed addresses & Indexed selection, then identity-resolved native \kv \\
+\bottomrule
+\end{tabularx}
+\caption{The decisive comparison is not only what remains stored, but what
+causes omitted content to become visible when a later decision needs it.}
+\label{tab:related-taxonomy}
+\end{table}
+
 \section{Limitations}
 
-The held-out cohorts contain only 24 identities, and two teacher datasets contain four identities each. Bootstrap intervals appropriately remain wide. Multi-index fusion choices use only two validation identities per dataset; the tiny grid limits overfitting but cannot make policy selection stable. The equal-budget geometry study is a two-identity validation diagnostic. The omission benchmark is controlled and intentionally adversarial; its absolute rates should not be generalized to natural corpora.
+The held-out natural cohorts contain only 24 identities, and two teacher
+datasets contain four identities each. Bootstrap intervals appropriately remain
+wide. Multi-index fusion choices use only two validation identities per
+dataset; the tiny grid limits overfitting but cannot make policy selection
+stable. The primary conclusion is specific to a fixed four-parent budget.
+Larger or adaptive budgets could change which channels are marginally useful.
+The equal-budget geometry study is a two-identity validation diagnostic. The
+omission benchmark is controlled and intentionally adversarial; its absolute
+rates should not be generalized to natural corpora.
 
 Generation uses local quantized Ollama models and one machine with a 4GB GPU. The 8B teacher is CPU/GPU split, so its latency should not be treated as a hardware-independent model benchmark. Peak ingestion memory was not sampled robustly; this paper reports wall time, persistent bytes, and model metadata instead. MiniLM timing includes local service overhead and is not an optimized in-process embedding implementation.
 
-The study measures discovery, not final answer quality. Although selected records map to unchanged native-memory requests, no downstream generation is run after the gate closes. Natural alias labels and independent reference summaries are unavailable, so alias retention and conventional ROUGE-style quality are not reported. The frozen cache also caps output at 32 tokens; extending it to 64 or 128 would require a new generation intervention, not a post-hoc truncation comparison. Finally, a stronger learned summarizer might outperform frozen prompts, but the absent teacher and multi-index headroom provides no evidence that scaling this particular target is the right next step.
-
-\section{Reproducibility}
-
-Every row is tracked with dataset identity, selected and positive parent indices, index bytes, generated tokens, ingestion and routing time, and materialized native-\kv tokens. Manifests record source-model revision, Ollama model metadata, prompt version, generation and dataset seeds, exact hashes of inherited feature tensors, and the source commits for Papers 2.5 through 3. Generated addresses are append-only JSONL records; source text and large native-QK tensors are not duplicated into the repository.
-
-The original runner is \code{experiments/paper3\_1\_summary\_index/run\_study.py}.
-The multi-index replay is \code{run\_multi\_index\_study.py};
-\code{build\_multi\_index\_artifacts.py} regenerates paired effects, tables,
-macros, and five figures. Required artifacts retain per-candidate scores and
-ranks, channel overlap, every union/fusion row, typed-address coverage,
-correlations, component costs, and validation-frozen policy choices. Focused
-tests verify source alignment, typed extraction, deterministic unions,
-reserved slots, RRF, normalized fusion, native-request projection, cache
-resumption, and duplicate-content identity rebinding. The paper's numerical
-tables and prose macros are generated from tracked row-level CSVs.
+The study measures discovery, not final answer quality. Although selected
+records map to unchanged native-memory requests, no downstream generation is
+run after the gate closes. All evaluated summary addresses are model-generated;
+there is no independently authored natural reference-summary set. Natural alias
+labels are also unavailable. These omissions are why we report address-key
+retention rather than ROUGE-style metrics. No learned controller decides when a
+summary deserves a slot, so the negative unconditional result does not rule out
+selective summary admission. The frozen cache caps output at 32 tokens;
+extending it to 64 or 128 would require a new generation intervention, not a
+post-hoc truncation comparison. Finally, the study does not compare directly
+against Headroom, CCR, Scroll, or an agent action benchmark. Claims about
+action-trigger omission remain hypotheses rather than measured failures of
+those systems.
 
 \section{Conclusion}
 
@@ -517,5 +615,179 @@ fixed-budget admission policy before selected identities resolve to unchanged
 native \kv. The default stack remains $L+E+QK$. Summary routing is an optional
 experimental channel until larger cohorts demonstrate positive marginal value;
 only then should learned summarization or downstream generation reopen.
+
+The experiments and claims are now frozen for external review. Reopening the
+mechanism requires either a validity correction or an independently powered
+test of selective marginal utility.
+
+\appendix
+
+\section{Generator and scorer frontier}
+\label{app:frontier}
+
+The generated-model frontier contains 135M, 0.6B, 1.2B, 4B, and 8B local
+models. Generation prompts are either generic summaries or retrieval-oriented
+addresses, with one or several facets under a fixed maximum token budget. The
+same generated text is scored independently by normalized token overlap, BM25,
+frozen MiniLM cosine similarity, or a convex fusion. For the hybrid scorer,
+each channel is min--max normalized within one source before
+\[
+r_i^{\mathrm{hyb}}
+=\alpha\widetilde r_i^{\mathrm{BM25}}
+ +(1-\alpha)\widetilde r_i^{\mathrm{emb}}.
+\]
+Validation considers only $\alpha\in\{0.25,0.50,0.75\}$. Faceted records score
+each facet separately and assign the parent its maximum facet score. Generator,
+prompt, facet geometry, scorer, and fusion weight are frozen before held-out
+evaluation.
+
+\section{Cache safety and provenance}
+\label{app:cache}
+
+The generation cache key hashes the model, prompt version, token budget, facet
+count, and exact source text. It excludes the logical item identifier so that
+identical source text can reuse generated content. Reuse never reuses identity:
+a cache hit is rebound to the requesting URI, parent identifier, token span,
+and source hash. Before evaluation, \code{assert\_source\_alignment()} compares
+the complete identity set with the inherited native-memory registry. A
+duplicate-content regression test verifies that cache reuse cannot alias two
+native-memory records.
+
+\section{Equal-budget facet geometry}
+\label{app:facets}
+
+Facets might spread a fixed generation budget across independent addresses. We
+compare $1\times32$, $2\times16$, $4\times8$, and $8\times4$ maximum-token
+geometries with a frozen 1.2B model on two HotpotQA validation identities. BM25
+recall is $0.50$, $0.75$, $0.50$, and $0.50$, respectively. The small
+diagnostic favors two medium facets, not monotonically more facets.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper3_1_summary_index/publication/geometry_recall.pdf}
+\caption{Diagnostic equal-budget facet geometry on two validation identities;
+it is not a held-out cross-dataset result.}
+\label{fig:geometry}
+\end{figure}
+
+Actual output is shorter than the maximum: the four geometries use 184, 172,
+151, and 152 summary tokens per source across all candidate chunks. Ingestion
+takes 33.7, 33.4, 47.9, and 48.9 seconds per source. Structured-output overhead
+therefore makes many short facets more expensive even at equal content-token
+capacity.
+
+\section{Multi-index admission grid}
+\label{app:admission}
+
+The matrix includes every channel pair, selected three-channel stacks, and
+$L+E+S+QK$. Round-robin and agreement union are parameter-free. Reserved
+policies include $2L+2S$, $2E+2S$, $2L+2QK$, $2E+2QK$, and one- or two-slot
+lexical safety reservations. Normalized fusion searches only equal,
+address-weighted, semantic-weighted, summary-weighted, and QK-weighted
+templates. RRF searches $d\in\{10,60\}$. Each choice is frozen separately by
+dataset and channel set on validation identities. Candidate scores, ranks,
+admitted identities, and wins/ties/losses are retained in the row-level
+artifacts.
+
+\section{Extended diagnostics and tables}
+\label{app:extended}
+
+The tracked publication directory contains per-example recall, precision,
+complete recovery, reciprocal rank, channel overlap, and paired effects for
+every frozen standalone policy. The multi-index directory adds every union and
+fusion row, policy-specific paired effects, channel-hit decomposition, and
+address-retention diagnostics. Generated TeX tables are rebuilt from those
+rows; numerical claims in the main text are not maintained by hand.
+
+\section{Extended cost accounting}
+\label{app:costs}
+
+Cost artifacts separate persistent address bytes, embedding bytes, generated
+tokens, one-time ingestion wall time, routing wall time, backing source/native
+memory, and physically materialized native tokens. The base and summary-added
+conditions share one backing record. QK projection cost is inherited and
+marked unmeasured in this replay; it is never assigned a zero. Amortization
+tables report $C_s/Q$ for repeated queries rather than treating ingestion as a
+per-query charge.
+
+\section{Controlled omission construction}
+\label{app:omission}
+
+The omission benchmark contains 20 examples, four each for entities, aliases,
+relations, dates or numbers, and rare strings. Six topically similar chunks
+appear in each example. One low-salience fact identifies the positive chunk,
+but the query is withheld during summary generation. Full-source BM25, the
+typed extractive index, the generated-summary index, and a shuffled-address
+control are evaluated at one admitted chunk. The construction tests latent
+evidence omission, not natural prevalence and not downstream tool selection.
+
+\section{Reproducibility}
+\label{app:reproducibility}
+
+Every row is tracked with dataset identity, selected and positive parent
+indices, index bytes, generated tokens, ingestion and routing time, and
+materialized native-\kv tokens. Manifests record source-model revision, Ollama
+metadata, prompt version, generation and dataset seeds, inherited feature
+hashes, and source commits. Generated addresses are append-only JSONL records;
+source text and large native-QK tensors are not duplicated into the repository.
+
+The original runner is
+\code{experiments/paper3\_1\_summary\_index/run\_study.py}. The multi-index
+replay is \code{run\_multi\_index\_study.py};
+\code{build\_multi\_index\_artifacts.py} regenerates effects, tables, macros,
+and figures. Focused tests cover source alignment, typed extraction,
+deterministic unions, reservations, RRF, normalized fusion, native-request
+projection, cache resumption, and duplicate-content rebinding.
+
+\begin{thebibliography}{99}
+
+\bibitem{headroomCCR}
+Headroom Labs. Reversible Compression (CCR), 2026.
+\url{https://docs.headroomlabs.ai/docs/ccr}.
+
+\bibitem{headroomArchitecture}
+Headroom Labs. Architecture: context routing, type-specific compression, and
+CCR, 2026. \url{https://docs.headroomlabs.ai/docs/architecture}.
+
+\bibitem{headroomBenchmarks}
+Headroom Labs. Compression and accuracy benchmarks, 2026.
+\url{https://docs.headroomlabs.ai/docs/benchmarks}.
+
+\bibitem{li2023selective}
+Yucheng Li, Bo Dong, Chenghua Lin, and Frank Guerin. Compressing context to
+enhance inference efficiency of large language models. EMNLP, 2023.
+\url{https://arxiv.org/abs/2310.06201}.
+
+\bibitem{jiang2023llmlingua}
+Huiqiang Jiang, Qianhui Wu, Chin-Yew Lin, Yuqing Yang, and Lili Qiu.
+LLMLingua: Compressing prompts for accelerated inference of large language
+models. EMNLP, 2023. \url{https://arxiv.org/abs/2310.05736}.
+
+\bibitem{jiang2023longllmlingua}
+Huiqiang Jiang, Qianhui Wu, Xufang Luo, Dongsheng Li, Chin-Yew Lin, Yuqing
+Yang, and Lili Qiu. LongLLMLingua: Accelerating and enhancing LLMs in long
+context scenarios via prompt compression. ICLR, 2024.
+\url{https://arxiv.org/abs/2310.06839}.
+
+\bibitem{packer2024memgpt}
+Charles Packer, Sarah Wooders, Kevin Lin, Vivian Fang, Shishir G. Patil, Ion
+Stoica, and Joseph E. Gonzalez. MemGPT: Towards LLMs as operating systems,
+2024. \url{https://arxiv.org/abs/2310.08560}.
+
+\bibitem{lin2026scroll}
+Yin Lin, Elaine Ang, Erkang Zhu, Bolin Ding, and Jingren Zhou. Context as an
+environment: Programmatic context management for long-horizon agents, 2026.
+\url{https://arxiv.org/abs/2608.21690}.
+
+\bibitem{lewis2020rag}
+Patrick Lewis et al. Retrieval-augmented generation for knowledge-intensive
+NLP tasks. NeurIPS, 2020. \url{https://arxiv.org/abs/2005.11401}.
+
+\bibitem{liu2025retrievalattention}
+Di Liu et al. RetrievalAttention: Accelerating long-context LLM inference via
+vector retrieval. NeurIPS, 2025.
+\url{https://arxiv.org/abs/2409.10516}.
+
+\end{thebibliography}
 
 \end{document}

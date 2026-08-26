@@ -21,13 +21,22 @@ replacement evidence, or a summary-only answer context.
 
 ## Measured status
 
-The frozen standalone and multi-index studies are complete. Validation selected
+The frozen standalone and multi-index studies are complete. The paper has been
+editorially consolidated and marked ready for external review; mechanisms and
+numerical claims should remain frozen unless review identifies a validity
+error. Validation selected
 one summary policy per dataset, then a separate two-identity-per-dataset split
 froze the small RRF/fusion grid. The multi-index replay evaluated 24 held-out
 identities at matched `K={2,4,8}`. Summaries recovered unique QASPER and
 MuSiQue evidence parents, but adding the summary to `L+E+QK` produced no
 resolved positive marginal effect under any tested admission family. LoRA and
 downstream answer-generation gates therefore remain closed.
+
+The main paper now distinguishes discovery from consumption and compares the
+addressability question with reversible context compression, prompt
+compression, agent memory, programmatic state, RAG, and KV retrieval. This is a
+taxonomy and claims-boundary comparison, not a direct benchmark against those
+systems.
 
 Regenerate publication tables and plots with:
 
