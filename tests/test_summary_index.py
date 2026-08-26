@@ -27,6 +27,16 @@ from pra_hf.summary_index import (
     hybrid_scores,
     retrieval_metrics,
     source_sha256,
+    stable_topk,
+)
+from pra_hf.multi_index import (
+    agreement_priority_union,
+    candidate_provenance,
+    extract_typed_sidecars,
+    normalized_score_fusion,
+    rank_round_robin,
+    reciprocal_rank_fusion_scores,
+    reserved_slot_union,
 )
 
 
@@ -207,3 +217,54 @@ def test_generation_cache_rebinds_duplicate_content_to_requested_identity(tmp_pa
     assert client.calls == 1
     assert [output.item_id for output in outputs] == ["chunk-a", "chunk-b"]
     assert [output.summary for output in outputs] == ["shared address", "shared address"]
+
+
+def test_typed_sidecars_preserve_explicit_address_fields() -> None:
+    sidecars = extract_typed_sidecars(
+        (
+            "Northglass-A7 was founded by Ada Lovelace in 1843.",
+            "A different maintenance report describes routine inspections.",
+        ),
+        aliases_by_chunk={0: ("Analytical Engine Group",)},
+    )
+
+    assert sidecars[0].entities == ("Northglass-A7", "Ada Lovelace")
+    assert sidecars[0].aliases == ("Analytical Engine Group",)
+    assert "1843" in sidecars[0].numbers_dates
+    assert "northglass-a7" in sidecars[0].rare_terms
+    assert "founded" in sidecars[0].relation_terms
+    assert sidecars[0].text_bytes == len(sidecars[0].text.encode("utf-8"))
+
+
+def test_multi_index_policies_are_deterministic_and_budget_bounded() -> None:
+    scores = {
+        "L": [0.9, 0.8, 0.1, 0.0],
+        "S": [0.1, 0.8, 0.9, 0.0],
+        "QK": [0.0, 0.8, 0.2, 0.9],
+    }
+
+    assert rank_round_robin(scores, 4) == (0, 2, 3, 1)
+    assert agreement_priority_union(scores, 2, candidate_pool=2) == (1, 2)
+    assert reserved_slot_union(scores, {"L": 2, "QK": 1}, k=4) == (0, 1, 3, 2)
+    assert agreement_priority_union(scores, 0) == ()
+
+
+def test_multi_index_fusion_and_provenance_retain_all_channels() -> None:
+    scores = {"L": [1.0, 0.0, 0.5], "S": [0.0, 1.0, 0.5]}
+    provenance = candidate_provenance(scores)
+    normalized = normalized_score_fusion(scores, {"L": 3.0, "S": 1.0})
+    rrf = reciprocal_rank_fusion_scores(scores, constant=10)
+
+    assert provenance[0]["L"] == {"score": 1.0, "rank": 1}
+    assert provenance[0]["S"] == {"score": 0.0, "rank": 3}
+    assert normalized.tolist() == pytest.approx([0.75, 0.25, 0.5])
+    assert stable_topk(rrf, 3) == (0, 1, 2)
+
+
+def test_multi_index_rejects_misaligned_channels_and_allocations() -> None:
+    with pytest.raises(ValueError, match="same non-zero"):
+        rank_round_robin({"L": [1.0], "S": [1.0, 0.0]}, 1)
+    with pytest.raises(ValueError, match="cannot exceed"):
+        reserved_slot_union({"L": [1.0], "S": [0.0]}, {"L": 1, "S": 1}, k=1)
+    with pytest.raises(ValueError, match="every and only"):
+        normalized_score_fusion({"L": [1.0], "S": [0.0]}, {"L": 1.0})

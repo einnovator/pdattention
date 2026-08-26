@@ -17,6 +17,13 @@ The August 2026 pilot freezes these held-out policies:
 - 2Wiki: `teacher_8b_retrieval_1x32_summary_bm25`.
 - MuSiQue: `subb_600m_retrieval_1x32_summary_hybrid_a0.50`.
 
+The fixed-budget multi-index continuation is tracked under
+`shared/results/paper3_1_summary_index/multi_index/`. It freezes RRF/fusion
+choices on eight validation identities and evaluates 24 held-out identities.
+Summaries have unique recoveries but no resolved positive marginal value after
+`L+E+QK`; the default stack therefore excludes `S`.
+
 Do not reinterpret the geometry run as a headline result; it contains two
 HotpotQA validation identities. Do not start LoRA or downstream generation from
-this state without a new, independently powered teacher-headroom result.
+this state without a new, independently powered marginal-recall result beyond
+the lexical/extractive/QK stack.

@@ -72,6 +72,32 @@ python experiments/paper3_1_summary_index/build_publication_artifacts.py
 The general concept and teacher-headroom gates are mixed/closed. No LoRA or
 downstream native-K/V answer-generation result belongs to this experiment.
 
+## Fixed-budget multi-index iteration
+
+The next iteration replays the frozen summaries above alongside four aligned
+address views: source lexical/BM25 (`L`), deterministic typed extractive (`E`),
+generated summary (`S`), and five-seed rank-16 native-QK (`QK`). It does not
+regenerate summaries or alter native K/V.
+
+```powershell
+python experiments/paper3_1_summary_index/run_multi_index_study.py --device cuda
+python experiments/paper3_1_summary_index/build_multi_index_artifacts.py
+```
+
+The driver freezes the small RRF/fusion grid on two validation identities per
+dataset, then evaluates 24 held-out identities at `K={2,4,8}` with `K=4`
+primary. Required artifacts live in `multi_index/`. They include complete
+candidate provenance, pairwise overlap, union/reserved/RRF/fusion rows, paired
+effects, typed-address diagnostics, storage/ingestion accounting, plots, and
+generated TeX.
+
+The result keeps the LoRA and downstream-generation gates closed. Summaries
+recover unique QASPER and MuSiQue evidence parents, but adding `S` to
+`L+E+QK` has no resolved positive fixed-budget effect under any tested
+admission family. The default architectural recommendation is one immutable
+native-memory record with `L+E+QK` address views; `S` remains optional and
+experimental.
+
 ## Artifact contract
 
 - `summary_cache/*.jsonl`: append-only generated addresses and ingestion timing.
@@ -83,6 +109,8 @@ downstream native-K/V answer-generation result belongs to this experiment.
 - `<split>/channel_overlap.csv`: overlap and unique evidence versus source BM25.
 - `<split>/manifest.json`: source hashes, model metadata, seeds, and frozen policy.
 - `publication/`: frozen headline, paired-effect, cost, omission, and geometry artifacts.
+- `multi_index/`: fixed-budget channel provenance, policy rows, diagnostics,
+  costs, paired effects, generated figures/tables, and manifests.
 
 Large inherited Q/K tensors remain untracked in the Paper 2.8 worktree and are
 referenced by SHA-256. Summary caches contain no source text, only generated

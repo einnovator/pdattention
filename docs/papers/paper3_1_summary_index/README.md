@@ -21,15 +21,17 @@ replacement evidence, or a summary-only answer context.
 
 ## Measured status
 
-The frozen study is complete for this iteration. Validation selected one policy
-per dataset and held-out evaluation reported those policies without test-time
-reselection. The only positive point estimate was QASPER (`+0.1625` recall
-versus native mean), with a wide interval; HotpotQA tied, and 2Wiki and MuSiQue
-regressed. The teacher did not establish general headroom, so LoRA distillation
-and downstream answer-generation gates remained closed.
+The frozen standalone and multi-index studies are complete. Validation selected
+one summary policy per dataset, then a separate two-identity-per-dataset split
+froze the small RRF/fusion grid. The multi-index replay evaluated 24 held-out
+identities at matched `K={2,4,8}`. Summaries recovered unique QASPER and
+MuSiQue evidence parents, but adding the summary to `L+E+QK` produced no
+resolved positive marginal effect under any tested admission family. LoRA and
+downstream answer-generation gates therefore remain closed.
 
 Regenerate publication tables and plots with:
 
 ```powershell
 python experiments/paper3_1_summary_index/build_publication_artifacts.py
+python experiments/paper3_1_summary_index/build_multi_index_artifacts.py
 ```
