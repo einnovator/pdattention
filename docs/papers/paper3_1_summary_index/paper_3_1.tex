@@ -1,0 +1,245 @@
+\documentclass[11pt]{article}
+\usepackage[margin=.82in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,array,tabularx,graphicx,enumitem,hyperref,microtype,xcolor,xspace,float}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black,hypertexnames=false}
+\newcommand{\pra}{\textsc{PRA}\xspace}
+\newcommand{\kv}{K/V\xspace}
+\newcommand{\code}[1]{\texttt{#1}}
+\title{Generated Summaries as Retrieval Indices for Progressive Retrieval Attention\\
+\large Compact Addresses, Unreliable Coverage}
+\author{Jorge Sim\~ao}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Progressive Retrieval Attention (\pra) separates finding a memory from physically materializing its native keys and values. This separation admits an unusual index: a small language model can summarize each source chunk once, future queries can search those summaries, and the selected summary can resolve to the unchanged source-derived native \kv. We implement this design as an identity-preserving sidecar and compare frozen generated summaries with native mean keys, source BM25, and two learned native-QK selectors on identity-disjoint HotpotQA, QASPER, 2WikiMultiHopQA, and MuSiQue cohorts. At four selected parent chunks, the validation-frozen summary policy changes held-out evidence recall by $0.000$, $+0.163$, $-0.208$, and $-0.052$, respectively, relative to a native mean key; every interval is wide, and learned rank-16 QK remains substantially stronger on QASPER. Summaries use only $652$--$2{,}205$ bytes per source for lexical scoring, but local generation costs $25$--$177$ seconds per source. A controlled omission benchmark explains the mixed retrieval result: a 0.6B retrieval prompt preserves no complete held-out target literals, whereas a parameter-free entity/rare-term index recovers every target chunk. Generated language is therefore a useful optional semantic address, not a sufficient universal index. The experiment closes the training and downstream native-\kv gates for this iteration and motivates typed lexical, summary, and learned-QK indices over one shared native-memory backing store.
+\end{abstract}
+
+\section{Introduction}
+
+Long-context systems face two different problems that are often collapsed into one. The first is \emph{discovery}: deciding which old source chunks might matter to the current query. The second is \emph{consumption}: presenting the corresponding information to the language model in the representation it expects. \pra treats them as separate stages. A small resident index performs discovery; only selected source identities cause native keys and values to enter the active attention set.
+
+This paper asks whether generated natural language can serve as that resident index. Consider a report whose main topic is equipment maintenance but whose appendix records the alias ``Northglass.'' A fluent summary will probably preserve the main topic. A later query about the alias, however, needs the seemingly minor appendix detail. The summary can be concise and accurate yet still be a poor retrieval address. This is the central tension: ordinary summarization preserves present salience, while routing must preserve unknown future discriminators.
+
+We evaluate that tension without turning the experiment into text retrieval-augmented generation. Each generated address remains bound to an exact source URI, chunk identifier, token span, and source hash. A successful match materializes the original source chunk's unchanged native \kv; summary text never becomes answer evidence. The implementation therefore tests lossy discovery while preserving native consumption.
+
+The principal finding is mixed but useful. A frozen 0.6B retrieval summary raises held-out QASPER recall from $0.350$ to $0.513$, but an inherited rank-16 QK selector reaches $0.775$. A frozen 8B teacher ties native mean routing on HotpotQA and loses on 2Wiki. MuSiQue also shows a small negative delta. More importantly, controlled low-salience targets reveal why: generated addresses often omit the exact entity, alias, date, or rare string that makes a chunk reachable. A cheap extractive index preserves these addresses more reliably.
+
+This study contributes four concrete results:
+\begin{enumerate}[leftmargin=*]
+\item an identity-safe summary sidecar whose output cannot leak into native-\kv materialization;
+\item a matched-budget comparison across four natural datasets and inherited lexical and learned-QK baselines;
+\item controlled omission and equal-token facet experiments that isolate coverage from fluency; and
+\item measured index, ingestion, routing, and amortization costs that prevent compact storage from being confused with cheap operation.
+\end{enumerate}
+
+\section{Where summary indices fit in PRA}
+
+Earlier work in the \pra series narrows the question. Paper 2.5 found that iterative associative closure can expose controlled bridges but does not reliably improve natural multihop retrieval. Paper 2.6 found lexical and semantic channels to be complementary. Paper 2.7 showed that query faceting is not automatically beneficial. Paper 2.8 found that learned low-rank native-QK routing can improve selected semantic cohorts while BM25 remains strong for lexical evidence. Paper 2.9 found no reliable held-out gain from short temporal query pooling. Paper 3 then separated conceptual selection from physical native-\kv materialization.
+
+Paper 3.1 changes only the representation used for discovery. It does not compress active \kv, rewrite source state, or answer from summaries. This distinction also separates the method from conventional text RAG: retrieved language is an address that resolves to model-native evidence, not the evidence placed in the prompt.
+
+The result is best understood as a typed-index question. Source BM25 preserves explicit strings. A generated summary can normalize paraphrases and relations. Learned QK features preserve host-model geometry. These representations fail differently, so the scientific question is not whether one replaces all others, but whether generated language adds enough complementary discovery to justify its ingestion cost.
+
+\section{Method}
+
+\subsection{An address backed by native evidence}
+
+Let source chunk $C_i$ occupy token span $[a_i,b_i)$ within source URI $u_i$. Ingestion generates a bounded address
+\[
+S_i=f_\theta(C_i),
+\]
+where $f_\theta$ is frozen in the main study. The persistent record is
+\[
+R_i=(u_i, i, a_i,b_i,h(C_i),S_i),
+\]
+where $h(C_i)$ is a SHA-256 digest of the exact source text. The first five fields form the native-memory identity. The final field is replaceable routing metadata.
+
+For query $Q$, a scorer $g$ assigns one score per record,
+\[
+r_i=g(Q,S_i).
+\]
+The router chooses the top $k$ identities $\mathcal I_k$. Materialization then discards $S_i$ and requests
+\[
+\mathcal M(Q)=\{(u_i,i,a_i,b_i,h(C_i)):i\in\mathcal I_k\}.
+\]
+The unchanged materializer resolves those identities to source-derived native \kv. This projection is intentionally one-way: the native-\kv request type has no summary field.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.91\linewidth}
+\centering
+source chunk $C_i$ $\rightarrow$ frozen generator $f_\theta$ $\rightarrow$ summary address $S_i$\\[3pt]
+$\downarrow$ stable URI, chunk, span, and source hash $\hspace{25mm}\downarrow$ persistent routing sidecar\\[3pt]
+query $Q$ $\rightarrow$ lexical / embedding / hybrid scorer $\rightarrow$ selected identities $\mathcal I_k$\\[3pt]
+$\downarrow$ summary text is dropped\\[3pt]
+unchanged native-\kv materializer $\rightarrow$ selected source-derived $K_i,V_i$ $\rightarrow$ direct + memory attention
+\end{minipage}}
+\caption{The summary is a lossy address. Selection resolves back to an immutable source identity before native keys and values are materialized.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Persistent sidecar and cache safety}
+
+The implementation lives in \code{src/pra\_hf/summary\_index.py}. \code{SummaryIndexRecord} stores the immutable identity beside generated summary text or independently scored facets. \code{native\_kv\_request()} removes all lossy text. \code{assert\_source\_alignment()} compares the full URI, span, and hash set with the inherited native-memory registry before evaluation.
+
+Generation is deterministic and resumable. The cache key hashes the model, prompt version, token budget, facet count, and exact source text. The cache deliberately excludes the logical item identifier so identical chunks may reuse generated content. A cache hit is rebound to the requesting item identity; this detail matters because content reuse must never alias two native-memory addresses. A regression test covers duplicate-content rebinding.
+
+\subsection{Scorers are separate from summaries}
+
+Summary quality and query matching are independent variables. We therefore score the same generated address with four frozen channels:
+\begin{itemize}[leftmargin=*]
+\item exact normalized query-token overlap;
+\item BM25 over summary text;
+\item cosine similarity from frozen MiniLM embeddings; and
+\item a validation-frozen convex fusion of BM25 and embedding scores.
+\end{itemize}
+For a faceted record, each facet is scored separately and the chunk receives its maximum facet score. The hybrid first min--max normalizes each channel within the source, then computes
+\[
+r_i^{\mathrm{hyb}}=\alpha\,\widetilde r_i^{\mathrm{BM25}}+(1-\alpha)\,\widetilde r_i^{\mathrm{emb}}.
+\]
+Weights $\alpha\in\{0.25,0.50,0.75\}$ are considered only on validation identities. The held-out policy is never changed after observing test results.
+
+\section{Experimental design}
+
+\subsection{Data and inherited baselines}
+
+We replay identity-disjoint HotpotQA, QASPER, 2WikiMultiHopQA, and MuSiQue examples from Paper 2.8. Source text is retokenized with the pinned Qwen3-0.6B tokenizer, then asserted against inherited 256-token parent spans and evidence masks. Every query selects at most four parent chunks. The materialization budget is therefore matched even when index representations differ.
+
+The baselines are: one native mean key per parent chunk; BM25 over full source text; an inherited five-seed rank-16 native-QK selector; an inherited five-seed compact rank-8/eight-centroid selector; and oracle identity scores. The oracle is a ceiling on discovery, not an available system.
+
+The generated-model frontier includes 135M, 0.6B, 1.2B, 4B, and 8B local models. Small frontier runs establish feasibility only. A two-identity-per-dataset validation run selects one model, prompt, and scorer per dataset. The held-out cohort then contains four HotpotQA, eight QASPER, four 2Wiki, and eight MuSiQue identities. This is a pilot cohort: paired bootstrap intervals quantify identity uncertainty but do not make it adequately powered.
+
+\subsection{Frozen policies}
+
+Validation selected four different policies, itself evidence against a universal summary channel. HotpotQA uses an 8B generic summary with exact scoring. QASPER uses a 0.6B retrieval summary with exact scoring. 2Wiki uses an 8B retrieval summary with BM25. MuSiQue uses a 0.6B retrieval summary with equal BM25--MiniLM fusion. All summaries have an upper bound of 32 generated tokens per source chunk.
+
+\subsection{Metrics and gates}
+
+The primary endpoint is evidence recall at four selected parent chunks. We also report complete recovery, precision, reciprocal rank, persistent index bytes, summary tokens, ingestion time, routing time, and native-\kv tokens requested. Bootstrap intervals use 10,000 paired identity resamples.
+
+Training is gated. LoRA distillation begins only if frozen summaries show a positive held-out signal or if a teacher establishes clear headroom over a small model. Native-\kv answer generation begins only after a discovery condition passes the retrieval gate. These gates prevent capacity or downstream adaptation from obscuring a failed index hypothesis.
+
+\section{Held-out retrieval results}
+
+Figure~\ref{fig:headline} and Table~\ref{tab:headline} report the frozen policies. QASPER provides the only positive summary delta: recall rises from $0.350$ to $0.513$. The paired interval is broad, $[-0.400,0.688]$, and rank-16 QK reaches $0.775$. The summary is therefore a promising complementary QASPER address, not the best standalone index.
+
+HotpotQA does not confirm the teacher's validation advantage. The summary and native mean both reach $0.875$, while source BM25 reaches $1.000$. On 2Wiki, the teacher summary falls to $0.708$ from $0.917$ for native mean, source BM25, and both QK selectors. On MuSiQue, the frozen hybrid reaches $0.563$ versus $0.615$ for native mean and $0.646$ for source BM25. None of the four paired intervals excludes zero in the positive direction.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_1_summary_index/publication/headline_recall.pdf}
+\caption{Held-out evidence recall at four selected parent chunks. ``Generated summary'' denotes the scorer and generator frozen independently for each dataset on validation identities.}
+\label{fig:headline}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{3.4pt}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Dataset & $n$ & Mean & Src. BM25 & R16 & R8/C8 & Summary & Oracle & $\Delta$ [95\% CI]\\
+\midrule
+HotpotQA & 4 & .875 & 1.000 & .875 & .750 & .875 & 1.000 & .000 [-.375,.375]\\
+QASPER & 8 & .350 & .325 & .775 & .700 & .513 & .925 & +.163 [-.400,.688]\\
+2Wiki & 4 & .917 & .917 & .917 & .917 & .708 & 1.000 & -.208 [-.417,.000]\\
+MuSiQue & 8 & .615 & .646 & .344 & .458 & .563 & 1.000 & -.052 [-.375,.208]\\
+\bottomrule
+\end{tabular}
+\caption{Evidence recall at matched selected-chunk budget. $\Delta$ is the paired summary-minus-native-mean effect. R16 and R8/C8 are inherited learned native-QK selectors.}
+\label{tab:headline}
+\end{table}
+
+Complete recovery follows the same pattern. The summary policies recover every evidence chunk on $0.750$, $0.375$, $0.500$, and $0.250$ of HotpotQA, QASPER, 2Wiki, and MuSiQue examples. Thus the QASPER recall gain is not merely a partial-hit artifact, but it also does not close the oracle gap.
+
+\section{Why summaries fail: controlled omission}
+
+Natural retrieval cannot reveal whether a chunk was missed because the generator omitted an address or because the scorer failed to use one. We therefore construct 20 examples, four per fact type. Each example contains six topical chunks. One chunk hides a query-critical entity, alias, relation, date/number, or rare string as a minor detail. The target does not influence summary generation.
+
+The full-source BM25 and the 32-token entity/rare-term extractive index recover every target chunk. The 0.6B retrieval summary also recovers all relation, date/number, and rare-string chunks, but only $0.75$ of entity chunks and $0.25$ of alias chunks. Crucially, it retains no complete target literal in any fact category. Retrieval sometimes succeeds because other generated wording correlates with the positive chunk; the shuffled-address control confirms that small-cohort ties and shared topical language can also produce nonzero recall.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.9\linewidth]{../shared/results/paper3_1_summary_index/publication/omission_recall.pdf}
+\caption{Controlled low-salience fact retrieval at one selected chunk. A parameter-free entity/rare-term sidecar is both smaller and more reliable than generated summaries on this literal-address task.}
+\label{fig:omission}
+\end{figure}
+
+The failure is conceptual rather than merely linguistic. A summary can be faithful while deleting the only future retrieval key. Retrieval-oriented prompting helps preserve classes of information, but a fixed 32-token language channel cannot guarantee coverage of every unknown discriminator. This supports a typed design: retain a lexical or entity sidecar for exact reachability and use summaries for paraphrastic or relational access.
+
+\section{Equal-budget facet geometry}
+
+Facets might spread a fixed budget across more independent addresses. We compare $1\times32$, $2\times16$, $4\times8$, and $8\times4$ maximum-token geometries with a frozen 1.2B model on two validation Hotpot identities. BM25 recall is $0.50$, $0.75$, $0.50$, and $0.50$, respectively. The small diagnostic favors two medium facets, not monotonically more facets.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper3_1_summary_index/publication/geometry_recall.pdf}
+\caption{Diagnostic equal-budget facet geometry on two HotpotQA validation identities. The experiment is intentionally not a held-out cross-dataset claim.}
+\label{fig:geometry}
+\end{figure}
+
+Actual output is shorter than the maximum: the four geometries use 184, 172, 151, and 152 summary tokens per source across all candidate chunks. Ingestion takes 33.7, 33.4, 47.9, and 48.9 seconds per source. Structured output overhead therefore makes the many-facet conditions more expensive even when content-token capacity is held fixed.
+
+\section{Storage and time accounting}
+
+Table~\ref{tab:cost} separates the persistent routing index from backing source/native-\kv storage and from the physically materialized native \kv. Pure lexical summary policies occupy only $652$--$2{,}205$ bytes per source. MuSiQue's selected hybrid occupies $16{,}793$ bytes because $15{,}744$ bytes are frozen embedding vectors; summary text itself occupies about $1{,}049$ bytes. None of these numbers includes backing native memory.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+Dataset & Index B & Emb. B & Tokens & Ingest s & Route ms & Native tokens\\
+\midrule
+HotpotQA & 652 & 0 & 166 & 131.1 & 0.186 & 1020\\
+QASPER & 2205 & 0 & 483 & 46.6 & 0.561 & 1020\\
+2Wiki & 966 & 0 & 240 & 176.8 & 0.453 & 904\\
+MuSiQue & 16793 & 15744 & 280 & 25.3 & 371.4 & 903\\
+\bottomrule
+\end{tabular}
+\caption{Mean per-source accounting for each frozen summary policy. ``Index B'' includes embedding bytes when the selected scorer requires them. Native tokens are materialized after routing and remain governed by the common four-parent budget.}
+\label{tab:cost}
+\end{table}
+
+For $Q$ later queries to one source, measured one-time generation $C_s$ contributes $C_s/Q$ seconds per query. At $Q=1000$, that term is $0.131$, $0.047$, $0.177$, and $0.025$ seconds for HotpotQA, QASPER, 2Wiki, and MuSiQue. Considering routing time alone, generation amortizes against native-mean scoring after approximately $479{,}000$, $25{,}800$, and $7{,}300$ queries on the first three datasets. MuSiQue's external embedding route is slower and never breaks even in this local implementation. Against source BM25, the corresponding thresholds are about $70{,}000$, $9{,}800$, $171{,}000$, and never.
+
+These are not favorable end-to-end break-even claims. The conditions with lower routing cost do not also provide a reliable quality gain. The measurements instead establish the scale at which asynchronous ingestion could become acceptable for repeatedly queried, stable corpora.
+
+\section{Gate decisions and implications}
+
+\paragraph{Frozen concept gate.}
+QASPER shows a positive point estimate, but its interval is broad and the same condition trails learned QK. Hotpot ties, and 2Wiki and MuSiQue regress. We therefore classify the general summary-only gate as mixed rather than passed.
+
+\paragraph{Teacher and training gate.}
+The 8B teacher does not establish general headroom: it ties on held-out HotpotQA and regresses on 2Wiki. Training a LoRA summarizer would consequently optimize into a weak and dataset-specific target. No LoRA distillation is run in this iteration.
+
+\paragraph{Native-use gate.}
+The identity projection, requested token counts, and unchanged materialization policy are verified, but no answer-likelihood or generation claim is made. The discovery gate is not strong enough to justify a downstream native-\kv study. Summary-only answering is also omitted because it would test a different text-RAG system after the relevant gate closed.
+
+\paragraph{Architectural implication.}
+Generated addresses should be optional members of a typed routing union. Exact tokens, aliases, and identifiers remain with lexical or entity indices. Generated summaries can contribute normalized relational language. Learned native-QK channels can cover host-model semantic geometry. The router may union and deduplicate their selected identities before one common native-\kv materializer. This design preserves the one result that is unambiguously positive: summaries add a very small human-readable index without changing model-native evidence.
+
+\section{Limitations}
+
+The held-out cohorts contain only 24 identities, and two teacher datasets contain four identities each. Bootstrap intervals appropriately remain wide. The equal-budget geometry study is a two-identity validation diagnostic. The omission benchmark is controlled and intentionally adversarial; its absolute rates should not be generalized to natural corpora.
+
+Generation uses local quantized Ollama models and one machine with a 4GB GPU. The 8B teacher is CPU/GPU split, so its latency should not be treated as a hardware-independent model benchmark. Peak ingestion memory was not sampled robustly; this paper reports wall time, persistent bytes, and model metadata instead. MiniLM timing includes local service overhead and is not an optimized in-process embedding implementation.
+
+The study measures discovery, not final answer quality. Although selected records map to unchanged native-memory requests, no downstream generation is run after the gate closes. Finally, a stronger learned summarizer might outperform frozen prompts, but the absent teacher headroom provides no evidence that scaling this particular target is the right next step.
+
+\section{Reproducibility}
+
+Every row is tracked with dataset identity, selected and positive parent indices, index bytes, generated tokens, ingestion and routing time, and materialized native-\kv tokens. Manifests record source-model revision, Ollama model metadata, prompt version, generation and dataset seeds, exact hashes of inherited feature tensors, and the source commits for Papers 2.5 through 3. Generated addresses are append-only JSONL records; source text and large native-QK tensors are not duplicated into the repository.
+
+The main runner is \code{experiments/paper3\_1\_summary\_index/run\_study.py}. The omission benchmark and publication builder sit beside it. Focused tests verify source alignment, facet pooling, scoring, native-request projection, shuffled addresses, cache resumption, and duplicate-content identity rebinding. The paper's tables and plots are regenerated from CSV artifacts rather than transcribed from terminal output.
+
+\section{Conclusion}
+
+Natural-language summaries can be compact, inspectable routing addresses for native memory. They are not reliable universal addresses. In this pilot, one QASPER policy improves over a native mean key, but stronger learned QK remains available; other datasets tie or regress. Controlled omission shows the deeper reason: fluent compression can remove exactly the low-salience string that a future query needs.
+
+The useful outcome is architectural clarity. Summary generation need not replace native keys, lexical indices, or source evidence. It can instead become one typed discovery channel whose selected identities resolve to the same unchanged native \kv as every other PRA router. Future work should evaluate this union on larger cohorts before revisiting learned summarization, and should train only when a teacher demonstrates reproducible retrieval headroom.
+
+\end{document}

@@ -1,0 +1,159 @@
+{
+  "conditions": [
+    {
+      "facet_count": 1,
+      "model": "qwen3:0.6b",
+      "name": "subb_600m_retrieval_1x32",
+      "profile": "subb_600m",
+      "prompt_id": "retrieval",
+      "token_budget": 32
+    },
+    {
+      "facet_count": 1,
+      "model": "llama3.1:8b",
+      "name": "teacher_8b_generic_1x32",
+      "profile": "teacher_8b",
+      "prompt_id": "generic",
+      "token_budget": 32
+    },
+    {
+      "facet_count": 1,
+      "model": "llama3.1:8b",
+      "name": "teacher_8b_retrieval_1x32",
+      "profile": "teacher_8b",
+      "prompt_id": "retrieval",
+      "token_budget": 32
+    }
+  ],
+  "dataset_seed": 20260811,
+  "datasets": [
+    "hotpotqa",
+    "qasper",
+    "2wikimultihopqa",
+    "musique"
+  ],
+  "embedding_model": "all-minilm:latest",
+  "examples": 8,
+  "feature_artifacts": {
+    "2wikimultihopqa": {
+      "bytes": 58680611,
+      "path": "D:\\git\\rd\\pdattention-paper2-8\\docs\\papers\\shared\\results\\paper2_8_qk_compression\\multi_dataset\\2wiki\\native_qk_features_validation.pt",
+      "sha256": "c1402ef73d15d0c9cdcadf6cd2661946be3dff88230b5cbb778ba10397a35f7a"
+    },
+    "hotpotqa": {
+      "bytes": 329018883,
+      "path": "D:\\git\\rd\\pdattention-paper2-8\\docs\\papers\\shared\\results\\paper2_8_qk_compression\\native_qk_features_validation.pt",
+      "sha256": "87b85b257a3ed49a962af44181fc03668714e5552ac97f379536ad7387533cf8"
+    },
+    "musique": {
+      "bytes": 124673955,
+      "path": "D:\\git\\rd\\pdattention-paper2-8\\docs\\papers\\shared\\results\\paper2_8_qk_compression\\multi_dataset\\musique\\native_qk_features_validation.pt",
+      "sha256": "f32564dde3b16e657837e8b77efc4c57dfc0c9b8635514c71665bf5bc9b0f465"
+    },
+    "qasper": {
+      "bytes": 329018883,
+      "path": "D:\\git\\rd\\pdattention-paper2-8\\docs\\papers\\shared\\results\\paper2_8_qk_compression\\native_qk_features_validation.pt",
+      "sha256": "87b85b257a3ed49a962af44181fc03668714e5552ac97f379536ad7387533cf8"
+    }
+  },
+  "generation_seed": 20260826,
+  "inherited_provenance": {
+    "paper2_5_iterative_pra": {
+      "branch": "research/paper2-5-iter-gist",
+      "commit": "e81d434501db5e67dcb8e2b6043f6b798f7b7688"
+    },
+    "paper2_6_hybrid": {
+      "branch": "hybrid-pra",
+      "commit": "e30510cb691feffa243d55c14a2a39cef21cef50"
+    },
+    "paper2_7_graph_query": {
+      "branch": "research/paper2-7-graph-query",
+      "commit": "e44285c5444b8dc49a372cd8da459e3f24298518"
+    },
+    "paper2_8_qk_compression": {
+      "branch": "research/paper2-8-qk-compression",
+      "commit": "81fe76d35852c8563c039878dadd0ec7bfb0e4d1"
+    },
+    "paper2_9_temporal_query": {
+      "branch": "research/paper2-9-look-ahead-back",
+      "commit": "8f83bb486d1695ea229bf3f64b72972f7a3d83c3"
+    },
+    "paper3_native_kv_materialization": {
+      "branch": "research/paper3-kv-materialization",
+      "commit": "94d5446383ce4569a518a8b5bbf9d7c00b4c79ec"
+    }
+  },
+  "materialization_policy_changed": false,
+  "max_per_dataset": 2,
+  "model_metadata": {
+    "llama3.1:8b": {
+      "capabilities": [
+        "completion",
+        "tools"
+      ],
+      "details": {
+        "families": [
+          "llama"
+        ],
+        "family": "llama",
+        "format": "gguf",
+        "parameter_size": "8.0B",
+        "parent_model": "",
+        "quantization_level": "Q4_0"
+      },
+      "model_info_sha256": "6fb4f6b3e7b3bf0c7c628e2e3d9291ae2ce9fcbb8990da2510d0095191e2078f",
+      "modified_at": "2024-07-26T10:18:46.1679367+01:00"
+    },
+    "qwen3:0.6b": {
+      "capabilities": [
+        "completion",
+        "tools"
+      ],
+      "details": {
+        "families": [
+          "qwen3"
+        ],
+        "family": "qwen3",
+        "format": "gguf",
+        "parameter_size": "751.63M",
+        "parent_model": "",
+        "quantization_level": "Q4_K_M"
+      },
+      "model_info_sha256": "5cf8f70d657ee93c4e605a001cd4fe335ea6c7352d4c647de80e8659ee4bd9a0",
+      "modified_at": "2026-08-25T17:59:22.5618487+01:00"
+    }
+  },
+  "paper": "3.1",
+  "parent_chunk_tokens": 256,
+  "run_name": "expanded_validation",
+  "schema_version": "1.0",
+  "selection_budget_parent_chunks": 4,
+  "source_model": "Qwen/Qwen3-0.6B",
+  "source_model_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+  "source_native_kv_rewritten": false,
+  "split": "validation",
+  "summary_only_answering": false,
+  "summary_prompt_version": "paper3.1-v4-exact-output-budget",
+  "validation_policy": {
+    "2wikimultihopqa": {
+      "condition": "teacher_8b_retrieval_1x32_summary_bm25",
+      "selection_rule": "recall, complete recovery, MRR, smaller index, lexical name",
+      "validation_evidence_recall": 0.8333333333333333
+    },
+    "hotpotqa": {
+      "condition": "teacher_8b_generic_1x32_summary_exact",
+      "selection_rule": "recall, complete recovery, MRR, smaller index, lexical name",
+      "validation_evidence_recall": 1.0
+    },
+    "musique": {
+      "condition": "subb_600m_retrieval_1x32_summary_hybrid_a0.50",
+      "selection_rule": "recall, complete recovery, MRR, smaller index, lexical name",
+      "validation_evidence_recall": 0.75
+    },
+    "qasper": {
+      "condition": "subb_600m_retrieval_1x32_summary_exact",
+      "selection_rule": "recall, complete recovery, MRR, smaller index, lexical name",
+      "validation_evidence_recall": 1.0
+    }
+  }
+}

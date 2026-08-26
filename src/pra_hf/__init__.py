@@ -24,6 +24,17 @@ from .query_graph import QueryGraph, QueryUnitProvenance, build_query_graph
 from .query_graph_cluster import connected_components, weighted_label_propagation
 from .query_graph_facets import GraphQueryFacetSet, pool_hard_graph_facets
 from .qk_compression import LOW_RANK_INDEX_DTYPES, LowRankRoutingIndex
+from .summary_index import (
+    BM25SummaryScorer,
+    FrozenEmbeddingScorer,
+    NativeKVRequest,
+    SummaryFacet,
+    SummaryIndex,
+    SummaryIndexRecord,
+    exact_summary_scores,
+    hybrid_scores,
+    retrieval_metrics,
+)
 
 __version__ = "0.2.0rc1"
 
@@ -38,13 +49,19 @@ __all__ = [
     "IterativeRoutingResult",
     "LOW_RANK_INDEX_DTYPES",
     "LowRankRoutingIndex",
+    "BM25SummaryScorer",
+    "FrozenEmbeddingScorer",
     "HybridDiscoveryPolicy",
+    "NativeKVRequest",
     "PRAConfig",
     "PRAForCausalLM",
     "PRAMemoryAdapter",
     "PRARouter",
     "ReferenceHandle",
     "RetrievalGraph",
+    "SummaryFacet",
+    "SummaryIndex",
+    "SummaryIndexRecord",
     "GraphQueryFacetSet",
     "QueryGraph",
     "QueryUnitProvenance",
@@ -53,6 +70,9 @@ __all__ = [
     "build_query_graph",
     "connected_components",
     "evaluate_router_features",
+    "exact_summary_scores",
+    "hybrid_scores",
     "pool_hard_graph_facets",
+    "retrieval_metrics",
     "weighted_label_propagation",
 ]
