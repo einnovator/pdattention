@@ -55,6 +55,8 @@ OUTPUT = ROOT / "docs/papers/shared/results/paper7_records/latent_triggers"
 FIGURES = OUTPUT / "figures"
 MODEL_ID = "qwen3:0.6b"
 MODEL_REVISION = "sha256-7f4030143c1c477224c5434f8272c662a8b042079a0a584f0a27a1684fe2e1fa"
+CURSOR_MODEL_ID = "gemma3:4b-it-qat"
+CURSOR_MODEL_REVISION = "sha256-529850705c0884a283b87d3b261d36ee30821e16f0310962ba977b456ad3b8cd"
 SEEDS = (11, 23, 37, 53, 71)
 POLICIES = tuple(RecoveryPolicy)
 ADDRESS_ABLATIONS = {
@@ -907,6 +909,8 @@ def run_transport_policy() -> list[dict[str, object]]:
                         + accounting.network_bytes / bandwidth
                         if bandwidth else 0.0
                     )
+                    upfront = runtime.decisions[record.record_id].storage == StoragePolicy.UPFRONT
+                    phase_seconds = rtt + size / bandwidth if bandwidth else 0.0
                     rows.append({
                         "payload_bytes": size,
                         "topology": topology_name,
@@ -917,6 +921,8 @@ def run_transport_policy() -> list[dict[str, object]]:
                         "ingest_seconds_local": ingest_seconds,
                         "materialize_seconds_local": materialize_seconds,
                         "simulated_transport_seconds": simulated_seconds,
+                        "simulated_ingest_seconds": phase_seconds if upfront else 0.0,
+                        "simulated_materialize_seconds": 0.0 if upfront else phase_seconds,
                         "simulation": int(topology_name != "same_process"),
                         "exact_recovery": int(result.payload == payload),
                     })
@@ -1026,7 +1032,7 @@ def _clustered_policy_comparisons(
                 row_deltas.extend(deltas)
             rng = random.Random(_stable_seed(f"{condition}-{treatment}-{baseline}", 2027))
             draws = sorted(
-                statistics.mean(rng.choice(case_deltas) for _ in case_deltas)
+                sum(rng.choice(case_deltas) for _ in case_deltas) / len(case_deltas)
                 for _ in range(10_000)
             )
             output.append({
@@ -1065,7 +1071,7 @@ def _write_jsonl(path: Path, rows: Iterable[Mapping[str, object]]) -> None:
 def render_figures(trigger_summary, trigger_rows, probe_rows, db_rows, graph_rows, transport_rows):
     FIGURES.mkdir(parents=True, exist_ok=True)
     policy_order = [policy.value for policy in POLICIES]
-    labels = [value.replace("_", "\n") for value in policy_order]
+    labels = ("Compact", "CCR-E", "CCR-P", "CCR-M", "Generic", "Action", "Multi-hyp.", "Full")
 
     fig, ax = plt.subplots(figsize=(10, 4.8))
     x = range(len(policy_order))
@@ -1082,18 +1088,26 @@ def render_figures(trigger_summary, trigger_rows, probe_rows, db_rows, graph_row
     fig.tight_layout()
     _save_figure(fig, "explicit_latent_action")
 
-    fig, ax = plt.subplots(figsize=(7.4, 4.8))
+    fig, ax = plt.subplots(figsize=(7.8, 4.8))
     latent = [row for row in trigger_summary if row["condition"] == "latent"]
+    point_groups = defaultdict(list)
+    short_policy = dict(zip(policy_order, labels))
     for row in latent:
-        ax.scatter(row["materialized_tokens"], row["tr_action"], s=65)
-        ax.annotate(row["policy"].replace("_", " "), (row["materialized_tokens"], row["tr_action"]), fontsize=8)
+        point_groups[(round(row["materialized_tokens"], 1), round(row["tr_action"], 3))].append(
+            short_policy[row["policy"]]
+        )
+    offsets = ((8, 7), (8, -15), (8, 7), (8, 7), (-58, 8))
+    for ((tokens, action), names), offset in zip(sorted(point_groups.items()), offsets):
+        ax.scatter(tokens, action, s=65)
+        ax.annotate(" / ".join(names), (tokens, action), xytext=offset,
+                    textcoords="offset points", fontsize=8)
     ax.set_xlabel("Mean materialized tokens")
     ax.set_ylabel("TR-action")
     ax.set_ylim(-.03, 1.05)
     fig.tight_layout()
     _save_figure(fig, "trigger_economy_pareto")
 
-    fig, ax = plt.subplots(figsize=(10, 4.8))
+    fig, ax = plt.subplots(figsize=(11.5, 4.8))
     width = .2
     metrics = ("hypothesis_recall", "address_recall", "trigger_materialized", "tr_action")
     for index, metric in enumerate(metrics):
@@ -1106,29 +1120,44 @@ def render_figures(trigger_summary, trigger_rows, probe_rows, db_rows, graph_row
     fig.tight_layout()
     _save_figure(fig, "latent_stage_decomposition")
 
-    fig, ax = plt.subplots(figsize=(7.4, 4.8))
-    for family, rows, marker in (("DB", db_rows, "o"), ("Graph", graph_rows, "s")):
+    fig, ax = plt.subplots(figsize=(7.8, 4.8))
+    baselines = ("compact", "cursor", "full", "recall")
+    x = list(range(len(baselines)))
+    width = .36
+    for offset, (family, rows) in zip((-.18, .18), (("DB", db_rows), ("Graph", graph_rows))):
         summary = _group_summary(rows, ("baseline",), ("success", "bytes_transferred"))
-        for row in summary:
-            ax.scatter(row["bytes_transferred"], row["success"], marker=marker, s=70)
-            ax.annotate(f"{family} {row['baseline']}", (row["bytes_transferred"], row["success"]), fontsize=8)
-    ax.set_xscale("symlog", linthresh=1)
-    ax.set_xlabel("Mean transferred bytes")
-    ax.set_ylabel("Task success")
-    ax.set_ylim(-.03, 1.05)
+        lookup = {row["baseline"]: row for row in summary}
+        bars = ax.bar([value + offset for value in x],
+                      [lookup[name]["bytes_transferred"] for name in baselines],
+                      width=width, label=family)
+        for bar, name in zip(bars, baselines):
+            ax.annotate(f"success {lookup[name]['success']:.2f}",
+                        (bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                        xytext=(0, 3), textcoords="offset points", ha="center", fontsize=7)
+    ax.set_yscale("log")
+    ax.set_xticks(x, [name.upper() for name in baselines])
+    ax.set_ylabel("Mean transferred bytes (log scale)")
+    ax.legend()
     fig.tight_layout()
     _save_figure(fig, "cursor_success_transfer")
 
-    fig, ax = plt.subplots(figsize=(7.4, 4.8))
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.4), sharey=True)
     remote = [row for row in transport_rows if row["topology"] == "remote_like_simulated"]
-    for policy in ("upfront", "on_demand", "adaptive"):
-        rows = sorted((row for row in remote if row["policy"] == policy), key=lambda row: row["payload_bytes"])
-        ax.plot([row["payload_bytes"] for row in rows], [row["simulated_transport_seconds"] for row in rows], marker="o", label=policy)
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xlabel("Payload bytes")
-    ax.set_ylabel("Simulated remote transport seconds")
-    ax.legend()
+    for ax, metric, title in zip(
+        axes,
+        ("simulated_ingest_seconds", "simulated_materialize_seconds"),
+        ("Cost paid at ingest", "Cost paid at materialization"),
+    ):
+        for policy, marker in (("upfront", "o"), ("on_demand", "s"), ("adaptive", "^")):
+            rows = sorted((row for row in remote if row["policy"] == policy), key=lambda row: row["payload_bytes"])
+            ax.plot([row["payload_bytes"] for row in rows], [row[metric] for row in rows],
+                    marker=marker, label=policy)
+        ax.set_xscale("log")
+        ax.set_yscale("symlog", linthresh=.001)
+        ax.set_xlabel("Payload bytes")
+        ax.set_title(title, fontsize=10)
+    axes[0].set_ylabel("Simulated remote seconds")
+    axes[0].legend(fontsize=8)
     fig.tight_layout()
     _save_figure(fig, "transport_policy_frontier")
 
@@ -1195,11 +1224,16 @@ def render_tex(trigger_summary, comparisons, db_rows, graph_rows, transport_rows
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=MODEL_ID)
+    parser.add_argument("--cursor-model", default=MODEL_ID)
     parser.add_argument("--endpoint", default="http://127.0.0.1:11434")
     parser.add_argument("--skip-trigger-model", action="store_true")
+    parser.add_argument("--skip-cursor-model", action="store_true")
     args = parser.parse_args()
     OUTPUT.mkdir(parents=True, exist_ok=True)
     model = OllamaJSONModel(args.model, args.endpoint, OUTPUT / "model_response_cache.json")
+    cursor_model = OllamaJSONModel(
+        args.cursor_model, args.endpoint, OUTPUT / "cursor_model_response_cache.json"
+    )
 
     _write_jsonl(OUTPUT / "latent_trigger_cases.jsonl", benchmark_rows())
     if args.skip_trigger_model and (OUTPUT / "trigger_policy_rows.csv").is_file():
@@ -1224,8 +1258,12 @@ def main() -> None:
 
     probe_rows = run_probe_breadth()
     address_rows = run_address_ablation()
-    db_rows = run_db_cursors(model)
-    graph_rows = run_graph_cursors(model)
+    if args.skip_cursor_model and (OUTPUT / "db_cursor_results.csv").is_file():
+        db_rows = _read_csv(OUTPUT / "db_cursor_results.csv")
+        graph_rows = _read_csv(OUTPUT / "graph_cursor_results.csv")
+    else:
+        db_rows = run_db_cursors(cursor_model)
+        graph_rows = run_graph_cursors(cursor_model)
     transport_rows = run_transport_policy()
     _write_csv(OUTPUT / "action_conditioned_probe_results.csv", probe_rows)
     _write_csv(OUTPUT / "address_view_ablation.csv", address_rows)
@@ -1248,6 +1286,12 @@ def main() -> None:
     manifest = {
         "model": args.model,
         "model_revision": MODEL_REVISION if args.model == MODEL_ID else "unrecorded",
+        "cursor_model": args.cursor_model,
+        "cursor_model_revision": (
+            MODEL_REVISION if args.cursor_model == MODEL_ID
+            else CURSOR_MODEL_REVISION if args.cursor_model == CURSOR_MODEL_ID
+            else "unrecorded"
+        ),
         "endpoint": args.endpoint,
         "decoding": {"temperature": 0, "format": "json", "think": True},
         "hypothesis_generation": {"maximum_hypotheses": 4, "maximum_tokens": 128},
@@ -1272,7 +1316,7 @@ def main() -> None:
 
 def _read_csv(path: Path) -> list[dict[str, object]]:
     rows = []
-    with path.open(newline="", encoding="utf-8") as stream:
+    with path.open(newline="", encoding="utf-8-sig") as stream:
         for row in csv.DictReader(stream):
             converted = {}
             for key, value in row.items():

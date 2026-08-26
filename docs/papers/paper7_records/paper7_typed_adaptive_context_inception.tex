@@ -1,10 +1,11 @@
 \documentclass[11pt]{article}
 \usepackage[margin=.9in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,microtype,enumitem,xcolor,listings}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,placeins,microtype,enumitem,xcolor,listings}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
-\graphicspath{{../shared/results/paper7_records/inception/figures/}}
+\graphicspath{{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
 \input{../shared/results/paper7_records/inception/generated_inception_results.tex}
+\input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
 
 \definecolor{codegray}{RGB}{246,247,249}
 \lstset{
@@ -18,7 +19,7 @@
 }
 
 \title{Typed Adaptive Context for LLM Agents:\\
-Reversible Records, Progressive Materialization, and Stateful Cursors}
+Reversible Records, Latent-Trigger Recovery, and Stateful Cursors}
 \author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{August 2026}
 
@@ -41,21 +42,23 @@ rediscovery. Type-specific compressors preserve schemas, representative rows,
 numeric statistics, errors, command status, and graph structure while lexical,
 entity, rare-term, and schema indices remain available for discovery.
 
-We report an inception mechanism study over \PaperSevenTypedRecords{} typed
-records and \PaperSevenSeeds{} seeds. Compact views save
-\PaperSevenMeanSavings{} of serialized bytes on average and retain only
-\PaperSevenCompactTrigger{} of planted low-salience triggers. Exact backing
-recovery and explicit address recovery are both \PaperSevenExactRecovery{},
-but a generic latent query recovers \PaperSevenLatentQuery{}. A proactive probe
-that already names the candidate action reaches \PaperSevenProactiveProbe{},
-locating the remaining difficulty in deciding \emph{what to probe}, not in
-storage reversibility. On a 100-row result, full native-event and tool
-materialization each transfer \PaperSevenFullBytes{} bytes, whereas a five-row
-mixed cursor transfers \PaperSevenMixedBytes{} bytes. Cursor aggregate,
-filter, and anomaly checks are exact on five fixtures. These are deterministic
-mechanism results, not model task accuracy. They support typed reversible
-context as a substrate while leaving latent trigger discovery and end-to-end
-agent behavior as explicit open gates.
+An inception mechanism study over \PaperSevenTypedRecords{} records confirms
+\PaperSevenMeanSavings{} mean serialized-byte savings and exact backing
+recovery, while compact views retain only \PaperSevenCompactTrigger{} of
+planted low-salience triggers. We then evaluate a frozen Qwen3-0.6B model on
+\PaperSevenNextCases{} paired explicit/latent trigger families, eight recovery
+policies, five seeds, and \PaperSevenNextRows{} policy cells. On latent goals,
+compact-only obtains \PaperSevenLatentCompactAction{} action accuracy,
+generic query expansion obtains \PaperSevenLatentGenericAction{}, and bounded
+action-conditioned probing obtains \PaperSevenLatentActionConditioned{} at
+\PaperSevenActionProbeTokens{} mean materialized tokens. The full-context
+ceiling is \PaperSevenLatentFullCeiling{}, so residual generation failures are
+not attributed to context management. On three database tasks and one graph
+task, Qwen fails every answer condition, including FULL; cursor answer quality
+is therefore unresolved rather than a compression failure. The result is
+deliberately qualified: reversible storage solves exact recovery, whereas
+economical latent discovery remains a policy problem whose gains depend on
+bounded hypothesis coverage and expansion precision.
 \end{abstract}
 
 \section{Introduction}
@@ -82,7 +85,7 @@ instead of repeatedly returning complete snapshots. The architecture joins
 the typed capability records developed for tool and skill disclosure with
 typed \emph{result} records that survive after execution.
 
-The contributions of this inception release are:
+The contributions are:
 \begin{enumerate}[leftmargin=*]
   \item a provider-neutral record model for nine result families, alongside
   the inherited tool and skill capability records;
@@ -94,9 +97,13 @@ The contributions of this inception release are:
   through native-event and tool-compatible APIs;
   \item stateful cursors supporting pages, ranges, filters, ordering, search,
   aggregation, sampling, field projection, and closure;
-  \item a five-seed mechanism benchmark that measures savings, addressability,
-  exact recovery, cursor correctness, and transport accounting while keeping
-  model-dependent claims out of the result.
+  \item a paired 13-family benchmark that separates hypothesis recall, address
+  recall, materialization, and final action under explicit and latent goals;
+  \item matched compact, CCR-style reversible, generic proactive,
+  action-conditioned, multi-hypothesis, and full-context policies with
+  expansion precision and case-clustered uncertainty;
+  \item frozen-model database and graph cursor decisions, together with
+  payload-scale transport accounting from 10KB to 10MB.
 \end{enumerate}
 
 The main negative result matters as much as the implementation. Multiple
@@ -451,6 +458,221 @@ matches the declared rule, but no latency optimum follows from it. A deployment
 must measure serialization, network bandwidth, backing-store latency, cache
 reuse, and the probability of expansion before selecting thresholds.
 
+\section{Model-Driven Latent Recovery}
+
+\subsection{Paired protocol}
+
+The second study keeps the record substrate fixed and changes the recovery
+policy. Thirteen deterministic cases cover entity, alias, number/date, rare
+string, relation, action, state transition, permission, dependency, error
+code, backend type, schema type, and threshold/anomaly clues. In every case,
+one hidden field changes the required action. The explicit query names that
+field; its paired latent query states only the operational goal. The compact
+view is checked to omit the planted trigger. This is a controlled mechanism
+benchmark, not a sample of production agent traffic.
+
+We cross the 13 pairs with eight policies and seeds
+$\{11,23,37,53,71\}$, yielding \PaperSevenNextRows{} rows. Candidate-action
+palettes contain four IDs. The frozen controller is Qwen3-0.6B, Ollama blob
+\texttt{sha256-7f4030...e1fa}, with temperature zero, JSON-constrained output,
+thinking enabled, and at most four generated hypotheses. A malformed JSON
+response counts as no decision; it is not repaired with the answer key. Full
+context is included as a model-capability ceiling.
+
+The policies are compact-only; model-emitted CCR retrieval (CCR-E); proactive
+lexical CCR expansion (CCR-P); explicit retrieval followed by proactive
+fallback (CCR-M); generic search over deterministic address views; one probe
+per candidate action; up to four model-generated hypotheses; and full context.
+The CCR variants reproduce public architectural behavior---a compact typed
+view, exact local original, stable marker, retrieval tool, and optional
+proactive expansion---without claiming implementation identity with any
+specific system.
+
+We preserve the causal chain
+\begin{equation}
+\text{goal}\rightarrow\text{hypothesis}\rightarrow\text{address}
+\rightarrow\text{materialization}\rightarrow\text{action}.
+\end{equation}
+TR-address requires a useful hypothesis and target-record address hit;
+TR-materialize requires exact evidence containing the planted trigger; and
+TR-action requires the final candidate action. We additionally record false
+expansions, expansion precision, bytes, estimated tokens, model/tool calls,
+and local search time. Wilson intervals describe policy-cell proportions.
+Paired differences use a 10,000-draw bootstrap over 13 trigger cases after
+averaging the five seeds, so repeated decoding seeds are not treated as new
+task identities.
+
+\subsection{Policy comparison}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{explicit_latent_action.pdf}
+\caption{Final required-action accuracy for explicit and latent queries.
+Full context is a model ceiling rather than a deployable recovery policy.
+Action-conditioned search improves latent discovery but expands multiple
+candidate records.}
+\label{fig:next-policy-action}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{latent_stage_decomposition.pdf}
+\caption{Latent recovery decomposed into hypothesis, address,
+materialization, and final-action stages. A high later-stage conditional rate
+cannot compensate for a missing initial hypothesis.}
+\label{fig:next-stage-decomposition}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Policy & Hyp. & Materialized & TR-action & Tokens & Exp. precision \\
+\midrule
+Compact only & .000 & .000 & .385 & 0.0 & .000 \\
+CCR-E & .000 & .000 & .385 & 0.0 & .000 \\
+CCR-P & .000 & .077 & .400 & 19.2 & .077 \\
+CCR-M & .000 & .077 & .400 & 19.2 & .077 \\
+Generic proactive & .000 & .077 & .400 & 19.2 & .077 \\
+Action-conditioned & 1.000 & 1.000 & .708 & 643.6 & .250 \\
+Multi-hypothesis & .554 & .554 & .585 & 283.9 & .277 \\
+Full context & 1.000 & 1.000 & .862 & 251.5 & 1.000 \\
+\bottomrule
+\end{tabular}
+\caption{Latent-query means over 13 cases and five seeds. ``Hyp.'' is
+hypothesis recall; tokens estimate serialized materialized bytes divided by
+four. Full context materializes only the target, whereas exhaustive
+action-conditioned probing may also materialize distractors.}
+\label{tab:latent-policy}
+\end{table}
+
+Compact-only reaches \PaperSevenLatentCompactAction{} TR-action on latent
+goals. Searching deterministic addresses with the unmodified goal reaches
+\PaperSevenLatentGenericAction{}; reversible storage and a richer index do not
+create a missing discriminator. Action-conditioned probing reaches
+\PaperSevenLatentActionConditioned{} (\PaperSevenActionProbeSuccesses{}/65;
+95\% Wilson interval [\PaperSevenActionProbeCILow{},
+\PaperSevenActionProbeCIHigh{}]). Its case-clustered paired difference from
+compact-only is \PaperSevenActionDeltaCompact{} [
+\PaperSevenActionDeltaCILow{}, \PaperSevenActionDeltaCIHigh{}]. The policy
+materializes \PaperSevenActionProbeTokens{} tokens on average with expansion
+precision \PaperSevenActionProbePrecision{}; it succeeds by spending bounded
+search and exposure, not by making omission free.
+
+The generated-hypothesis policy reaches \PaperSevenLatentMultiHypothesis{},
+and full context reaches \PaperSevenLatentFullCeiling{}. Any gap below the
+full-context ceiling is attributed to the frozen controller or output
+protocol. Any policy-to-ceiling gap is then a mixture of discovery,
+addressing, and expansion errors, which Figure~\ref{fig:next-stage-decomposition}
+separates.
+
+Table~\ref{tab:latent-policy} locates the mechanism more precisely. Conditional
+address and materialization rates are 1.000 whenever action-conditioned or
+generated hypotheses name the right clue. The generic latent goal generates no
+such clue and reaches the target in only 5/65 rows through incidental lexical
+overlap. CCR-E never requests its handle, even in the explicit condition;
+CCR-P and CCR-M repair explicit omissions but do not solve latent discovery.
+Malformed or absent model decisions remain failures. This makes the positive
+claim narrow: bounded action enumeration can recover omitted triggers, but the
+tested controller does not yet discover them economically.
+
+\subsection{Probe breadth and address views}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.82\linewidth]{probe_breadth_recall.pdf}
+\caption{Trigger materialization against probes issued for palettes of
+$K\in\{4,8,16\}$. Exhaustive action probing is an interpretable upper bound;
+top-$r$ policies trade hypothesis coverage for fewer expansions.}
+\label{fig:probe-breadth}
+\end{figure}
+
+The deterministic breadth control varies $K\in\{4,8,16\}$ and
+$r\in\{1,2,4,K\}$. Candidate order is seeded but fixed before evaluation.
+This control asks how often the action that names the hidden evidence enters
+the probe set; it does not claim that enumeration is an economical controller
+for unbounded action catalogs. Address ablations compare lexical, entity plus
+rare-term, schema, lexical plus entity, and all deterministic views. They test
+whether a useful hypothesis can find its backing record, while keeping
+hypothesis construction separate.
+
+At $K=4$, top-$r$ trigger recall rises from .277 at $r=1$ to .523 at
+$r=2$ and 1.000 at $r=4$. Exhaustive recall remains 1.000 at $K=8$ and
+$K=16$, while precision falls to .125 and .063. With a correct action probe,
+lexical, entity/rare-term, lexical+entity, and all-view search each recover
+13/13 targets; schema-only search recovers 1/13. The richer address layer is
+therefore adequate after discovery, but it is not a substitute for discovery.
+
+\subsection{Quality--economy frontier}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{trigger_economy_pareto.pdf}
+\caption{Mean materialized tokens versus latent TR-action. Policies at zero
+materialization can still exploit compact-view priors; policies farther right
+pay to expose exact backing evidence.}
+\label{fig:trigger-economy}
+\end{figure}
+
+The frontier prevents an expand-everything policy from appearing free. On
+these small fixtures, full target context is both more accurate and cheaper
+than action-conditioned expansion because the latter materializes three
+distractors along with the target. Multi-hypothesis uses fewer tokens than
+action enumeration but still slightly exceeds full-target exposure. The
+policies are therefore mechanism-positive but not Pareto-superior here. Larger
+records, selected-field materialization, or better candidate narrowing are
+required before an economy claim.
+
+\FloatBarrier
+\section{Model-Selected Cursors and Transport}
+
+The database benchmark contains three deterministic subgroup-and-aggregate
+tasks. For CURSOR, the model first emits a typed filter action and then an
+aggregate action; the runtime pins the authorized cursor ID, validates the
+operation allowlist, and executes against persistent scoped state. The graph
+task asks which dependency must precede an Atlas restart; the model selects a
+search operation over an edge cursor. FULL transfers one complete result,
+RECALL transfers it again at the next step, CURSOR transfers only structured
+operation results, and COMPACT receives no expansion.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.8\linewidth]{cursor_success_transfer.pdf}
+\caption{Mean transferred bytes by baseline for three database tasks and one
+graph task; labels report frozen-model success. Every success is zero,
+including FULL, so byte reductions are accounting results only.}
+\label{fig:cursor-transfer}
+\end{figure}
+
+All database and graph answer conditions score zero, including FULL and
+RECALL. Qwen emits the requested DB operation names but supplies a wrong filter
+or aggregate argument in 20 of 30 operation decisions; for graph traversal it
+selects search in 5/5 seeds but still fails the final answer. CURSOR transfers
+\PaperSevenDBCursorBytes{} mean bytes versus \PaperSevenDBFullBytes{} for DB
+FULL, and \PaperSevenGraphCursorBytes{} versus \PaperSevenGraphFullBytes{} on
+the graph task, but those reductions accompany no task success. They are cost
+accounting, not an efficiency gain. The deterministic runtime tests still
+validate filter, aggregate, search, scope, expiry, and closure independently
+of this failed model-policy gate.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.8\linewidth]{transport_policy_frontier.pdf}
+\caption{When simulated remote-like transfer cost is paid from 10KB to 10MB.
+Upfront pays at ingestion, on-demand pays at materialization, and adaptive
+switches by its declared threshold. RTT and bandwidth components are
+simulated.}
+\label{fig:transport-frontier}
+\end{figure}
+
+Exact recovery is \PaperSevenTransportExact{} in all 36 transport cells. The
+sweep crosses 10KB, 100KB, 1MB, and 10MB payloads with same-process,
+separate-local-process accounting, and a remote-like cost model. It evaluates
+the declared threshold behavior; it is not a measured distributed deployment
+or a claim that the present thresholds are optimal.
+
+\FloatBarrier
 \section{Security and Reliability Contract}
 
 Typed adaptive context creates capabilities to reveal hidden state. Its
@@ -498,8 +720,11 @@ model retrieval tool, markers, and proactive expansion \cite{headroom2026ccr}.
 That architecture is a strong reversible baseline. Paper 7 does not claim that
 Headroom fails. It asks a different evaluation question: when the compact view
 omits the fact that would make retrieval relevant, what address or policy keeps
-the downstream action reachable? The current mechanism check confirms
-explicit recovery and leaves latent recovery open.
+the downstream action reachable? The paired study finds that explicit
+proactive recovery is reliable, generic latent recovery is nearly unchanged
+from compact-only, and action-conditioned expansion improves the downstream
+action at substantial exposure cost. This is a policy result, not a claim
+about a particular commercial implementation.
 
 Paper 6.5's typed capability work separates broad tool/skill discovery from
 bounded selection and exact full-schema activation. Paper 7 preserves those
@@ -511,17 +736,22 @@ records rather than repeating its summarization experiments.
 
 \section{Limitations and Next Gates}
 
-The study is an inception checkpoint. Its 45 records are synthetic and small,
-and the five seeds vary trigger placement rather than sampling a population of
-real agent tasks. No language model decides whether to materialize, chooses a
-cursor operation, or produces an answer. Consequently:
+Both studies are controlled checkpoints. The inception fixtures contain 45
+small records; the paired benchmark contains only 13 synthetic task identities.
+Five seeds vary decoding and candidate order, not the population of agent
+tasks. The final-action field is machine-readable after materialization, which
+isolates recovery but understates natural-language interpretation difficulty.
+Consequently:
 
 \begin{enumerate}[leftmargin=*]
-  \item explicit address recall is an index capability result, not end-to-end
-  evidence or answer recall;
-  \item proactive action probing is an oracle-like upper bound because the
-  candidate action is supplied;
-  \item cursor correctness validates data operations, not autonomous analytics;
+  \item exhaustive action probing is an oracle-like mechanism bound because
+  every candidate is supplied and all four are searched;
+  \item the small frozen model never emits CCR retrieval, so CCR-E measures
+  this controller and prompt rather than the best possible tool policy;
+  \item generated hypotheses improve latent action accuracy but remain tied to
+  these action labels, fixtures, and one model revision;
+  \item all cursor answer baselines fail, including FULL, so the study supports
+  cursor API correctness and transfer accounting but not model analytics;
   \item topology measurements are policy accounting, not physical network or
   distributed-store benchmarks;
   \item active native-K/V is estimated from serialized bytes only when a model-
@@ -530,14 +760,13 @@ cursor operation, or produces an answer. Consequently:
   distributed cursor implementations remain absent.
 \end{enumerate}
 
-The next experiment should put a frozen model in the loop on held-out explicit,
-latent, and action-trigger tasks. It should compare full context, compact-only,
-CCR-style marker/tool retrieval, multi-view indexed retrieval, proactive
-expansion, mixed cursors, and an oracle materialization policy at matched
-visible-token and call budgets. Primary outcomes should include task success,
-TriggerRecall, wrong-action rate, expansion precision, bytes, active K/V,
-round trips, TTFT, and wall time. Real database, log, graph, RAG, file, and API
-workloads should replace synthetic fixtures before default-policy claims.
+The next experiment should replace action enumeration with a calibrated
+top-$r$ or uncertainty policy, materialize selected evidence rather than every
+matched record, and evaluate fresh natural tool-result tasks. A controller that
+passes FULL database and graph ceilings is required before comparing cursor
+policies. Real local-process and remote deployments should then measure TTFT,
+network transfer, store latency, active K/V, and end-to-end task success at
+matched budgets.
 
 \section{Conclusion}
 
@@ -551,11 +780,15 @@ bytes.
 
 It also rejects an easy conclusion. Lossless backing storage does not make a
 hidden action trigger visible, and an index cannot search for a discriminator
-that neither the query nor policy supplies. Reversible compression is therefore
-necessary infrastructure, not a complete adaptive-context policy. The next
-gate is behavioral: whether models and proactive policies can discover when,
-where, and how much to materialize without surrendering the savings that made
-compression useful.
+that neither the query nor policy supplies. In the paired study, bounded action
+probing raises latent action accuracy by .323 over compact-only, but exposes
+more serialized tokens than simply materializing the target. Generated
+hypotheses trade some quality for fewer false expansions, while generic latent
+queries and model-emitted retrieval barely move the result. Reversible
+compression is therefore necessary infrastructure, not a complete adaptive-
+context policy. The remaining gate is economical discovery: generate the
+right discriminator, retrieve only useful evidence, and do so before expansion
+cost erases the context savings.
 
 \appendix
 
@@ -602,24 +835,39 @@ cursor = runtime.open_cursor(
     filters={"region": "west"},
 )
 page = runtime.fetch_cursor(cursor.cursor_id)
-stats = runtime.cursors.aggregate(
-    cursor.cursor_id, "latency_ms", scope=runtime.scope
+action = parse_cursor_action(
+    model_json,
+    cursor_id=cursor.cursor_id,
+    allowed_operations=("filter", "aggregate", "next"),
+)
+result = runtime.execute_cursor_action(action)
+
+probes = action_conditioned_probes(goal, candidate_actions, limit=4)
+batch = LatentRecoveryEngine(runtime).execute_probes(
+    probes,
+    expected_record_id=record.record_id,
+    hidden_trigger="required_action",
 )
 \end{lstlisting}
 
 \section{Implementation Map}
 
-\begin{tabularx}{\linewidth}{@{}lX@{}}
+{\footnotesize
+\begin{tabularx}{\linewidth}{@{}p{.49\linewidth}X@{}}
 \toprule
 Module & Responsibility \\
 \midrule
-\texttt{src/pra\_hf/context\_records.py} & shared record types and named view vocabulary inherited by capability and result records \\
-\texttt{src/pra\_hf/context\_store.py} & scope, content identity, canonical encoding, manifests, TTL, hash verification, capacity, deletion \\
-\texttt{src/pra\_hf/typed\_context.py} & compressor registry, compact/address views, adaptive record descriptor, deterministic selectors \\
-\texttt{src/pra\_hf/adaptive\_context\_runtime.py} & public policy, transport decision, materialization, search, cursor operations, accounting, audit \\
-\texttt{experiments/paper7\_records/run\_inception\_experiments.py} & five-seed fixtures, metrics, JSON artifacts, TeX macros, and figures \\
+\path{src/pra_hf/context_records.py} & shared record types and named view vocabulary inherited by capability and result records \\
+\path{src/pra_hf/context_store.py} & scope, content identity, canonical encoding, manifests, TTL, hash verification, capacity, deletion \\
+\path{src/pra_hf/typed_context.py} & compressor registry, compact/address views, adaptive record descriptor, deterministic selectors \\
+\path{src/pra_hf/adaptive_context_runtime.py} & public policy, transport decision, materialization, search, cursor operations, accounting, audit \\
+\path{src/pra_hf/context_recovery.py} & trigger families, CCR-style handles, bounded probes, stage metrics, recovery engine, untrusted cursor-action parser \\
+\path{src/data/latent_trigger_cases.py} & deterministic paired explicit/latent fixtures and benchmark fingerprint fields \\
+\path{experiments/paper7_records/run_inception_experiments.py} & five-seed fixtures, metrics, JSON artifacts, TeX macros, and figures \\
+\path{experiments/paper7_records/run_latent_trigger_cursor_iteration.py} & frozen-model policy matrix, probe/address controls, cursor tasks, transport sweep, uncertainty, plots, and TeX macros \\
 \bottomrule
 \end{tabularx}
+}
 
 \section{Reproducibility}
 
@@ -627,16 +875,20 @@ From the repository root:
 \begin{lstlisting}
 python -m pytest tests/test_context_store.py \
   tests/test_typed_context.py \
-  tests/test_adaptive_context_runtime.py -q
+  tests/test_adaptive_context_runtime.py \
+  tests/test_context_recovery.py -q
 python experiments/paper7_records/run_inception_experiments.py
+python experiments/paper7_records/run_latent_trigger_cursor_iteration.py
 \end{lstlisting}
-Raw per-record, per-mode, cursor, and transport rows are under\\
-\path{docs/papers/shared/results/paper7_records/inception}. The same command
-regenerates the summary, TeX macros, and both figures. Unit tests additionally
-cover content-address stability, binary persistence, corruption detection,
-TTL expiration, cross-session denial, selected-range validation, cache reuse,
-cursor bounds, filters, search, aggregation, and closure.
+{\raggedright
+Raw artifacts are under \path{docs/papers/shared/results/paper7_records/inception}
+and \path{docs/papers/shared/results/paper7_records/latent_triggers}. The
+manifest records immutable model identity, seeds, decoding, benchmark
+fingerprint, and simulated-topology labels; local response caches are ignored.
+Tests cover store identity and integrity, scope and TTL, proactive authorization
+and accounting, and cursor validation, operations, and lifecycle.\par}
 
+{\small
 \begin{thebibliography}{9}
 
 \bibitem{jiang2023llmlingua}
@@ -668,5 +920,6 @@ Headroom Labs.
 \newblock \url{https://docs.headroomlabs.ai/docs/ccr}, accessed August 2026.
 
 \end{thebibliography}
+}
 
 \end{document}
