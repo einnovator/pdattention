@@ -23,7 +23,14 @@ class RecordType(str, Enum):
     LOG_BLOCK = "log_block"
     TERMINAL_OUTPUT = "terminal_output"
     DB_RESULT = "db_result"
+    GRAPH_RESULT = "graph_result"
+    RAG_RESULT = "rag_result"
+    RAG_CHUNK_SET = "rag_chunk_set"
     RAG_CHUNK = "rag_chunk"
+    FILE_READ = "file_read"
+    API_RESULT = "api_result"
+    GENERIC_TEXT = "generic_text"
+    CURSOR = "cursor"
     SYSTEM_INSTRUCTION = "system_instruction"
     SKILL_RECORD = "skill_record"
     SKILL = "skill_record"
@@ -84,6 +91,9 @@ class OverflowBehavior(str, Enum):
 class RecordViewName(str, Enum):
     """Predefined typed representations of one semantic record."""
 
+    METADATA = "metadata"
+    COMPACT = "compact"
+    SELECTED = "selected"
     SELECTION = "selection"
     FULL = "full"
 
