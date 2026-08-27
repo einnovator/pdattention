@@ -80,16 +80,29 @@ class CursorPolicy:
 
 @dataclass(frozen=True)
 class TypeContextPolicy:
-    """Per-result overrides for compaction and transport."""
+    """Per-result overrides for compaction, transport, and native indexing.
+
+    Native-index limits inherit from :class:`ContextPolicy` unless either
+    threshold is set. Set ``override_native_index_limits`` to disable or replace
+    both inherited bounds explicitly, including with two ``None`` values.
+    """
 
     unit_limit: int = 8
     storage: StoragePolicy | str | None = None
+    max_native_index_tokens: int | None = None
+    max_native_index_bytes: int | None = None
+    override_native_index_limits: bool = False
+    defer_native_index: bool | None = None
 
     def __post_init__(self) -> None:
         if self.unit_limit <= 0:
             raise ValueError("unit_limit must be positive.")
         if self.storage is not None:
             object.__setattr__(self, "storage", StoragePolicy(self.storage))
+        for name in ("max_native_index_tokens", "max_native_index_bytes"):
+            value = getattr(self, name)
+            if value is not None and value < 0:
+                raise ValueError(f"{name} must be non-negative or None.")
 
 
 @dataclass(frozen=True)
@@ -105,6 +118,9 @@ class ContextPolicy:
     upfront_max_bytes: int = 100_000
     adaptive_reuse_max_bytes: int = 1_000_000
     native_kv_bytes_per_token: int = 0
+    max_native_index_tokens: int | None = None
+    max_native_index_bytes: int | None = None
+    defer_native_index: bool = False
     store_max_bytes: int | None = None
     persistent_store: bool = False
     allow_proactive_expansion: bool = False
@@ -124,6 +140,46 @@ class ContextPolicy:
             raise ValueError("upfront_max_bytes cannot exceed adaptive_reuse_max_bytes.")
         if self.native_kv_bytes_per_token < 0:
             raise ValueError("native_kv_bytes_per_token must be non-negative.")
+        for name in ("max_native_index_tokens", "max_native_index_bytes"):
+            value = getattr(self, name)
+            if value is not None and value < 0:
+                raise ValueError(f"{name} must be non-negative or None.")
+
+    def native_index_policy(
+        self, record_type: RecordType | str
+    ) -> tuple[int | None, int | None, bool]:
+        """Resolve global and type-specific native-index ingestion policy."""
+
+        type_policy = self.record_policies.get(RecordType(record_type))
+        if type_policy is None:
+            return (
+                self.max_native_index_tokens,
+                self.max_native_index_bytes,
+                self.defer_native_index,
+            )
+        overrides_limits = type_policy.override_native_index_limits or any(
+            value is not None
+            for value in (
+                type_policy.max_native_index_tokens,
+                type_policy.max_native_index_bytes,
+            )
+        )
+        token_limit = (
+            type_policy.max_native_index_tokens
+            if overrides_limits
+            else self.max_native_index_tokens
+        )
+        byte_limit = (
+            type_policy.max_native_index_bytes
+            if overrides_limits
+            else self.max_native_index_bytes
+        )
+        deferred = (
+            type_policy.defer_native_index
+            if type_policy.defer_native_index is not None
+            else self.defer_native_index
+        )
+        return token_limit, byte_limit, deferred
 
 
 @dataclass(frozen=True)
@@ -166,6 +222,17 @@ class MaterializationResult:
     active_kv_bytes: int
     latency_seconds: float
     cache_hit: bool
+
+
+@dataclass(frozen=True)
+class RecordSearchResult:
+    """Authorized bounded search result over one exact backing identity."""
+
+    record_id: str
+    query: str
+    payload: object
+    payload_bytes: int
+    latency_seconds: float
 
 
 @dataclass(frozen=True)
@@ -704,6 +771,49 @@ class AdaptiveContextRuntime:
         )
         return tuple(row[2] for row in scored[:top_k])
 
+    def search_record(
+        self,
+        record_id: str,
+        query: str,
+        *,
+        limit: int = 4,
+        scope: RecordScope | None = None,
+    ) -> RecordSearchResult:
+        """Search one known record after enforcing its tenant/session scope."""
+
+        if record_id not in self.records:
+            raise KeyError(record_id)
+        if limit <= 0:
+            raise ValueError("limit must be positive.")
+        started = time.perf_counter()
+        caller_scope = scope or self.scope
+        try:
+            payload = self.store.get(record_id, scope=caller_scope)
+        except RecordAccessDenied:
+            self._audit("record_search_denied", record_id, caller=caller_scope.fingerprint)
+            raise
+        selected = _search_payload(payload, query, limit=limit)
+        payload_bytes = _payload_bytes(selected)
+        self._materialized_bytes += payload_bytes
+        remote = self.policy.topology != DeploymentTopology.SAME_PROCESS
+        if remote:
+            self._network_bytes += payload_bytes
+            self._round_trips += 1
+        self._audit(
+            "record_search",
+            record_id,
+            query=query,
+            limit=limit,
+            payload_bytes=payload_bytes,
+        )
+        return RecordSearchResult(
+            record_id,
+            query,
+            selected,
+            payload_bytes,
+            time.perf_counter() - started,
+        )
+
     def open_cursor(self, record_id: str, **kwargs: object) -> CursorRecord:
         """Open a scoped stateful cursor over an exact record collection."""
 
@@ -894,3 +1004,40 @@ def _address_terms(addresses: Mapping[str, object], kinds: Sequence[str]) -> set
         for item in values:
             terms.update(_query_terms(item))
     return terms
+
+
+def _search_payload(payload: object, query: str, *, limit: int) -> object:
+    """Return bounded matching units and stable source positions."""
+
+    collection = "items"
+    values: list[object]
+    if isinstance(payload, Mapping):
+        for name in ("rows", "nodes", "edges", "events", "results", "chunks", "items"):
+            candidate = payload.get(name)
+            if isinstance(candidate, Sequence) and not isinstance(candidate, (str, bytes)):
+                collection, values = name, list(candidate)
+                break
+        else:
+            collection, values = "fields", [
+                {"field": key, "value": value} for key, value in payload.items()
+            ]
+    elif isinstance(payload, str):
+        collection, values = "lines", payload.splitlines()
+    elif isinstance(payload, Sequence) and not isinstance(payload, (str, bytes)):
+        values = list(payload)
+    else:
+        values = [payload]
+    terms = _query_terms(query)
+    ranked = []
+    for index, value in enumerate(values):
+        overlap = len(terms & _query_terms(value))
+        if overlap:
+            ranked.append((overlap, index, value))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    chosen = ranked[:limit]
+    return {
+        "collection": collection,
+        "query": query,
+        "matches": [row[2] for row in chosen],
+        "match_indices": [row[1] for row in chosen],
+    }

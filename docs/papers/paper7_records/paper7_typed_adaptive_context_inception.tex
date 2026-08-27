@@ -1,13 +1,14 @@
 \documentclass[11pt]{article}
 \usepackage[margin=.9in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,placeins,microtype,enumitem,xcolor,listings}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,placeins,microtype,enumitem,xcolor,listings,longtable,array}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
-\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
-\input{../shared/results/paper7_records/inception/generated_inception_results.tex}
-\input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
-\input{../shared/results/paper7_records/progressive_context/generated_progressive_results.tex}
+\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/native_index_size_gate/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
 \input{../shared/results/paper7_records/full_pra_calibrated/generated_full_pra_calibrated_results.tex}
+\input{../shared/results/paper7_records/native_index_size_gate/generated_native_index_size_gate_results.tex}
+\input{../shared/results/paper7_records/progressive_context/generated_progressive_results.tex}
+\input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
+\input{../shared/results/paper7_records/inception/generated_inception_results.tex}
 
 \definecolor{codegray}{RGB}{246,247,249}
 \lstset{
@@ -28,1361 +29,935 @@
 \maketitle
 
 \begin{abstract}
-Large tool, database, log, graph, retrieval, file, and terminal results should
-not enter an agent as one permanently visible token stream. We introduce
-progressive model-controlled context disclosure over typed Parallel Reference
-Attention (PRA) records. Each result has an exact scoped backing identity and a
-compact summary registered as an implicit PRA document. Normal PRA routing
-operates first over summary chunks, gists, and address metadata. If current
-context is insufficient, a bounded controller may continue, activate the
-known full record, materialize selected detail, search within that record,
-advance or query a cursor, or call a new external tool. Every returned detail
-is another typed view of the same source and re-enters PRA. This separates
-discovery selection---which record or chunk is relevant---from escalation
-selection---whether the current materialization is sufficient.
+Large agent observations should not remain fully active merely because a tool
+has returned them. Yet a compact projection can hide a detail that becomes
+important only after the next inference. We separate these concerns with typed
+records: each observation has a compact visible view, exact scoped backing
+state, retrieval-only addresses, and bounded materialization interfaces.
+Production \texttt{PRA\_NATIVE} encodes the full backing result into Parallel
+Reference Attention (PRA) addresses and later materializes selected native
+key/value spans. On an 18-case held-out typed-result benchmark, this path
+matches full exposure at \PaperSevenCalNativeSuccess{} task success while
+reducing active K/V from \PaperSevenCalFullTokens{} to
+\PaperSevenCalNativeTokens{} tokens, approximately 40\%. A calibrated adaptive
+controller also reaches \PaperSevenCalAdaptiveSuccess{} but adds controller and
+escalation cost; an oracle reaches \PaperSevenCalOracleSuccess{}, showing
+headroom concentrated in mechanism choice.
 
-We correct two confounds in an earlier checkpoint by replacing its lexical
-mechanism control with production Qwen3-0.6B PRA registration, hidden-state
-gist routing, original-span selection, and native-K/V materialization, and by
-calibrating the context controller on a disjoint validation split. The study
-contains 30 balanced typed-record cases: 12 validation cases select one of two
-frozen models, three fixed description levels/protocols, and a native routing
-policy; 18 held-out cases then compare nine policies over five controller
-seeds. We report visible-summary compression, full-backing Recall@1/2/4/8,
-controller insufficiency and operation accuracy, and ingestion and inference
-cost separately. On held-out cases, compact-only PRA reaches
-\PaperSevenCalCompactRFour{} Recall@4, whereas production full-backing PRA
-reaches \PaperSevenCalNativeRFour{}. The frozen controller is
-\PaperSevenCalController{}. Native PRA, calibrated adaptation, oracle
-adaptation, CCR, and full exposure respectively achieve
-\PaperSevenCalNativeSuccess{}, \PaperSevenCalAdaptiveSuccess{},
-\PaperSevenCalOracleSuccess{}, \PaperSevenCalCCRSuccess{}, and
-\PaperSevenCalFullSuccess{} task success. The result distinguishes what
-compression removes, what PRA can still address, and what a controller can
-recover without conflating those mechanisms. The earlier action-conditioned
-latent-trigger probe remains a secondary diagnostic.
+Full-backing native indexing is not free. Its model encoding and resident state
+grow with payload size. We therefore add exact token and byte gates,
+per-record-type overrides, explicit skip states, cheap lexical and structural
+fallbacks, cursor/search metadata, deferred indexing, and lazy native encoding
+of selected regions. In a five-seed CUDA mechanism profile from 1K to 256K
+tokens, the configured 4K-token/64KiB gate admits its exact boundary and skips
+larger payloads without truncation. At 256K tokens, eager native index work
+takes \PaperSevenEagerLargestIndexMs{} ms and yields
+\PaperSevenEagerLargestTTUC{} ms time-to-usable-context (TTUC), compared with
+\PaperSevenGatedLargestTTUC{} ms for compact-first gated handling. The lazy path
+then encodes a median \PaperSevenLazyRegionTokens{} selected tokens in
+\PaperSevenLazyRegionMs{} ms with \PaperSevenGatedRecall{} controlled evidence
+recall. These are lifecycle measurements with an instrumented Torch encoder,
+not pretrained-model quality or universal threshold claims.
 \end{abstract}
 
 \section{Introduction}
 
-Tool-capable language-model agents increasingly spend their context budget on
-observations rather than instructions. A database query can return thousands
-of rows; a build command can produce megabytes of mostly routine output; a
-graph traversal can expose a neighborhood whose useful branch is not yet
-known. The agent often needs only a small projection now, but it may need a
-different projection after its next inference.
+Agent observations can be too large to remain active; lossy compression can
+hide future-relevant detail; and full-backing PRA preserves addressability but
+model-native indexing itself can become too expensive for very large
+observations. These are three different problems. Treating them as one token
+budget obscures where time and memory are spent.
 
-Two common responses are incomplete. Full serialization couples active
-context to source size. One-shot summarization breaks that coupling, but the
-summary becomes both the model's visible evidence and its only clue that more
-evidence exists. An exact original can remain in a cache while being
-functionally unreachable: the model cannot request a detail whose relevance
-was itself omitted.
+A database result, terminal transcript, graph traversal, or retrieved document
+set may be useful in several ways over time. Full serialization preserves
+evidence but makes active context proportional to source size. A summary lowers
+that cost but can remove both the evidence and the clue that retrieval would
+help. Keeping exact bytes in a cache restores reversibility, but not necessarily
+automatic addressability. Encoding every large backing object into
+model-native retrieval state restores addressability, but introduces ingestion
+cost of its own.
 
-This paper treats context management as a recursive PRA control problem. A
-result is a typed record, not an undifferentiated message. Its compact view is
-model-visible evidence; its full bytes remain exact backing state; and a
-separate production PRA index provides retrieval-only addresses over those
-full bytes. PRA first selects useful original backing chunks. The model then decides
-whether to continue or request a bounded escalation. The returned view is
-typed, linked to the same source identity, and routed again. Large collections
-may expose cursors instead of repeatedly returning complete snapshots.
+We implement:
+\[
+\begin{aligned}
+&\text{compact visible projection}\\
+{}+{}&\text{bounded backing addressability}\\
+{}+{}&\text{progressive materialization}\\
+{}+{}&\text{size-gated native indexing}\\
+{}+{}&\text{search/cursor fallback}.
+\end{aligned}
+\]
+Small bounded records can use a full native backing index. Larger records keep
+cheap addresses and may natively encode only a selected region. Huge or
+stateful results remain behind search and cursor interfaces rather than being
+eagerly transformed into native state.
 
-The contributions are:
+This paper makes six contributions:
 \begin{enumerate}[leftmargin=*]
-  \item a provider-neutral record model for nine result families and a stable
-  mapping from each record to summary, full, selected-detail, search, and
-  cursor-page PRA documents;
-  \item a scoped content-addressed backing store with exact recovery, hash
-  verification, TTL, size bounds, persistence controls, and audit events;
-  \item deterministic type-specific compactors and independent lexical,
-  entity, rare-term, and schema address views;
-  \item a bounded \texttt{ContextAction}/\texttt{ContextDecision} API for
-  continue, full, more, search, cursor, and external-tool transitions;
-  \item stateful cursors supporting pages, ranges, filters, ordering, search,
-  aggregation, sampling, field projection, and closure;
-  \item a balanced six-class benchmark comparing compact-only indexing,
-  lexical fallback, production full-backing PRA, calibrated model control,
-  oracle adaptation, generic CCR retrieval, and full exposure;
-  \item disjoint validation of semantic and hybrid native routing plus two
-  controller capacities and flat/hierarchical protocols, frozen before the
-  held-out five-seed matrix;
-  \item separate measures of insufficiency recognition, mechanism correctness,
-  task success, evidence recall, context/KV economy, expansions, and transfer;
-  \item a secondary paired latent-trigger diagnostic and payload-scale
-  transport study, retained without allowing either to define the main system.
+  \item a typed record abstraction separating exact backing state, compact
+  visible views, retrieval-only addresses, and materialized views;
+  \item a production full-backing PRA path that routes over original content
+  and materializes selected native K/V;
+  \item configurable token and byte gates, per-type overrides, explicit
+  lifecycle states, and a no-silent-truncation contract for native indexing;
+  \item cheap search/cursor fallbacks and authorized lazy native encoding of a
+  bounded selected region;
+  \item a recursive context-control API spanning continue, full, partial,
+  search, cursor, and external-tool actions;
+  \item a quality/cost decomposition showing the full-backing result,
+  controller headroom, and ingestion/TTUC scaling separately.
 \end{enumerate}
 
-The main result is a decomposition, not a blanket win. Paper 7 separately
-measures \emph{compression}, \emph{addressability}, and \emph{adaptation}.
-This prevents a readable compact summary from being mistaken for a PRA gist,
-and prevents a lexical search control from being described as native PRA.
+\section{Typed Record and Backing-State Model}
 
-\section{Context Is a Typed State Space}
-
-Let a result record be
+A result record is
 \begin{equation}
-R=(id,\tau,P,A,V,B),
+R=(id,\tau,P,B,V,A,C),
 \end{equation}
-where $id$ is a stable scoped identity, $\tau$ is a record type, $P$ contains
-provenance and policy, $A$ is a set of address views, $V$ is the current
-prompt-visible projection, and $B$ is lossless backing state. The model need
-not see $A$ or $B$ directly. They belong to the runtime's control plane.
+where $id$ is a stable scoped identity, $\tau$ is a record type, $P$ records
+provenance and policy, $B$ is exact backing state, $V$ is the current visible
+view, $A$ is a set of retrieval-only addresses, and $C$ describes bounded
+capabilities. The content hash covers $B$; tenant and session scope govern every
+read. Materialized results preserve $id$, provenance, and source fingerprint.
 
-This separation prevents three category errors.
-First, a compact view is not a retrieval index: prose that reads well may be a
-poor rare-key index. Second, a cache handle is not authorization: identity
-resolution must still enforce tenant and session scope. Third, storage is not
-materialization: retaining bytes says nothing about when they enter the model's
-active context.
+The runtime supports database, log, terminal, graph, RAG, file, API,
+tool-response, and generic text records. Type-specific compactors retain
+representative rows, anomalies, schema, heads/tails, or structural summaries.
+The full payload is stored independently. A compact view can therefore be
+lossy without making the record irreversible.
 
-Materialization follows a monotone visibility lattice:
-\begin{equation}
-V_0=\text{metadata}
-\rightarrow V_1=\text{compact}
-\rightarrow V_2=\text{selected fields/range}
-\rightarrow V_3=\text{full}.
-\end{equation}
-The backing record does not change as a view advances. A selected row range is
-computed from the hash-verified original after authorization, so an earlier
-summary cannot silently become the source of truth.
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+Family & Compact view & Cheap interface & Preferred large-result path\\
+\midrule
+DB/graph & schema, counts, sample & fields, rare terms, cursor & filter/search, selected rows or edges\\
+Log/terminal & head, tail, anomalies & lexical and line search & cursor/range, selected lines\\
+RAG/file/text & bounded excerpts & lexical/entity/schema & search, selected chunks\\
+Tool/API result & status and key fields & IDs, schema, lexical & selected fields or bounded full\\
+\bottomrule
+\end{tabularx}
+\caption{Typed policy is a dispatch point, not a universal threshold claim.}
+\label{tab:record-families}
+\end{table}
+
+\subsection{Visible views}
+
+Each record has named metadata, compact, selected, and full views. Metadata
+contains identity, type, source size, content hash, provenance, and lifecycle
+capabilities. The compact view is the only payload admitted initially. A
+selected view is produced by a validated field, row, line, or item selector.
+The full view resolves to exact stored state and rejects selectors so that a
+partial read cannot be mislabeled as full.
+
+The compactors are deterministic in this study. Database records retain
+columns, counts, and representative rows. Logs and terminal output preserve
+bounded head/tail or anomaly-bearing lines. Graph results preserve schema and a
+bounded node/edge sample. Text-like records retain bounded excerpts. These
+choices are replaceable: the architecture requires a stable view contract, not
+a particular summarizer.
+
+Visible compression and address construction consume the same source but
+produce different objects:
+\begin{align}
+V &= f_{\mathrm{compact}}(B;\tau,p_V),\\
+A_{\mathrm{cheap}} &= f_{\mathrm{index}}(B;\tau,p_A).
+\end{align}
+The compact payload is serialized into model context. Cheap addresses remain
+in the runtime control plane. Their token volume is therefore not active
+prompt volume, although their memory and construction time are still counted.
+
+\subsection{Backing identity and transport}
+
+The local backing store writes a content-addressed descriptor and verifies the
+payload hash on read. A record scope combines tenant and session identity.
+TTL, persistence, and total store bytes are policy-controlled. The transport
+policy separately chooses up-front or on-demand placement according to
+topology, payload size, and expected reuse. A remote on-demand record incurs a
+round trip on its first materialization; repeated identical reads are accounted
+as cache hits.
+
+Storage placement does not change authorization. Search, full retrieval,
+selected materialization, cursor opening, and lazy native encoding all resolve
+the same record identity and caller scope. This property is important above the
+native-index gate: a cheap fallback is not a less trusted path.
+
+\subsection{Lifecycle accounting}
+
+We report four costs:
+\begin{align}
+T_{\mathrm{agent}} &: B \rightarrow V,\\
+T_{\mathrm{index}} &: B \rightarrow A_{\mathrm{native}}\ \text{or}\ A_{\mathrm{cheap}},\\
+K_{\mathrm{active}} &: \text{visible prompt and materialized native K/V},\\
+T_{\mathrm{recover}} &: \text{search, cursor, tool, transfer, and controller work}.
+\end{align}
+Resident backing/index bytes are distinct from active K/V. Full-backing PRA can
+lower active K/V while increasing ingestion and resident state.
+
+\section{Visible Compression and Retrieval-Only Addresses}
 
 \begin{figure}[t]
 \centering
-\fbox{\begin{minipage}{.94\linewidth}
-\centering
-\textbf{typed tool / database / graph / RAG / log result}\\[2pt]
-$\swarrow$ compact model-visible view \hfill exact scoped backing $\searrow$\\[2pt]
-\textbf{controller-visible summary} \hfill
-\textbf{original chunks $\rightarrow$ retrieval-only PRA gists/addresses}\\[2pt]
-\hfill $\downarrow$ bounded routing $\rightarrow$ selected native K/V\\[2pt]
-\textbf{compact view $+$ selected original evidence}\\[2pt]
-\textbf{model reasons over current materialization}\\[2pt]
-$\downarrow$\\[-2pt]
-\texttt{CONTINUE} $\mid$ \texttt{FULL} $\mid$ \texttt{MORE} $\mid$
-\texttt{SEARCH} $\mid$ \texttt{CURSOR} $\mid$ \texttt{CALL\_TOOL}\\[2pt]
-$\downarrow$ authorized runtime execution\\[2pt]
-\textbf{typed detail view with the same source identity $\rightarrow$ re-enter PRA}
+\fbox{\begin{minipage}{.94\linewidth}\small
+\textbf{Tool result / typed observation}\\
+$\downarrow$ preserve identity, scope, provenance, and exact backing bytes\\
+\textbf{Compact visible view} $\quad+\quad$
+\textbf{cheap addresses} (lexical, entity, rare term, schema, explicit ID)\\
+$\downarrow$ native-index policy\\
+\textbf{bounded: full-backing PRA index}\quad|\quad
+\textbf{large: cheap index + lazy region native encode}\quad|\quad
+\textbf{huge/stateful: search or cursor}\\
+$\downarrow$ exact or bounded selection\\
+\textbf{selected backing region} $\rightarrow$
+\textbf{native K/V or typed visible detail} $\rightarrow$
+\textbf{model continuation}
 \end{minipage}}
-\caption{The corrected Paper 7 control loop. Visible compression and PRA
-address encoding are separate. Production PRA performs discovery over exact
-backing chunks before the model performs escalation selection. Every expansion
-is an authorized typed view and recursively re-enters PRA.}
+\caption{Visible compression, retrieval addresses, active materialization, and
+recovery are separate lifecycle stages.}
 \label{fig:architecture}
 \end{figure}
 
-\section{Typed Result Records}
+A compact summary is evidence the model can read. A PRA gist is an address used
+to choose hidden backing content. If the summary omits a future trigger,
+summary-only routing may not recover it. The full-backing path instead tokenizes
+the original, creates model hidden states and gists, retains native K/V where
+supported, and exposes only selected original spans at inference time.
 
-Table~\ref{tab:types} lists the initial result families. The registry is open:
-applications may replace a compressor without changing identity, storage,
-authorization, or cursor semantics.
+Cheap addresses remain available when native indexing is disabled. The runtime
+builds lexical, entity-pattern, rare-term, schema, and optional summary views
+during compaction. Exact IDs and structured selectors bypass semantic
+rediscovery. BM25, external embeddings, and remote structured indexes fit the
+interface but are not all implemented in this branch.
+
+\section{Production Full-Backing PRA}
+
+For an admitted record, \texttt{PRA\_NATIVE} means that full-backing model
+encoding actually completed. The registry passes the exact serialized backing
+payload to the normal PRA reference path. That path runs the host tokenizer,
+model-safe encoding blocks, native K/V construction, chunking, and gist
+indexing. The backing reference is retrieval-only and does not enter the
+prompt-visible document set.
+
+At query time, PRA ranks backing chunks. Selected logical token intervals map
+to the same record identity, are decoded or retained as native K/V, and re-enter
+the recursive context loop as a detail view. Frozen selections can be replayed
+across controller seeds without rerunning routing, separating evidence
+reachability from controller variability.
+
+\subsection{Registration pipeline}
+
+Let the host tokenizer map backing text to $x_{1:n}$. Model-safe encoding blocks
+produce hidden states without exceeding the model context limit. At the chosen
+routing layer, the implementation retains native keys and values and partitions
+them into overlapping routing chunks. A gist function $g$ maps each chunk to a
+small routing address. For query state $q$, the router ranks gists and returns
+logical intervals:
+\begin{equation}
+\mathcal{S}(q)=\operatorname{TopK}_{j}
+\left\langle q,g(K_{a_j:b_j})\right\rangle .
+\end{equation}
+Materialization uses $(a_j,b_j)$ to select the corresponding native K/V. The
+logical interval and reference URI remain attached to each selection, allowing
+the runtime to recover the typed source record. The registry records input
+tokens, chunks, ingestion time, routing-index bytes, resident detail-K/V bytes,
+and exact backing bytes.
+
+The compact record is registered separately as an implicit visible PRA
+document. This permits normal routing over current context while the backing
+reference remains retrieval-only. A detail, search result, or cursor page is
+registered as a child document after recovery, so the next model step can route
+over newly visible evidence without losing source identity.
+
+\subsection{What native economy means}
+
+PRA does not make backing storage free. In the current full-backing
+implementation, native K/V for the indexed source may remain resident even
+though only selected intervals become active during generation. We therefore
+distinguish:
+\begin{itemize}[leftmargin=*]
+  \item \emph{routing index bytes}, which hold gists and lookup metadata;
+  \item \emph{resident detail-K/V bytes}, which support later native
+  materialization;
+  \item \emph{requested/materialized K/V tokens}, which participate in the
+  current model step;
+  \item \emph{typed visible tokens}, which include serialized headers and
+  recovered views.
+\end{itemize}
+The approximately 40\% primary reduction concerns active K/V tokens, not
+resident backing memory or ingestion latency. Size gating addresses the latter
+costs rather than revising the quality result.
+
+\subsection{Frozen experimental configuration}
+
+The quality study uses Qwen3-0.6B at revision
+\texttt{c1899de289a04d12100db370d81485cdf75e47ca}. It uses routing layer 27,
+32-token chunks with 8-token overlap, a 96-token direct context, and a
+256-token materialization ceiling. Twelve validation identities select routing
+and controller policy. Eighteen disjoint identities, balanced over six
+context-control classes, form the held-out set. Controller conditions use five
+decoding seeds $(11,23,37,53,71)$.
+
+\section{Size-Gated Native Indexing}
+
+The policy adds \texttt{max\_native\_index\_tokens} and
+\texttt{max\_native\_index\_bytes}. A missing bound disables that dimension;
+exceeding either configured bound disables full-body native indexing. A
+per-record \texttt{TypeContextPolicy} may replace inherited limits. Byte bounds
+are evaluated from the backing descriptor before loading or tokenizing the
+full payload. Token bounds require exact host-tokenizer counting.
+
+\begin{lstlisting}[language=Python]
+if deferred:
+    state = DEFERRED
+elif backing_bytes > byte_limit:
+    state = SKIPPED_SIZE_LIMIT
+elif host_token_count(backing) > token_limit:
+    state = SKIPPED_SIZE_LIMIT
+else:
+    build_full_backing_native_index()
+    state = BUILT
+\end{lstlisting}
+
+A skipped record is never truncated and labeled \texttt{PRA\_NATIVE}. The
+convenience API raises \texttt{NativeIndexSizeLimitExceeded}; the policy API
+returns an auditable decision. Diagnostics include requested/built flags, skip
+reason, measured tokens and bytes when available, latency, cheap index modes,
+lazy region count, and lazy native tokens.
+
+The compact descriptor tells the controller whether the visible view is
+partial and whether more data, search, cursors, full retrieval, or lazy native
+encoding remain available. The operating regimes are:
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Small/bounded:} compact view plus full-backing
+  \texttt{PRA\_NATIVE}.
+  \item \textbf{Large:} compact view plus cheap backing index; a selected region
+  may then be natively encoded.
+  \item \textbf{Huge, streaming, or stateful:} compact metadata plus
+  search/cursor handles, without eager full native encoding.
+\end{enumerate}
+Thresholds are policy values, not scientific constants.
+
+\subsection{Lazy selected-region encoding}
+
+The lazy API authorizes the exact record scope, applies a deterministic
+field/row/line/item selector, and sends only the selected payload through the
+ordinary native reference encoder:
+\[
+B \xrightarrow{\mathrm{cheap\ search}} B_{[a:b]}
+\xrightarrow{\mathrm{native\ encode}} (K_{[a:b]},V_{[a:b]},G_{[a:b]}).
+\]
+The audit event retains record identity, selector, source fingerprint, native
+token count, and latency. The current local backing store verifies and loads
+the record before selecting; server-side range reads and asynchronous indexing
+remain productization work.
+
+\subsection{Oversized-record request path}
+
+When a gate closes, the compact record is refreshed with
+\texttt{partial\_context=true}, the exact skip reason, and the available
+recovery interfaces. Cheap address views continue to participate in automatic
+record discovery. Once the record identity is known, scoped within-record
+search returns bounded units and their stable source positions. Those positions
+can be converted to an explicit selector for native region encoding or ordinary
+typed materialization.
+
+The separation avoids two undesirable fallbacks. First, the runtime does not
+silently slice the first $N$ source tokens and claim a complete native index.
+Second, it does not reduce the oversized result to a summary and wait for the
+model to guess that omitted evidence exists. Cheap automatic retrieval remains
+active even when full model-dependent indexing is unavailable.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+State & Native backing & Controller-visible meaning & Next bounded path\\
+\midrule
+\texttt{NOT\_REQUESTED} & absent & index not attempted & cheap selection or explicit request\\
+\texttt{BUILT} & complete & full backing is natively addressable & native route/materialize\\
+\texttt{SKIPPED\_SIZE\_LIMIT} & absent & compact view is partial & cheap search, cursor, or lazy region\\
+\texttt{DEFERRED} & absent & construction postponed & continue now or force later\\
+\bottomrule
+\end{tabularx}
+\caption{Native-index lifecycle states. Only \texttt{BUILT} may be called
+\texttt{PRA\_NATIVE}.}
+\label{tab:index-states}
+\end{table}
+
+\subsection{Policy precedence}
+
+Global limits establish a deployment default. Per-record-type policy inherits
+them unless it supplies a token or byte value, or explicitly requests a full
+override. This supports, for example, a generous bound for immutable text and a
+lower one for database or graph results that already expose strong cursors.
+The exact threshold boundary is inclusive: a record equal to both limits is
+eligible; only a strict excess closes the gate.
+
+\section{Progressive Materialization and Control}
+
+The bounded action set is:
+\[
+\{\textsc{Continue},\textsc{Full},\textsc{More},\textsc{Search},
+\textsc{CursorNext},\textsc{CursorQuery},\textsc{CallTool}\}.
+\]
+Full and selected reads require an exact known record ID. Search operates
+inside one authorized backing identity. Cursors expose pages, ranges, filters,
+aggregates, samples, and fields while retaining scope and TTL. A new tool call
+is reserved for information absent from retained backing state. Every returned
+detail is a typed child view of the same source and re-enters PRA.
+
+The controller first judges whether current context is sufficient, then chooses
+an operation. The host validates record IDs, selectors, cursor IDs, and tool
+names. The model cannot invent an unregistered identity. Optional proactive
+materialization uses the same authorized path and is disabled unless policy
+allows it.
 
 \begin{table}[t]
 \centering
 \small
 \begin{tabularx}{\linewidth}{@{}lXX@{}}
 \toprule
-Type & Compact view & Useful address/selection units \\
+Action & Preconditions & Effect\\
 \midrule
-Tool/API response & bounded structural fields & keys, values, entities, rare identifiers \\
-Log block & errors plus deterministic lines and counts & line ranges, severity, rare tokens \\
-Terminal output & command, status, stderr, stdout head/tail & stdout/stderr ranges, command identity \\
-Database result & schema, representative rows, numeric statistics & fields, row ranges, filters, aggregates \\
-Graph result & node/edge counts and representatives & node IDs, entities, neighborhoods, edge ranges \\
-RAG result/chunks & deterministic passages & document/chunk identity, lexical and entity views \\
-File read & deterministic line projection & path, line ranges, rare keys \\
-Generic text & deterministic line projection & lexical, entity, and rare-term views \\
-Tool/skill capability & inherited selection and full views & stable capability URI \\
+\textsc{Continue} & current evidence sufficient & no backing expansion\\
+\textsc{Full} & known bounded record, full allowed & expose exact complete payload\\
+\textsc{More} & known record and valid selector & expose fields/rows/lines/items\\
+\textsc{Search} & known searchable record and query & expose bounded ranked units\\
+\textsc{CursorNext/Query} & authorized live cursor & expose page, filter, range, or aggregate\\
+\textsc{CallTool} & allowed tool identity & acquire information absent from backing\\
 \bottomrule
 \end{tabularx}
-\caption{Initial type policies. Every lossy row retains an exact original.}
-\label{tab:types}
+\caption{The action palette changes context state; it does not ask the model to
+manufacture payloads or identities.}
+\label{tab:actions}
 \end{table}
 
-\subsection{Compact views}
+\subsection{Recursive re-entry}
 
-The inception implementation uses deterministic compressors because their
-failure modes are inspectable. Database results retain column names, row count,
-uniformly spaced representative rows, and min/max/mean statistics for numeric
-columns. Logs prioritize lines matching error, exception, failure, fatal,
-panic, denial, and timeout patterns before filling the remaining budget with
-deterministic samples. Terminal records preserve command, exit status, working
-directory, stderr, and bounded stdout head/tail. Graph records retain counts
-and representative nodes and edges. Text-like records sample lines at fixed
-relative positions.
-
-These policies are baselines, not universal definitions of importance. Error
-preservation helps logs in the current benchmark, while uniform text sampling
-sometimes lands on a planted RAG trigger and usually misses it. Optional
-generated summaries can be registered, but no generated summary is used in the
-reported study.
-
-\subsection{Address views}
-
-Address views are built from exact input at ingestion time and stay outside the
-prompt-visible compact payload. The current implementation emits deterministic
-lexical tokens, entity-like spans, within-record rare terms, and structural
-keys. The API reserves dense and native-Q/K views without pretending they are
-implemented in this checkpoint.
-
-For query $q$ and address view $A_j$, discovery is
+At step $t$, PRA first selects from active typed views:
 \begin{equation}
-\operatorname{score}(q,R)=\sum_j w_j\,s_j(q,A_j(R)).
+S_t=\operatorname{Route}(q_t,\{V_i^{(t)}\}).
 \end{equation}
-The inception lexical resolver uses exact normalized token overlap. It is
-deliberately simple: its role is to test whether omitted bytes remain
-addressable, not to establish a production semantic retriever.
+The controller then emits one bounded decision
+$d_t=\pi(q_t,S_t,C_t)$. The runtime validates and executes $d_t$, producing
+either no new view, a typed child $V_{i,k}^{(t+1)}$, or a newly acquired tool
+record. The loop terminates on \textsc{Continue}, \textsc{CallTool}, a failed
+validation, or a configured step limit.
 
-\section{Lossless Backing State}
+This ordering separates discovery from escalation. PRA asks which current or
+backing region is relevant; the controller asks whether the resulting evidence
+is sufficient and which interface should be used next. The oracle study varies
+the second decision without changing the frozen native selection.
 
-The local store serializes JSON-compatible values canonically and preserves
-text and byte payloads exactly. A SHA-256 content hash defines the backing
-identity within a tenant/session scope. Payload and manifest files reside under
-a hash of that scope. Every read checks the caller scope, TTL, file presence,
-and content hash before decoding.
+\subsection{Cursor semantics}
 
-The distinction between identity and authorization is operational. Knowing an
-opaque content-addressed record handle does not permit a different session to
-read it. Cursor reads repeat the same check. Deletion revokes both payload and
-manifest; expiration removes them lazily on access or during cleanup. A bounded
-store evicts oldest entries before accepting further state, and rejects one
-payload larger than its configured capacity.
+Cursors are persistent scoped handles, not prompt text pretending to be a
+database. The runtime supports next/previous pages, bounded ranges, equality
+filters, ordering, search, numerical aggregates, samples, field projection,
+refinement, and close. Page size and TTL are bounded by policy. Cursor payloads
+are accounted as recovery materialization and re-enter PRA as child views. A
+cursor cannot be reused under another tenant/session scope.
 
-The current backend is local filesystem storage. The interface and transport
-accounting allow a remote or distributed backend later, but this paper does not
-report a remote storage service, network fault injection, encryption at rest,
-or multi-process concurrency.
+\section{Evaluation}
 
-\section{Materialization and Transport}
+\subsection{Questions, cases, and metrics}
 
-Four retrieval modes share one authorization path.
+The evaluation asks four questions. Does a compact view preserve the evidence?
+Can full-backing PRA address omitted evidence before controller action? Can a
+frozen controller choose the right escalation without erasing the K/V economy?
+Does a size gate avoid inappropriate full-body encoding while preserving a
+bounded recovery path?
 
-\paragraph{Native typed event.}
-The runtime accepts
-\begin{equation}
-\texttt{MATERIALIZE}(id,\;level,\;selector,\;cursor).
-\end{equation}
-The identity is already known, so expansion does not rerun semantic search.
-
-\paragraph{Tool retrieval.}
-\texttt{retrieve\_record} wraps the same event API for providers that expose
-ordinary function calling. Equal payload and authorization behavior makes the
-native event an optimization/interface choice rather than a semantic
-requirement.
-
-\paragraph{Mixed response and cursor.}
-The initial result supplies bounded data, schema, \texttt{cursor\_id},
-\texttt{has\_more}, and provenance. Later requests fetch only pages, ranges,
-fields, aggregates, or matching rows.
-
-\paragraph{Proactive expansion.}
-The runtime may materialize a selected projection before the model asks. This
-can repair a known risk pattern, but it shifts the burden to a policy that must
-control false positives and transfer cost.
-
-The storage policy is independent of retrieval mode. \texttt{upfront} places
-the original at the model/server side; \texttt{on\_demand} retains it agent
-side until expansion; \texttt{adaptive} chooses using topology, byte size, and
-expected reuse. The study evaluates 100,000-byte and 1,000,000-byte thresholds
-as configuration values. They are not proposed constants.
-
-\section{Stateful Cursors}
-
-A cursor is a scoped capability over a collection, not a copy of that
-collection. Its state includes record identity, source, query, schema,
-collection name, position, page size, filters, ordering, total estimate,
-creation and expiration times, provenance, authorization fingerprint, and a
-continuation handle. Supported operations are next/previous page, bounded
-range, search, filter, numeric aggregate, deterministic sample, selected-field
-projection, and close.
-
-Cursors matter when the next useful projection depends on the previous result.
-An analytics agent can request an aggregate, notice an outlying subgroup, and
-then inspect only rows in that subgroup. A graph agent can inspect one
-neighborhood before continuing traversal. Repeating a full tool call would
-discard position and may recompute or mutate source state.
-
-The current cursor manager is in-process and read-only. It does not yet provide
-transaction isolation, snapshot versioning, distributed leases, or recovery
-after process loss. Those are serving requirements, not properties inferred
-from the mechanism tests below.
-
-\section{Progressive PRA Context Control}
-
-\subsection{Implicit documents and source identity}
-
-In Paper 7, a compact result is not merely appended as a flat message. For
-record $R$, the runtime registers a stable document such as
-\texttt{record://R/summary}. Its serialized typed view is split into bounded
-chunks; each chunk receives a stable ID, routing gist, lexical/entity address
-metadata, and the native source identity of $R$. When a PRA-aware Hugging Face
-model is attached, registration calls the same \texttt{add\_reference} path as
-an ordinary document. The production tokenizer, chunker, hidden-state encoder,
-gist builder, and native-K/V cache are therefore reused rather than simulated
-by a result-specific attention path.
-
-Derived documents include \texttt{record://R/full}, selected detail, search
-results, and cursor pages. They share record ID, authorization scope,
-provenance, and backing fingerprint. Activating \texttt{FULL} for a known
-record is exact identity resolution, not a second global semantic search.
-This distinction matters operationally: discovery asks which source is
-relevant; escalation asks how much of that already identified source is needed.
-
-\subsection{Bounded decisions}
-
-The controller emits a typed decision
-\begin{equation}
-D=(a,id,s,q,c,t),
-\end{equation}
-where $a$ is one action, $id$ a known record, $s$ a typed selector, $q$ an
-in-record query, $c$ an authorized cursor, and $t$ an external tool. The action
-space is:
-\begin{center}
-\small
-\begin{tabularx}{.96\linewidth}{@{}lX@{}}
-\toprule
-Action & Runtime meaning \\
-\midrule
-\texttt{CONTINUE} & Current PRA-selected context is sufficient. \\
-\texttt{MATERIALIZE\_FULL} & Activate the exact bounded backing record. \\
-\texttt{MATERIALIZE\_MORE} & Expose declared fields, rows, lines, chunks, or a neighborhood. \\
-\texttt{SEARCH\_RECORD} & Search inside one known large backing object. \\
-\texttt{CURSOR\_NEXT/QUERY} & Continue or refine an authorized stateful cursor. \\
-\texttt{CALL\_TOOL} & Acquire information absent from retained backing state. \\
-\bottomrule
-\end{tabularx}
-\end{center}
-
-The parser rejects unknown record IDs, cursor IDs, selectors, and tools before
-execution. A local PRA-aware deployment can express $D$ as a native context
-event. A remote opaque model can use special retrieval tools. Mixed deployment
-uses native activation for co-located records and callbacks for remote state.
-These transports implement the same logical transition.
-
-\subsection{Recursive control loop}
-
-For query $q_t$ and active typed documents $\mathcal{V}_t$, PRA first computes
-\begin{equation}
-S_t=\operatorname{PRASelect}(q_t,\mathcal{V}_t;K).
-\end{equation}
-The model then emits $D_t$. If $D_t$ expands state, the runtime authorizes and
-executes it, produces typed view $V_{t+1}$, registers that view as an implicit
-PRA document, and repeats:
-\begin{equation}
-\mathcal{V}_{t+1}=\mathcal{V}_t\cup\{V_{t+1}\}.
-\end{equation}
-The loop has a hard step bound. The model never returns the hidden payload
-itself; it returns only a decision whose identifiers are resolved by the host.
-
-\section{Calibrated Full-Backing PRA Study}
-\label{sec:calibrated-full-pra}
-
-\subsection{Three independently measured mechanisms}
-
-For this study one typed record is represented as
-\begin{equation}
-R=\{V_{\mathrm{compact}},A(B_{\mathrm{full}}),B_{\mathrm{full}}\}.
-\end{equation}
-$V_{\mathrm{compact}}$ is an agent-side summary, schema, statistics block, or
-sample and is visible to the controller. $A(B_{\mathrm{full}})$ contains PRA
-routing addresses built from every original backing chunk and is never shown
-as evidence. $B_{\mathrm{full}}$ is exact scoped state. A PRA gist is therefore
-an address encoding, not a second name for the visible compact summary.
-
-The production path calls \texttt{PRAForCausalLM.add\_reference} on the exact
-backing serialization. Qwen3-0.6B tokenizes the source, forms 32-token chunks
-with eight-token overlap, encodes 128-token model-safe blocks, constructs
-hidden-state mean gists at layer 27, and retains native K/V for the selected
-original spans. Routing is bounded to eight candidates; reported Recall@$K$
-uses $K\in\{1,2,4,8\}$ and gives credit only when the union of selected spans
-fully covers the evidence marker. One-token consumption checks verify native
-K/V use; repeated controller seeds replay the immutable selections through the
-same typed materialization API rather than rebuilding the index.
-
-The benchmark keeps five instances of each of the six action classes defined
-in the earlier checkpoint below. Billing and deployment form the 12-case
-validation partition; inventory, identity, and support form the 18-case test
-partition. Within each partition, cases distinguish compact-explicit evidence,
-natural semantic omission (for example, ``payment authentication failures''
-versus ``merchant token expired''), opaque identifiers, and evidence absent
-from backing state. The answer marker is never silently inferred: we record
-whether it is literal in the compact view, present in the full-backing index,
-covered by the selected original spans, and visible after materialization.
-
-\subsection{Validation-only policy freezing}
-
-We first compare lexical fallback, production semantic-gist routing, and the
-existing bounded hybrid-iterative policy. The main \texttt{PRA\_NATIVE}
-policy is \PaperSevenCalNativePolicy{}, selected by validation Recall@4 with
-routing latency as the tie breaker. Figure~\ref{fig:cal-routing} reports the
-held-out curve; no held-out result changes this choice.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.78\linewidth]{native_routing_recall.pdf}
-\caption{Pure full-backing evidence reachability. Lexical fallback is retained
-as a transparent mechanism control; semantic and hybrid curves use production
-hidden-state routing and original native-K/V spans.}
-\label{fig:cal-routing}
-\end{figure}
-
-The controller receives a fixed always-visible description of
-\texttt{CONTINUE}, \texttt{MATERIALIZE\_FULL}, \texttt{MATERIALIZE\_MORE},
-\texttt{SEARCH\_RECORD}, \texttt{CURSOR\_NEXT}, \texttt{CURSOR\_QUERY}, and
-\texttt{CALL\_TOOL}. We calibrate minimal D0 and rich D2 wording with both
-Qwen3-0.6B and Llama-3.2-3B, add concise D1 for the stronger model after D0/D2
-expose a precision/recall tradeoff, and compare flat versus two-stage
-sufficient/need-more then operation selection. Temperature is zero and seeds
-are $\{11,23,37,53,71\}$. The selected \PaperSevenCalController{} controller
-has validation decision accuracy \PaperSevenCalControllerAccuracy{}. Its exact
-description text, model, protocol, and thinking flag are hashed; MODEL\_ONLY
-and PRA\_ADAPTIVE assert the same fingerprint at runtime.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.92\linewidth]{controller_validation.pdf}
-\caption{Validation-only controller calibration. Need-more recall, false
-escalation, and operation accuracy expose differences hidden by aggregate
-decision accuracy. Rich descriptions are fixed system overhead rather than
-retrieved application tools.}
-\label{fig:cal-controller}
-\end{figure}
+The 30 quality cases cross five domains with six required actions. Two domains
+(12 identities) are reserved for validation; three domains (18 identities) are
+held out. Natural semantic-omission cases describe the relevant phenomenon
+without placing the exact answer in the compact view. Opaque cases use a lookup
+key that must match backing content. Absent cases deliberately omit the answer
+from backing state.
 
 \begin{table}[t]
 \centering
 \small
-\begin{tabular}{@{}lrrrrrr@{}}
+\begin{tabularx}{\linewidth}{@{}lXXl@{}}
 \toprule
-Frozen controller & Decision & Need recall & False esc. & Op. acc. & Prompt tok. & Latency (s) \\
+Class & Required state transition & Evidence relation & Expected action\\
 \midrule
-\PaperSevenCalController{} & \PaperSevenCalControllerAccuracy{} &
-\PaperSevenCalControllerNeedRecall{} & \PaperSevenCalControllerFalseEsc{} &
-\PaperSevenCalControllerOperation{} & \PaperSevenCalControllerPromptTokens{} &
-\PaperSevenCalControllerLatency{} \\
+C0 & none & compact-explicit & \textsc{Continue}\\
+C1 & whole bounded result & hidden in backing & \textsc{Full}\\
+C2 & selected rows/fields & hidden in a subset & \textsc{More}\\
+C3 & stateful page/query & hidden in collection & \textsc{CursorQuery}\\
+C4 & in-record match & hidden but searchable & \textsc{Search}\\
+C5 & new observation & absent from backing & \textsc{CallTool}\\
 \bottomrule
-\end{tabular}
-\caption{Validation metrics for the frozen controller. The fixed D2 operation
-block contributes about \PaperSevenCalControllerDescTokens{} of the reported
-prompt tokens and is reused across decisions.}
-\label{tab:cal-controller}
+\end{tabularx}
+\caption{Balanced quality benchmark classes. Each class has two validation and
+three held-out identities.}
+\label{tab:classes}
 \end{table}
 
-\subsection{Held-out policies and results}
+We report compact and backing evidence recall at $K\in\{1,2,4,8\}$,
+insufficiency recognition, operation accuracy, evidence visibility, final task
+success, active native K/V, typed visible tokens, controller tokens, routing
+latency, index bytes, and resident detail-K/V. Validation selects semantic
+versus hybrid routing and the controller model, description level, and flat or
+hierarchical protocol. No held-out result changes those choices.
 
-The held-out matrix compares FULL, COMPACT\_ONLY, PRA\_COMPACT (PRA indexes
-only the visible compact view), PRA\_FALLBACK, PRA\_NATIVE, MODEL\_ONLY,
-PRA\_ADAPTIVE, PRA\_ADAPTIVE\_ORACLE, and CCR\_TOOL. PRA\_ADAPTIVE first
-materializes the frozen native selection and then asks the calibrated
-sufficiency controller whether another typed transition is needed. The oracle
-supplies only the correct transition label; the ordinary authorized runtime
-still executes materialization, search, cursor, or external-tool acquisition.
-CCR uses the same controller fingerprint and maps escalation to generic full
-retrieval, except that \texttt{CALL\_TOOL} remains acquisition of absent state.
+\subsection{Routing control before answer generation}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Backing address path & Held-out Recall@4 & Role\\
+\midrule
+Native semantic & \PaperSevenCalSemanticRFour{} & model-native semantic control\\
+Native hybrid & \PaperSevenCalHybridRFour{} & frozen production path\\
+Lexical fallback & \PaperSevenCalFallbackRFour{} & cheap deterministic control\\
+Compact-only & \PaperSevenCalCompactRFour{} & visible-summary lower bound\\
+\bottomrule
+\end{tabular}
+\caption{Evidence reachability is measured before controller choice. The
+hybrid policy is selected on validation and then frozen.}
+\label{tab:routing-control}
+\end{table}
+
+\subsection{Primary quality and active-K/V result}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=.72\linewidth]{visible_backing_addressability.pdf}
-\caption{Agent-visible compression and retrieval-only backing addressability.
-PRA\_COMPACT cannot recover a discriminator removed from the compact view;
-PRA\_NATIVE can select original backing chunks without exposing the full
-record.}
-\label{fig:cal-addressability}
+\caption{Compact visibility and retrieval-only backing addressability are
+different. The held-out native result is frozen after validation.}
+\label{fig:addressability}
+\end{figure}
+
+Compact-only routing reaches \PaperSevenCalCompactRFour{} Recall@4, while the
+frozen full-backing hybrid policy reaches \PaperSevenCalNativeRFour{}.
+Table~\ref{tab:frontier} evaluates complete context policies. Success is
+deterministic once the exact answer marker is visible, isolating context
+control rather than free-form generation quality.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Policy & Task success & Active K/V & Typed visible & Controller\\
+\midrule
+Full-backing PRA & \PaperSevenCalNativeSuccess{} & \PaperSevenCalNativeTokens{} & \PaperSevenCalNativeTypedTokens{} & \PaperSevenCalNativeControllerTokens{}\\
+Calibrated adaptive & \PaperSevenCalAdaptiveSuccess{} & \PaperSevenCalAdaptiveTokens{} & \PaperSevenCalAdaptiveTypedTokens{} & \PaperSevenCalAdaptiveControllerTokens{}\\
+Oracle adaptive & \PaperSevenCalOracleSuccess{} & \PaperSevenCalOracleTokens{} & \PaperSevenCalOracleTypedTokens{} & \PaperSevenCalOracleControllerTokens{}\\
+CCR-style retrieve & \PaperSevenCalCCRSuccess{} & \PaperSevenCalCCRTokens{} & \PaperSevenCalCCRTypedTokens{} & \PaperSevenCalCCRControllerTokens{}\\
+Full exposure & \PaperSevenCalFullSuccess{} & \PaperSevenCalFullTokens{} & \PaperSevenCalFullTypedTokens{} & \PaperSevenCalFullControllerTokens{}\\
+\bottomrule
+\end{tabular}
+\caption{Held-out quality/cost means in tokens. Full-backing PRA matches full
+exposure while lowering active K/V by approximately 40\%. Ingestion cost is
+reported separately.}
+\label{tab:frontier}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.69\linewidth]{adaptive_quality_cost_frontier.pdf}
+\caption{Task success versus active K/V. Controller and routing costs are not
+folded into the horizontal axis.}
+\label{fig:frontier}
+\end{figure}
+
+The calibrated controller does not improve over the simpler native policy and
+uses more visible/controller tokens. The oracle reaches 1.0. This does not
+contradict FULL's 0.833: FULL exposes all \emph{retained} backing content but
+cannot reveal a fact never returned. The oracle can correctly choose
+\textsc{CallTool} for those absent-information cases.
+
+\subsection{Ingestion and TTUC scaling}
+
+The size-gate profile uses payloads of 1K, 4K, 16K, 64K, and 256K tokens and
+\PaperSevenSizeGateSeeds{} seeds on CUDA. An instrumented 32-dimensional Torch
+embedding/projection path performs blockwise model-like encoding and exposes
+the production PRA reference API. It is not a pretrained LM. The four
+conditions are eager full native, size-gated cheap indexing, size-gated cheap
+plus lazy selected-region native encoding, and search/cursor-only. All use the
+same deterministic compactors and backing store. The illustrative gate is
+\PaperSevenSizeGateLimit{} tokens or \PaperSevenSizeGateByteLimit{} bytes.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.96\linewidth]{native_index_ingestion_ttuc.pdf}
+\caption{Median native-index latency and time-to-usable-context. At the exact
+gate boundary, the gated policy builds the native index. Above it, the byte
+descriptor rejects eager native work before full-payload loading or
+tokenization. These are lifecycle mechanism timings, not Qwen latency.}
+\label{fig:size-gate}
 \end{figure}
 
 \begin{table}[t]
 \centering
 \small
-\begin{tabular}{@{}lrr@{}}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-Routing policy & Held-out Recall@4 & Role \\
+256K condition & Native built & Index ms & TTUC ms & Lazy tokens\\
 \midrule
-PRA\_COMPACT & \PaperSevenCalCompactRFour{} & compact-only ablation \\
-Lexical fallback & \PaperSevenCalFallbackRFour{} & transparent control \\
-Native semantic & \PaperSevenCalSemanticRFour{} & production one-shot \\
-Native hybrid & \PaperSevenCalHybridRFour{} & production bounded iterative \\
+Eager full native & yes & \PaperSevenEagerLargestIndexMs{} & \PaperSevenEagerLargestTTUC{} & 0\\
+Size-gated cheap & no & 0 & \PaperSevenGatedLargestTTUC{} & 0\\
+Size-gated lazy native & no & 0 & 960.3 & \PaperSevenLazyRegionTokens{}\\
+Search/cursor only & no & 0 & 962.2 & 0\\
 \bottomrule
 \end{tabular}
-\caption{Evidence reachability is measured before any controller or answer
-decision. Opaque and absent-from-backing cases remain explicit stress controls.}
-\label{tab:cal-routing}
+\caption{Largest-payload medians. The lazy region adds
+\PaperSevenLazyRegionMs{} ms after cheap selection and preserves
+\PaperSevenGatedRecall{} controlled evidence recall. TTUC remains dominated by
+agent-side compact-view/address construction, which still scans the input.}
+\label{tab:size-gate}
 \end{table}
 
 \begin{table}[t]
 \centering
 \small
-\begin{tabular}{@{}lrrr@{}}
+\begin{tabular}{@{}rrrrrr@{}}
 \toprule
-Policy & Task success & Active K/V & Typed payload \\
+Payload & Eager index & Eager TTUC & Gated TTUC & Lazy encode & Lazy tokens\\
 \midrule
-PRA\_NATIVE & \PaperSevenCalNativeSuccess{} & \PaperSevenCalNativeTokens{} & \PaperSevenCalNativeTypedTokens{} \\
-PRA\_ADAPTIVE & \PaperSevenCalAdaptiveSuccess{} & \PaperSevenCalAdaptiveTokens{} & \PaperSevenCalAdaptiveTypedTokens{} \\
-PRA\_ADAPTIVE\_ORACLE & \PaperSevenCalOracleSuccess{} & \PaperSevenCalOracleTokens{} & \PaperSevenCalOracleTypedTokens{} \\
-CCR\_TOOL & \PaperSevenCalCCRSuccess{} & \PaperSevenCalCCRTokens{} & \PaperSevenCalCCRTypedTokens{} \\
-FULL & \PaperSevenCalFullSuccess{} & \PaperSevenCalFullTokens{} & \PaperSevenCalFullTypedTokens{} \\
+1,024 & 3.9 & 50.2 & 46.8 & -- & --\\
+4,096 & 13.5 & 71.7 & 69.8 & -- & --\\
+16,384 & 45.4 & 206.4 & 74.1 & 1.58 & 32\\
+65,536 & 174.3 & 592.0 & 248.8 & 2.10 & 32\\
+262,144 & 693.6 & 2,223.4 & 961.5 & 2.78 & 32\\
 \bottomrule
 \end{tabular}
-\caption{Held-out quality/cost comparison over five controller seeds. Task
-success uses an exact answer-code read gate once evidence is visible. Typed
-payload is the serialized replay/controller view; active K/V is the model-side
-budget and is the x-axis in Figure~\ref{fig:cal-frontier}.}
-\label{tab:cal-frontier}
+\caption{Five-seed medians in milliseconds except the final token column. At
+1K and the exact 4K boundary, the gated condition builds the full native index;
+larger rows use cheap fallback.}
+\label{tab:size-scaling}
 \end{table}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=.78\linewidth]{adaptive_quality_cost_frontier.pdf}
-\caption{Held-out task success versus active K/V. Ingestion and
-address-index storage are reported separately and are not charged as active
-prompt/KV context.}
-\label{fig:cal-frontier}
-\end{figure}
+The profile supports a safeguard claim, not a universal speed claim. Eager
+index work grows with payload size. The gate prevents applying it blindly and
+reduces 256K TTUC by \PaperSevenTTUCReduction{}$\times$ here. Cheap search scans
+the local payload in this benchmark; indexed external search or server-side
+cursors should lower that recovery cost but were not physically measured.
 
-Cost is split by lifecycle rather than collapsed into one token number. The
-deterministic agent compressor takes \PaperSevenCalCompressionMs{} ms and emits
-\PaperSevenCalCompactBytes{} bytes from \PaperSevenCalBackingBytes{} backing
-bytes on average. Production PRA indexing is a one-time \PaperSevenCalIndexSeconds{}
-s operation with \PaperSevenCalIndexBytes{} routing-index bytes and
-\PaperSevenCalResidentKVBytes{} resident detail-K/V bytes. A frozen query then
-takes \PaperSevenCalRoutingMs{} ms for routing, followed by policy-dependent
-materialization in Table~\ref{tab:cal-frontier}. These measurements prevent
-ingestion storage from being mistaken for active prompt or decode context.
+TTUC is measured from result arrival to the first valid continuation with a
+usable compact descriptor and a completed native-index decision. For eager
+native, it includes compaction, compact registration, full-payload token
+accounting, and native reference construction. For a byte-gated oversized
+record, it includes compaction, compact registration, descriptor-based gate
+resolution, and refreshed capability metadata. It excludes the later search or
+cursor requested by a particular query; those are recovery costs.
 
-Production PRA is the robust gain in this matrix. It matches FULL at
-\PaperSevenCalNativeSuccess{} success while using \PaperSevenCalNativeTokens{}
-instead of \PaperSevenCalFullTokens{} active K/V tokens. PRA\_ADAPTIVE remains
-at \PaperSevenCalAdaptiveSuccess{} and rises to
-\PaperSevenCalAdaptiveTokens{} active tokens because false escalation adds
-state after native evidence is already sufficient. The oracle reaches
-\PaperSevenCalOracleSuccess{} with only \PaperSevenCalOracleTokens{} active
-tokens by issuing \texttt{CALL\_TOOL} for the three absent-from-backing cases.
-Thus escalation has real mechanism headroom, but the frozen controller does
-not realize it on held-out acquisition prompts. MODEL\_ONLY and matched CCR
-reach only \PaperSevenCalCCRSuccess{}; CCR spends
-\PaperSevenCalCCRTokens{} active tokens and cannot repair a missed decision.
+The 4K-token and 64KiB values are deliberately illustrative. Both limits are
+active, so exceeding either closes the gate. The generated text is below 64KiB
+at 4K tokens and above it at 16K. This lets the oversized path decide from the
+descriptor without a second full-payload tokenizer pass. A deployment that
+uses only token limits should expect exact counting cost; one that already
+knows trusted provider token counts can supply them through a future descriptor
+extension.
 
-The cross-model controller path also exposes a current product cost. Decoding
-selected spans into a typed audit/replay view costs
-\PaperSevenCalNativeTypedTokens{} tokens for PRA\_NATIVE and
-\PaperSevenCalAdaptiveTypedTokens{} for adaptive PRA, and the latter supplies
-\PaperSevenCalAdaptiveControllerTokens{} controller prompt tokens on average.
-Those values are not native-K/V requirements; they are the cost of letting a
-separate Ollama controller inspect decoded selections. A same-model native
-controller could avoid that serialization, but is not measured here.
+The controlled evidence marker occurs on one 32-token line. Cheap search finds
+that line in every oversized case, after which lazy native encoding processes
+only those 32 tokens. This establishes identity, selector, and lifecycle
+correctness. It does not show that lexical search will recover semantically
+implicit evidence as well as native hybrid routing; the held-out routing table
+shows precisely why that distinction matters.
+
+\subsection{Controller error and headroom}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=.84\linewidth]{adaptive_failure_decomposition.pdf}
-\caption{Adaptive context-control factorization: insufficiency detection,
-operation choice, runtime evidence recovery, and final use conditional on
-visibility. This separates controller failures from routing failures.}
-\label{fig:cal-failures}
+\includegraphics[width=.70\linewidth]{adaptive_failure_decomposition.pdf}
+\caption{The adaptive gap decomposes into insufficiency detection, operation
+choice, and final evidence use. Oracle headroom does not imply that a larger
+controller is automatically cost-effective.}
+\label{fig:controller-errors}
 \end{figure}
 
-The primary comparison is COMPACT\_ONLY versus PRA\_COMPACT versus
-PRA\_NATIVE: it asks whether a complete retrieval-only address space repairs
-visible-summary omission. The second comparison, PRA\_NATIVE versus calibrated
-and oracle adaptation, measures controller-realized gain against mechanism
-headroom. The final comparison with CCR and FULL locates the quality/cost
-frontier. These gates supersede the earlier lexical \texttt{PRA\_AUTO} naming;
-that result remains below only as a frozen historical mechanism checkpoint.
+The frozen controller is \PaperSevenCalController{}. Validation need-more
+recall is \PaperSevenCalControllerNeedRecall{}, false escalation is
+\PaperSevenCalControllerFalseEsc{}, and operation accuracy is
+\PaperSevenCalControllerOperation{}. Its held-out equality with the native
+baseline motivates a conservative default: use full-backing native PRA inside
+its ingestion budget, cheap/lazy handling above it, and model-controlled
+escalation only when the workload justifies that extra decision.
 
-\FloatBarrier
+\section{Audit and Security Contract}
 
-\section{Earlier Progressive-Context Checkpoint}
-
-\subsection{Questions and frozen protocol}
-
-This earlier checkpoint asked: (RQ1) when is a compact typed view sufficient; (RQ2)
-can the model recognize insufficiency; (RQ3) what does automatic PRA recover
-before explicit escalation; (RQ4) does the controller choose full, partial,
-search, cursor, or tool correctly; and (RQ5) how close does PRA plus model come
-to FULL at lower exposure cost?
-
-The benchmark contains 30 identities, five in each balanced class:
-\begin{center}
-\small
-\begin{tabularx}{.96\linewidth}{@{}lllX@{}}
+\begin{longtable}{@{}p{.30\linewidth}p{.62\linewidth}@{}}
 \toprule
-Class & Required action & Evidence location & Purpose \\
+Field & Meaning\\
 \midrule
-C0 & CONTINUE & compact view & detect needless expansion \\
-C1 & FULL & small exact backing & activate known bounded state \\
-C2 & MORE & localized row/range & distinguish success from efficient mechanism \\
-C3 & CURSOR & later/queryable page & test sufficiency before cursor execution \\
-C4 & SEARCH & large known record & test in-record PRA/address retrieval \\
-C5 & TOOL & absent from backing & distinguish retrieval from acquisition \\
+\endhead
+\path{native_index_requested} & A caller or policy attempted full-backing native registration.\\
+\path{native_index_built} & Full-body model-dependent native indexing completed.\\
+\path{native_index_state} & \texttt{NOT\_REQUESTED}, \texttt{BUILT}, \texttt{SKIPPED\_SIZE\_LIMIT}, or \texttt{DEFERRED}.\\
+\path{native_index_skipped_reason} & Exact configured token, byte, or defer reason; never a hidden truncation.\\
+\path{native_index_tokens/bytes} & Measured source size when that accounting pass ran. A byte-gated skip need not tokenize.\\
+\path{native_index_latency_ms} & Full native reference-construction wall time.\\
+\path{cheap_index_modes_built} & Available lexical, entity, rare-term, schema, or summary addresses.\\
+\path{lazy_native_regions/tokens} & Number and token volume of selected regions encoded later.\\
+\path{partial_context} & The visible projection does not contain every backing unit.\\
+\path{search/cursor/full_available} & Bounded recovery interfaces exposed to the controller.\\
+\bottomrule
+\end{longtable}
+
+Per-type policies can tighten or replace inherited limits. Setting
+\path{override_native_index_limits=True} with two null bounds explicitly
+disables inherited limits for that type. Deferred indexing registers the
+compact view immediately and builds native state only after a later forced
+request; this implementation does not claim asynchronous construction.
+
+Every backing operation resolves a \texttt{RecordScope(tenant, session)}.
+Materialization, cheap search, cursor reads, and lazy native encoding pass
+through the same scoped store. Records carry a content hash, provenance, TTL,
+and source fingerprint. Selected-region audit events record the selector and
+fingerprint, not just a new native URI. Tests cover cross-session denial for
+search and selected materialization.
+
+The local store persists plaintext when persistence is enabled. Encryption,
+key rotation, distributed authorization, concurrent updates, and revocation
+propagation remain deployment gates. A size limit is not an authorization
+bypass: skipped records preserve the same identity and scope. Search and cursor
+fallbacks alter cost and access granularity, not the authorization boundary.
+
+\section{Related Work}
+
+\paragraph{Reversible and prompt compression.}
+LLMLingua and LongLLMLingua reduce prompt tokens under learned or query-aware
+budgets \cite{jiang2023llmlingua,jiang2023longllmlingua}. Headroom's official
+CCR documentation describes type-aware tool-output compression, local
+hash-indexed originals, a model retrieval tool, and proactive expansion
+\cite{headroom2026ccr}. Paper 7 treats this as a strong reversible design.
+Its narrower distinction is that reversible storage does not itself provide
+model-native backing addresses, while native addressability has ingestion and
+resident-state costs.
+
+\paragraph{Agent memory and context systems.}
+MemGPT moves information between memory tiers under explicit control
+\cite{packer2023memgpt}. Paper 7 shares the tiered-state view but focuses on
+typed observations, stable source identity, selective views, and the lifecycle
+between a tool result and active model state. Persistence and active-context
+projection are related but not interchangeable.
+
+\paragraph{RAG and hybrid retrieval.}
+RAG combines parametric generation with a retrieved non-parametric corpus
+\cite{lewis2020rag}. Lexical, dense, BM25, entity, and hybrid indexes can all
+serve as Paper 7 backing-address mechanisms. The contribution here is the typed
+integration of a returned result with exact backing state, native-K/V
+materialization, bounded control, and accounting.
+
+\paragraph{KV retrieval and compression.}
+H$_2$O retains recent and heavy-hitter KV entries, while SnapKV selects
+head-specific prompt positions from an observation window
+\cite{zhang2023h2o,li2024snapkv}. These methods reduce or select active
+historical KV. Paper 7 begins with a typed backing record that may not yet be
+active, separates compact visibility from retrieval addresses, and selects
+content before admitting bounded native K/V.
+
+\paragraph{Tool output and stateful data access.}
+The Model Context Protocol defines URI-identified resources and opaque
+cursor-based pagination for list operations \cite{mcp2025resources}. Paper 7's
+cursors operate inside authorized result records and add filters, ranges,
+aggregates, and field projection. A large observation can remain stateful
+behind a bounded interface rather than becoming one model message.
+
+\begin{table}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+Style & Compact & Original & Index & Retrieve & Proactive & Cursor/search & Native K/V\\
+\midrule
+Prompt compression & yes & varies & no & no & no & no & no\\
+CCR reversible compression & yes & yes & hash/markers & yes & documented & full retrieve & no\\
+RAG & passages & corpus & lexical/dense & pipeline & varies & query & no\\
+KV selection/compression & no & cache-dependent & attention/KV & implicit & no & no & yes\\
+Paper 7 & yes & yes & cheap or native & bounded & policy-gated & yes & optional\\
+\bottomrule
+\end{tabular}}
+\caption{Mechanism-level comparison at the granularity supported by primary
+papers or official documentation.}
+\label{tab:related}
+\end{table}
+
+\section{Production Decision Procedure}
+
+The recommended default is adaptive native indexing, not unconditional native
+indexing:
+\begin{lstlisting}[language=Python]
+if under_native_index_budget(record):
+    build_full_backing_native_index(record)
+elif record.searchable:
+    keep_cheap_index(record)
+elif record.cursor_available:
+    register_cursor_only(record)
+else:
+    keep_compact_view_and_full_retrieval_handle(record)
+\end{lstlisting}
+This procedure is intentionally ordered. A bounded record receives the strongest
+automatic native addressability. An oversized searchable record remains
+automatically discoverable through cheap addresses and can promote a selected
+region to native state. A stateful result uses its own bounded server
+interface. Full retrieval remains a final exact option where authorization and
+deployment policy allow it.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+Deployment case & Immediate state & Later recovery & Primary risk\\
+\midrule
+Small local API result & compact + full native backing & native selected spans & unnecessary index overhead below very small sizes\\
+Large terminal/log result & compact + lexical/line index & search, then lazy native lines & cheap search misses semantic evidence\\
+Large DB/graph result & schema/sample + cursor & filter/range/aggregate & stale cursor or remote round trips\\
+Huge stream & metadata + cursor/search handle & bounded server operation & source mutation and snapshot consistency\\
+Opaque unsearchable blob & compact + full handle & authorized full retrieval & high transfer/materialization cost\\
 \bottomrule
 \end{tabularx}
-\end{center}
-
-Each identity was decoded with seeds $\{11,23,37,53,71\}$ under six baselines:
-FULL, COMPACT\_ONLY, PRA\_AUTO, MODEL\_ESCALATION, PRA\_PLUS\_MODEL, and
-CCR\_TOOL. PRA\_AUTO runs bounded address/gist selection but emits no model
-context decision. MODEL\_ESCALATION sees the compact typed view. The proposed
-PRA\_PLUS\_MODEL runs automatic selection first and asks the controller only
-after the returned typed view has re-entered PRA. CCR\_TOOL exposes one generic
-retrieve-original operation. The frozen model is Qwen3-0.6B, using the
-immutable Ollama blob whose digest begins \texttt{sha256-7f4030143c1c} (the
-full digest is recorded in the manifest).
-To isolate context-action classification from copying long content-addressed
-identifiers, the benchmark decoder emits only one action label. The host binds
-the sole active authorized record or cursor and its preregistered selector,
-query, or tool. This is narrower than the public API, whose parser validates a
-complete structured decision against explicit allowlists before execution.
-
-Every identity has an independent FULL answer condition. FULL succeeds on
-\PaperSevenFullTask{}, so no class is excluded as a base-model capability
-failure. We report task success separately from mechanism correctness. Asking
-for FULL on C2 may answer correctly while still being an inefficient policy.
-The primary brittleness and waste measures are
-\begin{align}
-\mathrm{UnderExpansionRate}
- &=P(\text{required evidence remains hidden}),\\
-\mathrm{OverExpansionRate}
- &=P(\text{expansion on C0}).
-\end{align}
-Intervals for proportions are Wilson intervals. Paired differences use 10,000
-case-cluster bootstrap draws after averaging the five decoding seeds.
-
-\subsection{Quality and economy}
-
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-Baseline & Task & Evidence & Mechanism & Mat. tokens & Model passes \\
-\midrule
-FULL & 1.000 & 1.000 & --- & 266.4 & 1.0 \\
-COMPACT\_ONLY & .167 & .167 & --- & 18.4 & 1.0 \\
-PRA\_AUTO & .500 & .500 & .500 & 31.2 & 1.0 \\
-MODEL\_ESCALATION & .333 & .333 & .167 & 86.2 & 2.0 \\
-PRA\_PLUS\_MODEL & .500 & .500 & .333 & 99.0 & 2.0 \\
-CCR\_TOOL & .780 & .780 & .780$^\dagger$ & 258.3 & 2.0 \\
-\bottomrule
-\end{tabular}
-\caption{Primary results over 150 rows per baseline. $^\dagger$CCR mechanism
-correctness is binary retrieve/continue correctness, not correct choice among
-full, partial, search, cursor, and tool.}
-\label{tab:progressive-main}
+\caption{Operational interpretation of the three regimes. Actual limits depend
+on model, hardware, source interface, latency objective, and reuse.}
+\label{tab:production-cases}
 \end{table}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=.78\linewidth]{task_success_materialized_tokens.pdf}
-\caption{Final task success against mean materialized tokens. FULL is a quality
-ceiling. PRA automatic selection improves compact-only at low exposure; generic
-CCR approaches FULL cost and still cannot acquire absent information.}
-\label{fig:progressive-quality-cost}
-\end{figure}
-
-Table~\ref{tab:progressive-main} and
-Figure~\ref{fig:progressive-quality-cost} show three regimes. Compact-only
-solves exactly C0. PRA\_AUTO additionally solves C2 and C4, reaching
-\PaperSevenPRAAutoTask{} at 31.2 materialized tokens. MODEL\_ESCALATION solves
-C0 and obtains the C2 answer by choosing FULL rather than the required partial
-mechanism; it misses bounded-full, cursor, search, and external-tool cases.
-PRA\_PLUS\_MODEL preserves automatic C2/C4 recovery but does not improve its
-\PaperSevenCombinedTask{} task rate. Its paired gain over compact-only is
-\PaperSevenCombinedDelta{} [\PaperSevenCombinedDeltaLow{},
-\PaperSevenCombinedDeltaHigh{}]. The gain is attributable to PRA automatic
-selection, not autonomous escalation.
-
-CCR\_TOOL reaches \PaperSevenCCRTask{} because a generic retrieve-original
-operation succeeds on C1--C3 and most C4 rows. It materializes 258.3 tokens,
-near FULL's 266.4, over-expands every C0 row, and fails C5 because the required
-information does not exist in retained backing state. This is a useful strong
-reversible baseline, not the same policy as mechanism-specific escalation.
-
-\subsection{Insufficiency and mechanism choice}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.84\linewidth]{context_control_confusion.pdf}
-\caption{Row-normalized PRA-plus-model context-action confusion. Targets are
-evaluated after PRA automatic selection; C2 and C4 become CONTINUE when PRA has
-already exposed their evidence.}
-\label{fig:progressive-confusion}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.72\linewidth]{under_over_expansion.pdf}
-\caption{Under-expansion and over-expansion. The small controller is
-conservative about requesting hidden state; generic CCR trades lower
-under-expansion for unnecessary C0 retrieval.}
-\label{fig:progressive-errors}
-\end{figure}
-
-The proposed system under-expands on \PaperSevenCombinedUnder{} of all rows
-and over-expands on \PaperSevenCombinedOver{}. Zero over-expansion is not a
-complete success: it accompanies missed C1, C3, and C5 escalations. Conversely,
-the model's C2 use of FULL yields the right answer but wrong mechanism and
-roughly nine times PRA\_AUTO's C2 materialization (402.0 versus 45.8 tokens).
-This is why final success and context-policy correctness must be reported
-separately.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.76\linewidth]{cursor_success_transfer.pdf}
-\caption{Cursor-class task success and materialized tokens. The repaired FULL
-and repeated-retrieval ceiling succeeds; the controller does not request the
-available cursor.}
-\label{fig:progressive-cursor}
-\end{figure}
-
-The cursor result is now interpretable. FULL and CCR retrieval succeed on all
-25 cursor rows, whereas compact, PRA automatic, model escalation, and the
-combined policy fail. The cursor manager itself passes deterministic page,
-range, filter, search, aggregate, scope, expiry, and closure tests. The missing
-link is the controller's sufficiency decision, not cursor execution or answer
-capability.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.7\linewidth]{pra_model_gain_decomposition.pdf}
-\caption{Task-success decomposition. The measured gain over compact-only is
-provided by PRA automatic selection; this frozen controller adds no net task
-success after PRA.}
-\label{fig:progressive-gain}
-\end{figure}
-
-\FloatBarrier
-
-\section{Why Reversibility Is Not Enough}
-
-Storage reversibility answers: ``Can the original be recovered if its identity
-and relevance are known?'' Agent behavior asks a harder question: ``Will the
-model realize that an omitted detail should change what happens next?'' We
-separate three cases:
-\begin{enumerate}[leftmargin=*]
-  \item \textbf{explicit insufficiency}: the query names the hidden concept;
-  \item \textbf{latent insufficiency}: the hidden concept is required but is
-  absent from the query;
-  \item \textbf{action-trigger omission}: the hidden detail would select a
-  different downstream action or tool.
-\end{enumerate}
-
-For a compact view $V_c$, define
-\begin{equation}
-\mathrm{TriggerRecall}
-=P(\text{required downstream action remains reachable}\mid V_c).
-\end{equation}
-The definition intentionally includes more than answer overlap. A benchmark
-must observe whether evidence is visible, whether expansion occurs, whether the
-correct next action remains selectable, and whether an index or proactive
-policy repairs an omission.
-
-\section{Secondary Substrate Mechanism Checks}
-
-\subsection{Protocol}
-
-The study uses seeds $\{11,23,37,53,71\}$ and nine result types per seed,
-giving \PaperSevenTypedRecords{} records. Each payload contains one rare
-identifier and one required-action token placed away from ordinary high-salience
-content. Type policies receive a four-unit compact-view budget. No language
-model, learned compressor, embedding model, or native-Q/K router participates.
-
-We record serialized bytes before and after compression, exact backing
-equality, trigger presence in the compact view, retrieval by an explicit rare
-identifier, retrieval by the generic latent query ``continue safely,'' and
-retrieval by a proactive probe that names the candidate action. The last
-condition is an upper-bound mechanism check: it assumes a policy has already
-generated the correct candidate action. It is not an autonomous latent
-discovery result.
-
-M4 compares four APIs on the same 100-row database shape. Native-event and tool
-conditions request full state. Mixed mode opens a five-row cursor page.
-Proactive mode selects rows 0--4. Reported timing is local Python wall time and
-is not a model/server latency claim. M5 filters a subgroup, computes its mean,
-and finds an anomaly through a cursor. M6 executes policy decisions for 10K,
-100K, and 1M text payloads at low and high expected reuse across four declared
-topologies. The topology sweep tests accounting logic; it does not instantiate
-four physical deployments.
-
-\subsection{Compression}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.9\linewidth]{typed_compression.pdf}
-\caption{Mean serialized-byte savings by type across five seeds. Small
-structured tool/API fixtures have limited headroom; graph, database, log, and
-text-like results are substantially reduced.}
-\label{fig:compression}
-\end{figure}
-
-Across the nine equally weighted types, mean savings are
-\PaperSevenMeanSavings{}. Table~\ref{tab:compression} reports type means. The
-graph fixture saves 0.900 and the database fixture 0.797; the small API and tool
-fixtures save only 0.179 and 0.200. This is expected: fixed metadata can exceed
-the removable content of a small result. The mechanism should therefore
-bypass compression below a measured break-even size in production.
-
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{@{}lrr@{}}
-\toprule
-Record type & Byte savings & Compact trigger recall \\
-\midrule
-API result & .179 & .000 \\
-Database result & .797 & .000 \\
-File read & .776 & .000 \\
-Generic text & .734 & .000 \\
-Graph result & .900 & .000 \\
-Log block & .776 & 1.000 \\
-RAG result & .773 & .400 \\
-Terminal output & .562 & 1.000 \\
-Tool response & .200 & .000 \\
-\bottomrule
-\end{tabular}
-\caption{Five-seed deterministic mechanism results. Trigger recall measures
-literal presence in the compact view, not semantic model use.}
-\label{tab:compression}
-\end{table}
-
-\subsection{Reversibility is not latent discovery}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.84\linewidth]{trigger_recovery.pdf}
-\caption{Compact visibility and addressability are different properties.
-Explicit and candidate-action probes use retrieval-only views; exact backing
-is hash-verified full recovery.}
-\label{fig:triggers}
-\end{figure}
-
-Figure~\ref{fig:triggers} gives the secondary substrate result. Compact views expose
-\PaperSevenCompactTrigger{} of planted triggers. The error-preserving log and
-terminal policies retain all their triggers; deterministic RAG sampling lands
-on two of five; all other compactors miss them. The exact backing store recovers
-every original, and an explicit rare-token query finds every target through the
-address index.
-
-The generic latent query finds none. The candidate-action probe finds all, but
-only because the correct action token is supplied to search. Thus the address
-layer repairs \emph{omission after a usable discriminator exists}. It does not
-generate that discriminator. A safe default cannot be justified by reporting
-only exact recovery or explicit-query recall.
-
-\subsection{Retrieval modes and cursors}
-
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-Mode & Mean transferred bytes & Row coverage & Median local time (ms) \\
-\midrule
-Native full event & 3,776 & 1.00 & \PaperSevenNativeMedianMs{} \\
-Tool full retrieval & 3,776 & 1.00 & \PaperSevenToolMedianMs{} \\
-Mixed five-row cursor & 180 & .05 & \PaperSevenMixedMedianMs{} \\
-Proactive five-row selection & 244 & .05 & \PaperSevenProactiveMedianMs{} \\
-\bottomrule
-\end{tabular}
-\caption{Mechanism accounting on five seeded 100-row fixtures. These local
-times exclude model inference and real network transport.}
-\label{tab:modes}
-\end{table}
-
-Native events and retrieval tools return identical full state and transfer
-\PaperSevenFullBytes{} bytes on average. This supports a narrow interface
-conclusion: a native event is not required for exact semantics when ordinary
-tool calling is available. The mixed cursor transfers \PaperSevenMixedBytes{}
-bytes for \PaperSevenMixedCoverage{} row coverage, while selected proactive
-materialization transfers \PaperSevenSelectedBytes{}. Neither partial mode is
-``better'' without a task: both save bytes by returning less data.
-
-The five cursor analytics fixtures obtain
-\PaperSevenCursorAggregate{} accuracy for filtered counts and means and
-\PaperSevenCursorAnomaly{} recall for the planted anomaly. This validates
-cursor state and selectors. It does not establish that a language model will
-choose the right filter, aggregate, or stopping point.
-
-\subsection{Transport policy}
-
-The adaptive policy keeps same-process state effectively upfront because no
-network transfer is needed. For each non-co-located topology, both 10K cases
-and both 100K cases are upfront under the configured threshold. At 1M, low
-expected reuse is on-demand and high expected reuse is upfront. This behavior
-matches the declared rule, but no latency optimum follows from it. A deployment
-must measure serialization, network bandwidth, backing-store latency, cache
-reuse, and the probability of expansion before selecting thresholds.
-
-\section{Secondary Action-Conditioned Recovery}
-
-\subsection{Paired protocol}
-
-The second study keeps the record substrate fixed and changes the recovery
-policy. Thirteen deterministic cases cover entity, alias, number/date, rare
-string, relation, action, state transition, permission, dependency, error
-code, backend type, schema type, and threshold/anomaly clues. In every case,
-one hidden field changes the required action. The explicit query names that
-field; its paired latent query states only the operational goal. The compact
-view is checked to omit the planted trigger. This is a controlled mechanism
-benchmark, not a sample of production agent traffic.
-
-We cross the 13 pairs with eight policies and seeds
-$\{11,23,37,53,71\}$, yielding \PaperSevenNextRows{} rows. Candidate-action
-palettes contain four IDs. The frozen controller is Qwen3-0.6B, Ollama blob
-\texttt{sha256-7f4030...e1fa}, with temperature zero, JSON-constrained output,
-thinking enabled, and at most four generated hypotheses. A malformed JSON
-response counts as no decision; it is not repaired with the answer key. Full
-context is included as a model-capability ceiling.
-
-The policies are compact-only; model-emitted CCR retrieval (CCR-E); proactive
-lexical CCR expansion (CCR-P); explicit retrieval followed by proactive
-fallback (CCR-M); generic search over deterministic address views; one probe
-per candidate action; up to four model-generated hypotheses; and full context.
-The CCR variants reproduce public architectural behavior---a compact typed
-view, exact local original, stable marker, retrieval tool, and optional
-proactive expansion---without claiming implementation identity with any
-specific system.
-
-We preserve the causal chain
-\begin{equation}
-\text{goal}\rightarrow\text{hypothesis}\rightarrow\text{address}
-\rightarrow\text{materialization}\rightarrow\text{action}.
-\end{equation}
-TR-address requires a useful hypothesis and target-record address hit;
-TR-materialize requires exact evidence containing the planted trigger; and
-TR-action requires the final candidate action. We additionally record false
-expansions, expansion precision, bytes, estimated tokens, model/tool calls,
-and local search time. Wilson intervals describe policy-cell proportions.
-Paired differences use a 10,000-draw bootstrap over 13 trigger cases after
-averaging the five seeds, so repeated decoding seeds are not treated as new
-task identities.
-
-\subsection{Policy comparison}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{explicit_latent_action.pdf}
-\caption{Final required-action accuracy for explicit and latent queries.
-Full context is a model ceiling rather than a deployable recovery policy.
-Action-conditioned search improves latent discovery but expands multiple
-candidate records.}
-\label{fig:next-policy-action}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{latent_stage_decomposition.pdf}
-\caption{Latent recovery decomposed into hypothesis, address,
-materialization, and final-action stages. A high later-stage conditional rate
-cannot compensate for a missing initial hypothesis.}
-\label{fig:next-stage-decomposition}
-\end{figure}
-
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-Policy & Hyp. & Materialized & TR-action & Tokens & Exp. precision \\
-\midrule
-Compact only & .000 & .000 & .385 & 0.0 & .000 \\
-CCR-E & .000 & .000 & .385 & 0.0 & .000 \\
-CCR-P & .000 & .077 & .400 & 19.2 & .077 \\
-CCR-M & .000 & .077 & .400 & 19.2 & .077 \\
-Generic proactive & .000 & .077 & .400 & 19.2 & .077 \\
-Action-conditioned & 1.000 & 1.000 & .708 & 643.6 & .250 \\
-Multi-hypothesis & .554 & .554 & .585 & 283.9 & .277 \\
-Full context & 1.000 & 1.000 & .862 & 251.5 & 1.000 \\
-\bottomrule
-\end{tabular}
-\caption{Latent-query means over 13 cases and five seeds. ``Hyp.'' is
-hypothesis recall; tokens estimate serialized materialized bytes divided by
-four. Full context materializes only the target, whereas exhaustive
-action-conditioned probing may also materialize distractors.}
-\label{tab:latent-policy}
-\end{table}
-
-Compact-only reaches \PaperSevenLatentCompactAction{} TR-action on latent
-goals. Searching deterministic addresses with the unmodified goal reaches
-\PaperSevenLatentGenericAction{}; reversible storage and a richer index do not
-create a missing discriminator. Action-conditioned probing reaches
-\PaperSevenLatentActionConditioned{} (\PaperSevenActionProbeSuccesses{}/65;
-95\% Wilson interval [\PaperSevenActionProbeCILow{},
-\PaperSevenActionProbeCIHigh{}]). Its case-clustered paired difference from
-compact-only is \PaperSevenActionDeltaCompact{} [
-\PaperSevenActionDeltaCILow{}, \PaperSevenActionDeltaCIHigh{}]. The policy
-materializes \PaperSevenActionProbeTokens{} tokens on average with expansion
-precision \PaperSevenActionProbePrecision{}; it succeeds by spending bounded
-search and exposure, not by making omission free.
-
-The generated-hypothesis policy reaches \PaperSevenLatentMultiHypothesis{},
-and full context reaches \PaperSevenLatentFullCeiling{}. Any gap below the
-full-context ceiling is attributed to the frozen controller or output
-protocol. Any policy-to-ceiling gap is then a mixture of discovery,
-addressing, and expansion errors, which Figure~\ref{fig:next-stage-decomposition}
-separates.
-
-Table~\ref{tab:latent-policy} locates the mechanism more precisely. Conditional
-address and materialization rates are 1.000 whenever action-conditioned or
-generated hypotheses name the right clue. The generic latent goal generates no
-such clue and reaches the target in only 5/65 rows through incidental lexical
-overlap. CCR-E never requests its handle, even in the explicit condition;
-CCR-P and CCR-M repair explicit omissions but do not solve latent discovery.
-Malformed or absent model decisions remain failures. This makes the positive
-claim narrow: bounded action enumeration can recover omitted triggers, but the
-tested controller does not yet discover them economically.
-
-\subsection{Probe breadth and address views}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.82\linewidth]{probe_breadth_recall.pdf}
-\caption{Trigger materialization against probes issued for palettes of
-$K\in\{4,8,16\}$. Exhaustive action probing is an interpretable upper bound;
-top-$r$ policies trade hypothesis coverage for fewer expansions.}
-\label{fig:probe-breadth}
-\end{figure}
-
-The deterministic breadth control varies $K\in\{4,8,16\}$ and
-$r\in\{1,2,4,K\}$. Candidate order is seeded but fixed before evaluation.
-This control asks how often the action that names the hidden evidence enters
-the probe set; it does not claim that enumeration is an economical controller
-for unbounded action catalogs. Address ablations compare lexical, entity plus
-rare-term, schema, lexical plus entity, and all deterministic views. They test
-whether a useful hypothesis can find its backing record, while keeping
-hypothesis construction separate.
-
-At $K=4$, top-$r$ trigger recall rises from .277 at $r=1$ to .523 at
-$r=2$ and 1.000 at $r=4$. Exhaustive recall remains 1.000 at $K=8$ and
-$K=16$, while precision falls to .125 and .063. With a correct action probe,
-lexical, entity/rare-term, lexical+entity, and all-view search each recover
-13/13 targets; schema-only search recovers 1/13. The richer address layer is
-therefore adequate after discovery, but it is not a substitute for discovery.
-
-\subsection{Quality--economy frontier}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.78\linewidth]{trigger_economy_pareto.pdf}
-\caption{Mean materialized tokens versus latent TR-action. Policies at zero
-materialization can still exploit compact-view priors; policies farther right
-pay to expose exact backing evidence.}
-\label{fig:trigger-economy}
-\end{figure}
-
-The frontier prevents an expand-everything policy from appearing free. On
-these small fixtures, full target context is both more accurate and cheaper
-than action-conditioned expansion because the latter materializes three
-distractors along with the target. Multi-hypothesis uses fewer tokens than
-action enumeration but still slightly exceeds full-target exposure. The
-policies are therefore mechanism-positive but not Pareto-superior here. Larger
-records, selected-field materialization, or better candidate narrowing are
-required before an economy claim.
-
-\FloatBarrier
-\section{Secondary Transport Accounting}
-
-The earlier cursor-answer diagnostic failed even under FULL and is therefore
-not used for a cursor-quality claim. It motivated the repaired primary C3
-tasks above, where FULL and repeated generic retrieval both pass. We retain
-only its independent transport-policy sweep as a secondary systems check.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.8\linewidth]{transport_policy_frontier.pdf}
-\caption{When simulated remote-like transfer cost is paid from 10KB to 10MB.
-Upfront pays at ingestion, on-demand pays at materialization, and adaptive
-switches by its declared threshold. RTT and bandwidth components are
-simulated.}
-\label{fig:transport-frontier}
-\end{figure}
-
-Exact recovery is \PaperSevenTransportExact{} in all 36 transport cells. The
-sweep crosses 10KB, 100KB, 1MB, and 10MB payloads with same-process,
-separate-local-process accounting, and a remote-like cost model. It evaluates
-the declared threshold behavior; it is not a measured distributed deployment
-or a claim that the present thresholds are optimal.
-
-\FloatBarrier
-\section{Security and Reliability Contract}
-
-Typed adaptive context creates capabilities to reveal hidden state. Its
-security boundary must therefore be explicit.
-
-\begin{itemize}[leftmargin=*]
-  \item Authorization precedes full reads, selected ranges, cursor opens, and
-  every cursor page operation.
-  \item Record IDs and cursor handles are opaque locators, never bearer
-  authorization.
-  \item Tenant and session scope are part of identity resolution; the test
-  suite rejects cross-session reads.
-  \item TTL and explicit deletion revoke state; content hashes detect local
-  payload corruption before decode.
-  \item Audit rows record ingestion, expansion, denial, cursor open, and cursor
-  fetch events with scope and timestamp.
-  \item Redaction is not yet implemented. A production policy must apply it to
-  both compact and full views so expansion cannot bypass disclosure controls.
-\end{itemize}
-
-The store currently writes local plaintext. Encryption, key rotation,
-distributed authorization, concurrent mutation, cursor revocation propagation,
-and audit durability remain open production gates.
-
-\section{Relationship to Prior Systems}
-
-Prompt-compression methods such as LLMLingua and LongLLMLingua learn or compute
-shorter prompt representations under token budgets
-\cite{jiang2023llmlingua,jiang2023longllmlingua}. Paper 7 is orthogonal to the
-choice of compressor: it specifies where an exact original lives and how
-different views are addressed and materialized. A learned compressor can be
-registered without becoming the backing state.
-
-MemGPT frames long-context management as movement between memory tiers and
-uses explicit control flow to manage what enters context \cite{packer2023memgpt}.
-Paper 7 shares the tiered-state intuition but centers typed tool results,
-selective fields/ranges, deployment transport, and cursor operations.
-Retrieval-augmented generation supplies external evidence to a generator
-\cite{lewis2020rag}; here, a RAG result is itself one typed record that may be
-compacted, re-addressed, and progressively inspected.
-
-Headroom's public Compress--Cache--Retrieve documentation describes
-type-aware tool-output compression, local hash-indexed original caching, a
-model retrieval tool, markers, and proactive expansion \cite{headroom2026ccr}.
-That architecture is a strong reversible baseline. Paper 7 does not claim that
-Headroom fails. The primary comparison instead asks whether a typed controller
-can choose among bounded full, partial, search, cursor, and tool actions rather
-than exposing only retrieve-or-continue. At nearly full materialization cost,
-the generic CCR baseline is strong when retained backing state contains the
-answer, but it cannot acquire absent C5 evidence and does not identify which
-bounded mechanism was needed. The secondary paired study asks the narrower
-reachability question: when a compact view omits the fact that would make
-retrieval relevant, what address or policy keeps the downstream action
-reachable? Explicit proactive recovery is reliable, generic latent recovery is
-nearly unchanged from compact-only, and action-conditioned expansion improves
-the downstream action at substantial exposure cost. These are policy results,
-not claims about a particular commercial implementation.
-
-Paper 6.5's typed capability work separates broad tool/skill discovery from
-bounded selection and exact full-schema activation. Paper 7 preserves those
-capability records and adds the result side of the interaction: what happens to
-a typed observation after a tool executes. The companion Paper 3.1 motivates
-multiple address views by showing that one generated summary can be a brittle
-retrieval key. The present study tests that design principle with deterministic
-records rather than repeating its summarization experiments.
-
-\section{Limitations and Next Gates}
-
-The primary benchmark is a controlled mechanism checkpoint, not a natural
-agent workload. It has 30 identities and five decoding seeds; seeds measure
-controller variability, not population diversity. ANSWER\_CODE is
-machine-readable after exposure, which isolates context control but
-understates interpretation difficulty. The balanced capability descriptors
-also make the correct mechanism more explicit than many real tool results.
-Consequently:
-
-\begin{enumerate}[leftmargin=*]
-  \item the new production path uses one Qwen3-0.6B routing backend, one routing
-  layer, 32-token chunks, and semantic/hybrid mean gists; addressability may
-  change with model family, layer, chunk geometry, or learned QK compression;
-  \item controller calibration compares only Qwen3-0.6B and Llama-3.2-3B on 12
-  validation cases, so the selected configuration is a bounded experimental
-  default rather than a general model leaderboard;
-  \item the exact answer-code read gate isolates context recovery and makes
-  final use deterministic once evidence is visible; natural free-form answer
-  generation remains a separate evaluation gate;
-  \item CCR\_TOOL's binary mechanism score is not directly comparable to
-  choosing among full, partial, search, cursor, and a new external tool;
-  \item C3 validates cursor sufficiency decisions and bounded pages, not
-  multi-step transactional analytics or mutable remote snapshots;
-  \item C5 simulates the returned external tool record after a valid call; it
-  does not evaluate broad tool discovery or side-effect safety;
-  \item topology measurements are policy accounting, not physical network or
-  distributed-store benchmarks;
-  \item native-K/V consumption is verified by live generation checks and then
-  inferred from the production requested-token count for repeated frozen
-  selections; end-to-end accelerator memory and TTFT need larger workloads;
-  \item redaction, remote-store fault tolerance, and distributed cursor leases
-  remain absent.
-\end{enumerate}
-
-The next gate is external replication on fresh natural tool-result tasks, with
-class-balanced abstention thresholds and no gold-derived features. It should
-retain production PRA's low-cost backing recovery while adding bounded full,
-cursor, and external-tool escalation without turning every compact-sufficient
-case into retrieval.
-Native PRA-aware events and remote function-call adapters should then be
-compared at matched semantics while measuring TTFT, active K/V, transfer,
-callback count, and store latency.
+Applications should configure token and byte bounds from their own service
+objectives. A byte bound is cheap and protects transfer/allocation paths. A
+token bound more directly predicts model work but may require tokenization.
+Per-type overrides should account for source capabilities: a database with a
+strong indexed cursor needs less eager model-native state than an opaque text
+blob of the same byte size.
+
+Monitoring should retain all four lifecycle categories. A lower active-K/V
+number is not sufficient if native ingestion dominates first-token latency.
+Conversely, a low TTUC from compact-first handling is not sufficient if later
+search has poor evidence recall. The production gate should therefore track
+TTUC, native build rate, skip reasons, cheap-search recall on sampled tasks,
+lazy-region volume, recovery latency, active K/V, resident detail-K/V, and
+authorization failures separately.
+
+\section{Limitations}
+
+The main benchmark contains 30 controlled identities and one Qwen routing
+backend. Five decoding seeds measure controller variability, not population
+diversity. Machine-readable answer markers isolate recovery but understate
+natural answer interpretation. The routing layer, chunk geometry, and
+mean-gist family may not transfer unchanged to another model.
+
+Full-backing native construction grows with payload size and may incur
+substantial host encoding, accelerator, and transfer cost. Thresholds are
+configurable policy, not learned universal constants. Cheap fallback can
+underperform semantic native routing. The scaling profile uses an instrumented
+Torch encoder rather than Qwen and does not establish end-to-end model speed.
+Its local cheap search and selected-region read scan or verify backing content;
+indexed remote search and physical range reads remain open.
+
+Controller and tool-use competence remain model-dependent. Distributed storage
+latency, multi-GB streams, concurrent mutation, index updates, remote
+authorization propagation, encrypted stores, and durable audit delivery are
+not measured. Resident index/detail-KV bytes remain distinct from active
+context and need deployment-specific capacity planning.
 
 \section{Conclusion}
 
-Agent context is structured state with a lifecycle, not merely text waiting to
-be truncated. Paper 7 implements progressive context disclosure over typed PRA
-records: compact results become routable implicit documents; full bytes retain
-exact scoped identity; bounded decisions activate full, selected, searched,
-cursor, or newly acquired state; and each returned view recursively re-enters
-PRA.
+Large agent results need a lifecycle, not a single compression ratio. Paper 7
+separates compact visibility, exact backing state, retrieval-only addresses,
+active K/V, and recovery. Within a configured ingestion budget, production
+full-backing PRA matches full exposure at \PaperSevenCalNativeSuccess{} success
+while reducing active K/V from \PaperSevenCalFullTokens{} to
+\PaperSevenCalNativeTokens{} tokens. A calibrated adaptive controller does not
+improve that held-out result, although an oracle identifies mechanism headroom.
 
-The calibrated experiment separates what this architecture already solves
-from what it does not. Compact-only PRA reaches
-\PaperSevenCalCompactRFour{} held-out Recall@4 after visible compression,
-whereas the validation-frozen full-backing native policy reaches
-\PaperSevenCalNativeRFour{}. Native PRA achieves
-\PaperSevenCalNativeSuccess{} task success at
-\PaperSevenCalNativeTokens{} materialized tokens; calibrated and oracle
-adaptation reach \PaperSevenCalAdaptiveSuccess{} and
-\PaperSevenCalOracleSuccess{}. CCR and full exposure reach
-\PaperSevenCalCCRSuccess{} and \PaperSevenCalFullSuccess{} while spending
-\PaperSevenCalCCRTokens{} and \PaperSevenCalFullTokens{} tokens. These values
-make controller-realized improvement and oracle mechanism headroom visible
-instead of attributing both to ``PRA plus model.''
+For oversized records, eager native encoding is no longer the default. The
+runtime reports an explicit size-gated state, retains cheap search and cursor
+interfaces, and can natively encode only a selected region. The recommendation
+is full native backing PRA for bounded records, cheap indexing plus lazy native
+regions for large records, and search/cursors for huge or stateful records.
 
-The scientific conclusion is therefore specific. Full-backing production PRA
-can preserve addressability after a small visible summary omits decisive
-evidence. Progressive typed operations provide a bounded route from that
-selection to additional state, and validation-calibrated control reveals how
-much of the oracle headroom the tested controller realizes. The earlier
-lexical result remains useful as a mechanism control, not as evidence for
-native PRA. Future gains must improve controller reliability and replicate the
-routing result without erasing PRA's bounded-context advantage through
-indiscriminate materialization.
-
+\clearpage
 \appendix
 
-\section{Public API Sketch}
+\section{Earlier Progressive-Context Checkpoints}
 
-The backing facade keeps deployment policy separate from records. The
-progressive facade registers compact and derived views through PRA:
+Earlier studies established the API and exposed confounds later corrected by
+the primary experiment. A lexical automatic path reached
+\PaperSevenPRAAutoTask{} task success, combined lexical/model control reached
+\PaperSevenCombinedTask{}, and a CCR-style full retrieval baseline reached
+\PaperSevenCCRTask{}. They used different mechanism and exposure budgets and
+should not be compared numerically with the production native frontier.
 
-\begin{lstlisting}[language=Python,basicstyle=\ttfamily\scriptsize]
-policy = ContextPolicy(
-    storage="adaptive",
-    local_store="./tmp/pra",
-    retrieval_mode="mixed",
-    topology="remote_model",
-    record_policies={
-        RecordType.DB_RESULT: TypeContextPolicy(unit_limit=8),
-    },
-    cursor_policy=CursorPolicy(page_size=20, max_page_size=200),
-)
-backing = AdaptiveContextRuntime(
-    RecordScope(tenant_id="tenant-a", session_id="session-42"),
-    policy,
-)
-context = ProgressiveContextRuntime(backing, pra_model=pra_model)
-record = context.ingest(
-    tool_result,
-    record_type=RecordType.DB_RESULT,
-    capabilities=RecordCapabilities(
-        full_available=True,
-        full_bounded=False,
-        searchable=True,
-        partial_selectors=("rows", "fields"),
-    ),
-    provenance={"tool": "query_orders", "call_id": "call-17"},
-)
-\end{lstlisting}
+The paired latent-trigger diagnostic found that action-conditioned probes
+raised latent required-action accuracy from \PaperSevenLatentCompactAction{} to
+\PaperSevenLatentActionConditioned{}, below a
+\PaperSevenLatentFullCeiling{} full-materialization ceiling. The gain required
+\PaperSevenActionProbeTokens{} mean materialized tokens and only
+\PaperSevenActionProbePrecision{} expansion precision. It motivates explicit
+controller headroom but does not override the final native policy result.
 
-The model first receives the compact typed view. Independently, the host may
-register exact backing state through production PRA and materialize only the
-selected original spans:
+\section{Cursor and Materialization API}
 
 \begin{lstlisting}[language=Python]
-context.register_backing_record(record.record_id)
-native = context.native_select("failed payments for ACME")
-detail = context.materialize_native_selection(native, top_k=4)
-# detail preserves record_id and contains decoded original spans.
+record = runtime.ingest(payload, record_type=RecordType.DB_RESULT)
+audit = progressive.prepare_native_index(record.record_id)
+
+if audit.native_index_state == NativeIndexState.SKIPPED_SIZE_LIMIT:
+    hits = runtime.search_record(record.record_id, query, limit=4)
+    region = progressive.encode_selected_region_native(
+        record.record_id, {"rows": [start, stop]}
+    )
+
+cursor = runtime.open_cursor(record.record_id, collection="rows")
+page = runtime.fetch_cursor(cursor.cursor_id)
 \end{lstlisting}
 
-The controller's JSON is parsed against active record/cursor/tool allowlists;
-executing a valid transition registers the returned detail as another typed PRA
-view:
-
-\begin{lstlisting}[language=Python]
-selection = context.automatic_select(
-    "failed payments for ACME", top_k=4,
-)
-decision = parse_context_decision(
-    model_json,
-    allowed_record_ids=tuple(backing.records),
-    allowed_cursor_ids=backing.cursors.cursor_ids,
-    allowed_tools=("query_payment_provider",),
-)
-transition = context.execute(decision, transport="mixed")
-# transition.produced_document is now active in the PRA registry.
-\end{lstlisting}
-
-The direct convenience operations share the same path:
-\begin{lstlisting}[language=Python]
-full = context.materialize_full(record.record_id)
-detail = context.materialize_more(
-    record.record_id, {"rows": [100, 120]},
-)
-matches = context.search_record(
-    record.record_id, "failed payments for ACME",
-)
-page = context.cursor_next(cursor_id)
-\end{lstlisting}
+Supported selectors are fields, rows, lines, and items. Cursor operations
+include next/previous, range, filter, aggregate, search, sample, field
+materialization, refinement, and close. The controller receives only registered
+record/cursor IDs and a bounded operation palette.
 
 \section{Implementation Map}
 
-{\footnotesize
-\begin{tabularx}{\linewidth}{@{}p{.49\linewidth}X@{}}
+\begin{longtable}{@{}p{.44\linewidth}p{.48\linewidth}@{}}
 \toprule
-Module & Responsibility \\
+Artifact & Role\\
 \midrule
-\path{src/pra_hf/context_records.py} & shared record types and named view vocabulary inherited by capability and result records \\
-\path{src/pra_hf/context_store.py} & scope, content identity, canonical encoding, manifests, TTL, hash verification, capacity, deletion \\
-\path{src/pra_hf/typed_context.py} & compressor registry, compact/address views, adaptive record descriptor, deterministic selectors \\
-\path{src/pra_hf/adaptive_context_runtime.py} & public policy, transport decision, materialization, search, cursor operations, accounting, audit \\
-\path{src/pra_hf/progressive_context.py} & implicit PRA document registry, stable record/view mapping, context actions, decision validation, automatic selection, recursive execution \\
-\path{src/pra_hf/model.py} & production route-only query encoding, hidden-state ranking, layer-native identity mapping, and K/V selection \\
-\path{src/pra_hf/context_recovery.py} & trigger families, CCR-style handles, bounded probes, stage metrics, recovery engine, untrusted cursor-action parser \\
-\path{src/data/progressive_context_cases.py} & balanced C0--C5 sufficiency and escalation fixtures \\
-\path{src/data/latent_trigger_cases.py} & deterministic paired explicit/latent fixtures and benchmark fingerprint fields \\
-\path{src/data/full_pra_context_cases.py} & disjoint natural, opaque, compact-explicit, and absent-from-backing calibration fixtures \\
-\path{experiments/paper7_records/run_inception_experiments.py} & five-seed fixtures, metrics, JSON artifacts, TeX macros, and figures \\
-\path{experiments/paper7_records/run_progressive_context_iteration.py} & six-baseline frozen-model matrix, resumable rows, uncertainty, primary plots, and generated TeX \\
-\path{experiments/paper7_records/run_latent_trigger_cursor_iteration.py} & frozen-model policy matrix, probe/address controls, cursor tasks, transport sweep, uncertainty, plots, and TeX macros \\
-\path{experiments/paper7_records/run_full_pra_reachability.py} & production reference registration, semantic/hybrid Recall@$K$, native-K/V verification, and address/storage accounting \\
-\path{experiments/paper7_records/run_controller_calibration.py} & two-model D0/D2 and flat/hierarchical validation grid with a frozen fingerprint \\
-\path{experiments/paper7_records/run_calibrated_adaptive.py} & held-out nine-policy five-seed controller, oracle, CCR, and quality/cost matrix \\
-\path{experiments/paper7_records/summarize_full_pra_calibrated.py} & generated figures, weighted routing summaries, and TeX result macros \\
+\endhead
+\path{src/pra_hf/adaptive_context_runtime.py} & Lines 82--184 define global/type policy resolution; lines 774--816 implement scoped cheap search. The same module owns materialization, cursors, and accounting.\\
+\path{src/pra_hf/progressive_context.py} & Lines 58--66 and 347--393 define states/audits; lines 595--761 enforce the gate and lazy region encoding; lines 889--946 expose progressive wrappers.\\
+\path{src/pra_hf/typed_context.py} & Type-specific compactors, cheap address views, and exact selected materialization.\\
+\path{src/pra_hf/context_store.py} & Content-addressed scoped backing storage, integrity, TTL, and persistence.\\
+\path{experiments/paper7_records/run_full_pra_reachability.py} & Production Qwen backing-address validation.\\
+\path{experiments/paper7_records/run_calibrated_adaptive.py} & Frozen held-out policy/controller evaluation.\\
+\path{experiments/paper7_records/run_native_index_size_gate.py} & Five-seed ingestion, TTUC, and lazy-region mechanism profile.\\
+\path{tests/test_native_index_size_gate.py} & Boundary, override, authorization, fallback, lazy encoding, and no-masquerade tests.\\
 \bottomrule
-\end{tabularx}
-}
+\end{longtable}
 
 \section{Reproducibility}
 
-From the repository root:
-\begin{lstlisting}
-python -m pytest tests/test_context_store.py \
-  tests/test_typed_context.py \
-  tests/test_adaptive_context_runtime.py \
-  tests/test_progressive_context.py \
-  tests/test_progressive_context_cases.py \
-  tests/test_full_pra_context_cases.py \
-  tests/test_paper7_controller_calibration.py \
-  tests/test_context_recovery.py -q
-python experiments/paper7_records/run_full_pra_reachability.py
-python experiments/paper7_records/run_controller_calibration.py
-python experiments/paper7_records/run_calibrated_adaptive.py
-python experiments/paper7_records/summarize_full_pra_calibrated.py
-python experiments/paper7_records/run_progressive_context_iteration.py
-python experiments/paper7_records/run_inception_experiments.py
-python experiments/paper7_records/run_latent_trigger_cursor_iteration.py
-\end{lstlisting}
-{\raggedright
-Calibrated production-PRA artifacts are under
-\path{docs/papers/shared/results/paper7_records/full_pra_calibrated}. The
-earlier mechanism checkpoint is under
-\path{docs/papers/shared/results/paper7_records/progressive_context}; secondary
-artifacts are under \path{docs/papers/shared/results/paper7_records/inception}
-and \path{docs/papers/shared/results/paper7_records/latent_triggers}. The
-manifest records immutable model identity, seeds, decoding, benchmark
-fingerprint, and simulated-topology labels; local response caches are ignored.
-Tests cover store identity and integrity, scope and TTL, implicit PRA view
-identity, real-PRA registration binding, decision validation, recursive view
-re-entry, accounting, and cursor operations and lifecycle.\par}
+Primary quality artifacts are under
+\path{docs/papers/shared/results/paper7_records/full_pra_calibrated/}.
+Size-gate artifacts are under
+\path{docs/papers/shared/results/paper7_records/native_index_size_gate/}:
+\begin{itemize}[leftmargin=*,nosep]
+  \item \path{native_index_size_gate_results.csv};
+  \item \path{native_index_size_gate_manifest.json};
+  \item \path{ingestion_latency_by_size.csv};
+  \item \path{time_to_usable_context.csv};
+  \item \path{lazy_native_region_results.csv};
+  \item \path{oversized_record_policy_results.csv}.
+\end{itemize}
+The manifest records CUDA, Torch version, seeds, sizes, policy bounds, encoder
+width, and the claim boundary. Raw rows distinguish agent-side compact
+readiness, native-index latency, completed TTUC, cheap search, lazy encoding,
+active K/V, routing-index bytes, and resident detail-K/V.
 
 {\small
 \begin{thebibliography}{9}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
 
 \bibitem{jiang2023llmlingua}
 Huiqiang Jiang, Qianhui Wu, Chin-Yew Lin, Yuqing Yang, and Lili Qiu.
@@ -1391,7 +966,8 @@ Language Models.
 \newblock In \emph{Proceedings of EMNLP}, 2023.
 
 \bibitem{jiang2023longllmlingua}
-Huiqiang Jiang, Qianhui Wu, Xufang Luo, et al.
+Huiqiang Jiang, Qianhui Wu, Xufang Luo, Dongsheng Li, Chin-Yew Lin, Yuqing
+Yang, and Lili Qiu.
 \newblock LongLLMLingua: Accelerating and Enhancing LLMs in Long Context
 Scenarios via Prompt Compression.
 \newblock In \emph{Proceedings of ACL}, 2024.
@@ -1403,14 +979,36 @@ Ion Stoica, and Joseph E. Gonzalez.
 \newblock arXiv:2310.08560, 2023.
 
 \bibitem{lewis2020rag}
-Patrick Lewis, Ethan Perez, Aleksandra Piktus, et al.
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir
+Karpukhin, Naman Goyal, Heinrich K\"uttler, Mike Lewis, Wen-tau Yih, Tim
+Rockt\"aschel, Sebastian Riedel, and Douwe Kiela.
 \newblock Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks.
 \newblock In \emph{Advances in Neural Information Processing Systems}, 2020.
 
 \bibitem{headroom2026ccr}
 Headroom Labs.
-\newblock Reversible Compression (CCR): Compress--Cache--Retrieve architecture.
+\newblock Reversible Compression (CCR): Compress--Cache--Retrieve Architecture.
 \newblock \url{https://docs.headroomlabs.ai/docs/ccr}, accessed August 2026.
+
+\bibitem{zhang2023h2o}
+Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin Zheng, Ruisi Cai,
+Zhao Song, Yuandong Tian, Christopher R\'e, Clark Barrett, Zhangyang Wang, and
+Beidi Chen.
+\newblock H$_2$O: Heavy-Hitter Oracle for Efficient Generative Inference of
+Large Language Models.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
+
+\bibitem{li2024snapkv}
+Yuhong Li, Yingbing Huang, Bowen Yang, Bharat Venkitesh, Acyr Locatelli,
+Hanchen Ye, Tianle Cai, Patrick Lewis, and Deming Chen.
+\newblock SnapKV: LLM Knows What You Are Looking for Before Generation.
+\newblock arXiv:2404.14469, 2024.
+
+\bibitem{mcp2025resources}
+Model Context Protocol.
+\newblock Resources and Pagination Specification.
+\newblock \url{https://modelcontextprotocol.io/specification/2025-03-26/server/resources},
+accessed August 2026.
 
 \end{thebibliography}
 }
