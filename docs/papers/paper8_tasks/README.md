@@ -11,16 +11,20 @@ From the repository root:
 
 ```powershell
 python experiments/paper8_tasks/run_task_scope_experiments.py
+python experiments/paper8_tasks/run_production_pra.py --phase postprocess
 python -m pytest -q tests/test_task_context.py tests/test_task_scope.py `
   tests/test_session_service.py tests/test_task_planning.py `
-  tests/test_task_workflows.py
+  tests/test_task_workflows.py tests/test_task_production_cases.py `
+  tests/test_paper8_production_artifacts.py
 cd docs/papers/paper8_tasks
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper8_tasks.tex
 ```
 
-The experiment is deterministic and does not download or invoke a language
-model. It evaluates the oracle task-scope mechanism over five seeds. The paper
-does not present these rows as answer-generation accuracy.
+The original scope experiment is deterministic and model-free. The production
+iteration additionally evaluates frozen `Qwen/Qwen3-0.6B` on CUDA through the
+Paper 7 native routing and materialization path. Its JSONL checkpoints allow a
+crashed run to resume. Both studies use oracle task identity and relations;
+model-generated task acquisition remains deferred.
 
 ## Implementation Map
 
@@ -33,8 +37,12 @@ does not present these rows as answer-generation accuracy.
 - `src/pra_hf/task_planning.py`: deterministic complexity gate and validated
   JSON/Markdown preflight parsers.
 - `src/data/task_workflows.py`: controlled workflow and interleaving generator.
+- `src/data/task_production_cases.py`: typed production cases, confusability,
+  join-capacity cases, and independent DAG geometries.
 - `experiments/paper8_tasks/run_task_scope_experiments.py`: tables, summaries,
   and figures.
+- `experiments/paper8_tasks/run_production_pra.py`: Paper 7 native routing,
+  materialization, model-consumption decomposition, accounting, and plots.
 
 Generated data lives in `docs/papers/shared/results/paper8_tasks/`; figures live
 in `docs/papers/shared/figures/paper8_tasks/`. Rows for online and hybrid task

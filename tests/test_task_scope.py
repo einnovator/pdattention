@@ -52,14 +52,37 @@ def test_session_scope_budget_can_select_hot_semantic_distractor() -> None:
 
 def test_working_set_distinguishes_cold_warm_hot_and_demotes_wrong_task() -> None:
     working = TaskWorkingSet()
-    working.register_backing("a", backing_bytes=4096)
+    backing = working.register_backing("a", backing_bytes=4096)
+    encoded = working.register_encoded("a", native_tokens=64)
     first = working.activate("a", native_tokens=64)
     switched = working.activate("b", native_tokens=32)
     resumed = working.activate("a", native_tokens=64)
     completed = working.complete("a")
 
+    assert backing.state == ResidencyState.COLD
+    assert encoded.state == ResidencyState.ENCODED_HOST
+    assert encoded.device_active_tokens == 0
     assert first.kv_promoted == 64
     assert switched.kv_demoted == 64
-    assert working.residency("b").state == ResidencyState.WARM
+    assert working.residency("b").state == ResidencyState.ENCODED_HOST
     assert resumed.kv_reused == 64
-    assert completed.new_state == ResidencyState.WARM
+    assert resumed.kv_promoted == 64
+    assert completed.new_state == ResidencyState.ENCODED_HOST
+    assert working.residency("a").device_active_tokens == 0
+
+
+def test_partition_is_router_independent_and_adaptive_can_widen() -> None:
+    records = (
+        _record("a:evidence", "a", "alpha evidence", 1),
+        _record("b:evidence", "b", "beta evidence", 2),
+    )
+    selector = TaskScopeSelector(_graph(), records)
+
+    structural = selector.partition("a", policy="task_structural")
+    adaptive = selector.partition(
+        "a", policy="task_adaptive", metadata_complete=False
+    )
+
+    assert structural.admitted_record_ids == ("a:evidence",)
+    assert set(adaptive.admitted_record_ids) == {"a:evidence", "b:evidence"}
+    assert adaptive.widened

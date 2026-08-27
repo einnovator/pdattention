@@ -215,6 +215,7 @@ from .task_context import (
 from .task_scope import (
     DetailDepth,
     ResidencyState,
+    ScopePartition,
     ScopeSelection,
     TaskResidency,
     TaskScopePolicy,
@@ -432,6 +433,7 @@ __all__ = [
     "LocalSessionService",
     "PlannedTask",
     "ResidencyState",
+    "ScopePartition",
     "ScopeSelection",
     "SessionConflict",
     "SessionNotFound",

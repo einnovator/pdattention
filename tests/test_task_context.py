@@ -53,6 +53,27 @@ def test_dependency_validation_rejects_missing_edges_and_cycles() -> None:
         ))
 
 
+def test_parent_hierarchy_rejects_two_node_and_longer_cycles() -> None:
+    graph = TaskGraph()
+    graph.apply(_create(1, "a"))
+    graph.apply(_create(2, "b", parent="a"))
+    with pytest.raises(ValueError, match="acyclic"):
+        graph.apply(TaskEvent(
+            "parent:a:b", 3, TaskEventType.LINK, "a", expected_version=1,
+            payload={"parent_task_id": "b"},
+        ))
+
+    graph = TaskGraph()
+    graph.apply(_create(1, "a"))
+    graph.apply(_create(2, "b", parent="a"))
+    graph.apply(_create(3, "c", parent="b"))
+    with pytest.raises(ValueError, match="acyclic"):
+        graph.apply(TaskEvent(
+            "parent:a:c", 4, TaskEventType.LINK, "a", expected_version=1,
+            payload={"parent_task_id": "c"},
+        ))
+
+
 def test_structural_closure_includes_join_inputs_but_excludes_siblings() -> None:
     graph = TaskGraph()
     graph.apply(_create(1, "root"))

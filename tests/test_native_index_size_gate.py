@@ -99,6 +99,21 @@ def test_exact_token_boundary_builds_full_native_index(tmp_path):
     assert progressive.registry.backing_reference_handles[record.record_id].tokens == 4
 
 
+def test_backing_index_does_not_activate_previously_unbound_compact_view(tmp_path):
+    runtime = AdaptiveContextRuntime(
+        RecordScope("tenant", "session"),
+        ContextPolicy(local_store=tmp_path, max_native_index_tokens=8),
+    )
+    progressive = ProgressiveContextRuntime(runtime, chunk_tokens=8)
+    record = progressive.ingest("one two three four", record_type=RecordType.LOG_BLOCK)
+    model = _FakePRA()
+    progressive.registry.pra_model = model
+
+    progressive.register_backing_record(record.record_id)
+
+    assert set(model.references) == {f"{record.record_id}/views/backing"}
+
+
 def test_byte_gate_and_type_override_are_resolved_independently(tmp_path):
     policy = ContextPolicy(
         local_store=tmp_path,

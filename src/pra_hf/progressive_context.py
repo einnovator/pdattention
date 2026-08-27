@@ -589,8 +589,25 @@ class PRARecordRegistry:
         return len(self.pra_model.tokenizer(text, add_special_tokens=False).input_ids)
 
     def _refresh_compact_metadata(self, record_id: str) -> None:
+        """Refresh controller metadata without changing reference activation.
+
+        A compact record ingested before a model is bound is prompt metadata,
+        not a retrieval-only model reference. Native-index preparation must not
+        silently add that compact view to the production routing candidate set.
+        """
+
         capabilities = self.capabilities.get(record_id, RecordCapabilities())
-        self.register_compact_record(record_id, capabilities=capabilities)
+        uri = _view_uri(record_id, PRAViewKind.SUMMARY)
+        was_model_registered = uri in self.reference_handles
+        if was_model_registered or self.pra_model is None:
+            self.register_compact_record(record_id, capabilities=capabilities)
+            return
+        model = self.pra_model
+        self.pra_model = None
+        try:
+            self.register_compact_record(record_id, capabilities=capabilities)
+        finally:
+            self.pra_model = model
 
     def prepare_backing_index(
         self, record_id: str, *, force: bool = False

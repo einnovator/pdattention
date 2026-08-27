@@ -11,6 +11,8 @@ from pra_hf.session_service import (
     SessionConflict,
 )
 from pra_hf.task_context import TaskEvent, TaskEventType, TaskStatus
+from pra_hf.task_context import TaskGraph
+from pra_hf.task_scope import TaskScopeSelector
 
 
 def _exercise(service):
@@ -51,3 +53,24 @@ def test_local_service_round_trips_typed_records_and_task_descriptor(tmp_path) -
     payload = json.loads(manifests[0].read_text(encoding="utf-8"))
     assert payload["user_id"] == "user-1"
     assert payload["tasks"]["active_task_id"] is None
+
+
+def test_persisted_session_replays_to_equivalent_task_scope(tmp_path) -> None:
+    service = LocalSessionService(tmp_path)
+    state = service.create_session(
+        "user-1", "session-replay", task_description="Recover evidence"
+    )
+    record = ContextRecord("turn:1", RecordType.GENERIC_TEXT, "alpha evidence")
+    state = service.append_record("user-1", "session-replay", record)
+    before = TaskScopeSelector(TaskGraph(state.tasks), state.records).partition(
+        "task-1", policy="task_structural"
+    )
+
+    restored = LocalSessionService(tmp_path).get_session("user-1", "session-replay")
+    after = TaskScopeSelector(TaskGraph(restored.tasks), restored.records).partition(
+        "task-1", policy="task_structural"
+    )
+
+    assert after.admitted_task_ids == before.admitted_task_ids
+    assert restored.records[0].selection_provenance == state.records[0].selection_provenance
+    assert after.admitted_record_ids == before.admitted_record_ids

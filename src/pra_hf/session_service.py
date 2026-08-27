@@ -26,7 +26,13 @@ from .context_records import (
     RecordView,
     RecordViewName,
 )
-from .task_context import TaskDescriptor, TaskEvent, TaskEventType, TaskGraph
+from .task_context import (
+    TaskDescriptor,
+    TaskEvent,
+    TaskEventType,
+    TaskGraph,
+    TaskProvenance,
+)
 
 
 @dataclass(frozen=True)
@@ -275,6 +281,12 @@ def _record_to_dict(record: ContextRecord) -> dict[str, object]:
 
 
 def _record_from_dict(value: Mapping[str, object]) -> ContextRecord:
+    provenance = dict(value.get("selection_provenance", {}))
+    task_provenance = provenance.get("task")
+    if isinstance(task_provenance, Mapping):
+        # JSON turns tuple-valued fields into lists. Reconstruct the typed
+        # contract so persistent replay is equivalent to in-memory state.
+        provenance["task"] = TaskProvenance(**dict(task_provenance)).to_dict()
     return ContextRecord(
         record_id=str(value["record_id"]),
         record_type=str(value["record_type"]),
@@ -282,7 +294,7 @@ def _record_from_dict(value: Mapping[str, object]) -> ContextRecord:
         parent_id=value.get("parent_id"),
         child_ids=tuple(value.get("child_ids", ())),
         boundaries=tuple(RecordBoundary(**row) for row in value.get("boundaries", ())),
-        selection_provenance=dict(value.get("selection_provenance", {})),
+        selection_provenance=provenance,
         policy=RecordPolicy(**dict(value["policy"])),
         version=str(value.get("version", "v1")),
         source_fingerprint=str(value.get("source_fingerprint", "")),

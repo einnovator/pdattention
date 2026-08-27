@@ -1,6 +1,7 @@
 \documentclass[10pt]{article}
 \usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,enumitem,graphicx,hyperref,tabularx}
+\usepackage{amsmath,amssymb,booktabs,enumitem,graphicx,hyperref,placeins,tabularx}
+\input{../shared/results/paper8_tasks/production_pra/generated_production_pra_results.tex}
 \title{Task-Aware Progressive Retrieval Attention:\\Virtualizing Interleaved Agent Context by Execution Scope}
 \author{PRA Research Program}
 \date{August 2026}
@@ -9,7 +10,7 @@
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (PRA) has largely been studied under an implicit single-task assumption: one physical session is treated as one coherent retrieval space. Long-running agents instead multiplex tasks whose user turns, tool results, artifacts, and decisions are temporally interleaved. We introduce task-aware PRA, where harness-authoritative task identity and dependency relations scope candidates before ordinary PRA discovery and Paper-7 progressive materialization. The implementation provides versioned task events, idempotent DAG replay, typed task provenance, cold/warm/hot working-set transitions, and in-memory and local persistent session services. A controlled oracle experiment spans 80 workflows, four workflow families, 2--16 tasks, and five seeds. At a matched two-record budget in the 16-task parallel condition, session-wide ranking recovered no active-task evidence and selected only wrong-task records, while local, structural, and adaptive task scope recovered all active-task evidence with zero cross-task contamination. In an eight-input join, hard local scope recovered 12.5\% of required records, whereas structural closure recovered all eight. The benefit is bounded by physical capacity: at a 16-input join and an eight-record budget, structural recall is 50\% and join completeness is zero. These are deterministic mechanism results, not language-model answer-quality results. Model-generated task acquisition and generation evaluation remain behind an explicit stop gate. Paper 8 remains single-session; subagent session trees and cross-session memory are deferred to Papers 9 and 10.
+Progressive Retrieval Attention (PRA) has largely been studied under an implicit single-task assumption: one physical session is treated as one coherent retrieval space. Long-running agents instead multiplex interleaved tasks. We introduce task-aware PRA, in which harness-authoritative task identity and dependency relations restrict candidates before ordinary PRA discovery and Paper-7 progressive materialization. A model-free study over 80 workflows first isolates the scope mechanism. We then hold a production native-Q/K hybrid router fixed across \ProductionCases{} naturalistic typed-record cases and vary only task admission. Structural scope raises exact evidence availability from \ProductionSessionEvidence\% to \ProductionStructuralEvidence\%, removes \ProductionSessionContamination\% session-wide cross-task contamination, and reduces requested native tokens from \ProductionSessionNativeTokens{} to \ProductionStructuralNativeTokens{} per case. With selected exact records made visible, frozen Qwen3-0.6B answer accuracy rises from \ProductionVisibleSessionAccuracy\% to \ProductionVisibleStructuralAccuracy\%; full task scope reaches \ProductionFullTaskAccuracy\% versus \ProductionFullSessionAccuracy\% for the full interleaved session. Direct frozen native-memory injection yields \ProductionDirectNativeAccuracy\% accuracy despite successful evidence routing, separating a consumption failure from the scope result. Join sweeps show the remaining capacity boundary. The contribution is therefore a replayable task-scope layer and evidence that task structure improves both retrieval allocation and downstream behavior when the selected detail is consumable, not a claim that task planning or frozen native-memory integration is solved.
 \end{abstract}
 
 \section{Dependency Gate and Scope}
@@ -424,9 +425,9 @@ Structure acquisition:
 \section{Implementation}
 The reference implementation extends the inherited typed-record substrate rather than introducing a task-specific memory store. \texttt{TaskState} records the status, description, constraints, parent, dependencies, blockers, evidence, outputs, and a compact \texttt{result\_ref}. \texttt{TaskEvent} supplies a stable event ID, monotonic sequence, event type, expected task version, and mutation payload. \texttt{TaskGraph.apply} rejects stale versions, missing dependencies, self-links, and cycles; duplicate event IDs are idempotent. A serialized \texttt{TaskDescriptor} is therefore a cacheable snapshot, while the event stream remains replayable.
 
-Typed context records retain their Paper-7 identity and views. Paper 8 adds \texttt{TaskProvenance} in selection provenance: owning task, optional producer and consumers, relation type, and physical event sequence. \texttt{TaskScopeSelector} first admits a task partition and only then applies one frozen lexical/recency ranker. \texttt{TaskWorkingSet} tracks cold, warm, and hot states and reports promoted, reused, and demoted native-token counts; it does not own or duplicate native K/V.
+Typed context records retain their Paper-7 identity and views. Paper 8 adds \texttt{TaskProvenance} in selection provenance: owning task, optional producer and consumers, relation type, and physical event sequence. \texttt{TaskScopeSelector.partition} emits task and record IDs independently of any in-process model. The historical mechanism study applies a frozen lexical/recency ranker after this partition; the production study instead constructs the inherited Paper-7 native-Q/K index only over admitted exact backing records. \texttt{TaskWorkingSet} distinguishes \texttt{COLD}, host-encoded \texttt{ENCODED\_HOST}, and accelerator-active \texttt{DEVICE\_HOT}. Backing availability no longer implies warm encoding, and device demotion does not discard reusable host encoding.
 
-The SDK substrate includes an abstract \texttt{SessionService}. \texttt{InMemorySessionService} provides thread-safe ephemeral state. \texttt{LocalSessionService} stores atomic, user-hashed JSON manifests on local disk and validates optimistic session versions. Both resolve exact sessions by \texttt{user\_id} and \texttt{session\_id}, or the most recently updated session for a user. Each session contains an ordered typed-record stream, the task descriptor, and replay events. Model-cache state is deliberately absent from durable session state because it is reconstructible.
+The SDK substrate includes an abstract \texttt{SessionService}. \texttt{InMemorySessionService} provides thread-safe ephemeral state. \texttt{LocalSessionService} stores atomic, user-hashed JSON manifests on local disk and validates optimistic session versions. Both resolve exact sessions by \texttt{user\_id} and \texttt{session\_id}, or the most recently updated session for a user. Each session contains an ordered typed-record stream, the task descriptor, and replay events. Model-cache state is deliberately absent from durable session state because it is reconstructible. Persistent replay preserves admitted tasks, admitted records, and typed task provenance for all 15 production cases after the model cache is discarded.
 
 The preflight control surface implements a cheap complexity gate and deterministic JSON and Markdown parsers. Parsed plans are validated through the same DAG implementation. No model-produced plan becomes authoritative merely because it parses.
 
@@ -499,22 +500,101 @@ Figure~\ref{fig:resumption} gives the resumption result. At 128 intervening reco
 
 The scope--detail frontier in Figure~\ref{fig:frontier} makes the two-axis decomposition operational. At selected detail, structural scope averages 0.875 recall using 168 charged tokens, versus 0.725 recall and 192 tokens for session scope. At native-K/V depth, structural scope reaches 0.641 recall at 192 tokens versus 0.241 for session scope. Local scope uses fewer tokens when the candidate partition is small, but its aggregate recall is 0.547 because joins require predecessor evidence. These estimates validate accounting and policy behavior; they are not measurements of model-native K/V byte transfer.
 
+\FloatBarrier
+\section{Production-PRA Confirmation}
+\paragraph{Protocol.}
+The second experiment replaces the frozen lexical/recency control with the inherited Paper-7 production path. For each policy, task admission first produces record IDs; the native hybrid router then indexes the exact backing records, encodes the query, ranks original chunks, and requests selected native K/V under the same top-$K=8$ setting. The model and router are frozen. We use Qwen/Qwen3-0.6B at revision \texttt{c1899de289a04d12100db370d81485cdf75e47ca}, deterministic decoding, and CUDA. The 15 cases cross low, medium, and high task confusability with independent, linear, join, resumption, and conflicting-state workflows. Their typed traces contain file reads, database results, terminal output, tool responses, and task state. The graph and active task are oracle harness inputs; task IDs are absent from the query.
+
+We distinguish four events: required evidence was selected, its exact typed record was materialized, it was available to the model, and the answer consumed it correctly. The three unqualified PRA conditions use direct native memory. The \texttt{VISIBLE} diagnostic follows the same selection and exact backing path but serializes selected detail into the prompt. This is not a second router; it localizes failures after materialization. \texttt{FULL\_SESSION}, \texttt{FULL\_TASK\_SCOPE}, and \texttt{COMPACT\_ONLY} bound model behavior.
+
+\begin{table}[t]
+\centering
+\caption{Production native routing, aggregated over 15 paired cases. $R$ is required-record recall, $C$ cross-task contamination, $E$ exact evidence availability, and $K_V$ requested native tokens. Only candidate scope changes.}
+\label{tab:production-routing}
+\begin{tabular}{lrrrr}
+\toprule
+Condition & $R$ & $C$ & $E$ & $K_V$ \\
+\midrule
+PRA\_SESSION & 0.889 & 0.750 & 0.333 & 234.3 \\
+PRA\_TASK\_LOCAL & 0.700 & 0.000 & 0.600 & 55.7 \\
+PRA\_TASK\_STRUCT & 1.000 & 0.000 & 0.933 & 93.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:production-routing} confirms that the scope effect survives the stronger router. Session-wide routing has high record-level recall because it often selects one required chunk, yet only one third of cases have the complete evidence required by the answer. Structural closure admits dependencies, eliminates wrong-task records, and reaches 93.3\% exact evidence availability with 60\% fewer requested native tokens. Hard local scope is smaller but loses predecessor records, so its low contamination should not be mistaken for sufficient retrieval.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{../shared/figures/paper8_tasks/production_confusability.pdf}
+  \caption{Paired structural-minus-session effects by semantic task confusability. Exact evidence and answer accuracy improve as task states become harder to distinguish lexically; session-wide contamination remains high. Each level contains five heterogeneous workflow cases, so intervals reflect case bootstrap uncertainty rather than a population-level benchmark estimate.}
+  \label{fig:production-confusability}
+\end{figure}
+
+The evidence advantage grows from \ProductionLowEvidenceDelta{} percentage points at low confusability to \ProductionMediumEvidenceDelta{} at medium and \ProductionHighEvidenceDelta{} at high (Figure~\ref{fig:production-confusability}). Visible-detail accuracy improves by 40, 60, and 60 points, respectively. With only five cases per level, the intervals are broad; the monotone evidence trend is a mechanism observation, not a precise scaling law.
+
+\begin{table}[t]
+\centering
+\caption{Frozen-model answer accuracy and required-evidence use. Direct native-memory rows isolate consumption; visible rows expose the same selected exact records as serialized detail.}
+\label{tab:production-model}
+\begin{tabular}{lrr}
+\toprule
+Condition & Accuracy & Evidence use \\
+\midrule
+FULL\_SESSION & 0.200 & 0.433 \\
+FULL\_TASK\_SCOPE & 0.733 & 0.800 \\
+COMPACT\_ONLY & 0.200 & 0.200 \\
+PRA\_SESSION (native) & 0.000 & 0.000 \\
+PRA\_TASK\_LOCAL (native) & 0.000 & 0.000 \\
+PRA\_TASK\_STRUCT (native) & 0.000 & 0.000 \\
+PRA\_SESSION\_VISIBLE & 0.133 & 0.278 \\
+PRA\_TASK\_LOCAL\_VISIBLE & 0.533 & 0.633 \\
+PRA\_TASK\_STRUCT\_VISIBLE & 0.667 & 0.744 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The downstream result is positive but conditional. Full task scope exceeds the full session by 53.3 points, showing that unrelated interleaved context harms even when all evidence is present. Among routed visible-detail conditions, structural scope exceeds session scope by 53.4 points. Given available evidence, visible local and structural conditions answer correctly in 88.9\% and 71.4\% of cases. By contrast, all direct frozen native-memory conditions score zero, including structural cases in which evidence availability is 93.3\%. The router found and materialized useful evidence; this model configuration did not consume it through direct memory injection. A learned integration gate or task-aware adaptation is therefore a separate requirement.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.86\linewidth]{../shared/figures/paper8_tasks/production_scope_comparison.pdf}
+  \caption{Production scope comparison using measured encoded chunks and index accounting. Structural scope improves exact evidence availability while requesting fewer native tokens than session-wide routing.}
+  \label{fig:production-scope}
+\end{figure}
+
+\paragraph{Physical capacity and graph geometry.}
+The join sweep varies fan-in and encoded-ranking budgets independently over $\{2,4,8,16,32\}$. Fan-in 4 becomes retrieval-complete at $K=8$, fan-in 8 at $K=16$, and fan-in 16 at $K=32$. At fan-in 32, even $K=32$ recovers only 0.744 of predecessor records because active-task and chunk overhead also consume positions. Frozen-model join generation succeeds for fan-in 2 at $K\geq4$ but fails for fan-in 4 and 8 even when retrieval is complete, again locating the failure in multi-record composition rather than scope alone.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.78\linewidth]{../shared/figures/paper8_tasks/production_join_capacity.pdf}
+  \caption{Predecessor recovery by join fan-in and encoded-chunk budget. Task structure removes unrelated competition but cannot override the physical selected-chunk budget.}
+  \label{fig:production-joins}
+\end{figure}
+
+Five independent DAG families---deep-narrow, shallow-wide, multi-fork, multi-join, and balanced---each run under five seeds. Session and structural scope have equal aggregate required-record recall (0.954), while structural scope removes all cross-task contamination. The matched result is useful: explicit structure changes the candidate set without manufacturing a retrieval advantage when the relevant graph geometry already fits the budget.
+
+\paragraph{Accounting and replay.}
+The production artifacts report serialized prompt tokens, encoded backing-chunk tokens, routing-index bytes, resident detail-cache bytes, indexing, query encoding, routing, and exact materialization time. These are measured runtime counters, although the Python orchestration is not an optimized serving benchmark. The real scope--detail frontier uses encoded chunk spans rather than the historical fixed depth costs. Persistent session replay reproduces task scope, selected record IDs, and typed provenance in every case while persisting no model cache. Parent edges participate in DAG cycle validation, including two-node and longer cycles.
+
+\FloatBarrier
 \section{Interpretation and Limits}
-The experiment establishes that explicit task structure can alter which records receive a fixed PRA budget, and that structural closure repairs the dependency loss caused by hard local filtering. It does not establish downstream answer accuracy, planning quality, or production latency. The semantic confusability is synthetic and deliberately severe. The lexical/recency ranker is a frozen control, not a competitive learned router.
+The experiments establish that explicit task structure changes how a fixed PRA budget is allocated, that structural closure repairs the dependency loss caused by hard local filtering, and that the benefit survives a production native-Q/K router. They also establish downstream answer benefit when selected exact detail is consumable. The lexical/recency ranker is only the historical control.
 
-Capacity remains a hard limit. In the 16-input join, an eight-record budget yields 0.50 recall and zero complete joins for structural, adaptive, and session policies. Task scope removes irrelevant competition; it cannot fit more required evidence than the materialization budget. Adaptive widening also equals structural scope in the primary cases because oracle metadata is complete. Its value under missing or stale metadata remains unmeasured.
+Three limits matter. First, the production cohort is 15 controlled cases from one generator and one 0.6B model; five seeds are distributed across five workflow types rather than replicating every type. Second, direct native-memory consumption is negative, so the positive generation claim is about scoped selection plus exact selected-detail re-entry, not successful frozen memory injection. Third, structural scope cannot fit joins whose required chunks exceed the budget. Task scope removes irrelevant competition; it does not abolish capacity or composition limits.
 
-The JSON and Markdown parser fixtures pass deterministic validation, but no language model produced those plans. Online tools and hybrid acquisition are explicitly marked deferred in the artifact bundle. The next empirical gate is model answer/action evaluation under oracle task structure, followed by metadata corruption and only then generated preflight plans.
+Task identity and relations remain oracle. Metadata corruption, adaptive widening, model-produced preflight plans, online task tools, and hybrid acquisition are intentionally deferred until after this oracle production gate. JSON and Markdown parser fixtures validate syntax and graph invariants, but no model-generated plan is reported as evidence. Latencies include real encoding and materialization work on CUDA, yet exhaustive Python orchestration and a single workstation preclude serving claims.
 
-\section{Hypotheses}
+\section{Hypotheses and Status}
 \begin{enumerate}[label=H\arabic*.]
-\item Interleaving degrades session-wide PRA faster than task-aware PRA.
-\item Explicit task scope reduces cross-task contamination without materially reducing required-evidence recall.
-\item Gains increase with semantic similarity and hot-state contamination among tasks.
-\item Structural closure outperforms hard task-local scope on dependency and join workflows while remaining cheaper than session-global retrieval.
+\item Interleaving degrades session-wide PRA faster than task-aware PRA. \emph{Supported in the controlled scaling and production cohorts.}
+\item Explicit task scope reduces cross-task contamination without materially reducing required-evidence recall. \emph{Supported for structural scope; hard local scope loses dependencies.}
+\item Gains increase with semantic similarity and hot-state contamination among tasks. \emph{Evidence availability follows this trend; larger cohorts are required.}
+\item Structural closure outperforms hard task-local scope on dependency and join workflows while remaining cheaper than session-global retrieval. \emph{Supported for routing; generation remains composition-limited at larger joins.}
 \item Explicit dependency relations outperform rediscovery of known dependencies.
 \item Task completion is an effective context-demotion boundary when compact result views retain full backing addressability.
-\item Task-conditioned working sets remain bounded/sublinear as total session history grows.
+\item Task-conditioned working sets remain bounded/sublinear as total session history grows. \emph{Supported by bounded cases, not established as an asymptotic law.}
 \item Task-aware gains increase with workflow width, depth, joins, resumption distance, and interleaving complexity.
 \item Preflight decomposition can recover much of the oracle task-aware gain for models that do not reliably manage tasks online.
 \item JSON and Markdown decomposition have model-dependent reliability; downstream utility matters more than exact graph match.
@@ -524,8 +604,8 @@ The JSON and Markdown parser fixtures pass deterministic validation, but no lang
 \section{Experimental Discipline}\label{sec:discipline}
 The causal order is mandatory:
 \begin{enumerate}
-\item Given oracle task identity/relations, does task-aware scope improve PRA?
-\item How does the gain scale with workflow/interleaving complexity?
+\item Given oracle task identity/relations, does task-aware scope improve PRA? \emph{Passed for retrieval and selected-visible generation.}
+\item How does the gain scale with workflow/interleaving complexity? \emph{Bounded confusability, DAG, resumption, and join sweeps completed.}
 \item How robust is it to imperfect/stale task metadata?
 \item Can preflight decomposition recover useful structure?
 \item Can online model-managed tasks match or improve preflight structure?
@@ -547,9 +627,9 @@ Phase & Status & Artifact or remaining gate \\
 A & Complete & Paper-7 records, views, backing, and cache lifecycle reused. \\
 B & Complete & Versioned task graph, replay, provenance, and structural closure. \\
 C & Complete & Four matched-budget scope policies with a frozen ranker. \\
-D & Partial & Cold/warm/hot accounting complete; physical GPU transfer unmeasured. \\
-E & Complete & Complexity, joins, resumption, contamination, and frontier artifacts. \\
-F & Partial & Gate and JSON/Markdown validation exist; model evaluation has not run. \\
+D & Complete & Cold/host-encoded/device-hot states and measured Paper-7 counters separated. \\
+E & Complete & Confusability, joins, independent DAGs, replay, and real frontier artifacts. \\
+F & Complete & Oracle-graph frozen-model evaluation and evidence-consumption decomposition. \\
 G & Deferred & Online task tools remain behind the oracle stop gate. \\
 H & Deferred & Hybrid acquisition follows separate preflight and online evaluation. \\
 \bottomrule
@@ -562,6 +642,6 @@ Paper~8 remains single-session and does not introduce subagent context trees, cr
 \section{Target Claim}
 The paper does not claim invention of task lists, workflow DAGs, task planning, or decomposition prompting. Its target claim is:
 
-\emph{Explicit typed task state and workflow relations can serve as a first-class context-scope signal, allowing PRA to reconstruct bounded logical task contexts from an interleaved physical session while reusing ordinary PRA discovery and progressive materialization, and while keeping authoritative execution state in the harness.}
+\emph{Explicit typed task state and workflow relations can serve as a first-class context-scope signal, allowing production PRA to allocate fewer active retrieval tokens to more complete task evidence in an interleaved physical session. When selected exact detail is consumable, this improves downstream answers while keeping authoritative execution state in the harness.}
 
 \end{document}
