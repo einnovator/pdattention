@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 \usepackage[margin=.9in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,placeins,microtype,enumitem,xcolor,listings,longtable,array}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,microtype,enumitem,xcolor,listings,longtable,array}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
 \graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/native_index_size_gate/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
@@ -29,53 +29,49 @@
 \maketitle
 
 \begin{abstract}
-Large agent observations should not remain fully active merely because a tool
-has returned them. Yet a compact projection can hide a detail that becomes
-important only after the next inference. We separate these concerns with typed
-records: each observation has a compact visible view, exact scoped backing
-state, retrieval-only addresses, and bounded materialization interfaces.
-Production \texttt{PRA\_NATIVE} encodes the full backing result into Parallel
-Reference Attention (PRA) addresses and later materializes selected native
-key/value spans. On an 18-case held-out typed-result benchmark, this path
-matches full exposure at \PaperSevenCalNativeSuccess{} task success while
-reducing active K/V from \PaperSevenCalFullTokens{} to
-\PaperSevenCalNativeTokens{} tokens, approximately 40\%. A calibrated adaptive
-controller also reaches \PaperSevenCalAdaptiveSuccess{} but adds controller and
-escalation cost; an oracle reaches \PaperSevenCalOracleSuccess{}, showing
-headroom concentrated in mechanism choice.
+Large agent observations are expensive to keep active, yet lossy compression
+can hide evidence that becomes relevant only after a later inference. Typed
+records separate a compact visible view, exact scoped backing state,
+retrieval-only addresses, and bounded materialization. On an 18-case held-out
+typed-result benchmark, production \texttt{PRA\_NATIVE} matches
+\texttt{FULL\_BACKING} at \PaperSevenCalNativeSuccessPct\% task success while
+reducing active K/V from \PaperSevenCalFullBackingTokens{} to
+\PaperSevenCalNativeTokens{} tokens, a \PaperSevenCalActiveKVReductionPct\%
+reduction. This is the active-context frontier.
 
-Full-backing native indexing is not free. Its model encoding and resident state
-grow with payload size. We therefore add exact token and byte gates,
-per-record-type overrides, explicit skip states, cheap lexical and structural
-fallbacks, cursor/search metadata, deferred indexing, and lazy native encoding
-of selected regions. In a five-seed CUDA mechanism profile from 1K to 256K
-tokens, the configured 4K-token/64KiB gate admits its exact boundary and skips
-larger payloads without truncation. At 256K tokens, eager native index work
-takes \PaperSevenEagerLargestIndexMs{} ms and yields
-\PaperSevenEagerLargestTTUC{} ms time-to-usable-context (TTUC), compared with
-\PaperSevenGatedLargestTTUC{} ms for compact-first gated handling. The lazy path
-then encodes a median \PaperSevenLazyRegionTokens{} selected tokens in
-\PaperSevenLazyRegionMs{} ms with \PaperSevenGatedRecall{} controlled evidence
-recall. These are lifecycle measurements with an instrumented Torch encoder,
-not pretrained-model quality or universal threshold claims.
+Native indexing introduces a separate ingestion frontier: full-body model
+encoding and resident state grow with payload size. Configurable token and byte
+gates retain cheap search/cursor recovery and allow later native encoding of a
+selected region. In a five-seed CUDA mechanism profile, compact-first gated
+handling reaches usable context at \PaperSevenGatedLargestTTUC{} ms for a 256K
+payload, versus \PaperSevenEagerLargestTTUC{} ms with eager model-like native
+index work; a \PaperSevenLazyRegionTokens{}-token selected region preserves
+\PaperSevenGatedRecall{} controlled marker recall. These are instrumented-Torch
+lifecycle measurements, not Qwen latency or universal threshold claims. A
+calibrated adaptive controller matches \texttt{PRA\_NATIVE} but adds cost;
+oracle control reaches \PaperSevenCalOracleSuccessPct\%, showing headroom that
+the frozen controller does not realize.
 \end{abstract}
 
 \section{Introduction}
 
-Agent observations can be too large to remain active; lossy compression can
-hide future-relevant detail; and full-backing PRA preserves addressability but
-model-native indexing itself can become too expensive for very large
-observations. These are three different problems. Treating them as one token
-budget obscures where time and memory are spent.
+A large result creates a causal chain of systems choices. Exposing all retained
+backing state preserves evidence but makes active context proportional to source size. A
+compact visible view lowers that cost but can omit both future evidence and the
+clue that retrieval would help. Exact backing storage restores reversibility.
+Backing PRA addresses add automatic model-native addressability. Building
+those addresses over every large payload, however, introduces size-dependent
+ingestion and resident-state costs. Size gating therefore chooses the
+addressability regime rather than treating all observations as one token
+budget.
 
-A database result, terminal transcript, graph traversal, or retrieved document
-set may be useful in several ways over time. Full serialization preserves
-evidence but makes active context proportional to source size. A summary lowers
-that cost but can remove both the evidence and the clue that retrieval would
-help. Keeping exact bytes in a cache restores reversibility, but not necessarily
-automatic addressability. Encoding every large backing object into
-model-native retrieval state restores addressability, but introduces ingestion
-cost of its own.
+We study two frontiers. The \emph{active-context frontier} asks how much of
+retained backing state must participate in the current model step. The
+\emph{ingestion frontier} asks how much work should be spent constructing
+model-derived backing addresses before inference can continue. The first is
+measured by quality and active K/V; the second by index construction, resident
+state, and time to usable context (TTUC). A reduction on one frontier does not
+imply a reduction on the other.
 
 We implement:
 \[
@@ -264,6 +260,13 @@ the runtime to recover the typed source record. The registry records input
 tokens, chunks, ingestion time, routing-index bytes, resident detail-K/V bytes,
 and exact backing bytes.
 
+We use \emph{native indexing} only for the transformation from backing state to
+model-derived retrieval addresses and retained native state,
+$B\rightarrow A_{\mathrm{native}}$. We use \emph{materialization} for the later
+activation of a selected backing interval as model-visible or native evidence.
+Indexing can therefore be expensive even when the selected active K/V is small;
+materialization can be bounded even when the backing index is resident.
+
 The compact record is registered separately as an implicit visible PRA
 document. This permits normal routing over current context while the backing
 reference remains retrieval-only. A detail, search result, or cursor page is
@@ -285,7 +288,7 @@ distinguish:
   \item \emph{typed visible tokens}, which include serialized headers and
   recovered views.
 \end{itemize}
-The approximately 40\% primary reduction concerns active K/V tokens, not
+The \PaperSevenCalActiveKVReductionPct\% primary reduction concerns active K/V tokens, not
 resident backing memory or ingestion latency. Size gating addresses the latter
 costs rather than revising the quality result.
 
@@ -306,7 +309,10 @@ The policy adds \texttt{max\_native\_index\_tokens} and
 exceeding either configured bound disables full-body native indexing. A
 per-record \texttt{TypeContextPolicy} may replace inherited limits. Byte bounds
 are evaluated from the backing descriptor before loading or tokenizing the
-full payload. Token bounds require exact host-tokenizer counting.
+full payload. Token bounds more directly approximate model work but require
+exact host-tokenizer counting unless a trusted descriptor already supplies it.
+Thus a byte gate can often reject an oversized object before full loading,
+whereas a token gate may itself incur tokenization work.
 
 \begin{lstlisting}[language=Python]
 if deferred:
@@ -527,7 +533,7 @@ hybrid policy is selected on validation and then frozen.}
 
 \subsection{Primary quality and active-K/V result}
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.72\linewidth]{visible_backing_addressability.pdf}
 \caption{Compact visibility and retrieval-only backing addressability are
@@ -541,27 +547,32 @@ Table~\ref{tab:frontier} evaluates complete context policies. Success is
 deterministic once the exact answer marker is visible, isolating context
 control rather than free-form generation quality.
 
-\begin{table}[t]
+\texttt{FULL\_BACKING} means that all currently retained backing state is
+exposed to the model; it does not acquire information absent from that state.
+
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
 Policy & Task success & Active K/V & Typed visible & Controller\\
 \midrule
-Full-backing PRA & \PaperSevenCalNativeSuccess{} & \PaperSevenCalNativeTokens{} & \PaperSevenCalNativeTypedTokens{} & \PaperSevenCalNativeControllerTokens{}\\
-Calibrated adaptive & \PaperSevenCalAdaptiveSuccess{} & \PaperSevenCalAdaptiveTokens{} & \PaperSevenCalAdaptiveTypedTokens{} & \PaperSevenCalAdaptiveControllerTokens{}\\
-Oracle adaptive & \PaperSevenCalOracleSuccess{} & \PaperSevenCalOracleTokens{} & \PaperSevenCalOracleTypedTokens{} & \PaperSevenCalOracleControllerTokens{}\\
-CCR-style retrieve & \PaperSevenCalCCRSuccess{} & \PaperSevenCalCCRTokens{} & \PaperSevenCalCCRTypedTokens{} & \PaperSevenCalCCRControllerTokens{}\\
-Full exposure & \PaperSevenCalFullSuccess{} & \PaperSevenCalFullTokens{} & \PaperSevenCalFullTypedTokens{} & \PaperSevenCalFullControllerTokens{}\\
+\texttt{COMPACT\_ONLY} & \PaperSevenCalCompactSuccess{} & \PaperSevenCalCompactTokens{} & \PaperSevenCalCompactTypedTokens{} & \PaperSevenCalCompactControllerTokens{}\\
+\texttt{PRA\_NATIVE} & \PaperSevenCalNativeSuccess{} & \PaperSevenCalNativeTokens{} & \PaperSevenCalNativeTypedTokens{} & \PaperSevenCalNativeControllerTokens{}\\
+\texttt{PRA\_ADAPTIVE} & \PaperSevenCalAdaptiveSuccess{} & \PaperSevenCalAdaptiveTokens{} & \PaperSevenCalAdaptiveTypedTokens{} & \PaperSevenCalAdaptiveControllerTokens{}\\
+\texttt{PRA\_ADAPTIVE\_ORACLE} & \PaperSevenCalOracleSuccess{} & \PaperSevenCalOracleTokens{} & \PaperSevenCalOracleTypedTokens{} & \PaperSevenCalOracleControllerTokens{}\\
+\texttt{CCR\_STYLE} & \PaperSevenCalCCRSuccess{} & \PaperSevenCalCCRTokens{} & \PaperSevenCalCCRTypedTokens{} & \PaperSevenCalCCRControllerTokens{}\\
+\texttt{FULL\_BACKING} & \PaperSevenCalFullBackingSuccess{} & \PaperSevenCalFullBackingTokens{} & \PaperSevenCalFullBackingTypedTokens{} & \PaperSevenCalFullBackingControllerTokens{}\\
 \bottomrule
 \end{tabular}
-\caption{Held-out quality/cost means in tokens. Full-backing PRA matches full
-exposure while lowering active K/V by approximately 40\%. Ingestion cost is
-reported separately.}
+\caption{Held-out quality/cost means in tokens. \texttt{PRA\_NATIVE} matches
+\texttt{FULL\_BACKING} while lowering active K/V by
+\PaperSevenCalActiveKVReductionPct\%. Index construction and resident memory
+are reported separately.}
 \label{tab:frontier}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.69\linewidth]{adaptive_quality_cost_frontier.pdf}
 \caption{Task success versus active K/V. Controller and routing costs are not
@@ -569,11 +580,14 @@ folded into the horizontal axis.}
 \label{fig:frontier}
 \end{figure}
 
-The calibrated controller does not improve over the simpler native policy and
-uses more visible/controller tokens. The oracle reaches 1.0. This does not
-contradict FULL's 0.833: FULL exposes all \emph{retained} backing content but
-cannot reveal a fact never returned. The oracle can correctly choose
-\textsc{CallTool} for those absent-information cases.
+\texttt{FULL\_BACKING} is an evidence-exposure condition, not an
+external-information oracle: it exposes all currently retained backing state
+but acquires nothing absent from that state. The calibrated controller does not
+improve over the simpler native policy and uses more visible/controller tokens.
+\texttt{PRA\_ADAPTIVE\_ORACLE} reaches 1.0 because it may correctly choose
+\textsc{CallTool} for absent-information cases. Its advantage over
+\texttt{FULL\_BACKING} is therefore external acquisition, not more complete
+exposure of the same backing object.
 
 \subsection{Ingestion and TTUC scaling}
 
@@ -586,7 +600,7 @@ plus lazy selected-region native encoding, and search/cursor-only. All use the
 same deterministic compactors and backing store. The illustrative gate is
 \PaperSevenSizeGateLimit{} tokens or \PaperSevenSizeGateByteLimit{} bytes.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.96\linewidth]{native_index_ingestion_ttuc.pdf}
 \caption{Median native-index latency and time-to-usable-context. At the exact
@@ -596,7 +610,7 @@ tokenization. These are lifecycle mechanism timings, not Qwen latency.}
 \label{fig:size-gate}
 \end{figure}
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{@{}lrrrr@{}}
@@ -616,7 +630,7 @@ agent-side compact-view/address construction, which still scans the input.}
 \label{tab:size-gate}
 \end{table}
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{@{}rrrrrr@{}}
@@ -642,6 +656,14 @@ reduces 256K TTUC by \PaperSevenTTUCReduction{}$\times$ here. Cheap search scans
 the local payload in this benchmark; indexed external search or server-side
 cursors should lower that recovery cost but were not physically measured.
 
+The profile supports three narrower conclusions: size gating prevents
+unnecessary eager full-body model-like index work; compact-first handling
+reaches a valid continuation state earlier in this setup; and lazy native
+encoding preserves the identity of one exact selected region. It does not show
+that Qwen-native indexing is \PaperSevenTTUCReduction{}$\times$ faster, that
+cheap search has native hybrid's semantic recall, that the chosen thresholds
+are optimal, or that the result extrapolates to multi-GB remote streams.
+
 TTUC is measured from result arrival to the first valid continuation with a
 usable compact descriptor and a completed native-index decision. For eager
 native, it includes compaction, compact registration, full-payload token
@@ -661,13 +683,13 @@ extension.
 The controlled evidence marker occurs on one 32-token line. Cheap search finds
 that line in every oversized case, after which lazy native encoding processes
 only those 32 tokens. This establishes identity, selector, and lifecycle
-correctness. It does not show that lexical search will recover semantically
-implicit evidence as well as native hybrid routing; the held-out routing table
-shows precisely why that distinction matters.
+correctness and bounded recovery. It does not establish semantic equivalence
+between cheap lexical search and native hybrid PRA. Indeed, native hybrid
+outperforms both compact-only and cheap routing in the held-out quality study.
 
 \subsection{Controller error and headroom}
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.70\linewidth]{adaptive_failure_decomposition.pdf}
 \caption{The adaptive gap decomposes into insufficiency detection, operation
@@ -764,16 +786,16 @@ cursors operate inside authorized result records and add filters, ranges,
 aggregates, and field projection. A large observation can remain stateful
 behind a bounded interface rather than becoming one model message.
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{@{}lccccccc@{}}
 \toprule
 Style & Compact & Original & Index & Retrieve & Proactive & Cursor/search & Native K/V\\
 \midrule
-Prompt compression & yes & varies & no & no & no & no & no\\
+Prompt compression & yes & not required & no & no & no & no & no\\
 CCR reversible compression & yes & yes & hash/markers & yes & documented & full retrieve & no\\
-RAG & passages & corpus & lexical/dense & pipeline & varies & query & no\\
+RAG & passages & corpus & lexical/dense & pipeline & pipeline-defined & query & no\\
 KV selection/compression & no & cache-dependent & attention/KV & implicit & no & no & yes\\
 Paper 7 & yes & yes & cheap or native & bounded & policy-gated & yes & optional\\
 \bottomrule
@@ -783,10 +805,11 @@ papers or official documentation.}
 \label{tab:related}
 \end{table}
 
+\begin{samepage}
 \section{Production Decision Procedure}
 
-The recommended default is adaptive native indexing, not unconditional native
-indexing:
+The recommended default is size-adaptive native indexing, not unconditional
+native indexing:
 \begin{lstlisting}[language=Python]
 if under_native_index_budget(record):
     build_full_backing_native_index(record)
@@ -797,6 +820,7 @@ elif record.cursor_available:
 else:
     keep_compact_view_and_full_retrieval_handle(record)
 \end{lstlisting}
+\end{samepage}
 This procedure is intentionally ordered. A bounded record receives the strongest
 automatic native addressability. An oversized searchable record remains
 automatically discoverable through cheap addresses and can promote a selected
@@ -804,7 +828,7 @@ region to native state. A stateful result uses its own bounded server
 interface. Full retrieval remains a final exact option where authorization and
 deployment policy allow it.
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \small
 \begin{tabularx}{\linewidth}{@{}lXXX@{}}
@@ -862,19 +886,26 @@ context and need deployment-specific capacity planning.
 
 \section{Conclusion}
 
-Large agent results need a lifecycle, not a single compression ratio. Paper 7
-separates compact visibility, exact backing state, retrieval-only addresses,
-active K/V, and recovery. Within a configured ingestion budget, production
-full-backing PRA matches full exposure at \PaperSevenCalNativeSuccess{} success
-while reducing active K/V from \PaperSevenCalFullTokens{} to
-\PaperSevenCalNativeTokens{} tokens. A calibrated adaptive controller does not
-improve that held-out result, although an oracle identifies mechanism headroom.
+\textbf{Active context.} Typed records separate compact visibility, exact
+backing state, retrieval-only addresses, and active materialization. Within a
+configured ingestion budget, \texttt{PRA\_NATIVE} matches
+\texttt{FULL\_BACKING} at \PaperSevenCalNativeSuccessPct\% held-out success
+while using \PaperSevenCalActiveKVReductionPct\% less active K/V.
 
-For oversized records, eager native encoding is no longer the default. The
-runtime reports an explicit size-gated state, retains cheap search and cursor
-interfaces, and can natively encode only a selected region. The recommendation
-is full native backing PRA for bounded records, cheap indexing plus lazy native
-regions for large records, and search/cursors for huge or stateful records.
+\textbf{Ingestion.} Automatic native addressability is not free. Full-body
+native index construction grows with payload size, so explicit token/byte gates
+retain cheap bounded recovery and permit selected-region native encoding rather
+than silently truncating or eagerly encoding every result.
+
+\textbf{Control.} Model-driven escalation has oracle headroom but is not the
+current default: the frozen calibrated controller adds cost without improving
+\texttt{PRA\_NATIVE}. The final recommendation is full native backing PRA for
+bounded records, cheap indexing plus lazy native regions for large records,
+and search/cursors for huge or stateful records.
+
+\begin{center}
+\fbox{\textbf{EXPERIMENTALLY FROZEN --- READY FOR EXTERNAL REVIEW}}
+\end{center}
 
 \clearpage
 \appendix

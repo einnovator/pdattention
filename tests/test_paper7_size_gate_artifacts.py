@@ -12,6 +12,10 @@ RESULTS = (
     ROOT
     / "docs/papers/shared/results/paper7_records/native_index_size_gate"
 )
+QUALITY_RESULTS = (
+    ROOT
+    / "docs/papers/shared/results/paper7_records/full_pra_calibrated"
+)
 PAPER = (
     ROOT
     / "docs/papers/paper7_records/paper7_typed_adaptive_context_inception.tex"
@@ -93,3 +97,21 @@ def test_generated_macros_match_largest_payload_summary_and_paper_claims():
     assert "\\PaperSevenGatedRecall" in paper
     assert "not a pretrained LM" in paper
     assert eager_index == pytest.approx(693.6, abs=0.1)
+
+
+def test_reader_labels_map_frozen_full_policy_to_full_backing():
+    with (QUALITY_RESULTS / "quality_cost_frontier.csv").open(
+        newline="", encoding="utf-8"
+    ) as handle:
+        rows = {row["policy"]: row for row in csv.DictReader(handle)}
+    macros = (
+        QUALITY_RESULTS / "generated_full_pra_calibrated_results.tex"
+    ).read_text(encoding="utf-8")
+    paper = PAPER.read_text(encoding="utf-8")
+
+    assert "FULL" in rows  # Historical artifact key remains reproducible.
+    assert "\\PaperSevenCalFullBackingSuccess" in macros
+    assert "\\PaperSevenCalActiveKVReductionPct" in macros
+    assert "\\texttt{FULL\\_BACKING}" in paper
+    assert "EXPERIMENTALLY FROZEN" in paper
+    assert "Full exposure" not in paper

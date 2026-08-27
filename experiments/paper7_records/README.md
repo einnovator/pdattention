@@ -1,74 +1,82 @@
-# Paper 7 progressive-context experiments
+# Paper 7 experiments
 
-`run_progressive_context_iteration.py` is the primary balanced context-control
-benchmark. It creates 30 typed-result identities across six classes: compact
-sufficiency, bounded full recovery, partial materialization, cursor use,
-in-record search, and information that requires a new tool call. Five decoding
-seeds compare:
+**Status:** EXPERIMENTALLY FROZEN - READY FOR EXTERNAL REVIEW
 
-- full context;
-- compact-only context;
-- automatic PRA address selection;
-- model-controlled escalation;
-- PRA selection followed by model escalation; and
-- a binary retrieve-original CCR baseline.
+Paper 7 studies typed observations with compact visible views, exact backing
+state, retrieval-only addresses, bounded materialization, and size-gated native
+index construction. Result artifacts are frozen; the summarizer may regenerate
+reader-facing figures and TeX macros without changing historical policy keys.
 
-The experiment reports answer/evidence success separately from mechanism
-correctness, under- and over-expansion, materialized tokens and bytes, model
-passes, latency, class-level results, and paired case-cluster bootstrap
-intervals. The model emits only an action class in this controlled benchmark;
-the host binds the sole active authorized record, cursor, selector, query, or
-tool. The public runtime separately supports validated structured decisions.
+## Primary quality and active-context study
 
-Run from the repository root with a local Ollama `qwen3:0.6b` model:
+The calibrated held-out study uses Qwen3-0.6B revision
+`c1899de289a04d12100db370d81485cdf75e47ca`. `PRA_NATIVE` matches the
+reader-facing `FULL_BACKING` control while using fewer active K/V tokens.
+`FULL_BACKING` is stored as historical policy key `FULL` in raw CSV files.
 
-```powershell
-python experiments/paper7_records/run_progressive_context_iteration.py
+Primary artifacts live under:
+
+```text
+docs/papers/shared/results/paper7_records/full_pra_calibrated/
 ```
 
-Artifacts are written under
-`docs/papers/shared/results/paper7_records/progressive_context/`.
-
-## Secondary mechanism studies
-
-`run_inception_experiments.py` runs the bounded mechanism study used by the
-paper. It covers five seeds and keeps model-dependent claims out of the first
-implementation checkpoint:
-
-- type-specific compact-view savings;
-- exact backing-state recovery;
-- compact, explicit-address, latent-query, and proactive-probe trigger reachability;
-- native-event, tool, mixed-cursor, and proactive materialization accounting;
-- cursor aggregate/drill-down correctness;
-- adaptive transport decisions across payload sizes and deployment topologies.
-
-Run from the repository root:
+Regenerate plots and macros from the frozen rows with:
 
 ```powershell
-python experiments/paper7_records/run_inception_experiments.py
+python experiments/paper7_records/summarize_full_pra_calibrated.py
 ```
 
-Artifacts are written under
-`docs/papers/shared/results/paper7_records/inception/`.
+The original bounded runners are:
+
+- `run_full_pra_reachability.py`: backing-address routing validation;
+- `run_controller_calibration.py`: validation-only controller selection;
+- `run_calibrated_adaptive.py`: held-out policy and oracle evaluation.
+
+Do not rerun them merely for editorial changes.
 
 ## Native-index size gate
 
-`run_native_index_size_gate.py` profiles the final Paper 7 ingestion safeguard
-over `1K`, `4K`, `16K`, `64K`, and `256K` token payloads and five seeds.
-It compares eager full-body native indexing, size-gated cheap indexing,
-size-gated lazy selected-region native encoding, and search/cursor-only
-handling.
+`run_native_index_size_gate.py` profiles `1K`, `4K`, `16K`, `64K`, and `256K`
+token payloads over five seeds. It compares eager full-body native indexing,
+size-gated cheap indexing, lazy selected-region native encoding, and
+search/cursor-only handling.
 
-The script uses an instrumented fixed-width Torch encoder through the production
-PRA reference API. Its results characterize lifecycle scaling, TTUC, state
-transitions, and selected-region work. They are not pretrained-model quality or
-Qwen latency measurements.
+The script uses an instrumented fixed-width Torch encoder through the
+production PRA reference API. It measures lifecycle scaling, TTUC, state
+transitions, and selected-region work. It is not a pretrained-model or Qwen
+latency benchmark.
 
-Run from the repository root:
+Artifacts live under:
 
-```powershell
-python experiments/paper7_records/run_native_index_size_gate.py
+```text
+docs/papers/shared/results/paper7_records/native_index_size_gate/
 ```
 
-Artifacts are written under
-`docs/papers/shared/results/paper7_records/native_index_size_gate/`.
+## Historical mechanism studies
+
+The following studies remain appendix evidence rather than the main quality
+comparison:
+
+- `run_progressive_context_iteration.py`: lexical progressive-context and
+  context-control baseline;
+- `run_latent_trigger_cursor_iteration.py`: latent-trigger, cursor, and
+  action-conditioned diagnostics;
+- `run_inception_experiments.py`: typed compression, backing, transport, and
+  cursor mechanism checks.
+
+## Verification
+
+From the repository root:
+
+```powershell
+$env:PYTHONPATH = "src;."
+python -m pytest -q tests/test_native_index_size_gate.py `
+  tests/test_progressive_context.py tests/test_adaptive_context_runtime.py
+cd docs/papers/paper7_records
+latexmk -pdf -interaction=nonstopmode -halt-on-error `
+  paper7_typed_adaptive_context_inception.tex
+```
+
+The complete release gate also runs the full test suite and visually inspects
+every PDF page. Remaining SDK, remote-store, asynchronous-service, and serving
+work belongs to later Paper 4.5, 5.5, and 6 workstreams rather than Paper 7.

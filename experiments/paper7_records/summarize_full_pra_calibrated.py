@@ -15,6 +15,15 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT = ROOT / "docs/papers/shared/results/paper7_records/full_pra_calibrated"
 
+READER_POLICY_LABELS = {
+    "COMPACT_ONLY": "COMPACT_ONLY",
+    "PRA_NATIVE": "PRA_NATIVE",
+    "PRA_ADAPTIVE": "PRA_ADAPTIVE",
+    "PRA_ADAPTIVE_ORACLE": "PRA_ADAPTIVE_ORACLE",
+    "CCR_TOOL": "CCR_STYLE",
+    "FULL": "FULL_BACKING",
+}
+
 
 def _rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
@@ -39,7 +48,12 @@ def _save(fig, path: Path) -> None:
 
 def _addressability(input_dir: Path, figures: Path) -> None:
     rows = [row for row in _rows(input_dir / "compact_vs_backing_addressability.csv") if row["partition"] == "test"]
-    labels = ["COMPACT\nliteral", "PRA_COMPACT\nR@4", "PRA_NATIVE\nR@4", "FULL backing\nliteral"]
+    labels = [
+        "COMPACT_ONLY\nliteral",
+        "PRA_COMPACT\nR@4",
+        "PRA_NATIVE\nR@4",
+        "FULL_BACKING\nliteral",
+    ]
     values = [
         _mean(rows, "compact_trigger_literal"),
         _mean(rows, "pra_compact_recall_at_4"),
@@ -95,16 +109,24 @@ def _controller(input_dir: Path, figures: Path) -> None:
 
 
 def _frontier(input_dir: Path, figures: Path) -> None:
-    rows = _rows(input_dir / "quality_cost_frontier.csv")
+    rows_by_policy = {
+        row["policy"]: row for row in _rows(input_dir / "quality_cost_frontier.csv")
+    }
+    policies = (
+        "COMPACT_ONLY",
+        "PRA_NATIVE",
+        "PRA_ADAPTIVE",
+        "PRA_ADAPTIVE_ORACLE",
+        "CCR_TOOL",
+        "FULL",
+    )
+    rows = [rows_by_policy[policy] for policy in policies]
     offsets = {
         "FULL": (-8, -15),
         "COMPACT_ONLY": (5, 7),
-        "PRA_COMPACT": (5, -13),
-        "PRA_FALLBACK": (5, 5),
         "PRA_NATIVE": (5, -13),
-        "MODEL_ONLY": (5, 5),
         "PRA_ADAPTIVE": (-5, 18),
-        "PRA_ADAPTIVE_ORACLE": (5, 5),
+        "PRA_ADAPTIVE_ORACLE": (5, -12),
         "CCR_TOOL": (5, 5),
     }
     fig, ax = plt.subplots(figsize=(6.8, 4.0))
@@ -114,7 +136,10 @@ def _frontier(input_dir: Path, figures: Path) -> None:
         ax.scatter([x], [y], s=45)
         offset = offsets[row["policy"]]
         ax.annotate(
-            row["policy"], (x, y), xytext=offset, textcoords="offset points",
+            READER_POLICY_LABELS[row["policy"]],
+            (x, y),
+            xytext=offset,
+            textcoords="offset points",
             fontsize=7, ha="right" if offset[0] < 0 else "left",
         )
     ax.set_xlabel("Mean active K/V tokens")
@@ -184,11 +209,17 @@ def _macros(input_dir: Path) -> None:
     ]
     for policy, command in (("PRA_NATIVE_SEMANTIC", "Semantic"), ("PRA_NATIVE_HYBRID", "Hybrid"), ("PRA_FALLBACK", "Fallback")):
         lines.append(rf"\newcommand{{\PaperSevenCal{command}RFour}}{{{_weighted_recall(by_policy[policy]):.3f}}}")
-    for policy, command in (("PRA_NATIVE", "Native"), ("PRA_ADAPTIVE", "Adaptive"), ("PRA_ADAPTIVE_ORACLE", "Oracle"), ("CCR_TOOL", "CCR"), ("FULL", "Full")):
+    for policy, command in (("COMPACT_ONLY", "Compact"), ("PRA_NATIVE", "Native"), ("PRA_ADAPTIVE", "Adaptive"), ("PRA_ADAPTIVE_ORACLE", "Oracle"), ("CCR_TOOL", "CCR"), ("FULL", "FullBacking")):
         lines.append(rf"\newcommand{{\PaperSevenCal{command}Success}}{{{float(frontier[policy]['task_success']):.3f}}}")
+        lines.append(rf"\newcommand{{\PaperSevenCal{command}SuccessPct}}{{{100 * float(frontier[policy]['task_success']):.1f}}}")
         lines.append(rf"\newcommand{{\PaperSevenCal{command}Tokens}}{{{float(frontier[policy]['active_kv_tokens']):.1f}}}")
         lines.append(rf"\newcommand{{\PaperSevenCal{command}TypedTokens}}{{{float(frontier[policy]['materialized_tokens']):.1f}}}")
         lines.append(rf"\newcommand{{\PaperSevenCal{command}ControllerTokens}}{{{float(frontier[policy]['controller_prompt_tokens']):.1f}}}")
+    native_tokens = float(frontier["PRA_NATIVE"]["active_kv_tokens"])
+    full_tokens = float(frontier["FULL"]["active_kv_tokens"])
+    lines.append(
+        rf"\newcommand{{\PaperSevenCalActiveKVReductionPct}}{{{100 * (full_tokens - native_tokens) / full_tokens:.1f}}}"
+    )
     (input_dir / "generated_full_pra_calibrated_results.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (input_dir / "experiment_manifest.json").write_text(
         json.dumps({
