@@ -176,6 +176,20 @@ from .context_recovery import (
     parse_cursor_action,
     trigger_case_fingerprint,
 )
+from .progressive_context import (
+    ContextAction,
+    ContextDecision,
+    ContextExecutionResult,
+    ContextTransport,
+    ImplicitPRAChunk,
+    ImplicitPRADocument,
+    PRARecordRegistry,
+    PRASelection,
+    PRAViewKind,
+    ProgressiveContextRuntime,
+    RecordCapabilities,
+    parse_context_decision,
+)
 
 __version__ = "0.2.0rc1"
 
@@ -192,6 +206,10 @@ __all__ = [
     "ChannelHit",
     "ContextRecord",
     "ContextPolicy",
+    "ContextAction",
+    "ContextDecision",
+    "ContextExecutionResult",
+    "ContextTransport",
     "CCRStyleBaseline",
     "CapabilityTransition",
     "CapabilityActivation",
@@ -219,6 +237,8 @@ __all__ = [
     "IterativeGistRouter",
     "IterativeRoutingConfig",
     "IterativeRoutingResult",
+    "ImplicitPRAChunk",
+    "ImplicitPRADocument",
     "LOW_RANK_INDEX_DTYPES",
     "LowRankRoutingIndex",
     "IndexFingerprint",
@@ -234,6 +254,9 @@ __all__ = [
     "ParameterSchema",
     "PRAConfig",
     "PRAForCausalLM",
+    "PRARecordRegistry",
+    "PRASelection",
+    "PRAViewKind",
     "PRAMemoryAdapter",
     "PRARouter",
     "PythonTypeSchemaCache",
@@ -296,6 +319,8 @@ __all__ = [
     "ToolRecordPolicy",
     "ProgressiveDisclosureCost",
     "ProgressiveKVCost",
+    "ProgressiveContextRuntime",
+    "RecordCapabilities",
     "bounded_candidate_ids",
     "UnionStrategy",
     "build_query_graph",
@@ -335,5 +360,6 @@ __all__ = [
     "hypothesis_matches_trigger",
     "hypothesis_probes",
     "parse_cursor_action",
+    "parse_context_decision",
     "trigger_case_fingerprint",
 ]

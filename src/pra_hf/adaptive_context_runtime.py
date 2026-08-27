@@ -335,6 +335,22 @@ class CursorManager:
             raise RecordAccessDenied(cursor_id)
         return cursor
 
+    def describe(self, cursor_id: str, *, scope: RecordScope) -> CursorRecord:
+        """Return authorized cursor metadata without reading another page."""
+
+        return self._resolve(cursor_id, scope)
+
+    @property
+    def cursor_ids(self) -> tuple[str, ...]:
+        """Return live cursor identities for structured-output validation."""
+
+        now = time.time()
+        return tuple(sorted(
+            cursor_id
+            for cursor_id, cursor in self._cursors.items()
+            if not cursor.closed and cursor.expires_at > now
+        ))
+
     def _values(self, cursor: CursorRecord) -> list[object]:
         payload = self.store.get(cursor.record_id, scope=cursor.scope)
         _, values = self._collection(payload, cursor.collection)
@@ -817,6 +833,20 @@ class AdaptiveContextRuntime:
             self._network_bytes += payload_bytes
             self._round_trips += 1
         return payload_bytes
+
+    def account_selected_payload(self, payload: object, *, action: str) -> tuple[int, int, int]:
+        """Account a bounded agent-side search result returned to the model."""
+
+        payload_bytes = _payload_bytes(payload)
+        remote = self.policy.topology != DeploymentTopology.SAME_PROCESS
+        network_bytes = payload_bytes if remote else 0
+        round_trips = int(remote)
+        self._expansions += 1
+        self._materialized_bytes += payload_bytes
+        self._network_bytes += network_bytes
+        self._round_trips += round_trips
+        self._audit(action, "", payload_bytes=payload_bytes)
+        return payload_bytes, network_bytes, round_trips
 
     def accounting(self) -> RuntimeAccounting:
         return RuntimeAccounting(

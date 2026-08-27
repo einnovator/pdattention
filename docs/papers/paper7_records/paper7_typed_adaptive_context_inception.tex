@@ -3,9 +3,10 @@
 \usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,placeins,microtype,enumitem,xcolor,listings}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
-\graphicspath{{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
+\graphicspath{{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
 \input{../shared/results/paper7_records/inception/generated_inception_results.tex}
 \input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
+\input{../shared/results/paper7_records/progressive_context/generated_progressive_results.tex}
 
 \definecolor{codegray}{RGB}{246,247,249}
 \lstset{
@@ -18,8 +19,7 @@
   showstringspaces=false
 }
 
-\title{Typed Adaptive Context for LLM Agents:\\
-Reversible Records, Latent-Trigger Recovery, and Stateful Cursors}
+\title{Progressive Context Control over Typed PRA Records}
 \author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{August 2026}
 
@@ -27,38 +27,37 @@ Reversible Records, Latent-Trigger Recovery, and Stateful Cursors}
 \maketitle
 
 \begin{abstract}
-An agent does not observe one homogeneous token stream. It receives tool
-responses, database rows, logs, terminal output, retrieved passages, graph
-neighborhoods, files, and paginated API results. Sending every result in full
-wastes prompt and native key/value capacity; replacing each result with one
-lossy summary can hide the low-salience fact that should trigger a later
-action. We introduce a typed adaptive-context runtime that separates four
-objects often conflated in context managers: a compact prompt-visible view,
-retrieval-only address views, exact scoped backing state, and a materialization
-policy. A fifth object, a stateful cursor, supports bounded analysis of large
-collections. Exact payloads are content-addressed, hash-verified, tenant/session
-scoped, TTL bounded, and recovered by identity rather than semantic
-rediscovery. Type-specific compressors preserve schemas, representative rows,
-numeric statistics, errors, command status, and graph structure while lexical,
-entity, rare-term, and schema indices remain available for discovery.
+Large tool, database, log, graph, retrieval, file, and terminal results should
+not enter an agent as one permanently visible token stream. We introduce
+progressive model-controlled context disclosure over typed Parallel Reference
+Attention (PRA) records. Each result has an exact scoped backing identity and a
+compact summary registered as an implicit PRA document. Normal PRA routing
+operates first over summary chunks, gists, and address metadata. If current
+context is insufficient, a bounded controller may continue, activate the
+known full record, materialize selected detail, search within that record,
+advance or query a cursor, or call a new external tool. Every returned detail
+is another typed view of the same source and re-enters PRA. This separates
+discovery selection---which record or chunk is relevant---from escalation
+selection---whether the current materialization is sufficient.
 
-An inception mechanism study over \PaperSevenTypedRecords{} records confirms
-\PaperSevenMeanSavings{} mean serialized-byte savings and exact backing
-recovery, while compact views retain only \PaperSevenCompactTrigger{} of
-planted low-salience triggers. We then evaluate a frozen Qwen3-0.6B model on
-\PaperSevenNextCases{} paired explicit/latent trigger families, eight recovery
-policies, five seeds, and \PaperSevenNextRows{} policy cells. On latent goals,
-compact-only obtains \PaperSevenLatentCompactAction{} action accuracy,
-generic query expansion obtains \PaperSevenLatentGenericAction{}, and bounded
-action-conditioned probing obtains \PaperSevenLatentActionConditioned{} at
-\PaperSevenActionProbeTokens{} mean materialized tokens. The full-context
-ceiling is \PaperSevenLatentFullCeiling{}, so residual generation failures are
-not attributed to context management. On three database tasks and one graph
-task, Qwen fails every answer condition, including FULL; cursor answer quality
-is therefore unresolved rather than a compression failure. The result is
-deliberately qualified: reversible storage solves exact recovery, whereas
-economical latent discovery remains a policy problem whose gains depend on
-bounded hypothesis coverage and expansion precision.
+We evaluate a frozen Qwen3-0.6B controller on 30 balanced identities spanning
+six known context actions, five decoding seeds, and six baselines
+(\PaperSevenProgressiveN{} rows). FULL succeeds on \PaperSevenFullTask{},
+validating every task ceiling. Compact-only succeeds on
+\PaperSevenCompactTask{}; automatic PRA selection reaches
+\PaperSevenPRAAutoTask{}; model-only escalation reaches
+\PaperSevenModelTask{}; and PRA plus model remains at
+\PaperSevenCombinedTask{}. The combined system uses
+\PaperSevenCombinedTokens{} mean materialized tokens versus
+\PaperSevenFullTokens{} for FULL, but under-expands on
+\PaperSevenCombinedUnder{} of rows. A generic retrieve-original CCR baseline
+reaches \PaperSevenCCRTask{} by spending near-full context and cannot recover
+information absent from backing state. Thus typed PRA routing economically
+recovers localized and searchable evidence, while insufficiency detection,
+cursor use, and tool escalation remain controller bottlenecks. A secondary
+latent-trigger diagnostic retains the earlier \PaperSevenLatentCompactAction{}
+to \PaperSevenLatentActionConditioned{} improvement, but no longer defines the
+architecture or primary claim.
 \end{abstract}
 
 \section{Introduction}
@@ -70,46 +69,47 @@ graph traversal can expose a neighborhood whose useful branch is not yet
 known. The agent often needs only a small projection now, but it may need a
 different projection after its next inference.
 
-Two common responses are unsatisfactory. Full serialization couples active
+Two common responses are incomplete. Full serialization couples active
 context to source size. One-shot summarization breaks that coupling, but the
 summary becomes both the model's visible evidence and its only clue that more
 evidence exists. An exact original can remain in a cache while being
 functionally unreachable: the model cannot request a detail whose relevance
 was itself omitted.
 
-This paper treats context management as a data-system problem with a model in
-the control loop. A result is a typed record, not an undifferentiated message.
-Its initial representation, search addresses, exact state, and transfer policy
-are separate. Large collections may expose cursors with bounded operations
-instead of repeatedly returning complete snapshots. The architecture joins
-the typed capability records developed for tool and skill disclosure with
-typed \emph{result} records that survive after execution.
+This paper treats context management as a recursive PRA control problem. A
+result is a typed record, not an undifferentiated message. Its compact view is
+an implicit PRA document; its full bytes remain exact backing state. PRA first
+selects useful compact chunks or backing addresses. The model then decides
+whether to continue or request a bounded escalation. The returned view is
+typed, linked to the same source identity, and routed again. Large collections
+may expose cursors instead of repeatedly returning complete snapshots.
 
 The contributions are:
 \begin{enumerate}[leftmargin=*]
-  \item a provider-neutral record model for nine result families, alongside
-  the inherited tool and skill capability records;
+  \item a provider-neutral record model for nine result families and a stable
+  mapping from each record to summary, full, selected-detail, search, and
+  cursor-page PRA documents;
   \item a scoped content-addressed backing store with exact recovery, hash
   verification, TTL, size bounds, persistence controls, and audit events;
   \item deterministic type-specific compactors and independent lexical,
   entity, rare-term, and schema address views;
-  \item metadata, compact, selected, and full materialization levels exposed
-  through native-event and tool-compatible APIs;
+  \item a bounded \texttt{ContextAction}/\texttt{ContextDecision} API for
+  continue, full, more, search, cursor, and external-tool transitions;
   \item stateful cursors supporting pages, ranges, filters, ordering, search,
   aggregation, sampling, field projection, and closure;
-  \item a paired 13-family benchmark that separates hypothesis recall, address
-  recall, materialization, and final action under explicit and latent goals;
-  \item matched compact, CCR-style reversible, generic proactive,
-  action-conditioned, multi-hypothesis, and full-context policies with
-  expansion precision and case-clustered uncertainty;
-  \item frozen-model database and graph cursor decisions, together with
-  payload-scale transport accounting from 10KB to 10MB.
+  \item a balanced six-class benchmark comparing FULL, compact-only, PRA
+  automatic selection, model escalation, PRA plus model, and CCR retrieval;
+  \item separate measures of insufficiency recognition, mechanism correctness,
+  task success, evidence recall, context/KV economy, expansions, and transfer;
+  \item a secondary paired latent-trigger diagnostic and payload-scale
+  transport study, retained without allowing either to define the main system.
 \end{enumerate}
 
-The main negative result matters as much as the implementation. Multiple
-address views make a named hidden detail recoverable. They do not tell a model
-which unnamed detail should alter its next action. Paper 7 therefore separates
-\emph{recovery capability} from \emph{recovery policy}.
+The main result is a decomposition, not a blanket win. PRA automatic selection
+finds evidence that compact-only misses, at a small fraction of full exposure.
+The small frozen controller does not reliably recognize when full, cursor, or
+new-tool escalation is required. Paper 7 therefore separates \emph{recovery
+capability}, \emph{insufficiency detection}, and \emph{mechanism choice}.
 
 \section{Context Is a Typed State Space}
 
@@ -144,21 +144,20 @@ summary cannot silently become the source of truth.
 \centering
 \fbox{\begin{minipage}{.94\linewidth}
 \centering
-\textbf{Typed capability or action}
-$\rightarrow$ \textbf{typed result}
-$\rightarrow$ \textbf{lossless scoped store}\\[3pt]
-$\downarrow$ compressor registry \hfill $\downarrow$ address builders\\[3pt]
-\textbf{compact visible view}
-\hfill
-\textbf{lexical / entity / rare-term / schema addresses}\\[3pt]
-$\searrow$ \hfill $\swarrow$\\[-2pt]
-\textbf{policy decision: metadata $\rightarrow$ compact $\rightarrow$ selected $\rightarrow$ full}\\[3pt]
+\textbf{typed tool / database / graph / RAG / log result}\\[2pt]
+$\downarrow$ exact scoped backing identity\\[2pt]
+\textbf{compact typed view $\rightarrow$ implicit PRA document}\\[2pt]
+$\downarrow$ chunks $\rightarrow$ gists and addresses $\rightarrow$ bounded PRA selection\\[2pt]
+\textbf{model reasons over current materialization}\\[2pt]
 $\downarrow$\\[-2pt]
-\textbf{native event, retrieval tool, proactive expansion, or stateful cursor}
+\texttt{CONTINUE} $\mid$ \texttt{FULL} $\mid$ \texttt{MORE} $\mid$
+\texttt{SEARCH} $\mid$ \texttt{CURSOR} $\mid$ \texttt{CALL\_TOOL}\\[2pt]
+$\downarrow$ authorized runtime execution\\[2pt]
+\textbf{typed detail view with the same source identity $\rightarrow$ re-enter PRA}
 \end{minipage}}
-\caption{Paper 7 keeps prompt visibility, retrieval addresses, and exact
-backing state separate. Arrows into materialization are policy decisions, not
-claims that the model will always make the correct request.}
+\caption{The Paper 7 control loop. PRA performs discovery selection before the
+model performs escalation selection. Every expansion is an authorized typed
+view, not model-fabricated content, and recursively re-enters PRA.}
 \label{fig:architecture}
 \end{figure}
 
@@ -298,7 +297,235 @@ transaction isolation, snapshot versioning, distributed leases, or recovery
 after process loss. Those are serving requirements, not properties inferred
 from the mechanism tests below.
 
-\section{The Trigger-Reachability Problem}
+\section{Progressive PRA Context Control}
+
+\subsection{Implicit documents and source identity}
+
+In Paper 7, a compact result is not merely appended as a flat message. For
+record $R$, the runtime registers a stable document such as
+\texttt{record://R/summary}. Its serialized typed view is split into bounded
+chunks; each chunk receives a stable ID, routing gist, lexical/entity address
+metadata, and the native source identity of $R$. When a PRA-aware Hugging Face
+model is attached, registration calls the same \texttt{add\_reference} path as
+an ordinary document. The production tokenizer, chunker, hidden-state encoder,
+gist builder, and native-K/V cache are therefore reused rather than simulated
+by a result-specific attention path.
+
+Derived documents include \texttt{record://R/full}, selected detail, search
+results, and cursor pages. They share record ID, authorization scope,
+provenance, and backing fingerprint. Activating \texttt{FULL} for a known
+record is exact identity resolution, not a second global semantic search.
+This distinction matters operationally: discovery asks which source is
+relevant; escalation asks how much of that already identified source is needed.
+
+\subsection{Bounded decisions}
+
+The controller emits a typed decision
+\begin{equation}
+D=(a,id,s,q,c,t),
+\end{equation}
+where $a$ is one action, $id$ a known record, $s$ a typed selector, $q$ an
+in-record query, $c$ an authorized cursor, and $t$ an external tool. The action
+space is:
+\begin{center}
+\small
+\begin{tabularx}{.96\linewidth}{@{}lX@{}}
+\toprule
+Action & Runtime meaning \\
+\midrule
+\texttt{CONTINUE} & Current PRA-selected context is sufficient. \\
+\texttt{MATERIALIZE\_FULL} & Activate the exact bounded backing record. \\
+\texttt{MATERIALIZE\_MORE} & Expose declared fields, rows, lines, chunks, or a neighborhood. \\
+\texttt{SEARCH\_RECORD} & Search inside one known large backing object. \\
+\texttt{CURSOR\_NEXT/QUERY} & Continue or refine an authorized stateful cursor. \\
+\texttt{CALL\_TOOL} & Acquire information absent from retained backing state. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The parser rejects unknown record IDs, cursor IDs, selectors, and tools before
+execution. A local PRA-aware deployment can express $D$ as a native context
+event. A remote opaque model can use special retrieval tools. Mixed deployment
+uses native activation for co-located records and callbacks for remote state.
+These transports implement the same logical transition.
+
+\subsection{Recursive control loop}
+
+For query $q_t$ and active typed documents $\mathcal{V}_t$, PRA first computes
+\begin{equation}
+S_t=\operatorname{PRASelect}(q_t,\mathcal{V}_t;K).
+\end{equation}
+The model then emits $D_t$. If $D_t$ expands state, the runtime authorizes and
+executes it, produces typed view $V_{t+1}$, registers that view as an implicit
+PRA document, and repeats:
+\begin{equation}
+\mathcal{V}_{t+1}=\mathcal{V}_t\cup\{V_{t+1}\}.
+\end{equation}
+The loop has a hard step bound. The model never returns the hidden payload
+itself; it returns only a decision whose identifiers are resolved by the host.
+
+\section{Primary Progressive-Context Experiment}
+
+\subsection{Questions and protocol}
+
+The primary study asks: (RQ1) when is a compact typed view sufficient; (RQ2)
+can the model recognize insufficiency; (RQ3) what does automatic PRA recover
+before explicit escalation; (RQ4) does the controller choose full, partial,
+search, cursor, or tool correctly; and (RQ5) how close does PRA plus model come
+to FULL at lower exposure cost?
+
+The benchmark contains 30 identities, five in each balanced class:
+\begin{center}
+\small
+\begin{tabularx}{.96\linewidth}{@{}lllX@{}}
+\toprule
+Class & Required action & Evidence location & Purpose \\
+\midrule
+C0 & CONTINUE & compact view & detect needless expansion \\
+C1 & FULL & small exact backing & activate known bounded state \\
+C2 & MORE & localized row/range & distinguish success from efficient mechanism \\
+C3 & CURSOR & later/queryable page & test sufficiency before cursor execution \\
+C4 & SEARCH & large known record & test in-record PRA/address retrieval \\
+C5 & TOOL & absent from backing & distinguish retrieval from acquisition \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Each identity is decoded with seeds $\{11,23,37,53,71\}$ under six baselines:
+FULL, COMPACT\_ONLY, PRA\_AUTO, MODEL\_ESCALATION, PRA\_PLUS\_MODEL, and
+CCR\_TOOL. PRA\_AUTO runs bounded address/gist selection but emits no model
+context decision. MODEL\_ESCALATION sees the compact typed view. The proposed
+PRA\_PLUS\_MODEL runs automatic selection first and asks the controller only
+after the returned typed view has re-entered PRA. CCR\_TOOL exposes one generic
+retrieve-original operation. The frozen model is Qwen3-0.6B, using the
+immutable Ollama blob whose digest begins \texttt{sha256-7f4030143c1c} (the
+full digest is recorded in the manifest).
+To isolate context-action classification from copying long content-addressed
+identifiers, the benchmark decoder emits only one action label. The host binds
+the sole active authorized record or cursor and its preregistered selector,
+query, or tool. This is narrower than the public API, whose parser validates a
+complete structured decision against explicit allowlists before execution.
+
+Every identity has an independent FULL answer condition. FULL succeeds on
+\PaperSevenFullTask{}, so no class is excluded as a base-model capability
+failure. We report task success separately from mechanism correctness. Asking
+for FULL on C2 may answer correctly while still being an inefficient policy.
+The primary brittleness and waste measures are
+\begin{align}
+\mathrm{UnderExpansionRate}
+ &=P(\text{required evidence remains hidden}),\\
+\mathrm{OverExpansionRate}
+ &=P(\text{expansion on C0}).
+\end{align}
+Intervals for proportions are Wilson intervals. Paired differences use 10,000
+case-cluster bootstrap draws after averaging the five decoding seeds.
+
+\subsection{Quality and economy}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Baseline & Task & Evidence & Mechanism & Mat. tokens & Model passes \\
+\midrule
+FULL & 1.000 & 1.000 & --- & 266.4 & 1.0 \\
+COMPACT\_ONLY & .167 & .167 & --- & 18.4 & 1.0 \\
+PRA\_AUTO & .500 & .500 & .500 & 31.2 & 1.0 \\
+MODEL\_ESCALATION & .333 & .333 & .167 & 86.2 & 2.0 \\
+PRA\_PLUS\_MODEL & .500 & .500 & .333 & 99.0 & 2.0 \\
+CCR\_TOOL & .780 & .780 & .780$^\dagger$ & 258.3 & 2.0 \\
+\bottomrule
+\end{tabular}
+\caption{Primary results over 150 rows per baseline. $^\dagger$CCR mechanism
+correctness is binary retrieve/continue correctness, not correct choice among
+full, partial, search, cursor, and tool.}
+\label{tab:progressive-main}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{task_success_materialized_tokens.pdf}
+\caption{Final task success against mean materialized tokens. FULL is a quality
+ceiling. PRA automatic selection improves compact-only at low exposure; generic
+CCR approaches FULL cost and still cannot acquire absent information.}
+\label{fig:progressive-quality-cost}
+\end{figure}
+
+Table~\ref{tab:progressive-main} and
+Figure~\ref{fig:progressive-quality-cost} show three regimes. Compact-only
+solves exactly C0. PRA\_AUTO additionally solves C2 and C4, reaching
+\PaperSevenPRAAutoTask{} at 31.2 materialized tokens. MODEL\_ESCALATION solves
+C0 and obtains the C2 answer by choosing FULL rather than the required partial
+mechanism; it misses bounded-full, cursor, search, and external-tool cases.
+PRA\_PLUS\_MODEL preserves automatic C2/C4 recovery but does not improve its
+\PaperSevenCombinedTask{} task rate. Its paired gain over compact-only is
+\PaperSevenCombinedDelta{} [\PaperSevenCombinedDeltaLow{},
+\PaperSevenCombinedDeltaHigh{}]. The gain is attributable to PRA automatic
+selection, not autonomous escalation.
+
+CCR\_TOOL reaches \PaperSevenCCRTask{} because a generic retrieve-original
+operation succeeds on C1--C3 and most C4 rows. It materializes 258.3 tokens,
+near FULL's 266.4, over-expands every C0 row, and fails C5 because the required
+information does not exist in retained backing state. This is a useful strong
+reversible baseline, not the same policy as mechanism-specific escalation.
+
+\subsection{Insufficiency and mechanism choice}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.84\linewidth]{context_control_confusion.pdf}
+\caption{Row-normalized PRA-plus-model context-action confusion. Targets are
+evaluated after PRA automatic selection; C2 and C4 become CONTINUE when PRA has
+already exposed their evidence.}
+\label{fig:progressive-confusion}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.72\linewidth]{under_over_expansion.pdf}
+\caption{Under-expansion and over-expansion. The small controller is
+conservative about requesting hidden state; generic CCR trades lower
+under-expansion for unnecessary C0 retrieval.}
+\label{fig:progressive-errors}
+\end{figure}
+
+The proposed system under-expands on \PaperSevenCombinedUnder{} of all rows
+and over-expands on \PaperSevenCombinedOver{}. Zero over-expansion is not a
+complete success: it accompanies missed C1, C3, and C5 escalations. Conversely,
+the model's C2 use of FULL yields the right answer but wrong mechanism and
+roughly nine times PRA\_AUTO's C2 materialization (402.0 versus 45.8 tokens).
+This is why final success and context-policy correctness must be reported
+separately.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.76\linewidth]{cursor_success_transfer.pdf}
+\caption{Cursor-class task success and materialized tokens. The repaired FULL
+and repeated-retrieval ceiling succeeds; the controller does not request the
+available cursor.}
+\label{fig:progressive-cursor}
+\end{figure}
+
+The cursor result is now interpretable. FULL and CCR retrieval succeed on all
+25 cursor rows, whereas compact, PRA automatic, model escalation, and the
+combined policy fail. The cursor manager itself passes deterministic page,
+range, filter, search, aggregate, scope, expiry, and closure tests. The missing
+link is the controller's sufficiency decision, not cursor execution or answer
+capability.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.7\linewidth]{pra_model_gain_decomposition.pdf}
+\caption{Task-success decomposition. The measured gain over compact-only is
+provided by PRA automatic selection; this frozen controller adds no net task
+success after PRA.}
+\label{fig:progressive-gain}
+\end{figure}
+
+\FloatBarrier
+
+\section{Why Reversibility Is Not Enough}
 
 Storage reversibility answers: ``Can the original be recovered if its identity
 and relevance are known?'' Agent behavior asks a harder question: ``Will the
@@ -322,7 +549,7 @@ must observe whether evidence is visible, whether expansion occurs, whether the
 correct next action remains selectable, and whether an index or proactive
 policy repairs an omission.
 
-\section{Inception Experiment}
+\section{Secondary Substrate Mechanism Checks}
 
 \subsection{Protocol}
 
@@ -401,7 +628,7 @@ is hash-verified full recovery.}
 \label{fig:triggers}
 \end{figure}
 
-Figure~\ref{fig:triggers} gives the central result. Compact views expose
+Figure~\ref{fig:triggers} gives the secondary substrate result. Compact views expose
 \PaperSevenCompactTrigger{} of planted triggers. The error-preserving log and
 terminal policies retain all their triggers; deterministic RAG sampling lands
 on two of five; all other compactors miss them. The exact backing store recovers
@@ -458,7 +685,7 @@ matches the declared rule, but no latency optimum follows from it. A deployment
 must measure serialization, network bandwidth, backing-store latency, cache
 reuse, and the probability of expansion before selecting thresholds.
 
-\section{Model-Driven Latent Recovery}
+\section{Secondary Action-Conditioned Recovery}
 
 \subsection{Paired protocol}
 
@@ -625,36 +852,12 @@ records, selected-field materialization, or better candidate narrowing are
 required before an economy claim.
 
 \FloatBarrier
-\section{Model-Selected Cursors and Transport}
+\section{Secondary Transport Accounting}
 
-The database benchmark contains three deterministic subgroup-and-aggregate
-tasks. For CURSOR, the model first emits a typed filter action and then an
-aggregate action; the runtime pins the authorized cursor ID, validates the
-operation allowlist, and executes against persistent scoped state. The graph
-task asks which dependency must precede an Atlas restart; the model selects a
-search operation over an edge cursor. FULL transfers one complete result,
-RECALL transfers it again at the next step, CURSOR transfers only structured
-operation results, and COMPACT receives no expansion.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.8\linewidth]{cursor_success_transfer.pdf}
-\caption{Mean transferred bytes by baseline for three database tasks and one
-graph task; labels report frozen-model success. Every success is zero,
-including FULL, so byte reductions are accounting results only.}
-\label{fig:cursor-transfer}
-\end{figure}
-
-All database and graph answer conditions score zero, including FULL and
-RECALL. Qwen emits the requested DB operation names but supplies a wrong filter
-or aggregate argument in 20 of 30 operation decisions; for graph traversal it
-selects search in 5/5 seeds but still fails the final answer. CURSOR transfers
-\PaperSevenDBCursorBytes{} mean bytes versus \PaperSevenDBFullBytes{} for DB
-FULL, and \PaperSevenGraphCursorBytes{} versus \PaperSevenGraphFullBytes{} on
-the graph task, but those reductions accompany no task success. They are cost
-accounting, not an efficiency gain. The deterministic runtime tests still
-validate filter, aggregate, search, scope, expiry, and closure independently
-of this failed model-policy gate.
+The earlier cursor-answer diagnostic failed even under FULL and is therefore
+not used for a cursor-quality claim. It motivated the repaired primary C3
+tasks above, where FULL and repeated generic retrieval both pass. We retain
+only its independent transport-policy sweep as a secondary systems check.
 
 \begin{figure}[t]
 \centering
@@ -718,13 +921,18 @@ Headroom's public Compress--Cache--Retrieve documentation describes
 type-aware tool-output compression, local hash-indexed original caching, a
 model retrieval tool, markers, and proactive expansion \cite{headroom2026ccr}.
 That architecture is a strong reversible baseline. Paper 7 does not claim that
-Headroom fails. It asks a different evaluation question: when the compact view
-omits the fact that would make retrieval relevant, what address or policy keeps
-the downstream action reachable? The paired study finds that explicit
-proactive recovery is reliable, generic latent recovery is nearly unchanged
-from compact-only, and action-conditioned expansion improves the downstream
-action at substantial exposure cost. This is a policy result, not a claim
-about a particular commercial implementation.
+Headroom fails. The primary comparison instead asks whether a typed controller
+can choose among bounded full, partial, search, cursor, and tool actions rather
+than exposing only retrieve-or-continue. At nearly full materialization cost,
+the generic CCR baseline is strong when retained backing state contains the
+answer, but it cannot acquire absent C5 evidence and does not identify which
+bounded mechanism was needed. The secondary paired study asks the narrower
+reachability question: when a compact view omits the fact that would make
+retrieval relevant, what address or policy keeps the downstream action
+reachable? Explicit proactive recovery is reliable, generic latent recovery is
+nearly unchanged from compact-only, and action-conditioned expansion improves
+the downstream action at substantial exposure cost. These are policy results,
+not claims about a particular commercial implementation.
 
 Paper 6.5's typed capability work separates broad tool/skill discovery from
 bounded selection and exact full-schema activation. Paper 7 preserves those
@@ -736,65 +944,74 @@ records rather than repeating its summarization experiments.
 
 \section{Limitations and Next Gates}
 
-Both studies are controlled checkpoints. The inception fixtures contain 45
-small records; the paired benchmark contains only 13 synthetic task identities.
-Five seeds vary decoding and candidate order, not the population of agent
-tasks. The final-action field is machine-readable after materialization, which
-isolates recovery but understates natural-language interpretation difficulty.
+The primary benchmark is a controlled mechanism checkpoint, not a natural
+agent workload. It has 30 identities and five decoding seeds; seeds measure
+controller variability, not population diversity. ANSWER\_CODE is
+machine-readable after exposure, which isolates context control but
+understates interpretation difficulty. The balanced capability descriptors
+also make the correct mechanism more explicit than many real tool results.
 Consequently:
 
 \begin{enumerate}[leftmargin=*]
-  \item exhaustive action probing is an oracle-like mechanism bound because
-  every candidate is supplied and all four are searched;
-  \item the small frozen model never emits CCR retrieval, so CCR-E measures
-  this controller and prompt rather than the best possible tool policy;
-  \item generated hypotheses improve latent action accuracy but remain tied to
-  these action labels, fixtures, and one model revision;
-  \item all cursor answer baselines fail, including FULL, so the study supports
-  cursor API correctness and transfer accounting but not model analytics;
+  \item PRA\_AUTO uses transparent lexical/address overlap and one known-record
+  search; learned semantic/native-QK selection may change both quality and cost;
+  \item the small frozen model is a weak insufficiency detector, so the
+  under-expansion rate characterizes this controller and protocol, not all LMs;
+  \item CCR\_TOOL's binary mechanism score is not directly comparable to
+  choosing among full, partial, search, cursor, and a new external tool;
+  \item C3 validates cursor sufficiency decisions and bounded pages, not
+  multi-step transactional analytics or mutable remote snapshots;
+  \item C5 simulates the returned external tool record after a valid call; it
+  does not evaluate broad tool discovery or side-effect safety;
   \item topology measurements are policy accounting, not physical network or
   distributed-store benchmarks;
   \item active native-K/V is estimated from serialized bytes only when a model-
   specific bytes-per-token value is configured;
-  \item dense, learned Q/K, generated-summary, redaction, remote-store, and
-  distributed cursor implementations remain absent.
+  \item redaction, remote-store fault tolerance, and distributed cursor leases
+  remain absent.
 \end{enumerate}
 
-The next experiment should replace action enumeration with a calibrated
-top-$r$ or uncertainty policy, materialize selected evidence rather than every
-matched record, and evaluate fresh natural tool-result tasks. A controller that
-passes FULL database and graph ceilings is required before comparing cursor
-policies. Real local-process and remote deployments should then measure TTFT,
-network transfer, store latency, active K/V, and end-to-end task success at
-matched budgets.
+The next gate is a stronger or calibrated sufficiency controller evaluated on
+fresh natural tool-result tasks, with class-balanced abstention thresholds and
+no gold-derived features. It should retain PRA's low-cost C2/C4 recovery while
+adding C1, C3, and C5 escalation without turning every C0 into retrieval.
+Native PRA-aware events and remote function-call adapters should then be
+compared at matched semantics while measuring TTFT, active K/V, transfer,
+callback count, and store latency.
 
 \section{Conclusion}
 
 Agent context is structured state with a lifecycle, not merely text waiting to
-be truncated. Paper 7 implements a first unified substrate: typed result
-records, deterministic compact views, independent retrieval addresses, exact
-scoped backing state, progressive materialization, transport policy, and
-stateful cursors. The mechanism study confirms exact recovery, scope checks,
-explicit addressability, and bounded cursor operations while reducing visible
-bytes.
+be truncated. Paper 7 implements progressive context disclosure over typed PRA
+records: compact results become routable implicit documents; full bytes retain
+exact scoped identity; bounded decisions activate full, selected, searched,
+cursor, or newly acquired state; and each returned view recursively re-enters
+PRA.
 
-It also rejects an easy conclusion. Lossless backing storage does not make a
-hidden action trigger visible, and an index cannot search for a discriminator
-that neither the query nor policy supplies. In the paired study, bounded action
-probing raises latent action accuracy by .323 over compact-only, but exposes
-more serialized tokens than simply materializing the target. Generated
-hypotheses trade some quality for fewer false expansions, while generic latent
-queries and model-emitted retrieval barely move the result. Reversible
-compression is therefore necessary infrastructure, not a complete adaptive-
-context policy. The remaining gate is economical discovery: generate the
-right discriminator, retrieve only useful evidence, and do so before expansion
-cost erases the context savings.
+The primary experiment separates what this architecture already solves from
+what it does not. Automatic PRA selection raises task success from
+\PaperSevenCompactTask{} to \PaperSevenPRAAutoTask{} while using 31.2 rather
+than 266.4 materialized tokens. It reliably recovers localized and searchable
+evidence. The frozen controller adds no net success after PRA and leaves
+\PaperSevenCombinedUnder{} of cases under-expanded, especially bounded-full,
+cursor, and external-tool tasks. Generic CCR retrieval reaches
+\PaperSevenCCRTask{} by approaching full exposure and cannot acquire absent
+state. The secondary action-conditioned result shows that missing evidence is
+recoverable when a useful hypothesis exists, but at distractor cost.
+
+The scientific conclusion is therefore specific. PRA provides an economical
+discovery substrate for typed backing state; progressive context control adds
+the correct abstraction for escalation; but a reliable sufficiency controller
+is still required to connect them. Future gains must improve that controller
+without erasing PRA's bounded-context advantage through indiscriminate
+materialization.
 
 \appendix
 
 \section{Public API Sketch}
 
-The facade keeps deployment policy separate from records:
+The backing facade keeps deployment policy separate from records. The
+progressive facade registers compact and derived views through PRA:
 
 \begin{lstlisting}[language=Python,basicstyle=\ttfamily\scriptsize]
 policy = ContextPolicy(
@@ -807,47 +1024,52 @@ policy = ContextPolicy(
     },
     cursor_policy=CursorPolicy(page_size=20, max_page_size=200),
 )
-runtime = AdaptiveContextRuntime(
+backing = AdaptiveContextRuntime(
     RecordScope(tenant_id="tenant-a", session_id="session-42"),
     policy,
 )
-record = runtime.ingest(
-    tool_result, record_type=RecordType.DB_RESULT,
+context = ProgressiveContextRuntime(backing, pra_model=pra_model)
+record = context.ingest(
+    tool_result,
+    record_type=RecordType.DB_RESULT,
+    capabilities=RecordCapabilities(
+        full_available=True,
+        full_bounded=False,
+        searchable=True,
+        partial_selectors=("rows", "fields"),
+    ),
     provenance={"tool": "query_orders", "call_id": "call-17"},
 )
 \end{lstlisting}
 
-The initial prompt receives the compact view. Discovery code may inspect the
-record's address views without exposing the original. Exact identity
-materialization is shared by native and tool interfaces:
+The model first receives PRA-selected compact chunks. Its JSON is parsed
+against the active record/cursor/tool allowlists; executing a valid transition
+registers the returned detail as another typed PRA view:
 
 \begin{lstlisting}[language=Python]
-selected = runtime.materialize(MaterializationEvent(
-    record_id=record.record_id,
-    level="selected",
-    selector={"rows": [100, 120]},
-))
-full = runtime.retrieve_record(record.record_id, level="full")
-
-cursor = runtime.open_cursor(
-    record.record_id,
-    collection="rows",
-    filters={"region": "west"},
+selection = context.automatic_select(
+    "failed payments for ACME", top_k=4,
 )
-page = runtime.fetch_cursor(cursor.cursor_id)
-action = parse_cursor_action(
+decision = parse_context_decision(
     model_json,
-    cursor_id=cursor.cursor_id,
-    allowed_operations=("filter", "aggregate", "next"),
+    allowed_record_ids=tuple(backing.records),
+    allowed_cursor_ids=backing.cursors.cursor_ids,
+    allowed_tools=("query_payment_provider",),
 )
-result = runtime.execute_cursor_action(action)
+transition = context.execute(decision, transport="mixed")
+# transition.produced_document is now active in the PRA registry.
+\end{lstlisting}
 
-probes = action_conditioned_probes(goal, candidate_actions, limit=4)
-batch = LatentRecoveryEngine(runtime).execute_probes(
-    probes,
-    expected_record_id=record.record_id,
-    hidden_trigger="required_action",
+The direct convenience operations share the same path:
+\begin{lstlisting}[language=Python]
+full = context.materialize_full(record.record_id)
+detail = context.materialize_more(
+    record.record_id, {"rows": [100, 120]},
 )
+matches = context.search_record(
+    record.record_id, "failed payments for ACME",
+)
+page = context.cursor_next(cursor_id)
 \end{lstlisting}
 
 \section{Implementation Map}
@@ -861,9 +1083,12 @@ Module & Responsibility \\
 \path{src/pra_hf/context_store.py} & scope, content identity, canonical encoding, manifests, TTL, hash verification, capacity, deletion \\
 \path{src/pra_hf/typed_context.py} & compressor registry, compact/address views, adaptive record descriptor, deterministic selectors \\
 \path{src/pra_hf/adaptive_context_runtime.py} & public policy, transport decision, materialization, search, cursor operations, accounting, audit \\
+\path{src/pra_hf/progressive_context.py} & implicit PRA document registry, stable record/view mapping, context actions, decision validation, automatic selection, recursive execution \\
 \path{src/pra_hf/context_recovery.py} & trigger families, CCR-style handles, bounded probes, stage metrics, recovery engine, untrusted cursor-action parser \\
+\path{src/data/progressive_context_cases.py} & balanced C0--C5 sufficiency and escalation fixtures \\
 \path{src/data/latent_trigger_cases.py} & deterministic paired explicit/latent fixtures and benchmark fingerprint fields \\
 \path{experiments/paper7_records/run_inception_experiments.py} & five-seed fixtures, metrics, JSON artifacts, TeX macros, and figures \\
+\path{experiments/paper7_records/run_progressive_context_iteration.py} & six-baseline frozen-model matrix, resumable rows, uncertainty, primary plots, and generated TeX \\
 \path{experiments/paper7_records/run_latent_trigger_cursor_iteration.py} & frozen-model policy matrix, probe/address controls, cursor tasks, transport sweep, uncertainty, plots, and TeX macros \\
 \bottomrule
 \end{tabularx}
@@ -876,17 +1101,23 @@ From the repository root:
 python -m pytest tests/test_context_store.py \
   tests/test_typed_context.py \
   tests/test_adaptive_context_runtime.py \
+  tests/test_progressive_context.py \
+  tests/test_progressive_context_cases.py \
   tests/test_context_recovery.py -q
+python experiments/paper7_records/run_progressive_context_iteration.py
 python experiments/paper7_records/run_inception_experiments.py
 python experiments/paper7_records/run_latent_trigger_cursor_iteration.py
 \end{lstlisting}
 {\raggedright
-Raw artifacts are under \path{docs/papers/shared/results/paper7_records/inception}
+Primary artifacts are under
+\path{docs/papers/shared/results/paper7_records/progressive_context}; secondary
+artifacts are under \path{docs/papers/shared/results/paper7_records/inception}
 and \path{docs/papers/shared/results/paper7_records/latent_triggers}. The
 manifest records immutable model identity, seeds, decoding, benchmark
 fingerprint, and simulated-topology labels; local response caches are ignored.
-Tests cover store identity and integrity, scope and TTL, proactive authorization
-and accounting, and cursor validation, operations, and lifecycle.\par}
+Tests cover store identity and integrity, scope and TTL, implicit PRA view
+identity, real-PRA registration binding, decision validation, recursive view
+re-entry, accounting, and cursor operations and lifecycle.\par}
 
 {\small
 \begin{thebibliography}{9}
