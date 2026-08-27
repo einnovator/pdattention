@@ -3,10 +3,11 @@
 \usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,placeins,microtype,enumitem,xcolor,listings}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
-\graphicspath{{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
+\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
 \input{../shared/results/paper7_records/inception/generated_inception_results.tex}
 \input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
 \input{../shared/results/paper7_records/progressive_context/generated_progressive_results.tex}
+\input{../shared/results/paper7_records/full_pra_calibrated/generated_full_pra_calibrated_results.tex}
 
 \definecolor{codegray}{RGB}{246,247,249}
 \lstset{
@@ -40,24 +41,26 @@ is another typed view of the same source and re-enters PRA. This separates
 discovery selection---which record or chunk is relevant---from escalation
 selection---whether the current materialization is sufficient.
 
-We evaluate a frozen Qwen3-0.6B controller on 30 balanced identities spanning
-six known context actions, five decoding seeds, and six baselines
-(\PaperSevenProgressiveN{} rows). FULL succeeds on \PaperSevenFullTask{},
-validating every task ceiling. Compact-only succeeds on
-\PaperSevenCompactTask{}; automatic PRA selection reaches
-\PaperSevenPRAAutoTask{}; model-only escalation reaches
-\PaperSevenModelTask{}; and PRA plus model remains at
-\PaperSevenCombinedTask{}. The combined system uses
-\PaperSevenCombinedTokens{} mean materialized tokens versus
-\PaperSevenFullTokens{} for FULL, but under-expands on
-\PaperSevenCombinedUnder{} of rows. A generic retrieve-original CCR baseline
-reaches \PaperSevenCCRTask{} by spending near-full context and cannot recover
-information absent from backing state. Thus typed PRA routing economically
-recovers localized and searchable evidence, while insufficiency detection,
-cursor use, and tool escalation remain controller bottlenecks. A secondary
-latent-trigger diagnostic retains the earlier \PaperSevenLatentCompactAction{}
-to \PaperSevenLatentActionConditioned{} improvement, but no longer defines the
-architecture or primary claim.
+We correct two confounds in an earlier checkpoint by replacing its lexical
+mechanism control with production Qwen3-0.6B PRA registration, hidden-state
+gist routing, original-span selection, and native-K/V materialization, and by
+calibrating the context controller on a disjoint validation split. The study
+contains 30 balanced typed-record cases: 12 validation cases select one of two
+frozen models, three fixed description levels/protocols, and a native routing
+policy; 18 held-out cases then compare nine policies over five controller
+seeds. We report visible-summary compression, full-backing Recall@1/2/4/8,
+controller insufficiency and operation accuracy, and ingestion and inference
+cost separately. On held-out cases, compact-only PRA reaches
+\PaperSevenCalCompactRFour{} Recall@4, whereas production full-backing PRA
+reaches \PaperSevenCalNativeRFour{}. The frozen controller is
+\PaperSevenCalController{}. Native PRA, calibrated adaptation, oracle
+adaptation, CCR, and full exposure respectively achieve
+\PaperSevenCalNativeSuccess{}, \PaperSevenCalAdaptiveSuccess{},
+\PaperSevenCalOracleSuccess{}, \PaperSevenCalCCRSuccess{}, and
+\PaperSevenCalFullSuccess{} task success. The result distinguishes what
+compression removes, what PRA can still address, and what a controller can
+recover without conflating those mechanisms. The earlier action-conditioned
+latent-trigger probe remains a secondary diagnostic.
 \end{abstract}
 
 \section{Introduction}
@@ -78,8 +81,9 @@ was itself omitted.
 
 This paper treats context management as a recursive PRA control problem. A
 result is a typed record, not an undifferentiated message. Its compact view is
-an implicit PRA document; its full bytes remain exact backing state. PRA first
-selects useful compact chunks or backing addresses. The model then decides
+model-visible evidence; its full bytes remain exact backing state; and a
+separate production PRA index provides retrieval-only addresses over those
+full bytes. PRA first selects useful original backing chunks. The model then decides
 whether to continue or request a bounded escalation. The returned view is
 typed, linked to the same source identity, and routed again. Large collections
 may expose cursors instead of repeatedly returning complete snapshots.
@@ -97,19 +101,22 @@ The contributions are:
   continue, full, more, search, cursor, and external-tool transitions;
   \item stateful cursors supporting pages, ranges, filters, ordering, search,
   aggregation, sampling, field projection, and closure;
-  \item a balanced six-class benchmark comparing FULL, compact-only, PRA
-  automatic selection, model escalation, PRA plus model, and CCR retrieval;
+  \item a balanced six-class benchmark comparing compact-only indexing,
+  lexical fallback, production full-backing PRA, calibrated model control,
+  oracle adaptation, generic CCR retrieval, and full exposure;
+  \item disjoint validation of semantic and hybrid native routing plus two
+  controller capacities and flat/hierarchical protocols, frozen before the
+  held-out five-seed matrix;
   \item separate measures of insufficiency recognition, mechanism correctness,
   task success, evidence recall, context/KV economy, expansions, and transfer;
   \item a secondary paired latent-trigger diagnostic and payload-scale
   transport study, retained without allowing either to define the main system.
 \end{enumerate}
 
-The main result is a decomposition, not a blanket win. PRA automatic selection
-finds evidence that compact-only misses, at a small fraction of full exposure.
-The small frozen controller does not reliably recognize when full, cursor, or
-new-tool escalation is required. Paper 7 therefore separates \emph{recovery
-capability}, \emph{insufficiency detection}, and \emph{mechanism choice}.
+The main result is a decomposition, not a blanket win. Paper 7 separately
+measures \emph{compression}, \emph{addressability}, and \emph{adaptation}.
+This prevents a readable compact summary from being mistaken for a PRA gist,
+and prevents a lexical search control from being described as native PRA.
 
 \section{Context Is a Typed State Space}
 
@@ -145,9 +152,11 @@ summary cannot silently become the source of truth.
 \fbox{\begin{minipage}{.94\linewidth}
 \centering
 \textbf{typed tool / database / graph / RAG / log result}\\[2pt]
-$\downarrow$ exact scoped backing identity\\[2pt]
-\textbf{compact typed view $\rightarrow$ implicit PRA document}\\[2pt]
-$\downarrow$ chunks $\rightarrow$ gists and addresses $\rightarrow$ bounded PRA selection\\[2pt]
+$\swarrow$ compact model-visible view \hfill exact scoped backing $\searrow$\\[2pt]
+\textbf{controller-visible summary} \hfill
+\textbf{original chunks $\rightarrow$ retrieval-only PRA gists/addresses}\\[2pt]
+\hfill $\downarrow$ bounded routing $\rightarrow$ selected native K/V\\[2pt]
+\textbf{compact view $+$ selected original evidence}\\[2pt]
 \textbf{model reasons over current materialization}\\[2pt]
 $\downarrow$\\[-2pt]
 \texttt{CONTINUE} $\mid$ \texttt{FULL} $\mid$ \texttt{MORE} $\mid$
@@ -155,9 +164,10 @@ $\downarrow$\\[-2pt]
 $\downarrow$ authorized runtime execution\\[2pt]
 \textbf{typed detail view with the same source identity $\rightarrow$ re-enter PRA}
 \end{minipage}}
-\caption{The Paper 7 control loop. PRA performs discovery selection before the
-model performs escalation selection. Every expansion is an authorized typed
-view, not model-fabricated content, and recursively re-enters PRA.}
+\caption{The corrected Paper 7 control loop. Visible compression and PRA
+address encoding are separate. Production PRA performs discovery over exact
+backing chunks before the model performs escalation selection. Every expansion
+is an authorized typed view and recursively re-enters PRA.}
 \label{fig:architecture}
 \end{figure}
 
@@ -364,11 +374,225 @@ PRA document, and repeats:
 The loop has a hard step bound. The model never returns the hidden payload
 itself; it returns only a decision whose identifiers are resolved by the host.
 
-\section{Primary Progressive-Context Experiment}
+\section{Calibrated Full-Backing PRA Study}
+\label{sec:calibrated-full-pra}
 
-\subsection{Questions and protocol}
+\subsection{Three independently measured mechanisms}
 
-The primary study asks: (RQ1) when is a compact typed view sufficient; (RQ2)
+For this study one typed record is represented as
+\begin{equation}
+R=\{V_{\mathrm{compact}},A(B_{\mathrm{full}}),B_{\mathrm{full}}\}.
+\end{equation}
+$V_{\mathrm{compact}}$ is an agent-side summary, schema, statistics block, or
+sample and is visible to the controller. $A(B_{\mathrm{full}})$ contains PRA
+routing addresses built from every original backing chunk and is never shown
+as evidence. $B_{\mathrm{full}}$ is exact scoped state. A PRA gist is therefore
+an address encoding, not a second name for the visible compact summary.
+
+The production path calls \texttt{PRAForCausalLM.add\_reference} on the exact
+backing serialization. Qwen3-0.6B tokenizes the source, forms 32-token chunks
+with eight-token overlap, encodes 128-token model-safe blocks, constructs
+hidden-state mean gists at layer 27, and retains native K/V for the selected
+original spans. Routing is bounded to eight candidates; reported Recall@$K$
+uses $K\in\{1,2,4,8\}$ and gives credit only when the union of selected spans
+fully covers the evidence marker. One-token consumption checks verify native
+K/V use; repeated controller seeds replay the immutable selections through the
+same typed materialization API rather than rebuilding the index.
+
+The benchmark keeps five instances of each of the six action classes defined
+in the earlier checkpoint below. Billing and deployment form the 12-case
+validation partition; inventory, identity, and support form the 18-case test
+partition. Within each partition, cases distinguish compact-explicit evidence,
+natural semantic omission (for example, ``payment authentication failures''
+versus ``merchant token expired''), opaque identifiers, and evidence absent
+from backing state. The answer marker is never silently inferred: we record
+whether it is literal in the compact view, present in the full-backing index,
+covered by the selected original spans, and visible after materialization.
+
+\subsection{Validation-only policy freezing}
+
+We first compare lexical fallback, production semantic-gist routing, and the
+existing bounded hybrid-iterative policy. The main \texttt{PRA\_NATIVE}
+policy is \PaperSevenCalNativePolicy{}, selected by validation Recall@4 with
+routing latency as the tie breaker. Figure~\ref{fig:cal-routing} reports the
+held-out curve; no held-out result changes this choice.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{native_routing_recall.pdf}
+\caption{Pure full-backing evidence reachability. Lexical fallback is retained
+as a transparent mechanism control; semantic and hybrid curves use production
+hidden-state routing and original native-K/V spans.}
+\label{fig:cal-routing}
+\end{figure}
+
+The controller receives a fixed always-visible description of
+\texttt{CONTINUE}, \texttt{MATERIALIZE\_FULL}, \texttt{MATERIALIZE\_MORE},
+\texttt{SEARCH\_RECORD}, \texttt{CURSOR\_NEXT}, \texttt{CURSOR\_QUERY}, and
+\texttt{CALL\_TOOL}. We calibrate minimal D0 and rich D2 wording with both
+Qwen3-0.6B and Llama-3.2-3B, add concise D1 for the stronger model after D0/D2
+expose a precision/recall tradeoff, and compare flat versus two-stage
+sufficient/need-more then operation selection. Temperature is zero and seeds
+are $\{11,23,37,53,71\}$. The selected \PaperSevenCalController{} controller
+has validation decision accuracy \PaperSevenCalControllerAccuracy{}. Its exact
+description text, model, protocol, and thinking flag are hashed; MODEL\_ONLY
+and PRA\_ADAPTIVE assert the same fingerprint at runtime.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.92\linewidth]{controller_validation.pdf}
+\caption{Validation-only controller calibration. Need-more recall, false
+escalation, and operation accuracy expose differences hidden by aggregate
+decision accuracy. Rich descriptions are fixed system overhead rather than
+retrieved application tools.}
+\label{fig:cal-controller}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Frozen controller & Decision & Need recall & False esc. & Op. acc. & Prompt tok. & Latency (s) \\
+\midrule
+\PaperSevenCalController{} & \PaperSevenCalControllerAccuracy{} &
+\PaperSevenCalControllerNeedRecall{} & \PaperSevenCalControllerFalseEsc{} &
+\PaperSevenCalControllerOperation{} & \PaperSevenCalControllerPromptTokens{} &
+\PaperSevenCalControllerLatency{} \\
+\bottomrule
+\end{tabular}
+\caption{Validation metrics for the frozen controller. The fixed D2 operation
+block contributes about \PaperSevenCalControllerDescTokens{} of the reported
+prompt tokens and is reused across decisions.}
+\label{tab:cal-controller}
+\end{table}
+
+\subsection{Held-out policies and results}
+
+The held-out matrix compares FULL, COMPACT\_ONLY, PRA\_COMPACT (PRA indexes
+only the visible compact view), PRA\_FALLBACK, PRA\_NATIVE, MODEL\_ONLY,
+PRA\_ADAPTIVE, PRA\_ADAPTIVE\_ORACLE, and CCR\_TOOL. PRA\_ADAPTIVE first
+materializes the frozen native selection and then asks the calibrated
+sufficiency controller whether another typed transition is needed. The oracle
+supplies only the correct transition label; the ordinary authorized runtime
+still executes materialization, search, cursor, or external-tool acquisition.
+CCR uses the same controller fingerprint and maps escalation to generic full
+retrieval, except that \texttt{CALL\_TOOL} remains acquisition of absent state.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.72\linewidth]{visible_backing_addressability.pdf}
+\caption{Agent-visible compression and retrieval-only backing addressability.
+PRA\_COMPACT cannot recover a discriminator removed from the compact view;
+PRA\_NATIVE can select original backing chunks without exposing the full
+record.}
+\label{fig:cal-addressability}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Routing policy & Held-out Recall@4 & Role \\
+\midrule
+PRA\_COMPACT & \PaperSevenCalCompactRFour{} & compact-only ablation \\
+Lexical fallback & \PaperSevenCalFallbackRFour{} & transparent control \\
+Native semantic & \PaperSevenCalSemanticRFour{} & production one-shot \\
+Native hybrid & \PaperSevenCalHybridRFour{} & production bounded iterative \\
+\bottomrule
+\end{tabular}
+\caption{Evidence reachability is measured before any controller or answer
+decision. Opaque and absent-from-backing cases remain explicit stress controls.}
+\label{tab:cal-routing}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Policy & Task success & Active K/V & Typed payload \\
+\midrule
+PRA\_NATIVE & \PaperSevenCalNativeSuccess{} & \PaperSevenCalNativeTokens{} & \PaperSevenCalNativeTypedTokens{} \\
+PRA\_ADAPTIVE & \PaperSevenCalAdaptiveSuccess{} & \PaperSevenCalAdaptiveTokens{} & \PaperSevenCalAdaptiveTypedTokens{} \\
+PRA\_ADAPTIVE\_ORACLE & \PaperSevenCalOracleSuccess{} & \PaperSevenCalOracleTokens{} & \PaperSevenCalOracleTypedTokens{} \\
+CCR\_TOOL & \PaperSevenCalCCRSuccess{} & \PaperSevenCalCCRTokens{} & \PaperSevenCalCCRTypedTokens{} \\
+FULL & \PaperSevenCalFullSuccess{} & \PaperSevenCalFullTokens{} & \PaperSevenCalFullTypedTokens{} \\
+\bottomrule
+\end{tabular}
+\caption{Held-out quality/cost comparison over five controller seeds. Task
+success uses an exact answer-code read gate once evidence is visible. Typed
+payload is the serialized replay/controller view; active K/V is the model-side
+budget and is the x-axis in Figure~\ref{fig:cal-frontier}.}
+\label{tab:cal-frontier}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{adaptive_quality_cost_frontier.pdf}
+\caption{Held-out task success versus active K/V. Ingestion and
+address-index storage are reported separately and are not charged as active
+prompt/KV context.}
+\label{fig:cal-frontier}
+\end{figure}
+
+Cost is split by lifecycle rather than collapsed into one token number. The
+deterministic agent compressor takes \PaperSevenCalCompressionMs{} ms and emits
+\PaperSevenCalCompactBytes{} bytes from \PaperSevenCalBackingBytes{} backing
+bytes on average. Production PRA indexing is a one-time \PaperSevenCalIndexSeconds{}
+s operation with \PaperSevenCalIndexBytes{} routing-index bytes and
+\PaperSevenCalResidentKVBytes{} resident detail-K/V bytes. A frozen query then
+takes \PaperSevenCalRoutingMs{} ms for routing, followed by policy-dependent
+materialization in Table~\ref{tab:cal-frontier}. These measurements prevent
+ingestion storage from being mistaken for active prompt or decode context.
+
+Production PRA is the robust gain in this matrix. It matches FULL at
+\PaperSevenCalNativeSuccess{} success while using \PaperSevenCalNativeTokens{}
+instead of \PaperSevenCalFullTokens{} active K/V tokens. PRA\_ADAPTIVE remains
+at \PaperSevenCalAdaptiveSuccess{} and rises to
+\PaperSevenCalAdaptiveTokens{} active tokens because false escalation adds
+state after native evidence is already sufficient. The oracle reaches
+\PaperSevenCalOracleSuccess{} with only \PaperSevenCalOracleTokens{} active
+tokens by issuing \texttt{CALL\_TOOL} for the three absent-from-backing cases.
+Thus escalation has real mechanism headroom, but the frozen controller does
+not realize it on held-out acquisition prompts. MODEL\_ONLY and matched CCR
+reach only \PaperSevenCalCCRSuccess{}; CCR spends
+\PaperSevenCalCCRTokens{} active tokens and cannot repair a missed decision.
+
+The cross-model controller path also exposes a current product cost. Decoding
+selected spans into a typed audit/replay view costs
+\PaperSevenCalNativeTypedTokens{} tokens for PRA\_NATIVE and
+\PaperSevenCalAdaptiveTypedTokens{} for adaptive PRA, and the latter supplies
+\PaperSevenCalAdaptiveControllerTokens{} controller prompt tokens on average.
+Those values are not native-K/V requirements; they are the cost of letting a
+separate Ollama controller inspect decoded selections. A same-model native
+controller could avoid that serialization, but is not measured here.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.84\linewidth]{adaptive_failure_decomposition.pdf}
+\caption{Adaptive context-control factorization: insufficiency detection,
+operation choice, runtime evidence recovery, and final use conditional on
+visibility. This separates controller failures from routing failures.}
+\label{fig:cal-failures}
+\end{figure}
+
+The primary comparison is COMPACT\_ONLY versus PRA\_COMPACT versus
+PRA\_NATIVE: it asks whether a complete retrieval-only address space repairs
+visible-summary omission. The second comparison, PRA\_NATIVE versus calibrated
+and oracle adaptation, measures controller-realized gain against mechanism
+headroom. The final comparison with CCR and FULL locates the quality/cost
+frontier. These gates supersede the earlier lexical \texttt{PRA\_AUTO} naming;
+that result remains below only as a frozen historical mechanism checkpoint.
+
+\FloatBarrier
+
+\section{Earlier Progressive-Context Checkpoint}
+
+\subsection{Questions and frozen protocol}
+
+This earlier checkpoint asked: (RQ1) when is a compact typed view sufficient; (RQ2)
 can the model recognize insufficiency; (RQ3) what does automatic PRA recover
 before explicit escalation; (RQ4) does the controller choose full, partial,
 search, cursor, or tool correctly; and (RQ5) how close does PRA plus model come
@@ -391,7 +615,7 @@ C5 & TOOL & absent from backing & distinguish retrieval from acquisition \\
 \end{tabularx}
 \end{center}
 
-Each identity is decoded with seeds $\{11,23,37,53,71\}$ under six baselines:
+Each identity was decoded with seeds $\{11,23,37,53,71\}$ under six baselines:
 FULL, COMPACT\_ONLY, PRA\_AUTO, MODEL\_ESCALATION, PRA\_PLUS\_MODEL, and
 CCR\_TOOL. PRA\_AUTO runs bounded address/gist selection but emits no model
 context decision. MODEL\_ESCALATION sees the compact typed view. The proposed
@@ -953,10 +1177,15 @@ also make the correct mechanism more explicit than many real tool results.
 Consequently:
 
 \begin{enumerate}[leftmargin=*]
-  \item PRA\_AUTO uses transparent lexical/address overlap and one known-record
-  search; learned semantic/native-QK selection may change both quality and cost;
-  \item the small frozen model is a weak insufficiency detector, so the
-  under-expansion rate characterizes this controller and protocol, not all LMs;
+  \item the new production path uses one Qwen3-0.6B routing backend, one routing
+  layer, 32-token chunks, and semantic/hybrid mean gists; addressability may
+  change with model family, layer, chunk geometry, or learned QK compression;
+  \item controller calibration compares only Qwen3-0.6B and Llama-3.2-3B on 12
+  validation cases, so the selected configuration is a bounded experimental
+  default rather than a general model leaderboard;
+  \item the exact answer-code read gate isolates context recovery and makes
+  final use deterministic once evidence is visible; natural free-form answer
+  generation remains a separate evaluation gate;
   \item CCR\_TOOL's binary mechanism score is not directly comparable to
   choosing among full, partial, search, cursor, and a new external tool;
   \item C3 validates cursor sufficiency decisions and bounded pages, not
@@ -965,16 +1194,18 @@ Consequently:
   does not evaluate broad tool discovery or side-effect safety;
   \item topology measurements are policy accounting, not physical network or
   distributed-store benchmarks;
-  \item active native-K/V is estimated from serialized bytes only when a model-
-  specific bytes-per-token value is configured;
+  \item native-K/V consumption is verified by live generation checks and then
+  inferred from the production requested-token count for repeated frozen
+  selections; end-to-end accelerator memory and TTFT need larger workloads;
   \item redaction, remote-store fault tolerance, and distributed cursor leases
   remain absent.
 \end{enumerate}
 
-The next gate is a stronger or calibrated sufficiency controller evaluated on
-fresh natural tool-result tasks, with class-balanced abstention thresholds and
-no gold-derived features. It should retain PRA's low-cost C2/C4 recovery while
-adding C1, C3, and C5 escalation without turning every C0 into retrieval.
+The next gate is external replication on fresh natural tool-result tasks, with
+class-balanced abstention thresholds and no gold-derived features. It should
+retain production PRA's low-cost backing recovery while adding bounded full,
+cursor, and external-tool escalation without turning every compact-sufficient
+case into retrieval.
 Native PRA-aware events and remote function-call adapters should then be
 compared at matched semantics while measuring TTFT, active K/V, transfer,
 callback count, and store latency.
@@ -988,23 +1219,29 @@ exact scoped identity; bounded decisions activate full, selected, searched,
 cursor, or newly acquired state; and each returned view recursively re-enters
 PRA.
 
-The primary experiment separates what this architecture already solves from
-what it does not. Automatic PRA selection raises task success from
-\PaperSevenCompactTask{} to \PaperSevenPRAAutoTask{} while using 31.2 rather
-than 266.4 materialized tokens. It reliably recovers localized and searchable
-evidence. The frozen controller adds no net success after PRA and leaves
-\PaperSevenCombinedUnder{} of cases under-expanded, especially bounded-full,
-cursor, and external-tool tasks. Generic CCR retrieval reaches
-\PaperSevenCCRTask{} by approaching full exposure and cannot acquire absent
-state. The secondary action-conditioned result shows that missing evidence is
-recoverable when a useful hypothesis exists, but at distractor cost.
+The calibrated experiment separates what this architecture already solves
+from what it does not. Compact-only PRA reaches
+\PaperSevenCalCompactRFour{} held-out Recall@4 after visible compression,
+whereas the validation-frozen full-backing native policy reaches
+\PaperSevenCalNativeRFour{}. Native PRA achieves
+\PaperSevenCalNativeSuccess{} task success at
+\PaperSevenCalNativeTokens{} materialized tokens; calibrated and oracle
+adaptation reach \PaperSevenCalAdaptiveSuccess{} and
+\PaperSevenCalOracleSuccess{}. CCR and full exposure reach
+\PaperSevenCalCCRSuccess{} and \PaperSevenCalFullSuccess{} while spending
+\PaperSevenCalCCRTokens{} and \PaperSevenCalFullTokens{} tokens. These values
+make controller-realized improvement and oracle mechanism headroom visible
+instead of attributing both to ``PRA plus model.''
 
-The scientific conclusion is therefore specific. PRA provides an economical
-discovery substrate for typed backing state; progressive context control adds
-the correct abstraction for escalation; but a reliable sufficiency controller
-is still required to connect them. Future gains must improve that controller
-without erasing PRA's bounded-context advantage through indiscriminate
-materialization.
+The scientific conclusion is therefore specific. Full-backing production PRA
+can preserve addressability after a small visible summary omits decisive
+evidence. Progressive typed operations provide a bounded route from that
+selection to additional state, and validation-calibrated control reveals how
+much of the oracle headroom the tested controller realizes. The earlier
+lexical result remains useful as a mechanism control, not as evidence for
+native PRA. Future gains must improve controller reliability and replicate the
+routing result without erasing PRA's bounded-context advantage through
+indiscriminate materialization.
 
 \appendix
 
@@ -1042,9 +1279,20 @@ record = context.ingest(
 )
 \end{lstlisting}
 
-The model first receives PRA-selected compact chunks. Its JSON is parsed
-against the active record/cursor/tool allowlists; executing a valid transition
-registers the returned detail as another typed PRA view:
+The model first receives the compact typed view. Independently, the host may
+register exact backing state through production PRA and materialize only the
+selected original spans:
+
+\begin{lstlisting}[language=Python]
+context.register_backing_record(record.record_id)
+native = context.native_select("failed payments for ACME")
+detail = context.materialize_native_selection(native, top_k=4)
+# detail preserves record_id and contains decoded original spans.
+\end{lstlisting}
+
+The controller's JSON is parsed against active record/cursor/tool allowlists;
+executing a valid transition registers the returned detail as another typed PRA
+view:
 
 \begin{lstlisting}[language=Python]
 selection = context.automatic_select(
@@ -1084,12 +1332,18 @@ Module & Responsibility \\
 \path{src/pra_hf/typed_context.py} & compressor registry, compact/address views, adaptive record descriptor, deterministic selectors \\
 \path{src/pra_hf/adaptive_context_runtime.py} & public policy, transport decision, materialization, search, cursor operations, accounting, audit \\
 \path{src/pra_hf/progressive_context.py} & implicit PRA document registry, stable record/view mapping, context actions, decision validation, automatic selection, recursive execution \\
+\path{src/pra_hf/model.py} & production route-only query encoding, hidden-state ranking, layer-native identity mapping, and K/V selection \\
 \path{src/pra_hf/context_recovery.py} & trigger families, CCR-style handles, bounded probes, stage metrics, recovery engine, untrusted cursor-action parser \\
 \path{src/data/progressive_context_cases.py} & balanced C0--C5 sufficiency and escalation fixtures \\
 \path{src/data/latent_trigger_cases.py} & deterministic paired explicit/latent fixtures and benchmark fingerprint fields \\
+\path{src/data/full_pra_context_cases.py} & disjoint natural, opaque, compact-explicit, and absent-from-backing calibration fixtures \\
 \path{experiments/paper7_records/run_inception_experiments.py} & five-seed fixtures, metrics, JSON artifacts, TeX macros, and figures \\
 \path{experiments/paper7_records/run_progressive_context_iteration.py} & six-baseline frozen-model matrix, resumable rows, uncertainty, primary plots, and generated TeX \\
 \path{experiments/paper7_records/run_latent_trigger_cursor_iteration.py} & frozen-model policy matrix, probe/address controls, cursor tasks, transport sweep, uncertainty, plots, and TeX macros \\
+\path{experiments/paper7_records/run_full_pra_reachability.py} & production reference registration, semantic/hybrid Recall@$K$, native-K/V verification, and address/storage accounting \\
+\path{experiments/paper7_records/run_controller_calibration.py} & two-model D0/D2 and flat/hierarchical validation grid with a frozen fingerprint \\
+\path{experiments/paper7_records/run_calibrated_adaptive.py} & held-out nine-policy five-seed controller, oracle, CCR, and quality/cost matrix \\
+\path{experiments/paper7_records/summarize_full_pra_calibrated.py} & generated figures, weighted routing summaries, and TeX result macros \\
 \bottomrule
 \end{tabularx}
 }
@@ -1103,13 +1357,21 @@ python -m pytest tests/test_context_store.py \
   tests/test_adaptive_context_runtime.py \
   tests/test_progressive_context.py \
   tests/test_progressive_context_cases.py \
+  tests/test_full_pra_context_cases.py \
+  tests/test_paper7_controller_calibration.py \
   tests/test_context_recovery.py -q
+python experiments/paper7_records/run_full_pra_reachability.py
+python experiments/paper7_records/run_controller_calibration.py
+python experiments/paper7_records/run_calibrated_adaptive.py
+python experiments/paper7_records/summarize_full_pra_calibrated.py
 python experiments/paper7_records/run_progressive_context_iteration.py
 python experiments/paper7_records/run_inception_experiments.py
 python experiments/paper7_records/run_latent_trigger_cursor_iteration.py
 \end{lstlisting}
 {\raggedright
-Primary artifacts are under
+Calibrated production-PRA artifacts are under
+\path{docs/papers/shared/results/paper7_records/full_pra_calibrated}. The
+earlier mechanism checkpoint is under
 \path{docs/papers/shared/results/paper7_records/progressive_context}; secondary
 artifacts are under \path{docs/papers/shared/results/paper7_records/inception}
 and \path{docs/papers/shared/results/paper7_records/latent_triggers}. The

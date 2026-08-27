@@ -8,6 +8,7 @@ payloads or rediscover a record whose identity is already known.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -25,7 +26,7 @@ from .context_records import RecordType, RecordViewName
 from .context_store import RecordAccessDenied
 
 if TYPE_CHECKING:
-    from .model import PRAForCausalLM, ReferenceHandle
+    from .model import PRAForCausalLM, ReferenceHandle, RoutingResult
     from .typed_context import AdaptiveContextRecord
 
 
@@ -60,6 +61,108 @@ class ContextTransport(str, Enum):
     NATIVE = "native"
     TOOL = "tool"
     MIXED = "mixed"
+
+
+class ControllerDescriptionLevel(str, Enum):
+    """Validation-controlled verbosity of the fixed PRA operation block."""
+
+    D0_MINIMAL = "D0"
+    D1_CONCISE = "D1"
+    D2_RICH = "D2"
+
+
+class ControllerProtocol(str, Enum):
+    """Flat or factorized insufficiency/operation decision protocol."""
+
+    FLAT = "flat"
+    HIERARCHICAL = "hierarchical"
+
+
+_PRA_OPERATION_DESCRIPTIONS = {
+    ContextAction.CONTINUE: (
+        "Current visible context is sufficient.",
+        "Continue only when the requested evidence is already visible; do not use it merely because a record summary exists.",
+        "Example: the compact row already contains the requested answer code.",
+    ),
+    ContextAction.MATERIALIZE_FULL: (
+        "Load the complete known backing record.",
+        "Use when the record is bounded and the whole result is needed or no narrower interface suffices; avoid it for identifiable subsets.",
+        "Example: load a small stored API response whose omitted fields are all relevant.",
+    ),
+    ContextAction.MATERIALIZE_MORE: (
+        "Expose a selected field, row, line, chunk, or neighborhood.",
+        "Prefer this over full materialization when a declared typed selector identifies the needed subset.",
+        "Example: expose rows 40 through 48 from a known database result.",
+    ),
+    ContextAction.SEARCH_RECORD: (
+        "Search inside one existing large backing record.",
+        "Use when evidence may occur somewhere in a known searchable result; this does not discover a different record or call a new tool.",
+        "Example: search one retained log for the affected account identifier.",
+    ),
+    ContextAction.CURSOR_NEXT: (
+        "Advance an authorized cursor to its next bounded page.",
+        "Use for sequential continuation when the current page is insufficient; avoid it when a targeted cursor query is available.",
+        "Example: inspect the next page after no matching row appears in the current page.",
+    ),
+    ContextAction.CURSOR_QUERY: (
+        "Search, filter, aggregate, or otherwise refine an authorized cursor.",
+        "Use for a targeted operation over a cursor-backed result rather than loading the complete collection.",
+        "Example: search the cursor for rows matching a known lookup key.",
+    ),
+    ContextAction.CALL_TOOL: (
+        "Call an ordinary application tool for information absent from retained backing state.",
+        "Use only when full, partial, search, and cursor operations cannot recover the required information from the current record.",
+        "Example: query an external service for a status not present in the stored response.",
+    ),
+}
+
+
+def controller_description_block(
+    level: ControllerDescriptionLevel | str,
+) -> str:
+    """Render the fixed, always-visible PRA context-operation descriptions."""
+
+    level = ControllerDescriptionLevel(level)
+    line_count = {
+        ControllerDescriptionLevel.D0_MINIMAL: 1,
+        ControllerDescriptionLevel.D1_CONCISE: 2,
+        ControllerDescriptionLevel.D2_RICH: 3,
+    }[level]
+    return "\n".join(
+        f"{action.value}: {' '.join(parts[:line_count])}"
+        for action, parts in _PRA_OPERATION_DESCRIPTIONS.items()
+    )
+
+
+@dataclass(frozen=True)
+class ControllerConfig:
+    """Frozen controller choice shared by MODEL_ONLY and PRA_ADAPTIVE."""
+
+    model: str
+    description_level: ControllerDescriptionLevel | str
+    protocol: ControllerProtocol | str = ControllerProtocol.FLAT
+    thinking: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "description_level", ControllerDescriptionLevel(self.description_level)
+        )
+        object.__setattr__(self, "protocol", ControllerProtocol(self.protocol))
+
+    @property
+    def description_block(self) -> str:
+        return controller_description_block(self.description_level)
+
+    @property
+    def fingerprint(self) -> str:
+        payload = {
+            "model": self.model,
+            "description_level": self.description_level.value,
+            "protocol": self.protocol.value,
+            "thinking": self.thinking,
+            "description_block": self.description_block,
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -211,6 +314,15 @@ class PRASelection:
         return tuple(dict.fromkeys(chunk.record_id for chunk in self.chunks))
 
 
+@dataclass(frozen=True)
+class NativePRASelection:
+    """Production PRA result over retrieval-only full-backing references."""
+
+    query: str
+    routing: RoutingResult
+    record_ids: tuple[str, ...]
+
+
 def _terms(value: object) -> tuple[str, ...]:
     return tuple(dict.fromkeys(token.casefold() for token in _TOKEN.findall(str(value))))
 
@@ -251,6 +363,8 @@ class PRARecordRegistry:
         self.views_by_record: dict[str, list[str]] = {}
         self.capabilities: dict[str, RecordCapabilities] = {}
         self.reference_handles: dict[str, ReferenceHandle] = {}
+        self.backing_reference_handles: dict[str, ReferenceHandle] = {}
+        self.backing_index_metrics: dict[str, dict[str, float | int]] = {}
 
     def bind_model(self, model: PRAForCausalLM) -> None:
         """Register existing views through the production PRA memory path."""
@@ -353,6 +467,56 @@ class PRARecordRegistry:
             "provenance": dict(record.backing.provenance),
         }
         return self.register_document(record_id, view=PRAViewKind.SUMMARY, payload=payload)
+
+    def register_backing_record(self, record_id: str) -> ReferenceHandle:
+        """Index exact backing bytes through the production PRA reference path.
+
+        The backing reference is retrieval-only: it is not inserted into
+        ``documents`` and therefore does not become prompt-visible context.
+        """
+
+        if self.pra_model is None:
+            raise RuntimeError("A PRA model must be bound before indexing backing state.")
+        if record_id not in self.runtime.records:
+            raise KeyError(record_id)
+        previous = self.backing_reference_handles.get(record_id)
+        if previous is not None:
+            self.pra_model.remove_reference(previous)
+        payload = self.runtime.store.get(record_id, scope=self.runtime.scope)
+        uri = f"{record_id}/views/backing"
+        started = time.perf_counter()
+        handle = self.pra_model.add_reference(uri, text=_payload_text(payload))
+        elapsed = time.perf_counter() - started
+        stats = self.pra_model.stats()
+        self.backing_reference_handles[record_id] = handle
+        self.backing_index_metrics[record_id] = {
+            "backing_tokens": handle.tokens,
+            "backing_chunks": handle.chunks,
+            "ingestion_seconds": elapsed,
+            "routing_index_bytes": int(stats["routing_index_bytes"]),
+            "resident_detail_kv_bytes": int(stats["resident_detail_kv_bytes"]),
+            "full_backing_bytes": self.runtime.records[record_id].backing.size_bytes,
+        }
+        return handle
+
+    def route_backing(self, query: str) -> NativePRASelection:
+        """Run production PRA routing over registered full-backing references."""
+
+        if self.pra_model is None:
+            raise RuntimeError("A PRA model must be bound before native routing.")
+        if not self.backing_reference_handles:
+            raise RuntimeError("No full-backing PRA references are registered.")
+        routing = self.pra_model.route(query)
+        by_uri = {
+            handle.uri: record_id
+            for record_id, handle in self.backing_reference_handles.items()
+        }
+        record_ids = tuple(dict.fromkeys(
+            by_uri[str(row["reference_uri"])]
+            for row in routing.selected
+            if str(row["reference_uri"]) in by_uri
+        ))
+        return NativePRASelection(query, routing, record_ids)
 
     def route(
         self,
@@ -490,6 +654,122 @@ class ProgressiveContextRuntime:
         """Run PRA selection over currently active typed views before escalation."""
 
         return self.registry.route(query, top_k=top_k)
+
+    def register_backing_record(self, record_id: str) -> ReferenceHandle:
+        """Create retrieval-only production PRA addresses for exact backing state."""
+
+        return self.registry.register_backing_record(record_id)
+
+    def native_select(self, query: str) -> NativePRASelection:
+        """Run production PRA routing over exact backing state."""
+
+        return self.registry.route_backing(query)
+
+    def materialize_native_selection(
+        self,
+        selection: NativePRASelection,
+        *,
+        top_k: int | None = None,
+    ) -> ContextExecutionResult:
+        """Expose selected original spans after production native-K/V selection."""
+
+        if self.registry.pra_model is None:
+            raise RuntimeError("A PRA model must be bound before native materialization.")
+        selected = selection.routing.selected[:top_k]
+        if not selected:
+            decision = ContextDecision(
+                ContextAction.SEARCH_RECORD,
+                record_id=next(iter(self.runtime.records)),
+                query=selection.query,
+            )
+            return ContextExecutionResult(
+                decision, False, None, None, 0, 0, 0, 1, 0.0,
+                ContextTransport.NATIVE, "PRA selected no backing chunk.",
+            )
+        by_uri = {
+            handle.uri: record_id
+            for record_id, handle in self.registry.backing_reference_handles.items()
+        }
+        grouped: dict[str, list[dict[str, object]]] = {}
+        for row in selected:
+            uri = str(row["reference_uri"])
+            if uri not in by_uri:
+                continue
+            grouped.setdefault(by_uri[uri], []).append(dict(row))
+        if not grouped:
+            raise ValueError("Native selection did not resolve to an authorized backing record.")
+        started = time.perf_counter()
+        record_id = next(iter(grouped))
+        payload = self.runtime.store.get(record_id, scope=self.runtime.scope)
+        text = _payload_text(payload)
+        tokenizer = self.registry.pra_model.tokenizer
+        token_ids = tokenizer(text, add_special_tokens=False).input_ids
+        chunks = []
+        for row in grouped[record_id]:
+            start = int(row["logical_start"])
+            stop = int(row["logical_end"])
+            chunks.append({
+                "chunk_id": row["chunk_id"],
+                "logical_start": start,
+                "logical_end": stop,
+                "text": tokenizer.decode(token_ids[start:stop], skip_special_tokens=True),
+            })
+        detail = {
+            "record_id": record_id,
+            "source_view": "backing",
+            "selection_policy": selection.routing.stats["selection_policy"],
+            "selected_chunks": chunks,
+        }
+        payload_bytes, network_bytes, round_trips = self.runtime.account_selected_payload(
+            detail, action="native_pra_materialize"
+        )
+        document = self._register_result(record_id, PRAViewKind.DETAIL, detail)
+        decision = ContextDecision(
+            ContextAction.SEARCH_RECORD, record_id=record_id, query=selection.query
+        )
+        return ContextExecutionResult(
+            decision, True, document, detail, payload_bytes, network_bytes,
+            round_trips, 1, time.perf_counter() - started, ContextTransport.NATIVE,
+        )
+
+    def materialize_backing_chunks(
+        self,
+        record_id: str,
+        query: str,
+        chunks: Sequence[Mapping[str, object]],
+        *,
+        selection_policy: str,
+    ) -> ContextExecutionResult:
+        """Replay a frozen production routing result through typed materialization.
+
+        Experiments may route once and evaluate several controller seeds. This
+        method avoids recomputing the frozen Qwen index while preserving the
+        exact record identity, selected original spans, transport accounting,
+        and recursive PRA document registration used by live native selection.
+        """
+
+        if record_id not in self.runtime.records:
+            raise KeyError(record_id)
+        started = time.perf_counter()
+        selected = tuple(dict(chunk) for chunk in chunks)
+        detail = {
+            "record_id": record_id,
+            "source_view": "backing",
+            "selection_policy": selection_policy,
+            "selected_chunks": selected,
+        }
+        payload_bytes, network_bytes, round_trips = self.runtime.account_selected_payload(
+            detail, action="native_pra_materialize"
+        )
+        document = self._register_result(record_id, PRAViewKind.DETAIL, detail)
+        decision = ContextDecision(
+            ContextAction.SEARCH_RECORD, record_id=record_id, query=query
+        )
+        return ContextExecutionResult(
+            decision, bool(selected), document, detail, payload_bytes, network_bytes,
+            round_trips, 1, time.perf_counter() - started, ContextTransport.NATIVE,
+            None if selected else "PRA selected no backing chunk.",
+        )
 
     def execute(
         self,

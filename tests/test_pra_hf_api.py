@@ -130,6 +130,21 @@ def test_reference_lifecycle_fraction_routing_generation_and_stats(tmp_path):
     assert pra.stats()["references"] == []
 
 
+def test_route_only_uses_production_selection_without_generation():
+    torch.manual_seed(306)
+    pra = PRAForCausalLM.from_model(
+        _model(), TinyTokenizer(), pra_config=_config(selected_fraction=None, top_k=2)
+    )
+    pra.add_reference("abcdefghijklmnop")
+
+    result = pra.route("question")
+
+    assert result.prompt_tokens > 0
+    assert result.selected
+    assert result.stats["requested_chunks"] == len(result.selected)
+    assert result.stats["generation_seconds"] == 0.0
+
+
 def test_router_cannot_change_after_reference_ingestion(tmp_path):
     pra = PRAForCausalLM.from_model(_model(), TinyTokenizer(), pra_config=_config())
     pra.add_reference("abcdefgh")

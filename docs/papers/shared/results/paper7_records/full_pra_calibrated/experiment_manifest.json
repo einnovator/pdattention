@@ -1,0 +1,55 @@
+{
+  "answer_gate": "exact expected answer marker visible after authorized materialization",
+  "controller": {
+    "config": {
+      "description_block": "CONTINUE: Current visible context is sufficient. Continue only when the requested evidence is already visible; do not use it merely because a record summary exists. Example: the compact row already contains the requested answer code.\nMATERIALIZE_FULL: Load the complete known backing record. Use when the record is bounded and the whole result is needed or no narrower interface suffices; avoid it for identifiable subsets. Example: load a small stored API response whose omitted fields are all relevant.\nMATERIALIZE_MORE: Expose a selected field, row, line, chunk, or neighborhood. Prefer this over full materialization when a declared typed selector identifies the needed subset. Example: expose rows 40 through 48 from a known database result.\nSEARCH_RECORD: Search inside one existing large backing record. Use when evidence may occur somewhere in a known searchable result; this does not discover a different record or call a new tool. Example: search one retained log for the affected account identifier.\nCURSOR_NEXT: Advance an authorized cursor to its next bounded page. Use for sequential continuation when the current page is insufficient; avoid it when a targeted cursor query is available. Example: inspect the next page after no matching row appears in the current page.\nCURSOR_QUERY: Search, filter, aggregate, or otherwise refine an authorized cursor. Use for a targeted operation over a cursor-backed result rather than loading the complete collection. Example: search the cursor for rows matching a known lookup key.\nCALL_TOOL: Call an ordinary application tool for information absent from retained backing state. Use only when full, partial, search, and cursor operations cannot recover the required information from the current record. Example: query an external service for a status not present in the stored response.",
+      "description_level": "D2",
+      "fingerprint": "283d35992d46088905c8fae2929f34998de46c7ba9813d682b0f1fec84190022",
+      "model": "llama3.2:3b",
+      "protocol": "flat",
+      "thinking": false
+    },
+    "seeds": [
+      11,
+      23,
+      37,
+      53,
+      71
+    ],
+    "selection_rule": "within 0.02 of best validation decision accuracy, then minimize false escalation and cost",
+    "validation_cases": 12,
+    "validation_metrics": {
+      "controller_fingerprint": "283d35992d46088905c8fae2929f34998de46c7ba9813d682b0f1fec84190022",
+      "controller_protocol": "flat",
+      "decision_accuracy": 0.4166666666666667,
+      "description_level": "D2",
+      "false_escalation": 0.5,
+      "fixed_description_token_estimate": 460,
+      "generated_tokens": 10.083333333333334,
+      "latency_seconds": 2.4117126350019435,
+      "model": "llama3.2:3b",
+      "n": 60,
+      "need_more_recall": 0.7,
+      "operation_accuracy_given_need_more": 0.5,
+      "prompt_tokens": 770.6666666666666,
+      "thinking": 0
+    }
+  },
+  "heldout_cases": 18,
+  "heldout_seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "native_consumption": "live one-token smoke verified requested equals consumed; repeated selections use requested-token accounting",
+  "protocol": "paper7-full-pra-calibrated-v1",
+  "routing": {
+    "k": 4,
+    "model": "Qwen/Qwen3-0.6B",
+    "revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "selected_policy": "PRA_NATIVE_HYBRID",
+    "selection_rule": "maximum validation Recall@4; routing latency breaks ties"
+  }
+}

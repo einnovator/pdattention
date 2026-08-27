@@ -10,6 +10,9 @@ from pra_hf.adaptive_context_runtime import (
 from pra_hf.context_records import RecordType
 from pra_hf.context_store import RecordScope
 from pra_hf.progressive_context import (
+    ControllerConfig,
+    ControllerDescriptionLevel,
+    ControllerProtocol,
     ContextAction,
     ContextDecision,
     PRAViewKind,
@@ -202,3 +205,103 @@ def test_real_pra_binding_uses_add_reference_for_every_view(tmp_path):
         f"{record.record_id}/views/summary",
         f"{record.record_id}/views/detail-1",
     ]
+
+
+def test_controller_descriptions_are_fixed_visible_and_fingerprinted():
+    minimal = ControllerConfig("qwen3:0.6b", ControllerDescriptionLevel.D0_MINIMAL)
+    rich = ControllerConfig(
+        "gemma3:4b", ControllerDescriptionLevel.D2_RICH,
+        protocol=ControllerProtocol.HIERARCHICAL,
+    )
+
+    for action in ContextAction:
+        assert action.value in minimal.description_block
+        assert action.value in rich.description_block
+    assert len(rich.description_block) > len(minimal.description_block)
+    assert rich.fingerprint == ControllerConfig(
+        "gemma3:4b", "D2", protocol="hierarchical"
+    ).fingerprint
+
+
+def test_backing_reference_is_retrieval_only_and_preserves_exact_identity(tmp_path):
+    class Tokenizer:
+        def __call__(self, text, add_special_tokens=False):
+            return type("Encoded", (), {"input_ids": list(range(len(text.split())))})()
+
+        def decode(self, values, skip_special_tokens=True):
+            return " ".join(f"token-{value}" for value in values)
+
+    class FakePRA:
+        def __init__(self):
+            self.tokenizer = Tokenizer()
+            self.references = {}
+
+        def add_reference(self, reference, *, text):
+            self.references[reference] = text
+            return type("Handle", (), {
+                "id": reference, "uri": reference,
+                "tokens": len(text.split()), "chunks": 2,
+            })()
+
+        def remove_reference(self, handle):
+            self.references.pop(handle.uri)
+
+        def stats(self):
+            return {"routing_index_bytes": 64, "resident_detail_kv_bytes": 512}
+
+        def route(self, query):
+            uri = next(iter(self.references))
+            selected = ({
+                "reference_uri": uri, "chunk_id": f"{uri}#0",
+                "logical_start": 0, "logical_end": 4,
+            },)
+            return type("Routing", (), {
+                "selected": selected,
+                "stats": {"selection_policy": "top_k"},
+            })()
+
+    progressive = _progressive(tmp_path)
+    record = progressive.ingest(
+        "alpha beta exact evidence omega", record_type=RecordType.GENERIC_TEXT
+    )
+    visible_uris = tuple(progressive.registry.documents)
+    model = FakePRA()
+    progressive.registry.pra_model = model
+
+    handle = progressive.register_backing_record(record.record_id)
+    selection = progressive.native_select("exact evidence")
+    result = progressive.materialize_native_selection(selection)
+
+    assert handle.uri.endswith("/views/backing")
+    assert tuple(progressive.registry.documents)[:len(visible_uris)] == visible_uris
+    assert handle.uri not in progressive.registry.documents
+    assert selection.record_ids == (record.record_id,)
+    assert result.success
+    assert result.produced_document.record_id == record.record_id
+    assert result.payload["selected_chunks"][0]["logical_start"] == 0
+
+
+def test_frozen_native_chunks_replay_through_typed_materialization(tmp_path):
+    progressive = _progressive(tmp_path)
+    record = progressive.ingest(
+        "alpha beta exact evidence omega", record_type=RecordType.GENERIC_TEXT
+    )
+    chunks = ({
+        "chunk_id": "native-7",
+        "logical_start": 7,
+        "logical_end": 11,
+        "text": "exact evidence ANSWER_CODE=ZX-7",
+    },)
+
+    result = progressive.materialize_backing_chunks(
+        record.record_id,
+        "find ZX-7",
+        chunks,
+        selection_policy="PRA_NATIVE_HYBRID",
+    )
+
+    assert result.success
+    assert result.produced_document is not None
+    assert result.produced_document.record_id == record.record_id
+    assert result.payload["selected_chunks"][0]["text"].endswith("ZX-7")
+    assert result.payload_bytes > 0

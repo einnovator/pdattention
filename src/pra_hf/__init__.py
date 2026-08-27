@@ -3,7 +3,7 @@
 from .config import PRAConfig
 from .evaluation import evaluate_router_features
 from .memory_adapter import PRAMemoryAdapter
-from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
+from .model import GenerationResult, PRAForCausalLM, ReferenceHandle, RoutingResult
 from .router import PRARouter
 from .hybrid_discovery import (
     DiscoveryCandidate,
@@ -177,17 +177,22 @@ from .context_recovery import (
     trigger_case_fingerprint,
 )
 from .progressive_context import (
+    ControllerConfig,
+    ControllerDescriptionLevel,
+    ControllerProtocol,
     ContextAction,
     ContextDecision,
     ContextExecutionResult,
     ContextTransport,
     ImplicitPRAChunk,
     ImplicitPRADocument,
+    NativePRASelection,
     PRARecordRegistry,
     PRASelection,
     PRAViewKind,
     ProgressiveContextRuntime,
     RecordCapabilities,
+    controller_description_block,
     parse_context_decision,
 )
 
@@ -207,6 +212,9 @@ __all__ = [
     "ContextRecord",
     "ContextPolicy",
     "ContextAction",
+    "ControllerConfig",
+    "ControllerDescriptionLevel",
+    "ControllerProtocol",
     "ContextDecision",
     "ContextExecutionResult",
     "ContextTransport",
@@ -239,6 +247,7 @@ __all__ = [
     "IterativeRoutingResult",
     "ImplicitPRAChunk",
     "ImplicitPRADocument",
+    "NativePRASelection",
     "LOW_RANK_INDEX_DTYPES",
     "LowRankRoutingIndex",
     "IndexFingerprint",
@@ -273,6 +282,7 @@ __all__ = [
     "EncodedCapabilityView",
     "LazyCapabilityRuntime",
     "ReferenceHandle",
+    "RoutingResult",
     "ReturnSchema",
     "RetrievalGraph",
     "GraphQueryFacetSet",
@@ -321,6 +331,7 @@ __all__ = [
     "ProgressiveKVCost",
     "ProgressiveContextRuntime",
     "RecordCapabilities",
+    "controller_description_block",
     "bounded_candidate_ids",
     "UnionStrategy",
     "build_query_graph",
