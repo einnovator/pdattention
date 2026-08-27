@@ -1,0 +1,114 @@
+# Execution Policies and Deployment
+
+PRA selection, K/V materialization, and process placement are separate choices. The
+SDK keeps them separate so a request cannot silently change semantics while moving
+between a local model and a remote engine.
+
+## Execution policy
+
+`PRAExecutionPolicy` has four independent axes:
+
+| Axis | Initial values | Meaning |
+| --- | --- | --- |
+| Selection stage | `request`, `phase`, `token` | When logical identities may change |
+| Layer scope | `shared`, `per_layer` | Whether layers reuse identities or route independently |
+| Materialization scope | `request`, `phase`, `layer`, `token` | Lifetime of a physical payload |
+| Residency | `keep`, `layer_lifetime` | Whether a payload remains resident for its lifetime |
+
+The global default is `request/shared/request/keep`. Request overrides take precedence
+over model defaults, which take precedence over the global default. Unsupported
+combinations raise an error; the SDK does not silently choose a cheaper mode.
+
+```python
+from pra_hf import PRAForCausalLM
+
+model = PRAForCausalLM.from_pretrained(model_id)
+model.set_execution_policy(selection_layer_scope="per_layer")
+result = model.generate(
+    prompt,
+    pra_policy={
+        "selection_stage": "token",
+        "selection_layer_scope": "shared",
+        "materialization_scope": "token",
+        "routing_layer_policy": "first_pra_layer",
+    },
+    return_details=True,
+)
+print(result.stats["pra_execution"])
+```
+
+The HF reference backend implements request/shared, request/per-layer,
+token/shared, and token/per-layer. In token/shared mode, layers before the routing
+layer receive no current-token memory. The routing layer selects once; that logical
+identity set is mapped to each later layer's independently encoded native K/V.
+Phase-level execution is currently rejected because it needs a cache-aware
+prefill-to-decode handoff that the reference `generate()` path does not yet expose.
+
+## Three components
+
+1. **Agent or harness:** owns task/session meaning, record structure, provenance, and authorization references.
+2. **PRA gateway:** owns protocol translation, logical resource IDs, explicit downgrade decisions, and transport traces.
+3. **Inference engine:** owns tensor layout, K/V blocks, device placement, attention, and scheduling.
+
+Raw K/V does not cross the normal harness/gateway wire boundary. `PRAWireRequest`
+contains JSON-serializable messages, stable resource IDs, budgets, query facets,
+policy hints, and requested capabilities.
+
+## Gateway modes
+
+| Mode | Input | Engine | Behavior |
+| --- | --- | --- | --- |
+| G00 | ordinary | ordinary | pass through structured messages |
+| G10 | PRA-aware | ordinary | selected resources become labeled text context |
+| G01 | ordinary | PRA-aware | infer typed resources from system/tool records |
+| G11 | PRA-aware | PRA-aware | preserve logical PRA semantics end to end |
+
+G10 is **PRA control-plane / text materialization**, not native PRA. A downgrade is
+allowed only when the request opts into text fallback, and the trace names it.
+
+```bash
+pra gateway serve \
+  --host 0.0.0.0 --port 8080 \
+  --mode G10 \
+  --backend sglang \
+  --backend-url http://localhost:30000
+```
+
+The gateway exposes `GET /health`, `GET /v1/pra/capabilities`,
+`POST /v1/pra/generate`, and `POST /v1/chat/completions`. It is currently
+non-streaming. The adapter protocol reserves `stream()` so SSE, tool-call streaming,
+cancellation, timeout propagation, and backpressure can be added without changing the
+logical request.
+
+## Engine levels
+
+| Level | Meaning | Current status |
+| --- | --- | --- |
+| E0 | protocol facade or text fallback | implemented for OpenAI-compatible HTTP |
+| E1 | native PRA attention execution | implemented by local HF eager adapter |
+| E2 | PRA-aware memory residency/runtime | not implemented |
+| E3 | PRA-aware scheduler and batching | not implemented |
+
+SGLang documents an OpenAI-compatible server and a model gateway, so the current
+adapter can target it at E0. Its configurable attention backends identify a plausible
+future E1 boundary, but no PRA backend has been implemented or measured
+([SGLang quickstart](https://github.com/sgl-project/sglang/blob/main/docs/docs/get-started/quickstart.mdx),
+[attention backends](https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/attention_backend.md)).
+FreeToken likewise documents OpenAI and Anthropic endpoints, which makes E0 transport
+feasible; native PRA cache integration remains unimplemented
+([FreeToken quickstart](https://github.com/FlashML-org/FreeToken/blob/main/docs/quickstart.md)).
+
+## Security and ownership
+
+Retrieval relevance never grants source access or tool permission. The wire parser
+rejects cross-tenant resources and credential-like request metadata. Engine handles
+must remain tenant/session scoped, cache presence is not authorization, and tool side
+effects continue through the independent host authorization boundary.
+
+## Agent integrations
+
+DeepSeek- and Pi-style agents can use the OpenAI-compatible gateway without native
+plugins by changing their base URL. A dedicated plugin should later preserve typed
+tool-result boundaries, `session_id`, `task_id`, logical resources, and the `pra`
+extension envelope. That work is intentionally a client integration plan; this branch
+does not claim tested upstream plugins.

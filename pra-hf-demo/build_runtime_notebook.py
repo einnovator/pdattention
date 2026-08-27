@@ -93,6 +93,11 @@ from pra_hf import (
     PRAConfig,
     PRAAgent,
     PRAAgentConfig,
+    PRAEngineCapabilities,
+    PRAEngineResult,
+    PRAGateway,
+    PRAWireRequest,
+    PRAWireResource,
     PRARuntime,
     PRARuntimeConfig,
     ResolverRegistry,
@@ -1043,6 +1048,101 @@ override; it does not change the tool's recorded side-effect class.
     ),
     md(
         r'''
+## 22. Multi-axis execution policy
+
+Selection timing, layer scope, materialization lifetime, and residency are independent. The model
+default is request/shared/request/keep. A request override is isolated and appears with field-level
+provenance in `pra_execution`. Token/shared selects once at the routing layer in each forward;
+earlier layers receive no current-token memory, while later layers resolve the same logical IDs to
+their own native K/V. Phase selection intentionally raises until HF has a cache-correct prefill to
+completion handoff.
+'''
+    ),
+    code(
+        r'''
+policy_model = runtime.backend.model
+request_per_layer = policy_model.generate(
+    "Where is the runtime fact?",
+    max_new_tokens=2,
+    return_details=True,
+    do_sample=False,
+    pra_policy={"selection_layer_scope": "per_layer"},
+)
+token_shared = policy_model.generate(
+    "Where is the runtime fact?",
+    max_new_tokens=2,
+    return_details=True,
+    do_sample=False,
+    pra_policy={
+        "selection_stage": "token",
+        "selection_layer_scope": "shared",
+        "materialization_scope": "token",
+    },
+)
+{
+    "request_per_layer": request_per_layer.stats["pra_execution"],
+    "token_shared": token_shared.stats["pra_execution"],
+}
+'''
+    ),
+    md(
+        r'''
+## 23. Standalone gateway and explicit downgrade
+
+The wire carries structured messages and stable logical IDs, never raw tensors. This offline cell
+uses a recording E0 adapter to show G10. The gateway inserts labeled text context only because the
+request opts into fallback, and the trace states that native K/V was not used. G01 performs the
+opposite migration: it derives typed resources from ordinary system and tool-result records before
+calling a logical-reference-capable engine.
+'''
+    ),
+    code(
+        r'''
+class NotebookEngine:
+    def __init__(self):
+        self.last_request = None
+
+    def capabilities(self):
+        return PRAEngineCapabilities(adapter="notebook-e0")
+
+    def prepare_session(self, request):
+        return request.session_id
+
+    def generate(self, request):
+        self.last_request = request
+        return PRAEngineResult("offline gateway response")
+
+    def stream(self, request):
+        raise NotImplementedError
+
+    def close_session(self, session_id):
+        return None
+
+
+engine = NotebookEngine()
+gateway = PRAGateway(engine, mode="G10")
+gateway_result = gateway.generate(PRAWireRequest(
+    model="offline/tiny-llama",
+    messages=({"role": "user", "content": "Use the selected fact."},),
+    tenant_id="runtime-demo",
+    resources=(PRAWireResource(
+        resource_id="fact-1",
+        uri="pra://runtime-demo/fact-1",
+        text="The selected runtime fact is exact.",
+        metadata={"tenant_id": "runtime-demo"},
+    ),),
+    required_capabilities=("native_kv",),
+    allow_text_fallback=True,
+))
+{
+    "gateway": gateway.capabilities(),
+    "materialized_message": engine.last_request.messages[0],
+    "trace": gateway_result.trace,
+}
+'''
+    ),
+    md(
+        r'''
 ## CLI equivalents
 
 The same systems surface is available without notebook state:
@@ -1055,6 +1155,7 @@ python -m pra_hf.cli runtime benchmark --output ./runtime-results
 python -m pra_hf.cli runtime prepare-vllm "A user prompt" --selected-uri memory://demo/facts
 python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect the repository"
 python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
+pra gateway serve --mode G10 --backend sglang --backend-url http://localhost:30000
 ```
 
 ## What this notebook proves, and what it does not
@@ -1074,6 +1175,8 @@ Demonstrated here:
 - opt-in route-only native PRA retrieval over exact result backing;
 - durable user/session resolution, versioned task DAGs, and task-scoped typed records;
 - reusable workspace toolsets and a resumable coding-agent terminal UI;
+- request/per-layer and token/shared execution with request-owned traces;
+- a logical gateway request and explicitly labeled text fallback;
 - a scheduler-unaware vLLM request contract.
 
 Not demonstrated here:
@@ -1083,7 +1186,8 @@ Not demonstrated here:
 - Triton/custom CUDA fusion;
 - asynchronous transfer overlap or production prefetch;
 - continuous batching, p95/p99 serving latency, or a deep vLLM scheduler integration;
-- measured SGLang, TensorRT-LLM, MLX, llama.cpp, TGI, or Ollama adapters.
+- streaming gateway proxying or phase-level HF selection;
+- native or measured SGLang, FreeToken, TensorRT-LLM, MLX, llama.cpp, TGI, or Ollama adapters.
 
 Those omissions are explicit capability gates, not hidden eager fallbacks.
 '''

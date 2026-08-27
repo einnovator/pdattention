@@ -330,6 +330,30 @@ def resolve_execution_policy(
     return ResolvedPRAExecutionPolicy(effective, sources, capabilities)
 
 
+def analytical_routing_operations(
+    policy: PRAExecutionPolicy,
+    *,
+    active_layers: int,
+    phases: int = 2,
+    generated_tokens: int = 1,
+) -> int:
+    """Return the policy's idealized routing count, not measured wall time."""
+
+    if active_layers <= 0 or phases <= 0 or generated_tokens <= 0:
+        raise ValueError("Analytical routing dimensions must be positive.")
+    stage_factor = {
+        PRASelectionStage.REQUEST: 1,
+        PRASelectionStage.PHASE: phases,
+        PRASelectionStage.TOKEN: generated_tokens,
+    }[policy.selection_stage]
+    layer_factor = (
+        active_layers
+        if policy.selection_layer_scope == PRASelectionLayerScope.PER_LAYER
+        else 1
+    )
+    return stage_factor * layer_factor
+
+
 @dataclass(frozen=True)
 class PRASelectedIdentity:
     """Layer-independent reference/chunk identity without native tensors."""
@@ -442,11 +466,7 @@ class PRARequestExecutionContext:
                 "selection_additions": len(current - prior),
                 "selection_removals": len(prior - current),
                 "routing_seconds": plan.routing_seconds,
-                "routing_operations": (
-                    len(plan.per_layer_rows)
-                    if plan.layer_scope == PRASelectionLayerScope.PER_LAYER
-                    else 1
-                ),
+                "routing_operations": 1,
             }
         )
 
@@ -514,6 +534,13 @@ class PRASelectionController:
                 return phase_plan
         if (
             policy.selection_stage == PRASelectionStage.TOKEN
+            and policy.selection_layer_scope == PRASelectionLayerScope.SHARED
+            and existing is not None
+            and existing.token_index == token_index
+        ):
+            return existing
+        if (
+            policy.selection_stage == PRASelectionStage.TOKEN
             and existing is not None
             and policy.reselection_interval_tokens
             and token_index % policy.reselection_interval_tokens
@@ -532,7 +559,11 @@ class PRASelectionController:
                 routing_seconds=routing_seconds,
             )
         else:
-            previous = dict(existing.per_layer_rows) if existing is not None else {}
+            previous = (
+                dict(existing.per_layer_rows)
+                if existing is not None and existing.token_index == token_index
+                else {}
+            )
             previous[layer_id] = rows
             plan = PRASelectionPlan(
                 policy.selection_stage,

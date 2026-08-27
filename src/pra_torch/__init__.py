@@ -18,6 +18,7 @@ from .execution import (
     PRASelectionPlan,
     PRASelectionStage,
     get_default_execution_policy,
+    analytical_routing_operations,
     resolve_execution_policy,
     set_default_execution_policy,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "prepare_prompt_batch_for_pra",
     "prepare_prompt_for_pra",
     "get_default_execution_policy",
+    "analytical_routing_operations",
     "resolve_execution_policy",
     "set_default_execution_policy",
 ]

@@ -8,7 +8,8 @@ headed "Paper 5.5"; the branch and paper use the user-requested Paper 4.5
 identifier without changing its systems scope.
 
 The current evidence supports a portable eager materialization baseline and a
-measurement contract. It does not support a `torch.compile`, Triton, custom
+measurement contract, multi-axis HF mechanism checks, and a contract-tested
+non-streaming gateway. It does not support a `torch.compile`, Triton, custom
 CUDA, vLLM, SGLang, TensorRT-LLM, or MLX speed claim. Optional runtime paths
 must be reported as measured, contract-only, unavailable, or architectural.
 
@@ -23,6 +24,7 @@ Run the runtime profile and summary from the repository root:
 ```powershell
 $env:PYTHONPATH = "src;."
 python -m experiments.paper4_5_runtime.run_runtime_profile
+python -m experiments.paper4_5_runtime.run_execution_policy_profile
 python -m experiments.paper4_5_runtime.summarize_runtime
 ```
 

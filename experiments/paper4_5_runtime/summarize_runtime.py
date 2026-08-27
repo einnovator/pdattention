@@ -50,6 +50,10 @@ def main() -> None:
     cpu = _json(OUTPUT / "cpu" / "runtime_benchmark.json")
     cuda = _json(OUTPUT / "cuda" / "runtime_benchmark.json")
     combined = [*cpu["summary"], *cuda["summary"]]
+    execution_summary = json.loads(
+        (OUTPUT / "execution_policy_summary.json").read_text(encoding="utf-8")
+    )
+    execution = {row["condition"]: row for row in execution_summary}
     _write_csv(OUTPUT / "runtime_combined_summary.csv", combined)
 
     qwen = _json(RESULTS / "paper2_hf" / "productization" / "qwen_product_demo.json")
@@ -207,6 +211,13 @@ def main() -> None:
         "paper2_inherited_examples": qwen_combined["examples"],
         "paper2_inherited_routing_seconds": qwen_combined["routing_seconds"],
         "paper4_lifecycle_examples": lifecycle["examples"],
+        "execution_policy_seeds": execution["request_shared_last"]["seeds"],
+        "token_shared_routing_operations": execution["token_shared_first"][
+            "routing_operations_mean"
+        ],
+        "token_per_layer_routing_operations": execution["token_per_layer"][
+            "routing_operations_mean"
+        ],
     }
     (OUTPUT / "findings.json").write_text(
         json.dumps(findings, indent=2, sort_keys=True), encoding="utf-8"
@@ -214,10 +225,13 @@ def main() -> None:
     capabilities = cuda["capabilities"]
     compatibility = [
         {"runtime": "HF/PyTorch eager", "status": "measured", "boundary": "native PRA model and portable K/V primitives"},
+        {"runtime": "Standalone gateway", "status": "contract tested", "boundary": "G00/G10/G01/G11 JSON mediation; non-streaming"},
+        {"runtime": "OpenAI-compatible HTTP", "status": "E0 implemented", "boundary": "pass-through and explicit text fallback"},
         {"runtime": "torch.compile", "status": "blocked on host", "boundary": "API implemented; CPU compiler absent and GPU too old for Triton"},
         {"runtime": "Triton/custom CUDA", "status": "not run", "boundary": "requires supported GPU/toolchain after profiling"},
         {"runtime": "vLLM thin", "status": "contract only", "boundary": "scheduler-unaware identity/KV handoff"},
-        {"runtime": "SGLang/TensorRT-LLM/MLX", "status": "architectural only", "boundary": "not installed on measured host"},
+        {"runtime": "SGLang/FreeToken", "status": "E0 feasible, not run", "boundary": "compatible HTTP; no native PRA backend"},
+        {"runtime": "TensorRT-LLM/MLX", "status": "architectural only", "boundary": "not installed on measured host"},
     ]
     _write_csv(OUTPUT / "compatibility_matrix.csv", compatibility)
     manifest = {
@@ -228,6 +242,7 @@ def main() -> None:
         "inherited_paper4_artifact": "paper4_training/external_memory/external_memory_findings.json",
         "quality_metrics_recomputed": False,
         "engine_speed_claims": False,
+        "execution_policy_profile": "five-seed tiny random-weight HF mechanism check",
     }
     (OUTPUT / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
@@ -262,6 +277,14 @@ def main() -> None:
 \newcommand{{\LifecycleColdMs}}{{{lifecycle['mean_ttft_proxy_ms']['cold']:.2f}}}
 \newcommand{{\LifecycleWarmMs}}{{{lifecycle['mean_ttft_proxy_ms']['warm']:.2f}}}
 \newcommand{{\LifecycleHotMs}}{{{lifecycle['mean_ttft_proxy_ms']['hot']:.2f}}}
+\newcommand{{\ExecutionPolicySeeds}}{{{execution['request_shared_last']['seeds']}}}
+\newcommand{{\ExecutionRequestSharedMs}}{{{1000 * execution['request_shared_last']['generation_seconds_mean']:.1f}}}
+\newcommand{{\ExecutionRequestPerLayerMs}}{{{1000 * execution['request_per_layer']['generation_seconds_mean']:.1f}}}
+\newcommand{{\ExecutionTokenSharedMs}}{{{1000 * execution['token_shared_first']['generation_seconds_mean']:.1f}}}
+\newcommand{{\ExecutionTokenPerLayerMs}}{{{1000 * execution['token_per_layer']['generation_seconds_mean']:.1f}}}
+\newcommand{{\ExecutionTokenSharedRoutes}}{{{execution['token_shared_first']['routing_operations_mean']:.1f}}}
+\newcommand{{\ExecutionTokenPerLayerRoutes}}{{{execution['token_per_layer']['routing_operations_mean']:.1f}}}
+\newcommand{{\ExecutionRoutingReduction}}{{{execution['token_per_layer']['routing_operations_mean'] / execution['token_shared_first']['routing_operations_mean']:.1f}}}
 """
     (OUTPUT / "generated_runtime_results.tex").write_text(tex, encoding="utf-8")
 

@@ -6,6 +6,8 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "docs" / "papers" / "shared" / "results" / "paper4_5_runtime"
@@ -31,6 +33,12 @@ def test_runtime_artifacts_are_complete_and_internally_consistent() -> None:
     assert manifest["protocol"]["scope"] == "portable selected-KV mechanism microbenchmark"
     assert "\\newcommand{\\RuntimeCudaIndexBatchOneMs}" in macros
     assert "\\newcommand{\\RuntimeLayoutSpreadBatchFour}" in macros
+    assert manifest["execution_policy_profile"].startswith("five-seed")
+    assert findings["token_per_layer_routing_operations"] == pytest.approx(
+        3 * findings["token_shared_routing_operations"]
+    )
+    assert "\\newcommand{\\ExecutionRoutingReduction}{3.0}" in macros
+    assert (RESULTS / "execution_policy_tradeoff.pdf").is_file()
     assert (PAPER / "paper.pdf").stat().st_size > 100_000
 
 
@@ -41,7 +49,10 @@ def test_compatibility_matrix_keeps_claim_levels_explicit() -> None:
     assert rows["HF/PyTorch eager"] == "measured"
     assert rows["torch.compile"] == "blocked on host"
     assert rows["vLLM thin"] == "contract only"
-    assert rows["SGLang/TensorRT-LLM/MLX"] == "architectural only"
+    assert rows["Standalone gateway"] == "contract tested"
+    assert rows["OpenAI-compatible HTTP"] == "E0 implemented"
+    assert rows["SGLang/FreeToken"] == "E0 feasible, not run"
+    assert rows["TensorRT-LLM/MLX"] == "architectural only"
 
 
 def test_runtime_demo_is_executed_and_covers_the_unified_sdk() -> None:
@@ -71,5 +82,7 @@ def test_runtime_demo_is_executed_and_covers_the_unified_sdk() -> None:
         "Byte-bounded hot-cache behavior",
         "Capability-graph disclosure",
         "Thin vLLM handoff",
+        "Multi-axis execution policy",
+        "Standalone gateway and explicit downgrade",
     ):
         assert phrase in markdown

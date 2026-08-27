@@ -600,6 +600,7 @@ class PRAForCausalLM:
             routing_seconds=routing_seconds,
         )
         context.record_plan(plan)
+        context.trace[-1]["routing_operations"] = len(fixed)
         self._handle.configure_memory_layers(
             set(self.consumption_layers), fixed_selections=fixed
         )

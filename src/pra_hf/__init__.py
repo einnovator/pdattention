@@ -16,6 +16,7 @@ from pra_torch.execution import (
     PRASelectionPlan,
     PRASelectionStage,
     get_default_execution_policy,
+    analytical_routing_operations,
     set_default_execution_policy,
 )
 from .hybrid_discovery import (
@@ -184,6 +185,19 @@ from .runtime import (
     VLLMThinRequest,
     runtime_capabilities,
 )
+from .deployment import (
+    HuggingFaceEngineAdapter,
+    OpenAICompatibleEngineAdapter,
+    PRAEngineAdapter,
+    PRAEngineCapabilities,
+    PRAEngineIntegrationLevel,
+    PRAEngineResult,
+    PRAGatewayMode,
+    PRAWireBudget,
+    PRAWireRequest,
+    PRAWireResource,
+)
+from .gateway import PRACapabilityError, PRAGateway, create_gateway_server, serve_gateway
 
 __version__ = "0.2.0rc1"
 
@@ -241,6 +255,7 @@ __all__ = [
     "pool_hard_graph_facets",
     "weighted_label_propagation",
     "get_default_execution_policy",
+    "analytical_routing_operations",
     "set_default_execution_policy",
 ]
 
@@ -276,6 +291,23 @@ __all__ += [
     "VLLMThinRequest",
     "parse_tool_call",
     "runtime_capabilities",
+]
+
+__all__ += [
+    "HuggingFaceEngineAdapter",
+    "OpenAICompatibleEngineAdapter",
+    "PRACapabilityError",
+    "PRAEngineAdapter",
+    "PRAEngineCapabilities",
+    "PRAEngineIntegrationLevel",
+    "PRAEngineResult",
+    "PRAGateway",
+    "PRAGatewayMode",
+    "PRAWireBudget",
+    "PRAWireRequest",
+    "PRAWireResource",
+    "create_gateway_server",
+    "serve_gateway",
 ]
 
 __all__ += [

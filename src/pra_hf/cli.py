@@ -16,6 +16,7 @@ from .runtime import PRARuntimeConfig, VLLMThinBackend, runtime_capabilities
 from .runtime_benchmark import run_runtime_microbenchmark, write_runtime_benchmark
 from .agent import PRAAgent, PRAAgentConfig
 from .tui import AgentShell
+from .gateway_cli import gateway_cli
 
 
 def _echo_json(value) -> None:
@@ -25,6 +26,9 @@ def _echo_json(value) -> None:
 @click.group()
 def cli() -> None:
     """Attach sparse, URI-addressed native-K/V memory to supported HF models."""
+
+
+cli.add_command(gateway_cli)
 
 
 @cli.group("agent")

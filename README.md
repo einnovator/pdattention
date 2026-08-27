@@ -113,6 +113,36 @@ custom callables or the workspace-bounded default tools, while tool visibility a
 authorization remain separate. Subagents and learned long-term memory are intentionally
 reserved for Papers 9 and 10.
 
+## Execution policy and gateway
+
+HF generation defaults to request-time selection shared across PRA layers. A request
+can instead select independently by layer or recompute one shared selection from the
+evolving token representation:
+
+```python
+result = model.generate(
+    prompt,
+    pra_policy={
+        "selection_stage": "token",
+        "selection_layer_scope": "shared",
+        "materialization_scope": "token",
+    },
+    return_details=True,
+)
+```
+
+The standalone gateway keeps agent, PRA mediation, and inference-engine ownership
+separate. This command explicitly materializes PRA resources as text for an ordinary
+OpenAI-compatible backend; it is not native-K/V execution:
+
+```bash
+pra gateway serve --mode G10 --backend openai \
+  --backend-url http://localhost:8000 --host 127.0.0.1 --port 8080
+```
+
+See `docs/site/deployment.md` for G00/G10/G01/G11 modes, E0--E3 engine levels,
+capability negotiation, and the JSON wire contract.
+
 ## HTML documentation
 
 The MkDocs site combines architecture guides with API reference generated from Python

@@ -14,6 +14,16 @@ result backing.
 
 ::: pra_hf.runtime
 
+## Execution Policy
+
+::: pra_torch.execution
+
+## Gateway and Engine Adapters
+
+::: pra_hf.deployment
+
+::: pra_hf.gateway
+
 ## Tools and Skills
 
 ::: pra_hf.capability_sdk

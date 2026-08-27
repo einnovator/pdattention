@@ -16,6 +16,7 @@ from data.datasets import read_jsonl
 from .config import CacheServiceConfig, PRAConfig, ResolverServiceConfig, TrainConfig
 from .eval import run_evaluation
 from .pra_train import train_pra_model
+from pra_hf.gateway_cli import gateway_cli
 
 
 DEFAULT_CONFIG_PATH = Path("config") / "config.yml"
@@ -344,6 +345,9 @@ def common_service_options(func):
 @click.group()
 def cli():
     """PRA standalone CLI."""
+
+
+cli.add_command(gateway_cli)
 
 
 @cli.command()

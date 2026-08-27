@@ -18,6 +18,7 @@ from pra_torch.execution import (
     PRASelectionStage,
     resolve_execution_policy,
     resolve_routing_layer,
+    analytical_routing_operations,
 )
 
 
@@ -174,6 +175,33 @@ def test_request_selection_reuses_one_epoch_and_token_selection_tracks_churn():
     assert summary["trace"][-1]["selection_removals"] == 1
 
 
+def test_token_shared_reuses_current_epoch_across_later_layers():
+    controller = PRASelectionController()
+    context = _context(
+        PRAExecutionPolicy(
+            selection_stage="token",
+            materialization_scope="token",
+        )
+    )
+    calls = []
+    first = controller.selection_for(
+        context=context,
+        layer_id=2,
+        phase="decode",
+        token_index=3,
+        route=lambda layer: calls.append(layer) or _rows(),
+    )
+    later = controller.selection_for(
+        context=context,
+        layer_id=6,
+        phase="decode",
+        token_index=3,
+        route=lambda layer: calls.append(layer) or _rows("unexpected"),
+    )
+    assert later is first
+    assert calls == [2]
+
+
 def test_per_layer_plan_preserves_row_and_layer_isolation():
     controller = PRASelectionController()
     context = _context(PRAExecutionPolicy(selection_layer_scope="per_layer"))
@@ -227,3 +255,27 @@ def test_materialization_cache_obeys_request_and_layer_lifetimes():
     manager.end_layer(layer_context, 4)
     manager.get_layer_memory(context=layer_context, plan=plan, layer_id=4)
     assert len(calls) == 3
+
+
+@pytest.mark.parametrize(
+    ("stage", "scope", "expected"),
+    (
+        ("request", "shared", 1),
+        ("request", "per_layer", 4),
+        ("phase", "shared", 2),
+        ("phase", "per_layer", 8),
+        ("token", "shared", 16),
+        ("token", "per_layer", 64),
+    ),
+)
+def test_analytical_routing_operation_model(stage, scope, expected):
+    policy = PRAExecutionPolicy(
+        selection_stage=stage,
+        selection_layer_scope=scope,
+        materialization_scope=(
+            "phase" if stage == "phase" else "token" if stage == "token" else "request"
+        ),
+    )
+    assert analytical_routing_operations(
+        policy, active_layers=4, phases=2, generated_tokens=16
+    ) == expected

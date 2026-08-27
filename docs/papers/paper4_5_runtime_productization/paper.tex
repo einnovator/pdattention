@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 \usepackage[margin=0.88in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,graphicx,tabularx,array,enumitem,float}
+\usepackage{amsmath,amssymb,booktabs,graphicx,tabularx,longtable,array,enumitem,float}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xcolor}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
@@ -23,11 +23,19 @@ compact typed-result backing,
 but those parts did not yet form one product surface, and logical sparsity did
 not by itself establish lower latency or accelerator memory.  We introduce a
 unified runtime that preserves the existing Hugging Face API while adding
+an engine-neutral four-axis execution policy, request-owned selection plans,
 versioned systems configuration, authenticated sessions, lazy tool and skill
 disclosure, independently authorized tool execution, session-scoped result
 compaction, durable task-aware agent state, selective replay, deduplicated K/V interval planning, physical byte
 accounting, bounded caching, profiling, and a scheduler-unaware serving
-handoff.  On a CUDA 12.6 host with an NVIDIA GTX 950M,
+handoff. A standalone gateway now separates agent semantics, PRA mediation,
+and engine-native state through a JSON logical-reference contract and explicit
+capability negotiation. In a five-seed tiny-HF mechanism profile, token-shared
+selection required
+\ExecutionTokenSharedRoutes{} routing operations per request, versus
+\ExecutionTokenPerLayerRoutes{} for token-per-layer, a
+\ExecutionRoutingReduction{}$\times$ reduction with three active layers. On a
+CUDA 12.6 host with an NVIDIA GTX 950M,
 gathering 512 of 8,192 native-K/V tokens takes a median
 \RuntimeCudaIndexBatchOneMs{} ms at batch one, and packing eight selected
 intervals takes \RuntimeCudaPackBatchOneMs{} ms.  The same packed payload costs
@@ -88,6 +96,10 @@ routing;
 \item an explicit physical K/V contract with native grouped-query heads,
 deduplicated intervals, hard token budgets, transfer accounting, and a
 byte-bounded LRU;
+\item independent selection-stage, layer-scope, materialization-lifetime, and
+residency policies with request-over-model-over-global precedence;
+\item a standalone G00/G10/G01/G11 gateway, logical JSON wire contract, and
+E0--E3 engine capability model that makes every downgrade visible;
 \item stage-level instrumentation and a structured benchmark that separates
 cold compilation, warm primitives, memory residency, and unsupported paths;
 \item a thin serving handoff that withholds semantic scores from the scheduler,
@@ -151,9 +163,12 @@ inspection surface while retaining their ownership boundaries.
 \centering
 \fbox{\begin{minipage}{0.91\linewidth}
 \centering
-Application / CLI / notebook\\[3pt]
+Agent / existing harness / CLI\\[3pt]
 $\downarrow$\\[3pt]
-\textbf{PRARuntime}: config, sessions, traces, cache accounting\\[5pt]
+\textbf{PRA gateway}: logical IDs, capability negotiation, protocol trace\\[5pt]
+G00 pass-through \quad G10 text fallback \quad G01 upgrade \quad G11 mediation\\[5pt]
+$\downarrow$ JSON logical request; no raw K/V $\downarrow$\\[5pt]
+\textbf{Inference runtime}: config, sessions, traces, cache accounting\\[5pt]
 \begin{tabular}{c@{\qquad}c@{\qquad}c}
 \textbf{Model path} & \textbf{Resource path} & \textbf{Tool path}\\
 PRAForCausalLM & ExternalMemoryManager & ResourceDiscoveryEngine\\
@@ -165,8 +180,9 @@ compact result $\rightarrow$ scoped backing $\rightarrow$ selected replay / curs
 $\downarrow$\\[3pt]
 deduplicated plan $\rightarrow$ gather/transfer/pack $\rightarrow$ HF or thin engine handoff
 \end{minipage}}
-\caption{The unified SDK.  Stable URIs join the paths, but routing does not
-authorize source access or tool side effects.}
+\caption{The distributed product boundary. Stable URIs join the paths, but the
+agent owns task meaning, the gateway owns translation, and the engine owns
+native K/V. Routing does not authorize source access or tool side effects.}
 \label{fig:architecture}
 \end{figure}
 
@@ -177,6 +193,34 @@ backend, compilation mode, K/V layout, page size, cache bounds, prefetch policy,
 and timing synchronization.  Both serialize to a versioned JSON artifact.  A
 runtime optimization is valid only when changing the second layer preserves
 selected identities and output parity under fixed model semantics.
+
+\subsection{A multi-axis execution policy}
+
+PRA does not imply one routing frequency. We represent one request with four
+orthogonal choices. The \emph{selection stage} is request, prefill/completion
+phase, or token. The \emph{layer scope} is shared logical identities or an
+independent selection per active layer. The \emph{materialization scope} is
+request, phase, layer, or token. The \emph{residency policy} retains a payload
+for that lifetime or releases it after one layer window. Shared identities never
+mean shared tensors: chunk $C_7$ resolves to the native K/V independently
+encoded at each consuming layer.
+
+The global default is request/shared/request/keep. A model default can override
+individual fields, and a request override takes final precedence. The resolved
+policy records field-level provenance. Unsupported combinations raise before
+generation; there is no implicit downgrade. The engine-neutral
+\texttt{PRASelectionPlan} contains stable URI/chunk identities and row-local
+spans, never tensors. A layer resolver maps that plan to native payloads, and a
+separate materialization manager applies physical lifetime and residency.
+
+The HF reference path preserves the old high-level request/shared behavior and
+the old low-level token/per-layer behavior. It adds request/per-layer by
+capturing all active layers in one memory-disabled prompt pass, routing each
+once, and freezing each result. It adds token/shared through a request-owned
+bridge: layers before the designated routing layer receive no current-token PRA
+memory; that layer selects once, and later layers resolve the same identities
+to their own K/V. Phase selection is represented but rejected by HF until a
+cache-correct prefill-to-decode handoff is implemented.
 
 \subsection{Stable resources and authenticated sessions}
 
@@ -342,6 +386,42 @@ hit rate is modest.  Both views are needed.
 
 \section{Compilation and Engine Boundaries}
 
+\subsection{Agent, gateway, and engine are independent}
+
+The distributed contract has three authorities. The agent owns user-visible
+task and session semantics, typed records, provenance, and authorization
+references. The gateway owns transport sessions, logical resource mapping,
+protocol translation, and explicit capability negotiation. The inference
+engine owns tensor layout, physical K/V blocks, device placement, attention,
+and scheduling. The normal wire carries JSON logical identities rather than
+raw K/V tensors.
+
+The implemented \texttt{PRAWireRequest} preserves messages, tenant/session/task
+IDs, resources, facets, budgets, execution-policy hints, provenance, and
+required capabilities. \texttt{PRAEngineAdapter} reports static capabilities,
+prepares and closes sessions, and offers generation plus a reserved streaming
+extension. Four deterministic gateway modes cover both sides of the migration:
+G00 passes ordinary traffic to an ordinary engine; G10 converts explicitly
+selected resources to labeled text for a PRA-unaware engine; G01 infers typed
+resources from system and tool-result boundaries before calling a PRA-aware
+engine; and G11 preserves an explicit PRA request for a PRA-aware engine. G10
+is control-plane PRA with text materialization, not native PRA execution.
+
+Capability negotiation is fail-closed. A request that requires native K/V is
+rejected by an E0 engine unless it explicitly allows text fallback and selects
+G10. The trace then names the unsupported capabilities, downgrade, selected
+logical IDs, gateway mode, correlation ID, and whether native K/V was used.
+Cross-tenant resources and credential-like request metadata are rejected before
+translation. Relevance still does not grant source or tool authorization.
+
+We distinguish E0 protocol integration, E1 native PRA attention, E2 a PRA-aware
+memory runtime, and E3 scheduler-aware batching. The local HF adapter is the E1
+semantic reference. The OpenAI-compatible HTTP adapter and standalone
+\texttt{pra gateway serve} process implement E0. SGLang and FreeToken expose
+compatible HTTP surfaces, so they are reachable at E0; neither has a PRA-native
+backend in this artifact~\cite{sglangDocs2026,freetokenDocs2026}. Streaming is an interface extension, not an
+implemented result in this version.
+
 \subsection{Compilation ladder}
 
 The eager path is the correctness baseline.  The first compiled primitive is a
@@ -436,7 +516,58 @@ resources through authenticated cold, warm, and hot states.  Its answer proxy
 is required-document availability, not language quality.  We do not pool these
 measurements with the new microbenchmark or compute cross-host speedups.
 
+\subsection{Execution-policy mechanism profile}
+
+We instantiate the same random-weight, three-layer tiny Llama configuration for
+five seeds and ingest two stable synthetic references. Every condition uses
+three active PRA layers, deterministic decoding, and at most three generated
+tokens. We compare request/shared at first and last routing layers,
+request/per-layer, token/shared at first and last routing layers, and
+token/per-layer. The profile records routing and selection epochs, temporal and
+layer Jaccard, selected-identity agreement, and generation wall time. It tests
+execution semantics and relative routing work, not language quality or
+production latency. EOS can terminate before three tokens, so token-level
+operation counts are averaged over the actual forwards.
+
 \section{Results}
+
+\subsection{Selection sharing removes repeated routing work}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{execution_policy_tradeoff.pdf}
+\caption{Five-seed tiny-HF mechanism profile. Routing operations validate the
+execution contract; wall time is host- and model-specific and is not a serving
+speed claim.}
+\label{fig:execution-policy}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Implemented policy points in the five-seed mechanism profile. Times
+are means over random-weight tiny models and do not measure answer quality.}
+\begin{tabular}{lrr}
+\toprule
+Condition & Routing operations & Generation ms\\
+\midrule
+Request/shared, last & 1.0 & \ExecutionRequestSharedMs{}\\
+Request/per-layer & 3.0 & \ExecutionRequestPerLayerMs{}\\
+Token/shared, first & \ExecutionTokenSharedRoutes{} & \ExecutionTokenSharedMs{}\\
+Token/per-layer & \ExecutionTokenPerLayerRoutes{} & \ExecutionTokenPerLayerMs{}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Request/per-layer performs exactly three routing decisions, but amortizes them
+over generation. Token/shared and token/per-layer observe the same average
+number of autoregressive forwards; sharing reduces routing work by
+\ExecutionRoutingReduction{}$\times$, from \ExecutionTokenPerLayerRoutes{} to
+\ExecutionTokenSharedRoutes{} operations. Tiny-model wall times are effectively
+tied for the two token modes, which means Python and model overhead dominate at
+this scale. The routing-layer sweep also changed selected identities, confirming
+that routing layer is a semantic parameter rather than a scheduling-only knob.
+The stable selections within these short completions yield temporal Jaccard one;
+longer trained-model studies are needed before making a churn or quality claim.
 
 \subsection{Portable eager primitives}
 
@@ -583,10 +714,13 @@ measurement.
 Runtime & Status & Boundary\\
 \midrule
 HF/PyTorch eager & measured & Native PRA model API and portable K/V primitives\\
+Standalone gateway & contract tested & G00/G10/G01/G11 JSON mediation; non-streaming\\
+OpenAI-compatible HTTP & E0 implemented & Pass-through and explicit text fallback\\
 \texttt{torch.compile} & blocked on host & API implemented; compiler/GPU gates recorded\\
 Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
 vLLM thin & contract only & Scheduler-unaware identity and K/V handoff\\
-SGLang/TensorRT-LLM/MLX & architectural only & Not installed on measured host\\
+SGLang/FreeToken & E0 feasible, not run & Compatible HTTP; no native PRA backend\\
+TensorRT-LLM/MLX & architectural only & Not installed on measured host\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -600,7 +734,10 @@ routing, generation, inspection, benchmark commands, and two executed
 notebooks.  The CLI exposes
 \texttt{runtime init}, \texttt{inspect}, \texttt{capabilities},
 \texttt{benchmark}, \texttt{prepare-vllm}, and a persistent
-\texttt{agent chat} terminal.  A deployment can therefore
+\texttt{agent chat} terminal. The \texttt{pra gateway serve} and
+\texttt{pra-hf gateway serve} commands launch the same independently testable
+gateway with health, capability, logical-request, and OpenAI-compatible
+endpoints. A deployment can therefore
 discover unsupported paths before serving.
 
 \section{Limitations and Next Gates}
@@ -618,6 +755,13 @@ subagents and learned long-term memory remain scoped to Papers 9 and 10.
 Native result routing currently requires an isolated model session; safe
 concurrent multi-tenant partitioning of model-resident result K/V remains an
 engine-level gate.
+The multi-axis HF bridge serializes high-level generation on one wrapped model
+to isolate temporary adapter state. It is a correctness reference, not a
+continuous-batching implementation. Phase selection, request-resident physical
+payload reuse across changing direct-token budgets, streaming gateway proxying,
+and E2/E3 engine integration remain open. The G01 parser recognizes explicit
+system, tool, and attachment boundaries; it does not claim semantic recovery
+from arbitrary opaque traffic.
 
 The next experiment should move to a compute-capability 8.0 or newer GPU with a
 pinned software stack.  It should first reproduce eager parity, then measure
@@ -628,7 +772,12 @@ and warm-cache locality.  End-to-end runs should report TTFT, inter-token
 latency, throughput, peak HBM, off-device bytes, temporary bytes, transfers,
 and reload amplification together.
 
-The first engine integration should remain thin: external routing, selected
+The next policy experiment should use a trained model and retrieval workload,
+hold selected-token budgets fixed, and compare answer quality, TTFT, inter-token
+latency, selection churn, and routing-layer disagreement. Phase/shared requires
+a cache-correct prefill handoff before it enters that comparison.
+
+The first deeper engine integration should remain thin: external routing, selected
 native-K/V materialization, then ordinary vLLM execution.  Disabled-PRA parity,
 native positions, masks, GQA, and batching must pass before speed comparisons.
 If useful behavior requires semantic residency, retrieval-aware scheduling, or
@@ -641,7 +790,10 @@ This paper turns that distinction into code and measurement.  One runtime now
 connects the public model API, authenticated memory lifecycle, typed resources,
 lazy tool and skill disclosure, safe execution, compact result backing,
 selective replay, durable tasks and sessions, physical K/V planning, caching, profiling, and backend
-handoff.  The eager primitives are exact and inexpensive in isolation, but
+handoff. Its policy lattice makes routing frequency and physical lifetime
+inspectable, while the gateway permits ordinary and PRA-aware agents and
+engines to coexist without sending native tensors over the logical wire. The
+eager primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
 and optional engines remain negative or unmeasured gates.  The practical
 conclusion is conservative: cache locality, physical residency, and context
@@ -665,41 +817,85 @@ materialized-token metadata, never semantic scores.  Tool execution receives a
 separate authorization object after discovery.  These boundaries allow another
 runtime to reproduce the interface without adopting the Python implementation.
 
+\subsection{Execution and deployment code map}
+
+Line references identify the artifact version accompanying this paper.
+\path{src/pra_torch/execution.py:61--107} defines the four policy axes and
+their validation; lines 358--425 define tensor-free identities and row-local
+plans; lines 428--504 own request epochs, churn, and trace summaries; and lines
+507--632 separate selection reuse from opaque materialization lifetimes.
+The important invariant is the type boundary: a selection controller returns
+URI/chunk spans, while only an engine resolver may return tensors or block
+handles.
+
+\path{src/pra_hf/hf_execution.py:49--174} is the family-independent HF
+bridge. At the routing layer it turns the current hidden representation into a
+logical plan. For shared scope it remaps the source-layer hits through
+\texttt{map\_chunk\_identities\_to\_layers}; each destination therefore receives
+its own native grouped-query K/V. The public request lock and precedence entry
+point are in \path{src/pra_hf/model.py:704--889}. Qwen, Llama, and Gemma call
+the same bridge from their thin attention adapter.
+
+For a distributed implementation, begin with
+\path{src/pra_hf/deployment.py:100--173}: reproduce that JSON request without
+adding tensor fields. At lines 175--182, expose capabilities, session setup,
+generation, streaming, and close as separate methods. Then reproduce deterministic mediation in
+\path{src/pra_hf/gateway.py:24--141}: negotiate first, transform according to
+G00--G11 second, and append component-local trace events last. The HTTP process
+starts at line 183; the CLI binding is
+\path{src/pra_hf/gateway_cli.py:35--59}. This order keeps an unsupported
+native request from being mistaken for successful text fallback.
+
 \section{Artifact Map}
 
-\begin{tabularx}{\linewidth}{lY}
+\small
+\begin{longtable}{p{0.39\linewidth}p{0.55\linewidth}}
 \toprule
 Artifact & Role\\
 \midrule
-\texttt{src/pra\_hf/runtime.py} & Unified facade, plans, materializer, cache,
+\endfirsthead
+\toprule
+Artifact & Role\\
+\midrule
+\endhead
+\path{src/pra_hf/runtime.py} & Unified facade, plans, materializer, cache,
 profiler, HF adapter, thin vLLM contract\\
-\texttt{src/pra\_hf/runtime\_benchmark.py} & Structured eager/compiled and
+\path{src/pra_torch/execution.py} & Engine-neutral policy axes, logical
+plans, precedence, lifecycle, and analytical routing count\\
+\path{src/pra_hf/hf_execution.py} & Request-owned token/shared and
+token/per-layer HF execution bridge\\
+\path{src/pra_hf/deployment.py}, \path{src/pra_hf/gateway.py} & JSON wire types,
+engine capabilities, E0/E1 adapters, G00--G11 mediation, and HTTP process\\
+\path{experiments/paper4_5_runtime/run_execution_policy_profile.py} &
+Five-seed multi-axis mechanism profile and trade-off figure\\
+\path{src/pra_hf/runtime_benchmark.py} & Structured eager/compiled and
 hierarchy microbenchmark\\
-\texttt{src/pra\_hf/agent\_resources.py} & Typed resource identities and
+\path{src/pra_hf/agent_resources.py} & Typed resource identities and
 discovery\\
-\texttt{src/pra\_hf/agent\_execution.py} & Schema validation and independent
+\path{src/pra_hf/agent_execution.py} & Schema validation and independent
 host authorization\\
-\texttt{src/pra\_hf/agent.py} & Task-aware turn orchestration and persistent
+\path{src/pra_hf/agent.py} & Task-aware turn orchestration and persistent
 agent facade\\
-\texttt{src/pra\_hf/session\_service.py} & In-memory and atomic local logical
+\path{src/pra_hf/session_service.py} & In-memory and atomic local logical
 session persistence\\
-\texttt{src/pra\_hf/task\_context.py}, \texttt{task\_scope.py} & Versioned
+\path{src/pra_hf/task_context.py}, \path{src/pra_hf/task_scope.py} & Versioned
 task DAG, provenance, scope admission, and working-set lifecycle\\
-\texttt{src/pra\_hf/toolsets.py}, \texttt{tui.py} & Reusable tools and the
+\path{src/pra_hf/toolsets.py}, \path{src/pra_hf/tui.py} & Reusable tools and the
 resumable coding-agent terminal\\
-\texttt{src/pra\_hf/capability\_sdk.py} & Callable and skill-folder ingestion,
+\path{src/pra_hf/capability_sdk.py} & Callable and skill-folder ingestion,
 bounded palettes, and exact capability activation\\
-\texttt{src/pra\_hf/typed\_context.py} & Type-aware compact views and retrieval
+\path{src/pra_hf/typed_context.py} & Type-aware compact views and retrieval
 addresses for large results\\
-\texttt{src/pra\_hf/adaptive\_context\_runtime.py} & Scoped backing,
+\path{src/pra_hf/adaptive_context_runtime.py} & Scoped backing,
 materialization, transport accounting, and cursors\\
-\texttt{src/pra\_hf/progressive\_context.py} & Stable record views and optional
+\path{src/pra_hf/progressive_context.py} & Stable record views and optional
 production PRA routing over exact backing\\
-\texttt{src/pra\_hf/external\_memory.py} & Resolver-neutral cold/warm/hot
+\path{src/pra_hf/external_memory.py} & Resolver-neutral cold/warm/hot
 lifecycle and scoped caches\\
-\texttt{pra-hf-demo/pra\_runtime\_productization.ipynb} & Executed user workflow\\
+\path{pra-hf-demo/pra_runtime_productization.ipynb} & Executed user workflow\\
 \bottomrule
-\end{tabularx}
+\end{longtable}
+\normalsize
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
