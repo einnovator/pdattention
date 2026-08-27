@@ -50,3 +50,25 @@ python experiments/paper7_records/run_inception_experiments.py
 
 Artifacts are written under
 `docs/papers/shared/results/paper7_records/inception/`.
+
+## Native-index size gate
+
+`run_native_index_size_gate.py` profiles the final Paper 7 ingestion safeguard
+over `1K`, `4K`, `16K`, `64K`, and `256K` token payloads and five seeds.
+It compares eager full-body native indexing, size-gated cheap indexing,
+size-gated lazy selected-region native encoding, and search/cursor-only
+handling.
+
+The script uses an instrumented fixed-width Torch encoder through the production
+PRA reference API. Its results characterize lifecycle scaling, TTUC, state
+transitions, and selected-region work. They are not pretrained-model quality or
+Qwen latency measurements.
+
+Run from the repository root:
+
+```powershell
+python experiments/paper7_records/run_native_index_size_gate.py
+```
+
+Artifacts are written under
+`docs/papers/shared/results/paper7_records/native_index_size_gate/`.
