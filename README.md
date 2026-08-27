@@ -101,6 +101,18 @@ pra config show
 pra dataset show
 ```
 
+The product SDK also includes a persistent task-aware agent shell:
+
+```bash
+pra-hf agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect this repository"
+pra-hf agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
+```
+
+`PRAAgent` resolves durable typed sessions by user and session ID. `Toolset` registers
+custom callables or the workspace-bounded default tools, while tool visibility and host
+authorization remain separate. Subagents and learned long-term memory are intentionally
+reserved for Papers 9 and 10.
+
 ## HTML documentation
 
 The MkDocs site combines architecture guides with API reference generated from Python

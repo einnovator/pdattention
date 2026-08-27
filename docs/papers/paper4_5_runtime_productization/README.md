@@ -33,3 +33,7 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```
 
 Try the SDK notebook under `pra-hf-demo/pra_runtime_productization.ipynb`.
+
+The current runtime also integrates Paper 8's durable task/session layer. The
+`pra-hf agent chat` command demonstrates the same SDK with task-scoped typed
+records, reusable toolsets, local persistence, and per-call write authorization.

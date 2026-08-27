@@ -35,6 +35,8 @@ class RecordType(str, Enum):
     SKILL_RECORD = "skill_record"
     SKILL = "skill_record"
     SESSION_RECORD = "session_record"
+    TASK_STATE = "task_state"
+    TASK_EVENT = "task_event"
     GENERIC_DOCUMENT = "generic_document"
 
     @classmethod

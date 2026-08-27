@@ -25,7 +25,7 @@ not by itself establish lower latency or accelerator memory.  We introduce a
 unified runtime that preserves the existing Hugging Face API while adding
 versioned systems configuration, authenticated sessions, lazy tool and skill
 disclosure, independently authorized tool execution, session-scoped result
-compaction, selective replay, deduplicated K/V interval planning, physical byte
+compaction, durable task-aware agent state, selective replay, deduplicated K/V interval planning, physical byte
 accounting, bounded caching, profiling, and a scheduler-unaware serving
 handoff.  On a CUDA 12.6 host with an NVIDIA GTX 950M,
 gathering 512 of 8,192 native-K/V tokens takes a median
@@ -66,7 +66,8 @@ hot external-memory lifecycle.  Paper 6.5 supplies stable typed identities,
 callable-derived tool schemas, declarative skills, lazy disclosure, and
 host-authorized tool execution.  Paper 7 supplies type-aware compact views,
 scoped lossless backing, selective materialization, and cursors for large
-results.  We retain these responsibilities and place one orchestration facade
+results. Paper 8 supplies versioned task state, task-scoped record admission,
+and durable user/session resolution. We retain these responsibilities and place one orchestration facade
 above them.  This is integration by contract rather than by collapsing distinct
 policies.
 
@@ -75,6 +76,9 @@ The contributions are:
 \begin{itemize}[leftmargin=*]
 \item a unified \texttt{PRARuntime} API over model memory, external resources,
 typed capabilities, compact result backing, and safe execution;
+\item a product-facing \texttt{PRAAgent} with durable in-memory or local-disk
+sessions, a validated task DAG, task-scoped context, reusable toolsets, and a
+resumable terminal interface;
 \item lazy-by-default registration for Python tools, explicit skills, and
 OpenAI- or Anthropic-style skill folders, with bounded selection palettes and
 exact full-view activation;
@@ -181,6 +185,49 @@ typed observations.  Paper 4's \texttt{PRASession} retains tenant, user,
 session, cache scope, admitted resources, and warm/hot handles.  Credentials
 remain opaque callbacks passed only to resolvers; they are absent from prompts,
 snapshots, and artifacts.  Cache presence never grants authorization.
+
+\subsection{Durable logical sessions and task scope}
+
+An interactive agent needs continuity longer than one model process. The
+runtime therefore separates logical \texttt{AgentSessionState} from physical
+\texttt{PRASession}. Logical state is resolved by user and session identity and
+contains an ordered typed-record stream, a task descriptor, and an idempotent
+event log. Physical state owns admitted resources, native K/V, and result-store
+handles. Closing it releases accelerator and resolver state without deleting
+the conversation or task graph.
+
+\texttt{SessionService} is the persistence boundary. Its in-memory
+implementation provides thread-safe ephemeral operation. Its local
+implementation hashes path identities, writes versioned JSON through atomic
+replacement, and rejects stale optimistic versions. A database can implement
+the same create, resolve, save, list, and delete contract without changing the
+model path.
+
+Task events create, link, activate, block, resume, complete, or cancel nodes in
+a validated DAG. Typed records carry producing-task, consuming-task, relation,
+and event-sequence provenance. Before ordinary PRA ranking,
+\texttt{TaskScopeSelector} admits the active task, its structural closure, or a
+bounded adaptive neighborhood. Scope controls which records may compete;
+record and chunk routing still control which admitted detail is materialized.
+
+\subsection{Agent and toolset product surface}
+
+\texttt{Toolset} couples a callable to its generated schema, namespace, tenant,
+tags, and declared side-effect class. Bundles compose through the existing
+\texttt{CapabilitySDK}. The built-in local bundle provides file listing,
+bounded reads and search, exact writes and replacements, Git status, and
+workspace-rooted command execution. Path operations reject traversal outside
+the configured workspace. Shell commands remain write-class actions:
+workspace selection is not a security sandbox.
+
+\texttt{PRAAgent} assembles model, capability discovery, lazy skill folders,
+safe execution, compact results, durable sessions, and task scope. A turn
+persists the user record, selects task-relevant records, discloses a bounded
+tool palette, generates, validates at most a configured number of tool rounds,
+stores compact output with exact-backing provenance, and persists the final
+assistant record. The terminal adds resumable sessions and slash commands for
+tasks, context, and tools. Write and destructive calls are denied by default
+and can receive one host confirmation; disclosure alone never grants authority.
 
 Paper 6.5's tool resources enter through the same runtime but a separate
 decision path.  Discovery can identify a tool.  Disclosure can expose its
@@ -552,7 +599,8 @@ ingestion, selected replay, address search, cursors, opt-in native result
 routing, generation, inspection, benchmark commands, and two executed
 notebooks.  The CLI exposes
 \texttt{runtime init}, \texttt{inspect}, \texttt{capabilities},
-\texttt{benchmark}, and \texttt{prepare-vllm}.  A deployment can therefore
+\texttt{benchmark}, \texttt{prepare-vllm}, and a persistent
+\texttt{agent chat} terminal.  A deployment can therefore
 discover unsupported paths before serving.
 
 \section{Limitations and Next Gates}
@@ -564,7 +612,9 @@ overlap, a production page allocator, prefetch, multi-session contention, or
 fused attention preparation.  The LRU fixture validates byte accounting but is
 not a production cache policy study.  The inherited language-model cohort is
 too small for quality claims.  The new capability and compact-result workflows
-are executed contract tests, not a new latency or answer-quality experiment.
+and Paper 8 task/session integration are executed contract tests, not a new
+latency or answer-quality experiment. The shell is intentionally single-agent;
+subagents and learned long-term memory remain scoped to Papers 9 and 10.
 Native result routing currently requires an isolated model session; safe
 concurrent multi-tenant partitioning of model-resident result K/V remains an
 engine-level gate.
@@ -590,7 +640,7 @@ PRA's selected-memory fraction is an algorithmic fact, not a systems result.
 This paper turns that distinction into code and measurement.  One runtime now
 connects the public model API, authenticated memory lifecycle, typed resources,
 lazy tool and skill disclosure, safe execution, compact result backing,
-selective replay, physical K/V planning, caching, profiling, and backend
+selective replay, durable tasks and sessions, physical K/V planning, caching, profiling, and backend
 handoff.  The eager primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
 and optional engines remain negative or unmeasured gates.  The practical
@@ -629,6 +679,14 @@ hierarchy microbenchmark\\
 discovery\\
 \texttt{src/pra\_hf/agent\_execution.py} & Schema validation and independent
 host authorization\\
+\texttt{src/pra\_hf/agent.py} & Task-aware turn orchestration and persistent
+agent facade\\
+\texttt{src/pra\_hf/session\_service.py} & In-memory and atomic local logical
+session persistence\\
+\texttt{src/pra\_hf/task\_context.py}, \texttt{task\_scope.py} & Versioned
+task DAG, provenance, scope admission, and working-set lifecycle\\
+\texttt{src/pra\_hf/toolsets.py}, \texttt{tui.py} & Reusable tools and the
+resumable coding-agent terminal\\
 \texttt{src/pra\_hf/capability\_sdk.py} & Callable and skill-folder ingestion,
 bounded palettes, and exact capability activation\\
 \texttt{src/pra\_hf/typed\_context.py} & Type-aware compact views and retrieval

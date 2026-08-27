@@ -14,6 +14,8 @@ from .router import PRARouter
 from .training import load_feature_rows, train_router
 from .runtime import PRARuntimeConfig, VLLMThinBackend, runtime_capabilities
 from .runtime_benchmark import run_runtime_microbenchmark, write_runtime_benchmark
+from .agent import PRAAgent, PRAAgentConfig
+from .tui import AgentShell
 
 
 def _echo_json(value) -> None:
@@ -23,6 +25,66 @@ def _echo_json(value) -> None:
 @click.group()
 def cli() -> None:
     """Attach sparse, URI-addressed native-K/V memory to supported HF models."""
+
+
+@cli.group("agent")
+def agent_cli() -> None:
+    """Run a persistent task-aware PRA agent."""
+
+
+@agent_cli.command("chat")
+@click.argument("model")
+@click.option("--user-id", default="local-user", show_default=True)
+@click.option("--session-id")
+@click.option("--resume/--new", default=False, show_default=True)
+@click.option("--task", "task_description")
+@click.option("--workspace", type=click.Path(path_type=Path), default=Path("."), show_default=True)
+@click.option("--sessions-dir", type=click.Path(path_type=Path), default=Path(".pra/sessions"), show_default=True)
+@click.option("--skills", "skills_path", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--default-toolset/--no-default-toolset", default=True, show_default=True)
+@click.option("--allow-writes", is_flag=True, help="Authorize all write-class tools without prompting.")
+@click.option("--allow-destructive", is_flag=True, help="Authorize all destructive tools without prompting.")
+@click.option("--max-new-tokens", default=256, show_default=True)
+def agent_chat(
+    model,
+    user_id,
+    session_id,
+    resume,
+    task_description,
+    workspace,
+    sessions_dir,
+    skills_path,
+    default_toolset,
+    allow_writes,
+    allow_destructive,
+    max_new_tokens,
+) -> None:
+    """Open a coding-agent TUI backed by persistent typed sessions."""
+
+    if resume and session_id is None:
+        click.echo("Resuming the most recently updated session.")
+    agent = PRAAgent.from_pretrained(
+        model,
+        config=PRAAgentConfig(
+            user_id=user_id,
+            allow_writes=allow_writes,
+            allow_destructive=allow_destructive,
+            max_new_tokens=max_new_tokens,
+        ),
+        workspace=workspace,
+        default_tools=default_toolset,
+        skills_path=skills_path,
+        sessions_path=sessions_dir,
+    )
+    try:
+        agent.start_session(
+            session_id,
+            resume=resume,
+            task_description=task_description,
+        )
+        AgentShell(agent).run()
+    finally:
+        agent.close()
 
 
 @cli.group("runtime")

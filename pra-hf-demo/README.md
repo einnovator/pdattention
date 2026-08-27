@@ -8,6 +8,8 @@ The demo directory contains two executed, user-facing notebooks:
   planning, four physical layouts, cache and profiler accounting, typed discovery and graph
   disclosure, lazy callable and skill records, compact typed tool results, selective replay,
   cursors, opt-in native result routing, safe execution, inspection, and thin serving handoff.
+  It also demonstrates durable user/session resolution, task DAGs, task-scoped records,
+  reusable toolsets, and the coding-agent CLI introduced by Paper 8.
 
 Both import the library directly from this checkout's `src/` directory and run tiny offline
 models by default.
@@ -27,3 +29,6 @@ jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeou
 ```
 
 Remote pretrained-model cells are opt-in and disabled by default.
+
+The notebook constructs an agent SDK without downloading a chat model. For an interactive
+pretrained session, use `pra-hf agent chat MODEL --workspace . --task "..."`.

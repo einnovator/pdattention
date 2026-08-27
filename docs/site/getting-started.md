@@ -121,6 +121,39 @@ session. Then call `register_result_backing()`, `route_result_backing()`, and
 `materialize_routed_result()` explicitly. The runtime never places exact backing
 in model memory merely because a compact record was ingested.
 
+## Run a persistent PRA agent
+
+`PRAAgent` combines the same runtime with durable typed sessions, a versioned task DAG,
+lazy skills, and a reusable `Toolset`. The default local service resolves sessions by
+`user_id` and `session_id`; closing the model session releases ephemeral K/V without
+deleting the logical record stream.
+
+```python
+from pra_hf import PRAAgent, PRAAgentConfig
+
+agent = PRAAgent.from_pretrained(
+    model_id,
+    config=PRAAgentConfig(user_id="user-1"),
+    workspace=".",
+    sessions_path=".pra/sessions",
+    skills_path="./skills",
+)
+state = agent.start_session(task_description="Inspect the failing tests")
+turn = agent.run_turn("Find the relevant test and explain the failure")
+agent.close()
+```
+
+The coding-agent terminal exposes task, context, tool, and session inspection:
+
+```bash
+pra-hf agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect this repository"
+pra-hf agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
+```
+
+The built-in toolset can list, read, search, edit, inspect Git, and run a command inside
+the configured workspace. Writes are denied by default and require one interactive host
+approval. `--allow-writes` is intended only for explicitly trusted unattended runs.
+
 ## Build this site
 
 Generate the static HTML site under `site/`:

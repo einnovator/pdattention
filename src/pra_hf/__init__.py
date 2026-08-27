@@ -61,6 +61,44 @@ from .agent_resources import (
     SideEffectClass,
 )
 from .tool_records import ToolRecord, ToolSchema, tool_record_from_callable
+from .toolsets import Tool, Toolset, default_toolset
+from .agent import AgentTurn, PRAAgent, PRAAgentConfig
+from .session_service import (
+    AgentSessionState,
+    InMemorySessionService,
+    LocalSessionService,
+    SessionConflict,
+    SessionNotFound,
+    SessionService,
+)
+from .task_context import (
+    TaskDescriptor,
+    TaskEvent,
+    TaskEventType,
+    TaskGraph,
+    TaskProvenance,
+    TaskRelation,
+    TaskState,
+    TaskStatus,
+    attach_task_provenance,
+    task_state_record,
+)
+from .task_planning import (
+    ComplexityGate,
+    PlannedTask,
+    parse_json_plan,
+    parse_markdown_plan,
+    plan_events,
+    validate_plan,
+)
+from .task_scope import (
+    DetailDepth,
+    ResidencyState,
+    ScopeSelection,
+    TaskScopePolicy,
+    TaskScopeSelector,
+    TaskWorkingSet,
+)
 from .skill_records import (
     Skill,
     SkillFolderCache,
@@ -266,4 +304,38 @@ __all__ += [
     "load_skill_directory",
     "load_skill_folder",
     "tool_record_from_callable",
+    "AgentSessionState",
+    "AgentTurn",
+    "ComplexityGate",
+    "DetailDepth",
+    "InMemorySessionService",
+    "LocalSessionService",
+    "PRAAgent",
+    "PRAAgentConfig",
+    "PlannedTask",
+    "ResidencyState",
+    "ScopeSelection",
+    "SessionConflict",
+    "SessionNotFound",
+    "SessionService",
+    "TaskDescriptor",
+    "TaskEvent",
+    "TaskEventType",
+    "TaskGraph",
+    "TaskProvenance",
+    "TaskRelation",
+    "TaskScopePolicy",
+    "TaskScopeSelector",
+    "TaskState",
+    "TaskStatus",
+    "TaskWorkingSet",
+    "Tool",
+    "Toolset",
+    "attach_task_provenance",
+    "default_toolset",
+    "parse_json_plan",
+    "parse_markdown_plan",
+    "plan_events",
+    "task_state_record",
+    "validate_plan",
 ]

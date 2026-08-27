@@ -348,8 +348,11 @@ class ToolRecord:
         consumes = tuple(sorted({row.compatible_type_id for row in self.schema.inputs if row.compatible_type_id != "unknown"}))
         produces = () if self.schema.output.compatible_type_id in {"unknown", "none"} else (self.schema.output.compatible_type_id,)
         operation = next(iter(sorted(self.operation_concepts)), None)
+        declared_side_effect = self.metadata.get("side_effect_class")
         inferred_side_effect = (
-            SideEffectClass.DESTRUCTIVE
+            SideEffectClass(declared_side_effect)
+            if declared_side_effect is not None
+            else SideEffectClass.DESTRUCTIVE
             if operation == "delete"
             else SideEffectClass.NONE
         )
@@ -382,7 +385,10 @@ class ToolRecord:
                 "consumes": consumes,
                 "produces": produces,
                 "auto_enrichment": True,
-                "side_effect_provenance": "auto_name_conservative",
+                "side_effect_provenance": (
+                    "host_declared" if declared_side_effect is not None
+                    else "auto_name_conservative"
+                ),
             },
         )
 

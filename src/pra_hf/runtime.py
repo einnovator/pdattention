@@ -47,7 +47,7 @@ from .adaptive_context_runtime import (
 from .capability_runtime import CapabilityActivation, CapabilityPaletteActivation
 from .capability_sdk import AgentConfig, CapabilitySDK
 from .config import PRAConfig
-from .context_records import RecordType, RecordViewName
+from .context_records import ContextRecord, RecordType, RecordViewName
 from .context_store import RecordScope
 from .external_memory import AuthContext, ExternalMemoryManager, PRASession
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
@@ -58,6 +58,9 @@ from .progressive_context import (
     RecordCapabilities,
 )
 from .typed_context import AdaptiveContextRecord
+from .session_service import AgentSessionState, SessionService
+from .task_context import TaskEvent, TaskGraph, TaskProvenance, attach_task_provenance
+from .task_scope import ScopeSelection, TaskScopePolicy, TaskScopeSelector
 
 
 class RuntimeBackend(str, Enum):
@@ -786,6 +789,7 @@ class PRARuntime:
         capability_sdk: CapabilitySDK | None = None,
         context_policy: ContextPolicy | None = None,
         native_result_routing: bool = False,
+        session_service: SessionService | None = None,
     ) -> None:
         if agent_config is not None and capability_sdk is not None:
             raise ValueError("Pass agent_config or capability_sdk, not both.")
@@ -803,9 +807,11 @@ class PRARuntime:
         self.executor = executor
         self.context_policy = context_policy or ContextPolicy()
         self.native_result_routing = bool(native_result_routing)
+        self.session_service = session_service
         if self.native_result_routing and not isinstance(self.backend, HuggingFaceBackend):
             raise ValueError("Native result routing requires the Hugging Face backend.")
         self.sessions: dict[str, PRASession] = {}
+        self.logical_sessions: dict[str, AgentSessionState] = {}
         self.result_contexts: dict[str, ProgressiveContextRuntime] = {}
         self.hot_cache = RuntimeKVCache(
             max_bytes=config.cache_max_bytes,
@@ -825,6 +831,7 @@ class PRARuntime:
         capability_sdk: CapabilitySDK | None = None,
         context_policy: ContextPolicy | None = None,
         native_result_routing: bool = False,
+        session_service: SessionService | None = None,
         **model_kwargs: Any,
     ) -> "PRARuntime":
         config = (
@@ -849,6 +856,7 @@ class PRARuntime:
             capability_sdk=capability_sdk,
             context_policy=context_policy,
             native_result_routing=native_result_routing,
+            session_service=session_service,
         )
 
     @classmethod
@@ -867,17 +875,37 @@ class PRARuntime:
     def open_session(
         self,
         *,
-        session_id: str,
+        session_id: str | None,
         user_id: str,
         tenant_id: str,
         auth_context: AuthContext | None = None,
+        resume: bool = False,
+        task_description: str | None = None,
         **session_kwargs: Any,
     ) -> PRASession:
+        logical = None
+        if self.session_service is not None:
+            logical = (
+                self.session_service.resolve_session(user_id, session_id)
+                if resume
+                else self.session_service.create_session(
+                    user_id,
+                    session_id,
+                    tenant_id=tenant_id,
+                    task_description=task_description,
+                )
+            )
+            session_id = logical.session_id
+            tenant_id = logical.tenant_id
+        if session_id is None:
+            raise ValueError("session_id is required without a SessionService.")
         if session_id in self.sessions and not self.sessions[session_id].closed:
             raise ValueError(f"Session already open: {session_id}")
         auth = auth_context or AuthContext(tenant_id, user_id, session_id)
         session = PRASession(session_id, user_id, tenant_id, auth, **session_kwargs)
         self.sessions[session_id] = session
+        if logical is not None:
+            self.logical_sessions[session_id] = logical
         scope = RecordScope(tenant_id, session_id)
         context_policy = self.context_policy
         if context_policy.local_store is not None:
@@ -913,6 +941,80 @@ class PRARuntime:
             session.hot_handles.clear()
             session.closed = True
         self.sessions.pop(session.session_id, None)
+
+    def logical_session_for(self, session: PRASession) -> AgentSessionState:
+        """Return durable logical state paired with an open physical session."""
+
+        self.context_for(session)
+        try:
+            return self.logical_sessions[session.session_id]
+        except KeyError as error:
+            raise RuntimeError("No SessionService is installed for this runtime session.") from error
+
+    def append_session_record(
+        self,
+        session: PRASession,
+        record: ContextRecord,
+        *,
+        task_id: str | None = None,
+    ) -> AgentSessionState:
+        """Persist one typed record, optionally owned by the active task."""
+
+        logical = self.logical_session_for(session)
+        if task_id is None:
+            task_id = logical.active_task_id
+        if task_id is not None:
+            record = attach_task_provenance(
+                record,
+                TaskProvenance(
+                    task_id,
+                    producing_task_id=task_id,
+                    event_sequence=logical.tasks.last_sequence,
+                ),
+            )
+        assert self.session_service is not None
+        updated = self.session_service.append_record(
+            logical.user_id, logical.session_id, record
+        )
+        self.logical_sessions[session.session_id] = updated
+        return updated
+
+    def apply_task_event(
+        self, session: PRASession, event: TaskEvent
+    ) -> AgentSessionState:
+        """Validate and persist one idempotent task mutation."""
+
+        logical = self.logical_session_for(session)
+        assert self.session_service is not None
+        updated = self.session_service.apply_task_event(
+            logical.user_id, logical.session_id, event
+        )
+        self.logical_sessions[session.session_id] = updated
+        return updated
+
+    def select_task_context(
+        self,
+        session: PRASession,
+        query: str,
+        *,
+        policy: TaskScopePolicy | str = TaskScopePolicy.TASK_ADAPTIVE,
+        max_records: int = 8,
+        minimum_records: int = 1,
+    ) -> ScopeSelection:
+        """Scope the durable record stream by task before ordinary retrieval."""
+
+        logical = self.logical_session_for(session)
+        if logical.active_task_id is None:
+            raise RuntimeError("Task-aware context selection requires an active task.")
+        return TaskScopeSelector(
+            TaskGraph(logical.tasks), logical.records
+        ).select(
+            logical.active_task_id,
+            query,
+            policy=policy,
+            max_records=max_records,
+            minimum_records=minimum_records,
+        )
 
     def context_for(self, session: PRASession) -> ProgressiveContextRuntime:
         """Return the session-scoped compact-result runtime after validation."""
@@ -1123,6 +1225,24 @@ class PRARuntime:
             ttl_seconds=ttl_seconds,
             expected_reuse=expected_reuse,
         )
+        if session.session_id in self.logical_sessions:
+            self.append_session_record(
+                session,
+                ContextRecord(
+                    record_id=record.record_id,
+                    record_type=RecordType.TOOL_RESPONSE,
+                    payload={
+                        "compact": record.compact_view(),
+                        "producer_tool_uri": execution.resource_uri or "",
+                        "call_id": call_id,
+                        "exact_backing": record.record_id,
+                    },
+                    selection_provenance={
+                        "exact_backing": record.record_id,
+                        "compression_strategy": record.compression_strategy,
+                    },
+                ),
+            )
         return RuntimeToolExecution(execution, record)
 
     def generate(self, prompt: str, **kwargs: Any) -> str | GenerationResult:
@@ -1158,6 +1278,17 @@ class PRARuntime:
             "runtime_config": self.config.to_dict(),
             "backend": dict(self.backend.inspect()),
             "sessions": [session.safe_snapshot() for session in self.sessions.values()],
+            "logical_sessions": {
+                session_id: {
+                    "user_id": state.user_id,
+                    "version": state.version,
+                    "records": len(state.records),
+                    "tasks": len(state.tasks.tasks),
+                    "active_task_id": state.active_task_id,
+                }
+                for session_id, state in self.logical_sessions.items()
+            },
+            "session_service_installed": self.session_service is not None,
             "external_memory": (
                 self.external_memory.metrics.snapshot() if self.external_memory else None
             ),

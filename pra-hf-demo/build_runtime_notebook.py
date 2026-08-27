@@ -72,6 +72,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 from pra_hf import (
     AgentConfig,
+    InMemorySessionService,
     AuthContext,
     CapabilityEncodingPolicy,
     CapabilitySDK,
@@ -90,6 +91,8 @@ from pra_hf import (
     PackedNativeKVStore,
     PersistentResourceIndex,
     PRAConfig,
+    PRAAgent,
+    PRAAgentConfig,
     PRARuntime,
     PRARuntimeConfig,
     ResolverRegistry,
@@ -103,8 +106,11 @@ from pra_hf import (
     SafeToolExecutor,
     SelectedKVGather,
     Skill,
+    Tool,
+    Toolset,
     TypeContextPolicy,
     VLLMThinBackend,
+    default_toolset,
     runtime_capabilities,
 )
 from pra_hf.agent_disclosure import ToolCapabilityGraph, disclosure_policy_for_profile
@@ -962,6 +968,81 @@ after_close = memory_runtime.inspect()
     ),
     md(
         r'''
+## 20. Persistent tasks and reusable toolsets
+
+Paper 8 adds the logical state needed by an actual long-running agent. A `SessionService` resolves
+state by user and session, stores an ordered typed-record stream, and keeps a versioned task DAG.
+Closing `PRARuntime` releases physical model and K/V state; reopening the same logical session does
+not erase tasks or compact observations. `InMemorySessionService` is useful for tests, while
+`LocalSessionService` uses atomic JSON manifests for process-to-process persistence.
+
+`Toolset` keeps each callable beside its declared side-effect class. The built-in workspace bundle
+provides bounded read/search/edit/Git/command tools. Discovery never grants execution authority:
+write and destructive calls still require a host policy or one interactive approval.
+'''
+    ),
+    code(
+        r'''
+def uppercase(value: str) -> dict[str, str]:
+    """Uppercase one value for the SDK demonstration."""
+
+    return {"value": value.upper()}
+
+
+demo_toolset = Toolset((Tool(uppercase, tenant_id="runtime-demo"),), name="notebook")
+task_sdk = CapabilitySDK(AgentConfig(
+    tools=demo_toolset.records,
+    tenant_id="runtime-demo",
+))
+task_runtime = PRARuntime(
+    config=runtime.config,
+    backend=runtime.backend,
+    capability_sdk=task_sdk,
+    executor=demo_toolset.executor(),
+    session_service=InMemorySessionService(),
+    context_policy=ContextPolicy(
+        local_store=Path(tempfile.mkdtemp(prefix="pra-task-results-")),
+        persistent_store=False,
+    ),
+)
+task_agent = PRAAgent(
+    task_runtime,
+    config=PRAAgentConfig(user_id="notebook-user", tenant_id="runtime-demo"),
+    toolset=demo_toolset,
+)
+initial = task_agent.start_session("paper4-5-demo", task_description="Inspect runtime status")
+updated = task_agent.create_task(
+    "Summarize the selected evidence",
+    task_id="task-2",
+    parent_task_id="task-1",
+)
+physical_id = task_agent.session.session_id
+task_agent.close()
+resumed = task_agent.start_session(physical_id, resume=True)
+{
+    "resumed_session": resumed.session_id,
+    "active_task": resumed.active_task_id,
+    "task_count": len(resumed.tasks.tasks),
+    "toolset": demo_toolset.inspect(),
+    "default_tool_names": [
+        resource.name for resource in default_toolset(PROJECT_ROOT).resources
+    ],
+}
+'''
+    ),
+    md(
+        r'''
+## 21. Agent CLI and terminal UI
+
+`pra-hf agent chat` assembles the model, PRA runtime, local session service, optional OpenAI- or
+Anthropic-style skills, and workspace toolset. Slash commands expose `/sessions`, `/tasks`,
+`/task new`, `/task use`, `/task done`, `/context`, and `/tools`. Writes are denied by default and
+confirmed one call at a time in the terminal. `--allow-writes` is an explicit unattended-host
+override; it does not change the tool's recorded side-effect class.
+'''
+    ),
+    md(
+        r'''
 ## CLI equivalents
 
 The same systems surface is available without notebook state:
@@ -972,6 +1053,8 @@ python -m pra_hf.cli runtime inspect ./runtime-config
 python -m pra_hf.cli runtime capabilities
 python -m pra_hf.cli runtime benchmark --output ./runtime-results
 python -m pra_hf.cli runtime prepare-vllm "A user prompt" --selected-uri memory://demo/facts
+python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect the repository"
+python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
 ```
 
 ## What this notebook proves, and what it does not
@@ -989,6 +1072,8 @@ Demonstrated here:
 - lazy callable and skill records with exact full-view activation;
 - scoped type-aware result compaction, address search, selective replay, and cursors;
 - opt-in route-only native PRA retrieval over exact result backing;
+- durable user/session resolution, versioned task DAGs, and task-scoped typed records;
+- reusable workspace toolsets and a resumable coding-agent terminal UI;
 - a scheduler-unaware vLLM request contract.
 
 Not demonstrated here:
