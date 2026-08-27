@@ -53,6 +53,8 @@ from .external_memory import AuthContext, ExternalMemoryManager, PRASession
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
 from .progressive_context import (
     ContextExecutionResult,
+    LazyNativeRegion,
+    NativeIndexAudit,
     NativePRASelection,
     ProgressiveContextRuntime,
     RecordCapabilities,
@@ -103,11 +105,15 @@ class PRARuntimeConfig:
     cache_max_entries: int = 1024
     prefetch_enabled: bool = False
     synchronize_timing: bool = True
+    context_policy: ContextPolicy = field(default_factory=ContextPolicy)
+    auto_prepare_native_results: bool = True
     schema_version: int = 1
 
     def __post_init__(self) -> None:
         if isinstance(self.pra, dict):
             self.pra = PRAConfig.from_dict(self.pra)
+        if isinstance(self.context_policy, dict):
+            self.context_policy = ContextPolicy.from_dict(self.context_policy)
         self.backend = RuntimeBackend(self.backend).value
         self.compilation = CompilationMode(self.compilation).value
         self.kv_layout = KVLayout(self.kv_layout).value
@@ -121,6 +127,7 @@ class PRARuntimeConfig:
     def to_dict(self) -> dict[str, Any]:
         values = asdict(self)
         values["pra"] = self.pra.to_dict()
+        values["context_policy"] = self.context_policy.to_dict()
         return values
 
     @classmethod
@@ -773,8 +780,9 @@ class PRARuntime:
 
     Tool and skill definitions are immutable runtime-wide capabilities. Result
     records are session-scoped because their exact backing can contain tenant
-    data. Native PRA registration for result views is opt-in so applications do
-    not accidentally share model-resident references across concurrent tenants.
+    data. The Hugging Face loader applies size-adaptive native indexing by
+    default; low-level constructors must still opt in because custom backends
+    may not implement model-native result references.
     """
 
     def __init__(
@@ -805,7 +813,7 @@ class PRARuntime:
             )
         self.discovery = discovery
         self.executor = executor
-        self.context_policy = context_policy or ContextPolicy()
+        self.context_policy = context_policy or config.context_policy
         self.native_result_routing = bool(native_result_routing)
         self.session_service = session_service
         if self.native_result_routing and not isinstance(self.backend, HuggingFaceBackend):
@@ -830,7 +838,7 @@ class PRARuntime:
         agent_config: AgentConfig | None = None,
         capability_sdk: CapabilitySDK | None = None,
         context_policy: ContextPolicy | None = None,
-        native_result_routing: bool = False,
+        native_result_routing: bool = True,
         session_service: SessionService | None = None,
         **model_kwargs: Any,
     ) -> "PRARuntime":
@@ -917,6 +925,7 @@ class PRARuntime:
         self.result_contexts[session_id] = ProgressiveContextRuntime(
             adaptive,
             chunk_tokens=self.config.pra.chunk_tokens,
+            pra_model=(self.backend.model if self.native_result_routing else None),
         )
         return session
 
@@ -928,8 +937,9 @@ class PRARuntime:
                 handles = (
                     *context.registry.reference_handles.values(),
                     *context.registry.backing_reference_handles.values(),
+                    *context.registry.lazy_reference_handles.values(),
                 )
-                for handle in handles:
+                for handle in {handle.uri: handle for handle in handles}.values():
                     model.remove_reference(handle)
             context.runtime.store.close()
         if self.external_memory is not None:
@@ -1073,7 +1083,8 @@ class PRARuntime:
     ) -> AdaptiveContextRecord:
         """Store exact result backing and expose only its typed compact view."""
 
-        return self.context_for(session).ingest(
+        context = self.context_for(session)
+        record = context.ingest(
             payload,
             record_type=record_type,
             capabilities=capabilities,
@@ -1081,6 +1092,9 @@ class PRARuntime:
             ttl_seconds=ttl_seconds,
             expected_reuse=expected_reuse,
         )
+        if self.native_result_routing and self.config.auto_prepare_native_results:
+            context.prepare_native_index(record.record_id)
+        return record
 
     def compact_result(self, session: PRASession, record_id: str) -> object:
         """Return the bounded prompt-visible representation of one result."""
@@ -1133,7 +1147,12 @@ class PRARuntime:
     def register_result_backing(
         self, session: PRASession, record_id: str
     ) -> ReferenceHandle:
-        """Opt an exact result into production native-PRA backing retrieval."""
+        """Return an existing in-budget native index or request one explicitly.
+
+        This compatibility method raises when the configured gate skips the
+        full index. New code can inspect that decision through
+        :meth:`prepare_result_native_index` and select a cheaper recovery path.
+        """
 
         if not self.native_result_routing:
             raise RuntimeError(
@@ -1144,6 +1163,44 @@ class PRARuntime:
         if context.registry.pra_model is None:
             context.registry.pra_model = self.backend.model
         return context.register_backing_record(record_id)
+
+    def prepare_result_native_index(
+        self,
+        session: PRASession,
+        record_id: str,
+        *,
+        force: bool = False,
+    ) -> NativeIndexAudit:
+        """Build, size-gate, or defer one full-backing native index."""
+
+        if not self.native_result_routing:
+            raise RuntimeError("Native result routing is disabled.")
+        return self.context_for(session).prepare_native_index(record_id, force=force)
+
+    def encode_result_region_native(
+        self,
+        session: PRASession,
+        record_id: str,
+        selector: Mapping[str, object],
+    ) -> LazyNativeRegion:
+        """Natively encode one authorized selected region after a full-index gate."""
+
+        if not self.native_result_routing:
+            raise RuntimeError("Native result routing is disabled.")
+        return self.context_for(session).encode_selected_region_native(
+            record_id, selector
+        )
+
+    def result_native_index_audit(
+        self, session: PRASession, record_id: str
+    ) -> NativeIndexAudit:
+        """Return the current lifecycle and cost record for one result index."""
+
+        context = self.context_for(session)
+        try:
+            return context.registry.native_index_audits[record_id]
+        except KeyError as error:
+            raise KeyError(f"No native-index decision exists for {record_id!r}.") from error
 
     def route_result_backing(
         self, session: PRASession, query: str
@@ -1271,6 +1328,21 @@ class PRARuntime:
                 "native_backing_references": len(
                     context.registry.backing_reference_handles
                 ),
+                "lazy_native_references": len(context.registry.lazy_reference_handles),
+                "native_index_lifecycle": {
+                    record_id: {
+                        "state": audit.native_index_state.value,
+                        "requested": audit.native_index_requested,
+                        "built": audit.native_index_built,
+                        "reason": audit.native_index_skipped_reason,
+                        "tokens": audit.native_index_tokens,
+                        "bytes": audit.native_index_bytes,
+                        "latency_ms": audit.native_index_latency_ms,
+                        "lazy_regions": audit.lazy_native_regions_encoded,
+                        "lazy_tokens": audit.lazy_native_tokens,
+                    }
+                    for record_id, audit in context.registry.native_index_audits.items()
+                },
             }
             for session_id, context in self.result_contexts.items()
         }

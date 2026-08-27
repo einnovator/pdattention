@@ -6,9 +6,11 @@ import json
 
 import pytest
 import torch
+from click.testing import CliRunner
 
 from data.agent_workflows import realistic_tool_catalog, workflow_executor, workflow_tasks
 from pra_hf import (
+    ContextPolicy,
     DiscoveryRequest,
     ExecutionAuthorization,
     HuggingFaceBackend,
@@ -23,8 +25,11 @@ from pra_hf import (
     ResourceDiscoveryEngine,
     RuntimeKVCache,
     RuntimeProfiler,
+    TypeContextPolicy,
     VLLMThinBackend,
 )
+from pra_hf.context_records import RecordType
+from pra_hf.cli import cli
 
 
 def _kv(tokens: int, *, offset: float = 0.0) -> NativeKV:
@@ -38,12 +43,55 @@ def test_runtime_config_round_trip_preserves_model_and_system_fields(tmp_path):
         kv_layout="block_major",
         page_tokens=32,
         cache_max_bytes=4096,
+        context_policy=ContextPolicy(
+            max_native_index_tokens=2048,
+            max_native_index_bytes=32_768,
+            record_policies={
+                RecordType.DB_RESULT: TypeContextPolicy(
+                    max_native_index_tokens=512,
+                    max_native_index_bytes=8192,
+                )
+            },
+        ),
     )
     config.save_pretrained(tmp_path)
     restored = PRARuntimeConfig.from_pretrained(tmp_path)
 
     assert restored == config
-    assert json.loads((tmp_path / "pra_runtime_config.json").read_text())["schema_version"] == 1
+    serialized = json.loads((tmp_path / "pra_runtime_config.json").read_text())
+    assert serialized["schema_version"] == 1
+    assert serialized["context_policy"]["max_native_index_tokens"] == 2048
+    assert serialized["context_policy"]["record_policies"]["db_result"] == {
+        "defer_native_index": None,
+        "max_native_index_bytes": 8192,
+        "max_native_index_tokens": 512,
+        "override_native_index_limits": False,
+        "storage": None,
+        "unit_limit": 8,
+    }
+
+
+def test_runtime_init_cli_persists_native_ingestion_budget(tmp_path):
+    target = tmp_path / "runtime"
+    result = CliRunner().invoke(
+        cli,
+        [
+            "runtime",
+            "init",
+            str(target),
+            "--max-native-index-tokens",
+            "1024",
+            "--max-native-index-bytes",
+            "16384",
+            "--defer-native-index",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    policy = PRARuntimeConfig.from_pretrained(target).context_policy
+    assert policy.max_native_index_tokens == 1024
+    assert policy.max_native_index_bytes == 16384
+    assert policy.defer_native_index is True
 
 
 def test_materialization_plan_deduplicates_overlaps_before_budgeting():

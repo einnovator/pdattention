@@ -26,7 +26,8 @@ unified runtime that preserves the existing Hugging Face API while adding
 an engine-neutral four-axis execution policy, request-owned selection plans,
 versioned systems configuration, authenticated sessions, lazy tool and skill
 disclosure, independently authorized tool execution, session-scoped result
-compaction, durable task-aware agent state, selective replay, deduplicated K/V interval planning, physical byte
+compaction, size-adaptive native result indexing, lazy selected-region native
+encoding, durable task-aware agent state, selective replay, deduplicated K/V interval planning, physical byte
 accounting, bounded caching, profiling, and a scheduler-unaware serving
 handoff. A standalone gateway now separates agent semantics, PRA mediation,
 and engine-native state through a JSON logical-reference contract and explicit
@@ -72,9 +73,10 @@ SDK supplies \texttt{PRAForCausalLM}, model-family injection, routing, and
 generation.  Paper 4 supplies authenticated resolvers and the cold, warm, and
 hot external-memory lifecycle.  Paper 6.5 supplies stable typed identities,
 callable-derived tool schemas, declarative skills, lazy disclosure, and
-host-authorized tool execution.  Paper 7 supplies type-aware compact views,
-scoped lossless backing, selective materialization, and cursors for large
-results. Paper 8 supplies versioned task state, task-scoped record admission,
+host-authorized tool execution. Paper 7 supplies type-aware compact views,
+scoped lossless backing, size-gated native indexing, lazy selected-region
+encoding, selective materialization, and cursors for large results. Paper 8
+supplies versioned task state, task-scoped record admission,
 and durable user/session resolution. We retain these responsibilities and place one orchestration facade
 above them.  This is integration by contract rather than by collapsing distinct
 policies.
@@ -91,8 +93,9 @@ resumable terminal interface;
 OpenAI- or Anthropic-style skill folders, with bounded selection palettes and
 exact full-view activation;
 \item session-scoped, hash-verified result backing with type-aware compaction,
-retrieval-only addresses, selected replay, cursors, and opt-in native PRA
-routing;
+retrieval-only addresses, selected replay, cursors, token/byte native-index
+gates, per-type overrides, explicit lifecycle state, and lazy selected-region
+native encoding;
 \item an explicit physical K/V contract with native grouped-query heads,
 deduplicated intervals, hard token budgets, transfer accounting, and a
 byte-bounded LRU;
@@ -314,20 +317,34 @@ address search, full or selected materialization, and bounded cursor actions.
 lifecycle while retaining producer, call, and observation provenance.  Closing
 an ephemeral session removes its backing bytes.
 
-Native result routing remains a stronger opt-in.  For an isolated Hugging Face
-model session, three explicit calls define the lifecycle:
+Paper 7's final result changes the product default. Native PRA is appropriate
+for typed backing only while its ingestion and resident-state cost stays inside
+an explicit budget. Above that budget, the record must remain recoverable
+through cheaper addresses, search, cursors, and bounded lazy native encoding;
+it must not be truncated and labeled as a complete native index.
+
+Accordingly, \texttt{ContextPolicy} exposes
+\texttt{max\_native\_index\_tokens} and
+\texttt{max\_native\_index\_bytes}, plus per-\texttt{RecordType}
+overrides. The byte gate can reject an oversized descriptor before tokenization;
+the token gate more directly bounds model work when token accounting is
+available. The reference defaults are 4,096 tokens and 65,536 bytes, but these
+are deployment policy values rather than claimed universal optima.
+
+Every record has one auditable native-index lifecycle state:
 \begin{center}
 \small\ttfamily
-register\_result\_backing\quad
-route\_result\_backing\quad
-materialize\_routed\_result
+NOT\_REQUESTED\quad BUILT\quad SKIPPED\_SIZE\_LIMIT\quad DEFERRED
 \end{center}
-They respectively pass exact backing through the production PRA encoder,
-perform query encoding and bounded native-K/V selection without autoregressive
-generation, and decode only selected original spans.
-Ingestion alone never registers exact backing in model memory.  Teardown removes
-all references created by this path.  A shared multi-tenant model cache is not
-claimed safe by this interface.
+The ordinary Hugging Face loader automatically prepares in-budget records.
+\texttt{BUILT} means complete backing passed through the production PRA encoder.
+\texttt{SKIPPED\_SIZE\_LIMIT} preserves compact and cheap-index recovery.
+\texttt{DEFERRED} is an explicit synchronous lifecycle decision, not a claim of
+background work. After a cheap selector identifies a bounded row, field, line,
+item, or chunk, \texttt{encode\_result\_region\_native} authorizes that exact
+region and creates native K/V only for it. Teardown removes compact, full, and
+lazy-region references. A shared multi-tenant model cache is not claimed safe
+without engine-level partitioning.
 
 \subsection{User workflow}
 
@@ -335,7 +352,10 @@ The supported workflow is deliberately small:
 
 \begin{verbatim}
 agent = AgentConfig(tools=(lookup,), skills_path="./skills")
-context = ContextPolicy(record_policies={...})
+context = ContextPolicy(
+    max_native_index_tokens=4096,
+    max_native_index_bytes=65536,
+    record_policies={DB_RESULT: TypeContextPolicy(...)})
 runtime = PRARuntime.from_pretrained(
     model_id, runtime_config=config,
     agent_config=agent, context_policy=context)
@@ -343,16 +363,19 @@ session = runtime.open_session(...)
 palette = runtime.activate_capability_candidates(record_ids)
 runtime.activate_capability(selected_id)
 result = runtime.execute_tool_and_record(..., session=session)
-detail = runtime.materialize_result(
-    session, result.record.record_id,
-    level="selected", selector={"rows": [20, 30]})
+audit = runtime.result_native_index_audit(
+    session, result.record.record_id)
+if audit.native_index_state == SKIPPED_SIZE_LIMIT:
+    detail = runtime.encode_result_region_native(
+        session, result.record.record_id, {"rows": [20, 30]})
 trace = runtime.inspect()
 \end{verbatim}
 
 The same facade still accepts direct references, an
 \texttt{ExternalMemoryManager}, a custom discovery engine, and a safe executor.
 The executed notebook demonstrates model memory, physical materialization,
-lazy capabilities, compact results, cursors, and isolated native result routing
+lazy capabilities, compact results, cursors, size-gated native result routing,
+and selected-region native promotion
 with an offline Hugging Face model and pure in-memory tools.
 
 \section{Physical Materialization}
@@ -729,8 +752,9 @@ The product surface includes installable package metadata, Hugging Face loading,
 runtime config serialization, direct and external reference registration,
 session isolation, callable and folder-backed capability registration, lazy
 view activation, typed resource discovery, safe execution, compact result
-ingestion, selected replay, address search, cursors, opt-in native result
-routing, generation, inspection, benchmark commands, and two executed
+ingestion, selected replay, address search, cursors, size-adaptive native result
+routing, lazy native-region promotion, generation, inspection, benchmark
+commands, and two executed
 notebooks.  The CLI exposes
 \texttt{runtime init}, \texttt{inspect}, \texttt{capabilities},
 \texttt{benchmark}, \texttt{prepare-vllm}, and a persistent
@@ -752,7 +776,7 @@ too small for quality claims.  The new capability and compact-result workflows
 and Paper 8 task/session integration are executed contract tests, not a new
 latency or answer-quality experiment. The shell is intentionally single-agent;
 subagents and learned long-term memory remain scoped to Papers 9 and 10.
-Native result routing currently requires an isolated model session; safe
+Model-resident result routing currently requires an isolated model session; safe
 concurrent multi-tenant partitioning of model-resident result K/V remains an
 engine-level gate.
 The multi-axis HF bridge serializes high-level generation on one wrapped model
@@ -789,8 +813,11 @@ PRA's selected-memory fraction is an algorithmic fact, not a systems result.
 This paper turns that distinction into code and measurement.  One runtime now
 connects the public model API, authenticated memory lifecycle, typed resources,
 lazy tool and skill disclosure, safe execution, compact result backing,
-selective replay, durable tasks and sessions, physical K/V planning, caching, profiling, and backend
-handoff. Its policy lattice makes routing frequency and physical lifetime
+selective replay, durable tasks and sessions, physical K/V planning, caching,
+profiling, and backend handoff. Typed results build full native indexes only
+within configurable token/byte ingestion budgets; larger records retain cheap
+recovery interfaces and promote selected regions lazily. Its policy lattice
+makes routing frequency and physical lifetime
 inspectable, while the gateway permits ordinary and PRA-aware agents and
 engines to coexist without sending native tensors over the logical wire. The
 eager primitives are exact and inexpensive in isolation, but
@@ -827,6 +854,18 @@ plans; lines 428--504 own request epochs, churn, and trace summaries; and lines
 The important invariant is the type boundary: a selection controller returns
 URI/chunk spans, while only an engine resolver may return tensors or block
 handles.
+
+The canonical typed-result admission policy is implemented at three layers.
+\path{src/pra_hf/adaptive_context_runtime.py:82--236} defines global and
+per-record token/byte limits, inheritance, deferral, and serialization.
+\path{src/pra_hf/progressive_context.py:58--66} defines the four lifecycle
+states; lines 347--391 define the public audit and lazy-region records; and
+lines 602--773 perform idempotent size-gated full indexing and selected-region
+native encoding. The facade in
+\path{src/pra_hf/runtime.py:1073--1204} applies automatic preparation at
+ingestion and exposes preparation, lazy promotion, and lifecycle inspection.
+This order is important: policy is resolved before model-native construction,
+and a gate rejection preserves the backing identity and recovery interfaces.
 
 \path{src/pra_hf/hf_execution.py:49--174} is the family-independent HF
 bridge. At the routing layer it turns the current hidden representation into a
@@ -886,10 +925,12 @@ resumable coding-agent terminal\\
 bounded palettes, and exact capability activation\\
 \path{src/pra_hf/typed_context.py} & Type-aware compact views and retrieval
 addresses for large results\\
-\path{src/pra_hf/adaptive_context_runtime.py} & Scoped backing,
-materialization, transport accounting, and cursors\\
-\path{src/pra_hf/progressive_context.py} & Stable record views and optional
-production PRA routing over exact backing\\
+\path{src/pra_hf/adaptive_context_runtime.py} & Scoped backing, serializable
+token/byte and per-type ingestion policy, materialization, transport accounting,
+and cursors\\
+\path{src/pra_hf/progressive_context.py} & Stable record views, native-index
+lifecycle audits, size-gated full backing, and lazy selected-region native
+encoding\\
 \path{src/pra_hf/external_memory.py} & Resolver-neutral cold/warm/hot
 lifecycle and scoped caches\\
 \path{pra-hf-demo/pra_runtime_productization.ipynb} & Executed user workflow\\

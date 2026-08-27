@@ -13,6 +13,7 @@ from .model import PRAForCausalLM
 from .router import PRARouter
 from .training import load_feature_rows, train_router
 from .runtime import PRARuntimeConfig, VLLMThinBackend, runtime_capabilities
+from .adaptive_context_runtime import ContextPolicy
 from .runtime_benchmark import run_runtime_microbenchmark, write_runtime_benchmark
 from .agent import PRAAgent, PRAAgentConfig
 from .tui import AgentShell
@@ -101,13 +102,29 @@ def runtime_cli() -> None:
 @click.option("--backend", type=click.Choice(["huggingface", "vllm_thin"]), default="huggingface")
 @click.option("--compilation", type=click.Choice(["eager", "torch_compile"]), default="eager")
 @click.option("--kv-layout", type=click.Choice(["layer_major", "chunk_major", "block_major", "reference_major"]), default="layer_major")
-def runtime_init(directory: Path, backend: str, compilation: str, kv_layout: str) -> None:
+@click.option("--max-native-index-tokens", type=click.IntRange(min=0), default=4096, show_default=True)
+@click.option("--max-native-index-bytes", type=click.IntRange(min=0), default=65536, show_default=True)
+@click.option("--defer-native-index/--prepare-native-index", default=False, show_default=True)
+def runtime_init(
+    directory: Path,
+    backend: str,
+    compilation: str,
+    kv_layout: str,
+    max_native_index_tokens: int,
+    max_native_index_bytes: int,
+    defer_native_index: bool,
+) -> None:
     """Create a versioned, non-secret runtime configuration artifact."""
 
     config = PRARuntimeConfig(
         backend=backend,
         compilation=compilation,
         kv_layout=kv_layout,
+        context_policy=ContextPolicy(
+            max_native_index_tokens=max_native_index_tokens,
+            max_native_index_bytes=max_native_index_bytes,
+            defer_native_index=defer_native_index,
+        ),
     )
     path = config.save_pretrained(directory)
     _echo_json({"config": str(path), **config.to_dict()})

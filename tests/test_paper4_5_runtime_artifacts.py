@@ -84,5 +84,13 @@ def test_runtime_demo_is_executed_and_covers_the_unified_sdk() -> None:
         "Thin vLLM handoff",
         "Multi-axis execution policy",
         "Standalone gateway and explicit downgrade",
+        "Size-adaptive native indexing and lazy region promotion",
     ):
         assert phrase in markdown
+
+    outputs = json.dumps(
+        [output for cell in code_cells for output in cell.get("outputs", ())]
+    )
+    assert "'in_budget_state': 'BUILT'" in outputs
+    assert "'oversized_state': 'SKIPPED_SIZE_LIMIT'" in outputs
+    assert "'references_after_close': 0" in outputs

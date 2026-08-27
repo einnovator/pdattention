@@ -7,7 +7,8 @@ The demo directory contains two executed, user-facing notebooks:
   covers runtime configuration, direct and external cold/warm/hot memory, exact native-K/V
   planning, four physical layouts, cache and profiler accounting, typed discovery and graph
   disclosure, lazy callable and skill records, compact typed tool results, selective replay,
-  cursors, opt-in native result routing, safe execution, inspection, and thin serving handoff.
+  cursors, size-gated native result routing, lazy selected-region native encoding,
+  lifecycle inspection, safe execution, and thin serving handoff.
   It also demonstrates durable user/session resolution, task DAGs, task-scoped records,
   reusable toolsets, and the coding-agent CLI introduced by Paper 8.
 

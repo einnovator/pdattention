@@ -91,8 +91,13 @@ runtime = PRARuntime.from_pretrained(
     model_id,
     agent_config=agent,
     context_policy=ContextPolicy(
+        max_native_index_tokens=4096,
+        max_native_index_bytes=65536,
         record_policies={
-            RecordType.TOOL_RESPONSE: TypeContextPolicy(unit_limit=8),
+            RecordType.TOOL_RESPONSE: TypeContextPolicy(
+                unit_limit=8,
+                max_native_index_tokens=2048,
+            ),
         },
     ),
 )
@@ -113,13 +118,27 @@ selected = runtime.materialize_result(
 
 Tool/API results infer tabular, log, graph, terminal, or generic structured
 shape. Full bytes stay hash-verified and tenant/session scoped. Address search,
-bounded cursors, TTLs, storage placement, and per-record compaction limits are
-configured through `ContextPolicy`.
+bounded cursors, TTLs, storage placement, native-index ingestion limits, and
+per-record overrides are configured through `ContextPolicy`.
 
-Set `native_result_routing=True` only for an isolated Hugging Face model
-session. Then call `register_result_backing()`, `route_result_backing()`, and
-`materialize_routed_result()` explicitly. The runtime never places exact backing
-in model memory merely because a compact record was ingested.
+`PRARuntime.from_pretrained()` enables size-adaptive native result routing by
+default. In-budget records enter `BUILT`; oversized records enter
+`SKIPPED_SIZE_LIMIT`; policy-deferred records enter `DEFERRED`. A skipped record
+is not truncated or mislabeled as native. Its compact view, cheap addresses,
+search, and cursor remain available. After cheap selection, promote only an
+authorized bounded region with:
+
+```python
+audit = runtime.result_native_index_audit(session, record.record_id)
+region = runtime.encode_result_region_native(
+    session, record.record_id, {"rows": [20, 30]}
+)
+```
+
+Use `prepare_result_native_index(..., force=True)` to resolve a deliberately
+deferred index. Pass `native_result_routing=False` when model-resident result
+references are not appropriate, such as a shared model process without tenant
+partitioning.
 
 ## Run a persistent PRA agent
 

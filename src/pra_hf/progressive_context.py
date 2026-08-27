@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Mapping, Sequence
 
@@ -53,6 +53,15 @@ class PRAViewKind(str, Enum):
     DETAIL = "detail"
     SEARCH_RESULT = "search"
     CURSOR_PAGE = "cursor"
+
+
+class NativeIndexState(str, Enum):
+    """Auditable lifecycle state of a full-backing native PRA index."""
+
+    NOT_REQUESTED = "NOT_REQUESTED"
+    BUILT = "BUILT"
+    SKIPPED_SIZE_LIMIT = "SKIPPED_SIZE_LIMIT"
+    DEFERRED = "DEFERRED"
 
 
 class ContextTransport(str, Enum):
@@ -242,11 +251,16 @@ class RecordCapabilities:
     cursor_id: str | None = None
     has_more: bool = False
     allowed_cursor_operations: tuple[CursorOperation | str, ...] = ()
+    partial_context: bool = False
+    native_index_state: NativeIndexState | str = NativeIndexState.NOT_REQUESTED
+    native_index_skipped_reason: str | None = None
+    lazy_native_available: bool = False
 
     def __post_init__(self) -> None:
         operations = tuple(CursorOperation(value) for value in self.allowed_cursor_operations)
         object.__setattr__(self, "allowed_cursor_operations", operations)
         object.__setattr__(self, "partial_selectors", tuple(self.partial_selectors))
+        object.__setattr__(self, "native_index_state", NativeIndexState(self.native_index_state))
         if self.cursor_available and not self.cursor_id:
             raise ValueError("cursor_available requires cursor_id.")
 
@@ -262,6 +276,12 @@ class RecordCapabilities:
             "cursor_id": self.cursor_id,
             "has_more": self.has_more,
             "allowed_cursor_operations": [value.value for value in self.allowed_cursor_operations],
+            "partial_context": self.partial_context,
+            "more_data_available": self.has_more,
+            "full_materialization_available": self.full_available,
+            "native_index_state": self.native_index_state.value,
+            "native_index_skipped_reason": self.native_index_skipped_reason,
+            "lazy_native_encoding_available": self.lazy_native_available,
         }
 
 
@@ -323,6 +343,58 @@ class NativePRASelection:
     record_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class NativeIndexAudit:
+    """Lifecycle and cost record for one full-backing native index request."""
+
+    record_id: str
+    native_index_state: NativeIndexState
+    native_index_requested: bool
+    native_index_built: bool
+    native_index_skipped_reason: str | None
+    native_index_tokens: int | None
+    native_index_bytes: int
+    native_index_latency_ms: float
+    cheap_index_modes_built: tuple[str, ...]
+    lazy_native_regions_encoded: int = 0
+    lazy_native_tokens: int = 0
+
+    def prompt_descriptor(self) -> dict[str, object]:
+        """Return bounded controller metadata without exposing backing content."""
+
+        return {
+            "native_index_state": self.native_index_state.value,
+            "native_index_built": self.native_index_built,
+            "native_index_skipped_reason": self.native_index_skipped_reason,
+            "search_available": bool(self.cheap_index_modes_built),
+            "lazy_native_regions_encoded": self.lazy_native_regions_encoded,
+        }
+
+
+@dataclass(frozen=True)
+class LazyNativeRegion:
+    """One authorized selected region encoded through the native PRA path."""
+
+    record_id: str
+    selector: Mapping[str, object]
+    reference_uri: str
+    native_tokens: int
+    latency_ms: float
+    payload_bytes: int
+
+
+class NativeIndexSizeLimitExceeded(RuntimeError):
+    """Raised when callers request PRA_NATIVE after a size-gated skip."""
+
+    def __init__(self, audit: NativeIndexAudit) -> None:
+        super().__init__(
+            f"Full-body native index for {audit.record_id!r} was skipped: "
+            f"{audit.native_index_skipped_reason}. Use cheap search/cursor or "
+            "lazy selected-region native encoding instead."
+        )
+        self.audit = audit
+
+
 def _terms(value: object) -> tuple[str, ...]:
     return tuple(dict.fromkeys(token.casefold() for token in _TOKEN.findall(str(value))))
 
@@ -365,6 +437,8 @@ class PRARecordRegistry:
         self.reference_handles: dict[str, ReferenceHandle] = {}
         self.backing_reference_handles: dict[str, ReferenceHandle] = {}
         self.backing_index_metrics: dict[str, dict[str, float | int]] = {}
+        self.native_index_audits: dict[str, NativeIndexAudit] = {}
+        self.lazy_reference_handles: dict[str, ReferenceHandle] = {}
 
     def bind_model(self, model: PRAForCausalLM) -> None:
         """Register existing views through the production PRA memory path."""
@@ -443,7 +517,9 @@ class PRARecordRegistry:
                 **document.__dict__, "pra_reference_id": reference_id
             })
         self.documents[uri] = document
-        self.views_by_record.setdefault(record_id, []).append(uri)
+        record_views = self.views_by_record.setdefault(record_id, [])
+        if uri not in record_views:
+            record_views.append(uri)
         return document
 
     def register_compact_record(
@@ -456,6 +532,30 @@ class PRARecordRegistry:
 
         record = self.runtime.records[record_id]
         capabilities = capabilities or RecordCapabilities()
+        compact_is_partial = bool(record.metadata.get("lossy", True))
+        capabilities = replace(
+            capabilities,
+            partial_context=capabilities.partial_context or compact_is_partial,
+            has_more=capabilities.has_more or compact_is_partial,
+            searchable=True,
+        )
+        audit = self.native_index_audits.get(record_id)
+        if audit is not None:
+            capabilities = replace(
+                capabilities,
+                partial_context=capabilities.partial_context or compact_is_partial,
+                searchable=capabilities.searchable or bool(audit.cheap_index_modes_built),
+                has_more=capabilities.has_more or compact_is_partial,
+                native_index_state=audit.native_index_state,
+                native_index_skipped_reason=audit.native_index_skipped_reason,
+                lazy_native_available=(
+                    capabilities.lazy_native_available
+                    or audit.native_index_state in {
+                        NativeIndexState.SKIPPED_SIZE_LIMIT,
+                        NativeIndexState.DEFERRED,
+                    }
+                ),
+            )
         self.capabilities[record_id] = capabilities
         payload = {
             "record_id": record_id,
@@ -464,12 +564,45 @@ class PRARecordRegistry:
             "compact": record.compact_view(),
             "backing_size_bytes": record.backing.size_bytes,
             "capabilities": capabilities.prompt_descriptor(),
+            "native_index": (
+                audit.prompt_descriptor()
+                if audit is not None
+                else NativeIndexAudit(
+                    record_id,
+                    NativeIndexState.NOT_REQUESTED,
+                    False,
+                    False,
+                    None,
+                    0,
+                    record.backing.size_bytes,
+                    0.0,
+                    tuple(sorted(record.address_views())),
+                ).prompt_descriptor()
+            ),
             "provenance": dict(record.backing.provenance),
         }
         return self.register_document(record_id, view=PRAViewKind.SUMMARY, payload=payload)
 
-    def register_backing_record(self, record_id: str) -> ReferenceHandle:
-        """Index exact backing bytes through the production PRA reference path.
+    def _native_token_count(self, text: str) -> int:
+        if self.pra_model is None:
+            raise RuntimeError("A PRA model must be bound before native token accounting.")
+        input_ids = self.pra_model.tokenizer(
+            text, add_special_tokens=False
+        ).input_ids
+        if hasattr(input_ids, "numel"):
+            return int(input_ids.numel())
+        if input_ids and isinstance(input_ids[0], Sequence):
+            return len(input_ids[0])
+        return len(input_ids)
+
+    def _refresh_compact_metadata(self, record_id: str) -> None:
+        capabilities = self.capabilities.get(record_id, RecordCapabilities())
+        self.register_compact_record(record_id, capabilities=capabilities)
+
+    def prepare_backing_index(
+        self, record_id: str, *, force: bool = False
+    ) -> NativeIndexAudit:
+        """Apply the configured size gate and build a full native index if allowed.
 
         The backing reference is retrieval-only: it is not inserted into
         ``documents`` and therefore does not become prompt-visible context.
@@ -479,13 +612,65 @@ class PRARecordRegistry:
             raise RuntimeError("A PRA model must be bound before indexing backing state.")
         if record_id not in self.runtime.records:
             raise KeyError(record_id)
+        previous_audit = self.native_index_audits.get(record_id)
+        if previous_audit is not None and not force:
+            return previous_audit
+        record = self.runtime.records[record_id]
+        byte_count = record.backing.size_bytes
+        token_limit, byte_limit, deferred = self.runtime.policy.native_index_policy(
+            record.record_type
+        )
+        cheap_modes = tuple(sorted(record.address_views()))
+        reason = None
+        state = NativeIndexState.BUILT
+        token_count: int | None = None
+        if deferred and not force:
+            state = NativeIndexState.DEFERRED
+            reason = "native index deferred by policy"
+        elif byte_limit is not None and byte_count > byte_limit:
+            state = NativeIndexState.SKIPPED_SIZE_LIMIT
+            reason = f"{byte_count} bytes exceed configured limit {byte_limit}"
+        else:
+            payload = self.runtime.store.get(record_id, scope=self.runtime.scope)
+            text = _payload_text(payload)
+            token_count = self._native_token_count(text)
+            if token_limit is not None and token_count > token_limit:
+                state = NativeIndexState.SKIPPED_SIZE_LIMIT
+                reason = f"{token_count} tokens exceed configured limit {token_limit}"
+        if state is not NativeIndexState.BUILT:
+            audit = NativeIndexAudit(
+                record_id,
+                state,
+                True,
+                False,
+                reason,
+                token_count,
+                byte_count,
+                0.0,
+                cheap_modes,
+            )
+            self.native_index_audits[record_id] = audit
+            self.runtime._audit(
+                "native_index_skipped",
+                record_id,
+                state=state.value,
+                reason=reason,
+                native_index_tokens=token_count,
+                native_index_bytes=byte_count,
+                cheap_index_modes_built=list(cheap_modes),
+            )
+            self._refresh_compact_metadata(record_id)
+            return audit
+        payload = self.runtime.store.get(record_id, scope=self.runtime.scope)
+        text = _payload_text(payload)
+        if token_count is None:
+            token_count = self._native_token_count(text)
         previous = self.backing_reference_handles.get(record_id)
         if previous is not None:
             self.pra_model.remove_reference(previous)
-        payload = self.runtime.store.get(record_id, scope=self.runtime.scope)
         uri = f"{record_id}/views/backing"
         started = time.perf_counter()
-        handle = self.pra_model.add_reference(uri, text=_payload_text(payload))
+        handle = self.pra_model.add_reference(uri, text=text)
         elapsed = time.perf_counter() - started
         stats = self.pra_model.stats()
         self.backing_reference_handles[record_id] = handle
@@ -495,9 +680,100 @@ class PRARecordRegistry:
             "ingestion_seconds": elapsed,
             "routing_index_bytes": int(stats["routing_index_bytes"]),
             "resident_detail_kv_bytes": int(stats["resident_detail_kv_bytes"]),
-            "full_backing_bytes": self.runtime.records[record_id].backing.size_bytes,
+            "full_backing_bytes": byte_count,
         }
-        return handle
+        audit = NativeIndexAudit(
+            record_id,
+            NativeIndexState.BUILT,
+            True,
+            True,
+            None,
+            int(handle.tokens),
+            byte_count,
+            elapsed * 1000.0,
+            cheap_modes,
+        )
+        self.native_index_audits[record_id] = audit
+        self.runtime._audit(
+            "native_index_built",
+            record_id,
+            native_index_tokens=int(handle.tokens),
+            native_index_bytes=byte_count,
+            native_index_latency_ms=elapsed * 1000.0,
+            cheap_index_modes_built=list(cheap_modes),
+        )
+        self._refresh_compact_metadata(record_id)
+        return audit
+
+    def register_backing_record(self, record_id: str) -> ReferenceHandle:
+        """Build PRA_NATIVE or fail explicitly when the configured gate skips it."""
+
+        audit = self.prepare_backing_index(record_id)
+        if not audit.native_index_built:
+            raise NativeIndexSizeLimitExceeded(audit)
+        return self.backing_reference_handles[record_id]
+
+    def encode_selected_region_native(
+        self,
+        record_id: str,
+        selector: Mapping[str, object],
+    ) -> LazyNativeRegion:
+        """Authorize, select, and natively encode only one bounded backing region."""
+
+        if self.pra_model is None:
+            raise RuntimeError("A PRA model must be bound before lazy native encoding.")
+        materialized = self.runtime.materialize(MaterializationEvent(
+            record_id,
+            level=RecordViewName.SELECTED,
+            selector=selector,
+        ))
+        text = _payload_text(materialized.payload)
+        sequence = sum(
+            uri.startswith(f"{record_id}/views/lazy-native-")
+            for uri in self.lazy_reference_handles
+        ) + 1
+        uri = f"{record_id}/views/lazy-native-{sequence}"
+        started = time.perf_counter()
+        handle = self.pra_model.add_reference(uri, text=text)
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        self.lazy_reference_handles[uri] = handle
+        previous = self.native_index_audits.get(record_id)
+        if previous is None:
+            record = self.runtime.records[record_id]
+            previous = NativeIndexAudit(
+                record_id,
+                NativeIndexState.NOT_REQUESTED,
+                False,
+                False,
+                None,
+                0,
+                record.backing.size_bytes,
+                0.0,
+                tuple(sorted(record.address_views())),
+            )
+        audit = replace(
+            previous,
+            lazy_native_regions_encoded=previous.lazy_native_regions_encoded + 1,
+            lazy_native_tokens=previous.lazy_native_tokens + int(handle.tokens),
+        )
+        self.native_index_audits[record_id] = audit
+        self.runtime._audit(
+            "lazy_native_region_encoded",
+            record_id,
+            selector=dict(selector),
+            native_tokens=int(handle.tokens),
+            latency_ms=latency_ms,
+            source_fingerprint=self.runtime.records[record_id].backing.content_hash,
+        )
+        self._refresh_compact_metadata(record_id)
+        return LazyNativeRegion(
+            record_id,
+            dict(selector),
+            uri,
+            int(handle.tokens),
+            latency_ms,
+            materialized.payload_bytes,
+        )
 
     def route_backing(self, query: str) -> NativePRASelection:
         """Run production PRA routing over registered full-backing references."""
@@ -660,6 +936,20 @@ class ProgressiveContextRuntime:
 
         return self.registry.register_backing_record(record_id)
 
+    def prepare_native_index(
+        self, record_id: str, *, force: bool = False
+    ) -> NativeIndexAudit:
+        """Return an auditable built, gated, or deferred native-index result."""
+
+        return self.registry.prepare_backing_index(record_id, force=force)
+
+    def encode_selected_region_native(
+        self, record_id: str, selector: Mapping[str, object]
+    ) -> LazyNativeRegion:
+        """Encode one authorized bounded region after cheap selection."""
+
+        return self.registry.encode_selected_region_native(record_id, selector)
+
     def native_select(self, query: str) -> NativePRASelection:
         """Run production PRA routing over exact backing state."""
 
@@ -815,19 +1105,17 @@ class ProgressiveContextRuntime:
                 )
             if decision.action == ContextAction.SEARCH_RECORD:
                 record_id = decision.record_id or ""
-                payload = self.runtime.store.get(record_id, scope=self.runtime.scope)
-                selected = _search_known_payload(payload, decision.query or "", limit=4)
-                payload_bytes, network_bytes, round_trips = (
-                    self.runtime.account_selected_payload(
-                        selected, action="search_record"
-                    )
+                result = self.runtime.search_record(
+                    record_id, decision.query or "", limit=4
                 )
+                selected = result.payload
+                remote = self.runtime.policy.topology.value != "same_process"
                 document = self._register_result(
                     record_id, PRAViewKind.SEARCH_RESULT, selected
                 )
                 return ContextExecutionResult(
-                    decision, True, document, selected, payload_bytes,
-                    network_bytes, round_trips, 2,
+                    decision, True, document, selected, result.payload_bytes,
+                    result.payload_bytes if remote else 0, int(remote), 2,
                     time.perf_counter() - started, transport,
                 )
             cursor = self.runtime.cursors.describe(
@@ -882,37 +1170,3 @@ class ProgressiveContextRuntime:
             }:
                 break
         return tuple(transitions)
-
-
-def _search_known_payload(payload: object, query: str, *, limit: int) -> object:
-    """Return bounded exact units from one already identified backing object."""
-
-    if limit <= 0:
-        raise ValueError("search limit must be positive.")
-    collection = "items"
-    values: list[object]
-    if isinstance(payload, Mapping):
-        for name in ("rows", "nodes", "edges", "events", "results", "chunks", "items"):
-            candidate = payload.get(name)
-            if isinstance(candidate, Sequence) and not isinstance(candidate, (str, bytes)):
-                collection, values = name, list(candidate)
-                break
-        else:
-            collection, values = "fields", [
-                {"field": key, "value": value} for key, value in payload.items()
-            ]
-    elif isinstance(payload, str):
-        collection, values = "lines", payload.splitlines()
-    elif isinstance(payload, Sequence) and not isinstance(payload, (str, bytes)):
-        values = list(payload)
-    else:
-        values = [payload]
-    terms = set(_terms(query))
-    ranked = []
-    for index, value in enumerate(values):
-        overlap = len(terms & set(_terms(_payload_text(value))))
-        if overlap:
-            ranked.append((overlap, index, value))
-    ranked.sort(key=lambda row: (-row[0], row[1]))
-    selected = [row[2] for row in ranked[:limit]]
-    return {"collection": collection, "query": query, "matches": selected}

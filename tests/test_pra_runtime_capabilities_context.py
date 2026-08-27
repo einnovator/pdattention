@@ -9,6 +9,7 @@ from pra_hf import (
     CursorAction,
     ExecutionAuthorization,
     HuggingFaceBackend,
+    NativeIndexState,
     PRARuntime,
     PRARuntimeConfig,
     RecordCapabilities,
@@ -37,6 +38,49 @@ class _Backend:
 
     def inspect(self):
         return {"backend": self.name}
+
+
+class _Tokenizer:
+    def __call__(self, text, add_special_tokens=False):
+        del add_special_tokens
+        return type("Encoded", (), {"input_ids": list(range(len(text.split())))})()
+
+    def decode(self, values, skip_special_tokens=True):
+        del skip_special_tokens
+        return " ".join(f"token-{value}" for value in values)
+
+
+class _PRA:
+    def __init__(self):
+        self.tokenizer = _Tokenizer()
+        self.references = {}
+
+    def add_reference(self, reference, *, text):
+        self.references[reference] = text
+        return type("Handle", (), {
+            "id": reference,
+            "uri": reference,
+            "tokens": len(text.split()),
+            "chunks": 1,
+        })()
+
+    def remove_reference(self, handle):
+        self.references.pop(handle.uri, None)
+
+    def stats(self):
+        return {"routing_index_bytes": 64, "resident_detail_kv_bytes": 256}
+
+    def route(self, _query):
+        uri = next(uri for uri in self.references if uri.endswith("/views/backing"))
+        return type("Routing", (), {
+            "selected": ({
+                "reference_uri": uri,
+                "chunk_id": f"{uri}#0",
+                "logical_start": 0,
+                "logical_end": 3,
+            },),
+            "stats": {"selection_policy": "top_k"},
+        })()
 
 
 def _sdk() -> CapabilitySDK:
@@ -187,45 +231,6 @@ def test_native_result_routing_rejects_non_huggingface_backend() -> None:
 
 
 def test_native_result_routing_is_explicit_and_cleaned_up(tmp_path) -> None:
-    class _Tokenizer:
-        def __call__(self, text, add_special_tokens=False):
-            return type("Encoded", (), {"input_ids": list(range(len(text.split())))})()
-
-        def decode(self, values, skip_special_tokens=True):
-            return " ".join(f"token-{value}" for value in values)
-
-    class _PRA:
-        def __init__(self):
-            self.tokenizer = _Tokenizer()
-            self.references = {}
-
-        def add_reference(self, reference, *, text):
-            self.references[reference] = text
-            return type("Handle", (), {
-                "id": reference,
-                "uri": reference,
-                "tokens": len(text.split()),
-                "chunks": 1,
-            })()
-
-        def remove_reference(self, handle):
-            self.references.pop(handle.uri, None)
-
-        def stats(self):
-            return {"routing_index_bytes": 64, "resident_detail_kv_bytes": 256}
-
-        def route(self, _query):
-            uri = next(uri for uri in self.references if uri.endswith("/views/backing"))
-            return type("Routing", (), {
-                "selected": ({
-                    "reference_uri": uri,
-                    "chunk_id": f"{uri}#0",
-                    "logical_start": 0,
-                    "logical_end": 3,
-                },),
-                "stats": {"selection_policy": "top_k"},
-            })()
-
     model = _PRA()
     runtime = PRARuntime(
         config=PRARuntimeConfig(),
@@ -242,7 +247,9 @@ def test_native_result_routing_is_explicit_and_cleaned_up(tmp_path) -> None:
         record_type=RecordType.GENERIC_TEXT,
     )
 
-    assert not model.references
+    audit = runtime.result_native_index_audit(session, record.record_id)
+    assert audit.native_index_state == NativeIndexState.BUILT
+    assert any(uri.endswith("/views/backing") for uri in model.references)
     handle = runtime.register_result_backing(session, record.record_id)
     selection = runtime.route_result_backing(session, "exact evidence")
     materialized = runtime.materialize_routed_result(session, selection)
@@ -250,5 +257,52 @@ def test_native_result_routing_is_explicit_and_cleaned_up(tmp_path) -> None:
     assert handle.uri.endswith("/views/backing")
     assert selection.record_ids == (record.record_id,)
     assert materialized.success
+    runtime.close_session(session)
+    assert not model.references
+
+
+def test_runtime_gates_large_native_index_and_lazy_encodes_selected_region(tmp_path) -> None:
+    model = _PRA()
+    runtime = PRARuntime(
+        config=PRARuntimeConfig(
+            context_policy=ContextPolicy(
+                local_store=tmp_path,
+                max_native_index_tokens=3,
+                max_native_index_bytes=4096,
+            )
+        ),
+        backend=HuggingFaceBackend(model),
+        native_result_routing=True,
+    )
+    session = runtime.open_session(
+        session_id="size-gated", user_id="user-a", tenant_id="tenant-a"
+    )
+    record = runtime.ingest_result(
+        session,
+        {
+            "rows": [
+                {"id": 1, "value": "ordinary"},
+                {"id": 2, "value": "ANSWER_CODE=ZX-7"},
+            ]
+        },
+        record_type=RecordType.DB_RESULT,
+    )
+
+    skipped = runtime.result_native_index_audit(session, record.record_id)
+    assert skipped.native_index_state == NativeIndexState.SKIPPED_SIZE_LIMIT
+    assert runtime.search_results(session, "ZX-7") == (record,)
+    assert not any(uri.endswith("/views/backing") for uri in model.references)
+
+    region = runtime.encode_result_region_native(
+        session, record.record_id, {"rows": [1, 2]}
+    )
+    lifecycle = runtime.inspect()["result_contexts"][session.session_id][
+        "native_index_lifecycle"
+    ][record.record_id]
+
+    assert region.reference_uri.endswith("/views/lazy-native-1")
+    assert lifecycle["state"] == "SKIPPED_SIZE_LIMIT"
+    assert lifecycle["lazy_regions"] == 1
+    assert lifecycle["lazy_tokens"] == region.native_tokens
     runtime.close_session(session)
     assert not model.references

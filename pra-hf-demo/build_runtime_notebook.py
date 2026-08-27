@@ -869,13 +869,18 @@ cursor_page = capability_runtime.execute_result_cursor(
     ),
     md(
         r'''
-## 17. Opt-in native PRA routing over exact result backing
+## 17. Size-adaptive native indexing and lazy region promotion
 
-Compact views and deterministic address search work without changing model memory. For an isolated
-model session, `native_result_routing=True` enables Paper 7's stronger path: explicitly register
-exact backing through the production PRA encoder, call the route-only model API, and decode only
-the selected original spans. The runtime does not register compact descriptors or full backing
-implicitly, and session teardown removes every reference it registered.
+The standard Hugging Face loader enables native result routing. `ContextPolicy` bounds the full
+native index independently by tokens and bytes, with optional per-record-type overrides. An
+in-budget result enters `BUILT`; an oversized result enters `SKIPPED_SIZE_LIMIT`; a policy-delayed
+result enters `DEFERRED`. These states are synchronous, inspectable lifecycle decisions.
+
+Skipping a full index does not truncate the backing record. Compact visibility, cheap addresses,
+search, and cursors remain usable. Once one of those mechanisms identifies a bounded row, field,
+line, item, or chunk, `encode_result_region_native` authorizes that selector and runs only the
+selected region through the native encoder. The defaults shown here are a reference profile, not
+universal optimal thresholds.
 '''
     ),
     code(
@@ -885,6 +890,11 @@ native_result_runtime = build_tiny_runtime(
     context_policy=ContextPolicy(
         local_store=Path(tempfile.mkdtemp(prefix="pra-native-results-")),
         persistent_store=False,
+        max_native_index_tokens=128,
+        max_native_index_bytes=4096,
+        record_policies={
+            RecordType.DB_RESULT: TypeContextPolicy(max_native_index_tokens=8),
+        },
     ),
     native_result_routing=True,
 )
@@ -899,7 +909,7 @@ native_record = native_result_runtime.ingest_result(
     record_type=RecordType.GENERIC_TEXT,
     capabilities=RecordCapabilities(searchable=True),
 )
-native_handle = native_result_runtime.register_result_backing(
+native_audit = native_result_runtime.result_native_index_audit(
     native_session, native_record.record_id
 )
 native_selection = native_result_runtime.route_result_backing(
@@ -908,12 +918,39 @@ native_selection = native_result_runtime.route_result_backing(
 native_detail = native_result_runtime.materialize_routed_result(
     native_session, native_selection
 )
+
+oversized_record = native_result_runtime.ingest_result(
+    native_session,
+    {
+        "rows": [
+            {"id": 1, "status": "ordinary", "detail": "bounded visible row"},
+            {"id": 2, "status": "failed", "detail": "ANSWER_CODE=ZX-7"},
+            {"id": 3, "status": "ordinary", "detail": "another row"},
+        ]
+    },
+    record_type=RecordType.DB_RESULT,
+    capabilities=RecordCapabilities(searchable=True, partial_selectors=("rows",)),
+)
+oversized_audit = native_result_runtime.result_native_index_audit(
+    native_session, oversized_record.record_id
+)
+lazy_region = native_result_runtime.encode_result_region_native(
+    native_session, oversized_record.record_id, {"rows": [1, 2]}
+)
+inspected_lifecycle = native_result_runtime.inspect()["result_contexts"][
+    native_session.session_id
+]["native_index_lifecycle"]
 native_summary = {
-    "backing_uri": native_handle.uri,
+    "in_budget_state": native_audit.native_index_state.value,
     "selected_record_ids": native_selection.record_ids,
     "requested_kv_tokens": native_selection.routing.stats["requested_kv_tokens"],
     "materialized_detail": native_detail.success,
     "selected_chunk_count": len(native_detail.payload["selected_chunks"]),
+    "oversized_state": oversized_audit.native_index_state.value,
+    "oversized_reason": oversized_audit.native_index_skipped_reason,
+    "lazy_region_uri": lazy_region.reference_uri,
+    "lazy_region_tokens": lazy_region.native_tokens,
+    "lifecycle": inspected_lifecycle,
 }
 native_result_runtime.close_session(native_session)
 native_summary["references_after_close"] = len(native_result_runtime.backend.model.stats()["references"])
@@ -1172,7 +1209,7 @@ Demonstrated here:
 - typed discovery, bounded graph disclosure, and separate execution authorization;
 - lazy callable and skill records with exact full-view activation;
 - scoped type-aware result compaction, address search, selective replay, and cursors;
-- opt-in route-only native PRA retrieval over exact result backing;
+- size-adaptive native PRA retrieval, explicit lifecycle state, and lazy selected-region encoding;
 - durable user/session resolution, versioned task DAGs, and task-scoped typed records;
 - reusable workspace toolsets and a resumable coding-agent terminal UI;
 - request/per-layer and token/shared execution with request-owned traces;

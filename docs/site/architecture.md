@@ -102,8 +102,13 @@ rare-term, schema, and optional summary addresses remain retrieval-only.
 Materialization can return the full record, selected fields or ranges, search
 matches, or cursor pages.
 
-Native result routing is explicit. `register_result_backing()` encodes exact
-backing only after the host opts in; `route_result_backing()` uses the production
-PRA query/router path without generation; and teardown removes every reference
-registered for that session. This path requires an isolated model session so
-model-resident K/V cannot cross tenant boundaries.
+The Hugging Face loader applies native result routing within the configured
+ingestion budget. `max_native_index_tokens` and `max_native_index_bytes` resolve
+globally and per record type. The lifecycle reports `NOT_REQUESTED`, `BUILT`,
+`SKIPPED_SIZE_LIMIT`, or `DEFERRED`; a skipped record retains compact/search/cursor
+recovery instead of being silently truncated. After cheap selection,
+`encode_result_region_native()` can authorize and natively encode one bounded
+region. `route_result_backing()` uses the production PRA query/router path over
+built full indexes, and teardown removes compact, full, and lazy references.
+Model-resident result K/V still requires session isolation so it cannot cross
+tenant boundaries.

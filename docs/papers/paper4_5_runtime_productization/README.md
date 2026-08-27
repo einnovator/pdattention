@@ -12,7 +12,9 @@ The implementation adds:
 - Paper 6.5 callable tool records, OpenAI/Anthropic skill folders, lazy
   selection/full-view encoding, typed discovery, and safe execution;
 - Paper 7 type-aware result compaction with scoped exact backing, address
-  search, selected replay, cursors, and opt-in native-PRA backing routing;
+  search, selected replay, cursors, finite token/byte native-index gates,
+  per-record-type overrides, auditable lifecycle states, and lazy selected-region
+  native encoding above the full-index budget;
 - versioned runtime configuration and inspection;
 - deduplicated interval planning and native `[B, Hkv, T, D]` K/V packing;
 - byte-bounded LRU accounting and request-stage profiling;
