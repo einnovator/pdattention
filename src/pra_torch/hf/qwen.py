@@ -296,7 +296,14 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
                 {"sin": sin, "cos": cos, "cache_position": cache_position},
             )
         routing_query_states = self._routing_query_states(hidden_states, pre_query, query)
-        if self.fixed_selected_chunks is None:
+        if self.execution_bridge is not None:
+            prepared = self.execution_bridge.prepare_memory(
+                adapter=self,
+                query=query,
+                routing_query_states=routing_query_states,
+                direct_tokens=int(key.shape[2]),
+            )
+        elif self.fixed_selected_chunks is None:
             prepared = self.pra_core.prepare_memory(
                 query,
                 direct_tokens=int(key.shape[2]),

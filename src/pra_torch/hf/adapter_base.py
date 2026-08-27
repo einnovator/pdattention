@@ -58,6 +58,9 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         self.fixed_selected_chunks: list[list[SelectedChunk]] | None = None
         self.collect_attention_diagnostics = False
         self.last_attention_weights: torch.Tensor | None = None
+        # Request-owned dynamic execution bridge; installed only while one
+        # serialized high-level generation call is active.
+        self.__dict__["execution_bridge"] = None
         # The owning HF model registers this module exactly once.
         self.__dict__["memory_gate"] = memory_gate
         self.__dict__["residual_adapter"] = residual_adapter
@@ -99,6 +102,11 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         self.collect_attention_diagnostics = bool(enabled)
         if not enabled:
             self.last_attention_weights = None
+
+    def set_execution_bridge(self, bridge) -> None:
+        """Install or clear one request-scoped policy bridge without ownership."""
+
+        self.__dict__["execution_bridge"] = bridge
 
     def begin_capture(self, position_ids: torch.Tensor) -> None:
         """Capture this layer's post-position native K/V during the next prefill."""

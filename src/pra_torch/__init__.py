@@ -6,6 +6,21 @@ from .prompt import (
     prepare_prompt_for_pra,
 )
 from .trainer import PRAStandaloneTrainer
+from .execution import (
+    PRAExecutionCapabilities,
+    PRAExecutionPolicy,
+    PRAMaterializationScope,
+    PRARequestExecutionContext,
+    PRAResidencyPolicy,
+    PRARoutingLayerPolicy,
+    PRASelectedIdentity,
+    PRASelectionLayerScope,
+    PRASelectionPlan,
+    PRASelectionStage,
+    get_default_execution_policy,
+    resolve_execution_policy,
+    set_default_execution_policy,
+)
 
 __all__ = [
     "CacheServiceConfig",
@@ -13,8 +28,21 @@ __all__ = [
     "IMPLICIT_PROMPT_HEAD_URI",
     "PRAConfig",
     "PRAStandaloneTrainer",
+    "PRAExecutionCapabilities",
+    "PRAExecutionPolicy",
+    "PRAMaterializationScope",
+    "PRARequestExecutionContext",
+    "PRAResidencyPolicy",
+    "PRARoutingLayerPolicy",
+    "PRASelectedIdentity",
+    "PRASelectionLayerScope",
+    "PRASelectionPlan",
+    "PRASelectionStage",
     "ResolverServiceConfig",
     "TrainConfig",
     "prepare_prompt_batch_for_pra",
     "prepare_prompt_for_pra",
+    "get_default_execution_policy",
+    "resolve_execution_policy",
+    "set_default_execution_policy",
 ]

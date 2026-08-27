@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass
@@ -12,6 +13,16 @@ from typing import Any, Iterable
 import torch
 
 from pra_torch.hf import inject_pra
+from pra_torch.execution import (
+    PRAExecutionCapabilities,
+    PRAExecutionPolicy,
+    PRARequestExecutionContext,
+    PRASelectionLayerScope,
+    PRASelectionPlan,
+    PRASelectionStage,
+    resolve_execution_policy,
+    resolve_routing_layer,
+)
 from pra_torch.memory import SelectedChunk
 
 from .config import PRAConfig
@@ -25,6 +36,7 @@ from .iterative import (
 )
 from .memory_adapter import PRAMemoryAdapter
 from .router import PRARouter
+from .hf_execution import PRAHFExecutionBridge, selected_rows_to_identities
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,7 @@ class PRAForCausalLM:
         config: PRAConfig,
         router: PRARouter | None = None,
         memory_adapter: PRAMemoryAdapter | None = None,
+        pra_execution_policy: PRAExecutionPolicy | dict[str, object] | None = None,
     ):
         self.model = model
         self.tokenizer = tokenizer
@@ -89,6 +102,8 @@ class PRAForCausalLM:
         self.memory_adapter: PRAMemoryAdapter | None = None
         self._references: dict[str, ReferenceHandle] = {}
         self._last_stats: dict[str, Any] = {}
+        self._execution_policy = pra_execution_policy
+        self._execution_lock = threading.RLock()
         self._handle.set_memory_enabled(False)
         if memory_adapter is not None:
             self._install_memory_adapter(memory_adapter)
@@ -102,6 +117,7 @@ class PRAForCausalLM:
         routing_adapter: str | Path | None = None,
         memory_adapter: str | Path | None = None,
         pra_config: PRAConfig | dict[str, Any] | None = None,
+        pra_execution_policy: PRAExecutionPolicy | dict[str, object] | None = None,
         tokenizer_name_or_path: str | None = None,
         **model_kwargs,
     ) -> "PRAForCausalLM":
@@ -127,7 +143,14 @@ class PRAForCausalLM:
             if memory_adapter
             else None
         )
-        instance = cls(model, tokenizer, config, router, conditional)
+        instance = cls(
+            model,
+            tokenizer,
+            config,
+            router,
+            conditional,
+            pra_execution_policy,
+        )
         instance._validate_router_compatibility(
             model_name_or_path, model_kwargs.get("revision")
         )
@@ -145,6 +168,7 @@ class PRAForCausalLM:
         pra_config: PRAConfig | None = None,
         router: PRARouter | None = None,
         memory_adapter: PRAMemoryAdapter | None = None,
+        pra_execution_policy: PRAExecutionPolicy | dict[str, object] | None = None,
     ) -> "PRAForCausalLM":
         """Wrap an already-loaded model; useful for offline tests and custom loading."""
         return cls(
@@ -153,11 +177,49 @@ class PRAForCausalLM:
             pra_config or PRAConfig(),
             router,
             memory_adapter,
+            pra_execution_policy,
         )
 
     @property
     def device(self) -> torch.device:
         return self._handle.device
+
+    @property
+    def execution_capabilities(self) -> PRAExecutionCapabilities:
+        """Report the policy combinations implemented by the HF reference path."""
+
+        return PRAExecutionCapabilities(
+            engine="huggingface_eager",
+            request_selection=True,
+            phase_selection=False,
+            token_selection=True,
+            shared_layer_selection=True,
+            per_layer_selection=True,
+            request_materialization=True,
+            layer_materialization=True,
+            token_materialization=True,
+            keep_residency=True,
+            layer_lifetime_residency=True,
+            external_kv=True,
+        )
+
+    def set_execution_policy(
+        self, policy: PRAExecutionPolicy | dict[str, object] | None = None, **overrides
+    ) -> None:
+        """Set the model-level default used by subsequent independent requests."""
+
+        if policy is not None and overrides:
+            raise ValueError("Pass a policy object/mapping or keyword overrides, not both.")
+        self._execution_policy = overrides or policy
+
+    def _resolve_execution_policy(self, request_policy=None):
+        return resolve_execution_policy(
+            request_policy=request_policy,
+            model_policy=self._execution_policy,
+            capabilities=self.execution_capabilities,
+            active_layers=self.consumption_layers,
+            configured_routing_layer=self.routing_layer,
+        )
 
     def _validate_router_compatibility(
         self,
@@ -299,7 +361,13 @@ class PRAForCausalLM:
         self.config.enabled = False
         self._handle.configure_memory_layers(set())
 
-    def _selected_from_rankings(self, rankings: list[list[dict]]) -> list[list[SelectedChunk]]:
+    def _selected_from_rankings(
+        self,
+        rankings: list[list[dict]],
+        *,
+        layer_id: int | None = None,
+    ) -> list[list[SelectedChunk]]:
+        layer_id = self.routing_layer if layer_id is None else int(layer_id)
         entries = {entry.uri: entry for entry in self._handle.cache.all_entries()}
         rows: list[list[SelectedChunk]] = []
         for ranking in rankings:
@@ -308,7 +376,7 @@ class PRAForCausalLM:
                 entry = entries[reference["reference_uri"]]
                 chunks = {
                     chunk.chunk_id: chunk
-                    for chunk in entry.layer_memory[self.routing_layer].chunks
+                    for chunk in entry.layer_memory[layer_id].chunks
                 }
                 for chunk_row in reference["chunks"]:
                     candidates.append((reference, chunk_row, entry, chunks[chunk_row["chunk_id"]]))
@@ -325,7 +393,7 @@ class PRAForCausalLM:
                         chunk=chunk,
                         reference_score=float(reference["reference_score"]),
                         chunk_score=float(chunk_row["chunk_score"]),
-                        layer_id=self.routing_layer,
+                        layer_id=layer_id,
                         reference_rank=int(reference["reference_rank"]),
                         rank_within_reference=int(chunk_row["chunk_rank"]),
                         winning_gist_index=chunk_row.get("winning_gist_index"),
@@ -384,8 +452,11 @@ class PRAForCausalLM:
         return rows
 
     @torch.no_grad()
-    def _route_once(self, input_ids, attention_mask, position_ids):
-        adapter = self._handle.adapters[self.routing_layer]
+    def _route_once(
+        self, input_ids, attention_mask, position_ids, *, routing_layer: int | None = None
+    ):
+        routing_layer = self.routing_layer if routing_layer is None else int(routing_layer)
+        adapter = self._handle.adapters[routing_layer]
         self._handle.configure_memory_layers(set())
         adapter.begin_capture(position_ids)
         started = time.perf_counter()
@@ -405,7 +476,7 @@ class PRAForCausalLM:
         if self.config.routing_mode == "local_iterative":
             index = HierarchicalGistIndex.from_entries(
                 self._handle.cache.all_entries(),
-                self.routing_layer,
+                routing_layer,
                 device=query.device,
                 dtype=query.dtype,
             )
@@ -417,7 +488,7 @@ class PRAForCausalLM:
             selected = [iterative.selected_chunks(result) for result in results]
             # Parent root scores retain the same diagnostic ranking contract.
             simple_index = GistIndex.from_entries(
-                self._handle.cache.all_entries(), self.routing_layer,
+                self._handle.cache.all_entries(), routing_layer,
                 device=query.device, dtype=query.dtype,
             )
             rankings = self._iterative_rankings(simple_index, results)
@@ -429,7 +500,7 @@ class PRAForCausalLM:
         }:
             index = GistIndex.from_entries(
                 self._handle.cache.all_entries(),
-                self.routing_layer,
+                routing_layer,
                 device=query.device,
                 dtype=query.dtype,
             )
@@ -456,7 +527,7 @@ class PRAForCausalLM:
             retrieval_graphs = [result.graph.to_dict() for result in results]
         else:
             _, rankings = adapter.pra_core.route_memory(query)
-            selected = self._selected_from_rankings(rankings)
+            selected = self._selected_from_rankings(rankings, layer_id=routing_layer)
         routing_seconds = time.perf_counter() - started
         fixed = self._handle.map_chunk_identities_to_layers(
             selected, self.consumption_layers
@@ -472,6 +543,94 @@ class PRAForCausalLM:
                 if node["final_selected"]:
                     node["materialized"] = True
         return selected, rankings, query_seconds, routing_seconds, retrieval_graphs
+
+    @torch.no_grad()
+    def _route_request_per_layer(
+        self,
+        input_ids,
+        attention_mask,
+        position_ids,
+        context: PRARequestExecutionContext,
+    ):
+        """Capture once, independently route every layer, then freeze each plan."""
+
+        if self.config.routing_mode != "one_shot":
+            raise ValueError(
+                "REQUEST+PER_LAYER currently supports one_shot routing only; "
+                "no fallback to shared routing was applied."
+            )
+        self._handle.configure_memory_layers(set())
+        adapters = {
+            layer: self._handle.adapters[layer] for layer in self.consumption_layers
+        }
+        for adapter in adapters.values():
+            adapter.begin_capture(position_ids)
+        started = time.perf_counter()
+        self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            use_cache=False,
+        )
+        query_seconds = time.perf_counter() - started
+        fixed = {}
+        rankings_by_layer = {}
+        routing_seconds = 0.0
+        for layer, adapter in adapters.items():
+            captured = adapter.consume_capture()
+            query = adapter._routing_query_states(
+                captured.hidden_states, captured.pre_query, captured.post_query
+            )
+            started = time.perf_counter()
+            selected, rankings = adapter.pra_core.route_memory(query)
+            routing_seconds += time.perf_counter() - started
+            fixed[layer] = selected
+            rankings_by_layer[layer] = rankings
+        plan = PRASelectionPlan(
+            selection_stage=PRASelectionStage.REQUEST,
+            layer_scope=PRASelectionLayerScope.PER_LAYER,
+            source_layer=None,
+            epoch_id=context.next_epoch(),
+            per_layer_rows={
+                layer: selected_rows_to_identities(rows)
+                for layer, rows in fixed.items()
+            },
+            phase="request",
+            token_index=0,
+            routing_seconds=routing_seconds,
+        )
+        context.record_plan(plan)
+        self._handle.configure_memory_layers(
+            set(self.consumption_layers), fixed_selections=fixed
+        )
+        canonical_layer = (
+            self.routing_layer if self.routing_layer in fixed else self.consumption_layers[0]
+        )
+        return (
+            fixed[canonical_layer],
+            rankings_by_layer[canonical_layer],
+            query_seconds,
+            routing_seconds,
+            [],
+        )
+
+    def _record_request_shared_plan(
+        self,
+        context: PRARequestExecutionContext,
+        selected: list[list[SelectedChunk]],
+        routing_seconds: float,
+    ) -> None:
+        plan = PRASelectionPlan(
+            selection_stage=PRASelectionStage.REQUEST,
+            layer_scope=PRASelectionLayerScope.SHARED,
+            source_layer=self.routing_layer,
+            epoch_id=context.next_epoch(),
+            shared_rows=selected_rows_to_identities(selected),
+            phase="request",
+            token_index=0,
+            routing_seconds=routing_seconds,
+        )
+        context.record_plan(plan)
 
     @torch.no_grad()
     def route(self, prompt: str) -> RoutingResult:
@@ -547,9 +706,39 @@ class PRAForCausalLM:
         *,
         max_new_tokens: int = 64,
         return_details: bool = False,
+        pra_policy: PRAExecutionPolicy | dict[str, object] | None = None,
         **generation_kwargs,
     ) -> str | GenerationResult:
-        """Route references once, then generate with bounded layer-native memory."""
+        """Generate with an isolated request override of the execution policy."""
+
+        with self._execution_lock:
+            return self._generate_locked(
+                prompt,
+                max_new_tokens=max_new_tokens,
+                return_details=return_details,
+                pra_policy=pra_policy,
+                **generation_kwargs,
+            )
+
+    @torch.no_grad()
+    def _generate_locked(
+        self,
+        prompt: str,
+        *,
+        max_new_tokens: int,
+        return_details: bool,
+        pra_policy: PRAExecutionPolicy | dict[str, object] | None,
+        **generation_kwargs,
+    ) -> str | GenerationResult:
+        """Execute one serialized HF request after resolving policy precedence."""
+
+        resolved = self._resolve_execution_policy(pra_policy)
+        context = PRARequestExecutionContext(resolved)
+        routing_layer = resolve_routing_layer(
+            resolved.policy,
+            self.consumption_layers,
+            self.routing_layer,
+        )
         encoded = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=True)
         prepared = self._handle.prepare_long_prompt(encoded.input_ids.to(self.device))
         input_ids = prepared.input_ids.to(self.device)
@@ -559,10 +748,52 @@ class PRAForCausalLM:
         rankings: list[list[dict]] = [[]]
         query_seconds = routing_seconds = 0.0
         retrieval_graphs: list[dict[str, Any]] = []
+        bridge = None
         if self.config.enabled and not self._handle.cache.is_empty():
-            selected, rankings, query_seconds, routing_seconds, retrieval_graphs = self._route_once(
-                input_ids, attention_mask, position_ids
-            )
+            if resolved.policy.selection_stage == PRASelectionStage.REQUEST:
+                if (
+                    resolved.policy.selection_layer_scope
+                    == PRASelectionLayerScope.SHARED
+                ):
+                    (
+                        selected,
+                        rankings,
+                        query_seconds,
+                        routing_seconds,
+                        retrieval_graphs,
+                    ) = self._route_once(
+                        input_ids,
+                        attention_mask,
+                        position_ids,
+                        routing_layer=routing_layer,
+                    )
+                    self._record_request_shared_plan(
+                        context, selected, routing_seconds
+                    )
+                else:
+                    (
+                        selected,
+                        rankings,
+                        query_seconds,
+                        routing_seconds,
+                        retrieval_graphs,
+                    ) = self._route_request_per_layer(
+                        input_ids, attention_mask, position_ids, context
+                    )
+            else:
+                if self.config.routing_mode != "one_shot":
+                    raise ValueError(
+                        "Dynamic execution policies currently support one_shot "
+                        "routing only; no request-level fallback was applied."
+                    )
+                self._handle.configure_memory_layers(set(self.consumption_layers))
+                bridge = PRAHFExecutionBridge(
+                    self._handle,
+                    context,
+                    active_layers=self.consumption_layers,
+                    routing_layer=routing_layer,
+                )
+                self._handle.set_execution_bridge(bridge)
         else:
             self._handle.configure_memory_layers(set())
         if self.device.type == "cuda":
@@ -572,13 +803,18 @@ class PRAForCausalLM:
                 # supports only compute capability 7.0 and newer.
                 generation_kwargs.setdefault("disable_compile", True)
         started = time.perf_counter()
-        output = self.model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            max_new_tokens=max_new_tokens,
-            **generation_kwargs,
-        )
+        try:
+            output = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                max_new_tokens=max_new_tokens,
+                **generation_kwargs,
+            )
+        finally:
+            if bridge is not None:
+                self._handle.set_execution_bridge(None)
+                self._handle.configure_memory_layers(set())
         latency = time.perf_counter() - started
         generated = output[:, input_ids.shape[1] :]
         text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
@@ -586,13 +822,41 @@ class PRAForCausalLM:
         candidate_tokens = sum(
             chunk.token_count
             for entry in self._handle.cache.all_entries()
-            for memory in [entry.layer_memory.get(self.routing_layer)]
+            for memory in [entry.layer_memory.get(routing_layer)]
             if memory is not None
             for chunk in memory.chunks
         )
-        selected_tokens = sum(hit.selected_token_count for hit in selected[0])
+        if selected and selected[0]:
+            selected_tokens = sum(hit.selected_token_count for hit in selected[0])
+            selected_trace = [hit.as_trace_dict() for hit in selected[0]]
+        elif context.selection_plan is not None:
+            logical = context.selection_plan.rows_for(
+                routing_layer
+                if context.selection_plan.layer_scope
+                == PRASelectionLayerScope.PER_LAYER
+                else routing_layer
+            )[0]
+            selected_tokens = sum(item.token_end - item.token_start for item in logical)
+            selected_trace = [
+                {
+                    "reference_uri": item.reference_uri,
+                    "chunk_id": item.chunk_id,
+                    "token_start": item.token_start,
+                    "token_end": item.token_end,
+                }
+                for item in logical
+            ]
+        else:
+            selected_tokens = 0
+            selected_trace = []
+        if bridge is not None:
+            routing_seconds = sum(
+                float(row.get("routing_seconds", 0.0))
+                for row in context.trace
+                if row.get("event") == "selection"
+            )
         diagnostics = self._handle.diagnostics_by_layer()
-        routing_diagnostics = diagnostics.get(self.routing_layer, {})
+        routing_diagnostics = diagnostics.get(routing_layer, {})
         materialized_tokens = int(
             routing_diagnostics.get("memory_tokens_materialized", 0)
         )
@@ -607,13 +871,14 @@ class PRAForCausalLM:
             "materialized_kv_tokens": materialized_tokens,
             "materialized_kv_token_fraction": materialized_tokens
             / max(candidate_tokens, 1),
-            "selected": [hit.as_trace_dict() for hit in selected[0]],
+            "selected": selected_trace,
             "query_encoding_seconds": query_seconds,
             "routing_seconds": routing_seconds,
             "retrieval_graphs": retrieval_graphs,
             "generation_seconds": latency,
             "diagnostics_by_layer": diagnostics,
             "head_tokens": prepared.head_tokens,
+            "pra_execution": context.summary(),
         }
         result = GenerationResult(
             text=text,

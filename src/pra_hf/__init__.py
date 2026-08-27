@@ -5,6 +5,19 @@ from .evaluation import evaluate_router_features
 from .memory_adapter import PRAMemoryAdapter
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle, RoutingResult
 from .router import PRARouter
+from pra_torch.execution import (
+    PRAExecutionCapabilities,
+    PRAExecutionPolicy,
+    PRAMaterializationScope,
+    PRAResidencyPolicy,
+    PRARoutingLayerPolicy,
+    PRASelectedIdentity,
+    PRASelectionLayerScope,
+    PRASelectionPlan,
+    PRASelectionStage,
+    get_default_execution_policy,
+    set_default_execution_policy,
+)
 from .hybrid_discovery import (
     DiscoveryCandidate,
     HybridDiscoveryPolicy,
@@ -192,6 +205,15 @@ __all__ = [
     "HotMemoryHandle",
     "HybridDiscoveryPolicy",
     "PRAConfig",
+    "PRAExecutionCapabilities",
+    "PRAExecutionPolicy",
+    "PRAMaterializationScope",
+    "PRAResidencyPolicy",
+    "PRARoutingLayerPolicy",
+    "PRASelectedIdentity",
+    "PRASelectionLayerScope",
+    "PRASelectionPlan",
+    "PRASelectionStage",
     "PRAForCausalLM",
     "PRASession",
     "PRAMemoryAdapter",
@@ -218,6 +240,8 @@ __all__ = [
     "install_hf_adaptation_regime",
     "pool_hard_graph_facets",
     "weighted_label_propagation",
+    "get_default_execution_policy",
+    "set_default_execution_policy",
 ]
 
 __all__ += [

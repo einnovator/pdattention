@@ -167,6 +167,12 @@ class PRAHFModel:
         for adapter in self.adapters.values():
             adapter.set_attention_diagnostics(enabled)
 
+    def set_execution_bridge(self, bridge) -> None:
+        """Install the same request-owned execution bridge on all PRA layers."""
+
+        for adapter in self.adapters.values():
+            adapter.set_execution_bridge(bridge)
+
     def map_chunk_identities_to_layers(
         self,
         selections: list[list[SelectedChunk]],

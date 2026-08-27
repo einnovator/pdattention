@@ -145,6 +145,73 @@ def test_route_only_uses_production_selection_without_generation():
     assert result.stats["generation_seconds"] == 0.0
 
 
+def test_request_per_layer_routes_each_layer_once_and_reports_policy():
+    torch.manual_seed(307)
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(routing_layer=1, consumption_layers=(0, 1)),
+    )
+    pra.add_reference("abcdefghijklmnop")
+
+    result = pra.generate(
+        "question",
+        max_new_tokens=2,
+        return_details=True,
+        pra_policy={"selection_layer_scope": "per_layer"},
+    )
+
+    execution = result.stats["pra_execution"]
+    assert execution["execution_policy"]["selection_stage"] == "request"
+    assert execution["execution_policy"]["selection_layer_scope"] == "per_layer"
+    assert execution["routing_operations"] == 2
+    assert execution["selection_epochs"] == 1
+    assert set(pra._handle.adapters) == {0, 1}
+    assert all(adapter.fixed_selected_chunks for adapter in pra._handle.adapters.values())
+
+
+def test_token_shared_routes_once_per_forward_and_skips_earlier_layers():
+    torch.manual_seed(308)
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(routing_layer=1, consumption_layers=(0, 1)),
+    )
+    pra.add_reference("abcdefghijklmnop")
+
+    result = pra.generate(
+        "question",
+        max_new_tokens=2,
+        return_details=True,
+        pra_policy={
+            "selection_stage": "token",
+            "selection_layer_scope": "shared",
+            "materialization_scope": "token",
+        },
+    )
+
+    execution = result.stats["pra_execution"]
+    assert execution["execution_policy"]["selection_stage"] == "token"
+    assert execution["routing_operations"] == 2
+    assert execution["selection_epochs"] == 2
+    assert pra._handle.adapters[0].last_selected_chunks == [[]]
+    assert pra._handle.adapters[1].last_selected_chunks[0]
+    assert all(adapter.execution_bridge is None for adapter in pra._handle.adapters.values())
+
+
+def test_phase_policy_is_rejected_without_silent_hf_downgrade():
+    pra = PRAForCausalLM.from_model(_model(), TinyTokenizer(), pra_config=_config())
+    with pytest.raises(ValueError, match="does not support phase selection"):
+        pra.generate(
+            "question",
+            max_new_tokens=1,
+            pra_policy={
+                "selection_stage": "phase",
+                "materialization_scope": "phase",
+            },
+        )
+
+
 def test_router_cannot_change_after_reference_ingestion(tmp_path):
     pra = PRAForCausalLM.from_model(_model(), TinyTokenizer(), pra_config=_config())
     pra.add_reference("abcdefgh")
