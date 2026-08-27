@@ -84,3 +84,26 @@ branch for controlled disabled-reference evaluation.
 The `common` package owns model-independent optimization, checkpointing, timing, logging,
 and metric history. `pra_torch.pra_train` injects PRA-aware batch and evaluation callbacks.
 `PRAStandaloneTrainer` is a thin object-oriented facade over those functional APIs.
+
+## Typed capabilities
+
+Tools and skills enter the runtime as immutable typed records. Their selection
+views contain only identity, description, and use conditions. A bounded palette
+is encoded first; selecting one stable ID activates its complete schema or
+instructions without semantic rediscovery. Tool visibility remains separate
+from host execution authorization.
+
+## Compact result backing
+
+Tool responses, database rows, logs, terminal output, graphs, files, RAG
+results, and generic API payloads can be stored as session-scoped exact backing.
+Type-aware compactors produce bounded prompt views while lexical, entity,
+rare-term, schema, and optional summary addresses remain retrieval-only.
+Materialization can return the full record, selected fields or ranges, search
+matches, or cursor pages.
+
+Native result routing is explicit. `register_result_backing()` encodes exact
+backing only after the host opts in; `route_result_backing()` uses the production
+PRA query/router path without generation; and teardown removes every reference
+registered for that session. This path requires an isolated model session so
+model-resident K/V cannot cross tenant boundaries.

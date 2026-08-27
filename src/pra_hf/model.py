@@ -48,6 +48,18 @@ class GenerationResult:
     stats: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class RoutingResult:
+    """Production PRA selection without autoregressive generation."""
+
+    prompt_tokens: int
+    selected: tuple[dict[str, Any], ...]
+    rankings: tuple[dict[str, Any], ...]
+    query_encoding_seconds: float
+    routing_seconds: float
+    stats: dict[str, Any]
+
+
 class PRAForCausalLM:
     """A supported frozen Hugging Face causal LM with bounded PRA memory."""
 
@@ -460,6 +472,73 @@ class PRAForCausalLM:
                 if node["final_selected"]:
                     node["materialized"] = True
         return selected, rankings, query_seconds, routing_seconds, retrieval_graphs
+
+    @torch.no_grad()
+    def route(self, prompt: str) -> RoutingResult:
+        """Run production query encoding, routing, and native-K/V selection only.
+
+        Hosts use this route-only path when a compact result descriptor points to
+        exact backing state and generation must wait for an auditable retrieval
+        decision. It applies the same configured selection budget as ``generate``.
+        """
+
+        encoded = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=True)
+        prepared = self._handle.prepare_long_prompt(encoded.input_ids.to(self.device))
+        input_ids = prepared.input_ids.to(self.device)
+        attention_mask = prepared.attention_mask.to(self.device)
+        position_ids = prepared.position_ids.to(self.device)
+        selected: list[list[SelectedChunk]] = [[]]
+        rankings: list[list[dict]] = [[]]
+        query_seconds = routing_seconds = 0.0
+        retrieval_graphs: list[dict[str, Any]] = []
+        if self.config.enabled and not self._handle.cache.is_empty():
+            selected, rankings, query_seconds, routing_seconds, retrieval_graphs = (
+                self._route_once(input_ids, attention_mask, position_ids)
+            )
+        else:
+            self._handle.configure_memory_layers(set())
+        candidate_tokens = sum(
+            chunk.token_count
+            for entry in self._handle.cache.all_entries()
+            for memory in [entry.layer_memory.get(self.routing_layer)]
+            if memory is not None
+            for chunk in memory.chunks
+        )
+        candidate_count = sum(
+            len(reference["chunks"]) for reference in rankings[0]
+        ) if rankings else 0
+        selected_tokens = sum(hit.selected_token_count for hit in selected[0])
+        diagnostics = self._handle.diagnostics_by_layer()
+        routing_diagnostics = diagnostics.get(self.routing_layer, {})
+        materialized_tokens = int(
+            routing_diagnostics.get("memory_tokens_materialized", 0)
+        )
+        self._last_stats = {
+            "selection_policy": self.config.selection_policy,
+            "candidate_chunks": candidate_count,
+            "requested_chunks": len(selected[0]),
+            "requested_chunk_fraction": len(selected[0]) / max(candidate_count, 1),
+            "candidate_kv_tokens": candidate_tokens,
+            "requested_kv_tokens": selected_tokens,
+            "requested_kv_token_fraction": selected_tokens / max(candidate_tokens, 1),
+            "materialized_kv_tokens": materialized_tokens,
+            "materialized_kv_token_fraction": materialized_tokens / max(candidate_tokens, 1),
+            "selected": [hit.as_trace_dict() for hit in selected[0]],
+            "query_encoding_seconds": query_seconds,
+            "routing_seconds": routing_seconds,
+            "retrieval_graphs": retrieval_graphs,
+            "generation_seconds": 0.0,
+            "diagnostics_by_layer": diagnostics,
+            "head_tokens": prepared.head_tokens,
+        }
+        return RoutingResult(
+            prompt_tokens=int(input_ids.shape[1]),
+            selected=tuple(self._last_stats["selected"]),
+            rankings=tuple(rankings[0]),
+            query_encoding_seconds=query_seconds,
+            routing_seconds=routing_seconds,
+            stats=dict(self._last_stats),
+        )
 
     @torch.no_grad()
     def generate(

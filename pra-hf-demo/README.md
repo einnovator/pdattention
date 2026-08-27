@@ -6,7 +6,8 @@ The demo directory contains two executed, user-facing notebooks:
 - `pra_runtime_productization.ipynb` is the comprehensive Paper 4.5 systems walkthrough. It
   covers runtime configuration, direct and external cold/warm/hot memory, exact native-K/V
   planning, four physical layouts, cache and profiler accounting, typed discovery and graph
-  disclosure, safe execution, mechanism benchmarking, inspection, and thin serving handoff.
+  disclosure, lazy callable and skill records, compact typed tool results, selective replay,
+  cursors, opt-in native result routing, safe execution, inspection, and thin serving handoff.
 
 Both import the library directly from this checkout's `src/` directory and run tiny offline
 models by default.
@@ -22,7 +23,7 @@ Rebuild and execute it from this directory with:
 python build_demo_notebook.py
 jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=300 pra_hf_model_families.ipynb
 python build_runtime_notebook.py
-jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=300 pra_runtime_productization.ipynb
+jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=600 pra_runtime_productization.ipynb
 ```
 
 Remote pretrained-model cells are opt-in and disabled by default.

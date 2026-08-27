@@ -71,7 +71,12 @@ import transformers
 from transformers import LlamaConfig, LlamaForCausalLM
 
 from pra_hf import (
+    AgentConfig,
     AuthContext,
+    CapabilityEncodingPolicy,
+    CapabilitySDK,
+    ContextPolicy,
+    CursorAction,
     DiscoveryRequest,
     EncodingContext,
     ExecutionAuthorization,
@@ -90,9 +95,15 @@ from pra_hf import (
     ResolverRegistry,
     ResourceDiscoveryEngine,
     ResourceStat,
+    RecordCapabilities,
+    RecordType,
+    RecordViewName,
     RuntimeKVCache,
     RuntimeProfiler,
+    SafeToolExecutor,
     SelectedKVGather,
+    Skill,
+    TypeContextPolicy,
     VLLMThinBackend,
     runtime_capabilities,
 )
@@ -103,7 +114,7 @@ from data.agent_workflows import realistic_tool_catalog, workflow_executor, work
 torch.manual_seed(7)
 torch.set_grad_enabled(False)
 
-print(f"Using source package: {SOURCE_ROOT}")
+print("Using the repository source package")
 print({
     "python": platform.python_version(),
     "torch": torch.__version__,
@@ -205,7 +216,7 @@ class TinyTokenizer:
         return [str(int(value)) for value in token_ids]
 
 
-def build_tiny_runtime(config):
+def build_tiny_runtime(config, **components):
     model_config = LlamaConfig(
         vocab_size=67,
         hidden_size=32,
@@ -220,7 +231,9 @@ def build_tiny_runtime(config):
     )
     model_config._attn_implementation = "eager"
     model = LlamaForCausalLM(model_config).eval()
-    return PRARuntime.from_model(model, TinyTokenizer(), runtime_config=config)
+    return PRARuntime.from_model(
+        model, TinyTokenizer(), runtime_config=config, **components
+    )
 
 
 runtime = build_tiny_runtime(runtime_config)
@@ -695,7 +708,210 @@ accepted = tool_runtime.execute_tool(
     ),
     md(
         r'''
-## 15. Thin vLLM handoff
+## 15. Lazy callable and skill records
+
+The product SDK now accepts ordinary Python callables, explicit `Skill` objects, and a parent
+directory containing OpenAI- or Anthropic-style `SKILL.md` folders. Discovery sees only compact
+selection views by default. Full tool schemas and skill instructions are encoded only after exact
+identity selection, with count and token budgets applied to the candidate palette.
+'''
+    ),
+    code(
+        r'''
+def lookup_incidents(service: str) -> dict[str, object]:
+    """Return recent incidents for one service."""
+
+    return {
+        "columns": ["service", "status", "latency_ms"],
+        "rows": [
+            {"service": service, "status": "ok", "latency_ms": 12},
+            {"service": service, "status": "failed", "latency_ms": 950},
+            {"service": service, "status": "ok", "latency_ms": 18},
+        ],
+    }
+
+
+skills_root = Path(tempfile.mkdtemp(prefix="pra-runtime-skills-"))
+openai_folder = skills_root / "release-review"
+openai_folder.mkdir()
+(openai_folder / "SKILL.md").write_text(
+    "---\nname: release-review\ndescription: Review a release before publication.\n"
+    "metadata:\n  short-description: Release review\n---\n\n"
+    "Check tests, migration risk, monitoring, and rollback evidence.\n",
+    encoding="utf-8",
+)
+(openai_folder / "agents").mkdir()
+(openai_folder / "agents" / "openai.yaml").write_text("interface: {}\n", encoding="utf-8")
+
+agent_config = AgentConfig(
+    tools=(lookup_incidents,),
+    skills=(Skill(
+        name="incident-triage",
+        description="Prioritize operational incidents.",
+        when_to_use="Use when service health degrades.",
+        instructions="Inspect evidence, assess impact, and assign the next safe action.",
+        namespace="runtime-demo",
+        tenant_id="runtime-demo",
+    ),),
+    skills_path=skills_root,
+    namespace="runtime-demo",
+    tenant_id="runtime-demo",
+    max_candidates=4,
+    selection_view_token_budget=256,
+    encoding=CapabilityEncodingPolicy(lazy_selection=True, lazy_full=True),
+)
+capability_sdk = CapabilitySDK(agent_config)
+capability_resources = capability_sdk.resources()
+palette = capability_sdk.activate_candidates(
+    [resource.uri for resource in capability_resources]
+)
+skill_uri = next(resource.uri for resource in capability_resources if resource.kind == "skill")
+tool_uri = next(resource.uri for resource in capability_resources if resource.kind == "tool")
+skill_activation = capability_sdk.activate_selected(skill_uri)
+tool_activation = capability_sdk.activate_selected(tool_uri)
+{
+    "capability_kinds": sorted({resource.kind for resource in capability_resources}),
+    "skill_folder_formats": sorted(skill.metadata.get("source_format", "object") for skill in capability_sdk.skills),
+    "palette_records": palette.admitted_record_ids,
+    "selection_tokens": palette.selection_tokens,
+    "full_skill_cache_hit": skill_activation.cache_hit,
+    "full_tool_cache_hit": tool_activation.cache_hit,
+    "semantic_rediscovery_calls": tool_activation.semantic_rediscovery_calls,
+}
+'''
+    ),
+    md(
+        r'''
+## 16. Compact typed result records
+
+A successful tool result no longer has to re-enter the prompt as one flat payload.
+`execute_tool_and_record` preserves the exact result in a scoped, hash-verified backing store and
+returns a type-aware compact view. Tool/API payloads infer tabular, log, graph, or terminal shape;
+applications can search retrieval-only addresses, materialize selected rows or fields, or use a
+bounded cursor. These operations retain the original record identity and authorization scope.
+'''
+    ),
+    code(
+        r'''
+tool_resource = capability_sdk.tools[0].to_agent_resource()
+tool_executor = SafeToolExecutor(
+    (tool_resource,),
+    {tool_resource.uri: lambda arguments, _observations: lookup_incidents(**arguments)},
+)
+result_store = Path(tempfile.mkdtemp(prefix="pra-runtime-results-"))
+capability_runtime = PRARuntime(
+    config=runtime.config,
+    backend=runtime.backend,
+    capability_sdk=capability_sdk,
+    executor=tool_executor,
+    context_policy=ContextPolicy(
+        local_store=result_store,
+        persistent_store=False,
+        record_policies={RecordType.TOOL_RESPONSE: TypeContextPolicy(unit_limit=2)},
+    ),
+)
+capability_session = capability_runtime.open_session(
+    session_id="capability-demo",
+    user_id="notebook-user",
+    tenant_id="runtime-demo",
+)
+execution = capability_runtime.execute_tool_and_record(
+    '<tool_call>{"name":"lookup_incidents","arguments":{"service":"billing"}}</tool_call>',
+    session=capability_session,
+    selected_uris=(tool_resource.uri,),
+    authorization=ExecutionAuthorization(frozenset((tool_resource.uri,))),
+    call_id="incident-call-1",
+    capabilities=RecordCapabilities(
+        searchable=True,
+        partial_selectors=("rows", "fields"),
+    ),
+)
+record_id = execution.record.record_id
+compact = capability_runtime.compact_result(capability_session, record_id)
+address_hits = capability_runtime.search_results(
+    capability_session, "failed latency", top_k=2
+)
+selected_rows = capability_runtime.materialize_result(
+    capability_session,
+    record_id,
+    level=RecordViewName.SELECTED,
+    selector={"rows": [1, 2]},
+)
+cursor = capability_runtime.open_result_cursor(
+    capability_session, record_id, collection="rows"
+)
+cursor_page = capability_runtime.execute_result_cursor(
+    capability_session, CursorAction(cursor.cursor_id, "next")
+)
+{
+    "executed": execution.execution.executed,
+    "record_id": record_id,
+    "compression_strategy": execution.record.compression_strategy,
+    "compact_row_count": compact["row_count"],
+    "compact_rows_retained": len(compact["representative_rows"]),
+    "address_hit_ids": [record.record_id for record in address_hits],
+    "selected_status": selected_rows.payload["rows"][0]["status"],
+    "cursor_items": len(cursor_page.payload.items),
+    "runtime_accounting": capability_runtime.inspect()["result_contexts"][capability_session.session_id],
+}
+'''
+    ),
+    md(
+        r'''
+## 17. Opt-in native PRA routing over exact result backing
+
+Compact views and deterministic address search work without changing model memory. For an isolated
+model session, `native_result_routing=True` enables Paper 7's stronger path: explicitly register
+exact backing through the production PRA encoder, call the route-only model API, and decode only
+the selected original spans. The runtime does not register compact descriptors or full backing
+implicitly, and session teardown removes every reference it registered.
+'''
+    ),
+    code(
+        r'''
+native_result_runtime = build_tiny_runtime(
+    runtime_config,
+    context_policy=ContextPolicy(
+        local_store=Path(tempfile.mkdtemp(prefix="pra-native-results-")),
+        persistent_store=False,
+    ),
+    native_result_routing=True,
+)
+native_session = native_result_runtime.open_session(
+    session_id="native-result-demo",
+    user_id="notebook-user",
+    tenant_id="runtime-demo",
+)
+native_record = native_result_runtime.ingest_result(
+    native_session,
+    "alpha beta exact evidence says deploy canary after validation omega",
+    record_type=RecordType.GENERIC_TEXT,
+    capabilities=RecordCapabilities(searchable=True),
+)
+native_handle = native_result_runtime.register_result_backing(
+    native_session, native_record.record_id
+)
+native_selection = native_result_runtime.route_result_backing(
+    native_session, "what should deploy after validation"
+)
+native_detail = native_result_runtime.materialize_routed_result(
+    native_session, native_selection
+)
+native_summary = {
+    "backing_uri": native_handle.uri,
+    "selected_record_ids": native_selection.record_ids,
+    "requested_kv_tokens": native_selection.routing.stats["requested_kv_tokens"],
+    "materialized_detail": native_detail.success,
+    "selected_chunk_count": len(native_detail.payload["selected_chunks"]),
+}
+native_result_runtime.close_session(native_session)
+native_summary["references_after_close"] = len(native_result_runtime.backend.model.stats()["references"])
+native_summary
+'''
+    ),
+    md(
+        r'''
+## 18. Thin vLLM handoff
 
 Paper 4.5 stops before a retrieval-aware serving scheduler. The thin boundary carries only stable
 selected identities, the materialized-token count, and ordinary request metadata. Semantic scores
@@ -722,7 +938,7 @@ handoff = VLLMThinBackend().prepare(
     ),
     md(
         r'''
-## 16. Unified inspection and session teardown
+## 19. Unified inspection and session teardown
 
 `inspect()` exposes non-secret configuration, backend state, external-memory counters, installed
 boundaries, and cache accounting. Closing a session removes its ephemeral state while preserving
@@ -733,6 +949,7 @@ the runtime object and broader caches according to policy.
         r'''
 before_close = memory_runtime.inspect()
 memory_runtime.close_session(session)
+capability_runtime.close_session(capability_session)
 after_close = memory_runtime.inspect()
 {
     "before_close_sessions": len(before_close["sessions"]),
@@ -769,6 +986,9 @@ Demonstrated here:
 - native `[B, Hkv, T, D]` storage and parity across four physical layouts;
 - eager gather, byte-bounded LRU reuse, stage profiling, and structured benchmarking;
 - typed discovery, bounded graph disclosure, and separate execution authorization;
+- lazy callable and skill records with exact full-view activation;
+- scoped type-aware result compaction, address search, selective replay, and cursors;
+- opt-in route-only native PRA retrieval over exact result backing;
 - a scheduler-unaware vLLM request contract.
 
 Not demonstrated here:

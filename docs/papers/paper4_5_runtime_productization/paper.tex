@@ -18,14 +18,16 @@ A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
 \begin{abstract}
 Progressive Retrieval Attention (PRA) lets a query select a bounded subset of
 URI-addressed, model-native key/value memory.  Earlier work established the
-model interface, external-memory lifecycle, and typed tool-resource boundary,
+model interface, external-memory lifecycle, typed capability records, and
+compact typed-result backing,
 but those parts did not yet form one product surface, and logical sparsity did
 not by itself establish lower latency or accelerator memory.  We introduce a
 unified runtime that preserves the existing Hugging Face API while adding
-versioned systems configuration, authenticated sessions, typed resource
-discovery, independently authorized tool execution, deduplicated K/V interval
-planning, physical byte accounting, bounded caching, profiling, and a
-scheduler-unaware serving handoff.  On a CUDA 12.6 host with an NVIDIA GTX 950M,
+versioned systems configuration, authenticated sessions, lazy tool and skill
+disclosure, independently authorized tool execution, session-scoped result
+compaction, selective replay, deduplicated K/V interval planning, physical byte
+accounting, bounded caching, profiling, and a scheduler-unaware serving
+handoff.  On a CUDA 12.6 host with an NVIDIA GTX 950M,
 gathering 512 of 8,192 native-K/V tokens takes a median
 \RuntimeCudaIndexBatchOneMs{} ms at batch one, and packing eight selected
 intervals takes \RuntimeCudaPackBatchOneMs{} ms.  The same packed payload costs
@@ -61,15 +63,24 @@ Three previously separate interfaces must meet at that boundary.  The Paper 2
 SDK supplies \texttt{PRAForCausalLM}, model-family injection, routing, and
 generation.  Paper 4 supplies authenticated resolvers and the cold, warm, and
 hot external-memory lifecycle.  Paper 6.5 supplies stable typed identities,
-capability discovery, bounded disclosure, and host-authorized tool execution.
-We retain these responsibilities and place one orchestration facade above them.
-This is integration by contract rather than by collapsing distinct policies.
+callable-derived tool schemas, declarative skills, lazy disclosure, and
+host-authorized tool execution.  Paper 7 supplies type-aware compact views,
+scoped lossless backing, selective materialization, and cursors for large
+results.  We retain these responsibilities and place one orchestration facade
+above them.  This is integration by contract rather than by collapsing distinct
+policies.
 
 The contributions are:
 
 \begin{itemize}[leftmargin=*]
 \item a unified \texttt{PRARuntime} API over model memory, external resources,
-typed capabilities, and safe execution;
+typed capabilities, compact result backing, and safe execution;
+\item lazy-by-default registration for Python tools, explicit skills, and
+OpenAI- or Anthropic-style skill folders, with bounded selection palettes and
+exact full-view activation;
+\item session-scoped, hash-verified result backing with type-aware compaction,
+retrieval-only addresses, selected replay, cursors, and opt-in native PRA
+routing;
 \item an explicit physical K/V contract with native grouped-query heads,
 deduplicated intervals, hard token budgets, transfer accounting, and a
 byte-bounded LRU;
@@ -145,6 +156,8 @@ PRAForCausalLM & ExternalMemoryManager & ResourceDiscoveryEngine\\
 route $\rightarrow$ select & cold $\rightarrow$ warm $\rightarrow$ hot & discover $\rightarrow$ disclose\\
 native K/V consume & resolver + scoped caches & SafeToolExecutor
 \end{tabular}\\[6pt]
+lazy tool/skill palette $\rightarrow$ exact capability view\\[3pt]
+compact result $\rightarrow$ scoped backing $\rightarrow$ selected replay / cursor\\[6pt]
 $\downarrow$\\[3pt]
 deduplicated plan $\rightarrow$ gather/transfer/pack $\rightarrow$ HF or thin engine handoff
 \end{minipage}}
@@ -177,21 +190,78 @@ arguments, write authority, and destructive authority.  Its result becomes a
 typed observation resource with producer and call provenance.  This separation
 prevents a high retrieval score from turning into ambient execution privilege.
 
+\subsection{Lazy tools and skills}
+
+Paper 6.5's latest capability contract is now part of the facade rather than an
+adjacent experiment.  \texttt{AgentConfig} accepts ordinary Python callables,
+explicit declarative \texttt{Skill} objects, and a parent directory containing
+OpenAI- or Anthropic-style skill folders.  Callables are inspected into stable,
+provider-neutral schemas.  Folder loaders parse declarative metadata and
+instructions but never execute bundled scripts.
+
+The default is a two-stage model-side lifecycle.  Discovery and Phase A encode
+only compact selection views under count and token budgets.  Once the model or
+host chooses a stable record ID, \texttt{activate\_capability} activates the
+complete tool schema or skill instructions from immutable local backing.  It
+does not rerun semantic discovery.  Encoded views may be cached, while active
+bytes and resident cached bytes remain separate counters.  Eager selection or
+full-view encoding is an explicit policy override.
+
+\subsection{Compact typed result backing}
+
+A successful tool output need not return as one flat prompt block.  Every open
+\texttt{PRASession} now owns an \texttt{AdaptiveContextRuntime} with an exact,
+hash-verified backing store scoped by tenant and session.  The runtime infers
+tabular, log, graph, terminal, or generic structured shape for tool and API
+results.  Type-specific compactors retain schema, counts, statistics, errors,
+and bounded representative units while lexical, entity, rare-term, schema, and
+optional summary addresses remain retrieval-only.
+
+The public operations preserve stable record identity: compact inspection,
+address search, full or selected materialization, and bounded cursor actions.
+\texttt{execute\_tool\_and\_record} joins authorized execution to this record
+lifecycle while retaining producer, call, and observation provenance.  Closing
+an ephemeral session removes its backing bytes.
+
+Native result routing remains a stronger opt-in.  For an isolated Hugging Face
+model session, three explicit calls define the lifecycle:
+\begin{center}
+\small\ttfamily
+register\_result\_backing\quad
+route\_result\_backing\quad
+materialize\_routed\_result
+\end{center}
+They respectively pass exact backing through the production PRA encoder,
+perform query encoding and bounded native-K/V selection without autoregressive
+generation, and decode only selected original spans.
+Ingestion alone never registers exact backing in model memory.  Teardown removes
+all references created by this path.  A shared multi-tenant model cache is not
+claimed safe by this interface.
+
 \subsection{User workflow}
 
 The supported workflow is deliberately small:
 
 \begin{verbatim}
-config = PRARuntimeConfig(pra=PRAConfig(...))
-runtime = PRARuntime.from_pretrained(model_id, runtime_config=config)
+agent = AgentConfig(tools=(lookup,), skills_path="./skills")
+context = ContextPolicy(record_policies={...})
+runtime = PRARuntime.from_pretrained(
+    model_id, runtime_config=config,
+    agent_config=agent, context_policy=context)
 session = runtime.open_session(...)
-runtime.add_reference("memory://facts", text=document)
-answer = runtime.generate(prompt, return_details=True)
+palette = runtime.activate_capability_candidates(record_ids)
+runtime.activate_capability(selected_id)
+result = runtime.execute_tool_and_record(..., session=session)
+detail = runtime.materialize_result(
+    session, result.record.record_id,
+    level="selected", selector={"rows": [20, 30]})
 trace = runtime.inspect()
 \end{verbatim}
 
-The same facade can receive an \texttt{ExternalMemoryManager}, typed discovery
-engine, and safe executor.  The executed notebook demonstrates all four paths
+The same facade still accepts direct references, an
+\texttt{ExternalMemoryManager}, a custom discovery engine, and a safe executor.
+The executed notebook demonstrates model memory, physical materialization,
+lazy capabilities, compact results, cursors, and isolated native result routing
 with an offline Hugging Face model and pure in-memory tools.
 
 \section{Physical Materialization}
@@ -476,8 +546,11 @@ SGLang/TensorRT-LLM/MLX & architectural only & Not installed on measured host\\
 
 The product surface includes installable package metadata, Hugging Face loading,
 runtime config serialization, direct and external reference registration,
-session isolation, typed resource discovery, safe execution, generation,
-inspection, benchmark commands, and two executed notebooks.  The CLI exposes
+session isolation, callable and folder-backed capability registration, lazy
+view activation, typed resource discovery, safe execution, compact result
+ingestion, selected replay, address search, cursors, opt-in native result
+routing, generation, inspection, benchmark commands, and two executed
+notebooks.  The CLI exposes
 \texttt{runtime init}, \texttt{inspect}, \texttt{capabilities},
 \texttt{benchmark}, and \texttt{prepare-vllm}.  A deployment can therefore
 discover unsupported paths before serving.
@@ -490,7 +563,11 @@ measured continuous batching, request-level p95/p99, asynchronous transfer
 overlap, a production page allocator, prefetch, multi-session contention, or
 fused attention preparation.  The LRU fixture validates byte accounting but is
 not a production cache policy study.  The inherited language-model cohort is
-too small for quality claims.
+too small for quality claims.  The new capability and compact-result workflows
+are executed contract tests, not a new latency or answer-quality experiment.
+Native result routing currently requires an isolated model session; safe
+concurrent multi-tenant partitioning of model-resident result K/V remains an
+engine-level gate.
 
 The next experiment should move to a compute-capability 8.0 or newer GPU with a
 pinned software stack.  It should first reproduce eager parity, then measure
@@ -512,13 +589,14 @@ cross-request PRA block sharing, that work belongs to the deep engine paper.
 PRA's selected-memory fraction is an algorithmic fact, not a systems result.
 This paper turns that distinction into code and measurement.  One runtime now
 connects the public model API, authenticated memory lifecycle, typed resources,
-safe execution, physical K/V planning, caching, profiling, and backend handoff.
-The eager primitives are exact and inexpensive in isolation, but off-device
-transfer multiplies their cost on the measured host.  Compilation and optional
-engines remain negative or unmeasured gates.  The practical conclusion is
-conservative: cache locality and physical residency deserve attention before
-kernel novelty, and every future speed claim must match semantics while
-accounting for the whole request.
+lazy tool and skill disclosure, safe execution, compact result backing,
+selective replay, physical K/V planning, caching, profiling, and backend
+handoff.  The eager primitives are exact and inexpensive in isolation, but
+off-device transfer multiplies their cost on the measured host.  Compilation
+and optional engines remain negative or unmeasured gates.  The practical
+conclusion is conservative: cache locality, physical residency, and context
+lifecycle deserve attention before kernel novelty, and every future speed
+claim must match semantics while accounting for the whole request.
 
 \appendix
 \section{Reimplementation Guide}
@@ -551,6 +629,14 @@ hierarchy microbenchmark\\
 discovery\\
 \texttt{src/pra\_hf/agent\_execution.py} & Schema validation and independent
 host authorization\\
+\texttt{src/pra\_hf/capability\_sdk.py} & Callable and skill-folder ingestion,
+bounded palettes, and exact capability activation\\
+\texttt{src/pra\_hf/typed\_context.py} & Type-aware compact views and retrieval
+addresses for large results\\
+\texttt{src/pra\_hf/adaptive\_context\_runtime.py} & Scoped backing,
+materialization, transport accounting, and cursors\\
+\texttt{src/pra\_hf/progressive\_context.py} & Stable record views and optional
+production PRA routing over exact backing\\
 \texttt{src/pra\_hf/external\_memory.py} & Resolver-neutral cold/warm/hot
 lifecycle and scoped caches\\
 \texttt{pra-hf-demo/pra\_runtime\_productization.ipynb} & Executed user workflow\\

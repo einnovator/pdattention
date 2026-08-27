@@ -16,7 +16,7 @@ import time
 import uuid
 from collections import OrderedDict
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Protocol, Sequence
@@ -33,11 +33,31 @@ from .agent_resources import (
     AgentResource,
     DiscoveryRequest,
     DiscoveryTrace,
+    PersistentResourceIndex,
     ResourceDiscoveryEngine,
 )
+from .adaptive_context_runtime import (
+    AdaptiveContextRuntime,
+    ContextPolicy,
+    CursorAction,
+    CursorActionResult,
+    CursorRecord,
+    MaterializationResult,
+)
+from .capability_runtime import CapabilityActivation, CapabilityPaletteActivation
+from .capability_sdk import AgentConfig, CapabilitySDK
 from .config import PRAConfig
+from .context_records import RecordType, RecordViewName
+from .context_store import RecordScope
 from .external_memory import AuthContext, ExternalMemoryManager, PRASession
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
+from .progressive_context import (
+    ContextExecutionResult,
+    NativePRASelection,
+    ProgressiveContextRuntime,
+    RecordCapabilities,
+)
+from .typed_context import AdaptiveContextRecord
 
 
 class RuntimeBackend(str, Enum):
@@ -654,6 +674,14 @@ class ModelBackend(Protocol):
     def inspect(self) -> Mapping[str, Any]: ...
 
 
+@dataclass(frozen=True)
+class RuntimeToolExecution:
+    """Authorized tool result plus its optional compact typed-result record."""
+
+    execution: ToolExecutionResult
+    record: AdaptiveContextRecord | None = None
+
+
 class HuggingFaceBackend:
     """Adapter around the Paper 2 ``PRAForCausalLM`` public interface."""
 
@@ -738,7 +766,13 @@ class VLLMThinBackend:
 
 
 class PRARuntime:
-    """One SDK facade over model memory, external resources, and safe tools."""
+    """One SDK facade over model memory, capabilities, and compact results.
+
+    Tool and skill definitions are immutable runtime-wide capabilities. Result
+    records are session-scoped because their exact backing can contain tenant
+    data. Native PRA registration for result views is opt-in so applications do
+    not accidentally share model-resident references across concurrent tenants.
+    """
 
     def __init__(
         self,
@@ -748,13 +782,31 @@ class PRARuntime:
         external_memory: ExternalMemoryManager | None = None,
         discovery: ResourceDiscoveryEngine | None = None,
         executor: SafeToolExecutor | None = None,
+        agent_config: AgentConfig | None = None,
+        capability_sdk: CapabilitySDK | None = None,
+        context_policy: ContextPolicy | None = None,
+        native_result_routing: bool = False,
     ) -> None:
+        if agent_config is not None and capability_sdk is not None:
+            raise ValueError("Pass agent_config or capability_sdk, not both.")
         self.config = config
         self.backend = backend
         self.external_memory = external_memory
+        self.capabilities = capability_sdk or (
+            CapabilitySDK(agent_config) if agent_config is not None else None
+        )
+        if discovery is None and self.capabilities is not None:
+            discovery = ResourceDiscoveryEngine(
+                PersistentResourceIndex(self.capabilities.resources())
+            )
         self.discovery = discovery
         self.executor = executor
+        self.context_policy = context_policy or ContextPolicy()
+        self.native_result_routing = bool(native_result_routing)
+        if self.native_result_routing and not isinstance(self.backend, HuggingFaceBackend):
+            raise ValueError("Native result routing requires the Hugging Face backend.")
         self.sessions: dict[str, PRASession] = {}
+        self.result_contexts: dict[str, ProgressiveContextRuntime] = {}
         self.hot_cache = RuntimeKVCache(
             max_bytes=config.cache_max_bytes,
             max_entries=config.cache_max_entries,
@@ -766,6 +818,13 @@ class PRARuntime:
         model_name_or_path: str,
         *,
         runtime_config: PRARuntimeConfig | Mapping[str, Any] | None = None,
+        external_memory: ExternalMemoryManager | None = None,
+        discovery: ResourceDiscoveryEngine | None = None,
+        executor: SafeToolExecutor | None = None,
+        agent_config: AgentConfig | None = None,
+        capability_sdk: CapabilitySDK | None = None,
+        context_policy: ContextPolicy | None = None,
+        native_result_routing: bool = False,
         **model_kwargs: Any,
     ) -> "PRARuntime":
         config = (
@@ -780,7 +839,17 @@ class PRARuntime:
             pra_config=config.pra,
             **model_kwargs,
         )
-        return cls(config=config, backend=HuggingFaceBackend(model))
+        return cls(
+            config=config,
+            backend=HuggingFaceBackend(model),
+            external_memory=external_memory,
+            discovery=discovery,
+            executor=executor,
+            agent_config=agent_config,
+            capability_sdk=capability_sdk,
+            context_policy=context_policy,
+            native_result_routing=native_result_routing,
+        )
 
     @classmethod
     def from_model(
@@ -809,9 +878,32 @@ class PRARuntime:
         auth = auth_context or AuthContext(tenant_id, user_id, session_id)
         session = PRASession(session_id, user_id, tenant_id, auth, **session_kwargs)
         self.sessions[session_id] = session
+        scope = RecordScope(tenant_id, session_id)
+        context_policy = self.context_policy
+        if context_policy.local_store is not None:
+            context_policy = replace(
+                context_policy,
+                local_store=Path(context_policy.local_store) / scope.fingerprint,
+            )
+        adaptive = AdaptiveContextRuntime(scope, context_policy)
+        self.result_contexts[session_id] = ProgressiveContextRuntime(
+            adaptive,
+            chunk_tokens=self.config.pra.chunk_tokens,
+        )
         return session
 
     def close_session(self, session: PRASession) -> None:
+        context = self.result_contexts.pop(session.session_id, None)
+        if context is not None:
+            model = context.registry.pra_model
+            if model is not None:
+                handles = (
+                    *context.registry.reference_handles.values(),
+                    *context.registry.backing_reference_handles.values(),
+                )
+                for handle in handles:
+                    model.remove_reference(handle)
+            context.runtime.store.close()
         if self.external_memory is not None:
             self.external_memory.teardown_session(session)
         else:
@@ -821,6 +913,37 @@ class PRARuntime:
             session.hot_handles.clear()
             session.closed = True
         self.sessions.pop(session.session_id, None)
+
+    def context_for(self, session: PRASession) -> ProgressiveContextRuntime:
+        """Return the session-scoped compact-result runtime after validation."""
+
+        current = self.sessions.get(session.session_id)
+        if current is not session or session.closed:
+            raise ValueError("Result context requires an open runtime session.")
+        return self.result_contexts[session.session_id]
+
+    def capability_resources(self, *, kinds: Sequence[str] = ("tool", "skill")) -> tuple[AgentResource, ...]:
+        """Return authorized compact discovery views for configured capabilities."""
+
+        if self.capabilities is None:
+            raise RuntimeError("No typed capability SDK is installed.")
+        return self.capabilities.resources(kinds=kinds)
+
+    def activate_capability_candidates(
+        self, record_ids: Sequence[str]
+    ) -> CapabilityPaletteActivation:
+        """Activate a bounded lazy selection palette for tools and skills."""
+
+        if self.capabilities is None:
+            raise RuntimeError("No typed capability SDK is installed.")
+        return self.capabilities.activate_candidates(record_ids)
+
+    def activate_capability(self, record_id: str) -> CapabilityActivation:
+        """Activate one exact full capability without semantic rediscovery."""
+
+        if self.capabilities is None:
+            raise RuntimeError("No typed capability SDK is installed.")
+        return self.capabilities.activate_selected(record_id)
 
     def add_reference(self, reference: str, *, text: str | None = None, uri: str | None = None) -> ReferenceHandle:
         return self.backend.add_reference(reference, text=text, uri=uri)
@@ -834,6 +957,115 @@ class PRARuntime:
         if self.discovery is None:
             raise RuntimeError("No typed resource discovery engine is installed.")
         return self.discovery.discover(request)
+
+    def ingest_result(
+        self,
+        session: PRASession,
+        payload: object,
+        *,
+        record_type: RecordType | str,
+        capabilities: RecordCapabilities | None = None,
+        provenance: Mapping[str, object] | None = None,
+        ttl_seconds: float | None = None,
+        expected_reuse: float = 0.0,
+    ) -> AdaptiveContextRecord:
+        """Store exact result backing and expose only its typed compact view."""
+
+        return self.context_for(session).ingest(
+            payload,
+            record_type=record_type,
+            capabilities=capabilities,
+            provenance=provenance,
+            ttl_seconds=ttl_seconds,
+            expected_reuse=expected_reuse,
+        )
+
+    def compact_result(self, session: PRASession, record_id: str) -> object:
+        """Return the bounded prompt-visible representation of one result."""
+
+        context = self.context_for(session)
+        return context.runtime.records[record_id].compact_view()
+
+    def materialize_result(
+        self,
+        session: PRASession,
+        record_id: str,
+        *,
+        level: RecordViewName | str = RecordViewName.FULL,
+        selector: Mapping[str, object] | None = None,
+    ) -> MaterializationResult:
+        """Resolve an authorized full or selected view from exact local backing."""
+
+        return self.context_for(session).runtime.retrieve_record(
+            record_id, level=level, selector=selector
+        )
+
+    def search_results(
+        self,
+        session: PRASession,
+        query: str,
+        *,
+        top_k: int = 5,
+        address_kinds: Sequence[str] | None = None,
+    ) -> tuple[AdaptiveContextRecord, ...]:
+        """Search retrieval-only addresses without exposing full result payloads."""
+
+        return self.context_for(session).runtime.search_records(
+            query, top_k=top_k, address_kinds=address_kinds
+        )
+
+    def open_result_cursor(
+        self, session: PRASession, record_id: str, **kwargs: object
+    ) -> CursorRecord:
+        """Open a bounded stateful cursor over an authorized result collection."""
+
+        return self.context_for(session).runtime.open_cursor(record_id, **kwargs)
+
+    def execute_result_cursor(
+        self, session: PRASession, action: CursorAction
+    ) -> CursorActionResult:
+        """Execute one structured cursor operation inside the session scope."""
+
+        return self.context_for(session).runtime.execute_cursor_action(action)
+
+    def register_result_backing(
+        self, session: PRASession, record_id: str
+    ) -> ReferenceHandle:
+        """Opt an exact result into production native-PRA backing retrieval."""
+
+        if not self.native_result_routing:
+            raise RuntimeError(
+                "Native result routing is disabled; construct PRARuntime with "
+                "native_result_routing=True for an isolated model session."
+            )
+        context = self.context_for(session)
+        if context.registry.pra_model is None:
+            context.registry.pra_model = self.backend.model
+        return context.register_backing_record(record_id)
+
+    def route_result_backing(
+        self, session: PRASession, query: str
+    ) -> NativePRASelection:
+        """Route over registered exact result backing without generating tokens."""
+
+        if not self.native_result_routing:
+            raise RuntimeError("Native result routing is disabled.")
+        return self.context_for(session).native_select(query)
+
+    def materialize_routed_result(
+        self,
+        session: PRASession,
+        selection: NativePRASelection,
+        *,
+        top_k: int | None = None,
+    ) -> ContextExecutionResult:
+        """Decode selected original spans and register the bounded detail view."""
+
+        if not self.native_result_routing:
+            raise RuntimeError("Native result routing is disabled.")
+        return self.context_for(session).materialize_native_selection(
+            selection, top_k=top_k
+        )
 
     def execute_tool(
         self,
@@ -854,10 +1086,74 @@ class PRARuntime:
             call_id=call_id,
         )
 
+    def execute_tool_and_record(
+        self,
+        generated_text: str,
+        *,
+        session: PRASession,
+        selected_uris: Sequence[str],
+        authorization: ExecutionAuthorization,
+        call_id: str,
+        prior_observations: Sequence[AgentResource] = (),
+        capabilities: RecordCapabilities | None = None,
+        ttl_seconds: float | None = None,
+        expected_reuse: float = 0.0,
+    ) -> RuntimeToolExecution:
+        """Execute safely, then compact successful output into a typed record."""
+
+        execution = self.execute_tool(
+            generated_text,
+            selected_uris=selected_uris,
+            authorization=authorization,
+            call_id=call_id,
+            prior_observations=prior_observations,
+        )
+        if not execution.executed:
+            return RuntimeToolExecution(execution)
+        record = self.ingest_result(
+            session,
+            dict(execution.output),
+            record_type=RecordType.TOOL_RESPONSE,
+            capabilities=capabilities,
+            provenance={
+                "producer_tool_uri": execution.resource_uri or "",
+                "call_id": call_id,
+                "observation_uri": execution.observation.uri if execution.observation else "",
+            },
+            ttl_seconds=ttl_seconds,
+            expected_reuse=expected_reuse,
+        )
+        return RuntimeToolExecution(execution, record)
+
     def generate(self, prompt: str, **kwargs: Any) -> str | GenerationResult:
         return self.backend.generate(prompt, **kwargs)
 
     def inspect(self) -> dict[str, Any]:
+        capability_state = None
+        if self.capabilities is not None:
+            capability_state = {
+                "tools": len(self.capabilities.tools),
+                "skills": len(self.capabilities.skills),
+                "max_candidates": self.capabilities.config.max_candidates,
+                "selection_view_token_budget": (
+                    self.capabilities.config.selection_view_token_budget
+                ),
+                "lazy_selection": self.capabilities.config.encoding.lazy_selection,
+                "lazy_full": self.capabilities.config.encoding.lazy_full,
+                "accounting": dict(self.capabilities.runtime.accounting()),
+            }
+        result_contexts = {
+            session_id: {
+                "scope_fingerprint": context.runtime.scope.fingerprint,
+                "accounting": asdict(context.runtime.accounting()),
+                "backing_store": asdict(context.runtime.store.stats()),
+                "visible_pra_documents": len(context.registry.documents),
+                "native_backing_references": len(
+                    context.registry.backing_reference_handles
+                ),
+            }
+            for session_id, context in self.result_contexts.items()
+        }
         return {
             "runtime_config": self.config.to_dict(),
             "backend": dict(self.backend.inspect()),
@@ -867,6 +1163,9 @@ class PRARuntime:
             ),
             "typed_discovery_installed": self.discovery is not None,
             "safe_executor_installed": self.executor is not None,
+            "capabilities": capability_state,
+            "result_contexts": result_contexts,
+            "native_result_routing": self.native_result_routing,
             "hot_cache": self.hot_cache.snapshot(),
         }
 

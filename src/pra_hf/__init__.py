@@ -3,7 +3,7 @@
 from .config import PRAConfig
 from .evaluation import evaluate_router_features
 from .memory_adapter import PRAMemoryAdapter
-from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
+from .model import GenerationResult, PRAForCausalLM, ReferenceHandle, RoutingResult
 from .router import PRARouter
 from .hybrid_discovery import (
     DiscoveryCandidate,
@@ -60,6 +60,58 @@ from .agent_resources import (
     ResourceDiscoveryEngine,
     SideEffectClass,
 )
+from .tool_records import ToolRecord, ToolSchema, tool_record_from_callable
+from .skill_records import (
+    Skill,
+    SkillFolderCache,
+    SkillFolderError,
+    SkillFolderFormat,
+    load_skill_directory,
+    load_skill_folder,
+)
+from .capability_runtime import (
+    CapabilityActivation,
+    CapabilityEncodingPolicy,
+    CapabilityEncodingState,
+    CapabilityPaletteActivation,
+    LazyCapabilityRuntime,
+    SkillRecordPolicy,
+    ToolRecordPolicy,
+)
+from .capability_sdk import AgentConfig, CapabilitySDK
+from .context_records import RecordType, RecordViewName
+from .context_store import LocalBackingStore, RecordAccessDenied, RecordScope
+from .typed_context import (
+    AdaptiveContextRecord,
+    AddressView,
+    AddressViewKind,
+    CompressionResult,
+    CompressorRegistry,
+    create_adaptive_record,
+)
+from .adaptive_context_runtime import (
+    AdaptiveContextRuntime,
+    ContextPolicy,
+    CursorAction,
+    CursorActionResult,
+    CursorOperation,
+    CursorPolicy,
+    DeploymentTopology,
+    MaterializationEvent,
+    MaterializationResult,
+    RetrievalMode,
+    StoragePolicy,
+    TypeContextPolicy,
+)
+from .progressive_context import (
+    ContextAction,
+    ContextDecision,
+    ContextExecutionResult,
+    NativePRASelection,
+    PRASelection,
+    ProgressiveContextRuntime,
+    RecordCapabilities,
+)
 from .runtime import (
     CompilationMode,
     HuggingFaceBackend,
@@ -75,6 +127,7 @@ from .runtime import (
     RuntimeBackend,
     RuntimeKVCache,
     RuntimeProfiler,
+    RuntimeToolExecution,
     SelectedKVGather,
     VLLMThinBackend,
     VLLMThinRequest,
@@ -106,6 +159,7 @@ __all__ = [
     "PRAMemoryAdapter",
     "PRARouter",
     "ReferenceHandle",
+    "RoutingResult",
     "ResolverRegistry",
     "ResourceRecord",
     "ResourceResolver",
@@ -160,4 +214,56 @@ __all__ += [
     "VLLMThinRequest",
     "parse_tool_call",
     "runtime_capabilities",
+]
+
+__all__ += [
+    "AdaptiveContextRecord",
+    "AdaptiveContextRuntime",
+    "AddressView",
+    "AddressViewKind",
+    "AgentConfig",
+    "CapabilityActivation",
+    "CapabilityEncodingPolicy",
+    "CapabilityEncodingState",
+    "CapabilityPaletteActivation",
+    "CapabilitySDK",
+    "CompressionResult",
+    "CompressorRegistry",
+    "ContextAction",
+    "ContextDecision",
+    "ContextExecutionResult",
+    "ContextPolicy",
+    "CursorAction",
+    "CursorActionResult",
+    "CursorOperation",
+    "CursorPolicy",
+    "DeploymentTopology",
+    "LazyCapabilityRuntime",
+    "LocalBackingStore",
+    "MaterializationEvent",
+    "MaterializationResult",
+    "NativePRASelection",
+    "PRASelection",
+    "ProgressiveContextRuntime",
+    "RecordAccessDenied",
+    "RecordCapabilities",
+    "RecordScope",
+    "RecordType",
+    "RecordViewName",
+    "RetrievalMode",
+    "RuntimeToolExecution",
+    "Skill",
+    "SkillFolderCache",
+    "SkillFolderError",
+    "SkillFolderFormat",
+    "SkillRecordPolicy",
+    "StoragePolicy",
+    "ToolRecord",
+    "ToolRecordPolicy",
+    "ToolSchema",
+    "TypeContextPolicy",
+    "create_adaptive_record",
+    "load_skill_directory",
+    "load_skill_folder",
+    "tool_record_from_callable",
 ]

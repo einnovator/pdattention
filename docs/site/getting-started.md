@@ -50,6 +50,77 @@ Focused suites for the core architecture are:
 python -m pytest tests/test_pra_routing.py tests/test_pra_batching.py
 ```
 
+## Configure tools and skills
+
+`AgentConfig` accepts Python callables, explicit `Skill` objects, and a parent
+directory whose child folders contain OpenAI- or Anthropic-style `SKILL.md`
+files. Compact selection views and complete schemas or instructions are encoded
+lazily by default.
+
+```python
+from pra_hf import AgentConfig, CapabilityEncodingPolicy, Skill
+
+agent = AgentConfig(
+    tools=(lookup_incidents,),
+    skills=(Skill(
+        name="incident-triage",
+        description="Prioritize operational incidents.",
+        when_to_use="Use when service health degrades.",
+        instructions="Inspect evidence and assign the next safe action.",
+    ),),
+    skills_path="./skills",
+    max_candidates=24,
+    selection_view_token_budget=2048,
+    encoding=CapabilityEncodingPolicy(lazy_selection=True, lazy_full=True),
+)
+```
+
+Pass `agent_config=agent` to `PRARuntime`. Discovery returns stable record IDs;
+`activate_capability_candidates()` admits a bounded selection palette and
+`activate_capability()` resolves one exact full definition locally.
+
+## Compact result records
+
+Each runtime session owns a scoped exact backing store. Successful tool output
+can be compacted automatically, or any supported result can be ingested directly:
+
+```python
+from pra_hf import ContextPolicy, RecordType, RecordViewName, TypeContextPolicy
+
+runtime = PRARuntime.from_pretrained(
+    model_id,
+    agent_config=agent,
+    context_policy=ContextPolicy(
+        record_policies={
+            RecordType.TOOL_RESPONSE: TypeContextPolicy(unit_limit=8),
+        },
+    ),
+)
+session = runtime.open_session(
+    session_id="request-7", user_id="user-1", tenant_id="tenant-1"
+)
+record = runtime.ingest_result(
+    session, payload, record_type=RecordType.API_RESULT
+)
+compact = runtime.compact_result(session, record.record_id)
+selected = runtime.materialize_result(
+    session,
+    record.record_id,
+    level=RecordViewName.SELECTED,
+    selector={"rows": [20, 30]},
+)
+```
+
+Tool/API results infer tabular, log, graph, terminal, or generic structured
+shape. Full bytes stay hash-verified and tenant/session scoped. Address search,
+bounded cursors, TTLs, storage placement, and per-record compaction limits are
+configured through `ContextPolicy`.
+
+Set `native_result_routing=True` only for an isolated Hugging Face model
+session. Then call `register_result_backing()`, `route_result_backing()`, and
+`materialize_routed_result()` explicitly. The runtime never places exact backing
+in model memory merely because a compact record was ingested.
+
 ## Build this site
 
 Generate the static HTML site under `site/`:
