@@ -61,7 +61,9 @@ exists for sparse direct-memory workloads, but the work does not yet establish p
   serving economics or a general solution to multi-hop retrieval. Bounded associative discovery,
   evidence-centered materialization, and adaptive effort control now have controlled prototype
   evidence, but reliable entry routing, broad task transfer, and optimized off-device serving
-  remain explicit next steps. The
+  remain explicit next steps. Corrected layer-placement studies further separate address,
+  detail-K/V, routing, and consumer roles: fixed profiles must be calibrated by model, workload,
+  materialization, and quality--cost objective rather than inherited as a universal suffix. The
 proposal is falsifiable by quality per materialized K/V token, latency, transfer, resident
 memory, and content-causal counterfactuals against strong long-context and retrieval baselines.
 \end{abstract}
@@ -288,14 +290,18 @@ one-shot algorithm.}
 
 If an external fragment is encoded into memory for attention, the representation should respect the transformer's layer structure. A key/value pair computed for one layer is not generally interchangeable with another.  In practical terms, PRA does not encode a
 chunk once and hand the same vector to every layer.  It runs the chunk through the same
-model stack used by the prompt and captures the K/V representation appropriate to each
-PRA-enabled depth. PRA therefore uses a layer-specific memory cache:
+model stack used by the prompt and captures the representation appropriate to each configured
+depth.  Four sets must be named separately: address layers retain compact states, detail layers
+retain full source K/V, routing layers score memory, and consumer layers admit selected K/V to
+attention.  PRA therefore uses a role-aware layer-specific memory cache:
 
 \begin{equation}
 \mathrm{cache}[u,c,\ell] = (K_{u,c,\ell}, V_{u,c,\ell}, G^K_{u,c,\ell},G^V_{u,c,\ell}),
 \end{equation}
 
-where $u$ is a URI, $c$ a deterministic chunk, $\ell$ a transformer layer, $(K,V)$ the full token memory, and $G^K,G^V\in\mathbb{R}^{G_c\times d}$ paired contextual routing gists derived from that layer's projected chunk keys and values.  Mean, last-token, reference-end, and GRU modes produce $G_c=1$; k-means, prototype, self-organizing-map, and hybrid modes may retain several local regions.  A gist is an index entry, not a compressed replacement for the
+where $u$ is a URI, $c$ a deterministic chunk, $\ell$ a transformer layer, $(K,V)$ is present only
+for $\ell\in L_{\mathrm{detail}}$, and $G^K,G^V\in\mathbb{R}^{G_c\times d}$ are paired contextual
+address gists for $\ell\in L_{\mathrm{addr}}$.  Mean, last-token, reference-end, and GRU modes produce $G_c=1$; k-means, prototype, self-organizing-map, and hybrid modes may retain several local regions.  A gist is an index entry, not a compressed replacement for the
 chunk: it is cheap to compare with a query, while the full K/V preserves token-level
 detail after selection. This distinction matters because lower layers may encode lexical and syntactic information while higher layers may encode task-specific abstractions. Raw token embeddings or document summaries are not substitutes for layer-specific routing and attention memory.
 
@@ -349,7 +355,7 @@ future positions:
 \end{equation}
 
 The output mixes values from preceding local positions according to query--key
-compatibility.  A PRA layer preserves that path and adds memory selected from a cache.
+compatibility.  A memory-consuming layer preserves that path and adds memory selected from a cache.
 For routing, it uses the projected query at the most recent valid position, merges its
 heads into $q_{t,\ell}$, and compares it with every projected-key gist
 $g^K_{u,c,\ell,j}\in G^K_{u,c,\ell}$ for chunk $c$ of object $u$:
@@ -544,10 +550,10 @@ independent of corpus scale.
 The target GPU footprint is approximately
 \begin{equation}
 M_{\mathrm{GPU}} \approx M_{\mathrm{model}} + M_{\mathrm{head}}
-+ \sum_{\ell\in\mathcal{L}_{\mathrm{PRA}}}M_{\mathrm{active}}^{(\ell)}
++ \sum_{\ell\in L_{\mathrm{consume}}}M_{\mathrm{active}}^{(\ell)}
 + M_{\mathrm{runtime}},
 \end{equation}
-where $\mathcal{L}_{\mathrm{PRA}}$ is the set of consumer layers.  The intended signature is that
+where $L_{\mathrm{consume}}$ is the calibrated set of consumer layers.  The intended signature is that
 $M_{\mathrm{active}}$ depends primarily on the task/query working set, not on every token in the
 logical store.  Routing and index work may still grow with the store, CPU/reference memory grows
 with retained content, and a poor policy may broaden the working set.  Scale-independent physical
@@ -569,10 +575,12 @@ Sparsity also has a layer axis.  PRA may be sparse over
 \text{memory regions}\ \times\ \text{token/K/V detail}\ \times\
 \text{consumer layers}.
 \end{equation}
-Paper 2 establishes selective pretrained-model consumer paths.  Paper 2.5 Gate-3 output
-diagnostics test sparse and interleaved layer bands against all-layer injection, but those
-model- and dataset-specific findings remain preliminary placement evidence rather than a frozen
-deployment policy.
+Paper 2 establishes selective pretrained-model consumer paths.  Corrected Paper-3 replay and
+Paper-4.5 cross-model calibration now show why neither ``always all layers'' nor ``always the last
+eight'' is a stable rule.  Placement depends on the model, workload, physical materialization,
+transport, and optimization objective.  All eligible consumers remain a conservative
+reference-correctness fallback when sparse consumption has not been validated; it is not a claim
+of quality optimality.
 
 \begin{figure}[t]
 \centering
@@ -584,7 +592,7 @@ deployment policy.
 \node[memnode, text width=4.1cm, below=of search] (concept) {conceptual active working set};
 \node[memnode, text width=4.1cm, below=of concept] (pagein) {logical interval / native-K/V page-in};
 \node[selected, memnode, text width=4.1cm, below=of pagein] (gpu) {bounded GPU native-K/V working set};
-\node[selected, memnode, text width=4.1cm, below=of gpu] (layers) {selected PRA consumer layers};
+\node[selected, memnode, text width=4.1cm, below=of gpu] (layers) {calibrated memory consumer layers};
 \node[pranode, text width=4.1cm, below=of layers] (generation) {direct + memory attention\\generation};
 \draw[flow] (store) -- (logical);
 \draw[flow] (logical) -- (root);
@@ -657,7 +665,7 @@ Multi-level cache & External/CPU K/V $\rightarrow$ GPU active K/V & Demonstrated
 Locality-aware prefetch & Associative graph expansion & Demonstrated & Paper 2.5 mechanism and natural diagnostics; benefit depends on entry and topology. \\
 Thrashing control & Adaptive routing, K/B, layers, materialization & Partial & Paper 3.5 tests validation-frozen effort profiles and bounded retry; production stability is untested. \\
 Physical page size & Native-K/V materialization window & Partial & Paper 3 tests exact evidence cores, radii, facts, and whole parents; general learned disclosure remains open. \\
-Placement across depth & Selected PRA consumer layers & Emerging & Paper 2 plus preliminary Paper 2.5 Gate-3 diagnostics; no general policy. \\
+Placement across depth & Four role-specific layer profiles & Partial & Corrected Paper 3 calibrates Qwen workload bands; Paper 4.5 adds a versioned cross-model registry. Broader scale remains open. \\
 Translation / controller & Facet controller + trained router & Partial & Paper 3.5 adds observable-only effort selection; Paper 2.5's oracle-facet gap and broad transfer remain open. \\
 Scale-independent memory & Bounded active K/V as logical memory grows & Open & Small fixed-$k$ curves only; decisive 32K--8M+ scaling is required. \\
 \bottomrule
@@ -947,11 +955,108 @@ c_p T_p + c_r T_r + c_l L + c_b B \leq C.
 
 The constants depend on hardware, cache reuse, and service-level objectives. PRA is not successful merely because it shortens the visible prompt. Reference encoding that is repeated for every request may cost more than eager context. The economic case depends on selective admission, amortized reuse, or better quality under a fixed resource budget.
 
-\section{Architectural Placement}
+\section{Layer Roles and Calibrated Profiles}
+\label{sec:layer-profiles}
 
-PRA need not occupy every transformer layer. Lower layers often build local lexical and syntactic representations, while later layers may provide more useful queries for semantic memory. A hybrid architecture can therefore place ordinary SelfAttention below PRA-enabled layers. The opposite hypothesis is also plausible: early access to external tokens may be necessary for composition across all depths. Full PRA, upper-layer PRA, mixed blocks, and sparse PRA placement should be treated as competing designs.
+\subsection{Four roles, not one ``PRA layer'' set}
 
-The standalone study compares four local layers, four PRA layers, and two local plus two PRA layers. In the five-seed corrected follow-up, frozen-path reference loss is 4.6720 for full PRA and 4.7296 for hybrid PRA. Scratch-to-frozen improvement is also larger for full PRA (1.6837 versus 1.6346), so the tested hybrid does not benefit more from staging. Hybrid PRA does use half as many trainable memory output projections and trains faster in this regime, but one tiny scale and an unlearned selector cannot resolve placement. A proper comparison still needs matched compute budgets, layer-wise reference attention diagnostics, and tasks stratified by whether required evidence is lexical, syntactic, or semantic.
+Depth participates in four different operations:
+\begin{align}
+L_{\mathrm{addr}} &:\ \text{retain compact states that can address memory},\\
+L_{\mathrm{detail}} &:\ \text{retain full source-native K/V for possible page-in},\\
+L_{\mathrm{route}} &:\ \text{execute reference or chunk selection},\\
+L_{\mathrm{consume}} &:\ \text{join selected memory K/V to direct attention}.
+\end{align}
+These sets may overlap but are not synonyms.  An address-only layer can retain a cheap gist without
+retaining token-level detail.  A route-once layer can choose identities later consumed by several
+layers.  A detail layer can remain dormant until another layer's routing decision materializes its
+K/V.  A consumer requires corresponding detail K/V, so
+$L_{\mathrm{consume}}\subseteq L_{\mathrm{detail}}$ in the current runtime.  This vocabulary
+replaces the ambiguous phrase ``PRA layers'' throughout the series.
+
+The stable implementation invariant is
+\begin{equation}
+\text{correct positional transport}
++\text{coherent materialization}
++\text{sufficient consumer depth}.
+\end{equation}
+None of the three terms repairs another.  A strong layer profile cannot rescue K/V replayed in an
+incompatible RoPE frame.  Exact evidence cannot rescue a consumer topology that amplifies
+interference.  Conversely, all-layer consumption can be transport-correct while lowering quality.
+
+\subsection{What the current evidence supports}
+
+The corrected Paper-3 retrospective fixes source-offset query positions and holds oracle identity
+and native transport constant while varying $L_{\mathrm{consume}}$ on Qwen3-0.6B
+\cite{simao2026materialization}.  On 16 held-out identities per workload, the last 20 of 28 layers
+maximize mean gold-answer log probability for both MuSiQue and 2Wiki.  A last-eight band retains
+1.190 and .949 nats of gain at 40\% of the last-20 layer-token cost.  Early-four and evenly spaced
+profiles are harmful.  All-layer replay reaches $+.957$ on MuSiQue but $-2.290$ on 2Wiki, so it is
+not a quality ceiling.  Crossing exact cores, local windows, selected records, and whole parents
+also shows that a materialization result can change with consumer topology.
+
+Paper~4.5 then tests the same profile contract as a runtime calibration problem
+\cite{simao2026runtime}.  In direct-prefix/reference parity checks, Qwen3-0.6B and the tested
+Llama-3.2-1B mirror require all eligible layers for the conservative balanced profile; short suffixes
+lose quality.  Gemma-3-1B's four globally attentive layers likewise require all four in the tested
+topology, while its local-attention integration remains partial.  Qwen's last-24 suffix has the best
+answer log probability in its small calibration cohort but unacceptable full-logit drift, so it is
+recorded as a research quality-max candidate rather than the SDK default.  The evidence therefore
+supports coexisting workload, family, materialization, and objective dependence.  It does not yet
+establish a size law.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Current calibrated profile evidence.  Names are objectives, not architectural laws.
+``All'' means all eligible consumer layers for that topology.  Economy entries carry no quality
+guarantee.  Q, L, and G abbreviate Qwen3-0.6B, the Llama-3.2-1B mirror, and Gemma-3-1B.}
+\label{tab:layer-profile-evidence}
+\begin{tabular}{@{}llllll@{}}
+\toprule
+Model / study & Workload & Materialization & Quality-max & Balanced & Economy \\
+\midrule
+Q / P3 & MuSiQue & whole parent & last 20 & last 12 & last 1 probe \\
+Q / P3 & 2Wiki & whole parent & last 20 & last 8 & last 1 probe \\
+Q / P4.5 & prefix parity & native prefix & last 24 research & all & last 1 probe \\
+L / P4.5 & prefix parity & native prefix & all & all & last 1 probe \\
+G / P4.5 & prefix parity & global layers & all four & all four & last global probe \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Profile objectives and calibration method}
+
+The runtime exposes four named objectives.  \textsc{Reference-correctness} activates all eligible
+consumers as the conservative fallback when no sparse profile is validated.  \textsc{Quality-max}
+selects the held-out quality optimum, even when expensive.  \textsc{Balanced} selects a point on
+the measured quality--K/V--compute frontier.  \textsc{Economy} minimizes active state under an
+explicitly accepted quality floor.  A routing/discovery profile, task-composition profile, and
+answer-generation profile may eventually differ, but that role-specific optimization remains a
+hypothesis rather than a default.
+
+The canonical calibration procedure is:
+\begin{enumerate}
+\item verify native prefix/reference parity and positional provenance;
+\item freeze the workload, materialization policy, model, tokenizer, and revision;
+\item sweep normalized contiguous consumer suffixes;
+\item compare sparse and contiguous profiles at matched layer counts;
+\item measure output quality, residual divergence, active K/V, compute, and latency;
+\item construct the Pareto frontier and select quality-max, balanced, and economy candidates;
+\item validate candidates on identities not used for selection;
+\item store the result in a versioned registry with user overrides and a conservative fallback.
+\end{enumerate}
+Profiles cannot be compared across model revisions without provenance.  Fixed calibrated profiles
+are the default because adaptive predictors elsewhere in the series have often underperformed
+well-chosen fixed policies.  Dynamic layer selection requires its own held-out evidence.
+
+The standalone study remains complementary.  It compares four local consumers, four memory
+consumers, and a two-plus-two hybrid under training.  In its five-seed follow-up, frozen-path
+reference loss is 4.6720 for full consumption and 4.7296 for hybrid consumption.  The hybrid uses
+fewer trainable memory projections and trains faster, but one tiny model and an unlearned selector
+cannot determine a placement law.  The next scaling test should compare optimal normalized
+consumer depth against model depth and parameter count while stratifying lexical, syntactic,
+relational, and answer-generation workloads.
 
 \section{Relationship to Existing Work}
 
@@ -1567,9 +1672,12 @@ Paper 2 then establishes exact disabled pretrained paths, cross-family adapters,
 one-shot QASPER regime while identifying HotpotQA as the multi-hop boundary. Paper 2.5
 demonstrates bounded associative discovery and native graph structure, while showing that entry
 competition, granularity, broad activation, and memory-use interference still limit sparse
-end-to-end gains.  Paper 3 adds controlled evidence-centered disclosure with dataset-dependent
-pretrained transfer, and Paper 3.5 adds observable-only effort control and runtime prototypes;
-neither establishes production speed.  Together these results make PRA a usable research SDK and
+end-to-end gains.  Paper 3 adds controlled evidence-centered disclosure and corrected Qwen
+consumer-placement evidence; Paper 4.5 turns the four layer roles into versioned, cross-model
+runtime profiles.  Those results support coherent late bands for the tested MuSiQue/2Wiki replay
+but broader parity profiles for the tested Qwen, Llama, and Gemma topologies, not a universal depth
+rule.  Paper 3.5 adds observable-only effort control and runtime prototypes; none establishes
+production speed.  Together these results make PRA a usable research SDK and
 support the narrow claim that named logical context can grow faster than the K/V materialized in
 one operation. They do not yet show that PRA is generally better than optimized long context or RAG
 in production. The decisive next tests are learned sparse-memory assimilation, the matched
