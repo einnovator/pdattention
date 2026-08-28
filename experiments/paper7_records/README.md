@@ -64,6 +64,24 @@ comparison:
 - `run_inception_experiments.py`: typed compression, backing, transport, and
   cursor mechanism checks.
 
+## Released Headroom cross-evaluation
+
+`experiments/paper7_headroom/` pins and exercises released Headroom 0.37.0,
+keeps `HEADROOM_OFFICIAL` distinct from the historical `CCR_STYLE`
+reproduction, and runs frozen PRA over focused Headroom evaluation cases. Its
+primary rows use official components in an isolated Python 3.10 environment;
+the complete OpenAI-compatible proxy is a separate local-Qwen smoke test.
+
+Artifacts and generated plots live under:
+
+```text
+docs/papers/shared/results/paper7_records/headroom_cross_eval/
+```
+
+The cross-dataset endpoint is exact evidence visibility, not generated-answer
+EM/F1. Eligibility, the MS MARCO streaming adapter fallback, unavailable
+Kompress ML, and unrun provider/TOIN paths are all machine-readable.
+
 ## Verification
 
 From the repository root:
@@ -71,7 +89,8 @@ From the repository root:
 ```powershell
 $env:PYTHONPATH = "src;."
 python -m pytest -q tests/test_native_index_size_gate.py `
-  tests/test_progressive_context.py tests/test_adaptive_context_runtime.py
+  tests/test_progressive_context.py tests/test_adaptive_context_runtime.py `
+  tests/test_paper7_headroom_cross_eval.py
 cd docs/papers/paper7_records
 latexmk -pdf -interaction=nonstopmode -halt-on-error `
   paper7_typed_adaptive_context_inception.tex

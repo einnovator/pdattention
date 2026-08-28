@@ -3,12 +3,13 @@
 \usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,microtype,enumitem,xcolor,listings,longtable,array}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
-\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/native_index_size_gate/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}}
+\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/native_index_size_gate/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}{../shared/results/paper7_records/headroom_cross_eval/figures/}}
 \input{../shared/results/paper7_records/full_pra_calibrated/generated_full_pra_calibrated_results.tex}
 \input{../shared/results/paper7_records/native_index_size_gate/generated_native_index_size_gate_results.tex}
 \input{../shared/results/paper7_records/progressive_context/generated_progressive_results.tex}
 \input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
 \input{../shared/results/paper7_records/inception/generated_inception_results.tex}
+\input{../shared/results/paper7_records/headroom_cross_eval/generated_headroom_cross_eval_results.tex}
 
 \definecolor{codegray}{RGB}{246,247,249}
 \lstset{
@@ -50,7 +51,13 @@ index work; a \PaperSevenLazyRegionTokens{}-token selected region preserves
 lifecycle measurements, not Qwen latency or universal threshold claims. A
 calibrated adaptive controller matches \texttt{PRA\_NATIVE} but adds cost;
 oracle control reaches \PaperSevenCalOracleSuccessPct\%, showing headroom that
-the frozen controller does not realize.
+the frozen controller does not realize. A pinned cross-evaluation with released
+Headroom 0.37.0 confirms a complementary point: reversible structural
+compression preserves the same \PaperSevenHeadroomTunedSuccess{} endpoint at
+\PaperSevenHeadroomTunedTokens{} visible tokens, but its matched controller
+never acquires the externally absent C5 evidence. Cross-dataset routing remains
+diagnostic: frozen PRA reaches all eight CCR needles at $K=4$, but not the
+extractive HotpotQA subset.
 \end{abstract}
 
 \section{Introduction}
@@ -589,6 +596,124 @@ improve over the simpler native policy and uses more visible/controller tokens.
 \texttt{FULL\_BACKING} is therefore external acquisition, not more complete
 exposure of the same backing object.
 
+\subsection{Released Headroom cross-evaluation}
+
+The original \texttt{CCR\_STYLE} row is an in-house mechanism reproduction; it
+is not Headroom. We therefore ran the released
+\path{headroom-ai==0.37.0} package at the pinned repository revision
+\begin{center}
+\small\texttt{32d7ca4577d599b8a5f811ada74cf31504302c9d}
+\end{center}
+in an isolated Python 3.10.11 environment. The official component path exercised
+\texttt{ContentRouter}, \texttt{SmartCrusher}, the process-local CCR store,
+released marker syntax, and retrieval-tool schema. The store was reset before
+every case. An OpenAI-compatible proxy smoke test with local
+\texttt{qwen3:0.6b} also completed automatic CCR continuation. The primary
+table uses the direct component path and a separately measured matched Qwen
+controller, not the smoke test.
+
+The default condition keeps the released \texttt{ContentRouterConfig}. The
+tuned condition selects between four- and eight-item candidates on the 12-case
+validation partition; both preserve the same validation evidence, so the
+four-item profile is selected for its lower visible-token count. It sets
+\texttt{smart\_crusher\_max\_items\_after\_crush=4} and disables lossless-first
+compaction. Held-out evaluation uses 18 identities and five controller seeds.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Condition & Exact success & Active/model-visible tokens\\
+\midrule
+\texttt{PRA\_FROZEN} & 83.3\% & 182.9\\
+\texttt{HEADROOM\_OFFICIAL\_DEFAULT} & \PaperSevenHeadroomDefaultSuccess{} & \PaperSevenHeadroomDefaultTokens{}\\
+\texttt{HEADROOM\_OFFICIAL\_TUNED} & \PaperSevenHeadroomTunedSuccess{} & \PaperSevenHeadroomTunedTokens{}\\
+\texttt{CCR\_STYLE} & 61.1\% & 252.3\\
+\texttt{FULL\_BACKING} & 83.3\% & 304.6\\
+\bottomrule
+\end{tabular}
+\caption{Cross-evaluation on Paper 7 C0--C5. Headroom reports model-visible
+tokens; PRA reports selected native K/V. These expose different resident-state
+costs and are compared only as request-time context budgets.}
+\label{tab:headroom-paper7}
+\end{table}
+
+Tuned official Headroom matches PRA and full backing on this endpoint while
+using 59.1 fewer request-time tokens than PRA (18-case exact sign-flip
+$p=0.00039$). Its success difference from PRA and full backing is zero. Against
+\texttt{CCR\_STYLE}, tuned official Headroom improves success by 22.2 points,
+but the 18-case sign-flip test is not conclusive ($p=0.125$). These tests
+aggregate the five decoding seeds within identity; the seeds are controller
+variability, not 90 independent cases.
+
+The aggregate conceals the control boundary. In C0--C4, the target evidence
+remains visible after official structural compression, so the controller
+correctly continues and no retrieval is needed. In every C5 run the evidence
+is absent from the retained original. The matched Qwen controller chooses
+\textsc{Continue} rather than \textsc{CallTool}, giving
+\PaperSevenHeadroomCfiveTrigger{} C5 action accuracy and zero C5 success.
+Resolving a CCR marker cannot repair absent backing state. An oracle that calls
+the external tool closes this gap, but that is acquisition competence rather
+than compression quality.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{paper7_headroom_trigger_accuracy.pdf}
+\caption{Matched-controller action accuracy by held-out class. The released
+Headroom path and historical \texttt{CCR\_STYLE} reproduction are reported
+separately. C5 requires acquisition outside reversible backing state.}
+\label{fig:headroom-trigger}
+\end{figure}
+
+We also reverse the direction and run frozen native PRA over focused cases
+from Headroom's released evaluation package: eight tool outputs, eight CCR
+needles, eight HotpotQA cases, and eight MS MARCO cases. Exact routing recall is
+defined only where a target span occurs in backing text. This leaves three
+HotpotQA cases. Five MS MARCO cases contain a selected relevant passage; that
+passage, rather than an abstractive answer string, is the evidence target. The
+released eager MS MARCO loader failed with \texttt{DatasetGenerationError}; a
+recorded fallback reproduces the released adapter over the same Hugging Face
+validation split in streaming mode.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Dataset & Eligible $n$ & PRA R@4 & PRA R@8 & Headroom visible\\
+\midrule
+Tool outputs & \PaperSevenCrossTooloutputsPRAN{} & \PaperSevenCrossTooloutputsPRA{} & \PaperSevenCrossTooloutputsPRAREight{} & \PaperSevenCrossTooloutputsHeadroom{}\\
+CCR needles & \PaperSevenCrossCcrneedlePRAN{} & \PaperSevenCrossCcrneedlePRA{} & \PaperSevenCrossCcrneedlePRAREight{} & \PaperSevenCrossCcrneedleHeadroom{}\\
+HotpotQA & \PaperSevenCrossHotpotqaPRAN{} & \PaperSevenCrossHotpotqaPRA{} & \PaperSevenCrossHotpotqaPRAREight{} & \PaperSevenCrossHotpotqaHeadroom{}\\
+MS MARCO & \PaperSevenCrossMsmarcoPRAN{} & \PaperSevenCrossMsmarcoPRA{} & \PaperSevenCrossMsmarcoPRAREight{} & \PaperSevenCrossMsmarcoHeadroom{}\\
+\bottomrule
+\end{tabular}
+\caption{Focused exact-evidence diagnostic. Headroom's column is initial
+visible-span preservation, not top-$K$ routing. PRA uses 32-token chunks,
+8-token overlap, and a 256-token materialization ceiling.}
+\label{tab:pra-on-headroom}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.84\linewidth]{pra_on_headroom_cross_dataset.pdf}
+\caption{Frozen PRA routing recall and released Headroom visible-evidence
+preservation on extractive-eligible cases. Small, filtered cohorts make this a
+mechanism diagnostic rather than a population estimate.}
+\label{fig:pra-on-headroom}
+\end{figure}
+
+The directional result is informative. Frozen hybrid PRA is strong on opaque
+needles and recovers all tool-output targets by $K=8$, but its mean-gist route
+does not recover the eligible Hotpot spans and recovers one of five MS MARCO
+passages at $K=8$. Conversely, the official structural path preserves visible
+evidence but, without its optional learned Kompress model, does not demonstrate
+plain-text compression on these rows. Kompress was unavailable in the isolated
+environment; an external provider and TOIN cold/warm behavior were not run.
+Thus the study establishes complementarity and specific gaps, not a universal
+ranking between the systems.
+
 \subsection{Ingestion and TTUC scaling}
 
 The size-gate profile uses payloads of 1K, 4K, 16K, 64K, and 256K tokens and
@@ -755,7 +880,10 @@ hash-indexed originals, a model retrieval tool, and proactive expansion
 \cite{headroom2026ccr}. Paper 7 treats this as a strong reversible design.
 Its narrower distinction is that reversible storage does not itself provide
 model-native backing addresses, while native addressability has ingestion and
-resident-state costs.
+resident-state costs. Our pinned 0.37.0 cross-evaluation supports that
+mechanism distinction while correcting an earlier labeling ambiguity:
+\texttt{CCR\_STYLE} is the in-house reproduction, whereas
+\texttt{HEADROOM\_OFFICIAL} denotes released components.
 
 \paragraph{Agent memory and context systems.}
 MemGPT moves information between memory tiers under explicit control
@@ -884,6 +1012,15 @@ authorization propagation, encrypted stores, and durable audit delivery are
 not measured. Resident index/detail-KV bytes remain distinct from active
 context and need deployment-specific capacity planning.
 
+The Headroom cross-evaluation is also bounded. Its Paper 7 direction has 18
+held-out identities; its reverse direction has eight cases per source and only
+three extractive-eligible HotpotQA and five MS MARCO cases. Exact span
+visibility is not answer EM/F1. Official Kompress ML, an external API provider,
+TOIN cold/warm adaptation, and a full matched proxy benchmark were not run.
+The plain-text Headroom rows therefore measure evidence preservation, not
+learned compression quality or latency. Headroom visible tokens and PRA active
+native K/V are request-time budgets with different resident-state accounting.
+
 \section{Conclusion}
 
 \textbf{Active context.} Typed records separate compact visibility, exact
@@ -903,12 +1040,45 @@ current default: the frozen calibrated controller adds cost without improving
 bounded records, cheap indexing plus lazy native regions for large records,
 and search/cursors for huge or stateful records.
 
+\textbf{Cross-system boundary.} Released Headroom structural compression
+preserves the frozen endpoint at a lower visible-token count on this controlled
+set, but the matched controller does not acquire absent C5 information. Frozen
+PRA routes opaque needles and bounded tool outputs well, yet its focused
+HotpotQA and MS MARCO diagnostics leave substantial semantic-routing headroom.
+Reversible compression, native selection, and external acquisition solve
+different parts of progressive context control.
+
 \begin{center}
 \fbox{\textbf{EXPERIMENTALLY FROZEN --- READY FOR EXTERNAL REVIEW}}
 \end{center}
 
 \clearpage
 \appendix
+
+\section{Headroom Cross-Evaluation Protocol}
+
+The reproducible installer creates an isolated Python 3.10 environment and
+pins \path{headroom-ai[proxy,evals]==0.37.0}. The experiment records the
+package version, upstream commit, selected profile, provider path, unsupported
+features, and loader fallback in machine-readable artifacts. From the
+repository root, the complete sequence is:
+
+\begin{lstlisting}[language=bash]
+./experiments/paper7_headroom/install_headroom.ps1
+$env:PYTHONPATH = "src;."
+python experiments/paper7_headroom/run_headroom_cross_eval.py
+python experiments/paper7_headroom/run_pra_on_headroom.py --device cuda --refresh
+python experiments/paper7_headroom/summarize_cross_eval.py
+\end{lstlisting}
+
+The result directory contains the official manifest, Paper 7 condition rows,
+reverse-direction rows, trigger analysis, oracle actions, reproduction
+faithfulness pairs, cost accounting, summary table, and statistics JSON. Raw
+official component outputs retain transform names, marker resolution, hashes,
+bytes, token estimates, and compression/retrieval latency. No credential or
+tenant data is stored. The official CCR store is process-local in this run;
+the per-case reset prevents state leakage but is not a multi-tenant security
+evaluation.
 
 \section{Earlier Progressive-Context Checkpoints}
 

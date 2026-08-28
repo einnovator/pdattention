@@ -1,0 +1,93 @@
+{
+  "claim_boundary": "No matched official full-CCR run was used for the primary table. Official structural components were run directly; the full proxy was checked separately on the matched local model.",
+  "compatibility": [
+    {
+      "details": "ContentRouter + SmartCrusher + CCR store/markers/tool schema",
+      "path": "official component stack",
+      "status": "supported"
+    },
+    {
+      "details": "qwen3:0.6b through Ollama; automatic CCR continuation observed",
+      "path": "OpenAI-compatible local proxy",
+      "status": "supported_smoke"
+    },
+    {
+      "details": "HF model is not an HTTP provider; evaluated through matched Ollama instead",
+      "path": "local Qwen HF as upstream provider",
+      "status": "unsupported"
+    },
+    {
+      "details": "no external provider credential used",
+      "path": "external supported API",
+      "status": "not_run"
+    },
+    {
+      "details": "no PyTorch in official venv; structural routes remained operational",
+      "path": "Kompress ML",
+      "status": "unavailable_in_isolated_python310"
+    },
+    {
+      "details": "stateless local proxy smoke; no persistent learning state",
+      "path": "TOIN cold/warm",
+      "status": "not_run"
+    }
+  ],
+  "feature_audit": {
+    "CCR_store_marker": "exercised",
+    "ContentRouter": "exercised",
+    "SmartCrusher": "exercised",
+    "TOIN": "available_not_measured",
+    "live_zone": "proxy_smoke_only",
+    "response_handler": "proxy_smoke_only",
+    "retrieval_tool_schema": "exercised",
+    "security_scope": "process-local hash store only; no tenant authorization claim",
+    "state_reset": "reset_compression_store before every case"
+  },
+  "headroom": {
+    "commit": "32d7ca4577d599b8a5f811ada74cf31504302c9d",
+    "extras": [
+      "proxy",
+      "evals"
+    ],
+    "official_venv": "D:\\git\\rd\\.venv-headroom-037",
+    "package": "headroom-ai==0.37.0",
+    "python": "3.10.11",
+    "repository": "https://github.com/headroomlabs-ai/headroom"
+  },
+  "matched_controller": {
+    "model": "qwen3:0.6b",
+    "provider": "Ollama local OpenAI-compatible server",
+    "seeds": [
+      11,
+      23,
+      37,
+      53,
+      71
+    ]
+  },
+  "profiles": {
+    "candidates": {
+      "max4_ccr": {
+        "initial_evidence": 0.8333333333333334,
+        "mean_tokens": 123.5,
+        "oracle_evidence": 0.8333333333333334
+      },
+      "max8_ccr": {
+        "initial_evidence": 0.8333333333333334,
+        "mean_tokens": 165.33333333333334,
+        "oracle_evidence": 0.8333333333333334
+      }
+    },
+    "default": {
+      "configuration": "released ContentRouterConfig defaults",
+      "lossless_first_compaction": true,
+      "max_items_after_crush": 15
+    },
+    "selected_tuned": "max4_ccr",
+    "selected_tuned_configuration": {
+      "lossless_first_compaction": false,
+      "max_items_after_crush": 4
+    }
+  },
+  "schema_version": 1
+}
