@@ -74,17 +74,28 @@ def layer_schedules(layer_count: int) -> dict[str, tuple[int, ...]]:
         sorted({round(index * (layer_count - 1) / 3) for index in range(4)})
     )
     every_four = tuple(range(0, layer_count, 4))
+
+    def evenly(count: int) -> tuple[int, ...]:
+        return tuple(
+            sorted({round(index * (layer_count - 1) / (count - 1)) for index in range(count)})
+        )
     return {
         "last_1": last(1),
         "last_2": last(2),
         "last_4": last(4),
         "last_8": last(8),
+        "last_12": last(min(12, layer_count)),
+        "last_14": last(min(14, layer_count)),
+        "last_16": last(min(16, layer_count)),
+        "last_20": last(min(20, layer_count)),
+        "last_24": last(min(24, layer_count)),
         "last_quarter": last(quarter),
         "last_half": last(half),
         "all": tuple(range(layer_count)),
         "early_4": tuple(range(4)),
         "middle_4": tuple(range(middle_start, middle_start + 4)),
         "even_4": evenly_spaced,
+        "even_8": evenly(8),
         "every_4": every_four,
     }
 
@@ -104,10 +115,24 @@ class _FirstTokenClock(StoppingCriteria):
         return False
 
 
-def _generate_timed(handle, tokenizer, prompt_ids, prompt_mask, device, new_tokens):
+def _generate_timed(
+    handle,
+    tokenizer,
+    prompt_ids,
+    prompt_mask,
+    device,
+    new_tokens,
+    *,
+    position_offset: int = 0,
+):
     encoded = {
         "input_ids": prompt_ids.to(device),
         "attention_mask": prompt_mask.to(device),
+        "position_ids": torch.arange(
+            position_offset,
+            position_offset + prompt_ids.shape[1],
+            device=device,
+        ).unsqueeze(0),
     }
     _sync(device)
     started = time.perf_counter()
@@ -158,14 +183,27 @@ def _cache_bytes(entry, layers: tuple[int, ...]) -> dict:
     }
 
 
-def _route_once(handle, tokenizer, question, route_layer, prompt_tokens, device):
+def _route_once(
+    handle,
+    tokenizer,
+    question,
+    route_layer,
+    prompt_tokens,
+    device,
+    *,
+    position_offset: int = 0,
+):
     """Route at one validated layer, returning IDs that can be replayed elsewhere."""
     prompt_ids, prompt_mask, _ = _prompt(
         tokenizer, question, max_tokens=prompt_tokens
     )
     prompt_ids = prompt_ids.to(device)
     prompt_mask = prompt_mask.to(device)
-    positions = torch.arange(prompt_ids.shape[1], device=device).unsqueeze(0)
+    positions = torch.arange(
+        position_offset,
+        position_offset + prompt_ids.shape[1],
+        device=device,
+    ).unsqueeze(0)
     adapter = handle.adapters[route_layer]
     handle.configure_memory_layers(set())
     adapter.begin_capture(positions)
@@ -285,6 +323,7 @@ def _evaluate_example(
     cache_bytes,
     args,
     device,
+    source_tokens,
 ):
     rows = []
     baseline_hidden = None
@@ -313,6 +352,11 @@ def _evaluate_example(
             max_tokens=args.direct_text_tokens if context else args.prompt_tokens,
         )
         answer_ids = _answer_ids(tokenizer, example["answer"])
+        position_offset = (
+            source_tokens
+            if args.position_mode == "corrected" and condition.kind != "direct"
+            else 0
+        )
         if condition.kind == "oracle":
             fixed = {layer: oracle[layer] for layer in condition.layers}
         elif condition.kind == "routed":
@@ -335,6 +379,7 @@ def _evaluate_example(
             context_tokens,
             evidence_spans,
             device,
+            position_offset=position_offset,
         )
         if condition.kind == "none":
             baseline_hidden = hidden
@@ -345,6 +390,7 @@ def _evaluate_example(
             prompt_mask,
             device,
             args.new_tokens,
+            position_offset=position_offset,
         )
         diagnostics = handle.diagnostics_by_layer()
         sums = _diagnostic_sums(diagnostics, condition.layers)
@@ -400,6 +446,10 @@ def _evaluate_example(
             "pra_layer_fraction": len(condition.layers) / len(handle.adapters),
             "first_pra_layer": min(condition.layers, default=None),
             "last_pra_layer": max(condition.layers, default=None),
+            "position_mode": args.position_mode,
+            "query_position_offset": position_offset,
+            "reference_position_policy": "source_relative",
+            "memory_lifetime_policy": "request_prefill_and_decode",
             "prompt_tokens": int(prompt_ids.shape[1]),
             "answer_tokens": int(answer_ids.shape[1]),
             "evidence_guaranteed": evidence_guaranteed,
@@ -813,6 +863,9 @@ def run(args) -> dict:
                 layer_count - 1,
                 args.prompt_tokens,
                 device,
+                position_offset=(
+                    int(source.shape[1]) if args.position_mode == "corrected" else 0
+                ),
             )
         example_rows = _evaluate_example(
             handle,
@@ -825,6 +878,7 @@ def run(args) -> dict:
             cache_bytes,
             args,
             device,
+            int(source.shape[1]),
         )
         rows.extend(example_rows)
         print(
@@ -840,6 +894,19 @@ def run(args) -> dict:
     artifact = {
         "runtime": runtime_metadata(),
         "protocol": "frozen Qwen route-once, layer-native multi-layer PRA consumption sweep",
+        "position_mode": args.position_mode,
+        "transport_invariants": {
+            "external_kv": "native post-RoPE per destination layer",
+            "query_offset": (
+                "after logical source extent"
+                if args.position_mode == "corrected"
+                else "historical restart at zero"
+            ),
+            "deduplication": "chunk identity then overlap-aware materialization",
+            "memory_lifetime": "request prefill and decode",
+            "attention_composition": "shared softmax over local and memory keys",
+            "physical_kv_heads": "native GQA/MQA heads without query-head expansion",
+        },
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
         "phase": args.phase,
@@ -941,6 +1008,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--encoding-block-tokens", type=int, default=128)
     parser.add_argument("--routing-chunk-tokens", type=int, default=32)
     parser.add_argument("--top-k", type=int, default=3)
+    parser.add_argument(
+        "--position-mode",
+        choices=("original", "corrected"),
+        default="corrected",
+    )
     parser.add_argument(
         "--schedules",
         default="last_1,last_2,last_4,last_8,last_quarter,last_half,all",

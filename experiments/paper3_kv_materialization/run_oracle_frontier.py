@@ -316,17 +316,38 @@ def _attention_metrics(pra, answer_query_positions, memory_positions, evidence_s
     }
 
 
-def _teacher_forced(pra, tokenizer, encoded, answer: str, device, memory_positions, evidence_spans, layers):
+def _teacher_forced(
+    pra,
+    tokenizer,
+    encoded,
+    answer: str,
+    device,
+    memory_positions,
+    evidence_spans,
+    layers,
+    *,
+    position_offset: int = 0,
+):
     answer_ids = tokenizer(answer, return_tensors="pt", add_special_tokens=False).input_ids
     answer_ids = answer_ids.to(encoded.input_ids.device)
     prompt_tokens = int(encoded.input_ids.shape[1])
     full_ids = torch.cat((encoded.input_ids, answer_ids), dim=1).to(device)
     full_mask = torch.ones_like(full_ids)
+    position_ids = torch.arange(
+        position_offset,
+        position_offset + full_ids.shape[1],
+        device=device,
+    ).unsqueeze(0)
     prediction_positions = list(range(prompt_tokens - 1, full_ids.shape[1] - 1))
     pra._handle.set_attention_diagnostics(bool(layers))
     started = time.perf_counter()
     with torch.no_grad():
-        output = pra.model(input_ids=full_ids, attention_mask=full_mask, use_cache=False)
+        output = pra.model(
+            input_ids=full_ids,
+            attention_mask=full_mask,
+            position_ids=position_ids,
+            use_cache=False,
+        )
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     duration = time.perf_counter() - started
@@ -355,8 +376,21 @@ def _teacher_forced(pra, tokenizer, encoded, answer: str, device, memory_positio
     }
 
 
-def _generate(model, tokenizer, encoded, device, max_new_tokens: int):
+def _generate(
+    model,
+    tokenizer,
+    encoded,
+    device,
+    max_new_tokens: int,
+    *,
+    position_offset: int = 0,
+):
     encoded = encoded.to(device)
+    encoded["position_ids"] = torch.arange(
+        position_offset,
+        position_offset + encoded.input_ids.shape[1],
+        device=device,
+    ).unsqueeze(0)
     clock = _TokenClock(device)
     if device.type == "cuda":
         torch.cuda.empty_cache()
@@ -689,10 +723,30 @@ def run(args):
             else:
                 pra._handle.configure_memory_layers(set())
                 positions = []
-            teacher = _teacher_forced(
-                pra, tokenizer, encoded, example.answer, device, positions, evidence_spans, layers
+            position_offset = (
+                source_tokens
+                if args.position_mode == "corrected" and not policy.direct_full_context
+                else 0
             )
-            generation = _generate(pra.model, tokenizer, encoded, device, args.max_new_tokens)
+            teacher = _teacher_forced(
+                pra,
+                tokenizer,
+                encoded,
+                example.answer,
+                device,
+                positions,
+                evidence_spans,
+                layers,
+                position_offset=position_offset,
+            )
+            generation = _generate(
+                pra.model,
+                tokenizer,
+                encoded,
+                device,
+                args.max_new_tokens,
+                position_offset=position_offset,
+            )
             physical = _row_metrics(teacher["diagnostics_by_layer"], layers)
             span_metrics = selected_span_metrics(
                 [tuple(position for position in (interval.start, interval.end)) for interval in union_intervals(interval_plan)]
@@ -724,6 +778,10 @@ def run(args):
                 "budget_allocation": policy.allocation,
                 "materialization_band": band.name if layers else "none",
                 "materialization_layers": list(layers),
+                "position_mode": args.position_mode,
+                "query_position_offset": position_offset,
+                "reference_position_policy": "source_relative",
+                "attention_composition": "shared_softmax_local_plus_native_memory",
                 "logical_source_tokens": source_tokens,
                 "encoding_granularity_tokens": args.encoding_tokens,
                 "cpu_reference_cache_bytes": source_tokens * int(pra.model.config.num_hidden_layers) * 2 * int(pra.model.config.num_key_value_heads) * int(pra.model.config.head_dim) * 2,
@@ -785,6 +843,7 @@ def run(args):
         "model_revision": MODEL_REVISION,
         "backbone_frozen": True,
         "phase": args.phase,
+        "position_mode": args.position_mode,
         "examples_per_dataset": args.examples_per_dataset,
         "G_encode": args.encoding_tokens,
         "G_search": args.parent_tokens,
@@ -815,6 +874,11 @@ def parse_args():
     parser.add_argument("--phase", choices=("validation", "heldout"), required=True)
     parser.add_argument("--study", choices=("pilot", "confirmation"), default="pilot")
     parser.add_argument("--artifact-prefix", default="oracle_frontier")
+    parser.add_argument(
+        "--position-mode",
+        choices=("original", "corrected"),
+        default="corrected",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--examples-per-dataset", type=int, default=4)
     parser.add_argument("--max-new-tokens", type=int, default=12)

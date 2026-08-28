@@ -46,3 +46,20 @@ python -m experiments.paper3_kv_materialization.summarize_pretrained_confirmatio
 The original oracle pilot and Paper-2.5 selector factorial remain preserved.
 The tracked `paper.pdf` is built from both the controlled causal study and the
 pretrained confirmation.
+
+Run the corrected layer-placement reconciliation after the pretrained frontier:
+
+```powershell
+python -m experiments.paper3_kv_materialization.run_layer_reconciliation `
+  --examples-per-dataset 16 `
+  --output-dir docs/papers/shared/results/paper3_kv_materialization/layer_reconciliation `
+  --musique-dev D:/git/rd/pdattention-iter-gist/data/.paper2_5_datasets/musique/data/musique_ans_v1.0_dev.jsonl `
+  --twowiki-dev D:/git/rd/pdattention-iter-gist/data/.paper2_5_datasets/2wiki/dev.json
+python -m experiments.paper3_kv_materialization.summarize_layer_reconciliation `
+  --root docs/papers/shared/results/paper3_kv_materialization/layer_reconciliation
+```
+
+The reconciliation uses corrected source-offset query positions and keeps
+native source K/V at their source-relative RoPE positions. It separates
+address, detail-K/V storage, routing, and consumer roles; the sweep varies only
+the consumer set while holding oracle identity and transport fixed.

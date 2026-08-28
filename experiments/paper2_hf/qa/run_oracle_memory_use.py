@@ -232,11 +232,17 @@ def _teacher_forced(
     context_tokens: list[int],
     evidence_spans,
     device: torch.device,
+    position_offset: int = 0,
 ) -> tuple[dict, list[torch.Tensor]]:
     """Score the gold continuation and capture attention/hidden-state diagnostics."""
     prompt_tokens = int(prompt_ids.shape[1])
     full_ids = torch.cat((prompt_ids, answer_ids), dim=1).to(device)
     full_mask = torch.cat((prompt_mask, torch.ones_like(answer_ids)), dim=1).to(device)
+    position_ids = torch.arange(
+        position_offset,
+        position_offset + full_ids.shape[1],
+        device=device,
+    ).unsqueeze(0)
     prediction_positions = list(range(prompt_tokens - 1, full_ids.shape[1] - 1))
     layer_outputs: dict[int, torch.Tensor] = {}
     hooks = [
@@ -255,6 +261,7 @@ def _teacher_forced(
             output = handle.model(
                 input_ids=full_ids,
                 attention_mask=full_mask,
+                position_ids=position_ids,
                 use_cache=False,
             )
     except Exception:

@@ -43,13 +43,16 @@ measurable but does not predict the exact-core advantage.
 
 We then confirm the mechanism with frozen Qwen3-0.6B using 16 validation and 32 held-out examples
 per dataset.  Exact evidence reduces active K/V by 20.9\% on MuSiQue and 44.4\% on
-2WikiMultiHopQA while changing gold-token log probability by $+0.058$ and $+0.005$ nats/token
-relative to whole parents; paired 95\% bootstrap intervals include zero.  Evidence attention
-increases on both datasets.  Exact MuSiQue memory nevertheless remains 2.461 nats/token below no
-memory, whereas exact 2Wiki memory improves by .422, identifying a dataset-specific consumption
-mismatch rather than a universal frozen-consumer limit.  Native gist means do not substitute for
-token detail.  These experiments support a precise distinction: annotation evidence identifies
-justificatory spans, whereas
+2WikiMultiHopQA while preserving the corresponding whole-parent result within paired uncertainty.
+A transport audit subsequently finds that the inherited replay restarted direct-query RoPE
+positions at zero.  Under corrected source-offset transport and a separate 16-example-per-dataset
+layer calibration, contiguous late consumers dominate scattered placement.  The last 20 of 28
+layers improve gold-answer log probability over no memory by 1.946 nats on MuSiQue and 1.276 on
+2Wiki; the last eight retain 1.190 and .949 at 40\% of that layer-token cost.  All-layer replay is
+not a quality ceiling: it reaches .957 and $-2.290$, respectively, because additional memory
+consumers can amplify interference.  Native gist means do not substitute for token detail.  These
+experiments support a precise distinction: annotation evidence identifies justificatory spans,
+whereas
 computationally sufficient memory specifies the contextual native states required by a particular
 consumer.  The paper establishes a memory-quality frontier, not a production speed claim.
 \end{abstract}
@@ -102,6 +105,9 @@ content, measures attention and residual trajectories, and varies receptive fiel
 representation context, evidence dispersion, and physical budget.
 \item It tests whether the controlled diagnosis transfers to frozen Qwen3-0.6B on MuSiQue and
 2Wiki with validation-frozen policies and paired example-level confidence intervals.
+\item It audits positional replay and calibrates contiguous and sparse consumer-layer profiles
+under corrected native-K/V transport, separating address, detail-storage, routing, and consumption
+roles.
 \item It preserves negative results: broader disclosure can dilute useful evidence, gist means are
 not token-detail substitutes, high density can hide low coverage, and Python gathering does not
 yet establish a serving-speed benefit.
@@ -549,9 +555,13 @@ Evidence incompleteness & unsupported & Exact and radius policies retain complet
 \subsection{Protocol}
 
 The controlled study predicts that exact evidence should be a strong physical point and that
-broader local context may dilute it.  We test that prediction without changing Qwen3-0.6B weights,
-conceptual selection, or inherited consumer-layer bands.  MuSiQue uses all 28 decoder layers;
-2Wiki uses layers 12, 20, 24, and 27.  Contextual K/V is encoded in 256-token blocks, oracle search
+broader local context may dilute it.  We first tested that prediction without changing
+Qwen3-0.6B weights, conceptual selection, or inherited consumer-layer bands.  That historical
+confirmation used all 28 decoder layers for MuSiQue and layers 12, 20, 24, and 27 for 2Wiki.  A
+later transport audit, reported below, identified a direct-query position mismatch in that path.
+The materialization comparisons remain paired within the historical transport, but their absolute
+memory-versus-no-memory values are not used to choose a deployment layer profile.  Contextual K/V
+is encoded in 256-token blocks, oracle search
 parents contain 32 tokens, the direct prompt budget is 128 tokens, and the native operation limit
 is 4096.  Validation uses 16 identities per dataset and selects the smallest radius within .05
 nats/token of whole-parent likelihood, otherwise the best measured radius.  The identity-disjoint
@@ -663,6 +673,125 @@ K/V.  Nor does MuSiQue establish a universal frozen-consumer limitation.  The co
 intervention raises accuracy from .080 to .720 without changing weights, and frozen Qwen consumes
 2Wiki memory profitably.  MuSiQue instead exhibits a dataset- and interface-specific
 memory-consumption mismatch that belongs to the consumer/adaptation question.
+
+\section{Corrected Transport and Layer Reconciliation}
+\label{sec:layer-reconciliation}
+
+\subsection{The replay audit}
+
+Native K/V is meaningful only together with its positional frame.  The historical pretrained
+runner retained source-relative post-RoPE keys but restarted the direct query at position zero.
+The corrected path assigns the query and answer positions immediately after the logical source
+extent.  It also checks that physical GQA/MQA K/V heads are not expanded, interval unions contain
+no duplicate source positions, source boundaries are clipped, direct and memory logits enter one
+softmax, and reference detail persists through prefill and decode.  These are transport
+invariants, not tuning choices.
+
+A small paired diagnostic with two HotpotQA and two QASPER identities demonstrates materiality.
+For all-layer replay, correction changes the mean gold-answer log-probability delta from $+.714$
+to $+3.751$ nats on HotpotQA and from $-9.775$ to $-2.971$ on QASPER.  Last-eight replay changes
+from $+2.489$ to $+2.089$ and from $+.614$ to $+.277$.  Four identities are too few for a quality
+claim; they are sufficient to reject the old positional path as a basis for layer selection.  The
+public audit records both modes and every checked invariant.
+
+\subsection{Four layer roles}
+
+The phrase ``PRA layer'' hid four independently selectable sets.  We use
+\begin{align}
+L_{\mathrm{addr}} &:\ \text{layers whose compact states may address memory},\\
+L_{\mathrm{detail}} &:\ \text{layers for which full native source K/V is retained},\\
+L_{\mathrm{route}} &:\ \text{layers that execute routing},\\
+L_{\mathrm{consume}} &:\ \text{layers that join selected native K/V to direct attention}.
+\end{align}
+The reconciliation varies $L_{\mathrm{consume}}$ while fixing oracle identity, corrected
+transport, and detail availability.  This paper therefore does not imply that every consumer must
+also route, or that every address layer must retain token-level K/V.  A product runtime may store
+compact address state broadly while retaining detail only where a calibrated consumer can use it.
+
+\subsection{Late contiguous bands dominate scattered placement}
+
+We evaluate 32 held-out identities, 16 each from MuSiQue and 2Wiki, with the same frozen
+Qwen3-0.6B model.  Whole-parent oracle memory is crossed with all layers, contiguous suffixes of
+24, 20, 16, 14, 12, 8, 4, and 1 layers, and matched early, middle, evenly spaced, and late sparse
+profiles.  Gold-answer likelihood is teacher-forced; intervals are paired across profiles.
+
+\begin{table}[H]
+\centering
+\caption{Corrected whole-parent replay.  $\Delta$LP is mean gold-answer log-probability relative
+to no memory; brackets are paired example-bootstrap 95\% intervals.  States count materialized
+token--layer K/V states, before the key/value and head-dimension factors.}
+\label{tab:layer-reconciliation}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Dataset & Consumer profile & Layers & $\Delta$LP [95\% CI] & States \\
+\midrule
+MuSiQue & all & 28 & $+.957\ [-1.403,2.653]$ & 13,617 \\
+MuSiQue & last 20 & 20 & $+1.946\ [1.108,2.873]$ & 9,726 \\
+MuSiQue & last 12 & 12 & $+1.400\ [.883,1.988]$ & 5,836 \\
+MuSiQue & last 8 & 8 & $+1.190\ [.705,1.812]$ & 3,891 \\
+MuSiQue & last 1 & 1 & $+.005\ [-.028,.046]$ & 486 \\
+\midrule
+2Wiki & all & 28 & $-2.290\ [-4.822,.027]$ & 4,144 \\
+2Wiki & last 20 & 20 & $+1.276\ [.610,2.000]$ & 2,960 \\
+2Wiki & last 12 & 12 & $+1.067\ [.405,1.787]$ & 1,776 \\
+2Wiki & last 8 & 8 & $+.949\ [.288,1.662]$ & 1,184 \\
+2Wiki & last 1 & 1 & $+.013\ [-.045,.067]$ & 148 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper3_kv_materialization/layer_reconciliation/layer_contiguous_quality_cost.png}
+\caption{Corrected late-suffix quality versus consumer depth and materialized layer-token cost.
+The relationship is not monotone: last-20 is best on both workloads, while all-layer replay adds
+interference.}
+\label{fig:layer-cost}
+\end{figure}
+
+Placement, not count alone, explains the result.  Early-four consumers lower $\Delta$LP by 9.702
+nats on MuSiQue and 8.954 on 2Wiki; even-four lowers it by 3.573 and 2.463.  Late-four remains
+positive at .500 and .576.  Even-eight is also harmful, whereas the equally sized last-eight band
+is positive.  Thus a request to ``use eight PRA layers'' is underspecified.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper3_kv_materialization/layer_reconciliation/layer_sparse_placement.png}
+\caption{Matched-count sparse and contiguous profiles under corrected transport.  Scattered
+consumption is not an economical substitute for a coherent late computation band.}
+\label{fig:sparse-placement}
+\end{figure}
+
+\subsection{Layer placement and materialization width interact}
+
+Exact cores, radius-two windows, selected records, and whole parents are crossed with all,
+last-14, last-eight, and even-eight consumers.  Late-14 and late-eight are stable across geometry:
+their maximum geometry spread is .050 nats on 2Wiki and .035 on MuSiQue.  All-layer consumption is
+not stable.  On 2Wiki its $\Delta$LP ranges from $-6.36$ for exact cores to $-2.29$ for whole
+parents; on MuSiQue it ranges from $+.96$ to $+1.33$.  Even-eight remains harmful across widths.
+Materialization cannot repair a poor consumer topology, and a geometry conclusion measured at one
+topology need not transfer to another.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper3_kv_materialization/layer_reconciliation/layer_materialization_cross.png}
+\caption{Materialization geometry crossed with consumer placement.  The late contiguous bands are
+robust; all-layer and evenly spaced consumption expose workload-specific interference.}
+\label{fig:materialization-layer-cross}
+\end{figure}
+
+\subsection{Profile objectives and handoff}
+
+No universal suffix is inferred from 32 identities and one model.  The calibration nevertheless
+supports named objectives.  \emph{Quality-max} is last-20 on both workloads.  The shared
+\emph{balanced} profile is last-eight; a dataset-specific rule chooses last-12 for MuSiQue and
+last-eight for 2Wiki when retaining at least 70\% of the best positive mean at minimum state cost.
+\emph{Economy} is last-one only as a near-zero-gain systems probe, not a quality recommendation.
+\emph{Reference-correctness} remains all eligible layers when no sparse profile has been validated,
+but it must not be reported as quality-optimal.  The runtime profile registry and cross-model
+calibration belong to Paper~4.5; this paper supplies the causal placement evidence and physical
+accounting.
 
 \section{Frozen Selection by Materialization}
 
@@ -811,9 +940,10 @@ Greedy F1 and normalized accuracy are coarse, especially on MuSiQue where output
 near the floor.  A validated blinded LLM judge has not been run for Paper~3.
 
 Only Qwen3-0.6B is evaluated.  Materialization behavior may differ with model scale, family,
-fine-tuning, quantization, and attention kernel.  The inherited all-28 MuSiQue materialization band
-is expensive and may amplify frozen-model interference.  We preserve it to avoid selecting a new
-layer policy on the materialization outcome.
+fine-tuning, quantization, and attention kernel.  The corrected layer calibration contains 16
+identities per dataset and reuses the same held-out cohort across profiles.  Its bootstrap
+intervals quantify example variation, not model-family or training-seed uncertainty.  Profiles
+must therefore be recalibrated rather than transferred by layer number.
 
 The evidence oracle assumes dataset annotations identify useful source spans.  Eighteen MuSiQue
 and 24 2Wiki held-out identities inherit frozen Paper-2.5 token geometry; the remaining 14 and 8
@@ -828,11 +958,12 @@ The paper therefore makes no production throughput, cost, or asymptotic speed cl
 
 \section{Discussion and Handoffs}
 
-The two model classes now tell a consistent, bounded story.  Exact controlled cores dominate
-broader disclosure, and exact Qwen evidence preserves whole-parent likelihood within paired
-uncertainty while reducing physical state.  Surrounding context is therefore not automatically
-support.  It can be useful in another task or model, but here each additional radius consumes
-attention without a reliable held-out gain.
+The experiments tell a more conditional story than a single materialization curve.  Exact
+controlled cores dominate broader disclosure, and exact Qwen evidence preserves its paired
+whole-parent control while reducing physical state.  Corrected replay then shows that consumer
+placement can dominate that geometry effect: coherent late bands help both workloads, while early
+or scattered consumers hurt them.  Surrounding context and additional consumer layers are
+therefore resources to calibrate, not automatic support.
 
 The result also clarifies what this paper does not solve.  Exact MuSiQue disclosure preserves its
 parent control but cannot make that control competitive with no memory.  Changing the consumer's
@@ -849,13 +980,14 @@ identical on the balanced controlled cores.
 
 \section{Conclusion}
 
-Finding memory and loading memory are different operations.  Under oracle selection, exact
-evidence produces a content-causal margin gain in controlled models, reduces active native K/V and
-softmax competition, and preserves whole-parent Qwen likelihood within paired uncertainty.  Fixed
-budgets remain valid only when they preserve every required region; high density can hide low
-coverage.  MuSiQue's remaining loss to no memory is a consumer mismatch, not evidence that exact
-materialization failed.  These results establish computational sufficiency as a separate research
-object between conceptual selection and learned memory use.
+Finding memory, loading memory, and choosing where the model consumes it are different operations.
+Under oracle selection, exact evidence produces a content-causal margin gain in controlled models
+and preserves its paired whole-parent Qwen control at lower physical cost.  A corrected positional
+audit shows that coherent late consumer bands outperform both all-layer and scattered replay on
+MuSiQue and 2Wiki.  Fixed budgets remain valid only when they preserve every required region; high
+density can hide low coverage, and more active layers can amplify interference.  Computational
+sufficiency is therefore jointly indexed by materialized content, transport geometry, and consumer
+placement.
 
 \appendix
 

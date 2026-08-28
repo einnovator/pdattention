@@ -1,0 +1,18 @@
+{
+  "scope": "diagnostic rerun; two identities per dataset",
+  "historical_bug": "Direct-query positions restarted at zero while external native K/V retained source-relative RoPE positions.",
+  "corrected_transport": "Query and decode positions begin after the source encoding interval; source K/V retain their native source-relative positions.",
+  "invariants": {
+    "source_kv": "copied from the host model without projection",
+    "physical_heads": "host GQA/MQA K/V heads are retained",
+    "attention": "direct and memory logits share one softmax",
+    "deduplication": "physical source positions are unique after interval union",
+    "boundaries": "materialized positions are clipped to source bounds",
+    "lifetime": "reference detail K/V persists for request prefill and decode"
+  },
+  "raw_rows": {
+    "original": 16,
+    "corrected": 16
+  },
+  "publication_table": "layer_reconciliation_original_vs_fixed.csv"
+}

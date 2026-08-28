@@ -1,0 +1,36 @@
+{
+  "status": "held-out calibration, not a universal model default",
+  "transport": "corrected source-offset native-K/V replay",
+  "selection_rule": {
+    "quality_max": "highest held-out mean gold-answer log-probability delta",
+    "balanced": "lowest native-K/V token-state cost retaining at least 70% of the best positive delta",
+    "economy": "lowest-cost profile with a positive held-out mean delta",
+    "reference_correctness": "all eligible consumer layers until sparse correctness is calibrated"
+  },
+  "per_dataset": {
+    "2wikimultihopqa": {
+      "reference_correctness": "all (conservative fallback, not quality-optimal)",
+      "quality_max": "last_20",
+      "balanced": "last_8",
+      "economy": "last_1",
+      "quality_max_delta_nats": 1.2760150466710911,
+      "balanced_delta_nats": 0.9488058405841002,
+      "economy_delta_nats": 0.012525478538009338
+    },
+    "musique": {
+      "reference_correctness": "all (conservative fallback, not quality-optimal)",
+      "quality_max": "last_20",
+      "balanced": "last_12",
+      "economy": "last_1",
+      "quality_max_delta_nats": 1.946422204375267,
+      "balanced_delta_nats": 1.3999544829130173,
+      "economy_delta_nats": 0.004966236650943756
+    }
+  },
+  "shared_recommendation": {
+    "quality_max": "last_20",
+    "balanced": "last_8",
+    "economy": "last_1",
+    "warning": "last_1 has near-zero average gain and is an economy probe, not a quality profile; early and evenly scattered consumers are contraindicated on both workloads."
+  }
+}
