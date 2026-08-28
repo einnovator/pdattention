@@ -171,12 +171,14 @@ def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMem
     )
 
 
-def make_native_prompt_cache(model: object, memory: MLXNativeMemory):
+def make_native_prompt_cache(
+    model: object, memory: MLXNativeMemory, *, max_kv_size: int | None = None
+):
     """Create request-local sequential caches backed by immutable selected K/V."""
 
     from mlx_lm.models.cache import make_prompt_cache
 
-    local = make_prompt_cache(model)
+    local = make_prompt_cache(model, max_kv_size=max_kv_size)
     if len(local) != len(memory.layers):
         raise ValueError("MLX native memory does not match the model layer count.")
     return [
