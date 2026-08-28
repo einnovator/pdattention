@@ -4,7 +4,7 @@
 
 **Branch:** `research/paper8-tasks`
 
-**Frozen manuscript source:** recorded after the editorial-freeze commit below.
+**Frozen manuscript source:** `47ed4cd71025e0eedaaa3ef8c60f1a80f010de6e`
 
 This paper studies one physical agent session containing multiple interleaved
 logical tasks. Task structure scopes candidates before ordinary PRA discovery;
