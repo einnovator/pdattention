@@ -82,6 +82,28 @@ The cross-dataset endpoint is exact evidence visibility, not generated-answer
 EM/F1. Eligibility, the MS MARCO streaming adapter fallback, unavailable
 Kompress ML, and unrun provider/TOIN paths are all machine-readable.
 
+## Final product consolidation
+
+`run_large_record_hybrid.py` consolidates the frozen endpoint results with the
+type-aware compression and retained-backing recovery diagnostics. Its primary
+reader-facing outputs are:
+
+- `product_lifecycle_cost_table.csv`: five-condition lifecycle accounting;
+- `paper7_official_endpoint_axes.pdf`: shared task success with separate
+  Headroom-visible and PRA-native token axes;
+- `paper7_active_context_frontier.pdf`: compact-only, native PRA, and full
+  backing on the Paper 7 cohort;
+- `pra_compression_recovery_cost.pdf`: initial visible compression and the
+  additional exact regions materialized by automatic local recovery;
+- `large_record_hybrid_recall.pdf`: retrieval-only channel recall over the 24
+  eligible reverse-evaluation cases.
+
+The automatic BM25 and embedding recovery rows materialize typed-visible
+regions. Their `active_native_kv_tokens` value is therefore zero; lazy native
+encoding is an optional subsequent lifecycle step, not a cost incurred by the
+reported recovery run. Frozen wall-clock rows should not be refreshed during
+editorial-only regeneration.
+
 ## Verification
 
 From the repository root:
@@ -90,7 +112,8 @@ From the repository root:
 $env:PYTHONPATH = "src;."
 python -m pytest -q tests/test_native_index_size_gate.py `
   tests/test_progressive_context.py tests/test_adaptive_context_runtime.py `
-  tests/test_paper7_headroom_cross_eval.py
+  tests/test_paper7_headroom_cross_eval.py tests/test_large_record_hybrid.py `
+  tests/test_paper7_large_record_artifacts.py
 cd docs/papers/paper7_records
 latexmk -pdf -interaction=nonstopmode -halt-on-error `
   paper7_typed_adaptive_context_inception.tex

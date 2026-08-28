@@ -523,11 +523,12 @@ class PRARecordRegistry:
             audit.native_index_bytes if audit and audit.native_index_built else 0,
             audit.native_index_tokens or 0 if audit else 0,
         )
-        detail_state = (
-            IndexLifecycleState.BUILT
-            if audit and audit.native_index_built
-            else IndexLifecycleState.LAZY
-        )
+        if audit and audit.native_index_built:
+            detail_state = IndexLifecycleState.BUILT
+        elif audit and audit.lazy_native_regions_encoded:
+            detail_state = IndexLifecycleState.LAZY
+        else:
+            detail_state = IndexLifecycleState.DEFERRED
         detail_bytes = int(self.backing_index_metrics.get(record_id, {}).get("resident_detail_kv_bytes", 0))
         summary = IndexComponentState(
             IndexLifecycleState.BUILT,

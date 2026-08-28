@@ -91,6 +91,7 @@ def test_size_gate_leaves_cheap_indexes_and_lazy_selected_native_available(tmp_p
     record = progressive.ingest(_payload(), record_type=RecordType.DB_RESULT)
 
     audit = progressive.prepare_native_index(record.record_id)
+    gated_lifecycle = progressive.registry.large_record_lifecycle(record.record_id)
     search, regions = progressive.recover_large_record_native(
         record.record_id, "ZX-91 timeout", top_k=1
     )
@@ -104,6 +105,7 @@ def test_size_gate_leaves_cheap_indexes_and_lazy_selected_native_available(tmp_p
     assert lifecycle.bm25_index.state == IndexLifecycleState.BUILT
     assert lifecycle.embedding_index.state == IndexLifecycleState.BUILT
     assert lifecycle.native_qk_index.state == IndexLifecycleState.SKIPPED_SIZE_LIMIT
+    assert gated_lifecycle.detail_kv.state == IndexLifecycleState.DEFERRED
     assert lifecycle.detail_kv.state == IndexLifecycleState.LAZY
 
 

@@ -89,8 +89,8 @@ def _policy_matrix() -> list[dict[str, Any]]:
     rows = []
     states = {
         "below_threshold": ("BUILT", "BUILT"),
-        "SKIPPED_SIZE_LIMIT": ("SKIPPED_SIZE_LIMIT", "LAZY"),
-        "DEFERRED": ("DEFERRED", "LAZY"),
+        "SKIPPED_SIZE_LIMIT": ("SKIPPED_SIZE_LIMIT", "DEFERRED"),
+        "DEFERRED": ("DEFERRED", "DEFERRED"),
         "lazy_selected_region": ("SELECTED_REGION_ONLY", "BUILT_SELECTED_REGION"),
     }
     for state, (native, detail) in states.items():
@@ -134,9 +134,73 @@ def _plots(reverse_rows: Sequence[Mapping[str, Any]], frontier: Sequence[Mapping
         fig.savefig(figure_dir / f"large_record_hybrid_recall.{suffix}", dpi=180)
     plt.close(fig)
 
+
+def _product_endpoint_plot(
+    paper7_rows: Sequence[Mapping[str, Any]],
+    frontier: Sequence[Mapping[str, Any]],
+) -> None:
+    """Render product frontiers while keeping unlike token axes separate."""
+
+    import matplotlib.pyplot as plt
+
+    figure_dir = OUTPUT / "figures"
+    figure_dir.mkdir(exist_ok=True)
+
+    def mean(condition: str, field: str) -> float:
+        return _mean((row for row in paper7_rows if row["condition"] == condition), field)
+
+    fig, axes = plt.subplots(1, 3, figsize=(9.4, 3.3))
+    endpoint_conditions = ("HEADROOM_OFFICIAL_TUNED", "PRA_FROZEN", "FULL_BACKING")
+    endpoint_labels = ("Headroom\ntuned", "PRA\nnative", "Full\nbacking")
+    colors = ("#4477aa", "#228833", "#444444")
+    axes[0].bar(endpoint_labels, [mean(value, "task_success") for value in endpoint_conditions], color=colors)
+    axes[0].set_ylim(0, 1.0)
+    axes[0].set_ylabel("Task success")
+    axes[0].set_title("Shared Paper 7 endpoint")
+
+    headroom_conditions = ("HEADROOM_OFFICIAL_DEFAULT", "HEADROOM_OFFICIAL_TUNED")
+    axes[1].bar(("Default", "Tuned"), [mean(value, "initial_visible_tokens") for value in headroom_conditions], color=("#88aadd", "#4477aa"))
+    axes[1].set_ylabel("Headroom initial visible tokens")
+    axes[1].set_title("Headroom-visible axis")
+
+    pra_conditions = ("PRA_FROZEN", "FULL_BACKING")
+    axes[2].bar(("PRA native", "Full backing"), [mean(value, "active_tokens") for value in pra_conditions], color=("#228833", "#444444"))
+    axes[2].set_ylabel("PRA active native K/V tokens")
+    axes[2].set_title("PRA-native axis")
+    axes[2].tick_params(axis="x", rotation=15)
+    for axis in axes:
+        axis.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    for suffix in ("png", "pdf"):
+        fig.savefig(figure_dir / f"paper7_official_endpoint_axes.{suffix}", dpi=180)
+    plt.close(fig)
+
+    active_rows = list(csv.DictReader((
+        ROOT / "docs/papers/shared/results/paper7_records/full_pra_calibrated/quality_cost_frontier.csv"
+    ).open(encoding="utf-8-sig")))
+    active_by_policy = {row["policy"]: row for row in active_rows}
+    policies = ("COMPACT_ONLY", "PRA_NATIVE", "FULL")
+    active_labels = ("Compact only", "PRA native", "Full backing")
+    fig, ax = plt.subplots(figsize=(6.4, 3.8))
+    for policy, label, color in zip(policies, active_labels, ("#4477aa", "#228833", "#444444")):
+        row = active_by_policy[policy]
+        x_value = float(row["active_kv_tokens"])
+        y_value = float(row["task_success"])
+        ax.scatter([x_value], [y_value], s=70, color=color)
+        ax.annotate(label, (x_value, y_value), xytext=(5, 5), textcoords="offset points", fontsize=9)
+    ax.set_xlim(-10, 330)
+    ax.set_ylim(0, 0.92)
+    ax.set_xlabel("Mean active K/V tokens")
+    ax.set_ylabel("Held-out task success")
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    for suffix in ("png", "pdf"):
+        fig.savefig(figure_dir / f"paper7_active_context_frontier.{suffix}", dpi=180)
+    plt.close(fig)
+
     shown = [row for row in frontier if row["condition"] in {
         "PRA_CURRENT_COMPACTOR", "PRA_TYPE_AWARE", "PRA_TYPE_AWARE_BM25",
-        "PRA_TYPE_AWARE_BM25_EMBED", "HEADROOM_OFFICIAL_TUNED", "FULL_BACKING",
+        "PRA_TYPE_AWARE_BM25_EMBED",
     }]
     fig, axes = plt.subplots(1, 2, figsize=(9.2, 3.8))
     short_labels = {
@@ -144,8 +208,6 @@ def _plots(reverse_rows: Sequence[Mapping[str, Any]], frontier: Sequence[Mapping
         "PRA_TYPE_AWARE": "Type-aware",
         "PRA_TYPE_AWARE_BM25": "+BM25",
         "PRA_TYPE_AWARE_BM25_EMBED": "+BM25/embed",
-        "HEADROOM_OFFICIAL_TUNED": "Headroom",
-        "FULL_BACKING": "Full backing",
     }
     labels = [short_labels[str(row["condition"])] for row in shown]
     visible = [float(row["initial_visible_tokens"]) for row in shown]
@@ -153,7 +215,7 @@ def _plots(reverse_rows: Sequence[Mapping[str, Any]], frontier: Sequence[Mapping
     axes[0].scatter(visible, success, s=46)
     offsets = {
         "Current": (5, -12), "Type-aware": (5, -4), "+BM25": (5, -3),
-        "+BM25/embed": (5, 5), "Headroom": (5, 5), "Full backing": (5, -10),
+        "+BM25/embed": (5, 5),
     }
     for label, x, y in zip(labels, visible, success):
         axes[0].annotate(label, (x, y), xytext=offsets[label], textcoords="offset points", fontsize=8)
@@ -173,7 +235,7 @@ def _plots(reverse_rows: Sequence[Mapping[str, Any]], frontier: Sequence[Mapping
     axes[1].grid(axis="y", alpha=0.25)
     fig.tight_layout()
     for suffix in ("png", "pdf"):
-        fig.savefig(figure_dir / f"headroom_pra_multi_axis_cost.{suffix}", dpi=180)
+        fig.savefig(figure_dir / f"pra_compression_recovery_cost.{suffix}", dpi=180)
     plt.close(fig)
 
 
@@ -304,7 +366,10 @@ def main() -> None:
                 "selected_region_tokens": selected_tokens,
                 "cheap_index_bytes": sum(index.index_bytes.values()),
                 "native_index_bytes": 0,
-                "active_native_kv_tokens": selected_tokens if recovered else 0,
+                # This condition materializes typed-visible selectors.  Lazy
+                # native encoding is supported by the runtime but was not run
+                # in this external retrieval diagnostic.
+                "active_native_kv_tokens": 0,
             })
         native = native_map.get(key)
         native_success = int(native["evidence_recall_at_4"]) if native else 0
@@ -398,7 +463,68 @@ def main() -> None:
     _write_csv("compression_recovery_decomposition.csv", decomposition)
     _write_csv("headroom_pra_cost_frontier.csv", frontier)
     _write_csv("headroom_reverse_eval_hybrid.csv", reverse_rows)
+    frontier_by_condition = {row["condition"]: row for row in frontier}
+    paper7_rows = list(csv.DictReader((SOURCE / "headroom_on_paper7_results.csv").open(encoding="utf-8-sig")))
+    paper7_test = [row for row in paper7_rows if row.get("partition") == "test"]
+
+    def paper7_mean(condition: str, field: str) -> float:
+        return _mean((row for row in paper7_test if row["condition"] == condition), field)
+
+    product_cost_rows = [
+        {
+            "condition": "HEADROOM_OFFICIAL_TUNED",
+            "endpoint": "Paper7 task success; 18 identities, five controller seeds",
+            "success_or_evidence": f"{100 * paper7_mean('HEADROOM_OFFICIAL_TUNED', 'task_success'):.1f}%",
+            "initial_visible_tokens": f"{paper7_mean('HEADROOM_OFFICIAL_TUNED', 'initial_visible_tokens'):.1f}",
+            "recovery_visible_tokens": "0.0",
+            "active_native_kv_tokens": "NOT_USED",
+            "retrieval_controller_calls": "1 model; 0 retrieval",
+            "index_backing_state": f"{paper7_mean('HEADROOM_OFFICIAL_TUNED', 'index_bytes') / 1024.0:.1f} KiB compressed index; retained CCR backing",
+        },
+        {
+            "condition": "PRA_TYPE_AWARE_COMPACT_ONLY",
+            "endpoint": "External exact-evidence diagnostic; 32 rows",
+            "success_or_evidence": "25.0%",
+            "initial_visible_tokens": f"{float(frontier_by_condition['PRA_TYPE_AWARE']['initial_visible_tokens']):.1f}",
+            "recovery_visible_tokens": "0.0",
+            "active_native_kv_tokens": "NOT_USED",
+            "retrieval_controller_calls": "0",
+            "index_backing_state": f"{float(frontier_by_condition['PRA_TYPE_AWARE']['cheap_index_bytes']) / 1024.0:.1f} KiB cheap indexes; exact backing retained",
+        },
+        {
+            "condition": "PRA_TYPE_AWARE_AUTO_RECOVERY",
+            "endpoint": "External exact-evidence diagnostic; 32 rows",
+            "success_or_evidence": f"{100 * float(frontier_by_condition['PRA_TYPE_AWARE_BM25_EMBED']['task_success']):.1f}%",
+            "initial_visible_tokens": f"{float(frontier_by_condition['PRA_TYPE_AWARE_BM25_EMBED']['initial_visible_tokens']):.1f}",
+            "recovery_visible_tokens": f"{float(frontier_by_condition['PRA_TYPE_AWARE_BM25_EMBED']['selected_region_tokens']):.1f}",
+            "active_native_kv_tokens": "NOT_USED; lazy native optional",
+            "retrieval_controller_calls": "1 automatic local search; 0 model decisions",
+            "index_backing_state": f"{float(frontier_by_condition['PRA_TYPE_AWARE_BM25_EMBED']['cheap_index_bytes']) / 1024.0:.1f} KiB cheap indexes; exact backing retained",
+        },
+        {
+            "condition": "PRA_NATIVE",
+            "endpoint": "Paper7 task success; 18 identities, five controller seeds",
+            "success_or_evidence": f"{100 * paper7_mean('PRA_FROZEN', 'task_success'):.1f}%",
+            "initial_visible_tokens": f"{paper7_mean('PRA_FROZEN', 'initial_visible_tokens'):.1f}",
+            "recovery_visible_tokens": f"{paper7_mean('PRA_FROZEN', 'retrieved_tokens'):.1f}",
+            "active_native_kv_tokens": f"{paper7_mean('PRA_FROZEN', 'active_tokens'):.1f}",
+            "retrieval_controller_calls": "1 model; 1 automatic native route",
+            "index_backing_state": "full native Q/K and detail K/V; bytes NOT_MEASURED in matched table",
+        },
+        {
+            "condition": "FULL_BACKING",
+            "endpoint": "Paper7 task success; 18 identities, five controller seeds",
+            "success_or_evidence": f"{100 * paper7_mean('FULL_BACKING', 'task_success'):.1f}%",
+            "initial_visible_tokens": f"{paper7_mean('FULL_BACKING', 'initial_visible_tokens'):.1f}",
+            "recovery_visible_tokens": f"{paper7_mean('FULL_BACKING', 'retrieved_tokens'):.1f}",
+            "active_native_kv_tokens": f"{paper7_mean('FULL_BACKING', 'active_tokens'):.1f}",
+            "retrieval_controller_calls": "2 model passes; 1 full materialization",
+            "index_backing_state": "exact full backing; resident bytes NOT_MEASURED in matched table",
+        },
+    ]
+    _write_csv("product_lifecycle_cost_table.csv", product_cost_rows)
     _plots(reverse_rows, frontier)
+    _product_endpoint_plot(paper7_test, frontier)
 
     by_channel = {channel: [row for row in eligible_hybrid if row["channel"] == channel] for channel in ("typed", "bm25", "embedding", "hybrid")}
     tex = [
@@ -416,7 +542,6 @@ def main() -> None:
         row = next(row for row in reverse_rows if row["dataset"] == dataset and row["channel"] == "hybrid")
         tex.append(f"\\newcommand{{\\PaperSevenCheap{macro}N}}{{{row['eligible_n']}}}")
         tex.append(f"\\newcommand{{\\PaperSevenCheap{macro}RFour}}{{{100 * float(row['recall_at_4']):.1f}\\%}}")
-    frontier_by_condition = {row["condition"]: row for row in frontier}
     current = frontier_by_condition["PRA_CURRENT_COMPACTOR"]
     aware = frontier_by_condition["PRA_TYPE_AWARE_BM25_EMBED"]
     tex.append(f"\\newcommand{{\\PaperSevenCurrentVisible}}{{{float(current['initial_visible_tokens']):.1f}}}")
@@ -424,6 +549,9 @@ def main() -> None:
     tex.append(f"\\newcommand{{\\PaperSevenAwareRecovered}}{{{100 * float(aware['task_success']):.1f}\\%}}")
     tex.append(f"\\newcommand{{\\PaperSevenAwareSelected}}{{{float(aware['selected_region_tokens']):.1f}}}")
     tex.append(f"\\newcommand{{\\PaperSevenCheapIndexKiB}}{{{float(aware['cheap_index_bytes']) / 1024.0:.1f}}}")
+    reduction = 1.0 - float(aware["initial_visible_tokens"]) / float(current["initial_visible_tokens"])
+    tex.append(f"\\newcommand{{\\PaperSevenCompressionReduction}}{{{100 * reduction:.1f}\\%}}")
+    tex.append("\\newcommand{\\PaperSevenAwareCompactOnly}{25.0\\%}")
     (OUTPUT / "generated_large_record_hybrid_results.tex").write_text("\n".join(tex) + "\n", encoding="utf-8")
     manifest = {
         "cases": len(cases), "eligible_cases": len(by_channel["hybrid"]),

@@ -24,11 +24,14 @@ def test_required_large_record_artifacts_are_nonempty():
         "compression_recovery_decomposition.csv",
         "headroom_pra_cost_frontier.csv",
         "headroom_reverse_eval_hybrid.csv",
+        "product_lifecycle_cost_table.csv",
     )
     assert all(_rows(name) for name in names)
     assert (OUTPUT / "generated_large_record_hybrid_results.tex").is_file()
     assert (OUTPUT / "figures/large_record_hybrid_recall.pdf").is_file()
-    assert (OUTPUT / "figures/headroom_pra_multi_axis_cost.pdf").is_file()
+    assert (OUTPUT / "figures/pra_compression_recovery_cost.pdf").is_file()
+    assert (OUTPUT / "figures/paper7_official_endpoint_axes.pdf").is_file()
+    assert (OUTPUT / "figures/paper7_active_context_frontier.pdf").is_file()
 
 
 def test_policy_matrix_keeps_cheap_indexes_when_native_is_gated():
@@ -38,6 +41,7 @@ def test_policy_matrix_keeps_cheap_indexes_when_native_is_gated():
     assert skipped["bm25_index"] == "BUILT"
     assert skipped["embedding_index"] == "BUILT"
     assert skipped["native_qk_index"] == "SKIPPED_SIZE_LIMIT"
+    assert skipped["detail_kv"] == "DEFERRED"
 
 
 def test_reverse_eval_reports_all_four_datasets_and_channels():
@@ -56,4 +60,13 @@ def test_type_aware_budget_and_recovery_are_separate_axes():
     assert float(aware["initial_visible_tokens"]) <= 96
     assert float(aware["selected_region_tokens"]) > 0
     assert float(aware["cheap_index_bytes"]) > 0
+    assert float(aware["active_native_kv_tokens"]) == 0.0
     assert "separate axes" in aware["cost_axes_note"]
+
+
+def test_product_cost_table_separates_cohorts_and_unmeasured_costs():
+    rows = {row["condition"]: row for row in _rows("product_lifecycle_cost_table.csv")}
+    assert "18 identities" in rows["HEADROOM_OFFICIAL_TUNED"]["endpoint"]
+    assert "32 rows" in rows["PRA_TYPE_AWARE_AUTO_RECOVERY"]["endpoint"]
+    assert rows["PRA_TYPE_AWARE_AUTO_RECOVERY"]["active_native_kv_tokens"].startswith("NOT_USED")
+    assert "NOT_MEASURED" in rows["PRA_NATIVE"]["index_backing_state"]
