@@ -9,9 +9,9 @@ from experiments.engine_serving.summarize import build_registry
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_engine_smoke_registry_is_complete_and_does_not_claim_native_pra() -> None:
+def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     registry = build_registry()
-    assert registry["registry_version"] == "2026-08-paper6-engine-smoke-v1"
+    assert registry["registry_version"] == "2026-08-paper6-engine-native-v2"
     assert len(registry["rows"]) == 15
     assert {row["engine"] for row in registry["rows"]} == {"vllm", "sglang", "mlx"}
     assert all(row["evidence_tier"] == "SMOKE" for row in registry["rows"])
@@ -20,6 +20,12 @@ def test_engine_smoke_registry_is_complete_and_does_not_claim_native_pra() -> No
     assert rotating["evidence_tier"] == "CONTROLLED"
     assert rotating["seeds"] == [11, 23, 37, 53, 71]
     assert rotating["native_pra_status"] == "NOT_MEASURED"
+    native = registry["native_results"]
+    assert native["mlx"]["status"] == "MEASURED"
+    assert native["mlx"]["exact_recovery"] == 1.0
+    assert native["sglang"]["status"] == "MEASURED_RUNNER_CACHE_PATH"
+    assert native["sglang"]["radix_identity_separation_rate"] == 1.0
+    assert native["vllm"]["status"] == "MEASURED_KERNEL_PATH"
 
 
 def test_selected_text_recovers_codeword_with_fewer_tokens_than_full_context() -> None:

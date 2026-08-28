@@ -150,10 +150,11 @@ def build_registry() -> dict:
             ),
             "peak_memory_gb_mean": fmean(row["peak_memory_gb"] for row in values),
         })
+    native = _native_results()
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-smoke-v1",
-        "description": "Cross-engine E0/G10 prefix and selected-text smoke; no row claims native PRA K/V.",
+        "registry_version": "2026-08-paper6-engine-native-v2",
+        "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
         "mlx_rotating_archive": {
@@ -163,7 +164,76 @@ def build_registry() -> dict:
             "native_pra_status": rotating["native_pra_status"],
             "summary": rotating_summary,
         },
+        "native_results": native,
         "rows": rows,
+    }
+
+
+def _native_results() -> dict:
+    """Aggregate engine-specific native artifacts without equating their tiers."""
+
+    mlx = _load(ENGINE_DIRS["mlx"] / "native_kv.json")
+    sglang = _load(ENGINE_DIRS["sglang"] / "native_kv.json")
+    vllm = _load(ENGINE_DIRS["vllm"] / "native_paged_kv.json")
+    residency = _load(RESULTS / "engine_residency_sweep.json")
+
+    mlx_native = [row for row in mlx["rows"] if row["condition"] == "native_selected_kv"]
+    vllm_by_tokens = []
+    for token_count in vllm["token_counts"]:
+        values = [row for row in vllm["rows"] if row["selected_tokens"] == token_count]
+        vllm_by_tokens.append({
+            "selected_tokens": token_count,
+            "sample_count": len(values),
+            "paged_attention_ms_mean": fmean(row["paged_attention_ms"] for row in values),
+            "max_error": max(row["max_error"] for row in values),
+            "max_sharing_bytes_saved": max(row["sharing_bytes_saved"] for row in values),
+        })
+    residency_by_policy = []
+    for policy in residency["policies"]:
+        values = [row for row in residency["rows"] if row["policy"] == policy]
+        residency_by_policy.append({
+            "policy": policy,
+            "seed_count": len(values),
+            "loads_mean": fmean(row["loads"] for row in values),
+            "evictions_mean": fmean(row["evictions"] for row in values),
+            "reload_amplification_mean": fmean(
+                row["reload_amplification"] for row in values
+            ),
+            "bytes_loaded_mean": fmean(row["bytes_loaded"] for row in values),
+        })
+    return {
+        "mlx": {
+            "status": mlx["native_pra_status"],
+            "evidence_tier": mlx["evidence_tier"],
+            "seed_count": len(mlx_native),
+            "exact_recovery": fmean(float(row["exact_recovery"]) for row in mlx_native),
+            "max_logit_error": max(row["max_logit_error_vs_ordinary_split"] for row in mlx_native),
+            "completion_latency_ms_mean": fmean(row["completion_latency_ms"] for row in mlx_native),
+            "native_encode_ms_mean": fmean(row["native_encode_ms"] for row in mlx_native),
+            "active_native_kv_bytes_mean": fmean(row["active_native_kv_bytes"] for row in mlx_native),
+        },
+        "sglang": {
+            "status": sglang["native_pra_status"],
+            "evidence_tier": sglang["evidence_tier"],
+            "seed_count": len(sglang["rows"]),
+            "exact_recovery": fmean(float(row["exact_recovery"]) for row in sglang["rows"]),
+            "max_logit_error": max(row["max_logit_error_vs_sglang_split_cache"] for row in sglang["rows"]),
+            "completion_latency_ms_mean": fmean(row["completion_latency_ms"] for row in sglang["rows"]),
+            "radix_identity_separation_rate": fmean(
+                float(row["pra_tokens_absent_from_radix_prefix"])
+                for row in sglang["rows"]
+            ),
+        },
+        "vllm": {
+            "status": vllm["native_pra_status"],
+            "evidence_tier": vllm["evidence_tier"],
+            "seed_count": len(vllm["seeds"]),
+            "rows_by_selected_tokens": vllm_by_tokens,
+        },
+        "residency": {
+            "evidence_tier": residency["evidence_tier"],
+            "rows_by_policy": residency_by_policy,
+        },
     }
 
 
@@ -331,6 +401,73 @@ def write_mlx_rotating_table(registry: dict) -> None:
     )
 
 
+def write_native_tables(registry: dict) -> None:
+    native = registry["native_results"]
+    mlx = native["mlx"]
+    sglang = native["sglang"]
+    vllm = native["vllm"]
+    lines = [
+        r"\begin{tabular}{llllrr}",
+        r"\toprule",
+        r"Engine & Native path & Tier & Seeds & Exact/parity & Error \\",
+        r"\midrule",
+        f"MLX & selected K/V execution & {_tex_escape(mlx['evidence_tier'])} & {mlx['seed_count']} & {100 * mlx['exact_recovery']:.0f}\\% & {mlx['max_logit_error']:.4g} \\\\",
+        f"SGLang & runner cache path & {_tex_escape(sglang['evidence_tier'])} & {sglang['seed_count']} & {100 * sglang['exact_recovery']:.0f}\\% & {sglang['max_logit_error']:.4g} \\\\",
+        f"vLLM-Metal & paged-attention kernel & {_tex_escape(vllm['evidence_tier'])} & {vllm['seed_count']} & kernel parity & {max(row['max_error'] for row in vllm['rows_by_selected_tokens']):.4g} \\\\",
+        r"\bottomrule",
+        r"\end{tabular}",
+    ]
+    (RESULTS / "generated_engine_native_table.tex").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+    policy_lines = [
+        r"\begin{tabular}{lrrr}",
+        r"\toprule",
+        r"Policy & Mean loads & Mean evictions & Reload amplification \\",
+        r"\midrule",
+    ]
+    for row in native["residency"]["rows_by_policy"]:
+        policy_lines.append(
+            f"{_tex_escape(row['policy'])} & {row['loads_mean']:.1f} & "
+            f"{row['evictions_mean']:.1f} & {row['reload_amplification_mean']:.3f} \\\\"
+        )
+    policy_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (RESULTS / "generated_engine_residency_table.tex").write_text(
+        "\n".join(policy_lines) + "\n", encoding="utf-8"
+    )
+
+
+def write_native_plots(registry: dict) -> None:
+    native = registry["native_results"]
+    rows = native["vllm"]["rows_by_selected_tokens"]
+    fig, axes = plt.subplots(1, 2, figsize=(10.2, 3.7))
+    axes[0].plot(
+        [row["selected_tokens"] for row in rows],
+        [row["paged_attention_ms_mean"] for row in rows],
+        marker="o",
+        color="#2f6f9f",
+    )
+    axes[0].set_xscale("log", base=2)
+    axes[0].set_xlabel("Selected native K/V tokens")
+    axes[0].set_ylabel("Paged attention (ms)")
+    axes[0].set_title("vLLM-Metal native kernel")
+    policies = native["residency"]["rows_by_policy"]
+    axes[1].bar(
+        [row["policy"].replace("_", "\n") for row in policies],
+        [row["reload_amplification_mean"] for row in policies],
+        color=["#6b7280", "#2f855a", "#b35c1e", "#7c3aed"],
+    )
+    axes[1].set_ylabel("Loads per request")
+    axes[1].set_title("Fixed-budget residency pressure")
+    for axis in axes:
+        axis.spines[["top", "right"]].set_visible(False)
+        axis.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(RESULTS / "engine_native_systems.png", dpi=180)
+    fig.savefig(RESULTS / "engine_native_systems.pdf")
+    plt.close(fig)
+
+
 def main() -> None:
     registry = build_registry()
     (RESULTS / "pra_engine_benchmarks.json").write_text(
@@ -339,6 +476,8 @@ def main() -> None:
     write_table(registry)
     write_plots(registry)
     write_mlx_rotating_table(registry)
+    write_native_tables(registry)
+    write_native_plots(registry)
 
 
 if __name__ == "__main__":

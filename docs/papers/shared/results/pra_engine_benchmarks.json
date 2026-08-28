@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "registry_version": "2026-08-paper6-engine-smoke-v1",
-  "description": "Cross-engine E0/G10 prefix and selected-text smoke; no row claims native PRA K/V.",
+  "registry_version": "2026-08-paper6-engine-native-v2",
+  "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
   "environment": {
     "vllm": {
       "measured_at": "2026-08-28",
@@ -164,6 +164,99 @@
         "peak_memory_gb_mean": 1.0652624488
       }
     ]
+  },
+  "native_results": {
+    "mlx": {
+      "status": "MEASURED",
+      "evidence_tier": "CONTROLLED",
+      "seed_count": 5,
+      "exact_recovery": 1.0,
+      "max_logit_error": 0.0,
+      "completion_latency_ms_mean": 166.26600823365152,
+      "native_encode_ms_mean": 55.39014167152345,
+      "active_native_kv_bytes_mean": 16171008.0
+    },
+    "sglang": {
+      "status": "MEASURED_RUNNER_CACHE_PATH",
+      "evidence_tier": "CONTROLLED",
+      "seed_count": 5,
+      "exact_recovery": 1.0,
+      "max_logit_error": 0.0,
+      "completion_latency_ms_mean": 221.99536664411426,
+      "radix_identity_separation_rate": 1.0
+    },
+    "vllm": {
+      "status": "MEASURED_KERNEL_PATH",
+      "evidence_tier": "CONTROLLED",
+      "seed_count": 5,
+      "rows_by_selected_tokens": [
+        {
+          "selected_tokens": 16,
+          "sample_count": 20,
+          "paged_attention_ms_mean": 16.702079330570996,
+          "max_error": 0.00390625,
+          "max_sharing_bytes_saved": 458752
+        },
+        {
+          "selected_tokens": 64,
+          "sample_count": 20,
+          "paged_attention_ms_mean": 0.7433082559145987,
+          "max_error": 0.0009765625,
+          "max_sharing_bytes_saved": 1835008
+        },
+        {
+          "selected_tokens": 256,
+          "sample_count": 20,
+          "paged_attention_ms_mean": 0.7605792488902807,
+          "max_error": 0.0009765625,
+          "max_sharing_bytes_saved": 7340032
+        },
+        {
+          "selected_tokens": 512,
+          "sample_count": 20,
+          "paged_attention_ms_mean": 0.8320207823999226,
+          "max_error": 0.000732421875,
+          "max_sharing_bytes_saved": 14680064
+        }
+      ]
+    },
+    "residency": {
+      "evidence_tier": "CONTROLLED_SIMULATION",
+      "rows_by_policy": [
+        {
+          "policy": "lru",
+          "seed_count": 5,
+          "loads_mean": 77.2,
+          "evictions_mean": 73.8,
+          "reload_amplification_mean": 0.6433333333333333,
+          "bytes_loaded_mean": 306393907.2
+        },
+        {
+          "policy": "size_aware_lru",
+          "seed_count": 5,
+          "loads_mean": 47.6,
+          "evictions_mean": 43.6,
+          "reload_amplification_mean": 0.39666666666666667,
+          "bytes_loaded_mean": 274517196.8
+        },
+        {
+          "policy": "reuse_count",
+          "seed_count": 5,
+          "loads_mean": 53.4,
+          "evictions_mean": 49.4,
+          "reload_amplification_mean": 0.445,
+          "bytes_loaded_mean": 288148684.8
+        },
+        {
+          "policy": "reload_cost",
+          "seed_count": 5,
+          "loads_mean": 52.4,
+          "evictions_mean": 48.4,
+          "reload_amplification_mean": 0.4366666666666667,
+          "bytes_loaded_mean": 285002956.8
+        }
+      ]
+    }
   },
   "rows": [
     {

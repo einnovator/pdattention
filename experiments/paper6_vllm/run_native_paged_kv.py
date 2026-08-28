@@ -41,6 +41,12 @@ def main() -> None:
                 handle = store.materialize(f"seed-{seed}-tokens-{tokens}", (layer,))
                 queries = mx.random.normal((concurrency, hq, dim)).astype(mx.float16)
                 scale = dim**-0.5
+                cold_started = time.perf_counter()
+                cold_output = store.attend(
+                    0, queries, (handle,) * concurrency, scale=scale
+                )
+                mx.eval(cold_output)
+                cold_elapsed_ms = (time.perf_counter() - cold_started) * 1000.0
                 started = time.perf_counter()
                 output = store.attend(
                     0, queries, (handle,) * concurrency, scale=scale
@@ -66,6 +72,8 @@ def main() -> None:
                         "concurrency": concurrency,
                         "max_error": float(mx.max(error).item()),
                         "mean_error": float(mx.mean(error).item()),
+                        "cold_paged_attention_ms": cold_elapsed_ms,
+                        "warm_paged_attention_ms": elapsed_ms,
                         "paged_attention_ms": elapsed_ms,
                         "resident_selected_kv_bytes": handle.byte_count,
                         "physical_cache_capacity_bytes": store.physical_capacity_bytes,
