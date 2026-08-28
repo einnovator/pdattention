@@ -3,13 +3,14 @@
 \usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,microtype,enumitem,xcolor,listings,longtable,array}
 \usepackage[hidelinks]{hyperref}
 \setlength{\emergencystretch}{3em}
-\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/native_index_size_gate/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}{../shared/results/paper7_records/headroom_cross_eval/figures/}}
+\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/native_index_size_gate/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}{../shared/results/paper7_records/headroom_cross_eval/figures/}{../shared/results/paper7_records/large_record_hybrid/figures/}}
 \input{../shared/results/paper7_records/full_pra_calibrated/generated_full_pra_calibrated_results.tex}
 \input{../shared/results/paper7_records/native_index_size_gate/generated_native_index_size_gate_results.tex}
 \input{../shared/results/paper7_records/progressive_context/generated_progressive_results.tex}
 \input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
 \input{../shared/results/paper7_records/inception/generated_inception_results.tex}
 \input{../shared/results/paper7_records/headroom_cross_eval/generated_headroom_cross_eval_results.tex}
+\input{../shared/results/paper7_records/large_record_hybrid/generated_large_record_hybrid_results.tex}
 
 \definecolor{codegray}{RGB}{246,247,249}
 \lstset{
@@ -55,9 +56,12 @@ the frozen controller does not realize. A pinned cross-evaluation with released
 Headroom 0.37.0 confirms a complementary point: reversible structural
 compression preserves the same \PaperSevenHeadroomTunedSuccess{} endpoint at
 \PaperSevenHeadroomTunedTokens{} visible tokens, but its matched controller
-never acquires the externally absent C5 evidence. Cross-dataset routing remains
-diagnostic: frozen PRA reaches all eight CCR needles at $K=4$, but not the
-extractive HotpotQA subset.
+never acquires the externally absent C5 evidence. A subsequent cheap-index
+diagnostic over 24 extractive-eligible external cases reaches
+\PaperSevenHybridRFour{} Recall@4 with typed/BM25/embedding RRF, a
+\PaperSevenHybridFusionGain{} gain over the best single cheap channel. It
+improves the earlier frozen-native transfer result, but remains a small
+retrieval diagnostic rather than generated-answer evaluation.
 \end{abstract}
 
 \section{Introduction}
@@ -207,7 +211,7 @@ lower active K/V while increasing ingestion and resident state.
 \textbf{Tool result / typed observation}\\
 $\downarrow$ preserve identity, scope, provenance, and exact backing bytes\\
 \textbf{Compact visible view} $\quad+\quad$
-\textbf{cheap addresses} (lexical, entity, rare term, schema, explicit ID)\\
+\textbf{cheap addresses} (typed postings, BM25, compact embedding)\\
 $\downarrow$ native-index policy\\
 \textbf{bounded: full-backing PRA index}\quad|\quad
 \textbf{large: cheap index + lazy region native encode}\quad|\quad
@@ -229,10 +233,37 @@ the original, creates model hidden states and gists, retains native K/V where
 supported, and exposes only selected original spans at inference time.
 
 Cheap addresses remain available when native indexing is disabled. The runtime
-builds lexical, entity-pattern, rare-term, schema, and optional summary views
-during compaction. Exact IDs and structured selectors bypass semantic
-rediscovery. BM25, external embeddings, and remote structured indexes fit the
-interface but are not all implemented in this branch.
+builds typed postings, indexed BM25, and a compact deterministic embedding
+view over recoverable record units. Reciprocal-rank fusion combines bounded
+candidate lists without treating channel scores as calibrated probabilities.
+Every hit maps to an exact field, row, collection range, or line selector;
+authorization and provenance remain attached to the original backing identity.
+The public policy exposes \texttt{AUTO}, \texttt{HYBRID}, lexical-only,
+embedding-only, native-only, and explicit-channel modes, and traces resolved
+channels, fusion, candidates scored, latency, and index bytes.
+
+These representations have independent lifecycle states. An oversized healthy
+record can simultaneously have built typed, BM25, embedding, and summary views,
+a \texttt{SKIPPED\_SIZE\_LIMIT} full-body native-Q/K index, and lazy detail
+K/V. The gate therefore means ``full model-derived index not admitted,'' not
+``unindexed.'' After cheap discovery, the runtime materializes the selected
+exact region and may encode native Q/K and detail K/V only for that region.
+This implementation reuses the bounded RRF design studied more broadly in
+Papers 2.6 and 3.1; Paper 7 evaluates its role in record lifecycle control.
+
+\subsection{Type-aware visible budgets}
+
+The compressor resolves one authoritative bound from
+\texttt{compact\_target\_tokens}, \texttt{compact\_max\_tokens}, and
+\texttt{compact\_ratio\_target}. Tool/API projections prioritize status,
+operation, schema, counts, and bounded representatives. Tabular views add row
+counts, null counts, numeric ranges, rare categories, and representative rows.
+Logs preserve errors and boundary lines; terminal records retain command,
+status, standard-error, and bounded standard-output head/tail; graph and text
+records preserve structural counts and diverse excerpts. Original, compact,
+metadata, and selected-region tokens are accounted separately. The compact
+view is intentionally allowed to omit recoverable detail: cheap indexes, exact
+backing, and lazy selected-region encoding provide the recovery path.
 
 \section{Production Full-Backing PRA}
 
@@ -714,6 +745,81 @@ environment; an external provider and TOIN cold/warm behavior were not run.
 Thus the study establishes complementarity and specific gaps, not a universal
 ranking between the systems.
 
+\subsection{Cheap hybrid recovery and compression frontier}
+
+We rerun the same 32 external cases after adding independent typed, BM25, and
+compact-embedding indexes. Exact evidence occurs in 24 backing records: all
+eight tool outputs and CCR needles, three HotpotQA rows, and five MS MARCO
+rows. Each channel returns at most eight exact-selector units. The hybrid uses
+RRF, and all metrics are computed before answer generation.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Channel & R@4 & R@8 & Role & Eligible $n$\\
+\midrule
+Typed postings & \PaperSevenTypedRFour{} & \PaperSevenTypedREight{} & exact keys/tokens & \PaperSevenHybridEligibleN{}\\
+BM25 & \PaperSevenBmTwentyFiveRFour{} & \PaperSevenBmTwentyFiveREight{} & indexed lexical rank & \PaperSevenHybridEligibleN{}\\
+Compact embedding & \PaperSevenEmbeddingRFour{} & \PaperSevenEmbeddingREight{} & hashed dense sidecar & \PaperSevenHybridEligibleN{}\\
+RRF hybrid & \PaperSevenHybridRFour{} & \PaperSevenHybridREight{} & bounded rank fusion & \PaperSevenHybridEligibleN{}\\
+\bottomrule
+\end{tabular}
+\caption{Exact-selector retrieval over extractive-eligible rows. The hybrid's
+Recall@4 gain over the best single cheap channel is
+\PaperSevenHybridFusionGain{}. The compact embedding is deterministic and
+parameter-free; this is not a learned semantic-retrieval claim.}
+\label{tab:large-record-hybrid}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\linewidth]{large_record_hybrid_recall.pdf}
+\caption{Cheap-channel exact Recall@4 by external subset. RRF retains the
+strong CCR result and improves the earlier frozen-native HotpotQA/MS MARCO
+diagnostic, but the tiny eligible cohorts remain unsuitable for broad text
+retrieval claims.}
+\label{fig:large-record-hybrid}
+\end{figure}
+
+The aggregate masks channel geometry. Hybrid Recall@4 is
+\PaperSevenCheapToolRFour{} on \PaperSevenCheapToolN{} tool outputs,
+\PaperSevenCheapCcrRFour{} on \PaperSevenCheapCcrN{} CCR needles,
+\PaperSevenCheapHotpotRFour{} on \PaperSevenCheapHotpotN{} HotpotQA rows, and
+\PaperSevenCheapMsmarcoRFour{} on \PaperSevenCheapMsmarcoN{} MS MARCO rows.
+Embedding contributes the strongest single-channel result; typed and BM25
+remain valuable for exact needles and auditable IDs. Papers 2.6 and 3.1 are the
+appropriate settings for larger hybrid and multi-index retrieval studies.
+
+We also impose a fixed 96-token PRA compact ceiling. The type-aware projection
+averages \PaperSevenAwareVisible{} initial visible tokens, down from
+\PaperSevenCurrentVisible{} for the previous compactor. Compact-only exact
+evidence availability is 25.0\%; automatic BM25+embedding recovery raises the
+final diagnostic to \PaperSevenAwareRecovered{}, with
+\PaperSevenAwareSelected{} selected-region tokens and
+\PaperSevenCheapIndexKiB{} KiB of cheap index state on average. The full-backing
+ceiling is 75.0\% because eight external rows have no literal target span.
+This result supports aggressive compact views only when automatic recovery is
+retained; it does not show compact-only dominance or generated-answer quality.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{headroom_pra_multi_axis_cost.pdf}
+\caption{Compression/recovery frontier with separate axes. Initial visible
+tokens, selected-region tokens, cheap-index bytes, and active native K/V are
+not interchangeable costs. Headroom counts use its tokenizer and are not
+normalized into PRA K/V tokens.}
+\label{fig:headroom-pra-multiaxis}
+\end{figure}
+
+The recorded \texttt{PRA\_FULL\_HYBRID\_ENVELOPE} is the union of availability
+from the frozen native run and the new cheap run, not a measured shared fused
+ranking. We report it only as headroom for an integrated implementation and do
+not use it as the primary result. Likewise, the historical
+\texttt{CCR\_STYLE} condition remains an architectural ablation: it materially
+underestimates released Headroom on this benchmark.
+
 \subsection{Ingestion and TTUC scaling}
 
 The size-gate profile uses payloads of 1K, 4K, 16K, 64K, and 256K tokens and
@@ -777,9 +883,10 @@ larger rows use cheap fallback.}
 
 The profile supports a safeguard claim, not a universal speed claim. Eager
 index work grows with payload size. The gate prevents applying it blindly and
-reduces 256K TTUC by \PaperSevenTTUCReduction{}$\times$ here. Cheap search scans
-the local payload in this benchmark; indexed external search or server-side
-cursors should lower that recovery cost but were not physically measured.
+reduces 256K TTUC by \PaperSevenTTUCReduction{}$\times$ here. That historical
+profile scanned the local payload; the new path builds typed postings, BM25,
+and compact embeddings and records their build/query cost. Remote server-side
+indexes and cursors remain outside the physical evaluation.
 
 The profile supports three narrower conclusions: size gating prevents
 unnecessary eager full-body model-like index work; compact-first handling
@@ -1000,11 +1107,12 @@ mean-gist family may not transfer unchanged to another model.
 
 Full-backing native construction grows with payload size and may incur
 substantial host encoding, accelerator, and transfer cost. Thresholds are
-configurable policy, not learned universal constants. Cheap fallback can
-underperform semantic native routing. The scaling profile uses an instrumented
+configurable policy, not learned universal constants. Cheap hybrid retrieval
+improves this focused transfer diagnostic but is not a mature semantic-search
+replacement. The scaling profile uses an instrumented
 Torch encoder rather than Qwen and does not establish end-to-end model speed.
-Its local cheap search and selected-region read scan or verify backing content;
-indexed remote search and physical range reads remain open.
+Selected-region reads still verify backing identity; indexed remote search and
+physical range reads remain open.
 
 Controller and tool-use competence remain model-dependent. Distributed storage
 latency, multi-GB streams, concurrent mutation, index updates, remote
@@ -1020,6 +1128,9 @@ TOIN cold/warm adaptation, and a full matched proxy benchmark were not run.
 The plain-text Headroom rows therefore measure evidence preservation, not
 learned compression quality or latency. Headroom visible tokens and PRA active
 native K/V are request-time budgets with different resident-state accounting.
+The new type-aware result is also an exact-evidence/recovery diagnostic. Its
+deterministic compact embedding is not a pretrained semantic encoder, and its
+full-hybrid row is explicitly an availability envelope rather than shared RRF.
 
 \section{Conclusion}
 
@@ -1031,8 +1142,9 @@ while using \PaperSevenCalActiveKVReductionPct\% less active K/V.
 
 \textbf{Ingestion.} Automatic native addressability is not free. Full-body
 native index construction grows with payload size, so explicit token/byte gates
-retain cheap bounded recovery and permit selected-region native encoding rather
-than silently truncating or eagerly encoding every result.
+skip only full model-derived Q/K and detail K/V. Typed, BM25, compact-embedding,
+and summary lifecycles remain independent; selected regions can then be encoded
+natively without silently truncating or eagerly encoding every result.
 
 \textbf{Control.} Model-driven escalation has oracle headroom but is not the
 current default: the frozen calibrated controller adds cost without improving
@@ -1043,10 +1155,13 @@ and search/cursors for huge or stateful records.
 \textbf{Cross-system boundary.} Released Headroom structural compression
 preserves the frozen endpoint at a lower visible-token count on this controlled
 set, but the matched controller does not acquire absent C5 information. Frozen
-PRA routes opaque needles and bounded tool outputs well, yet its focused
-HotpotQA and MS MARCO diagnostics leave substantial semantic-routing headroom.
-Reversible compression, native selection, and external acquisition solve
-different parts of progressive context control.
+native PRA transfers strongly to opaque needles and tool outputs but weakly to
+the tested HotpotQA/MS MARCO subsets. Adding typed/BM25/embedding RRF improves
+the 24-row exact retrieval diagnostic to \PaperSevenHybridRFour{} Recall@4;
+this narrows a specific transfer gap without establishing broad text-retrieval
+or answer-generation superiority. Reversible compression, hybrid discovery,
+native selection, and external acquisition solve different parts of
+progressive context control.
 
 \begin{center}
 \fbox{\textbf{EXPERIMENTALLY FROZEN --- READY FOR EXTERNAL REVIEW}}
@@ -1104,16 +1219,19 @@ record = runtime.ingest(payload, record_type=RecordType.DB_RESULT)
 audit = progressive.prepare_native_index(record.record_id)
 
 if audit.native_index_state == NativeIndexState.SKIPPED_SIZE_LIMIT:
-    hits = runtime.search_record(record.record_id, query, limit=4)
+    hits = progressive.search_large_record(
+        record.record_id, query, policy="AUTO", top_k=4
+    )
     region = progressive.encode_selected_region_native(
-        record.record_id, {"rows": [start, stop]}
+        record.record_id, hits.hits[0].selector
     )
 
 cursor = runtime.open_cursor(record.record_id, collection="rows")
 page = runtime.fetch_cursor(cursor.cursor_id)
 \end{lstlisting}
 
-Supported selectors are fields, rows, lines, and items. Cursor operations
+Supported selectors are fields, rows, lines, items, nested collection ranges,
+and line ranges within named fields. Cursor operations
 include next/previous, range, filter, aggregate, search, sample, field
 materialization, refinement, and close. The controller receives only registered
 record/cursor IDs and a bounded operation palette.
@@ -1125,14 +1243,17 @@ record/cursor IDs and a bounded operation palette.
 Artifact & Role\\
 \midrule
 \endhead
-\path{src/pra_hf/adaptive_context_runtime.py} & Lines 82--184 define global/type policy resolution; lines 774--816 implement scoped cheap search. The same module owns materialization, cursors, and accounting.\\
-\path{src/pra_hf/progressive_context.py} & Lines 58--66 and 347--393 define states/audits; lines 595--761 enforce the gate and lazy region encoding; lines 889--946 expose progressive wrappers.\\
-\path{src/pra_hf/typed_context.py} & Type-specific compactors, cheap address views, and exact selected materialization.\\
+\path{src/pra_hf/adaptive_context_runtime.py} & Global/type policy resolution, scoped storage, materialization, cursors, transport, and accounting.\\
+\path{src/pra_hf/large_record_index.py} & Recoverable-unit extraction, independent typed/BM25/embedding indexes, policy resolution, bounded RRF, exact selectors, and trace accounting.\\
+\path{src/pra_hf/progressive_context.py} & Native lifecycle states/audits, full-body gate, cheap-index registry, lazy selected-region encoding, and progressive public wrappers.\\
+\path{src/pra_hf/typed_context.py} & Type-aware compactors, authoritative visible-token budgets, retrieval views, and exact selected materialization.\\
 \path{src/pra_hf/context_store.py} & Content-addressed scoped backing storage, integrity, TTL, and persistence.\\
 \path{experiments/paper7_records/run_full_pra_reachability.py} & Production Qwen backing-address validation.\\
 \path{experiments/paper7_records/run_calibrated_adaptive.py} & Frozen held-out policy/controller evaluation.\\
 \path{experiments/paper7_records/run_native_index_size_gate.py} & Five-seed ingestion, TTUC, and lazy-region mechanism profile.\\
+\path{experiments/paper7_records/run_large_record_hybrid.py} & External reverse-eval, compression/recovery decomposition, index costs, policy matrix, figures, and generated TeX.\\
 \path{tests/test_native_index_size_gate.py} & Boundary, override, authorization, fallback, lazy encoding, and no-masquerade tests.\\
+\path{tests/test_large_record_hybrid.py} & Channel policy, RRF, token budget, lifecycle, exact selector, and lazy-recovery tests.\\
 \bottomrule
 \end{longtable}
 
@@ -1154,6 +1275,18 @@ The manifest records CUDA, Torch version, seeds, sizes, policy bounds, encoder
 width, and the claim boundary. Raw rows distinguish agent-side compact
 readiness, native-index latency, completed TTUC, cheap search, lazy encoding,
 active K/V, routing-index bytes, and resident detail-K/V.
+
+Hybrid/compression artifacts are under
+\path{docs/papers/shared/results/paper7_records/large_record_hybrid/}. They
+include the lifecycle policy matrix, row-level channel rankings, overlap and
+unique-contribution diagnostics, index costs, type-aware retention, recovery
+decomposition, a multi-axis Headroom/PRA frontier, targeted reverse-eval
+aggregates, figures, and the generated TeX macros. Reproduce them with:
+
+\begin{lstlisting}[language=bash]
+$env:PYTHONPATH = "src;."
+python experiments/paper7_records/run_large_record_hybrid.py
+\end{lstlisting}
 
 {\small
 \begin{thebibliography}{9}

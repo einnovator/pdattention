@@ -88,6 +88,9 @@ class TypeContextPolicy:
     """
 
     unit_limit: int = 8
+    compact_target_tokens: int | None = None
+    compact_max_tokens: int | None = None
+    compact_ratio_target: float | None = None
     storage: StoragePolicy | str | None = None
     max_native_index_tokens: int | None = None
     max_native_index_bytes: int | None = None
@@ -97,6 +100,12 @@ class TypeContextPolicy:
     def __post_init__(self) -> None:
         if self.unit_limit <= 0:
             raise ValueError("unit_limit must be positive.")
+        for name in ("compact_target_tokens", "compact_max_tokens"):
+            value = getattr(self, name)
+            if value is not None and value <= 0:
+                raise ValueError(f"{name} must be positive or None.")
+        if self.compact_ratio_target is not None and not 0 < self.compact_ratio_target <= 1:
+            raise ValueError("compact_ratio_target must be in (0, 1].")
         if self.storage is not None:
             object.__setattr__(self, "storage", StoragePolicy(self.storage))
         for name in ("max_native_index_tokens", "max_native_index_bytes"):
@@ -605,6 +614,9 @@ class AdaptiveContextRuntime:
             scope=self.scope,
             registry=self.registry,
             unit_limit=type_policy.unit_limit,
+            compact_target_tokens=type_policy.compact_target_tokens,
+            compact_max_tokens=type_policy.compact_max_tokens,
+            compact_ratio_target=type_policy.compact_ratio_target,
             provenance=provenance,
             ttl_seconds=ttl_seconds,
         )
