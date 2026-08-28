@@ -73,6 +73,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 from pra_hf import (
     AgentConfig,
+    AdaptiveContextRuntime,
     DeepSeekHarnessPRAAdapter,
     InMemorySessionService,
     AuthContext,
@@ -104,11 +105,15 @@ from pra_hf import (
     PRAWireResource,
     PRARuntime,
     PRARuntimeConfig,
+    ProgressiveContextRuntime,
+    ProfileBenchmarkRegistry,
+    LargeRecordSearchPolicy,
     PiCodingAgentPRAAdapter,
     ResolverRegistry,
     ResourceDiscoveryEngine,
     ResourceStat,
     RecordCapabilities,
+    RecordScope,
     RecordType,
     RecordViewName,
     RuntimeKVCache,
@@ -909,7 +914,7 @@ cursor_page = capability_runtime.execute_result_cursor(
     "executed": execution.execution.executed,
     "record_id": record_id,
     "compression_strategy": execution.record.compression_strategy,
-    "compact_row_count": compact["row_count"],
+    "compact_row_count": compact["rows_count"],
     "compact_rows_retained": len(compact["representative_rows"]),
     "address_hit_ids": [record.record_id for record in address_hits],
     "selected_status": selected_rows.payload["rows"][0]["status"],
@@ -1366,6 +1371,100 @@ scoped_cache.put(tenant_b, "B", nbytes=8)
     ),
     md(
         r'''
+## 27. Product profiles and evidence status
+
+Product profiles are semantic objectives, not opaque bundles of hardware claims. The registry key
+is model revision plus workload plus profile; physical engine, device, and dtype are additional
+realizations. `REFERENCE_CORRECTNESS`, `QUALITY_MAX`, `BALANCED`, and `ECONOMY` expose the measured
+quality/cost tradeoff. Unmeasured serving fields remain `NOT_MEASURED`, and a workload with no
+calibration row returns `CALIBRATION_PENDING`.
+
+Explicit mechanism fields still win over profile defaults. The trace records the requested and
+resolved profile, source registry, version, evidence tier, and status.
+'''
+    ),
+    code(
+        r'''
+profile_registry = ProfileBenchmarkRegistry.default()
+qwen_profiles = profile_registry.inspect(
+    "Qwen/Qwen3-0.6B", workload="semantic_smoke"
+)
+pending_profile = profile_registry.inspect(
+    "Qwen/Qwen3-0.6B", workload="typed_records"
+)
+balanced_config = PRAConfig(
+    profile="balanced",
+    workload="semantic_smoke",
+    model_id="Qwen/Qwen3-0.6B",
+    routing_layers=(1,),
+    detail_kv_layers=(1,),
+    consumption_layers=(1,),
+)
+{
+    "available_profiles": [row["profile"] for row in qwen_profiles["profiles"]],
+    "balanced_quality": qwen_profiles["profiles"][2]["quality"],
+    "serving_ttft": qwen_profiles["profiles"][2]["runtime"]["ttft_ms"],
+    "typed_record_status": pending_profile["measurement_status"],
+    "profile_trace": balanced_config.product_profile_trace(),
+    "explicit_consumers": balanced_config.resolved_layer_roles(2).consumption_layers,
+}
+'''
+    ),
+    md(
+        r'''
+## 28. Independent cheap indexes for oversized typed records
+
+The full native Q/K index has a separate ingestion budget from compact prompt views and cheap
+address indexes. Typed postings, indexed BM25, and a deterministic embedding index remain usable
+when full-body native indexing is skipped. Their fused hit carries an exact selector; only that
+selected region is then eligible for lazy native encoding. Type policies also set explicit compact
+token and ratio bounds rather than relying on a record-count heuristic.
+'''
+    ),
+    code(
+        r'''
+large_payload = {
+    "rows": [
+        {"account": "A-1", "status": "normal", "detail": "ordinary"},
+        {"account": "B-7", "status": "failed", "detail": "ZX-91 timeout"},
+        {"account": "C-3", "status": "normal", "detail": "ordinary"},
+    ]
+}
+typed_policy = ContextPolicy(
+    local_store=Path(tempfile.mkdtemp(prefix="pra-profile-records-")),
+    max_native_index_tokens=1,
+    record_policies={
+        RecordType.DB_RESULT: TypeContextPolicy(
+            compact_target_tokens=18,
+            compact_max_tokens=24,
+            compact_ratio_target=0.5,
+        )
+    },
+)
+typed_runtime = ProgressiveContextRuntime(
+    AdaptiveContextRuntime(RecordScope("demo", "profile-record-demo"), typed_policy),
+    pra_model=runtime.backend.model,
+)
+typed_record = typed_runtime.ingest(large_payload, record_type=RecordType.DB_RESULT)
+native_audit = typed_runtime.prepare_native_index(typed_record.record_id)
+search_result = typed_runtime.search_large_record(
+    typed_record.record_id,
+    "Which account had ZX-91 timeout?",
+    policy=LargeRecordSearchPolicy.AUTO,
+    top_k=1,
+)
+{
+    "compact_tokens": typed_record.metadata["compact_tokens"],
+    "compact_target_tokens": typed_record.metadata["compact_target_tokens"],
+    "native_index_state": native_audit.native_index_state.value,
+    "cheap_channels": native_audit.cheap_index_modes_built,
+    "selected_unit": search_result.hits[0].unit_id,
+    "exact_selector": search_result.hits[0].selector,
+}
+'''
+    ),
+    md(
+        r'''
 ## CLI equivalents
 
 The same systems surface is available without notebook state:
@@ -1376,6 +1475,7 @@ python -m pra_hf.cli runtime inspect ./runtime-config
 python -m pra_hf.cli runtime capabilities
 python -m pra_hf.cli runtime benchmark --output ./runtime-results
 python -m pra_hf.cli runtime prepare-vllm "A user prompt" --selected-uri memory://demo/facts
+python -m pra_hf.cli profiles show Qwen/Qwen3-0.6B --workload semantic_smoke
 python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect the repository"
 python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
 pra gateway serve --mode G10 --backend sglang --backend-url http://localhost:30000

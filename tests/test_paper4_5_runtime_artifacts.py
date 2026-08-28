@@ -51,6 +51,10 @@ def test_runtime_artifacts_are_complete_and_internally_consistent() -> None:
     assert (PAPER / "paper.pdf").stat().st_size > 100_000
 
     required = (
+        "pra_profile_benchmarks.json",
+        "generated_profile_matrix.tex",
+        "generated_profile_technical_matrix.tex",
+        "generated_runtime_matrix.tex",
         "hf_native_prefix_equivalence.csv",
         "hf_native_full_scope_parity.csv",
         "hf_interval_dedup_results.csv",
@@ -161,6 +165,8 @@ def test_runtime_demo_is_executed_and_covers_the_unified_sdk() -> None:
         "Multi-axis execution policy",
         "Standalone gateway and explicit downgrade",
         "Size-adaptive native indexing and lazy region promotion",
+        "Product profiles and evidence status",
+        "Independent cheap indexes for oversized typed records",
     ):
         assert phrase in markdown
 

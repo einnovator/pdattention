@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable, Mapping, Sequence
 
@@ -54,10 +55,41 @@ class CompressionResult:
     lossy: bool
     retained_units: int
     total_units: int
+    original_tokens: int = 0
+    compact_tokens: int = 0
+    target_tokens: int | None = None
 
     @property
     def byte_savings_fraction(self) -> float:
         return 1.0 - self.compact_bytes / max(self.original_bytes, 1)
+
+
+@dataclass(frozen=True)
+class CompressionBudget:
+    """One authoritative visible-payload budget resolved from public settings."""
+
+    compact_target_tokens: int | None = None
+    compact_max_tokens: int | None = None
+    compact_ratio_target: float | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("compact_target_tokens", "compact_max_tokens"):
+            value = getattr(self, name)
+            if value is not None and value <= 0:
+                raise ValueError(f"{name} must be positive or None.")
+        if self.compact_ratio_target is not None and not 0 < self.compact_ratio_target <= 1:
+            raise ValueError("compact_ratio_target must be in (0, 1].")
+
+    def resolve(self, original_tokens: int) -> int | None:
+        """Return the strictest configured bound for this payload."""
+
+        bounds = [
+            value for value in (self.compact_target_tokens, self.compact_max_tokens)
+            if value is not None
+        ]
+        if self.compact_ratio_target is not None:
+            bounds.append(max(1, math.ceil(original_tokens * self.compact_ratio_target)))
+        return min(bounds) if bounds else None
 
 
 @dataclass(frozen=True)
@@ -152,6 +184,48 @@ def _text(value: object) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
 
 
+def _token_count(value: object) -> int:
+    """Deterministic tokenizer-independent accounting used by runtime budgets."""
+
+    return len(_TOKEN.findall(_text(value)))
+
+
+def _bounded_payload(value: object, target_tokens: int) -> object:
+    """Trim lowest-priority tails until the compact JSON fits its hard budget."""
+
+    compact = json.loads(json.dumps(value, ensure_ascii=False, default=str))
+    optional_keys = (
+        "representative_rows", "selected_lines", "representative_items",
+        "representative_nodes", "representative_edges", "stdout_tail", "stdout_head",
+        "stderr", "numeric_statistics", "categorical_statistics", "fields",
+    )
+    while _token_count(compact) > target_tokens:
+        candidates: list[tuple[int, list[object]]] = []
+
+        def visit(node: object) -> None:
+            if isinstance(node, list) and node:
+                candidates.append((len(_text(node[-1])), node))
+            elif isinstance(node, dict):
+                for child in node.values():
+                    visit(child)
+
+        visit(compact)
+        if candidates:
+            max(candidates, key=lambda item: item[0])[1].pop()
+            continue
+        if isinstance(compact, dict):
+            removable = next((key for key in optional_keys if key in compact), None)
+            if removable is None:
+                removable = next((key for key in reversed(tuple(compact)) if key not in {"has_more"}), None)
+            if removable is not None:
+                compact.pop(removable)
+                compact["has_more"] = True
+                continue
+        words = _TOKEN.findall(_text(compact))[:target_tokens]
+        return {"summary": " ".join(words), "has_more": True}
+    return compact
+
+
 def _address_views(value: object, summary: str | None = None) -> tuple[AddressView, ...]:
     text = _text(value)
     tokens = [token.casefold() for token in _TOKEN.findall(text)]
@@ -214,27 +288,43 @@ def _compress_db(
     indices = _representative_indices(len(rows), limit)
     selected = [rows[index] for index in indices]
     numeric: dict[str, dict[str, float]] = {}
+    null_counts: dict[str, int] = {}
+    categorical: dict[str, list[tuple[str, int]]] = {}
+    rare_category_counts: dict[str, int] = {}
     for column_index, name in enumerate(columns):
         values = []
+        raw_values = []
         for row in rows:
             try:
                 value = row.get(name) if isinstance(row, Mapping) else row[column_index]
             except (IndexError, KeyError, TypeError):
                 continue
+            raw_values.append(value)
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 values.append(float(value))
+        null_counts[str(name)] = sum(value is None for value in raw_values)
         if values:
             numeric[str(name)] = {
                 "min": min(values),
                 "max": max(values),
                 "mean": sum(values) / len(values),
             }
+        else:
+            counts = Counter(str(value) for value in raw_values if value is not None)
+            # Singleton values are often the hidden evidence itself.  Preserve
+            # their prevalence, while leaving exact values in cheap indexes and
+            # backing state for bounded recovery.
+            categorical[str(name)] = [item for item in counts.most_common(3) if item[1] > 1]
+            rare_category_counts[str(name)] = sum(count == 1 for count in counts.values())
     compact = {
         "columns": columns,
         "row_count": len(rows),
         "representative_row_indices": list(indices),
         "representative_rows": selected,
         "numeric_statistics": numeric,
+        "null_counts": null_counts,
+        "categorical_statistics": categorical,
+        "rare_category_counts": rare_category_counts,
         "has_more": len(selected) < len(rows),
     }
     return _finish(
@@ -384,22 +474,37 @@ def _compress_structured(
     return _compress_text(payload, limit, summary_fn)
 
 
-def _compress_result(
+def _compress_tool_api(
     payload: object, limit: int, summary_fn: Callable[[str], str] | None
 ) -> CompressionResult:
-    """Dispatch generic tool/API results by their observable payload shape."""
+    """Preserve status/schema/error fields and bounded result representatives."""
 
-    if isinstance(payload, Mapping):
-        rows = payload.get("rows")
-        if isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)):
-            return _compress_db(payload, limit, summary_fn)
-        if any(name in payload for name in ("events", "lines")):
-            return _compress_log(payload, limit, summary_fn)
-        if "nodes" in payload or "edges" in payload:
-            return _compress_graph(payload, limit, summary_fn)
-        if "stdout" in payload or "stderr" in payload:
-            return _compress_terminal(payload, limit, summary_fn)
-    return _compress_structured(payload, limit, summary_fn)
+    if not isinstance(payload, Mapping):
+        return _compress_structured(payload, limit, summary_fn)
+    priority = (
+        "tool", "operation", "status", "ok", "error", "code", "message",
+        "schema", "columns", "next_cursor", "has_more",
+    )
+    compact = {key: payload[key] for key in priority if key in payload}
+    collections = []
+    for key in ("results", "items", "rows", "data"):
+        value = payload.get(key)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            indices = _representative_indices(len(value), limit)
+            compact[f"{key}_count"] = len(value)
+            if key == "rows":
+                # Preserve the Paper 4.5 SDK key while exposing the uniform
+                # plural collection schema introduced by Paper 7.
+                compact["row_count"] = len(value)
+            compact[f"representative_{key}"] = [value[index] for index in indices]
+            collections.extend(indices)
+    if not compact:
+        return _compress_structured(payload, limit, summary_fn)
+    compact["has_more"] = _encoded_bytes(compact) < _encoded_bytes(payload)
+    return _finish(
+        payload, compact, strategy="tool_api_status_schema_representatives",
+        retained=len(collections) or len(compact), total=len(payload), summary_fn=summary_fn,
+    )
 
 
 class CompressorRegistry:
@@ -408,14 +513,14 @@ class CompressorRegistry:
     def __init__(self) -> None:
         self._compressors: dict[RecordType, Compressor] = {}
         self._default: Compressor = _compress_structured
-        for record_type in (RecordType.TOOL_RESPONSE, RecordType.API_RESULT):
-            self.register(record_type, _compress_result)
         for record_type in (RecordType.DB_RESULT,):
             self.register(record_type, _compress_db)
         for record_type in (RecordType.LOG_BLOCK,):
             self.register(record_type, _compress_log)
         self.register(RecordType.TERMINAL_OUTPUT, _compress_terminal)
         self.register(RecordType.GRAPH_RESULT, _compress_graph)
+        self.register(RecordType.TOOL_RESPONSE, _compress_tool_api)
+        self.register(RecordType.API_RESULT, _compress_tool_api)
         for record_type in (
             RecordType.RAG_RESULT,
             RecordType.RAG_CHUNK_SET,
@@ -436,11 +541,25 @@ class CompressorRegistry:
         *,
         unit_limit: int = 8,
         summary_fn: Callable[[str], str] | None = None,
+        budget: CompressionBudget | None = None,
     ) -> CompressionResult:
         if unit_limit <= 0:
             raise ValueError("unit_limit must be positive.")
-        return self._compressors.get(RecordType(record_type), self._default)(
+        result = self._compressors.get(RecordType(record_type), self._default)(
             payload, unit_limit, summary_fn
+        )
+        original_tokens = _token_count(payload)
+        target_tokens = (budget or CompressionBudget()).resolve(original_tokens)
+        compact = result.compact_payload
+        if target_tokens is not None and _token_count(compact) > target_tokens:
+            compact = _bounded_payload(compact, target_tokens)
+        return replace(
+            result,
+            compact_payload=compact,
+            compact_bytes=_encoded_bytes(compact),
+            original_tokens=original_tokens,
+            compact_tokens=_token_count(compact),
+            target_tokens=target_tokens,
         )
 
 
@@ -452,6 +571,9 @@ def create_adaptive_record(
     scope: RecordScope,
     registry: CompressorRegistry | None = None,
     unit_limit: int = 8,
+    compact_target_tokens: int | None = None,
+    compact_max_tokens: int | None = None,
+    compact_ratio_target: float | None = None,
     provenance: Mapping[str, object] | None = None,
     ttl_seconds: float | None = None,
     summary_fn: Callable[[str], str] | None = None,
@@ -466,7 +588,15 @@ def create_adaptive_record(
         ttl_seconds=ttl_seconds,
     )
     compressed = (registry or CompressorRegistry()).compress(
-        record_type, payload, unit_limit=unit_limit, summary_fn=summary_fn
+        record_type,
+        payload,
+        unit_limit=unit_limit,
+        summary_fn=summary_fn,
+        budget=CompressionBudget(
+            compact_target_tokens,
+            compact_max_tokens,
+            compact_ratio_target,
+        ),
     )
     return AdaptiveContextRecord(
         backing=descriptor,
@@ -479,6 +609,9 @@ def create_adaptive_record(
         metadata={
             "lossy": compressed.lossy,
             "byte_savings_fraction": compressed.byte_savings_fraction,
+            "original_tokens": compressed.original_tokens,
+            "compact_tokens": compressed.compact_tokens,
+            "compact_target_tokens": compressed.target_tokens,
         },
     )
 
@@ -509,7 +642,23 @@ def select_payload(payload: object, selector: Mapping[str, object]) -> object:
             raise TypeError("items selector requires a sequence.")
         start, stop = _range(selector["items"], len(payload))
         return list(payload[start:stop])
-    raise ValueError("selector must define fields, rows, lines, or items.")
+    if "collection" in selector and "range" in selector:
+        if not isinstance(payload, Mapping):
+            raise TypeError("collection selector requires a mapping payload.")
+        name = str(selector["collection"])
+        values = payload.get(name)
+        if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+            raise TypeError(f"collection {name!r} is not a sequence.")
+        start, stop = _range(selector["range"], len(values))
+        return {name: list(values[start:stop]), "range": [start, stop]}
+    if "field" in selector and "lines" in selector:
+        if not isinstance(payload, Mapping):
+            raise TypeError("field line selector requires a mapping payload.")
+        name = str(selector["field"])
+        lines = _text(payload.get(name, "")).splitlines()
+        start, stop = _range(selector["lines"], len(lines))
+        return {name: "\n".join(lines[start:stop]), "range": [start, stop]}
+    raise ValueError("selector must define fields, rows, lines, items, or a collection range.")
 
 
 def _range(value: object, length: int) -> tuple[int, int]:

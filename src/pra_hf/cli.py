@@ -18,6 +18,7 @@ from .runtime_benchmark import run_runtime_microbenchmark, write_runtime_benchma
 from .agent import PRAAgent, PRAAgentConfig
 from .tui import AgentShell
 from .gateway_cli import gateway_cli
+from .profile_benchmarks import ProfileBenchmarkRegistry
 
 
 def _echo_json(value) -> None:
@@ -30,6 +31,26 @@ def cli() -> None:
 
 
 cli.add_command(gateway_cli)
+
+
+@cli.group("profiles")
+def profiles_cli() -> None:
+    """Inspect versioned semantic profiles and physical measurements."""
+
+
+@profiles_cli.command("show")
+@click.argument("model")
+@click.option("--workload")
+@click.option("--registry", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def profiles_show(model: str, workload: str | None, registry: Path | None) -> None:
+    """Show calibrated PROFILE rows for MODEL without loading model weights."""
+
+    values = (
+        ProfileBenchmarkRegistry.from_path(registry)
+        if registry is not None
+        else ProfileBenchmarkRegistry.default()
+    )
+    _echo_json(values.inspect(model, workload=workload))
 
 
 @cli.group("agent")

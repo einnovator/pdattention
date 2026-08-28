@@ -20,6 +20,12 @@ from .layer_profiles import (
     eligible_layers,
 )
 from .native_geometry import NativeMaterializationMode, materialization_profile
+from .profile_benchmarks import (
+    MeasurementStatus,
+    ProductProfile,
+    ProfileBenchmarkRegistry,
+    profile_objective,
+)
 
 
 _DEFAULT_CONSUMPTION_LAYERS = tuple(range(-8, 0))
@@ -36,6 +42,9 @@ class PRAConfig:
     """
 
     enabled: bool = True
+    profile: str | None = None
+    workload: str | None = None
+    product_profile_registry: str | None = None
     routing_layer: int = -1
     routing_layers: tuple[int, ...] | None = None
     consumption_layers: tuple[int, ...] = _DEFAULT_CONSUMPTION_LAYERS
@@ -98,6 +107,13 @@ class PRAConfig:
     hybrid_cascade_threshold: float = 0.25
 
     def __post_init__(self) -> None:
+        if self.profile is not None:
+            self.profile = ProductProfile(str(self.profile).upper()).value
+            if self.layer_profile_name is None:
+                self.layer_profile_name = "product_profile"
+            self.layer_profile_objective = profile_objective(self.profile)
+        if self.workload is not None and self.workload_class is None:
+            self.workload_class = self.workload
         self.consumption_layers = tuple(int(layer) for layer in self.consumption_layers)
         self.routing_layers = (
             None
@@ -295,6 +311,8 @@ class PRAConfig:
 
         if self.consumption_profile is not None:
             consumption_spec: Any = self.consumption_profile
+        elif self.consumption_layers != _DEFAULT_CONSUMPTION_LAYERS:
+            consumption_spec = self.consumption_layers
         elif "consumption" in profile:
             consumption_spec = profile["consumption"]
         elif family == "gemma3" and self.consumption_layers == _DEFAULT_CONSUMPTION_LAYERS:
@@ -365,6 +383,38 @@ class PRAConfig:
             materialization_class=self.materialization_class,
             objective=self.layer_profile_objective,
         )
+
+    def product_profile_trace(self) -> dict[str, Any]:
+        """Resolve product evidence without changing explicit mechanism fields."""
+
+        requested = self.profile or self.layer_profile_objective.upper()
+        trace: dict[str, Any] = {
+            "profile_requested": requested,
+            "profile_resolved": requested,
+            "profile_source": "explicit_request" if self.profile else "layer_objective",
+            "registry_version": None,
+            "measurement_status": MeasurementStatus.CALIBRATION_PENDING.value,
+        }
+        if self.model_id is None:
+            return trace
+        registry = (
+            ProfileBenchmarkRegistry.from_path(self.product_profile_registry)
+            if self.product_profile_registry
+            else ProfileBenchmarkRegistry.default()
+        )
+        try:
+            resolution = registry.resolve(
+                self.model_id,
+                workload=self.workload_class,
+                profile=requested,
+            )
+        except KeyError:
+            trace["registry_version"] = registry.registry_version
+            return trace
+        trace.update(resolution.trace())
+        trace["measurement_status"] = resolution.row["measurement_status"]
+        trace["evidence_tier"] = resolution.row["evidence_tier"]
+        return trace
 
     def resolved_layers(self, model_config_or_layer_count) -> tuple[int, tuple[int, ...]]:
         """Return the legacy primary-route/consumer view of resolved layer roles."""

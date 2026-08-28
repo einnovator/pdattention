@@ -24,6 +24,15 @@ from .adaptive_context_runtime import (
 )
 from .context_records import RecordType, RecordViewName
 from .context_store import RecordAccessDenied
+from .large_record_index import (
+    IndexComponentState,
+    IndexLifecycleState,
+    LargeRecordChannel,
+    LargeRecordIndex,
+    LargeRecordSearchPolicy,
+    LargeRecordSearchResult,
+    RecordIndexLifecycle,
+)
 
 if TYPE_CHECKING:
     from .model import PRAForCausalLM, ReferenceHandle, RoutingResult
@@ -439,6 +448,101 @@ class PRARecordRegistry:
         self.backing_index_metrics: dict[str, dict[str, float | int]] = {}
         self.native_index_audits: dict[str, NativeIndexAudit] = {}
         self.lazy_reference_handles: dict[str, ReferenceHandle] = {}
+        self.large_record_indexes: dict[str, LargeRecordIndex] = {}
+
+    def _ensure_large_record_index(self, record_id: str) -> LargeRecordIndex:
+        """Build cheap indexes independently of full-body native admission."""
+
+        existing = self.large_record_indexes.get(record_id)
+        if existing is not None:
+            return existing
+        payload = self.runtime.store.get(record_id, scope=self.runtime.scope)
+        index = LargeRecordIndex(payload)
+        self.large_record_indexes[record_id] = index
+        self.runtime._audit(
+            "large_record_indexes_built",
+            record_id,
+            channels=[channel.value for channel in index.component_states],
+            index_bytes=dict(index.index_bytes),
+            indexed_units=len(index.units),
+        )
+        return index
+
+    def search_large_record(
+        self,
+        record_id: str,
+        query: str,
+        *,
+        policy: LargeRecordSearchPolicy | str = LargeRecordSearchPolicy.AUTO,
+        channels: Sequence[LargeRecordChannel | str] | None = None,
+        top_k: int = 4,
+        candidate_limit: int = 64,
+        native_ranking: Mapping[str, int] | None = None,
+    ) -> LargeRecordSearchResult:
+        """Return exact backing selectors using available independent indexes."""
+
+        if record_id not in self.runtime.records:
+            raise KeyError(record_id)
+        result = self._ensure_large_record_index(record_id).search(
+            query,
+            policy=policy,
+            channels=channels,
+            top_k=top_k,
+            candidate_limit=candidate_limit,
+            native_ranking=native_ranking,
+        )
+        self.runtime._audit(
+            "large_record_search",
+            record_id,
+            requested_policy=result.trace.requested_policy.value,
+            resolved_channels=[channel.value for channel in result.trace.resolved_channels],
+            fusion=result.trace.fusion,
+            candidates_scored=dict(result.trace.candidates_scored),
+            query_latency_ms=result.trace.query_latency_ms,
+        )
+        return result
+
+    def large_record_lifecycle(self, record_id: str) -> RecordIndexLifecycle:
+        """Report prompt, cheap-index, native-Q/K, and detail-K/V state separately."""
+
+        index = self._ensure_large_record_index(record_id)
+        record = self.runtime.records[record_id]
+        audit = self.native_index_audits.get(record_id)
+        if audit is None:
+            native_state = IndexLifecycleState.NOT_BUILT
+        else:
+            native_state = {
+                NativeIndexState.BUILT: IndexLifecycleState.BUILT,
+                NativeIndexState.SKIPPED_SIZE_LIMIT: IndexLifecycleState.SKIPPED_SIZE_LIMIT,
+                NativeIndexState.DEFERRED: IndexLifecycleState.DEFERRED,
+                NativeIndexState.NOT_REQUESTED: IndexLifecycleState.NOT_BUILT,
+            }[audit.native_index_state]
+        native = IndexComponentState(
+            native_state,
+            audit.native_index_latency_ms if audit else 0.0,
+            audit.native_index_bytes if audit and audit.native_index_built else 0,
+            audit.native_index_tokens or 0 if audit else 0,
+        )
+        if audit and audit.native_index_built:
+            detail_state = IndexLifecycleState.BUILT
+        elif audit and audit.lazy_native_regions_encoded:
+            detail_state = IndexLifecycleState.LAZY
+        else:
+            detail_state = IndexLifecycleState.DEFERRED
+        detail_bytes = int(self.backing_index_metrics.get(record_id, {}).get("resident_detail_kv_bytes", 0))
+        summary = IndexComponentState(
+            IndexLifecycleState.BUILT,
+            index_bytes=record.compact_bytes,
+            units=record.retained_units,
+        )
+        return RecordIndexLifecycle(
+            index.component_states[LargeRecordChannel.TYPED],
+            index.component_states[LargeRecordChannel.BM25],
+            index.component_states[LargeRecordChannel.EMBEDDING],
+            summary,
+            native,
+            IndexComponentState(detail_state, index_bytes=detail_bytes),
+        )
 
     def bind_model(self, model: PRAForCausalLM) -> None:
         """Register existing views through the production PRA memory path."""
@@ -531,6 +635,7 @@ class PRARecordRegistry:
         """Register ``record/.../summary`` as the first implicit PRA document."""
 
         record = self.runtime.records[record_id]
+        self._ensure_large_record_index(record_id)
         capabilities = capabilities or RecordCapabilities()
         compact_is_partial = bool(record.metadata.get("lossy", True))
         capabilities = replace(
@@ -576,7 +681,7 @@ class PRARecordRegistry:
                     0,
                     record.backing.size_bytes,
                     0.0,
-                    tuple(sorted(record.address_views())),
+                    tuple(channel.value for channel in self._ensure_large_record_index(record_id).component_states),
                 ).prompt_descriptor()
             ),
             "provenance": dict(record.backing.provenance),
@@ -620,7 +725,8 @@ class PRARecordRegistry:
         token_limit, byte_limit, deferred = self.runtime.policy.native_index_policy(
             record.record_type
         )
-        cheap_modes = tuple(sorted(record.address_views()))
+        cheap_index = self._ensure_large_record_index(record_id)
+        cheap_modes = tuple(channel.value for channel in cheap_index.component_states)
         reason = None
         state = NativeIndexState.BUILT
         token_count: int | None = None
@@ -749,7 +855,7 @@ class PRARecordRegistry:
                 0,
                 record.backing.size_bytes,
                 0.0,
-                tuple(sorted(record.address_views())),
+                tuple(channel.value for channel in self._ensure_large_record_index(record_id).component_states),
             )
         audit = replace(
             previous,
@@ -949,6 +1055,46 @@ class ProgressiveContextRuntime:
         """Encode one authorized bounded region after cheap selection."""
 
         return self.registry.encode_selected_region_native(record_id, selector)
+
+    def search_large_record(
+        self,
+        record_id: str,
+        query: str,
+        *,
+        policy: LargeRecordSearchPolicy | str = LargeRecordSearchPolicy.AUTO,
+        channels: Sequence[LargeRecordChannel | str] | None = None,
+        top_k: int = 4,
+        candidate_limit: int = 64,
+        native_ranking: Mapping[str, int] | None = None,
+    ) -> LargeRecordSearchResult:
+        """Discover bounded selectors without requiring a full native index."""
+
+        return self.registry.search_large_record(
+            record_id,
+            query,
+            policy=policy,
+            channels=channels,
+            top_k=top_k,
+            candidate_limit=candidate_limit,
+            native_ranking=native_ranking,
+        )
+
+    def recover_large_record_native(
+        self,
+        record_id: str,
+        query: str,
+        *,
+        policy: LargeRecordSearchPolicy | str = LargeRecordSearchPolicy.AUTO,
+        top_k: int = 1,
+    ) -> tuple[LargeRecordSearchResult, tuple[LazyNativeRegion, ...]]:
+        """Search cheaply, then lazily encode only the selected exact regions."""
+
+        result = self.search_large_record(record_id, query, policy=policy, top_k=top_k)
+        regions = tuple(
+            self.encode_selected_region_native(record_id, hit.selector)
+            for hit in result.hits
+        )
+        return result, regions
 
     def native_select(self, query: str) -> NativePRASelection:
         """Run production PRA routing over exact backing state."""

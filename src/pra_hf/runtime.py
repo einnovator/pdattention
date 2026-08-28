@@ -102,6 +102,9 @@ class PRARuntimeConfig:
     """
 
     pra: PRAConfig = field(default_factory=PRAConfig)
+    profile: str | None = None
+    workload: str | None = None
+    profile_registry: str | None = None
     backend: str = RuntimeBackend.HUGGINGFACE.value
     compilation: str = CompilationMode.EAGER.value
     kv_layout: str = KVLayout.LAYER_MAJOR.value
@@ -119,6 +122,14 @@ class PRARuntimeConfig:
             self.pra = PRAConfig.from_dict(self.pra)
         if isinstance(self.context_policy, dict):
             self.context_policy = ContextPolicy.from_dict(self.context_policy)
+        if self.profile is not None:
+            self.pra.profile = self.profile
+        if self.workload is not None:
+            self.pra.workload = self.workload
+        if self.profile_registry is not None:
+            self.pra.product_profile_registry = self.profile_registry
+        # Re-run normalization after top-level convenience aliases are applied.
+        self.pra.__post_init__()
         self.backend = RuntimeBackend(self.backend).value
         self.compilation = CompilationMode(self.compilation).value
         self.kv_layout = KVLayout(self.kv_layout).value
@@ -968,6 +979,8 @@ class PRARuntime:
             if isinstance(runtime_config, PRARuntimeConfig)
             else PRARuntimeConfig.from_dict(runtime_config or {})
         )
+        if config.pra.model_id is None:
+            config.pra.model_id = model_name_or_path
         if config.backend != RuntimeBackend.HUGGINGFACE.value:
             raise ValueError("from_pretrained currently loads the Hugging Face backend only.")
         model = PRAForCausalLM.from_pretrained(
@@ -1533,6 +1546,7 @@ class PRARuntime:
         }
         return {
             "runtime_config": self.config.to_dict(),
+            "profile_trace": self.config.pra.product_profile_trace(),
             "backend": dict(self.backend.inspect()),
             "sessions": [session.safe_snapshot() for session in self.sessions.values()],
             "logical_sessions": {

@@ -30,7 +30,8 @@ versioned systems configuration, authenticated sessions, lazy tool and skill
 disclosure, independently authorized tool execution, session-scoped result
 compaction, size-adaptive native result indexing, lazy selected-region native
 encoding, durable task-aware agent state, selective replay, deduplicated K/V interval planning, physical byte
-accounting, bounded caching, profiling, and a scheduler-unaware serving
+accounting, a versioned cross-model product-profile registry, bounded caching,
+profiling, and a scheduler-unaware serving
 handoff. A standalone gateway now separates agent semantics, PRA mediation,
 and engine-native state through a JSON logical-reference contract and explicit
 capability negotiation and streams HF-backed responses with request-owned
@@ -637,6 +638,93 @@ the routing index remains 2,048 bytes. A service that needs rapid profile
 switching may ingest the union of candidate detail layers. The production
 default instead stores only the chosen profile and re-encodes explicitly if a
 later request asks for missing detail.
+
+\subsection{Product profile and benchmark matrix}
+
+The calibrated layer candidates become useful to an SDK only after their
+semantics and evidence are inspectable. We expose four stable objectives:
+\texttt{REFERENCE\_CORRECTNESS}, \texttt{QUALITY\_MAX}, \texttt{BALANCED}, and
+\texttt{ECONOMY}. A semantic row is keyed by model ID, immutable revision,
+workload, and profile. Engine, engine version, hardware, and dtype identify a
+physical realization of that row; they do not redefine the profile. This
+separation prevents one GPU measurement from becoming an implied portable
+latency property.
+
+Table~\ref{tab:product-profile-matrix} is generated directly from the packaged
+JSON registry. Quality is mean target-token probability over the same three
+fixed continuation cases used above. Retention and delta are recomputed against
+the model's reference-correctness row. Materialized tokens count selected source
+tokens, whereas active K/V counts those tokens across consuming layers. Detail
+savings measure persistent native K/V, so they remain distinct from active
+attention savings.
+
+\begin{table}[H]
+\centering
+\caption{Model-specific product profiles. This is \textsc{Smoke} evidence over
+three fixed cases, not workload-scale quality. Gemma rows remain partial-topology.}
+\label{tab:product-profile-matrix}
+\scriptsize
+\input{../shared/results/paper4_5_runtime/generated_profile_matrix.tex}
+\normalsize
+\end{table}
+
+Qwen's last-24 candidate has 109.8\% mean-probability retention while reducing
+active and detail K/V by 14.3\%; this narrow positive result motivates its
+quality-max label but does not establish general superiority. Qwen economy
+retains 79.9\% on the smoke cases with 96.4\% K/V savings. The corresponding
+economy points are poor for Llama (38.8\% retention) and unusable for Gemma
+(0.1\%), which is precisely why the SDK does not ship one universal sparse
+layer rule. Balanced remains all eligible layers for this registry version.
+
+The semantic label resolves to inspectable mechanism settings. Explicit request
+fields are applied afterward and therefore take precedence over profile
+defaults. The runtime trace records \texttt{profile\_requested},
+the resolved profile, its source, and the registry version; an uncalibrated
+model/workload pair returns
+\texttt{CALIBRATION\_PENDING} rather than borrowing evidence.
+
+\begin{table}[H]
+\centering
+\caption{Resolved technical realization. Counts refer to eligible physical
+layers. Compression and search are fixed controls in this semantic smoke.}
+\scriptsize
+\input{../shared/results/paper4_5_runtime/generated_profile_technical_matrix.tex}
+\normalsize
+\end{table}
+
+Runtime fields use an explicit missingness contract. The registry contains
+TTFT, inter-token latency, tokens/s, p50/p95/p99, throughput, peak HBM and RAM,
+H2D bytes and time, cache hit rate, index build time, prefetch overlap, and
+concurrency. None was measured by the layer-quality calibration, so the
+generated view says \textsc{Not Measured}; it does not reuse the separate
+microbenchmark later in this paper.
+
+\begin{table}[H]
+\centering
+\caption{Physical realization fields for balanced semantic rows. Missing
+serving measurements remain explicit.}
+\small
+\input{../shared/results/paper4_5_runtime/generated_runtime_matrix.tex}
+\normalsize
+\end{table}
+
+\subsection{Inherited typed-record product policy}
+
+The runtime also forward-ports Paper 7's finalized typed-record policy without
+reinterpreting its metrics as layer-profile evidence. Per-record compression
+accepts target-token, maximum-token, and ratio bounds. Typed postings, indexed
+BM25, and a small embedding index are built independently of the full-body
+native Q/K size gate. Above that gate, cheap hybrid discovery returns an exact
+selector; only the selected region is eligible for lazy native encoding and
+detail-K/V materialization.
+
+In Paper 7's controlled protocol, type-aware compression reduced mean visible
+tokens from 180.8 to 54.1, a compact ratio of 25\%. Automatic recovery was
+71.9\%, and cheap-hybrid recall at four was 87.5\% over 24 cases. These are
+inherited measurements with their original cohort and provenance, not new
+Paper 4.5 quality results. Their role here is to define canonical runtime
+behavior: full native indexing is budgeted, while cheaper address modes and
+exact backing identities remain available above the gate.
 
 The task smoke invokes the inherited Paper 8 task graph, provenance attachment,
 and task-structural selector rather than copying expected IDs into the
@@ -1319,6 +1407,12 @@ Corrected cross-model contiguous/sparse profile sweep, storage accounting,
 registry selection, and quality--cost figure\\
 \path{src/pra_hf/layer_profiles.py} & Four-role layer schema, normalized
 selection, registry precedence, lifecycle, and missing-detail policy\\
+\path{src/pra_hf/profile_benchmarks.py} & Versioned model/workload profile
+registry, normalized metrics, missingness status, and resolution trace\\
+\path{src/pra_hf/model_profiles/pra_profile_benchmarks.json} & Packaged
+semantic and physical profile registry\\
+\path{experiments/paper4_5_runtime/build_profile_matrix.py} & Deterministic
+registry and manuscript-table generator\\
 \path{src/pra_hf/runtime_benchmark.py} & Structured eager/compiled and
 hierarchy microbenchmark\\
 \path{src/pra_hf/agent_resources.py} & Typed resource identities and
@@ -1336,7 +1430,9 @@ resumable coding-agent terminal\\
 \path{src/pra_hf/capability_sdk.py} & Callable and skill-folder ingestion,
 bounded palettes, and exact capability activation\\
 \path{src/pra_hf/typed_context.py} & Type-aware compact views and retrieval
-addresses for large results\\
+addresses with explicit token/ratio compression budgets\\
+\path{src/pra_hf/large_record_index.py} & Independent typed, BM25, and
+embedding indexes, bounded fusion, exact selectors, and lifecycle accounting\\
 \path{src/pra_hf/adaptive_context_runtime.py} & Scoped backing, serializable
 token/byte and per-type ingestion policy, materialization, transport accounting,
 and cursors\\

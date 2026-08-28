@@ -1,6 +1,13 @@
 """Public PRA-HF API for bounded sparse native-K/V memory."""
 
 from .config import PRAConfig
+from .profile_benchmarks import (
+    EvidenceTier,
+    MeasurementStatus,
+    ProductProfile,
+    ProfileBenchmarkRegistry,
+    ProfileResolution,
+)
 from .layer_profiles import (
     AddressEncodingPolicy,
     DetailKVEncodingPolicy,
@@ -184,8 +191,21 @@ from .typed_context import (
     AddressView,
     AddressViewKind,
     CompressionResult,
+    CompressionBudget,
     CompressorRegistry,
     create_adaptive_record,
+)
+from .large_record_index import (
+    IndexComponentState,
+    IndexLifecycleState,
+    LargeRecordChannel,
+    LargeRecordHit,
+    LargeRecordIndex,
+    LargeRecordSearchPolicy,
+    LargeRecordSearchResult,
+    LargeRecordSearchTrace,
+    LargeRecordUnit,
+    RecordIndexLifecycle,
 )
 from .adaptive_context_runtime import (
     AdaptiveContextRuntime,
@@ -278,6 +298,11 @@ __all__ = [
     "HotMemoryHandle",
     "HybridDiscoveryPolicy",
     "PRAConfig",
+    "EvidenceTier",
+    "MeasurementStatus",
+    "ProductProfile",
+    "ProfileBenchmarkRegistry",
+    "ProfileResolution",
     "AddressEncodingPolicy",
     "DetailKVEncodingPolicy",
     "LAYER_PROFILE_OBJECTIVES",
@@ -394,6 +419,7 @@ __all__ += [
     "CapabilityPaletteActivation",
     "CapabilitySDK",
     "CompressionResult",
+    "CompressionBudget",
     "CompressorRegistry",
     "ContextAction",
     "ContextDecision",
@@ -420,6 +446,16 @@ __all__ += [
     "RecordScope",
     "RecordType",
     "RecordViewName",
+    "IndexComponentState",
+    "IndexLifecycleState",
+    "LargeRecordChannel",
+    "LargeRecordHit",
+    "LargeRecordIndex",
+    "LargeRecordSearchPolicy",
+    "LargeRecordSearchResult",
+    "LargeRecordSearchTrace",
+    "LargeRecordUnit",
+    "RecordIndexLifecycle",
     "RetrievalMode",
     "RuntimeToolExecution",
     "Skill",

@@ -88,6 +88,9 @@ class TypeContextPolicy:
     """
 
     unit_limit: int = 8
+    compact_target_tokens: int | None = None
+    compact_max_tokens: int | None = None
+    compact_ratio_target: float | None = None
     storage: StoragePolicy | str | None = None
     max_native_index_tokens: int | None = None
     max_native_index_bytes: int | None = None
@@ -103,6 +106,12 @@ class TypeContextPolicy:
             value = getattr(self, name)
             if value is not None and value < 0:
                 raise ValueError(f"{name} must be non-negative or None.")
+        for name in ("compact_target_tokens", "compact_max_tokens"):
+            value = getattr(self, name)
+            if value is not None and value <= 0:
+                raise ValueError(f"{name} must be positive or None.")
+        if self.compact_ratio_target is not None and not 0 < self.compact_ratio_target <= 1:
+            raise ValueError("compact_ratio_target must be in (0, 1].")
 
 
 @dataclass(frozen=True)
@@ -196,14 +205,7 @@ class ContextPolicy:
             "retrieval_mode": self.retrieval_mode.value,
             "topology": self.topology.value,
             "record_policies": {
-                record_type.value: {
-                    "unit_limit": policy.unit_limit,
-                    "storage": policy.storage.value if policy.storage is not None else None,
-                    "max_native_index_tokens": policy.max_native_index_tokens,
-                    "max_native_index_bytes": policy.max_native_index_bytes,
-                    "override_native_index_limits": policy.override_native_index_limits,
-                    "defer_native_index": policy.defer_native_index,
-                }
+                record_type.value: _serialized_type_policy(policy)
                 for record_type, policy in self.record_policies.items()
             },
             "cursor_policy": {
@@ -233,6 +235,24 @@ class ContextPolicy:
             for record_type, policy in dict(data.get("record_policies", {})).items()
         }
         return cls(**data)
+
+
+def _serialized_type_policy(policy: TypeContextPolicy) -> dict[str, object]:
+    """Serialize optional compact budgets only when explicitly configured."""
+
+    values: dict[str, object] = {
+                    "unit_limit": policy.unit_limit,
+                    "storage": policy.storage.value if policy.storage is not None else None,
+                    "max_native_index_tokens": policy.max_native_index_tokens,
+                    "max_native_index_bytes": policy.max_native_index_bytes,
+                    "override_native_index_limits": policy.override_native_index_limits,
+                    "defer_native_index": policy.defer_native_index,
+    }
+    for name in ("compact_target_tokens", "compact_max_tokens", "compact_ratio_target"):
+        value = getattr(policy, name)
+        if value is not None:
+            values[name] = value
+    return values
 
 
 @dataclass(frozen=True)
@@ -658,6 +678,9 @@ class AdaptiveContextRuntime:
             scope=self.scope,
             registry=self.registry,
             unit_limit=type_policy.unit_limit,
+            compact_target_tokens=type_policy.compact_target_tokens,
+            compact_max_tokens=type_policy.compact_max_tokens,
+            compact_ratio_target=type_policy.compact_ratio_target,
             provenance=provenance,
             ttl_seconds=ttl_seconds,
         )
