@@ -53,6 +53,8 @@ class ScopePartition:
     excluded_record_ids: tuple[str, ...]
     widened: bool
     scope_seconds: float
+    widening_level: str = "none"
+    widening_reasons: tuple[str, ...] = ()
 
     @property
     def admitted_record_ids(self) -> tuple[str, ...]:
@@ -71,6 +73,8 @@ class ScopeSelection:
     excluded_record_ids: tuple[str, ...]
     widened: bool
     scope_seconds: float
+    widening_level: str = "none"
+    widening_reasons: tuple[str, ...] = ()
 
     @property
     def selected_record_ids(self) -> tuple[str, ...]:
@@ -139,18 +143,36 @@ class TaskScopeSelector:
             raise ValueError("minimum_records must be positive.")
         started = time.perf_counter()
         policy = TaskScopePolicy(policy)
-        admitted_tasks = list(self._tasks_for(task_id, policy))
+        admitted_tasks = list(
+            self.graph.structural_closure(task_id)
+            if policy == TaskScopePolicy.TASK_ADAPTIVE
+            else self._tasks_for(task_id, policy)
+        )
         candidates = [
             record for record in self.records
             if _record_task_id(record) in admitted_tasks or _record_task_id(record) is None
         ]
         widened = False
-        if policy == TaskScopePolicy.TASK_ADAPTIVE and (
-            not metadata_complete or len(candidates) < minimum_records
-        ):
-            admitted_tasks = list(sorted(self.graph.tasks))
-            candidates = list(self.records)
-            widened = True
+        widening_level = "none"
+        widening_reasons = []
+        if policy == TaskScopePolicy.TASK_ADAPTIVE:
+            if not metadata_complete:
+                widening_reasons.append("metadata_incomplete")
+            if len(candidates) < minimum_records:
+                widening_reasons.append("insufficient_candidates")
+            if widening_reasons:
+                admitted_tasks = list(self.graph.related_tasks(task_id))
+                candidates = [
+                    record for record in self.records
+                    if _record_task_id(record) in admitted_tasks or _record_task_id(record) is None
+                ]
+                widened = True
+                widening_level = "related"
+            if not metadata_complete or len(candidates) < minimum_records:
+                admitted_tasks = list(sorted(self.graph.tasks))
+                candidates = list(self.records)
+                widened = True
+                widening_level = "session"
         candidate_ids = {record.record_id for record in candidates}
         return ScopePartition(
             policy=policy,
@@ -163,6 +185,8 @@ class TaskScopeSelector:
             ),
             widened=widened,
             scope_seconds=time.perf_counter() - started,
+            widening_level=widening_level,
+            widening_reasons=tuple(widening_reasons),
         )
 
     @staticmethod
@@ -182,6 +206,7 @@ class TaskScopeSelector:
         policy: TaskScopePolicy | str,
         max_records: int,
         minimum_records: int = 1,
+        metadata_complete: bool = True,
     ) -> ScopeSelection:
         """Return at most ``max_records`` after task admission and fixed ranking."""
 
@@ -191,6 +216,7 @@ class TaskScopeSelector:
             task_id,
             policy=policy,
             minimum_records=minimum_records,
+            metadata_complete=metadata_complete,
         )
         candidates = list(partition.candidate_records)
         ranked = sorted(
@@ -211,6 +237,8 @@ class TaskScopeSelector:
             ),
             widened=partition.widened,
             scope_seconds=partition.scope_seconds,
+            widening_level=partition.widening_level,
+            widening_reasons=partition.widening_reasons,
         )
 
 

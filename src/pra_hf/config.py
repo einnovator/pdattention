@@ -35,6 +35,8 @@ class PRAConfig:
     max_direct_context: int = 256
     native_operation_limit: int = 512
     max_materialized_tokens: int = 256
+    materialization_target_tokens: int | None = None
+    materialization_full_selected_record: bool = False
     context_safety_reserve_tokens: int = 4
     encoding_block_tokens: int = 256
     reference_device: str = "cpu"
@@ -73,6 +75,12 @@ class PRAConfig:
             raise ValueError("top_k must be positive.")
         if self.chunk_tokens <= 0:
             raise ValueError("chunk_tokens must be positive.")
+        if self.materialization_target_tokens is not None and self.materialization_target_tokens <= 0:
+            raise ValueError("materialization_target_tokens must be positive or None.")
+        if self.materialization_full_selected_record and self.materialization_target_tokens is not None:
+            raise ValueError(
+                "materialization_target_tokens and materialization_full_selected_record are mutually exclusive."
+            )
         if not 0 <= self.chunk_overlap_tokens < self.chunk_tokens:
             raise ValueError("chunk_overlap_tokens must be in [0, chunk_tokens).")
         local_tokens = self.local_gist_tokens or min(32, self.chunk_tokens)

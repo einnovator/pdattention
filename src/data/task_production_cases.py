@@ -40,6 +40,15 @@ class DAGShape(str, Enum):
 
 
 @dataclass(frozen=True)
+class EvidenceTextAnnotation:
+    """Tokenizer-independent anchors for one required record's source interval."""
+
+    record_id: str
+    answer: str
+    semantic_anchors: tuple[str, ...] = ("Acme Atlas", "verification")
+
+
+@dataclass(frozen=True)
 class ProductionTaskCase:
     """One oracle-graph task continuation with exact evidence identities."""
 
@@ -56,6 +65,7 @@ class ProductionTaskCase:
     distractor_answers: tuple[str, ...]
     join_fan_in: int = 0
     dag_shape: str = ""
+    evidence_annotations: tuple[EvidenceTextAnnotation, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "scenario", ProductionScenario(self.scenario))
@@ -243,6 +253,7 @@ def production_task_case(
     required_ids = []
     answers = []
     distractors = []
+    evidence_annotations = []
     for ordinal, task_id in enumerate(task_ids):
         answer = _answer(seed, confusability, ordinal)
         required = task_id in required_tasks
@@ -267,6 +278,7 @@ def production_task_case(
         if required:
             required_ids.append(record.record_id)
             answers.append(answer)
+            evidence_annotations.append(EvidenceTextAnnotation(record.record_id, answer))
         else:
             distractors.append(answer)
 
@@ -297,6 +309,7 @@ def production_task_case(
         tuple(required_ids),
         tuple(distractors),
         join_fan_in=(3 if scenario == ProductionScenario.JOIN else 0),
+        evidence_annotations=tuple(evidence_annotations),
     )
 
 

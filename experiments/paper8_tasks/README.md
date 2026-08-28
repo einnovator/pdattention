@@ -6,8 +6,14 @@ materialization, evidence availability, and answer consumption separately.
 
 The primary cases cover low, medium, and high semantic confusability across
 independent, linear, join, resumption, and conflicting-state scenarios. Task
-identity and dependencies are oracle harness metadata; model-produced task
-acquisition remains deferred.
+identity and dependencies are oracle harness metadata. A separate follow-up
+measures model-produced acquisition when identifiers and dependencies are
+explicit in the request; latent decomposition remains deferred.
+
+`run_native_consumption_geometry.py` freezes the production structural routing
+trace and varies only record-bounded native width and supported consumer layers.
+`run_task_management_roadmap.py` resumes the post-oracle roadmap with metadata
+corruption, adaptive widening, and validated explicit-structure acquisition.
 
 ## Run
 

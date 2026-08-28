@@ -1,7 +1,9 @@
 \documentclass[10pt]{article}
 \usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,enumitem,graphicx,hyperref,placeins,tabularx}
+\usepackage{amsmath,amssymb,booktabs,enumitem,float,graphicx,hyperref,placeins,tabularx}
 \input{../shared/results/paper8_tasks/production_pra/generated_production_pra_results.tex}
+\input{../shared/results/paper8_tasks/production_pra/generated_native_geometry_results.tex}
+\input{../shared/results/paper8_tasks/generated_task_management_results.tex}
 \title{Task-Aware Progressive Retrieval Attention:\\Virtualizing Interleaved Agent Context by Execution Scope}
 \author{PRA Research Program}
 \date{August 2026}
@@ -10,7 +12,7 @@
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (PRA) has largely been studied under an implicit single-task assumption: one physical session is treated as one coherent retrieval space. Long-running agents instead multiplex interleaved tasks. We introduce task-aware PRA, in which harness-authoritative task identity and dependency relations restrict candidates before ordinary PRA discovery and Paper-7 progressive materialization. A model-free study over 80 workflows first isolates the scope mechanism. We then hold a production native-Q/K hybrid router fixed across \ProductionCases{} naturalistic typed-record cases and vary only task admission. Structural scope raises exact evidence availability from \ProductionSessionEvidence\% to \ProductionStructuralEvidence\%, removes \ProductionSessionContamination\% session-wide cross-task contamination, and reduces requested native tokens from \ProductionSessionNativeTokens{} to \ProductionStructuralNativeTokens{} per case. With selected exact records made visible, frozen Qwen3-0.6B answer accuracy rises from \ProductionVisibleSessionAccuracy\% to \ProductionVisibleStructuralAccuracy\%; full task scope reaches \ProductionFullTaskAccuracy\% versus \ProductionFullSessionAccuracy\% for the full interleaved session. Direct frozen native-memory injection yields \ProductionDirectNativeAccuracy\% accuracy despite successful evidence routing, separating a consumption failure from the scope result. Join sweeps show the remaining capacity boundary. The contribution is therefore a replayable task-scope layer and evidence that task structure improves both retrieval allocation and downstream behavior when the selected detail is consumable, not a claim that task planning or frozen native-memory integration is solved.
+Progressive Retrieval Attention (PRA) has largely been studied under an implicit single-task assumption: one physical session is treated as one coherent retrieval space. Long-running agents instead multiplex interleaved tasks. We introduce task-aware PRA, in which harness-authoritative task identity and dependency relations restrict candidates before ordinary PRA discovery and Paper-7 progressive materialization. A model-free study over 80 workflows first isolates the scope mechanism. We then hold a production native-Q/K hybrid router fixed across \ProductionCases{} naturalistic typed-record cases and vary only task admission. Structural scope raises exact evidence availability from \ProductionSessionEvidence\% to \ProductionStructuralEvidence\%, removes \ProductionSessionContamination\% session-wide cross-task contamination, and reduces requested native tokens from \ProductionSessionNativeTokens{} to \ProductionStructuralNativeTokens{} per case. With selected exact records made visible, frozen Qwen3-0.6B answer accuracy rises from \ProductionVisibleSessionAccuracy\% to \ProductionVisibleStructuralAccuracy\%. A frozen-selection diagnostic then expands native materialization through complete selected records and broadens consumers from layer 27 to layers 11, 17, 23, and 27. Semantic interval coverage reaches \NativeGeometryFullSufficiency\%, but native answer accuracy remains \NativeGeometrySparseAccuracy\% versus \NativeGeometryVisibleAccuracy\% for the same records made visible. This identifies a frozen native-consumption interface mismatch under the supported path rather than a width-only failure. Finally, validated JSON, Markdown, online-tool, and hybrid acquisition paths are measured over \TaskAcquisitionCases{} explicit-structure workflows. The contribution is a replayable task-scope and acquisition layer with causal evidence for improved retrieval allocation; it is not a claim that latent task planning or frozen native-memory integration is solved.
 \end{abstract}
 
 \section{Dependency Gate and Scope}
@@ -554,7 +556,7 @@ PRA\_TASK\_STRUCT\_VISIBLE & 0.667 & 0.744 \\
 \end{tabular}
 \end{table}
 
-The downstream result is positive but conditional. Full task scope exceeds the full session by 53.3 points, showing that unrelated interleaved context harms even when all evidence is present. Among routed visible-detail conditions, structural scope exceeds session scope by 53.4 points. Given available evidence, visible local and structural conditions answer correctly in 88.9\% and 71.4\% of cases. By contrast, all direct frozen native-memory conditions score zero, including structural cases in which evidence availability is 93.3\%. The router found and materialized useful evidence; this model configuration did not consume it through direct memory injection. A learned integration gate or task-aware adaptation is therefore a separate requirement.
+The downstream result is positive but conditional. Full task scope exceeds the full session by 53.3 points, showing that unrelated interleaved context harms even when all evidence is present. Among routed visible-detail conditions, structural scope exceeds session scope by 53.4 points. Given available evidence, visible local and structural conditions answer correctly in 88.9\% and 71.4\% of cases. Direct native generation under the initial 32-token routing-chunk, layer-27-only geometry remains at zero. That observation alone cannot distinguish insufficient neighborhood, insufficient post-injection depth, or a deeper interface mismatch; the controlled diagnostic below makes that distinction.
 
 \begin{figure}[t]
   \centering
@@ -578,13 +580,50 @@ Five independent DAG families---deep-narrow, shallow-wide, multi-fork, multi-joi
 \paragraph{Accounting and replay.}
 The production artifacts report serialized prompt tokens, encoded backing-chunk tokens, routing-index bytes, resident detail-cache bytes, indexing, query encoding, routing, and exact materialization time. These are measured runtime counters, although the Python orchestration is not an optimized serving benchmark. The real scope--detail frontier uses encoded chunk spans rather than the historical fixed depth costs. Persistent session replay reproduces task scope, selected record IDs, and typed provenance in every case while persisting no model cache. Parent edges participate in DAG cycle validation, including two-node and longer cycles.
 
+\subsection{Frozen native-consumption geometry}
+The geometry diagnostic conditions on the production structural router selecting every required source record. It replays the recorded chunk identities rather than routing again, expands each hit inside its own record, merges overlap, and slices each consumer layer's native K/V to the unique logical interval union. Thus routing granularity and materialization granularity are independent. We annotate answer-token, minimal semantic, and full-record intervals from source-local evidence rather than using a judge model.
+
+The corpus records are short: overlapping 32-token routing anchors already materialize \NativeGeometryWidthThirtyTwoTokens{} unique tokens on average, and full selected records contain \NativeGeometryFullTokens{}. The initial union covers every annotated semantic interval in \NativeGeometryWidthThirtyTwoSufficiency\% of cases; 64 tokens and full-record materialization raise coverage to \NativeGeometryFullSufficiency\%. This saturation is itself informative: nominal 128, 256, and 512-token requests cannot manufacture context beyond the record boundary.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.82\linewidth]{../shared/figures/paper8_tasks/native_consumption_geometry.pdf}
+  \caption{Frozen routing, record-bounded native materialization, and conditional answer accuracy. Requested widths are plotted at actual unique tokens; short records make most widths coincide. Full selected records remain unusable through both layer 27 alone and layers 11, 17, 23, and 27, while visible serialization supplies the ceiling.}
+  \label{fig:native-geometry}
+\end{figure}
+
+Native accuracy remains \NativeGeometryLateAccuracy\% with complete records at layer 27 and \NativeGeometrySparseAccuracy\% with the sparse multi-layer consumers. The same full selected records yield \NativeGeometryVisibleAccuracy\% when serialized visibly. Width and the tested post-injection depth therefore do not explain the gap. Under this frozen Qwen path, the result supports the diagnostic's third outcome: a deeper native-consumption interface mismatch. It does not establish that adapted PRA models or other host families cannot consume native memory.
+
+\subsection{Metadata robustness and task acquisition}
+We next perturb oracle metadata while holding records and lexical ranking fixed. Removing an active dependency reduces hard structural required-record recall to \TaskStructuralMissingEdgeRecall\%; assigning required records stale task tags reduces it to \TaskStructuralStaleTagRecall\%. The adaptive policy detects incomplete metadata and widens from structural to related and then session scope, restoring mean recall to \TaskAdaptiveCorruptRecall\%. Recovery is not free: corrupted cases admit all eight records, so adaptive widening trades isolation and cost for recall. It is a safety fallback, not evidence that corrupted structure can be reconstructed silently.
+
+The acquisition gate uses \TaskAcquisitionCases{} workflows: atomic, linear, parallel, fork, join, and DAG families, each under five seeds. Requests state task identifiers and dependencies explicitly. Frozen Qwen3-0.6B transcribes them into schema-constrained JSON, a bounded Markdown grammar, or online create operations. Every proposal is parsed and then applied through the versioned harness graph; no model response mutates authoritative state directly. Hybrid starts from preflight structure and applies one execution-discovered link.
+
+\begin{table}[H]
+\centering
+\caption{Model-managed acquisition on explicit-structure workflows. Edge F1 measures validated graph recovery; downstream recall measures task-structural evidence selection using the generated graph.}
+\label{tab:task-acquisition}
+\begin{tabular}{lrr}
+\toprule
+Mode & Edge F1 (\%) & Downstream recall (\%) \\
+\midrule
+Preflight JSON & \TaskJSONEdgeF & 100.0 \\
+Preflight Markdown & \TaskMarkdownEdgeF & 100.0 \\
+Online task tools & \TaskOnlineEdgeF & \TaskOnlineDownstreamRecall \\
+Hybrid & \TaskHybridEdgeF & 100.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+JSON, Markdown, and hybrid recover the supplied graphs exactly. Online-only creation reaches \TaskOnlineEdgeF\% edge F1 and \TaskOnlineDownstreamRecall\% downstream recall because all five join outputs preserve dependency prose but omit the structured \texttt{depends\_on} field. The hybrid discovered-link call repairs that failure after validated preflight. These are format and mutation results under explicit structure, not evidence that a small model can infer latent task decompositions.
+
 \FloatBarrier
 \section{Interpretation and Limits}
 The experiments establish that explicit task structure changes how a fixed PRA budget is allocated, that structural closure repairs the dependency loss caused by hard local filtering, and that the benefit survives a production native-Q/K router. They also establish downstream answer benefit when selected exact detail is consumable. The lexical/recency ranker is only the historical control.
 
-Three limits matter. First, the production cohort is 15 controlled cases from one generator and one 0.6B model; five seeds are distributed across five workflow types rather than replicating every type. Second, direct native-memory consumption is negative, so the positive generation claim is about scoped selection plus exact selected-detail re-entry, not successful frozen memory injection. Third, structural scope cannot fit joins whose required chunks exceed the budget. Task scope removes irrelevant competition; it does not abolish capacity or composition limits.
+Four limits matter. First, the production cohort is 15 controlled cases from one generator and one 0.6B model; five seeds are distributed across five workflow types rather than replicating every type. Second, complete native selected records remain unusable under both tested consumption depths, so the positive generation claim is about scoped selection plus exact selected-detail re-entry, not successful frozen memory injection. Third, structural scope cannot fit joins whose required chunks exceed the budget. Fourth, acquisition prompts expose identifiers and dependencies; latent decomposition, ambiguous requests, and noisy execution discovery remain open. Task scope removes irrelevant competition, but it does not abolish capacity, composition, or planning limits.
 
-Task identity and relations remain oracle. Metadata corruption, adaptive widening, model-produced preflight plans, online task tools, and hybrid acquisition are intentionally deferred until after this oracle production gate. JSON and Markdown parser fixtures validate syntax and graph invariants, but no model-generated plan is reported as evidence. Latencies include real encoding and materialization work on CUDA, yet exhaustive Python orchestration and a single workstation preclude serving claims.
+Task identity and relations remain oracle in the primary causal study. The follow-up metadata and acquisition experiments establish fallback and validated transcription behavior but do not replace that oracle analysis. Latencies include real encoding, generation, and materialization work on CUDA, yet exhaustive Python orchestration and a single workstation preclude serving claims.
 
 \section{Hypotheses and Status}
 \begin{enumerate}[label=H\arabic*.]
@@ -592,13 +631,13 @@ Task identity and relations remain oracle. Metadata corruption, adaptive widenin
 \item Explicit task scope reduces cross-task contamination without materially reducing required-evidence recall. \emph{Supported for structural scope; hard local scope loses dependencies.}
 \item Gains increase with semantic similarity and hot-state contamination among tasks. \emph{Evidence availability follows this trend; larger cohorts are required.}
 \item Structural closure outperforms hard task-local scope on dependency and join workflows while remaining cheaper than session-global retrieval. \emph{Supported for routing; generation remains composition-limited at larger joins.}
-\item Explicit dependency relations outperform rediscovery of known dependencies.
-\item Task completion is an effective context-demotion boundary when compact result views retain full backing addressability.
+\item Explicit dependency relations outperform rediscovery of known dependencies. \emph{Supported by the online-only join failure and exact preflight/hybrid controls.}
+\item Task completion is an effective context-demotion boundary when compact result views retain full backing addressability. \emph{Supported by the bounded resumption and residency cases.}
 \item Task-conditioned working sets remain bounded/sublinear as total session history grows. \emph{Supported by bounded cases, not established as an asymptotic law.}
 \item Task-aware gains increase with workflow width, depth, joins, resumption distance, and interleaving complexity.
-\item Preflight decomposition can recover much of the oracle task-aware gain for models that do not reliably manage tasks online.
-\item JSON and Markdown decomposition have model-dependent reliability; downstream utility matters more than exact graph match.
-\item Hybrid preflight-plus-online mutation is useful only if online changes add genuine execution-discovered structure rather than noise.
+\item Preflight decomposition can recover much of the oracle task-aware gain for models that do not reliably manage tasks online. \emph{Supported for transcription of explicit structure; latent decomposition remains untested.}
+\item JSON and Markdown decomposition have model-dependent reliability; downstream utility matters more than exact graph match. \emph{Both bounded formats are exact here after validated parsing.}
+\item Hybrid preflight-plus-online mutation is useful only if online changes add genuine execution-discovered structure rather than noise. \emph{Supported by one held-out join edge per dependent workflow; broader mutation noise remains untested.}
 \end{enumerate}
 
 \section{Experimental Discipline}\label{sec:discipline}
@@ -606,10 +645,10 @@ The causal order is mandatory:
 \begin{enumerate}
 \item Given oracle task identity/relations, does task-aware scope improve PRA? \emph{Passed for retrieval and selected-visible generation.}
 \item How does the gain scale with workflow/interleaving complexity? \emph{Bounded confusability, DAG, resumption, and join sweeps completed.}
-\item How robust is it to imperfect/stale task metadata?
-\item Can preflight decomposition recover useful structure?
-\item Can online model-managed tasks match or improve preflight structure?
-\item Does the hybrid justify its complexity?
+\item How robust is it to imperfect/stale task metadata? \emph{Adaptive widening restores recall but becomes session-global in the tested corruptions.}
+\item Can preflight decomposition recover useful structure? \emph{Passed for explicit-structure JSON and Markdown transcription.}
+\item Can online model-managed tasks match or improve preflight structure? \emph{Passed except for join dependencies omitted from structured create calls.}
+\item Does the hybrid justify its complexity? \emph{It repairs the held-out join edge exactly; latent or noisy discoveries remain open.}
 \end{enumerate}
 
 Do not confound task extraction/planning competence with the core PRA mechanism.
@@ -630,8 +669,8 @@ C & Complete & Four matched-budget scope policies with a frozen ranker. \\
 D & Complete & Cold/host-encoded/device-hot states and measured Paper-7 counters separated. \\
 E & Complete & Confusability, joins, independent DAGs, replay, and real frontier artifacts. \\
 F & Complete & Oracle-graph frozen-model evaluation and evidence-consumption decomposition. \\
-G & Deferred & Online task tools remain behind the oracle stop gate. \\
-H & Deferred & Hybrid acquisition follows separate preflight and online evaluation. \\
+G & Complete & Validated JSON/Markdown preflight and online task-tool transcription. \\
+H & Complete & Hybrid preflight plus execution-discovered link mutation. \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -642,6 +681,6 @@ Paper~8 remains single-session and does not introduce subagent context trees, cr
 \section{Target Claim}
 The paper does not claim invention of task lists, workflow DAGs, task planning, or decomposition prompting. Its target claim is:
 
-\emph{Explicit typed task state and workflow relations can serve as a first-class context-scope signal, allowing production PRA to allocate fewer active retrieval tokens to more complete task evidence in an interleaved physical session. When selected exact detail is consumable, this improves downstream answers while keeping authoritative execution state in the harness.}
+\emph{Explicit typed task state and workflow relations can serve as a first-class context-scope signal, allowing production PRA to allocate fewer active retrieval tokens to more complete task evidence in an interleaved physical session. Validated preflight and online proposals can populate that structure when dependencies are explicit. When selected exact detail is consumable, scoped evidence improves downstream answers while authoritative execution state remains in the harness; frozen direct native consumption remains an independent open interface problem.}
 
 \end{document}

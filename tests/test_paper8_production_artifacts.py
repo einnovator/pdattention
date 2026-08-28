@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "docs/papers/shared/results/paper8_tasks/production_pra"
+TASK_RESULTS = RESULTS.parent
 
 
 def _csv(name: str) -> list[dict[str, str]]:
@@ -76,3 +77,31 @@ def test_generated_paper_values_are_present() -> None:
         "ProductionDirectNativeAccuracy",
     ):
         assert f"\\newcommand{{\\{name}}}" in macros
+
+
+def test_native_geometry_separates_semantic_coverage_from_consumption() -> None:
+    summary = json.loads((RESULTS / "native_geometry_summary.json").read_text(encoding="utf-8"))
+    by_condition = {row["condition"]: row for row in summary["rows"]}
+    late = by_condition["NATIVE_FULL_SELECTED_RECORD_LATE_ONLY"]
+    sparse = by_condition["NATIVE_FULL_SELECTED_RECORD_SPARSE_MULTI"]
+    visible = by_condition["VISIBLE_FULL_SELECTED_RECORD"]
+    assert late["n_correctly_routed"] == 15
+    assert late["semantic_sufficiency_rate"] == 1
+    assert late["conditional_consumption_accuracy"] == 0
+    assert sparse["conditional_consumption_accuracy"] == 0
+    assert visible["conditional_consumption_accuracy"] > 0.7
+
+
+def test_task_management_roadmap_records_five_seed_acquisition_and_fallback() -> None:
+    with (TASK_RESULTS / "task_acquisition_summary.csv").open(encoding="utf-8") as handle:
+        acquisition = {row["mode"]: row for row in csv.DictReader(handle)}
+    assert set(acquisition) == {"preflight_json", "preflight_markdown", "online_tools", "hybrid"}
+    assert all(int(row["cases"]) == 30 for row in acquisition.values())
+    assert float(acquisition["preflight_json"]["edge_f1"]) == 1
+    assert float(acquisition["hybrid"]["edge_f1"]) == 1
+    assert float(acquisition["online_tools"]["edge_f1"]) < 1
+
+    with (TASK_RESULTS / "task_metadata_robustness_summary.csv").open(encoding="utf-8") as handle:
+        metadata = {(row["corruption"], row["policy"]): row for row in csv.DictReader(handle)}
+    assert float(metadata[("stale_record_tags", "task_structural")]["required_record_recall"]) == 0
+    assert float(metadata[("stale_record_tags", "task_adaptive")]["required_record_recall"]) == 1

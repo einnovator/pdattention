@@ -138,21 +138,26 @@ def _scope_label(policy: TaskScopePolicy, *, lexical: bool = False) -> str:
     }[policy] + suffix
 
 
-def _load_model(device: str) -> PRAForCausalLM:
+def _load_model(
+    device: str,
+    *,
+    consumption_layers: tuple[int, ...] = (27,),
+    max_materialized_tokens: int = 256,
+) -> PRAForCausalLM:
     target = torch.device(device)
     dtype = torch.float16 if target.type == "cuda" else torch.float32
     pra = PRAForCausalLM.from_pretrained(
         MODEL_ID,
         pra_config=PRAConfig(
             routing_layer=27,
-            consumption_layers=(27,),
+            consumption_layers=consumption_layers,
             chunk_tokens=32,
             chunk_overlap_tokens=8,
             selected_fraction=None,
             top_k=8,
             max_direct_context=128,
             native_operation_limit=512,
-            max_materialized_tokens=256,
+            max_materialized_tokens=max_materialized_tokens,
             context_safety_reserve_tokens=4,
             encoding_block_tokens=128,
             reference_device="cpu",

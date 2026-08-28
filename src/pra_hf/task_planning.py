@@ -9,9 +9,42 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from enum import Enum
 from typing import Mapping, Sequence
 
 from .task_context import TaskEvent, TaskEventType, TaskGraph
+
+
+class TaskOperationKind(str, Enum):
+    """Harness-validated mutation proposed by a model-managed task tool."""
+
+    CREATE = "create"
+    UPDATE = "update"
+    LINK = "link"
+    ACTIVATE = "activate"
+    COMPLETE = "complete"
+    BLOCK = "block"
+    CANCEL = "cancel"
+
+
+@dataclass(frozen=True)
+class TaskOperation:
+    """Untrusted task mutation proposal awaiting harness validation."""
+
+    kind: TaskOperationKind | str
+    task_id: str
+    description: str = ""
+    depends_on: tuple[str, ...] = ()
+    constraints: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", TaskOperationKind(self.kind))
+        object.__setattr__(self, "depends_on", tuple(self.depends_on))
+        object.__setattr__(self, "constraints", tuple(self.constraints))
+        if not self.task_id:
+            raise ValueError("Task operations require a task_id.")
+        if self.kind == TaskOperationKind.CREATE and not self.description:
+            raise ValueError("Create operations require a task description.")
 
 
 @dataclass(frozen=True)
@@ -111,6 +144,104 @@ def parse_json_plan(value: str | Mapping[str, object]) -> tuple[PlannedTask, ...
     return validate_plan(tasks)
 
 
+def extract_json_payload(value: str) -> Mapping[str, object]:
+    """Extract one JSON object from plain or fenced model output."""
+
+    text = value.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            raise ValueError("Model output contains no JSON object.")
+        payload = json.loads(text[start:end + 1])
+    if not isinstance(payload, Mapping):
+        raise ValueError("Model output must contain a JSON object.")
+    return payload
+
+
+def parse_model_json_plan(value: str) -> tuple[PlannedTask, ...]:
+    """Parse a model response while tolerating one Markdown JSON fence."""
+
+    return parse_json_plan(extract_json_payload(value))
+
+
+def parse_task_operations(value: str | Mapping[str, object]) -> tuple[TaskOperation, ...]:
+    """Parse task-tool proposals without granting them mutation authority."""
+
+    payload = extract_json_payload(value) if isinstance(value, str) else dict(value)
+    rows = payload.get("operations")
+    if not isinstance(rows, list):
+        raise ValueError("Task-tool output requires an operations array.")
+    operations = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("Every task operation must be an object.")
+        operations.append(TaskOperation(
+            kind=str(row.get("action", row.get("kind", ""))).lower(),
+            task_id=str(row.get("task_id", "")).strip(),
+            description=str(row.get("description", "")).strip(),
+            depends_on=tuple(str(value) for value in row.get("depends_on", ())),
+            constraints=tuple(str(value) for value in row.get("constraints", ())),
+        ))
+    return tuple(operations)
+
+
+def apply_task_operations(
+    graph: TaskGraph,
+    operations: Sequence[TaskOperation],
+    *,
+    sequence_start: int = 0,
+) -> tuple[TaskEvent, ...]:
+    """Validate and commit model proposals through the authoritative task graph."""
+
+    events = []
+    for offset, operation in enumerate(operations, start=1):
+        event_type = {
+            TaskOperationKind.CREATE: TaskEventType.CREATE,
+            TaskOperationKind.UPDATE: TaskEventType.UPDATE,
+            TaskOperationKind.LINK: TaskEventType.LINK,
+            TaskOperationKind.ACTIVATE: TaskEventType.ACTIVATE,
+            TaskOperationKind.COMPLETE: TaskEventType.COMPLETE,
+            TaskOperationKind.BLOCK: TaskEventType.BLOCK,
+            TaskOperationKind.CANCEL: TaskEventType.CANCEL,
+        }[operation.kind]
+        payload: dict[str, object] = {}
+        if operation.kind == TaskOperationKind.CREATE:
+            payload = {
+                "description": operation.description,
+                "depends_on": operation.depends_on,
+                "constraints": operation.constraints,
+            }
+        elif operation.kind == TaskOperationKind.UPDATE:
+            payload = {
+                "description": operation.description,
+                "constraints": operation.constraints,
+            }
+        elif operation.kind == TaskOperationKind.LINK:
+            current = graph.tasks.get(operation.task_id)
+            if current is None:
+                raise ValueError(f"Cannot link unknown task {operation.task_id!r}.")
+            payload = {
+                "depends_on": tuple(dict.fromkeys((*current.depends_on, *operation.depends_on)))
+            }
+        event = TaskEvent(
+            f"model-task-tool:{sequence_start + offset}:{operation.kind.value}:{operation.task_id}",
+            sequence_start + offset,
+            event_type,
+            operation.task_id,
+            payload=payload,
+        )
+        graph.apply(event)
+        events.append(event)
+    return tuple(events)
+
+
 _TASK_HEADER = re.compile(r"^##\s+Task\s+([^\s]+)\s*$", re.I)
 
 
@@ -149,6 +280,37 @@ def parse_markdown_plan(value: str) -> tuple[PlannedTask, ...]:
     if current:
         rows.append(current)
     return validate_plan(PlannedTask(**row) for row in rows)
+
+
+_BULLET_TASK = re.compile(
+    r"^-\s*([^:]+):\s*(.*?)\s+(independently|after\s+(.+?))\.?\s*$",
+    re.I,
+)
+
+
+def parse_model_markdown_plan(value: str) -> tuple[PlannedTask, ...]:
+    """Parse the documented heading grammar or a bounded model bullet variant."""
+
+    start = value.lower().find("## task")
+    if start >= 0:
+        text = value[start:]
+        if "```" in text:
+            text = text.split("```", 1)[0]
+        return parse_markdown_plan(text)
+    tasks = []
+    for raw_line in value.splitlines():
+        match = _BULLET_TASK.match(raw_line.strip())
+        if not match:
+            continue
+        dependencies = ()
+        if match.group(3).lower() != "independently" and match.group(4):
+            dependencies = tuple(
+                row.strip() for row in match.group(4).split(",") if row.strip()
+            )
+        tasks.append(PlannedTask(match.group(1).strip(), match.group(2).strip(), dependencies))
+    if not tasks:
+        raise ValueError("Model output contains no recognized Markdown task rows.")
+    return validate_plan(tasks)
 
 
 def plan_events(tasks: Sequence[PlannedTask], *, sequence_start: int = 0) -> tuple[TaskEvent, ...]:
