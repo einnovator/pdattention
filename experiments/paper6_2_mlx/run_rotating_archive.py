@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 SEEDS = (11, 23, 37, 53, 71)
-KV_SIZES = (64, 128, 256)
+KV_SIZES = (64, 128, 256, 512)
 EXPECTED = "7391"
 
 
@@ -22,11 +22,15 @@ def _prompt(tokenizer, seed: int, *, selected_archive: bool) -> str:
     shift = seed % len(vocabulary)
     rotated = vocabulary[shift:] + vocabulary[:shift]
     distractors = " ".join(rotated * 70)
-    selected = f"\nSelected archive record:\n{source}\n" if selected_archive else ""
+    selected = (
+        f"\nSelected archive record for this question:\n{source}\n"
+        if selected_archive
+        else ""
+    )
     content = (
         f"{source}\n\n{distractors}{selected}\n"
         "Question: what is the authoritative archived verification code? "
-        "Return only its four digits."
+        "Return only its four digits.\nFour-digit answer:"
     )
     return tokenizer.apply_chat_template(
         [{"role": "user", "content": content}],
@@ -45,7 +49,7 @@ def _run(model, tokenizer, make_prompt_cache, make_sampler, seed, cache_size, se
             model,
             tokenizer,
             prompt,
-            max_tokens=16,
+            max_tokens=32,
             prompt_cache=cache,
             sampler=make_sampler(temp=0),
         )
