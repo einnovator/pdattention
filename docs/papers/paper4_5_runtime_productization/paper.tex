@@ -821,7 +821,9 @@ memory runtime, and E3 scheduler-aware batching. The local HF adapter is the E1
 semantic reference. The OpenAI-compatible HTTP adapter and standalone
 \texttt{pra gateway serve} process implement E0. SGLang and FreeToken expose
 compatible HTTP surfaces, so they are reachable at E0; neither has a PRA-native
-backend in this artifact~\cite{sglangDocs2026,freetokenDocs2026}. The portable
+backend in this Paper 4.5 artifact~\cite{sglangDocs2026,freetokenDocs2026}.
+Companion Papers 6--6.2 separately exercise vLLM-Metal, SGLang-MLX, and MLX-LM
+at E0; those black-box serving runs do not promote this runtime to E2. The portable
 HF adapter implements E1 native execution and streaming but remains stateless
 between gateway calls. The configurable remote E1 envelope carries incremental
 messages and resource operations when the selected engine advertises those
@@ -871,8 +873,9 @@ record type, and authorization scope.
 A versioned engine registry resolves OpenAI-generic, vLLM, SGLang, FreeToken,
 Ollama, Hugging Face, llama.cpp, MLX, and custom profiles. Unknown compatible
 servers safely remain E0, full-history, and cache-telemetry-unknown. vLLM and
-SGLang profiles represent automatic prefix-cache capability but do not claim
-that either engine was run. The local HF reference remains E1-native but
+SGLang profiles represent automatic prefix-cache capability but do not infer
+native PRA from engine availability or from the companion E0 smoke runs. The
+local HF reference remains E1-native but
 stateless across calls; the session/resource-delta row is exercised by a
 deterministic remote-engine contract fixture. Explicit configuration may
 override registry defaults; resolved capabilities, rather than labels, control
@@ -1265,9 +1268,12 @@ engine profiles and explicit text fallback\\
 DeepSeek/Pi agent bridges & contract tested & Typed event/RPC capture and explicit G10 fallback\\
 \texttt{torch.compile} & blocked on host & API implemented; compiler/GPU gates recorded\\
 Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
-vLLM thin & contract only & Scheduler-unaware identity and K/V handoff\\
-SGLang/FreeToken & E0 feasible, not run & Compatible HTTP; no native PRA backend\\
-TensorRT-LLM/MLX & architectural only & Not installed on measured host\\
+vLLM thin & contract only & Scheduler-unaware identity and K/V handoff; E0 engine
+smoke is reported separately in Paper 6\\
+SGLang/FreeToken & E0 contract & Compatible HTTP; SGLang E0 smoke is reported
+separately in Paper 6.1; no native PRA backend\\
+TensorRT-LLM/MLX & architectural only & MLX E0 and rotating-cache controls are
+reported separately in Paper 6.2; no Paper 4.5 engine claim\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1314,13 +1320,15 @@ open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
-The gateway profile is a deterministic transport experiment. It does not run a
-real vLLM, SGLang, FreeToken, Ollama, or distributed scheduler, and therefore
+The Paper 4.5 gateway profile is a deterministic transport experiment. It does
+not use a real serving engine or distributed scheduler, and therefore
 does not measure physical prefix-cache hits, worker affinity, warm-prefix TTFT,
 continuous batching, index residency, or network cost. The reported reuse
 fraction counts exact serialized messages, not tokenizer tokens. Engine
 profiles are conservative defaults and require runtime probing or explicit
-configuration before stronger capabilities may be advertised.
+configuration before stronger capabilities may be advertised. Companion E0
+engine studies do not change this profile's evidence tier and are intentionally
+kept outside Paper 4.5's HF-centered metric tables.
 
 The cross-model cohort contains only three one-token continuations per model.
 It is sufficient to expose exact disabled behavior, K/V topology, position,
@@ -1353,8 +1361,9 @@ hold selected-token budgets fixed, and compare answer quality, TTFT, inter-token
 latency, selection churn, and routing-layer disagreement. Phase/shared requires
 a cache-correct prefill handoff before it enters that comparison.
 
-The first deeper engine integration should remain outside Paper 4.5 and begin
-thin: external routing, selected
+Deeper engine integration remains outside Paper 4.5. Companion engine papers
+have now established reproducible E0 baselines; their next step remains thin:
+external routing, selected
 native-K/V materialization, then ordinary vLLM execution.  Disabled-PRA parity,
 native positions, masks, GQA, and batching must pass before speed comparisons.
 If useful behavior requires semantic residency, retrieval-aware scheduling, or
@@ -1388,7 +1397,8 @@ make persistent storage and request-time computation independently auditable;
 missing detail can never trigger a silent profile downgrade. The eager
 primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
-and optional engines remain negative or unmeasured gates.  The practical
+remains a negative gate, and companion E0 engine runs leave native E2/E3
+integration unmeasured.  The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.

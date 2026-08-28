@@ -82,7 +82,9 @@ Launch the reference gateway with `pra gateway serve`. HF-backed adapters expose
 OpenAI-compatible streaming; request-owned references remain active until decode
 or cancellation cleanup completes. G10 is an
 explicit text-materialization fallback; it is not native-K/V PRA. SGLang and
-FreeToken are E0 protocol targets only in this artifact. The gateway experiment
-measures exact logical-prefix stability and transport bytes with a simulated
+FreeToken are E0 protocol targets only in this artifact. Companion Papers 6--6.2
+measure vLLM-Metal, SGLang-MLX, and MLX-LM E0 baselines separately; those runs do
+not change Paper 4.5's HF-centered evidence tier. The gateway experiment measures
+exact logical-prefix stability and transport bytes with a simulated
 adapter. It does not report a physical engine cache hit, scheduler affinity,
 or remote-engine speedup.

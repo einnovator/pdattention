@@ -1,0 +1,229 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.82in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black,citecolor=blue!45!black}
+
+\title{PRA-MLX: Query-Addressed Memory beside Prompt and Rotating KV Caches}
+\author{Jorge Sim\~ao\\EInnovator R\&D}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Apple Silicon changes the physical cost model of long-context inference:
+weights, cache arrays, and host code share unified memory. It does not remove
+the logical question of which retained evidence should be active. We implement
+an MLX adapter boundary for Progressive Retrieval Attention (PRA), measure
+selected-text coexistence with the MLX-LM nearest-prefix cache, and test whether
+a rotating sequential cache can serve as a simpler archive. On an Apple M5
+with the 4-bit Qwen3-0.6B checkpoint, selected and full context recover a fixed
+answer in 5/5 server requests; selected context uses 365 rather than 1,577
+prompt tokens. Warm requests reuse 364 and 1,576 cached tokens, respectively,
+while the server prompt cache grows to 0.28 GB across five distinct sequences.
+In a separate five-seed Python-API experiment, full sequential KV recovers the
+answer in 5/5 cases with 112 MB of cache. Rotating KV at 64--512 tokens recovers
+0/5. Reintroducing the selected archive record reaches 2/5 only at 64 tokens
+and 0/5 at larger capacities. Thus prompt caching and selected context compose,
+but ordinary rotating KV plus late text is not a reliable substitute for
+native query-addressed memory in this control. Native PRA-MLX remains an open
+gate; the current result motivates rather than validates it.
+\end{abstract}
+
+\section{Introduction}
+MLX provides an efficient array framework and model runtime for Apple
+Silicon~\cite{hannun2023mlx}. MLX-LM adds explicit prompt caches, rotating K/V,
+optional cache quantization, batching, and an OpenAI-like server. These tools
+make sequential context reuse practical in unified memory. PRA addresses a
+different object:
+\[
+  \text{large retained memory}
+  \rightarrow \text{query-selected region}
+  \rightarrow \text{active native detail}.
+\]
+Unified memory may reduce copy overhead, but it does not make every retained
+token free to index, keep, or attend to.
+
+This paper studies three questions. First, can selected context coexist with
+MLX's exact prompt cache? Second, can a bounded rotating cache plus a selected
+archive record recover old evidence? Third, what software boundary is needed
+before an MLX adapter may claim native PRA K/V rather than selected visible
+text?
+
+\section{Cache Taxonomy}
+We keep three mechanisms distinct:
+\begin{description}[leftmargin=2.4cm,style=nextline]
+  \item[Prompt cache] exact reusable prompt-prefix K/V, retained by MLX-LM.
+  \item[Rotating cache] bounded recent sequential K/V, with old positions
+  evicted as the prompt advances.
+  \item[PRA memory] query-addressed non-prefix resources whose address state,
+  native detail, and active selection have separate lifecycles.
+\end{description}
+Prompt-cache bytes are physical retained state. PRA backing may be much larger
+than active detail. Rotating capacity bounds direct context but does not create
+an address for evicted evidence.
+
+\section{Implementation}
+The engine-neutral namespace in \path{src/pra_hf/engine_memory.py} identifies a
+block by tenant/session scope, resource/version, token interval, consumer
+layer, immutable model revision, dtype/layout, materialization profile, and
+position policy. Its residency state machine records indexed-only, off-device,
+prefetching, resident, pinned, evictable, and invalid states. In MLX, the tier
+name denotes array residency or backing policy within unified memory; we do not
+mislabel it as CUDA host-to-device transfer.
+
+\path{src/pra_mlx/adapter.py} exposes the HTTP server as E0. It advertises
+automatic prefix caching and text fallback, but no native K/V. An in-process
+\texttt{MLXNativeExecutor} is required before the adapter advertises E2,
+selected interval materialization, logical resource deltas, or explicit prompt
+cache handles. This executor does not yet exist in the measured branch.
+
+The design choice is important. Precomputing a prompt cache from selected text
+still makes that text a sequential prefix. A native executor must instead
+preserve the selected region's identity and positional policy while combining
+its K/V with local K/V under correct model attention.
+
+\section{Environment}
+The host was an Apple M5 MacBook Pro with 10 CPU and 10 GPU cores, 16 GB unified
+memory, Metal 4, and macOS 26.4.1. The environment used Python 3.12.7, MLX
+0.32.0, and mlx-lm 0.31.3. The model was
+\texttt{mlx-community/Qwen3-0.6B-4bit} at revision
+\texttt{73e3e38d981303bc594367cd910ea6eb48349da8}. The HTTP server retained up
+to 16 prompt-cache entries. It emits an explicit warning that its basic
+security checks are not production-grade; we treat it as an experimental
+deployment baseline.
+
+\section{Server Prompt-Cache Experiment}
+The shared fixed task contains a stable 309-token prefix, one authoritative
+codeword record, twelve distractor records, and a short query. Five conditions
+separate no memory, prefix only, selected memory only, prefix plus selected
+memory, and full context. Each is repeated five times. The server reports
+cached tokens in the streaming usage object, and SSE events determine TTFT.
+
+\begin{table}[t]
+\centering
+\small
+\caption{MLX-LM server smoke. TTFT is milliseconds; warm cached is the mean
+over repeats two through five.}
+\input{../shared/results/paper6_2_mlx/generated_serving_table.tex}
+\label{tab:mlx-server}
+\end{table}
+
+Table~\ref{tab:mlx-server} shows correct controls: selected and full conditions
+are 5/5, while conditions without evidence are 0/5. Prefix plus selected memory
+uses 365 tokens and full context uses 1,577, again a 76.9\% visible reduction.
+Warm selected requests reuse 364 tokens; warm full requests reuse 1,576. The
+server's nearest-prefix cache therefore composes cleanly with the selected-text
+baseline.
+
+Warm TTFT is nearly flat, 352.3 versus 351.8 ms, because exact prompt caches
+remove most repeated prefill work in both conditions. This is a useful negative
+latency result: after a perfect repeat cache hit, reducing visible input does
+not improve warm TTFT on this setup. Physical retention still differs. The log
+shows five distinct prompt-cache sequences occupying about 0.28 GB at the end
+of the matrix.
+
+\section{Rotating Cache and Selected Archive}
+The Python-API control uses five deterministic filler permutations. One
+authoritative four-digit fact appears near the beginning of a roughly
+thousand-token prompt. We compare full sequential K/V with rotating capacities
+64, 128, 256, and 512. For each rotating capacity, a second condition
+reintroduces the authoritative record immediately before the final question.
+The answer metric accepts harmless formatting but requires the correct digits.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Five-seed controlled rotating-cache experiment. Cache MB is the sum
+of layer-cache \texttt{nbytes}; latency is the mean completion time.}
+\input{../shared/results/paper6_2_mlx/generated_rotating_archive_table.tex}
+\label{tab:mlx-rotating}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.76\linewidth]{../shared/results/paper6_2_mlx/rotating_archive_frontier.png}
+\caption{A bounded rotating cache is not a reliable archive in this control.
+Selected late text recovers two of five cases only at the smallest capacity.}
+\label{fig:mlx-rotating}
+\end{figure}
+
+Full sequential K/V is 5/5 with 112 MB of cache. Rotating-only is 0/5 at every
+capacity while reducing layer-cache storage from 112 MB to 7, 14, 28, and
+56 MB. Selected archive text reaches 2/5 at 64 and 0/5 at larger capacities.
+Mean completion latency is 469 ms for full K/V and approximately 705--736 ms
+for bounded conditions. The generated outputs show chat-format and answer-path
+instability, not merely loss of the early fact.
+
+This non-monotonic result should not be read as evidence that smaller cache is
+better. It indicates that the direct rotating-cache intervention changes more
+than evidence availability for this model and prompt. The selected-text
+fallback does not restore stable computation. A native PRA executor would need
+to retain local sequential semantics while adding selected memory separately;
+that is precisely the mechanism not measured here.
+
+Peak process memory remains about 1.01--1.07 GB across these conditions despite
+the 7--112 MB cache range. Model and runtime allocations dominate on this small
+checkpoint, so layer-cache bytes are the interpretable economy metric. Larger
+models and memory pressure are required before process-level savings claims.
+
+\section{Promotion Gates}
+\begin{center}
+\begin{tabularx}{0.96\linewidth}{l l Y}
+\toprule
+Gate & Status & Evidence \\
+\midrule
+environment & closed & MLX Metal generation and server repeat reliably \\
+prompt-cache coexistence & smoke closed & 364/365 selected tokens reused warm \\
+rotating-cache control & controlled closed & five seeds, four capacities \\
+native semantic parity & open & no selected non-prefix K/V executor \\
+lazy native region & open & selected text only \\
+quantized PRA detail & open & model weights are 4-bit; PRA K/V unmeasured \\
+concurrency/pressure & open & one request at a time, one small model \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Falsification and Limitations}
+Native PRA-MLX is unnecessary if selected visible text plus ordinary MLX
+caching matches its quality, memory, and latency on realistic long-memory
+workloads. The server smoke makes that baseline competitive. Conversely, the
+rotating control shows that bounded sequential KV is not automatically a PRA
+archive.
+
+The study uses one 4-bit model, one machine, a synthetic server task, and a
+controlled five-seed rotating fixture. The server experiment has only five
+repeats per condition, so p95/p99 are not reported. No native Q/K index,
+selected K/V, detail-layer profile, K/V quantization, persisted PRA cache,
+concurrency, or memory-pressure failure is measured. The rotating intervention
+also changes effective local context and can perturb chat-template semantics.
+
+\section{Related Work}
+MLX targets efficient and flexible machine learning on Apple
+Silicon~\cite{hannun2023mlx}. Prompt caching and rotating K/V optimize
+sequential state; cache quantization reduces its physical size. Retrieval and
+context compression reduce visible input. PRA instead assigns stable identity
+to retained non-prefix memory and separates cheap addressing from active native
+detail. The mechanisms can be combined, but none is a semantic substitute for
+the others.
+
+\section{Conclusion}
+MLX prompt caching and selected context compose cleanly: the fixed answer is
+preserved with 76.9\% fewer visible tokens, and repeated selected prompts reuse
+364 of 365 tokens. Rotating K/V provides large layer-cache savings but fails as
+an archive in the five-seed control; late selected text does not reliably
+repair it. These results define a useful next step: implement an in-process
+native executor that keeps local sequential K/V intact and attaches selected
+non-prefix K/V under explicit positions and layer profiles. Until that gate is
+passed, PRA-MLX is a measured gateway/control-plane integration with a clear
+native hypothesis, not a completed native runtime.
+
+\begin{thebibliography}{9}
+\bibitem{hannun2023mlx}
+A. Hannun et al.
+\newblock MLX: Efficient and Flexible Machine Learning on Apple Silicon.
+\newblock 2023.
+\end{thebibliography}
+
+\end{document}

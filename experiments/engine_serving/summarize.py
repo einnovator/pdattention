@@ -124,12 +124,45 @@ def build_registry() -> dict:
     vllm_rates = _vllm_global_hit_rates(
         ENGINE_DIRS["vllm"] / "engine_log_extract.txt"
     )
+    rotating = _load(ENGINE_DIRS["mlx"] / "rotating_archive.json")
+    rotating_summary = []
+    keys = [("full_sequential_kv", None)] + [
+        (condition, size)
+        for condition in ("rotating_only", "rotating_plus_selected_archive")
+        for size in rotating["kv_sizes"]
+    ]
+    for condition, cache_size in keys:
+        values = [
+            row for row in rotating["rows"]
+            if row["condition"] == condition and row["cache_size"] == cache_size
+        ]
+        rotating_summary.append({
+            "condition": condition,
+            "cache_size": cache_size,
+            "sample_count": len(values),
+            "quality_absolute": fmean(float(row["exact_recovery"]) for row in values),
+            "cache_bytes_mean": fmean(row["cache_bytes"] for row in values),
+            "completion_latency_ms_mean": fmean(
+                row["completion_latency_ms"] for row in values
+            ),
+            "prompt_tokens_per_second_mean": fmean(
+                row["prompt_tokens_per_second"] for row in values
+            ),
+            "peak_memory_gb_mean": fmean(row["peak_memory_gb"] for row in values),
+        })
     return {
         "schema_version": "1.0",
         "registry_version": "2026-08-paper6-engine-smoke-v1",
         "description": "Cross-engine E0/G10 prefix and selected-text smoke; no row claims native PRA K/V.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
+        "mlx_rotating_archive": {
+            "experiment": rotating["experiment"],
+            "evidence_tier": rotating["evidence_tier"],
+            "seeds": rotating["seeds"],
+            "native_pra_status": rotating["native_pra_status"],
+            "summary": rotating_summary,
+        },
         "rows": rows,
     }
 
@@ -159,6 +192,30 @@ def write_table(registry: dict) -> None:
     (RESULTS / "generated_engine_smoke_table.tex").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     )
+    for engine, directory in ENGINE_DIRS.items():
+        rows = [row for row in registry["rows"] if row["engine"] == engine]
+        local = [
+            r"\begin{tabular}{lrrrrr}",
+            r"\toprule",
+            r"Condition & Exact & Prompt & Cold TTFT & Warm TTFT & Warm cached \\",
+            r"\midrule",
+        ]
+        for row in rows:
+            cached = (
+                "n/a"
+                if row["warm_cached_tokens_mean"] is None
+                else f"{row['warm_cached_tokens_mean']:.0f}"
+            )
+            local.append(
+                f"{_tex_escape(CONDITION_LABELS[row['condition']])} & "
+                f"{100 * row['quality_absolute']:.0f}\\% & "
+                f"{row['visible_initial_tokens']:.0f} & {row['cold_ttft_ms']:.1f} & "
+                f"{row['warm_ttft_ms_mean']:.1f} & {cached} \\\\"
+            )
+        local.extend([r"\bottomrule", r"\end{tabular}"])
+        (directory / "generated_serving_table.tex").write_text(
+            "\n".join(local) + "\n", encoding="utf-8"
+        )
 
 
 def write_plots(registry: dict) -> None:
@@ -200,6 +257,79 @@ def write_plots(registry: dict) -> None:
     fig.savefig(RESULTS / "engine_smoke_frontier.pdf")
     plt.close(fig)
 
+    rotating = registry["mlx_rotating_archive"]["summary"]
+    full = next(row for row in rotating if row["condition"] == "full_sequential_kv")
+    sizes = sorted(
+        row["cache_size"] for row in rotating if row["cache_size"] is not None
+    )
+    sizes = sorted(set(sizes))
+    only = {
+        row["cache_size"]: row
+        for row in rotating if row["condition"] == "rotating_only"
+    }
+    selected = {
+        row["cache_size"]: row
+        for row in rotating if row["condition"] == "rotating_plus_selected_archive"
+    }
+    fig, axis = plt.subplots(figsize=(6.2, 3.7))
+    axis.plot(
+        sizes,
+        [only[size]["quality_absolute"] for size in sizes],
+        marker="o",
+        label="Rotating only",
+        color="#6b7280",
+    )
+    axis.plot(
+        sizes,
+        [selected[size]["quality_absolute"] for size in sizes],
+        marker="s",
+        label="Rotating + selected archive",
+        color="#2f6f9f",
+    )
+    axis.axhline(
+        full["quality_absolute"], color="#2f855a", linestyle="--", label="Full sequential K/V"
+    )
+    axis.set_xscale("log", base=2)
+    axis.set_xticks(sizes, [str(size) for size in sizes])
+    axis.set_ylim(-0.03, 1.05)
+    axis.set_xlabel("Rotating K/V capacity (tokens)")
+    axis.set_ylabel("Exact recovery")
+    axis.set_title("MLX rotating-cache archive control (5 seeds)")
+    axis.spines[["top", "right"]].set_visible(False)
+    axis.grid(alpha=0.2)
+    axis.legend(frameon=False, loc="center right")
+    fig.tight_layout()
+    output = ENGINE_DIRS["mlx"] / "rotating_archive_frontier"
+    fig.savefig(output.with_suffix(".png"), dpi=180)
+    fig.savefig(output.with_suffix(".pdf"))
+    plt.close(fig)
+
+
+def write_mlx_rotating_table(registry: dict) -> None:
+    rows = registry["mlx_rotating_archive"]["summary"]
+    lines = [
+        r"\begin{tabular}{lrrrr}",
+        r"\toprule",
+        r"Condition & K/V tokens & Exact & Cache MB & Latency ms \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        label = {
+            "full_sequential_kv": "Full sequential K/V",
+            "rotating_only": "Rotating only",
+            "rotating_plus_selected_archive": "Rotating + selected archive",
+        }[row["condition"]]
+        size = "full" if row["cache_size"] is None else str(row["cache_size"])
+        lines.append(
+            f"{label} & {size} & {100 * row['quality_absolute']:.0f}\\% & "
+            f"{row['cache_bytes_mean'] / 1048576:.1f} & "
+            f"{row['completion_latency_ms_mean']:.1f} \\\\"
+        )
+    lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_rotating_archive_table.tex").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
 
 def main() -> None:
     registry = build_registry()
@@ -208,8 +338,8 @@ def main() -> None:
     )
     write_table(registry)
     write_plots(registry)
+    write_mlx_rotating_table(registry)
 
 
 if __name__ == "__main__":
     main()
-

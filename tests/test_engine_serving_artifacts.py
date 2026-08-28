@@ -16,6 +16,10 @@ def test_engine_smoke_registry_is_complete_and_does_not_claim_native_pra() -> No
     assert {row["engine"] for row in registry["rows"]} == {"vllm", "sglang", "mlx"}
     assert all(row["evidence_tier"] == "SMOKE" for row in registry["rows"])
     assert all(row["native_pra_status"] == "NOT_MEASURED" for row in registry["rows"])
+    rotating = registry["mlx_rotating_archive"]
+    assert rotating["evidence_tier"] == "CONTROLLED"
+    assert rotating["seeds"] == [11, 23, 37, 53, 71]
+    assert rotating["native_pra_status"] == "NOT_MEASURED"
 
 
 def test_selected_text_recovers_codeword_with_fewer_tokens_than_full_context() -> None:
@@ -32,4 +36,3 @@ def test_generated_registry_matches_builder_after_summary_run() -> None:
         (ROOT / "docs" / "papers" / "shared" / "results" / "pra_engine_benchmarks.json").read_text()
     )
     assert generated == build_registry()
-

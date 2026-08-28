@@ -1,0 +1,261 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.82in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black,citecolor=blue!45!black}
+
+\title{PRA-vLLM: Separating Query-Addressed Logical Memory from Paged KV Placement}
+\author{Jorge Sim\~ao\\EInnovator R\&D}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+vLLM virtualizes where sequential key--value (KV) blocks reside. Progressive
+Retrieval Attention (PRA) virtualizes a different choice: which subset of a
+logically large, non-prefix memory is active for a query. We define a
+capability-honest integration boundary between these mappings, implement a
+stable logical PRA block namespace and residency state machine, and add a vLLM
+V1 adapter that remains an E0 facade unless an installed executor actually
+consumes selected native K/V. On an Apple M5 with vLLM 0.28.0 and the
+vLLM-Metal plugin, a 25-request smoke study separates exact-prefix reuse from
+selected-memory recovery. A selected 365-token prompt and the 1,577-token full
+context both recover the codeword in 5/5 requests; the selected condition uses
+76.9\% fewer visible tokens and reduces cold time to first token (TTFT) from
+776.6 to 80.7 ms. Warm TTFT is 46.2 versus 52.9 ms, while vLLM reports an
+aggregate prefix-cache hit rate of 75.3--83.4\%. These measurements establish a
+strong black-box baseline, not native PRA-vLLM. The installed Metal path does
+not yet consume non-prefix selected K/V through a verified connector or
+attention interface. The paper therefore closes the environment and
+prefix-coexistence gates while leaving the engine-native value claim open.
+\end{abstract}
+
+\section{Introduction}
+Long-running LLM services face two related but distinct memory problems.
+Sequential request KV must be allocated, paged, reused, and evicted. Separately,
+a retained corpus or session history need not participate in every query. The
+first problem is physical. The second is logical.
+
+PagedAttention and vLLM address the physical problem by decoupling logical
+sequence positions from non-contiguous cache blocks and scheduling requests
+over the resulting pool~\cite{kwon2023vllm}. PRA addresses the logical problem
+by separating address state from detail state and activating only selected
+non-prefix memory. The combined mapping is
+\[
+  \text{logical PRA memory}
+  \rightarrow \text{query-selected logical blocks}
+  \rightarrow \text{physical engine blocks}.
+\]
+The middle arrow cannot be inferred from ordinary prefix equality. Two requests
+may share the same resource but select different intervals; two physical cache
+slots may hold the same immutable detail while using request-local position
+metadata.
+
+This paper asks whether exposing that middle mapping to vLLM improves the
+quality-adjusted memory, latency, and throughput frontier beyond an optimized
+route-then-materialize baseline. The current iteration makes three
+contributions:
+\begin{enumerate}[leftmargin=*]
+  \item a stable block identity and validated residency lifecycle independent
+  of vLLM's physical block numbers;
+  \item a vLLM adapter whose advertised PRA level is derived from an installed
+  native executor, with tenant-scoped prefix-cache salt support at E0;
+  \item a pinned Apple-Silicon smoke study that quantifies selected-text and
+  full-context behavior while explicitly recording the unmeasured native path.
+\end{enumerate}
+
+\section{Two Independent Reuse Systems}
+Automatic Prefix Caching (APC) reuses an exact token prefix. PRA selects a
+non-prefix logical resource or interval. These mechanisms can coexist:
+\[
+  \underbrace{\text{stable conversation prefix}}_{\text{APC}}
+  +
+  \underbrace{\text{query-selected retained memory}}_{\text{PRA}}.
+\]
+The security scopes are also independent. Prefix cache presence does not grant
+resource authorization, and a PRA block selected for one tenant cannot be
+reused by another merely because its physical bytes remain resident.
+
+Our E0/G10 baseline performs selection before the engine, injects the selected
+text into the current turn, and lets ordinary vLLM execute the request. This is
+the baseline a deeper integration must beat. Paged KV being active inside vLLM
+does not by itself make this path native PRA.
+
+\section{Logical PRA Block Contract}
+The implementation in \path{src/pra_hf/engine_memory.py} defines identity with
+the following fields:
+\begin{center}
+\begin{tabularx}{0.96\linewidth}{lY}
+\toprule
+Field group & Meaning \\
+\midrule
+scope & tenant, optional session, and authorization scope \\
+resource & resource identifier, immutable version, and record type \\
+interval & half-open source-token interval $[i,j)$ \\
+model & immutable model revision, consumer layer, dtype, and K/V layout \\
+policy & materialization profile and source-position/rebinding policy \\
+\bottomrule
+\end{tabularx}
+\end{center}
+The canonical JSON representation is hashed to produce an engine-safe logical
+key. Physical vLLM block numbers are deliberately absent. A resource update
+invalidates every matching physical realization without changing the identity
+of unrelated versions.
+
+The state machine is
+\[
+\begin{split}
+\textsc{IndexedOnly} &\rightarrow \textsc{OffDevice}
+  \rightarrow \textsc{Prefetching} \rightarrow \textsc{Resident},\\
+\textsc{Resident} &\leftrightarrow \textsc{Pinned},\qquad
+\textsc{Resident} \rightarrow \textsc{Evictable} \rightarrow \textsc{OffDevice},
+\end{split}
+\]
+with an explicit terminal \textsc{Invalid} state. A transition to resident or
+pinned is rejected unless the engine bridge supplies at least one physical
+handle. Selection checks tenant and authorization scope before incrementing
+reuse counters. Snapshots report address bytes, logical detail bytes, resident
+detail bytes, indexed-only detail bytes, selections, and reuses separately.
+
+\section{Capability-Honest vLLM Adapter}
+The adapter in \path{src/pra_vllm/adapter.py} has two forms. Without a native
+executor it is an E0 OpenAI-compatible facade. It advertises APC and text
+fallback, but \emph{not} logical references or native K/V. A deployment secret
+and tenant identifier derive a SHA-256 \texttt{cache\_salt}; neither value is
+placed directly in the request.
+
+With a native executor, the adapter becomes E2 and delegates generation,
+streaming, session close, and block-store access to that executor. This
+dependency-injection boundary is intentional. Metadata registration alone
+cannot promote the capability matrix. An executor must map selected identities
+to physical blocks and preserve K/V layout, GQA/MQA, masks, positions, consumer
+layers, request lifetime, and one correct attention normalization.
+
+\section{Environment and Method}
+The remote host was an Apple M5 MacBook Pro with 16 GB unified memory, macOS
+26.4.1, and Metal 4. The environment used Python 3.12.7, vLLM
+0.28.0+cpu, and vLLM-Metal
+0.3.0.dev20260828085745 at revision
+\texttt{14705ad974863f68d00315655514f200366441bf}. Although the package version
+contains \texttt{+cpu}, startup logs show the Metal plugin, MLX model loader,
+and native M5 paged-attention kernels. We therefore report both package and
+backend provenance.
+
+The model was \texttt{mlx-community/Qwen3-0.6B-4bit} at revision
+\texttt{73e3e38d981303bc594367cd910ea6eb48349da8}. The server used a 2,048-token
+maximum context, one sequence, 20\% memory reservation, and explicit APC. It
+allocated 1,589.1 MB for 866 KV blocks of 16 tokens, or 13,856 tokens.
+
+The fixed synthetic task contains one authoritative codeword and twelve
+distractor records. Five conditions separate no memory, a stable prefix,
+selected evidence, stable prefix plus selected evidence, and full context.
+Each condition is repeated five times contiguously. The first request is
+reported as cold within the running server; the remaining four form the warm
+mean. Streaming Server-Sent Events determine TTFT. Twenty-five requests are
+enough for compatibility and mechanism smoke evidence, not tail percentiles or
+serving claims.
+
+\section{Results}
+\begin{table}[t]
+\centering
+\small
+\caption{vLLM-Metal smoke results. TTFT is milliseconds. ``Warm cached'' is
+not available per request in the SSE usage payload.}
+\input{../shared/results/paper6_vllm/generated_serving_table.tex}
+\label{tab:vllm-smoke}
+\end{table}
+
+Table~\ref{tab:vllm-smoke} first validates the control. Neither no-memory
+condition recovers the codeword, whereas selected and full context recover it
+in every request. Prefix plus selected memory uses 365 prompt tokens versus
+1,577 for full context, a reduction of
+\[
+  1 - \frac{365}{1577} = 76.9\%.
+\]
+Cold TTFT is 80.7 ms for prefix plus selected memory and 776.6 ms for full
+context. This large difference includes first-touch effects and should not be
+treated as a steady-state speedup. Warm TTFT narrows to 46.2 versus 52.9 ms.
+The engine log reports aggregate APC hit rates of 75.3\% and 83.4\% during the
+run, demonstrating that selected context did not disable prefix caching.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/engine_smoke_frontier.png}
+\caption{Shared prompt-size and warm-TTFT calibration. Timings across engines
+are not direct speed rankings: SGLang used an unquantized MLX conversion,
+whereas vLLM and MLX-LM used the 4-bit checkpoint.}
+\label{fig:shared-smoke}
+\end{figure}
+
+Figure~\ref{fig:shared-smoke} shows the stable prompt-size reduction across
+all three tokenizers and the engine-specific latency scale. The comparable
+result is within-engine selected versus full context, not the absolute height
+of different-engine bars.
+
+\section{Promotion Gates}
+\begin{center}
+\begin{tabularx}{0.96\linewidth}{l l Y}
+\toprule
+Gate & Status & Evidence \\
+\midrule
+environment & closed & vLLM V1 with native Metal paged attention runs reproducibly \\
+black-box semantics & smoke closed & selected and full context agree on the fixed task \\
+prefix coexistence & smoke closed & APC remains active; repeated prompts are fast \\
+native materialization & open & no verified non-prefix selected-K/V consumer \\
+engine-native value & open & residency, prefetch, sharing, and block attention unmeasured \\
+robustness & open & one model, one synthetic workload, concurrency one \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The installed vLLM tree includes V1 KV connector and offload abstractions, but
+the observed Metal backend has not been shown to accept PRA-selected non-prefix
+KV while preserving source positions and attention semantics. LMCache,
+retrieval-aware eviction, asynchronous prefetch, cross-request sharing, and
+scheduler grouping therefore remain proposed experiments, not implemented
+results.
+
+\section{Falsification and Limitations}
+The central thesis fails if an optimized E0/G10 integration matches an
+engine-aware implementation at equal quality across memory pressure,
+concurrency, and reuse. The present data make that falsifier stronger: the
+black-box baseline already preserves quality, uses 76.9\% fewer visible prompt
+tokens than full context, and coexists with APC. A native implementation must
+improve resident memory, transfer, TTFT, or throughput beyond this baseline.
+
+The current study uses a single small 4-bit model, one Apple host, one synthetic
+answer, and five repeats. The cold requests are order-sensitive, per-request
+vLLM cached-token counts are unavailable, active PRA K/V is not measured, and
+no concurrency or HBM-pressure sweep was run. Apple unified memory also differs
+from the CUDA/LMCache environment for which many connector mechanisms were
+designed.
+
+\section{Related Work}
+vLLM introduced PagedAttention and continuous batching to reduce KV
+fragmentation and improve serving throughput~\cite{kwon2023vllm}. Prefix
+caching reuses exact token histories; KV connectors and offload systems extend
+physical residency. Retrieval-augmented generation and sparse attention reduce
+the logical context presented to a model, but selected text is not equivalent
+to native non-prefix K/V. PRA combines explicit logical identity, retrieval,
+and native detail activation. The contribution here is the boundary between
+that logical mapping and vLLM's physical mapping.
+
+\section{Conclusion}
+The first Paper 6 iteration establishes a reproducible vLLM-Metal baseline and
+a control plane that cannot accidentally overclaim native execution. Selected
+text recovers the fixed answer with 76.9\% fewer visible tokens than full
+context and preserves APC. That success raises, rather than lowers, the bar for
+deep integration. The next decisive experiment is a verified selected-K/V
+connector or attention path, followed by matched-quality residency, transfer,
+and concurrency sweeps. Until then, PRA-vLLM is an implemented logical contract
+and a strong black-box baseline, not an engine-native serving result.
+
+\begin{thebibliography}{9}
+\bibitem{kwon2023vllm}
+W. Kwon et al.
+\newblock Efficient Memory Management for Large Language Model Serving with PagedAttention.
+\newblock In \emph{Proceedings of SOSP}, 2023.
+\end{thebibliography}
+
+\end{document}
