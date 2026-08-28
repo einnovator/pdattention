@@ -32,7 +32,26 @@ def test_packaged_registry_matches_canonical_evidence() -> None:
     assert len(registry.rows) == 12
     assert {
         row["profile"] for row in registry.find("Qwen/Qwen3-0.6B")
-    } == {"REFERENCE_CORRECTNESS", "QUALITY_MAX", "BALANCED", "ECONOMY"}
+    } == {
+        "REFERENCE_CORRECTNESS",
+        "QUALITY_MAX_CANDIDATE",
+        "BALANCED",
+        "ECONOMY",
+    }
+    candidate = registry.resolve(
+        "Qwen/Qwen3-0.6B",
+        workload="semantic_smoke",
+        profile="QUALITY_MAX_CANDIDATE",
+    ).row
+    assert candidate["evidence_tier"] == "SMOKE"
+    assert candidate["profile_status"] == "CALIBRATION_PENDING"
+    assert candidate["measurement_status"] == "MEASURED"
+    with pytest.raises(KeyError):
+        registry.resolve(
+            "Qwen/Qwen3-0.6B",
+            workload="semantic_smoke",
+            profile="QUALITY_MAX",
+        )
 
 
 def test_registry_recomputes_normalized_metrics_and_rejects_stale_values() -> None:
@@ -74,7 +93,25 @@ def test_product_profile_alias_preserves_explicit_layer_overrides() -> None:
     trace = config.product_profile_trace()
     assert trace["profile_requested"] == "ECONOMY"
     assert trace["profile_resolved"] == "ECONOMY"
-    assert trace["registry_version"] == "2026-08-product-profile-v1"
+    assert trace["registry_version"] == "2026-08-product-profile-v2"
+
+
+def test_quality_max_candidate_maps_to_internal_objective_but_production_label_is_reserved() -> None:
+    candidate = PRAConfig(
+        profile="quality_max_candidate",
+        workload="semantic_smoke",
+        model_id="Qwen/Qwen3-0.6B",
+    )
+    production = PRAConfig(
+        profile="quality_max",
+        workload="semantic_smoke",
+        model_id="Qwen/Qwen3-0.6B",
+    )
+
+    assert candidate.layer_profile_objective == "quality_max"
+    assert candidate.product_profile_trace()["profile_status"] == "CALIBRATION_PENDING"
+    assert production.product_profile_trace()["profile_status"] == "CALIBRATION_PENDING"
+    assert production.product_profile_trace()["profile_resolved"] == "QUALITY_MAX"
 
 
 def test_runtime_convenience_aliases_round_trip() -> None:
@@ -101,3 +138,9 @@ def test_profiles_show_cli_reports_null_runtime_metrics_honestly() -> None:
     assert len(payload["profiles"]) == 4
     assert payload["profiles"][0]["runtime"]["ttft_ms"] == "NOT_MEASURED"
     assert payload["profiles"][0]["evidence_tier"] == "SMOKE"
+    candidate = next(
+        row
+        for row in payload["profiles"]
+        if row["profile"] == "QUALITY_MAX_CANDIDATE"
+    )
+    assert candidate["profile_status"] == "CALIBRATION_PENDING"

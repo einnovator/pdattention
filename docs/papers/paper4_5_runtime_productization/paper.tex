@@ -4,6 +4,10 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{xcolor}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\QualityMaxCandidate}{\texttt{QUALITY\_\allowbreak MAX\_\allowbreak CANDIDATE}}
+\newcommand{\QualityMax}{\texttt{QUALITY\_\allowbreak MAX}}
+\newcommand{\ReferenceCorrectness}{\texttt{REFERENCE\_\allowbreak CORRECTNESS}}
+\newcommand{\CalibrationPending}{\texttt{CALIBRATION\_\allowbreak PENDING}}
 \graphicspath{{../shared/results/paper4_5_runtime/}}
 \input{../shared/results/paper4_5_runtime/generated_runtime_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_agent_plugin_results.tex}
@@ -246,7 +250,10 @@ all-eligible correctness reference. The named objectives are
 \texttt{reference\_correctness}, \texttt{quality\_max}, \texttt{balanced}, and
 \texttt{economy}; the resolved trace records model ID and revision, workload,
 materialization class, physical layer lists, profile source, and registry
-version. A profile name is not portable evidence by itself.
+version. These are internal optimization objectives. The product registry
+labels smoke-only realizations of \texttt{quality\_max} as
+\QualityMaxCandidate. A profile name is not portable evidence by
+itself.
 
 Address and detail construction have independent lifecycle states
 (\texttt{NOT\_BUILT}, \texttt{PARTIAL}, \texttt{BUILT}, \texttt{SKIPPED}, or
@@ -627,8 +634,10 @@ out a universal ``last eight'' product default.}
 All-layer Qwen and Llama replay are the only tested profiles with maximum
 full-logit error below .1. Qwen last-24 has the best mean target log probability
 on these three cases, but its maximum full-logit deviation is 7.14; it is
-therefore registered as \texttt{quality\_max} research evidence, not as the
-balanced product default. Llama requires all 16 layers for the same fidelity
+therefore registered under the internal \texttt{quality\_max} objective but
+published as \QualityMaxCandidate, not as a production-grade
+\QualityMax{} profile or the balanced product default. Llama requires
+all 16 layers for the same fidelity
 criterion. Gemma requires all four eligible global layers to preserve the
 tested target tokens, yet still cannot reproduce the hidden computation of its
 22 unchanged local layers. Thus \texttt{balanced} and
@@ -648,13 +657,15 @@ later request asks for missing detail.
 \subsection{Product profile and benchmark matrix}
 
 The calibrated layer candidates become useful to an SDK only after their
-semantics and evidence are inspectable. We expose four stable objectives:
-\texttt{REFERENCE\_CORRECTNESS}, \texttt{QUALITY\_MAX}, \texttt{BALANCED}, and
-\texttt{ECONOMY}. A semantic row is keyed by model ID, immutable revision,
-workload, and profile. Engine, engine version, hardware, and dtype identify a
-physical realization of that row; they do not redefine the profile. This
-separation prevents one GPU measurement from becoming an implied portable
-latency property.
+semantics and evidence are inspectable. The current registry publishes four
+profiles: \ReferenceCorrectness,
+\QualityMaxCandidate, \texttt{BALANCED}, and \texttt{ECONOMY}.
+The accepted \QualityMax{} name is deliberately reserved and has no
+evidence row until workload-scale validation supports it. A semantic row is
+keyed by model ID, immutable revision, workload, and profile. Engine, engine
+version, hardware, and dtype identify a physical realization of that row; they
+do not redefine the profile. This separation prevents one GPU measurement
+from becoming an implied portable latency property.
 
 Table~\ref{tab:product-profile-matrix} is generated directly from the packaged
 JSON registry. Quality is mean target-token probability over the same three
@@ -662,32 +673,41 @@ fixed continuation cases used above. Retention and delta are recomputed against
 the model's reference-correctness row. Materialized tokens count selected source
 tokens, whereas active K/V counts those tokens across consuming layers. Detail
 savings measure persistent native K/V, so they remain distinct from active
-attention savings.
+attention savings. The compact manuscript table shows active K/V; materialized
+tokens, detail storage, and the complete physical realization remain in the
+generated registry and technical table.
 
 \begin{table}[H]
 \centering
 \caption{Model-specific product profiles. This is \textsc{Smoke} evidence over
-three fixed cases, not workload-scale quality. Gemma rows remain partial-topology.}
+three fixed cases, not workload-scale quality. Quality-max candidates are
+explicitly \textsc{Calibration Pending}; Gemma rows also remain
+partial-topology at the mechanism level.}
 \label{tab:product-profile-matrix}
 \scriptsize
+\setlength{\tabcolsep}{4pt}
 \input{../shared/results/paper4_5_runtime/generated_profile_matrix.tex}
 \normalsize
 \end{table}
 
 Qwen's last-24 candidate has 109.8\% mean-probability retention while reducing
 active and detail K/V by 14.3\%; this narrow positive result motivates its
-quality-max label but does not establish general superiority. Qwen economy
-retains 79.9\% on the smoke cases with 96.4\% K/V savings. The corresponding
+quality-max-candidate label but does not establish general superiority or a
+production \QualityMax{} profile. Its registry row pairs
+\path{evidence_tier=SMOKE} with
+\path{profile_status=CALIBRATION_PENDING}. Qwen economy retains 79.9\% on
+the smoke cases with 96.4\% K/V savings. The corresponding
 economy points are poor for Llama (38.8\% retention) and unusable for Gemma
 (0.1\%), which is precisely why the SDK does not ship one universal sparse
 layer rule. Balanced remains all eligible layers for this registry version.
 
 The semantic label resolves to inspectable mechanism settings. Explicit request
 fields are applied afterward and therefore take precedence over profile
-defaults. The runtime trace records \texttt{profile\_requested},
-the resolved profile, its source, and the registry version; an uncalibrated
-model/workload pair returns
-\texttt{CALIBRATION\_PENDING} rather than borrowing evidence.
+defaults. The runtime trace records \path{profile_requested},
+the resolved profile, its source, registry version, evidence tier, measurement
+status, and separate product-readiness \path{profile_status}. A request for
+the reserved \QualityMax{} label or an uncalibrated model/workload pair
+returns \CalibrationPending{} rather than borrowing candidate evidence.
 
 \begin{table}[H]
 \centering
@@ -1313,7 +1333,9 @@ The layer calibration reuses that diagnostic cohort. Its 102 rows vary
 profiles, not independent examples, so they identify gross transport drift and
 set conservative SDK defaults but cannot estimate downstream answer quality.
 Qwen last-24's target-token gain is especially vulnerable to this small-cohort
-selection effect. Paper 3 owns retrospective placement evidence on MuSiQue and
+selection effect. It is consequently exposed only as
+\QualityMaxCandidate{} with pending calibration, not as
+\QualityMax. Paper 3 owns retrospective placement evidence on MuSiQue and
 2Wiki; a future calibration should add held-out QASPER, HotpotQA, typed-result,
 and long-generation workloads before any sparse profile becomes a default.
 

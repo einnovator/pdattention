@@ -1377,9 +1377,11 @@ scoped_cache.put(tenant_b, "B", nbytes=8)
 
 Product profiles are semantic objectives, not opaque bundles of hardware claims. The registry key
 is model revision plus workload plus profile; physical engine, device, and dtype are additional
-realizations. `REFERENCE_CORRECTNESS`, `QUALITY_MAX`, `BALANCED`, and `ECONOMY` expose the measured
-quality/cost tradeoff. Unmeasured serving fields remain `NOT_MEASURED`, and a workload with no
-calibration row returns `CALIBRATION_PENDING`.
+realizations. `REFERENCE_CORRECTNESS`, `QUALITY_MAX_CANDIDATE`, `BALANCED`, and `ECONOMY` expose
+the measured quality/cost tradeoff. The candidate label is deliberate: its three-case evidence tier
+is `SMOKE` and its product readiness is `CALIBRATION_PENDING`. `QUALITY_MAX` remains reserved for
+future workload-scale validation and currently resolves as pending. Unmeasured serving fields remain
+`NOT_MEASURED`, and a workload with no calibration row also returns `CALIBRATION_PENDING`.
 
 Explicit mechanism fields still win over profile defaults. The trace records the requested and
 resolved profile, source registry, version, evidence tier, and status.
@@ -1394,6 +1396,15 @@ qwen_profiles = profile_registry.inspect(
 pending_profile = profile_registry.inspect(
     "Qwen/Qwen3-0.6B", workload="typed_records"
 )
+quality_candidate = next(
+    row for row in qwen_profiles["profiles"]
+    if row["profile"] == "QUALITY_MAX_CANDIDATE"
+)
+reserved_quality = PRAConfig(
+    profile="quality_max",
+    workload="semantic_smoke",
+    model_id="Qwen/Qwen3-0.6B",
+).product_profile_trace()
 balanced_config = PRAConfig(
     profile="balanced",
     workload="semantic_smoke",
@@ -1404,6 +1415,9 @@ balanced_config = PRAConfig(
 )
 {
     "available_profiles": [row["profile"] for row in qwen_profiles["profiles"]],
+    "quality_candidate_evidence": quality_candidate["evidence_tier"],
+    "quality_candidate_status": quality_candidate["profile_status"],
+    "reserved_quality_status": reserved_quality["profile_status"],
     "balanced_quality": qwen_profiles["profiles"][2]["quality"],
     "serving_ttft": qwen_profiles["profiles"][2]["runtime"]["ttft_ms"],
     "typed_record_status": pending_profile["measurement_status"],

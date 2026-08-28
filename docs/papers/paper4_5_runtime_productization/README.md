@@ -16,6 +16,9 @@ The implementation adds:
   per-record-type overrides, auditable lifecycle states, and lazy selected-region
   native encoding above the full-index budget;
 - versioned runtime configuration and inspection;
+- a product-profile registry that exposes three-case quality optima only as
+  `QUALITY_MAX_CANDIDATE` with `SMOKE / CALIBRATION_PENDING`, reserving
+  `QUALITY_MAX` for workload-scale validation;
 - deduplicated interval planning and native `[B, Hkv, T, D]` K/V packing;
 - byte-bounded LRU accounting and request-stage profiling;
 - eager and `torch.compile` gather gates;

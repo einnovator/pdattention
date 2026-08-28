@@ -27,29 +27,29 @@ REGISTRY = RESULTS / "pra_profile_benchmarks.json"
 SOURCE_COMMIT = "2f2d4b6794adb8c5263198ba73f9333977e92670"
 SOURCE_TIMESTAMP = "2026-08-28T15:06:00+01:00"
 PAPER7_COMMIT = "c65e85cf30fa69e46cdb4428ae90afa49a077e11"
-PROFILE_VERSION = "2026-08-product-profile-v1"
+PROFILE_VERSION = "2026-08-product-profile-v2"
 PROFILE_ORDER = (
     "REFERENCE_CORRECTNESS",
-    "QUALITY_MAX",
+    "QUALITY_MAX_CANDIDATE",
     "BALANCED",
     "ECONOMY",
 )
 PROFILE_CANDIDATES = {
     "qwen": {
         "REFERENCE_CORRECTNESS": "all_layers",
-        "QUALITY_MAX": "last_24",
+        "QUALITY_MAX_CANDIDATE": "last_24",
         "BALANCED": "all_layers",
         "ECONOMY": "last_1",
     },
     "llama": {
         "REFERENCE_CORRECTNESS": "all_layers",
-        "QUALITY_MAX": "all_layers",
+        "QUALITY_MAX_CANDIDATE": "all_layers",
         "BALANCED": "all_layers",
         "ECONOMY": "last_1",
     },
     "gemma": {
         "REFERENCE_CORRECTNESS": "all_layers",
-        "QUALITY_MAX": "all_layers",
+        "QUALITY_MAX_CANDIDATE": "all_layers",
         "BALANCED": "all_layers",
         "ECONOMY": "last_1",
     },
@@ -83,8 +83,8 @@ def _model_metadata() -> dict[str, dict[str, Any]]:
 def _recommended_use(model: str, profile: str) -> str:
     if profile == "REFERENCE_CORRECTNESS":
         return "Parity and regression reference"
-    if profile == "QUALITY_MAX":
-        return "Maximum observed smoke quality; validate on target workload"
+    if profile == "QUALITY_MAX_CANDIDATE":
+        return "Maximum observed smoke quality; calibration pending before production use"
     if profile == "BALANCED":
         return "Conservative default; no sparse candidate met the current quality gate"
     return "Research-only minimum-residency diagnostic"
@@ -160,6 +160,11 @@ def _profile_rows() -> list[dict[str, Any]]:
                 "sample_count": len(selected),
                 "seed_count": 1,
                 "evidence_tier": "SMOKE",
+                "profile_status": (
+                    "CALIBRATION_PENDING"
+                    if profile == "QUALITY_MAX_CANDIDATE"
+                    else status
+                ),
                 "measurement_status": status,
                 "runtime_measurement_status": "NOT_MEASURED",
                 "recommended_use": _recommended_use(model, profile),
@@ -244,23 +249,36 @@ def _model_label(row: Mapping[str, Any]) -> str:
     return labels[str(row["model_family"])]
 
 
+def _profile_label(value: str) -> str:
+    return {
+        "REFERENCE_CORRECTNESS": "Ref. correctness",
+        "QUALITY_MAX_CANDIDATE": "Quality max candidate",
+        "BALANCED": "Balanced",
+        "ECONOMY": "Economy",
+    }[value]
+
+
+def _status_label(value: str) -> str:
+    return str(value).replace("_", " ").title()
+
+
 def _profile_matrix(rows: list[Mapping[str, Any]]) -> str:
     lines = [
-        r"\resizebox{\textwidth}{!}{%",
-        r"\begin{tabular}{@{}llrrrrrrrl@{}}",
+        r"\begin{tabular}{@{}llrrrrlll@{}}",
         r"\toprule",
-        r"Model & Profile & Quality & Retention & $\Delta$ & Mat. & Active K/V & K/V save & Detail save & Evidence/status\\",
+        r"Model & Product profile & Quality & Ret. & $\Delta$ & Active K/V & Save & Evidence & Status\\",
         r"\midrule",
     ]
     for row in rows:
         lines.append(
-            f"{_model_label(row)} & {_tex(row['profile'])} & {row['quality_absolute']:.4f} & "
-            f"{_percent(row['quality_retention'])} & {row['quality_delta']:+.4f} & "
-            f"{row['materialized_tokens']:.1f} & {row['active_kv_tokens']:.1f} & "
-            f"{_percent(row['active_kv_saving'])} & {_percent(row['detail_kv_saving'])} & "
-            f"{row['evidence_tier']}/{_tex(row['measurement_status'])}\\\\"
+            f"{_model_label(row)} & {_profile_label(str(row['profile']))} & "
+            f"{row['quality_absolute']:.4f} & {_percent(row['quality_retention'])} & "
+            f"{row['quality_delta']:+.4f} & {row['active_kv_tokens']:.1f} & "
+            f"{_percent(row['active_kv_saving'])} & "
+            f"{str(row['evidence_tier']).title()} & "
+            f"{_status_label(str(row['profile_status']))}\\\\"
         )
-    lines.extend([r"\bottomrule", r"\end{tabular}%", r"}"])
+    lines.extend([r"\bottomrule", r"\end{tabular}"])
     return "\n".join(lines) + "\n"
 
 

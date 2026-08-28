@@ -393,6 +393,7 @@ class PRAConfig:
             "profile_resolved": requested,
             "profile_source": "explicit_request" if self.profile else "layer_objective",
             "registry_version": None,
+            "profile_status": MeasurementStatus.CALIBRATION_PENDING.value,
             "measurement_status": MeasurementStatus.CALIBRATION_PENDING.value,
         }
         if self.model_id is None:
@@ -412,6 +413,7 @@ class PRAConfig:
             trace["registry_version"] = registry.registry_version
             return trace
         trace.update(resolution.trace())
+        trace["profile_status"] = resolution.row["profile_status"]
         trace["measurement_status"] = resolution.row["measurement_status"]
         trace["evidence_tier"] = resolution.row["evidence_tier"]
         return trace

@@ -19,6 +19,7 @@ class ProductProfile(str, Enum):
     """Stable user-facing semantic objectives."""
 
     REFERENCE_CORRECTNESS = "REFERENCE_CORRECTNESS"
+    QUALITY_MAX_CANDIDATE = "QUALITY_MAX_CANDIDATE"
     QUALITY_MAX = "QUALITY_MAX"
     BALANCED = "BALANCED"
     ECONOMY = "ECONOMY"
@@ -114,6 +115,7 @@ REQUIRED_BENCHMARK_FIELDS = (
     "sample_count",
     "seed_count",
     "evidence_tier",
+    "profile_status",
     "measurement_status",
     "runtime_measurement_status",
     "recommended_use",
@@ -192,6 +194,7 @@ class ProfileBenchmarkRegistry:
                 raise ValueError(f"Benchmark row {index} is missing fields: {missing}")
             ProductProfile(str(row["profile"]))
             EvidenceTier(str(row["evidence_tier"]))
+            MeasurementStatus(str(row["profile_status"]))
             MeasurementStatus(str(row["measurement_status"]))
             MeasurementStatus(str(row["runtime_measurement_status"]))
             identity = (
@@ -328,6 +331,7 @@ class ProfileBenchmarkRegistry:
                 "consumer_layers": row["consumer_layers"],
             },
             "evidence_tier": row["evidence_tier"],
+            "profile_status": row["profile_status"],
             "measurement_status": row["measurement_status"],
             "runtime_measurement_status": row["runtime_measurement_status"],
             "recommended_use": row["recommended_use"],
@@ -339,7 +343,10 @@ class ProfileBenchmarkRegistry:
 def profile_objective(profile: ProductProfile | str) -> str:
     """Translate a product profile name to the layer-registry objective."""
 
-    return _product_profile(profile).value.casefold()
+    resolved = _product_profile(profile)
+    if resolved == ProductProfile.QUALITY_MAX_CANDIDATE:
+        return "quality_max"
+    return resolved.value.casefold()
 
 
 def explicit_overrides(base: Mapping[str, Any], overrides: Mapping[str, Any]) -> dict[str, Any]:
