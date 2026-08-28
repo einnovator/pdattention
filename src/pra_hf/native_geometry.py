@@ -80,8 +80,11 @@ class NativeMaterializationPlan:
     frozen: FrozenNativeSelection
     intervals: tuple[NativeInterval, ...]
     selections_by_layer: Mapping[int, tuple[SelectedChunk, ...]]
+    record_token_counts: Mapping[str, int]
     target_span_tokens: int | None
     full_selected_record: bool
+    raw_interval_count: int
+    raw_native_tokens: int
 
     @property
     def unique_native_tokens(self) -> int:
@@ -90,6 +93,30 @@ class NativeMaterializationPlan:
     @property
     def consumption_layers(self) -> tuple[int, ...]:
         return tuple(sorted(self.selections_by_layer))
+
+    @property
+    def query_position_offset(self) -> int:
+        """Place local query tokens strictly after every source-local K position.
+
+        Independent references retain their own source-relative coordinate systems.
+        The query therefore begins after the longest active source rather than after
+        the sum of all references. This preserves record boundaries and avoids the
+        position-zero collision that previously broke full-reference RoPE parity.
+        """
+
+        return max(self.record_token_counts.values(), default=0)
+
+    @property
+    def overlap_removed_tokens(self) -> int:
+        """Return source positions removed by the canonical interval union."""
+
+        return self.raw_native_tokens - self.unique_native_tokens
+
+    @property
+    def duplication_ratio(self) -> float:
+        """Return raw divided by unique materialized positions."""
+
+        return self.raw_native_tokens / max(self.unique_native_tokens, 1)
 
 
 @dataclass(frozen=True)
@@ -247,12 +274,17 @@ def build_native_materialization_plan(
         for uri, entry in by_uri.items()
         if uri in {row.reference_uri for row in frozen.anchors}
     }
-    intervals = expand_frozen_intervals(
-        frozen,
-        counts,
-        target_span_tokens=target_span_tokens,
-        full_selected_record=full_selected_record,
+    raw_intervals = tuple(
+        interval
+        for anchor in frozen.anchors
+        for interval in expand_frozen_intervals(
+            FrozenNativeSelection((anchor,)),
+            counts,
+            target_span_tokens=target_span_tokens,
+            full_selected_record=full_selected_record,
+        )
     )
+    intervals = _merge_intervals(raw_intervals)
     layers = tuple(sorted({int(layer) for layer in consumption_layers}))
     if not layers:
         raise ValueError("At least one consumption layer is required.")
@@ -267,8 +299,11 @@ def build_native_materialization_plan(
         frozen,
         intervals,
         selections,
+        counts,
         target_span_tokens,
         full_selected_record,
+        len(raw_intervals),
+        sum(row.tokens for row in raw_intervals),
     )
 
 

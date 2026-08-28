@@ -95,6 +95,7 @@ def test_plan_slices_unique_native_tokens_at_every_consumption_layer() -> None:
         [_entry()], _frozen(), consumption_layers=(3, 7), target_span_tokens=64
     )
     assert plan.unique_native_tokens == 64
+    assert plan.query_position_offset == 80
     assert plan.frozen.source_identity == _frozen().source_identity
     for layer, rows in plan.selections_by_layer.items():
         assert sum(row.selected_token_count for row in rows) == 64
@@ -104,6 +105,23 @@ def test_plan_slices_unique_native_tokens_at_every_consumption_layer() -> None:
         assert spans[0][0] == 8
         assert spans[-1][1] == 72
         assert all(left[1] == right[0] for left, right in zip(spans, spans[1:]))
+
+
+def test_query_offset_uses_longest_record_without_merging_reference_positions() -> None:
+    second = _entry("record://b", total=64)
+    frozen = FrozenNativeSelection((
+        FrozenNativeAnchor("record://a", "record://a#chunk=24:56", 24, 56),
+        FrozenNativeAnchor("record://b", "record://b#chunk=0:32", 0, 32),
+    ))
+    plan = build_native_materialization_plan(
+        [_entry(), second], frozen, consumption_layers=(3,), full_selected_record=True
+    )
+
+    assert plan.query_position_offset == 80
+    assert [(row.reference_uri, row.start, row.end) for row in plan.intervals] == [
+        ("record://a", 0, 80),
+        ("record://b", 0, 64),
+    ]
 
 
 def test_evidence_interval_coverage_distinguishes_answer_from_semantic_context() -> None:

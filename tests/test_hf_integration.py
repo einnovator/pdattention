@@ -24,6 +24,7 @@ from pra_torch.hf import (
 )
 from pra_torch.hf.late_band_lora import PRAHFConditionalOutputLoRA
 from pra_torch.memory_batching import native_kv_attention
+from pra_torch.memory import SelectedChunk
 
 
 def _tiny_qwen() -> Qwen3ForCausalLM:
@@ -953,6 +954,54 @@ def test_qwen_implicit_head_preserves_offsets_and_native_bound():
     assert result.logits.shape == (1, 16, 67)
 
 
+def test_qwen_full_native_reference_matches_the_same_visible_prefix_logits():
+    """Permanent E0 gate: native K/V must preserve ordinary-prefix semantics."""
+
+    torch.manual_seed(110)
+    visible = _tiny_qwen()
+    handle = inject_pra(
+        copy.deepcopy(visible),
+        _hf_config(
+            layer_ids=(0, 1),
+            routing_chunk_tokens=16,
+            max_materialized_memory_tokens=32,
+        ),
+    )
+    reference = torch.tensor([[11, 12, 13, 14, 15, 16, 17, 18]])
+    query = torch.tensor([[1, 4, 8, 12]])
+    entry = handle.add_reference("mem://prefix-equivalence", reference)
+    fixed = {}
+    for layer_id in (0, 1):
+        fixed[layer_id] = [[
+            SelectedChunk(
+                entry=entry,
+                chunk=chunk,
+                reference_score=1.0,
+                chunk_score=1.0,
+                layer_id=layer_id,
+                reference_rank=1,
+                rank_within_reference=rank,
+            )
+            for rank, chunk in enumerate(entry.layer_memory[layer_id].chunks, start=1)
+        ]]
+    handle.configure_memory_layers({0, 1}, fixed_selections=fixed)
+    handle.reset_memory_lifetime_trace()
+    positions = torch.arange(reference.shape[1], reference.shape[1] + query.shape[1]).unsqueeze(0)
+
+    with torch.no_grad():
+        expected = visible(torch.cat((reference, query), dim=1), use_cache=False).logits[:, -query.shape[1]:]
+        actual = handle.model(query, position_ids=positions, use_cache=False).logits
+
+    torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-6)
+    for layer_id in (0, 1):
+        assert handle.memory_lifetime_by_layer()[layer_id] == ({
+            "call_index": 0,
+            "query_tokens": 4,
+            "local_cache_tokens": 4,
+            "active_native_tokens": 8,
+        },)
+
+
 def test_qwen_generation_cache_does_not_duplicate_local_history_with_memory():
     torch.manual_seed(113)
     handle = inject_pra(_tiny_qwen(), _hf_config())
@@ -968,6 +1017,10 @@ def test_qwen_generation_cache_does_not_duplicate_local_history_with_memory():
     # The last decode step sees the four prompt tokens plus one generated token.
     assert diagnostics["hf_cache_tokens"] == 5
     assert diagnostics["retrieved_physical_kv_tokens"] == 4
+    trace = handle.memory_lifetime_by_layer()[1]
+    assert len(trace) == 2
+    assert [row["active_native_tokens"] for row in trace] == [4, 4]
+    assert [row["query_tokens"] for row in trace] == [4, 1]
 
 
 def test_hf_layer_selection_rejects_out_of_range_and_dispatches_llama():

@@ -696,6 +696,44 @@ class PRAForCausalLM:
         )
 
     @torch.no_grad()
+    def native_next_token_logits(
+        self,
+        prompt: str,
+        plan: NativeMaterializationPlan,
+    ) -> torch.Tensor:
+        """Return final-prompt logits under one fixed native-memory request.
+
+        This diagnostic bypasses routing and generation so a broken first answer
+        token can be separated from a later cache/lifetime failure.
+        """
+
+        encoded = self.tokenizer(
+            prompt,
+            return_tensors="pt",
+            add_special_tokens=False,
+        )
+        prepared = self._handle.prepare_long_prompt(
+            encoded.input_ids.to(self.device),
+            position_offset=plan.query_position_offset,
+        )
+        fixed = {
+            layer: [list(rows)]
+            for layer, rows in plan.selections_by_layer.items()
+        }
+        self._handle.configure_memory_layers(
+            set(plan.consumption_layers),
+            fixed_selections=fixed,
+        )
+        self._handle.reset_memory_lifetime_trace()
+        output = self.model(
+            input_ids=prepared.input_ids.to(self.device),
+            attention_mask=prepared.attention_mask.to(self.device),
+            position_ids=prepared.position_ids.to(self.device),
+            use_cache=False,
+        )
+        return output.logits[:, -1, :].detach()
+
+    @torch.no_grad()
     def generate_with_native_plan(
         self,
         prompt: str,
@@ -712,8 +750,11 @@ class PRAForCausalLM:
         own projected K/V, which isolates consumption geometry from discovery.
         """
 
-        encoded = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=True)
-        prepared = self._handle.prepare_long_prompt(encoded.input_ids.to(self.device))
+        encoded = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
+        prepared = self._handle.prepare_long_prompt(
+            encoded.input_ids.to(self.device),
+            position_offset=plan.query_position_offset,
+        )
         input_ids = prepared.input_ids.to(self.device)
         attention_mask = prepared.attention_mask.to(self.device)
         position_ids = prepared.position_ids.to(self.device)
@@ -722,6 +763,7 @@ class PRAForCausalLM:
             for layer, rows in plan.selections_by_layer.items()
         }
         self._handle.configure_memory_layers(set(plan.consumption_layers), fixed_selections=fixed)
+        self._handle.reset_memory_lifetime_trace()
         if self.device.type == "cuda":
             major, _ = torch.cuda.get_device_capability(self.device)
             if major < 7:
@@ -738,6 +780,7 @@ class PRAForCausalLM:
         generated = output[:, input_ids.shape[1]:]
         text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
         diagnostics = self._handle.diagnostics_by_layer()
+        lifetime = self._handle.memory_lifetime_by_layer()
         resident_bytes = sum(
             hit.chunk.token_kv.k.numel() * hit.chunk.token_kv.k.element_size()
             + hit.chunk.token_kv.v.numel() * hit.chunk.token_kv.v.element_size()
@@ -763,6 +806,8 @@ class PRAForCausalLM:
             ],
             "frozen_source_identity": plan.frozen.source_identity,
             "diagnostics_by_layer": diagnostics,
+            "memory_lifetime_by_layer": lifetime,
+            "query_position_offset": plan.query_position_offset,
             "generation_seconds": latency,
             "head_tokens": prepared.head_tokens,
         }

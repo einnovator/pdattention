@@ -58,6 +58,7 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         self.fixed_selected_chunks: list[list[SelectedChunk]] | None = None
         self.collect_attention_diagnostics = False
         self.last_attention_weights: torch.Tensor | None = None
+        self.memory_lifetime_trace: list[dict[str, int]] = []
         # The owning HF model registers this module exactly once.
         self.__dict__["memory_gate"] = memory_gate
         self.__dict__["residual_adapter"] = residual_adapter
@@ -99,6 +100,29 @@ class PRAHFAttentionAdapter(nn.Module, ABC):
         self.collect_attention_diagnostics = bool(enabled)
         if not enabled:
             self.last_attention_weights = None
+
+    def reset_memory_lifetime_trace(self) -> None:
+        """Start a bounded request-level trace of native memory consumption."""
+
+        self.memory_lifetime_trace = []
+
+    def record_memory_lifetime(
+        self,
+        *,
+        query_tokens: int,
+        local_cache_tokens: int,
+        active_native_tokens: int,
+    ) -> None:
+        """Record compact prefill/decode state without retaining model tensors."""
+
+        self.memory_lifetime_trace.append(
+            {
+                "call_index": len(self.memory_lifetime_trace),
+                "query_tokens": int(query_tokens),
+                "local_cache_tokens": int(local_cache_tokens),
+                "active_native_tokens": int(active_native_tokens),
+            }
+        )
 
     def begin_capture(self, position_ids: torch.Tensor) -> None:
         """Capture this layer's post-position native K/V during the next prefill."""
