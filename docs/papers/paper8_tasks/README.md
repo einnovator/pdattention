@@ -1,9 +1,29 @@
 # Paper 8: Task-Aware PRA
 
+**Status:** EXPERIMENTALLY FROZEN / READY FOR EXTERNAL REVIEW
+
+**Branch:** `research/paper8-tasks`
+
+**Frozen manuscript source:** recorded after the editorial-freeze commit below.
+
 This paper studies one physical agent session containing multiple interleaved
 logical tasks. Task structure scopes candidates before ordinary PRA discovery;
 Paper 7 continues to own compact views, exact backing, selective replay, and
 native-K/V materialization.
+
+The causal hierarchy is intentional:
+
+1. Oracle task identity and relations isolate the task-scope mechanism.
+2. A frozen production native-Q/K router confirms evidence allocation and
+   context economy over 15 typed-record cases.
+3. Validated acquisition experiments test explicit-structure transcription.
+4. The native-consumption ablation is a secondary integration diagnostic.
+
+Primary production results are 33.3% to 93.3% complete evidence availability,
+75.0% to 0.0% cross-task contamination, 234.3 to 93.5 requested native tokens,
+and 13.3% to 66.7% routed-visible answer accuracy for session versus structural
+scope. These bounded results do not establish latent task planning, sparse
+native-memory integration, or serving-scale efficiency.
 
 ## Reproduce
 
@@ -24,7 +44,8 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error paper8_tasks.tex
 
 The original scope experiment is deterministic and model-free. The production
 iteration additionally evaluates frozen `Qwen/Qwen3-0.6B` on CUDA through the
-Paper 7 native routing and materialization path. Its JSONL checkpoints allow a
+Paper 7 native routing and materialization path at revision
+`c1899de289a04d12100db370d81485cdf75e47ca`. Its JSONL checkpoints allow a
 crashed run to resume. The native-geometry diagnostic replays frozen routing
 through record-bounded width and consumption-layer sweeps. The final task
 management iteration evaluates metadata corruption, adaptive widening, JSON and
@@ -57,5 +78,5 @@ acquisition prompts expose identifiers and dependencies explicitly.
   robustness plus model-generated preflight, online, and hybrid acquisition.
 
 Generated data lives in `docs/papers/shared/results/paper8_tasks/`; figures live
-in `docs/papers/shared/figures/paper8_tasks/`. Rows for online and hybrid task
-acquisition are explicit deferred-status artifacts, not synthetic measurements.
+in `docs/papers/shared/figures/paper8_tasks/`. The frozen PDF is
+`docs/papers/paper8_tasks/paper8_tasks.pdf`.
