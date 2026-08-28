@@ -5,7 +5,9 @@ from __future__ import annotations
 import click
 
 from .deployment import HuggingFaceEngineAdapter, OpenAICompatibleEngineAdapter
-from .gateway import PRAGateway, serve_gateway
+from .engine_profiles import EngineType
+from .gateway import FallbackInjectionPolicy, PRAGateway, serve_gateway
+from .session_service import LocalSessionService
 
 
 @click.group("gateway")
@@ -25,14 +27,36 @@ def gateway_cli() -> None:
 @click.option(
     "--backend",
     type=click.Choice(
-        ["openai", "sglang", "freetoken", "vllm", "ollama", "huggingface"]
+        ["openai", "sglang", "freetoken", "vllm", "ollama", "llama_cpp", "mlx", "custom", "huggingface"]
     ),
     default="openai",
     show_default=True,
 )
 @click.option("--backend-url")
 @click.option("--model")
-def gateway_serve(host, port, mode, backend, backend_url, model) -> None:
+@click.option("--pra-level", type=click.Choice(["auto", "E0", "E1", "E2", "E3"]), default="auto", show_default=True)
+@click.option(
+    "--prefix-cache-mode",
+    type=click.Choice(["auto", "unknown", "stateless", "automatic_prefix_cache", "explicit_prefix_handle", "session_state"]),
+    default="auto",
+    show_default=True,
+)
+@click.option("--session-state/--no-session-state", default=None)
+@click.option("--incremental-messages/--full-messages", default=None)
+@click.option("--resource-delta/--full-resources", default=None)
+@click.option("--cache-affinity/--no-cache-affinity", default=None)
+@click.option(
+    "--fallback-injection",
+    type=click.Choice([policy.value for policy in FallbackInjectionPolicy]),
+    default=FallbackInjectionPolicy.BEFORE_CURRENT_USER.value,
+    show_default=True,
+)
+@click.option("--sessions-dir", type=click.Path(path_type=str))
+def gateway_serve(
+    host, port, mode, backend, backend_url, model, pra_level, prefix_cache_mode,
+    session_state, incremental_messages, resource_delta, cache_affinity,
+    fallback_injection, sessions_dir,
+) -> None:
     """Serve logical PRA and OpenAI-compatible HTTP endpoints."""
 
     if backend == "huggingface":
@@ -44,11 +68,28 @@ def gateway_serve(host, port, mode, backend, backend_url, model) -> None:
     else:
         if not backend_url:
             raise click.UsageError("--backend-url is required for remote engines.")
-        adapter = OpenAICompatibleEngineAdapter(backend_url, name=backend)
-    gateway = PRAGateway(adapter, mode=mode.upper())
+        engine_type = EngineType.OPENAI_GENERIC if backend == "openai" else EngineType(backend)
+        adapter = OpenAICompatibleEngineAdapter(
+            backend_url,
+            name=backend,
+            engine_type=engine_type,
+            pra_level=pra_level,
+            prefix_cache_mode=prefix_cache_mode,
+            session_state=session_state,
+            incremental_messages=incremental_messages,
+            resource_delta=resource_delta,
+            cache_affinity=cache_affinity,
+        )
+    gateway = PRAGateway(
+        adapter,
+        mode=mode.upper(),
+        session_service=LocalSessionService(sessions_dir) if sessions_dir else None,
+        fallback_injection=fallback_injection,
+    )
     capabilities = adapter.capabilities()
     click.echo(
         f"PRA gateway {mode.upper()} on http://{host}:{port} "
-        f"-> {capabilities.adapter} ({capabilities.integration_level.value})"
+        f"-> {capabilities.adapter}/{capabilities.engine_type.value} "
+        f"({capabilities.integration_level.value}, {capabilities.prefix_cache_mode.value})"
     )
     serve_gateway(gateway, host=host, port=port)

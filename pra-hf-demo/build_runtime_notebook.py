@@ -84,6 +84,7 @@ from pra_hf import (
     DiscoveryRequest,
     EncodingContext,
     ExecutionAuthorization,
+    EngineProfileRegistry,
     ExternalMemoryManager,
     HotMemoryHandle,
     KVInterval,
@@ -116,6 +117,7 @@ from pra_hf import (
     RecordScope,
     RecordType,
     RecordViewName,
+    HistoryMode,
     RuntimeKVCache,
     RuntimeKVCacheKey,
     RuntimeProfiler,
@@ -1465,6 +1467,148 @@ search_result = typed_runtime.search_large_record(
     ),
     md(
         r'''
+## 29. Session-aware gateway and two independent caches
+
+PRA does not replace an engine's ordinary sequential-prefix cache. The gateway tracks a canonical
+logical history and a separate engine-visible serialization, calls `prepare_session()` once, and
+then resolves `FULL`, `DELTA`, or `AUTO` explicitly. A changing detached PRA resource produces an
+`ADD`, `UPDATE`, `REMOVE`, or `UNCHANGED` operation without invalidating the conventional prefix.
+
+The cache-affinity key is only a stable scheduler hint. `gateway_prefix_stable` reports logical
+cacheability; `engine_prefix_cache_hit` stays unknown unless engine telemetry confirms a physical
+hit. Ephemeral engine handles are separate from durable `SessionService` state.
+'''
+    ),
+    code(
+        r'''
+class NotebookSessionEngine:
+    def __init__(self):
+        self.requests = []
+        self.prepared = []
+        self.closed = []
+
+    def capabilities(self):
+        return PRAEngineCapabilities(
+            adapter="notebook-session-engine",
+            engine_type="custom",
+            integration_level="E1",
+            prefix_cache_mode="session_state",
+            session_state=True,
+            incremental_messages=True,
+            resource_delta=True,
+            cache_affinity=True,
+            logical_refs=True,
+            native_kv=True,
+        )
+
+    def prepare_session(self, request):
+        self.prepared.append(request.session_id)
+        return f"engine:{request.session_id}"
+
+    def generate(self, request):
+        self.requests.append(request)
+        return PRAEngineResult(f"session-answer-{len(self.requests)}", {"prefix_cache_hit": None})
+
+    def stream(self, request):
+        raise NotImplementedError
+
+    def close_session(self, session_id):
+        self.closed.append(session_id)
+
+
+session_engine = NotebookSessionEngine()
+session_gateway = PRAGateway(session_engine, mode="G11")
+resource_v1 = PRAWireResource(
+    "status", "pra://runtime-demo/status", text="status is green",
+    metadata={"tenant_id": "runtime-demo", "version": "v1"},
+)
+first_turn = PRAWireRequest(
+    model="offline/tiny-llama",
+    messages=({"role": "user", "content": "What is the status?"},),
+    tenant_id="runtime-demo",
+    session_id="gateway-session-demo",
+    resources=(resource_v1,),
+    history_mode=HistoryMode.AUTO,
+)
+first_result = session_gateway.generate(first_turn)
+first_session_trace = next(
+    row for row in first_result.trace if row["stage"] == "gateway_session"
+)
+first_session_trace
+'''
+    ),
+    code(
+        r'''
+resource_v2 = PRAWireResource(
+    "status", "pra://runtime-demo/status", text="status is amber",
+    metadata={"tenant_id": "runtime-demo", "version": "v2"},
+)
+second_result = session_gateway.generate(PRAWireRequest(
+    model="offline/tiny-llama",
+    messages=(
+        {"role": "user", "content": "What is the status?"},
+        {"role": "assistant", "content": first_result.text},
+        {"role": "user", "content": "Has it changed?"},
+    ),
+    tenant_id="runtime-demo",
+    session_id="gateway-session-demo",
+    resources=(resource_v2,),
+    history_mode=HistoryMode.AUTO,
+))
+second_trace = next(row for row in second_result.trace if row["stage"] == "gateway_session")
+session_debug = session_gateway.inspect_session(
+    "runtime-demo", "gateway-session-demo", "offline/tiny-llama"
+)
+closed = session_gateway.close_session(
+    "runtime-demo", "gateway-session-demo", "offline/tiny-llama"
+)
+{
+    "prepare_calls": session_engine.prepared,
+    "second_transport_mode": session_engine.requests[1].history_mode.value,
+    "second_messages": session_engine.requests[1].messages,
+    "resource_delta": [row.operation.value for row in session_engine.requests[1].resource_ops],
+    "gateway_prefix_stable": second_trace["gateway_prefix_stable"],
+    "engine_prefix_cache_hit": second_trace["engine_prefix_cache_hit"],
+    "cache_affinity_key": second_trace["cache_affinity_key"],
+    "debug_metadata": session_debug,
+    "closed": closed,
+    "engine_close_calls": session_engine.closed,
+}
+'''
+    ),
+    md(
+        r'''
+## 30. Engine profiles and controlled prefix/session evidence
+
+Remote engine type changes conservative defaults; it is not merely a label. Generic OpenAI
+transport is E0 with unknown cache behavior. vLLM and SGLang expose automatic-prefix-cache
+profiles, while explicit sessions, message deltas, and PRA resource deltas require configured or
+probed support. The checked-in five-turn experiment compares the removed message-zero G10 control,
+prefix-preserving G10, E0 session deltas, and an E1 PRA-aware session without inventing physical
+cache-hit telemetry.
+'''
+    ),
+    code(
+        r'''
+engine_profiles = EngineProfileRegistry.default()
+with (cross_model_dir / "session_delta_results.csv").open(encoding="utf-8") as stream:
+    gateway_session_results = list(csv.DictReader(stream))
+{
+    "registry_version": engine_profiles.registry_version,
+    "vllm_prefix_mode": engine_profiles.resolve("vllm").default_prefix_cache_mode.value,
+    "generic_prefix_mode": engine_profiles.resolve("openai_generic").default_prefix_cache_mode.value,
+    "controlled_results": gateway_session_results,
+}
+'''
+    ),
+    code(
+        r'''
+display(Image(filename=str(cross_model_dir / "gateway_prefix_reuse.png")))
+display(Image(filename=str(cross_model_dir / "gateway_two_cache_architecture.png")))
+'''
+    ),
+    md(
+        r'''
 ## CLI equivalents
 
 The same systems surface is available without notebook state:
@@ -1479,6 +1623,8 @@ python -m pra_hf.cli profiles show Qwen/Qwen3-0.6B --workload semantic_smoke
 python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect the repository"
 python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
 pra gateway serve --mode G10 --backend sglang --backend-url http://localhost:30000
+pra gateway serve --mode G10 --backend vllm --backend-url http://localhost:8000 --prefix-cache-mode automatic_prefix_cache
+pra gateway serve --mode G11 --backend custom --backend-url http://localhost:9000 --pra-level E1 --session-state --incremental-messages --resource-delta --cache-affinity
 ```
 
 ## What this notebook proves, and what it does not

@@ -21,6 +21,12 @@ The implementation adds:
 - eager and `torch.compile` gather gates;
 - a scheduler-unaware vLLM handoff contract;
 - a standalone G00/G10/G01/G11 gateway and E0/E1 capability adapters;
+- engine-type-aware cache/session profiles independent of PRA integration depth;
+- prepared gateway sessions, explicit FULL/DELTA/AUTO history, resource
+  ADD/UPDATE/REMOVE/UNCHANGED operations, stable cache-affinity hints, and
+  non-sensitive session inspection/close endpoints;
+- prefix-preserving G10 placement that keeps the prior serialized conversation
+  byte-identical instead of changing a message-zero evidence block;
 - DeepSeek Harness and Pi event/RPC bridges with tested ordinary-engine fallback;
 - validated model-managed task operations, adaptive metadata widening, and frozen
   record-bounded native-consumption plans inherited from Paper 8;
@@ -41,6 +47,7 @@ $env:PYTHONPATH = "src;."
 python -m experiments.paper4_5_runtime.run_runtime_profile
 python -m experiments.paper4_5_runtime.run_execution_policy_profile
 python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
+python -m experiments.paper4_5_runtime.run_gateway_session_profile
 python -m experiments.paper4_5_runtime.run_cross_model_validation --model all --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwen --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda
@@ -72,4 +79,7 @@ Launch the reference gateway with `pra gateway serve`. HF-backed adapters expose
 OpenAI-compatible streaming; request-owned references remain active until decode
 or cancellation cleanup completes. G10 is an
 explicit text-materialization fallback; it is not native-K/V PRA. SGLang and
-FreeToken are E0 protocol targets only in this artifact.
+FreeToken are E0 protocol targets only in this artifact. The gateway experiment
+measures exact logical-prefix stability and transport bytes with a simulated
+adapter. It does not report a physical engine cache hit, scheduler affinity,
+or remote-engine speedup.

@@ -268,7 +268,29 @@ from .deployment import (
     PRAWireRequest,
     PRAWireResource,
 )
-from .gateway import PRACapabilityError, PRAGateway, create_gateway_server, serve_gateway
+from .engine_profiles import (
+    EngineProfile,
+    EngineProfileRegistry,
+    EngineType,
+    PrefixCacheMode,
+)
+from .gateway_session import (
+    GatewaySessionRegistry,
+    GatewaySessionState,
+    HistoryMode,
+    ResourceDelta,
+    ResourceOperation,
+    ResolvedSessionTurn,
+    cache_affinity_key,
+    canonical_digest,
+)
+from .gateway import (
+    FallbackInjectionPolicy,
+    PRACapabilityError,
+    PRAGateway,
+    create_gateway_server,
+    serve_gateway,
+)
 
 __version__ = "0.2.0rc1"
 
@@ -392,6 +414,17 @@ __all__ += [
 
 __all__ += [
     "HuggingFaceEngineAdapter",
+    "EngineProfile",
+    "EngineProfileRegistry",
+    "EngineType",
+    "PrefixCacheMode",
+    "GatewaySessionRegistry",
+    "GatewaySessionState",
+    "HistoryMode",
+    "ResourceDelta",
+    "ResourceOperation",
+    "ResolvedSessionTurn",
+    "FallbackInjectionPolicy",
     "OpenAICompatibleEngineAdapter",
     "PRACapabilityError",
     "PRAEngineAdapter",
@@ -405,6 +438,8 @@ __all__ += [
     "PRAWireResource",
     "create_gateway_server",
     "serve_gateway",
+    "cache_affinity_key",
+    "canonical_digest",
 ]
 
 __all__ += [

@@ -61,6 +61,7 @@ from .progressive_context import (
     RecordCapabilities,
 )
 from .typed_context import AdaptiveContextRecord
+from .gateway_session import GatewaySessionRegistry, ResolvedSessionTurn
 from .session_service import AgentSessionState, SessionService
 from .task_context import TaskEvent, TaskGraph, TaskProvenance, attach_task_provenance
 from .task_planning import (
@@ -948,6 +949,7 @@ class PRARuntime:
         self.context_policy = context_policy or config.context_policy
         self.native_result_routing = bool(native_result_routing)
         self.session_service = session_service
+        self.engine_sessions = GatewaySessionRegistry(session_service)
         if self.native_result_routing and not isinstance(self.backend, HuggingFaceBackend):
             raise ValueError("Native result routing requires the Hugging Face backend.")
         self.sessions: dict[str, PRASession] = {}
@@ -1188,6 +1190,36 @@ class PRARuntime:
         if current is not session or session.closed:
             raise ValueError("Result context requires an open runtime session.")
         return self.result_contexts[session.session_id]
+
+    def resolve_engine_session_turn(
+        self, request: Any, capabilities: Any
+    ) -> ResolvedSessionTurn:
+        """Apply the same history/resource-delta policy used by the gateway."""
+
+        return self.engine_sessions.resolve_turn(
+            request,
+            incremental_messages=bool(
+                capabilities.session_state and capabilities.incremental_messages
+            ),
+            resource_delta=bool(capabilities.logical_refs and capabilities.resource_delta),
+        )
+
+    def commit_engine_session_turn(
+        self,
+        turn: ResolvedSessionTurn,
+        request: Any,
+        *,
+        engine_session_id: str | None,
+        prefix_cache_handle: str | None = None,
+    ) -> Mapping[str, Any]:
+        """Commit reconstructible engine metadata after successful execution."""
+
+        return self.engine_sessions.commit(
+            turn,
+            request,
+            engine_session_id=engine_session_id,
+            prefix_cache_handle=prefix_cache_handle,
+        ).inspect()
 
     def capability_resources(self, *, kinds: Sequence[str] = ("tool", "skill")) -> tuple[AgentResource, ...]:
         """Return authorized compact discovery views for configured capabilities."""
@@ -1568,6 +1600,7 @@ class PRARuntime:
             "capabilities": capability_state,
             "result_contexts": result_contexts,
             "native_result_routing": self.native_result_routing,
+            "engine_sessions": self.engine_sessions.inspect_all(),
             "hot_cache": self.hot_cache.snapshot(),
         }
 

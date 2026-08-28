@@ -35,7 +35,12 @@ profiling, and a scheduler-unaware serving
 handoff. A standalone gateway now separates agent semantics, PRA mediation,
 and engine-native state through a JSON logical-reference contract and explicit
 capability negotiation and streams HF-backed responses with request-owned
-cleanup. A native-reference audit found and corrected a positional collision:
+cleanup. The gateway now resolves engine-specific cache/session profiles,
+exercises prepare/close lifecycles, preserves append-only G10 prefixes, and
+transports message and resource deltas without conflating conventional prefix
+K/V with PRA-native state. A five-turn deterministic profile preserves the
+prior serialized prefix on all four eligible turns; physical cache hits remain
+unmeasured. A native-reference audit found and corrected a positional collision:
 external keys retained source-relative RoPE coordinates while direct queries
 restarted at zero. On a random tiny Qwen fixture, the corrected full-reference
 path matches visible-prefix logits to $5.97\times10^{-8}$ maximum absolute
@@ -115,9 +120,10 @@ bounded cache reuse;
 \item a corrected source-relative position and request-lifetime implementation,
 with exact disabled behavior and measured full-native semantic gates on Qwen
 and Llama plus a localized Gemma global/local topology limitation;
-\item an engine-neutral gateway and capability model covering logical references,
-streaming, interval materialization, lifetime, residency, and tenant isolation,
-while rejecting unsupported phase selection and scheduler hints;
+\item an engine-neutral, engine-type-aware gateway with independent PRA and
+ordinary cache/session capabilities, explicit lifecycle, append-only G10
+placement, message/resource deltas, affinity hints, and non-sensitive session
+inspection, while rejecting unsupported phase selection and scheduler hints;
 \item lazy tools and skills, size-adaptive typed-result indexing, task-scoped
 acquisition, external-agent bridges, and a user-facing runtime/agent interface;
 and
@@ -796,8 +802,11 @@ semantic reference. The OpenAI-compatible HTTP adapter and standalone
 \texttt{pra gateway serve} process implement E0. SGLang and FreeToken expose
 compatible HTTP surfaces, so they are reachable at E0; neither has a PRA-native
 backend in this artifact~\cite{sglangDocs2026,freetokenDocs2026}. The portable
-HF adapter implements incremental deltas and the HTTP gateway emits
-OpenAI-compatible server-sent events. Cancellation is cooperative at token
+HF adapter implements E1 native execution and streaming but remains stateless
+between gateway calls. The configurable remote E1 envelope carries incremental
+messages and resource operations when the selected engine advertises those
+capabilities. The HTTP gateway emits OpenAI-compatible server-sent events.
+Cancellation is cooperative at token
 boundaries; request-owned references are released only after the decode worker
 stops. No backing content is included in trace metadata.
 The capability object names native K/V, logical references, streaming,
@@ -807,6 +816,66 @@ reference advertises the first seven supported properties and explicitly
 rejects phase selection and scheduler hints. This prevents an E1 adapter from
 being mistaken for an E3 scheduler merely because both accept the same logical
 wire request.
+
+\subsection{Session-Aware Gateway and Conventional Prefix-K/V Reuse}
+
+PRA does not replace ordinary prefix caching. A session may simultaneously
+retain a conventional sequential-prefix K/V cache and separately address PRA
+records or native detail. The gateway preserves append-only prefixes for
+ordinary engines and can send logical deltas to PRA-aware remote engines.
+Figure~\ref{fig:gateway-two-cache} makes these state classes explicit. The
+inference engine physically owns the ordinary prefix cache. PRA logically owns
+resource identities, versions, addresses, and selection; the physical owner of
+their indexes or selected native K/V depends on E1--E3 integration. A hit or
+invalidation on one axis therefore says nothing by itself about the other.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{gateway_two_cache_architecture.pdf}
+\caption{The session-aware gateway maintains two independent state axes.
+Sequential prompt K/V follows the engine's ordinary prefix-cache policy;
+detached PRA resources follow the PRA lifecycle and may be text-materialized
+at E0 or retained natively at E1+.}
+\label{fig:gateway-two-cache}
+\end{figure}
+
+The wire contract promotes \texttt{history\_mode}, engine-session identity,
+prefix handle, cache-affinity key, maximum decode length, and resource
+operations to typed fields. \texttt{FULL} means that the request supplies
+canonical complete history; \texttt{DELTA} means only appended messages;
+\texttt{AUTO} resolves from capabilities rather than message count. Stable
+resources similarly produce \texttt{ADD}, \texttt{UPDATE}, \texttt{REMOVE},
+or \texttt{UNCHANGED} operations while preserving ID, URI, version digest,
+record type, and authorization scope.
+
+A versioned engine registry resolves OpenAI-generic, vLLM, SGLang, FreeToken,
+Ollama, Hugging Face, llama.cpp, MLX, and custom profiles. Unknown compatible
+servers safely remain E0, full-history, and cache-telemetry-unknown. vLLM and
+SGLang profiles represent automatic prefix-cache capability but do not claim
+that either engine was run. The local HF reference remains E1-native but
+stateless across calls; the session/resource-delta row is exercised by a
+deterministic remote-engine contract fixture. Explicit configuration may
+override registry defaults; resolved capabilities, rather than labels, control
+transport.
+
+For G10, the former message-zero synthetic system block remains only as a
+legacy experimental control. The default inserts selected evidence into the
+current user turn, after the byte-identical prior serialized conversation.
+Role-sequence tests cover Qwen, Llama, Gemma, and generic OpenAI-style
+transports. This placement preserves template validity and the previous
+prefix. It does not imply that changing evidence is cacheable: only the prior
+sequential prefix is reusable.
+
+The sidecar is keyed by tenant, logical session, and model. It retains only
+ephemeral engine handles, prefix fingerprints, resource versions, policy
+digests, and affinity hints; durable canonical history continues to use
+\texttt{SessionService}. Preparation is idempotent, explicit close releases
+engine state, and cancellation of one stream does not close its reusable
+session. Model revision, chat-template, visible-prefix, history-rewrite,
+engine-restart, and invalid-handle changes invalidate the relevant handle.
+Updating one detached resource emits a resource delta without invalidating an
+otherwise stable conversation prefix. The cache-affinity key is only a future
+scheduler hint; no worker-placement result is claimed.
 
 \subsection{Agent-side compatibility before native engine work}
 
@@ -887,6 +956,19 @@ host.  \emph{Inherited} means read from a checked-in earlier experiment with
 its own protocol.  \emph{Contract only} means code exists but no external
 engine ran.  \emph{Architectural} means only an interface comparison is made.
 
+\subsection{Gateway session and prefix protocol}
+
+The controlled gateway fixture executes five turns with changing selected
+records under four conditions: legacy message-zero G10 insertion,
+prefix-preserving G10, E0 message deltas, and an E1 logical
+message/resource-delta contract. It records whether each prior serialized
+message sequence remains an exact prefix, the reusable-message fraction,
+invalidations, JSON message and resource bytes, delta bytes, and session reuse.
+The workload is deterministic and uses a simulated adapter so that transport
+semantics can be isolated from model quality and network variance. Byte counts
+refer to the fixture's JSON envelopes, not tokenizer output or K/V allocation.
+Physical cache hits remain unknown unless adapter telemetry supplies them.
+
 \subsection{Portable primitive protocol}
 
 The new benchmark uses PyTorch 2.12.1 with CUDA 12.6 on Windows 10, Python
@@ -933,6 +1015,45 @@ production latency. EOS can terminate before three tokens, so token-level
 operation counts are averaged over the actual forwards.
 
 \section{Results}
+
+\subsection{Stable prefix and session-delta contract}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{gateway_prefix_reuse.pdf}
+\caption{Five-turn deterministic gateway profile. The left panel reports
+logical reuse of the exact prior serialized message prefix after turn one; the
+right reports message bytes sent. Resource bytes are reported separately in
+Table~\ref{tab:gateway-session}.}
+\label{fig:gateway-prefix}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Controlled gateway session profile. Stable turns use the four turns
+after initial setup. Reuse is logical serialized-message reuse, not an
+engine-reported cache hit.}
+\label{tab:gateway-session}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper4_5_runtime/generated_gateway_session_table.tex}}
+\end{table}
+
+The legacy message-zero G10 control changes the leading evidence block on every
+eligible turn, preserving zero of four prior prefixes and recording four
+invalidations. Moving evidence to the current turn preserves all four prior
+prefixes, with a mean logical reuse fraction of 72.8\%. Full-history
+prefix-preserving G10 sends 3,355 message bytes because it still retransmits
+history. The session-delta E0 contract retains the same logical prefix while
+reducing message transport to 921 bytes; four turns reuse the prepared engine
+session.
+
+The E1 contract sends 281 message bytes and 2,297 resource-envelope bytes,
+using resource additions, updates, and removals rather than repeating resource
+contents indiscriminately. Its combined delta bytes are not lower than the
+tiny text fixture because typed resource metadata and operation envelopes are
+explicit. This is a semantic and accounting result, not evidence that PRA
+transport is always smaller. All four conditions report physical prefix-cache
+hits as unknown. No vLLM/SGLang affinity, TTFT, throughput, or scheduler result
+is inferred from logical prefix stability.
 
 \subsection{Selection sharing removes repeated routing work}
 
@@ -1117,8 +1238,10 @@ measurement.
 Runtime & Status & Boundary\\
 \midrule
 HF/PyTorch eager & measured & Native PRA model API and portable K/V primitives\\
-Standalone gateway & contract tested & G00/G10/G01/G11 JSON mediation and HF-backed SSE streaming\\
-OpenAI-compatible HTTP & E0 implemented & Pass-through and explicit text fallback\\
+Standalone gateway & contract tested & G00/G10/G01/G11, session lifecycle,
+prefix-preserving fallback, deltas, debug/close API, and HF-backed SSE\\
+OpenAI-compatible HTTP & E0 implemented & Full-history safe default; typed
+engine profiles and explicit text fallback\\
 DeepSeek/Pi agent bridges & contract tested & Typed event/RPC capture and explicit G10 fallback\\
 \texttt{torch.compile} & blocked on host & API implemented; compiler/GPU gates recorded\\
 Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
@@ -1171,6 +1294,14 @@ open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
+The gateway profile is a deterministic transport experiment. It does not run a
+real vLLM, SGLang, FreeToken, Ollama, or distributed scheduler, and therefore
+does not measure physical prefix-cache hits, worker affinity, warm-prefix TTFT,
+continuous batching, index residency, or network cost. The reported reuse
+fraction counts exact serialized messages, not tokenizer tokens. Engine
+profiles are conservative defaults and require runtime probing or explicit
+configuration before stronger capabilities may be advertised.
+
 The cross-model cohort contains only three one-token continuations per model.
 It is sufficient to expose exact disabled behavior, K/V topology, position,
 lifetime, and coarse semantic drift, but not to estimate broad language quality.
@@ -1219,7 +1350,12 @@ within configurable token/byte ingestion budgets; larger records retain cheap
 recovery interfaces and promote selected regions lazily. Its policy lattice
 makes routing frequency and physical lifetime
 inspectable, while the gateway permits ordinary and PRA-aware agents and
-engines to coexist without sending native tensors over the logical wire. The
+engines to coexist without sending native tensors over the logical wire.
+Conventional sequential-prefix K/V and detached PRA resource/native state are
+now separate capability and lifecycle axes. The tested gateway preserves every
+eligible prior prefix in its five-turn fixture and sends typed message/resource
+deltas through a prepared session, while correctly leaving physical cache hits
+unknown. The
 HF semantic reference now passes full-prefix logit equivalence on the tested
 Qwen and Llama checkpoints, plus record-boundary deduplication and request-long
 decode-lifetime gates. Gemma validates native MQA mechanics but identifies a
@@ -1327,6 +1463,30 @@ request lifetime, residency, tenant isolation, phase selection, and scheduler
 hints. An independent implementation should fail a required unsupported field
 before reference registration.
 
+\subsection{Gateway session implementation map}
+
+The independent capability axes begin at
+\path{src/pra_hf/deployment.py:38}: the capability record carries engine type,
+PRA level, prefix-cache mode, session state, incremental-message support,
+resource deltas, affinity, and explicit handles. Typed request serialization
+starts at line 129, and the profile-parameterized OpenAI adapter at line 242.
+The versioned defaults and validation are in
+\path{src/pra_hf/engine_profiles.py:1--90}; adding an engine requires an enum
+member and one conservative registry row before any feature override.
+
+Ephemeral state is isolated in
+\path{src/pra_hf/gateway_session.py:186--434}. \texttt{resolve\_turn} compares
+explicit full or delta history, derives resource operations, and computes the
+affinity key. \texttt{commit} advances fingerprints only after a successful
+decode. It stores resource IDs, digests, and metadata, never content tensors.
+The gateway execution order is visible at
+\path{src/pra_hf/gateway.py:147--457}: resolve and invalidate, prepare once,
+transform G00--G11, execute, commit trace state, and close explicitly. HTTP
+capability, session-debug, and session-delete handling follows at lines
+460--538. The same registry entry points are surfaced by
+\path{src/pra_hf/runtime.py:1194--1220}, preventing the HTTP process from
+becoming the sole owner of session semantics.
+
 \subsection{Execution and deployment code map}
 
 Line references identify the artifact version accompanying this paper.
@@ -1394,6 +1554,18 @@ plans, precedence, lifecycle, and analytical routing count\\
 token/per-layer HF execution bridge\\
 \path{src/pra_hf/deployment.py}, \path{src/pra_hf/gateway.py} & JSON wire types,
 engine capabilities, E0/E1 adapters, G00--G11 mediation, and HTTP process\\
+\path{src/pra_hf/engine_profiles.py},
+\path{src/pra_hf/model_profiles/engine_profile_registry.json} & Versioned
+engine/cache/session defaults with conservative capability resolution\\
+\path{src/pra_hf/gateway_session.py} & Tenant/session/model-isolated ephemeral
+engine handles, canonical and serialized prefix state, resource versions,
+history/resource deltas, affinity, and invalidation\\
+\path{experiments/paper4_5_runtime/run_gateway_session_profile.py} &
+Five-turn prefix/session contract profile, two-cache architecture, traces,
+tables, and figures\\
+\path{docs/papers/shared/results/paper4_5_runtime/prefix_preservation_results.csv} &
+Canonical per-turn logical-prefix and transport measurements; physical hits
+remain unknown\\
 \path{src/pra_hf/agent_plugins.py} & DeepSeek Harness and Pi typed-event bridges\\
 \path{src/pra_hf/native_geometry.py} & Frozen record-bounded intervals and
 layer-native K/V plans\\

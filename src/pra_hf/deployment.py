@@ -12,6 +12,9 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Iterator, Mapping, Protocol, Sequence
 
+from .engine_profiles import EngineProfileRegistry, EngineType, PrefixCacheMode
+from .gateway_session import HistoryMode, ResourceDelta
+
 
 class PRAEngineIntegrationLevel(str, Enum):
     """Depth at which an inference engine implements PRA."""
@@ -36,7 +39,16 @@ class PRAEngineCapabilities:
     """Static, inspectable features implemented by one transport adapter."""
 
     adapter: str
+    engine_type: EngineType | str = EngineType.CUSTOM
     integration_level: PRAEngineIntegrationLevel | str = PRAEngineIntegrationLevel.E0_FACADE
+    prefix_cache_mode: PrefixCacheMode | str = PrefixCacheMode.UNKNOWN
+    automatic_prefix_cache: bool = False
+    explicit_prefix_cache: bool = False
+    session_state: bool = False
+    incremental_messages: bool = False
+    resource_delta: bool = False
+    cache_affinity: bool = False
+    prefix_cache_handle: bool = False
     logical_refs: bool = False
     typed_records: bool = False
     task_metadata: bool = False
@@ -62,6 +74,8 @@ class PRAEngineCapabilities:
         object.__setattr__(
             self, "integration_level", PRAEngineIntegrationLevel(self.integration_level)
         )
+        object.__setattr__(self, "engine_type", EngineType(self.engine_type))
+        object.__setattr__(self, "prefix_cache_mode", PrefixCacheMode(self.prefix_cache_mode))
         if self.native_kv and self.integration_level == PRAEngineIntegrationLevel.E0_FACADE:
             raise ValueError("Native K/V requires at least E1 engine integration.")
 
@@ -71,7 +85,12 @@ class PRAEngineCapabilities:
         return bool(getattr(self, capability))
 
     def to_dict(self) -> dict[str, object]:
-        return {**asdict(self), "integration_level": self.integration_level.value}
+        return {
+            **asdict(self),
+            "engine_type": self.engine_type.value,
+            "integration_level": self.integration_level.value,
+            "prefix_cache_mode": self.prefix_cache_mode.value,
+        }
 
 
 @dataclass(frozen=True)
@@ -89,6 +108,9 @@ class PRAWireResource:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "PRAWireResource":
         return cls(**dict(value))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -115,11 +137,17 @@ class PRAWireRequest:
     session_id: str | None = None
     task_id: str | None = None
     resources: tuple[PRAWireResource, ...] = ()
+    resource_ops: tuple[ResourceDelta, ...] = ()
     query_facets: tuple[Mapping[str, Any], ...] = ()
     budget: PRAWireBudget = field(default_factory=PRAWireBudget)
     pra_policy: Mapping[str, Any] = field(default_factory=dict)
     required_capabilities: tuple[str, ...] = ()
     allow_text_fallback: bool = False
+    history_mode: HistoryMode | str = HistoryMode.AUTO
+    engine_session_id: str | None = None
+    prefix_cache_handle: str | None = None
+    cache_affinity_key: str | None = None
+    max_new_tokens: int | None = None
     engine_hints: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -134,6 +162,17 @@ class PRAWireRequest:
                 raise PermissionError(
                     f"Resource {resource.resource_id!r} belongs to another tenant."
                 )
+        object.__setattr__(self, "history_mode", HistoryMode(self.history_mode))
+        if self.max_new_tokens is not None and self.max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive.")
+
+    @property
+    def resolved_max_new_tokens(self) -> int:
+        """Prefer the typed field while retaining the pre-contract hint."""
+
+        if self.max_new_tokens is not None:
+            return self.max_new_tokens
+        return int(self.engine_hints.get("max_new_tokens", 64))
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "PRAWireRequest":
@@ -142,6 +181,10 @@ class PRAWireRequest:
         data["resources"] = tuple(
             item if isinstance(item, PRAWireResource) else PRAWireResource.from_dict(item)
             for item in data.get("resources", ())
+        )
+        data["resource_ops"] = tuple(
+            item if isinstance(item, ResourceDelta) else ResourceDelta(**dict(item))
+            for item in data.get("resource_ops", ())
         )
         budget = data.get("budget")
         if budget is not None and not isinstance(budget, PRAWireBudget):
@@ -159,12 +202,19 @@ class PRAWireRequest:
         envelope.update(
             {"model": value.get("model"), "messages": value.get("messages", ())}
         )
+        if "max_new_tokens" not in envelope and value.get("max_tokens") is not None:
+            envelope["max_new_tokens"] = int(value["max_tokens"])
         if "request_id" not in envelope and value.get("id"):
             envelope["request_id"] = str(value["id"])
         return cls.from_dict(envelope)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        values = asdict(self)
+        values["history_mode"] = self.history_mode.value
+        values["resource_ops"] = [
+            row.to_dict(include_resource=False) for row in self.resource_ops
+        ]
+        return values
 
 
 @dataclass(frozen=True)
@@ -192,21 +242,63 @@ class PRAEngineAdapter(Protocol):
 class OpenAICompatibleEngineAdapter:
     """E0 HTTP adapter for ordinary OpenAI-compatible inference servers."""
 
-    def __init__(self, base_url: str, *, timeout_seconds: float = 120.0, name: str = "openai"):
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout_seconds: float = 120.0,
+        name: str | None = None,
+        engine_type: EngineType | str = EngineType.OPENAI_GENERIC,
+        pra_level: str = "auto",
+        prefix_cache_mode: PrefixCacheMode | str = "auto",
+        session_state: bool | None = None,
+        incremental_messages: bool | None = None,
+        resource_delta: bool | None = None,
+        cache_affinity: bool | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = float(timeout_seconds)
-        self.name = name
+        self.engine_type = EngineType(engine_type)
+        self.name = name or self.engine_type.value
+        profile = EngineProfileRegistry.default().resolve(self.engine_type)
+        self.pra_level = profile.default_pra_level if pra_level == "auto" else pra_level
+        self.prefix_cache_mode = (
+            profile.default_prefix_cache_mode
+            if prefix_cache_mode == "auto"
+            else PrefixCacheMode(prefix_cache_mode)
+        )
+        self.session_state = profile.explicit_session if session_state is None else bool(session_state)
+        self.incremental_messages = profile.incremental_messages if incremental_messages is None else bool(incremental_messages)
+        self.resource_delta = profile.resource_delta if resource_delta is None else bool(resource_delta)
+        self.cache_affinity = profile.cache_affinity if cache_affinity is None else bool(cache_affinity)
 
     def capabilities(self) -> PRAEngineCapabilities:
-        return PRAEngineCapabilities(adapter=self.name, text_fallback=True)
+        level = PRAEngineIntegrationLevel(self.pra_level)
+        native = level != PRAEngineIntegrationLevel.E0_FACADE
+        return PRAEngineCapabilities(
+            adapter=self.name,
+            engine_type=self.engine_type,
+            integration_level=level,
+            prefix_cache_mode=self.prefix_cache_mode,
+            automatic_prefix_cache=self.prefix_cache_mode == PrefixCacheMode.AUTOMATIC_PREFIX_CACHE,
+            explicit_prefix_cache=self.prefix_cache_mode == PrefixCacheMode.EXPLICIT_PREFIX_HANDLE,
+            session_state=self.session_state,
+            incremental_messages=self.incremental_messages,
+            resource_delta=self.resource_delta,
+            cache_affinity=self.cache_affinity,
+            prefix_cache_handle=self.prefix_cache_mode == PrefixCacheMode.EXPLICIT_PREFIX_HANDLE,
+            logical_refs=native,
+            typed_records=native,
+            text_fallback=True,
+            native_kv=native,
+            streaming=False,
+        )
 
     def prepare_session(self, request: PRAWireRequest) -> str | None:
-        return request.session_id
+        return request.session_id if self.session_state else None
 
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
-        payload = json.dumps(
-            {"model": request.model, "messages": list(request.messages), "stream": False}
-        ).encode("utf-8")
+        payload = json.dumps(self._payload(request)).encode("utf-8")
         started = time.perf_counter()
         http_request = urllib.request.Request(
             f"{self.base_url}/v1/chat/completions",
@@ -222,6 +314,22 @@ class OpenAICompatibleEngineAdapter:
             raw,
             ({"stage": "engine_request", "seconds": time.perf_counter() - started},),
         )
+
+    def _payload(self, request: PRAWireRequest) -> dict[str, Any]:
+        """Build an ordinary OpenAI request plus a typed PRA envelope at E1+."""
+
+        payload: dict[str, Any] = {
+            "model": request.model,
+            "messages": list(request.messages),
+            "stream": False,
+            "max_tokens": request.resolved_max_new_tokens,
+        }
+        if self.capabilities().logical_refs:
+            envelope = request.to_dict()
+            envelope.pop("model", None)
+            envelope.pop("messages", None)
+            payload["pra"] = envelope
+        return payload
 
     def stream(self, request: PRAWireRequest) -> Iterator[Mapping[str, Any]]:
         raise NotImplementedError("This E0 adapter exposes non-streaming generation only.")
@@ -239,7 +347,9 @@ class HuggingFaceEngineAdapter:
     def capabilities(self) -> PRAEngineCapabilities:
         return PRAEngineCapabilities(
             adapter="huggingface_eager",
+            engine_type=EngineType.HUGGINGFACE,
             integration_level="E1",
+            prefix_cache_mode=PrefixCacheMode.STATELESS,
             logical_refs=True,
             typed_records=True,
             task_metadata=True,
@@ -323,7 +433,7 @@ class HuggingFaceEngineAdapter:
                 self.model.chat(
                     request.messages,
                     pra_policy=request.pra_policy or None,
-                    max_new_tokens=int(request.engine_hints.get("max_new_tokens", 64)),
+                    max_new_tokens=request.resolved_max_new_tokens,
                     streamer=streamer,
                     stopping_criteria=StoppingCriteriaList([_Cancelled(cancel)]),
                 )

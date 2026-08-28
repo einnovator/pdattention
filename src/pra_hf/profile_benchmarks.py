@@ -61,6 +61,14 @@ RUNTIME_METRIC_FIELDS = (
     "index_build_time_ms",
     "prefetch_overlap",
     "concurrent_sessions",
+    "prefix_tokens_reusable",
+    "prefix_reuse_fraction",
+    "prefix_invalidations",
+    "message_bytes_sent",
+    "resource_bytes_sent",
+    "session_delta_bytes",
+    "engine_prefix_cache_hit",
+    "engine_session_reuse",
 )
 
 REQUIRED_BENCHMARK_FIELDS = (

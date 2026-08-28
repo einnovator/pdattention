@@ -73,6 +73,22 @@ def _resource(name="facts"):
     )
 
 
+def test_typed_decode_limit_precedes_legacy_hint_and_openai_max_tokens_is_mapped():
+    legacy = _request(engine_hints={"max_new_tokens": 2})
+    typed = _request(max_new_tokens=3, engine_hints={"max_new_tokens": 2})
+    openai = PRAWireRequest.from_openai(
+        {
+            "model": "offline/model",
+            "messages": [{"role": "user", "content": "question"}],
+            "max_tokens": 4,
+        }
+    )
+
+    assert legacy.resolved_max_new_tokens == 2
+    assert typed.resolved_max_new_tokens == 3
+    assert openai.resolved_max_new_tokens == 4
+
+
 def test_g00_pass_through_preserves_structured_messages():
     adapter = RecordingAdapter()
     request = _request(
