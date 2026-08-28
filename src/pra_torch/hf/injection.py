@@ -65,6 +65,13 @@ class PRAHFModel:
         self.memory_gate = memory_gate
         self.residual_adapter = residual_adapter
         self.late_band_lora = late_band_lora
+        self.address_layers = tuple(hf_config.address_layer_ids or hf_config.layer_ids)
+        self.detail_kv_layers = tuple(hf_config.detail_kv_layer_ids or hf_config.layer_ids)
+        self.routing_layers = tuple(hf_config.routing_layer_ids or hf_config.layer_ids[-1:])
+        self.consumption_layers = tuple(
+            hf_config.consumption_layer_ids or hf_config.layer_ids
+        )
+        self.missing_detail_kv_policy = hf_config.missing_detail_kv_policy
         self.max_native_operation_tokens = 0
         self.native_limit_violations = 0
 
@@ -204,6 +211,12 @@ class PRAHFModel:
                     if chunk is None:
                         raise ValueError(
                             f"Chunk {hit.chunk_id} has no payload at layer {layer_id}."
+                        )
+                    if chunk.token_kv is None:
+                        raise ValueError(
+                            f"Reference {hit.reference_uri} has no detail K/V for layer "
+                            f"{layer_id} (missing_detail_kv_policy="
+                            f"{self.missing_detail_kv_policy})."
                         )
                     mapped_row.append(
                         replace(
@@ -351,6 +364,12 @@ class PRAHFModel:
                 "routing_chunk_tokens": self.hf_config.routing_chunk_tokens,
                 "routing_representation": self.hf_config.routing_representation,
                 "position_state": "post_position",
+                "address_layers": list(self.address_layers),
+                "detail_kv_layers": list(self.detail_kv_layers),
+                "routing_layers": list(self.routing_layers),
+                "consumption_layers": list(self.consumption_layers),
+                "address_state": "NOT_BUILT",
+                "detail_kv_state": "NOT_BUILT",
             },
         )
         prior_memory_state = {layer: adapter.memory_enabled for layer, adapter in self.adapters.items()}
@@ -441,7 +460,11 @@ class PRAHFModel:
                             token_end=logical_end,
                             logical_start=logical_start,
                             logical_end=logical_end,
-                            token_kv=self._resident_kv(kv),
+                            token_kv=(
+                                self._resident_kv(kv)
+                                if layer in self.detail_kv_layers
+                                else None
+                            ),
                             routing_gist=ChunkRoutingGist(
                                 k=computed.k.detach(),
                                 query_k=(
@@ -477,9 +500,15 @@ class PRAHFModel:
                                     )
                                 ),
                                 "detail_kv_bytes": int(
-                                    (kv.k.numel() * kv.k.element_size())
-                                    + (kv.v.numel() * kv.v.element_size())
+                                    (
+                                        (kv.k.numel() * kv.k.element_size())
+                                        + (kv.v.numel() * kv.v.element_size())
+                                    )
+                                    if layer in self.detail_kv_layers
+                                    else 0
                                 ),
+                                "address_persisted": layer in self.address_layers,
+                                "detail_kv_persisted": layer in self.detail_kv_layers,
                             },
                         )
                         entry.layer_memory.setdefault(layer, LayerReferenceMemory()).chunks.append(chunk)
@@ -488,6 +517,12 @@ class PRAHFModel:
         finally:
             for layer, enabled in prior_memory_state.items():
                 self.adapters[layer].set_memory_enabled(enabled)
+        entry.metadata["address_state"] = (
+            "BUILT" if self.address_layers else "SKIPPED"
+        )
+        entry.metadata["detail_kv_state"] = (
+            "BUILT" if self.detail_kv_layers else "DEFERRED"
+        )
         self.cache.put(entry)
         return entry
 
@@ -547,6 +582,39 @@ def inject_pra(
         raise ValueError("Paper 2 correctness integration requires attn_implementation='eager'.")
     layers = model.model.layers
     selected = _normalize_layer_ids(config.layer_ids, len(layers))
+    config.address_layer_ids = (
+        selected
+        if config.address_layer_ids is None
+        else (
+            _normalize_layer_ids(config.address_layer_ids, len(layers))
+            if config.address_layer_ids
+            else ()
+        )
+    )
+    config.detail_kv_layer_ids = _normalize_layer_ids(
+        config.detail_kv_layer_ids or selected, len(layers)
+    )
+    config.routing_layer_ids = _normalize_layer_ids(
+        config.routing_layer_ids or selected[-1:], len(layers)
+    )
+    config.consumption_layer_ids = _normalize_layer_ids(
+        config.consumption_layer_ids or selected, len(layers)
+    )
+    expected = (
+        set(config.address_layer_ids)
+        | set(config.detail_kv_layer_ids)
+        | set(config.routing_layer_ids)
+        | set(config.consumption_layer_ids)
+    )
+    if not expected.issubset(selected):
+        raise ValueError("Every PRA layer role must be included in layer_ids.")
+    if not set(config.consumption_layer_ids).issubset(config.detail_kv_layer_ids):
+        raise ValueError("Every PRA consumer requires stored detail K/V.")
+    if (
+        config.address_mode != "external"
+        and not set(config.routing_layer_ids).issubset(config.address_layer_ids)
+    ):
+        raise ValueError("Every native PRA router requires a stored address index.")
     pra_config = config.build_pra_config(model.config)
     if routing_projection is not None:
         if config.routing_representation != ATTENTION_INPUT_HIDDEN_STATE:

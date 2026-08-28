@@ -1,6 +1,20 @@
 """Public PRA-HF API for bounded sparse native-K/V memory."""
 
 from .config import PRAConfig
+from .layer_profiles import (
+    AddressEncodingPolicy,
+    DetailKVEncodingPolicy,
+    LAYER_PROFILE_OBJECTIVES,
+    LayerProfileRegistry,
+    LayerSelection,
+    MissingDetailKVError,
+    MissingDetailKVPolicy,
+    NativeIndexLifecycleState,
+    ResolvedLayerRoles,
+    common_calibration_candidates,
+    native_index_lifecycle,
+    resolve_detail_availability,
+)
 from .evaluation import evaluate_router_features
 from .memory_adapter import PRAMemoryAdapter
 from .native_geometry import (
@@ -264,6 +278,18 @@ __all__ = [
     "HotMemoryHandle",
     "HybridDiscoveryPolicy",
     "PRAConfig",
+    "AddressEncodingPolicy",
+    "DetailKVEncodingPolicy",
+    "LAYER_PROFILE_OBJECTIVES",
+    "LayerProfileRegistry",
+    "LayerSelection",
+    "MissingDetailKVError",
+    "MissingDetailKVPolicy",
+    "NativeIndexLifecycleState",
+    "ResolvedLayerRoles",
+    "common_calibration_candidates",
+    "native_index_lifecycle",
+    "resolve_detail_availability",
     "PRAExecutionCapabilities",
     "PRAExecutionPolicy",
     "PRAMaterializationScope",

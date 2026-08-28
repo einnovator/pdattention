@@ -273,6 +273,10 @@ def _slice_interval(
                 f"Layer {layer_id} has a K/V gap at token {cursor} for {entry.uri}."
             )
         source = max(covering, key=lambda row: (int(row.logical_end), -row.logical_start))
+        if source.token_kv is None:
+            raise ValueError(
+                f"Layer {layer_id} has routing addresses but no detail K/V for {entry.uri}."
+            )
         take_end = min(interval.end, int(source.logical_end))
         local_start = cursor - source.logical_start
         local_end = take_end - source.logical_start

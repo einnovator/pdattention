@@ -88,6 +88,31 @@ def test_product_config_serializes_and_fraction_precedes_top_k(tmp_path):
     assert _config(selected_fraction=None, top_k=3).selection_policy == "top_k"
 
 
+def test_address_only_layer_omits_detail_kv_while_consumer_retains_it():
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(
+            routing_layer=0,
+            routing_layers=(0,),
+            address_layers=(0,),
+            address_encoding_policy="explicit",
+            consumption_layers=(1,),
+            detail_kv_layers=(1,),
+            detail_kv_encoding_policy="explicit",
+        ),
+    )
+    reference = pra.add_reference("abcdefgh")
+    entry = pra._handle.cache.get(reference.uri)
+
+    assert entry is not None
+    assert entry.layer_memory[0].chunks[0].token_kv is None
+    assert entry.layer_memory[0].chunks[0].metadata["address_persisted"] is True
+    assert entry.layer_memory[1].chunks[0].token_kv is not None
+    assert entry.layer_memory[1].chunks[0].metadata["detail_kv_persisted"] is True
+    assert pra.stats()["layer_profile"]["routing_layers"] == (0,)
+
+
 def test_router_hf_style_artifact_round_trip(tmp_path):
     torch.manual_seed(301)
     router = PRARouter(

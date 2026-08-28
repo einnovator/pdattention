@@ -9,6 +9,16 @@ from typing import Any
 
 from pra_torch.hf import ATTENTION_INPUT_HIDDEN_STATE, PRAHFConfig
 
+from .layer_profiles import (
+    AddressEncodingPolicy,
+    DetailKVEncodingPolicy,
+    LAYER_PROFILE_OBJECTIVES,
+    LayerProfileRegistry,
+    LayerSelection,
+    MissingDetailKVPolicy,
+    ResolvedLayerRoles,
+    eligible_layers,
+)
 from .native_geometry import NativeMaterializationMode, materialization_profile
 
 
@@ -27,7 +37,22 @@ class PRAConfig:
 
     enabled: bool = True
     routing_layer: int = -1
+    routing_layers: tuple[int, ...] | None = None
     consumption_layers: tuple[int, ...] = _DEFAULT_CONSUMPTION_LAYERS
+    address_layers: tuple[int, ...] | None = None
+    detail_kv_layers: tuple[int, ...] | None = None
+    consumption_profile: str | dict[str, Any] | None = None
+    layer_profile_name: str | None = None
+    layer_profile_objective: str = "balanced"
+    layer_profile_registry: str | None = None
+    workload_class: str | None = None
+    materialization_class: str | None = None
+    model_id: str | None = None
+    model_revision: str | None = None
+    detail_kv_encoding_policy: str = DetailKVEncodingPolicy.MINIMAL.value
+    address_encoding_policy: str = AddressEncodingPolicy.ROUTING_ONLY.value
+    missing_detail_kv_policy: str = MissingDetailKVPolicy.REENCODE_MISSING.value
+    address_mode: str = "native"
     routing_representation: str = ATTENTION_INPUT_HIDDEN_STATE
     chunk_tokens: int = 32
     chunk_overlap_tokens: int = 0
@@ -74,6 +99,36 @@ class PRAConfig:
 
     def __post_init__(self) -> None:
         self.consumption_layers = tuple(int(layer) for layer in self.consumption_layers)
+        self.routing_layers = (
+            None
+            if self.routing_layers is None
+            else tuple(int(layer) for layer in self.routing_layers)
+        )
+        self.address_layers = (
+            None
+            if self.address_layers is None
+            else tuple(int(layer) for layer in self.address_layers)
+        )
+        self.detail_kv_layers = (
+            None
+            if self.detail_kv_layers is None
+            else tuple(int(layer) for layer in self.detail_kv_layers)
+        )
+        self.detail_kv_encoding_policy = DetailKVEncodingPolicy(
+            self.detail_kv_encoding_policy
+        ).value
+        self.address_encoding_policy = AddressEncodingPolicy(
+            self.address_encoding_policy
+        ).value
+        self.missing_detail_kv_policy = MissingDetailKVPolicy(
+            self.missing_detail_kv_policy
+        ).value
+        if self.layer_profile_objective not in LAYER_PROFILE_OBJECTIVES:
+            raise ValueError(
+                f"layer_profile_objective must be one of {LAYER_PROFILE_OBJECTIVES}."
+            )
+        if self.address_mode not in {"native", "external"}:
+            raise ValueError("address_mode must be 'native' or 'external'.")
         if self.materialization_profile is not None:
             profile = materialization_profile(self.materialization_profile)
             self.chunk_tokens = profile.routing_chunk_tokens
@@ -200,75 +255,134 @@ class PRAConfig:
             cascade_threshold=self.hybrid_cascade_threshold,
         )
 
-    def resolved_layers(self, model_config_or_layer_count) -> tuple[int, tuple[int, ...]]:
-        """Resolve layer IDs while preserving a host model's native scope.
+    def resolved_layer_roles(self, model_config_or_layer_count) -> ResolvedLayerRoles:
+        """Resolve and validate independent address, detail, route, and consume roles.
 
-        Ordinary decoder families resolve negative indices against the complete
-        stack. Gemma 3 defaults instead select the late native-global layers;
-        explicit local-layer requests are rejected rather than silently turning
-        sliding attention into full external-memory attention.
+        Explicit request fields take precedence.  A named registry profile is
+        consulted only for roles that the request leaves unspecified.  Gemma 3
+        profiles normalize over native full-attention layers rather than over
+        its interleaved sliding-attention stack.
         """
-        if isinstance(model_config_or_layer_count, int):
-            layer_count = model_config_or_layer_count
-            layer_types: tuple[str, ...] = ()
-        else:
-            model_config = model_config_or_layer_count
-            layer_count = int(model_config.num_hidden_layers)
-            layer_types = (
-                tuple(getattr(model_config, "layer_types", ()) or ())
-                if getattr(model_config, "model_type", None) == "gemma3_text"
-                else ()
+
+        layer_count, allowed, family = eligible_layers(model_config_or_layer_count)
+        profile: dict[str, Any] = {}
+        profile_source = "request"
+        registry_version = None
+        if self.layer_profile_name is not None:
+            registry = (
+                LayerProfileRegistry.from_path(self.layer_profile_registry)
+                if self.layer_profile_registry
+                else LayerProfileRegistry.default()
             )
-
-        def resolve(value: int) -> int:
-            result = layer_count + value if value < 0 else value
-            if result < 0 or result >= layer_count:
-                raise ValueError(f"Layer {value} is outside a {layer_count}-layer model.")
-            return result
-
-        if not layer_types:
-            routing = resolve(self.routing_layer)
-            consumption = tuple(sorted({resolve(layer) for layer in self.consumption_layers}))
-            return routing, consumption
-
-        global_layers = tuple(
-            index for index, layer_type in enumerate(layer_types)
-            if layer_type == "full_attention"
-        )
-        if not global_layers:
-            raise ValueError("Gemma 3 exposes no native full-attention layers.")
-        routing = (
-            global_layers[-1]
-            if self.routing_layer == -1
-            else resolve(self.routing_layer)
-        )
-        if routing not in global_layers:
-            raise ValueError(
-                f"Gemma 3 routing layer {routing} is sliding attention; "
-                f"choose one of the native global layers {global_layers}."
+            profile, profile_source = registry.resolve(
+                family=family,
+                model_id=self.model_id,
+                workload=self.workload_class,
+                materialization=self.materialization_class,
+                objective=self.layer_profile_objective,
             )
-        if self.consumption_layers == _DEFAULT_CONSUMPTION_LAYERS:
-            requested = tuple(range(max(0, layer_count - 8), layer_count))
-            consumption = tuple(layer for layer in requested if layer in global_layers)
-            if not consumption:
-                consumption = (global_layers[-1],)
+            registry_version = registry.version
+
+        if self.routing_layers is not None:
+            routing_spec: Any = self.routing_layers
+        elif "routing" in profile:
+            routing_spec = profile["routing"]
         else:
-            requested = tuple(sorted({resolve(layer) for layer in self.consumption_layers}))
-            local = tuple(layer for layer in requested if layer not in global_layers)
-            if local:
-                raise ValueError(
-                    f"Gemma 3 PRA consumption layers {local} are sliding attention; "
-                    f"choose native global layers from {global_layers}."
-                )
-            consumption = requested
-        return routing, consumption
+            routing_spec = (self.routing_layer,)
+        routing = LayerSelection.from_value(routing_spec).resolve(
+            layer_count, allowed_layers=allowed
+        )
+
+        if self.consumption_profile is not None:
+            consumption_spec: Any = self.consumption_profile
+        elif "consumption" in profile:
+            consumption_spec = profile["consumption"]
+        elif family == "gemma3" and self.consumption_layers == _DEFAULT_CONSUMPTION_LAYERS:
+            consumption_spec = tuple(
+                layer for layer in range(max(0, layer_count - 8), layer_count)
+                if layer in allowed
+            ) or (allowed[-1],)
+        else:
+            consumption_spec = self.consumption_layers
+        consumption = LayerSelection.from_value(consumption_spec).resolve(
+            layer_count, allowed_layers=allowed
+        )
+
+        detail_policy = DetailKVEncodingPolicy(self.detail_kv_encoding_policy)
+        if detail_policy == DetailKVEncodingPolicy.ALL_LAYERS:
+            detail = allowed
+        elif detail_policy == DetailKVEncodingPolicy.EXPLICIT:
+            if self.detail_kv_layers is None:
+                raise ValueError("detail_kv_layers is required by the explicit detail policy.")
+            detail = LayerSelection.from_value(self.detail_kv_layers).resolve(
+                layer_count, allowed_layers=allowed
+            )
+        elif self.detail_kv_layers is not None:
+            detail = LayerSelection.from_value(self.detail_kv_layers).resolve(
+                layer_count, allowed_layers=allowed
+            )
+        else:
+            # PROFILE_UNION is populated by calibration with an explicit union;
+            # without one, preserving the active consumers is the bounded choice.
+            detail = consumption
+
+        address_policy = AddressEncodingPolicy(self.address_encoding_policy)
+        if address_policy == AddressEncodingPolicy.EXTERNAL_ONLY:
+            address = ()
+            address_mode = "external"
+        elif address_policy == AddressEncodingPolicy.EXPLICIT:
+            if self.address_layers is None:
+                raise ValueError("address_layers is required by the explicit address policy.")
+            address = LayerSelection.from_value(self.address_layers).resolve(
+                layer_count, allowed_layers=allowed
+            )
+            address_mode = self.address_mode
+        elif self.address_layers is not None:
+            address = LayerSelection.from_value(self.address_layers).resolve(
+                layer_count, allowed_layers=allowed
+            )
+            address_mode = self.address_mode
+        else:
+            address = routing
+            address_mode = self.address_mode
+
+        return ResolvedLayerRoles(
+            address_layers=address,
+            detail_kv_layers=detail,
+            routing_layers=routing,
+            consumption_layers=consumption,
+            detail_kv_encoding_policy=detail_policy.value,
+            address_encoding_policy=address_policy.value,
+            missing_detail_kv_policy=self.missing_detail_kv_policy,
+            address_mode=address_mode,
+            profile_name=(profile.get("name") if profile else self.layer_profile_name),
+            profile_source=profile_source,
+            registry_version=registry_version,
+            model_family=family,
+            model_id=self.model_id,
+            model_revision=self.model_revision,
+            workload_class=self.workload_class,
+            materialization_class=self.materialization_class,
+            objective=self.layer_profile_objective,
+        )
+
+    def resolved_layers(self, model_config_or_layer_count) -> tuple[int, tuple[int, ...]]:
+        """Return the legacy primary-route/consumer view of resolved layer roles."""
+
+        roles = self.resolved_layer_roles(model_config_or_layer_count)
+        return roles.primary_routing_layer, roles.consumption_layers
 
     def to_internal(self, model_config_or_layer_count) -> PRAHFConfig:
         """Translate stable product fields into the shared research-core config."""
-        routing, consumption = self.resolved_layers(model_config_or_layer_count)
-        layers = tuple(sorted({routing, *consumption}))
+        roles = self.resolved_layer_roles(model_config_or_layer_count)
         return PRAHFConfig(
-            layer_ids=layers,
+            layer_ids=roles.injected_layers,
+            address_layer_ids=roles.address_layers,
+            detail_kv_layer_ids=roles.detail_kv_layers,
+            routing_layer_ids=roles.routing_layers,
+            consumption_layer_ids=roles.consumption_layers,
+            missing_detail_kv_policy=roles.missing_detail_kv_policy,
+            address_mode=roles.address_mode,
             model_max_context_tokens=self.native_operation_limit,
             max_prompt_direct_tokens=self.max_direct_context,
             encoding_block_tokens=self.encoding_block_tokens,
@@ -305,6 +419,9 @@ class PRAConfig:
         """Return a JSON-compatible representation."""
         values = asdict(self)
         values["consumption_layers"] = list(self.consumption_layers)
+        for field_name in ("routing_layers", "address_layers", "detail_kv_layers"):
+            if values[field_name] is not None:
+                values[field_name] = list(values[field_name])
         return values
 
     @classmethod

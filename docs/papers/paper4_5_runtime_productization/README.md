@@ -42,6 +42,10 @@ python -m experiments.paper4_5_runtime.run_runtime_profile
 python -m experiments.paper4_5_runtime.run_execution_policy_profile
 python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
 python -m experiments.paper4_5_runtime.run_cross_model_validation --model all --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwen --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model gemma --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --finalize-only
 python -m experiments.paper4_5_runtime.summarize_runtime
 ```
 

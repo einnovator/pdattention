@@ -26,6 +26,12 @@ class PRAHFConfig:
     """Small HF-facing configuration that expands into canonical ``PRAConfig``."""
 
     layer_ids: tuple[int, ...] = (-1,)
+    address_layer_ids: tuple[int, ...] | None = None
+    detail_kv_layer_ids: tuple[int, ...] | None = None
+    routing_layer_ids: tuple[int, ...] | None = None
+    consumption_layer_ids: tuple[int, ...] | None = None
+    missing_detail_kv_policy: str = "reencode_missing"
+    address_mode: str = "native"
     model_max_context_tokens: int | None = None
     max_prompt_direct_tokens: int | None = None
     encoding_block_tokens: int = 512
@@ -58,6 +64,24 @@ class PRAHFConfig:
 
     def __post_init__(self) -> None:
         """Reject routing modes that the installed family adapter cannot represent."""
+        self.layer_ids = tuple(int(layer) for layer in self.layer_ids)
+        for field_name in (
+            "address_layer_ids",
+            "detail_kv_layer_ids",
+            "routing_layer_ids",
+            "consumption_layer_ids",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                setattr(self, field_name, tuple(int(layer) for layer in value))
+        if self.missing_detail_kv_policy not in {
+            "reencode_missing",
+            "fail",
+            "downgrade_profile",
+        }:
+            raise ValueError("Unsupported missing_detail_kv_policy.")
+        if self.address_mode not in {"native", "external"}:
+            raise ValueError("address_mode must be 'native' or 'external'.")
         self.routing_representation = canonical_routing_representation(
             self.routing_representation
         )

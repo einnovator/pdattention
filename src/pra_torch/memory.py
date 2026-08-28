@@ -104,7 +104,7 @@ class ReferenceChunkMemory:
     source_uri: str  # Canonical document from which the span was encoded.
     token_start: int  # Inclusive source-token offset.
     token_end: int  # Exclusive source-token offset after truncation.
-    token_kv: ChunkKV  # Full detail K/V, each shaped [1, H, chunk_tokens, Dh].
+    token_kv: ChunkKV | None  # Optional detail K/V, each [1,H,chunk_tokens,Dh].
     routing_gist: ChunkRoutingGist  # Cheap [d_model] vectors searched first.
     char_start: int | None = None  # Optional inclusive source-character offset.
     char_end: int | None = None  # Optional exclusive source-character offset.
@@ -127,8 +127,17 @@ class ReferenceChunkMemory:
 
     @property
     def token_count(self) -> int:
-        """Return the retained K/V sequence length for this layer/chunk."""
+        """Return logical span length, including address-only cache records."""
+
+        if self.token_kv is None:
+            return int(self.token_end - self.token_start)
         return int(self.token_kv.k.shape[2])
+
+    @property
+    def has_detail_kv(self) -> bool:
+        """Whether this layer/chunk can be materialized for native attention."""
+
+        return self.token_kv is not None
 
 
 @dataclass

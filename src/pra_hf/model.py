@@ -99,7 +99,12 @@ class PRAForCausalLM:
                 "local_iterative routing requires a routing adapter with aligned W_q/W_m projections."
             )
         layer_count = len(model.model.layers)
-        self.routing_layer, self.consumption_layers = config.resolved_layers(model.config)
+        self.layer_roles = config.resolved_layer_roles(model.config)
+        self.routing_layer = self.layer_roles.primary_routing_layer
+        self.routing_layers = self.layer_roles.routing_layers
+        self.consumption_layers = self.layer_roles.consumption_layers
+        self.address_layers = self.layer_roles.address_layers
+        self.detail_kv_layers = self.layer_roles.detail_kv_layers
         self._handle = inject_pra(
             model,
             config.to_internal(model.config),
@@ -1077,6 +1082,7 @@ class PRAForCausalLM:
                 * hit.chunk.token_kv.v.element_size()
                 for rows in plan.selections_by_layer.values()
                 for hit in rows
+                if hit.chunk.token_kv is not None
             )
             self._last_stats = {
                 "selection_policy": "frozen_record_bounded_geometry",
@@ -1223,7 +1229,19 @@ class PRAForCausalLM:
             "enabled": self.config.enabled,
             "family": next(iter(self._handle.adapters.values())).family,
             "routing_layer": self.routing_layer,
+            "routing_layers": list(self.routing_layers),
+            "address_layers": list(self.address_layers),
+            "detail_kv_layers": list(self.detail_kv_layers),
             "consumption_layers": list(self.consumption_layers),
+            "layer_profile": self.layer_roles.to_dict(),
+            "native_index_lifecycle": {
+                "address_state": (
+                    "BUILT" if entries and self.address_layers else "SKIPPED"
+                ),
+                "detail_kv_state": (
+                    "BUILT" if entries and self.detail_kv_layers else "DEFERRED"
+                ),
+            },
             "router_parameters": self.router.parameter_count if self.router else 0,
             "memory_adapter_parameters": (
                 self.memory_adapter.parameter_count if self.memory_adapter else 0

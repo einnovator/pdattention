@@ -43,7 +43,13 @@ visible-prefix top tokens and answer accuracy for Qwen3-0.6B and a public
 Llama-3.2-1B weight mirror. Gemma-3-1B preserves disabled behavior, native MQA
 shape, positions, and decode lifetime, but its four global PRA consumers do not
 reproduce the semantics of a visible prefix passing through 22 unchanged local
-sliding layers; we report that family as partial topology. DeepSeek Harness and Pi bridges preserve typed
+sliding layers; we report that family as partial topology. The runtime now
+separates address encoding, detail-K/V encoding, request-time
+routing, and memory consumption. A corrected 102-row layer calibration finds
+that no sparse profile is portable across the three families: all eligible
+layers are the balanced correctness profile for each model, while Qwen's
+last-24 profile is only a small-cohort quality-max candidate.
+DeepSeek Harness and Pi bridges preserve typed
 tool-result identity through explicit ordinary-engine fallback in all
 \AgentPluginCases{} contract cases. In a five-seed tiny-HF mechanism profile, token-shared
 selection required
@@ -148,6 +154,26 @@ K,V \in \mathbb{R}^{B \times H_{kv} \times T \times D}
 \end{equation}
 and leaves head expansion to the model-family attention adapter.
 
+These equations require four layer sets, not one overloaded set of ``PRA
+layers.'' Let $L_A$ store compact addresses, $L_{KV}$ store detailed native
+K/V, $L_R$ perform request-time routing, and $L_C$ consume selected memory.
+The runtime enforces
+\begin{equation}
+L_C \subseteq L_{KV}, \qquad
+L_R \subseteq L_A \quad \text{for layer-native routing}.
+\end{equation}
+The persistent detail term is therefore
+
+
+\begin{equation}
+B_{\mathrm{detail}} = 2 |L_{KV}| H_{kv} T D b,
+\end{equation}
+whereas one request pays active attention over $|L_C|S$ layer-token states.
+Address layers may be broader than detail-K/V layers when compact search is
+useful at several depths. Production defaults do the opposite kind of
+conservatism: detail K/V is encoded only for the resolved consumer profile,
+unless profile switching or calibration explicitly requests a union.
+
 \subsection{Latency is a sum of visible stages}
 
 For one request, PRA overhead is not a single routing timer.  We decompose it as
@@ -196,13 +222,32 @@ native K/V. Routing does not authorize source access or tool side effects.}
 \label{fig:architecture}
 \end{figure}
 
-The public configuration has two layers.  \texttt{PRAConfig} continues to
-specify semantic behavior: routing layers, chunking, closure mode, and material-
-ization budget.  \texttt{PRARuntimeConfig} specifies physical behavior:
+The public configuration has two layers.  \texttt{PRAConfig} specifies
+semantic behavior and all four model-layer roles: \texttt{address\_layers},
+\texttt{detail\_kv\_layers}, \texttt{routing\_layers}, and
+\texttt{consumption\_layers}, plus chunking, closure mode, and materialization
+budget. \texttt{PRARuntimeConfig} specifies physical behavior:
 backend, compilation mode, K/V layout, page size, cache bounds, prefetch policy,
 and timing synchronization.  Both serialize to a versioned JSON artifact.  A
 runtime optimization is valid only when changing the second layer preserves
 selected identities and output parity under fixed model semantics.
+
+Layer selections use topology-normalized forms: all layers, last $n$, last
+fraction, evenly spaced $n$, or an explicit list. A versioned registry resolves
+request override, workload/model profile, family balanced fallback, then the
+all-eligible correctness reference. The named objectives are
+\texttt{reference\_correctness}, \texttt{quality\_max}, \texttt{balanced}, and
+\texttt{economy}; the resolved trace records model ID and revision, workload,
+materialization class, physical layer lists, profile source, and registry
+version. A profile name is not portable evidence by itself.
+
+Address and detail construction have independent lifecycle states
+(\texttt{NOT\_BUILT}, \texttt{PARTIAL}, \texttt{BUILT}, \texttt{SKIPPED}, or
+\texttt{DEFERRED}). The detail policy is minimal, profile union, all layers, or
+explicit. The address policy is routing-only, all candidate routing layers,
+external-only, or explicit. If a new consumer requires absent detail K/V, the
+runtime must re-encode missing layers, fail, or follow an explicitly configured
+profile downgrade. It never silently substitutes a shallower profile.
 
 \subsection{A multi-axis execution policy}
 
@@ -520,6 +565,78 @@ the visible prefix by \GemmaFullMaxError{} maximum and \GemmaFullMeanError{}
 mean absolute logit error. The one-token top answers remain unchanged, but that
 coarse agreement is not full-prefix equivalence. We therefore report
 \emph{partial topology}, not cross-family semantic parity.
+
+\subsection{Corrected layer-profile calibration}
+
+The earlier sparse column was a diagnostic, not a calibrated deployment
+profile. We therefore inject all eligible layers once and replay one fixed,
+complete reference identity through a common profile sweep. Qwen uses all 28
+decoder layers; Llama uses all 16; Gemma normalizes over its four eligible
+global-attention layers. Candidate profiles are all layers; contiguous late
+suffixes of 1, 4, 8, 12, 14, 16, 20, and 24 where defined; early and middle
+blocks; and evenly spaced blocks. Reference width, query offset, native
+post-position K/V, GQA/MQA head count, and shared-softmax attention remain
+fixed. The 102 rows comprise three frozen one-token cases per model. They
+calibrate SDK behavior but do not replace Paper 3's workload-scale placement
+study.
+
+\begin{table}[H]
+\centering
+\caption{Corrected fixed-identity layer calibration. $\Delta$LP is target-token
+log probability relative to the visible-prefix control. Rank is averaged over
+three cases. ``All'' means all eligible layers, not necessarily every physical
+decoder layer for Gemma.}
+\label{tab:layer-calibration}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Model & Profile & Consumers & Active layer-tokens & $\Delta$LP & Rank\\
+\midrule
+Qwen3-0.6B & all & 28 & 196.0 & $+.001$ & 1.33\\
+ & last 24 & 24 & 168.0 & $+.389$ & 1.00\\
+ & last 8 & 8 & 56.0 & $-.650$ & 2.33\\
+ & last 1 & 1 & 7.0 & $-1.705$ & 20.33\\
+\midrule
+Llama-3.2-1B & all & 16 & 106.7 & $-.002$ & 1.33\\
+ & last 8 & 8 & 53.3 & $-1.986$ & 5.33\\
+ & last 1 & 1 & 6.7 & $-2.708$ & 16.67\\
+\midrule
+Gemma-3-1B & all four global & 4 & 28.0 & $-.038$ & 1.00\\
+ & last global & 1 & 7.0 & $-7.818$ & 72.33\\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\linewidth]{layer_profiles/layer_profile_quality_cost.pdf}
+\caption{Target-token quality against active layer-token cost with reference
+identity and token width fixed. The sharp family-dependent trajectories rule
+out a universal ``last eight'' product default.}
+\label{fig:layer-profile-calibration}
+\end{figure}
+
+All-layer Qwen and Llama replay are the only tested profiles with maximum
+full-logit error below .1. Qwen last-24 has the best mean target log probability
+on these three cases, but its maximum full-logit deviation is 7.14; it is
+therefore registered as \texttt{quality\_max} research evidence, not as the
+balanced product default. Llama requires all 16 layers for the same fidelity
+criterion. Gemma requires all four eligible global layers to preserve the
+tested target tokens, yet still cannot reproduce the hidden computation of its
+22 unchanged local layers. Thus \texttt{balanced} and
+\texttt{reference\_correctness} resolve to all eligible layers for all three
+families in this registry version. The economy profile is an explicit last-one
+stress point and carries no quality guarantee.
+
+The storage consequence is intentionally separate. Routing-only address state
+is retained at one late layer, while detail K/V is retained at the resolved
+consumer layers. On these short references, Qwen detail storage falls from
+802,816 bytes for all 28 layers to 688,128 for last 24 and 229,376 for last 8;
+the routing index remains 2,048 bytes. A service that needs rapid profile
+switching may ingest the union of candidate detail layers. The production
+default instead stores only the chosen profile and re-encodes explicitly if a
+later request asks for missing detail.
 
 The task smoke invokes the inherited Paper 8 task graph, provenance attachment,
 and task-structural selector rather than copying expected IDs into the
@@ -973,6 +1090,13 @@ The Llama row uses a public weight mirror because the pinned official repository
 was inaccessible. Gemma is partial rather than passed: its global-only adapter
 cannot make external K/V visible to unchanged local sliding layers. Sparse
 profiles are declared per family and are not assumed to preserve quality.
+The layer calibration reuses that diagnostic cohort. Its 102 rows vary
+profiles, not independent examples, so they identify gross transport drift and
+set conservative SDK defaults but cannot estimate downstream answer quality.
+Qwen last-24's target-token gain is especially vulnerable to this small-cohort
+selection effect. Paper 3 owns retrospective placement evidence on MuSiQue and
+2Wiki; a future calibration should add held-out QASPER, HotpotQA, typed-result,
+and long-generation workloads before any sparse profile becomes a default.
 
 The next experiment should move to a compute-capability 8.0 or newer GPU with a
 pinned software stack.  It should first reproduce eager parity, then measure
@@ -1011,7 +1135,12 @@ engines to coexist without sending native tensors over the logical wire. The
 HF semantic reference now passes full-prefix logit equivalence on the tested
 Qwen and Llama checkpoints, plus record-boundary deduplication and request-long
 decode-lifetime gates. Gemma validates native MQA mechanics but identifies a
-global/local topology boundary rather than a full semantic pass. The eager primitives are exact and inexpensive in isolation, but
+global/local topology boundary rather than a full semantic pass. Layer
+placement is now a versioned calibration result rather than an implicit ``PRA
+layer'' convention. Separate address, detail-K/V, routing, and consumer sets
+make persistent storage and request-time computation independently auditable;
+missing detail can never trigger a silent profile downgrade. The eager
+primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
 and optional engines remain negative or unmeasured gates.  The practical
 conclusion is conservative: cache locality, physical residency, and context
@@ -1052,6 +1181,25 @@ control boundary: parse untrusted proposals, validate them against a copy of
 the task graph, and only then replay accepted events through the session service.
 
 \subsection{HF native-reference implementation map}
+
+The four-role resolver is in
+\path{src/pra_hf/layer_profiles.py:1--430}. Lines 27--77 define independent
+encoding and missing-detail policies; lines 81--178 normalize all, suffix,
+fractional, evenly spaced, and explicit profiles; lines 181--244 validate the
+$L_A,L_{KV},L_R,L_C$ invariants and serialize provenance. The stable public
+fields and registry precedence are applied in
+\path{src/pra_hf/config.py:19--420}. The versioned model entries live in
+\path{src/pra_hf/model_profiles/layer_profile_registry.json}.
+
+Lines 328--510 of the HF \texttt{injection.py} module separate reference
+payloads. Every injected layer can produce
+compact identity metadata for cross-layer mapping, address layers retain their
+search representation, and only detail layers retain native K/V. The cache
+record exposes \texttt{has\_detail\_kv} in
+\path{src/pra_torch/memory.py:99--140}; materialization rejects an address-only
+chunk before attention in \path{src/pra_torch/core.py:232--270}. Selecting a
+chunk ID at $L_R$ never licenses reuse of $L_R$'s tensor at $L_C$: the identity
+is resolved to the destination layer's independently projected K/V.
 
 The complete geometry is concentrated in
 \path{src/pra_hf/native_geometry.py:59--374}. Lines 59--107 define four
@@ -1166,6 +1314,11 @@ Five-seed multi-axis mechanism profile and trade-off figure\\
 \path{experiments/paper4_5_runtime/run_cross_model_validation.py} &
 Restartable Qwen/Llama/Gemma semantic gates, physical accounting, reuse and
 multi-tenant controls, and cross-model figure\\
+\path{experiments/paper4_5_runtime/run_layer_profile_calibration.py} &
+Corrected cross-model contiguous/sparse profile sweep, storage accounting,
+registry selection, and quality--cost figure\\
+\path{src/pra_hf/layer_profiles.py} & Four-role layer schema, normalized
+selection, registry precedence, lifecycle, and missing-detail policy\\
 \path{src/pra_hf/runtime_benchmark.py} & Structured eager/compiled and
 hierarchy microbenchmark\\
 \path{src/pra_hf/agent_resources.py} & Typed resource identities and

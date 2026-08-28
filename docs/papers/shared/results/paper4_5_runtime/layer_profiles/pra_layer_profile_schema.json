@@ -1,0 +1,64 @@
+{
+  "$defs": {
+    "layerSelection": {
+      "properties": {
+        "fraction": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "type": "number"
+        },
+        "layers": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "all_layers",
+            "last_n",
+            "last_fraction",
+            "evenly_spaced_n",
+            "explicit"
+          ]
+        },
+        "n": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "consumption": {
+      "$ref": "#/$defs/layerSelection"
+    },
+    "name": {
+      "type": "string"
+    },
+    "objective": {
+      "enum": [
+        "reference_correctness",
+        "quality_max",
+        "balanced",
+        "economy"
+      ]
+    },
+    "routing": {
+      "$ref": "#/$defs/layerSelection"
+    }
+  },
+  "required": [
+    "name",
+    "objective",
+    "consumption",
+    "routing"
+  ],
+  "title": "PRA layer profile",
+  "type": "object"
+}

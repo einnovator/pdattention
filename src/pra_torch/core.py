@@ -243,6 +243,12 @@ class PRAExecutionCore:
                 key = key_vector.view(1, self.num_key_value_heads, 1, self.head_dim)
                 value = value_vector.view(1, self.num_key_value_heads, 1, self.head_dim)
             else:
+                if hit.chunk.token_kv is None:
+                    raise ValueError(
+                        f"Chunk {hit.chunk_id} at layer {hit.layer_id} has an address "
+                        "but no detail K/V; re-encode the missing layer or choose a "
+                        "stored consumer profile."
+                    )
                 key = hit.chunk.token_kv.k
                 value = hit.chunk.token_kv.v
                 covered_end = covered_end_by_uri.get(hit.reference_uri, hit.token_start)

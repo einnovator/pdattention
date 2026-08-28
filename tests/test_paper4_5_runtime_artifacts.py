@@ -11,6 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "docs" / "papers" / "shared" / "results" / "paper4_5_runtime"
+LAYER_RESULTS = RESULTS / "layer_profiles"
 PAPER = ROOT / "docs" / "papers" / "paper4_5_runtime_productization"
 DEMO = ROOT / "pra-hf-demo" / "pra_runtime_productization.ipynb"
 
@@ -91,6 +92,43 @@ def test_agent_plugin_contract_artifacts_preserve_explicit_fallback() -> None:
     assert all(value["contract_pass_rate"] == 1 for value in summary.values())
     assert all(row["native_kv_claimed"] == "0" for row in rows)
     assert all(row["fallback_contains_evidence"] == "1" for row in rows)
+
+
+def test_layer_profile_calibration_has_cross_model_roles_costs_and_provenance() -> None:
+    manifest = json.loads(
+        (LAYER_RESULTS / "layer_calibration_manifest.json").read_text(encoding="utf-8")
+    )
+    selected = json.loads(
+        (LAYER_RESULTS / "layer_calibration_selected_profiles.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["models"] == ["gemma", "llama", "qwen"]
+    assert manifest["transport"].startswith("corrected_native_kv")
+    assert selected["qwen"]["reference_correctness"] == "all_layers"
+    assert selected["llama"]["balanced"] == "all_layers"
+    assert selected["gemma"]["balanced"] == "all_layers"
+
+    required = (
+        "pra_layer_profile_schema.json",
+        "pra_layer_profile_registry.json",
+        "layer_calibration_candidates.csv",
+        "layer_calibration_pareto.csv",
+        "layer_calibration_selected_profiles.json",
+        "layer_profile_portability.csv",
+        "layer_profiles_qwen.csv",
+        "layer_profiles_llama.csv",
+        "layer_profiles_gemma.csv",
+        "detail_kv_encoding_policy_schema.json",
+        "address_encoding_policy_schema.json",
+        "layer_profile_storage_costs.csv",
+        "layer_profile_switching_costs.csv",
+        "layer_profile_detail_union.json",
+        "partial_native_index_lifecycle.csv",
+        "layer_profile_quality_cost.pdf",
+        "layer_profile_quality_cost.png",
+    )
+    assert all((LAYER_RESULTS / name).is_file() for name in required)
 
 
 def test_runtime_demo_is_executed_and_covers_the_unified_sdk() -> None:
