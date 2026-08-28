@@ -115,3 +115,29 @@ def test_waiting_for_prefetch_records_late_stall() -> None:
     assert manager.resolve(key, slow) == "payload"
     assert manager.metrics().late_block_stall_ns > 0
     manager.close()
+
+
+def test_payloads_are_disposed_on_eviction_invalidation_and_close() -> None:
+    store = LogicalPRABlockStore()
+    keys = tuple(_register(store, f"record-{index}") for index in range(3))
+    disposed = []
+    manager = EnginePRAResidencyManager(
+        store,
+        max_resident_bytes=64,
+        payload_disposer=disposed.append,
+    )
+    payloads = tuple(object() for _ in keys)
+    by_key = dict(zip(keys, payloads))
+
+    for key, payload in zip(keys, payloads):
+        manager.resolve(key, lambda payload=payload: (payload, 32))
+    assert len(disposed) == 1
+    assert disposed[0] in payloads
+
+    resident_key = next(
+        key for key in keys if store.get(key).state == PRAResidencyState.RESIDENT
+    )
+    manager.invalidate((resident_key,))
+    assert by_key[resident_key] in disposed
+    manager.close()
+    assert set(disposed) == set(payloads)

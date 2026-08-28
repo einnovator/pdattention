@@ -196,6 +196,14 @@ class SGLangMLXNativeBridge:
 
     def __init__(self, runner: object) -> None:
         self.runner = runner
+        if getattr(runner._cache_layout, "has_auxiliary_state", False):
+            raise NotImplementedError(
+                "SGLang PRA does not yet wrap hybrid auxiliary-state caches."
+            )
+        if getattr(runner._cache_layout, "has_sliding_window_layers", False):
+            raise NotImplementedError(
+                "SGLang PRA batched decode does not yet support sliding-window layers."
+            )
         self._requests: dict[str, SGLangNativeRequest] = {}
         self._active_req: contextvars.ContextVar[str | None] = contextvars.ContextVar(
             "sglang_pra_request", default=None

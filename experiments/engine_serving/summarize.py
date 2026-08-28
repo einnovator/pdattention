@@ -173,6 +173,11 @@ def _native_results() -> dict:
     """Aggregate engine-specific native artifacts without equating their tiers."""
 
     mlx = _load(ENGINE_DIRS["mlx"] / "native_kv.json")
+    mlx_model_artifacts = [mlx]
+    for name in ("native_kv_llama32_1b.json", "native_kv_gemma3_1b.json"):
+        path = ENGINE_DIRS["mlx"] / name
+        if path.exists():
+            mlx_model_artifacts.append(_load(path))
     sglang = _load(ENGINE_DIRS["sglang"] / "native_kv.json")
     vllm = _load(ENGINE_DIRS["vllm"] / "native_paged_kv.json")
     residency = _load(RESULTS / "engine_residency_sweep.json")
@@ -184,6 +189,14 @@ def _native_results() -> dict:
         vllm_by_tokens.append({
             "selected_tokens": token_count,
             "sample_count": len(values),
+            "cold_paged_attention_ms_mean": fmean(
+                row.get("cold_paged_attention_ms", row["paged_attention_ms"])
+                for row in values
+            ),
+            "warm_paged_attention_ms_mean": fmean(
+                row.get("warm_paged_attention_ms", row["paged_attention_ms"])
+                for row in values
+            ),
             "paged_attention_ms_mean": fmean(row["paged_attention_ms"] for row in values),
             "max_error": max(row["max_error"] for row in values),
             "max_sharing_bytes_saved": max(row["sharing_bytes_saved"] for row in values),
@@ -211,6 +224,33 @@ def _native_results() -> dict:
             "completion_latency_ms_mean": fmean(row["completion_latency_ms"] for row in mlx_native),
             "native_encode_ms_mean": fmean(row["native_encode_ms"] for row in mlx_native),
             "active_native_kv_bytes_mean": fmean(row["active_native_kv_bytes"] for row in mlx_native),
+            "models": [
+                {
+                    "model_id": artifact["model_id"],
+                    "model_revision": artifact["model_revision"],
+                    "seed_count": len(artifact["seeds"]),
+                    "exact_recovery": fmean(
+                        float(row["exact_recovery"])
+                        for row in artifact["rows"]
+                        if row["condition"] == "native_selected_kv"
+                    ),
+                    "rotating_exact_recovery": fmean(
+                        float(row["exact_recovery"])
+                        for row in artifact["rows"]
+                        if row["condition"] == "native_selected_kv_rotating_local_64"
+                    ),
+                    "max_logit_error": max(
+                        row["max_logit_error_vs_ordinary_split"]
+                        for row in artifact["rows"]
+                    ),
+                    "active_native_kv_bytes_mean": fmean(
+                        row["active_native_kv_bytes"]
+                        for row in artifact["rows"]
+                        if row["condition"] == "native_selected_kv"
+                    ),
+                }
+                for artifact in mlx_model_artifacts
+            ],
         },
         "sglang": {
             "status": sglang["native_pra_status"],
@@ -412,7 +452,7 @@ def write_native_tables(registry: dict) -> None:
         r"Engine & Native path & Tier & Seeds & Exact/parity & Error \\",
         r"\midrule",
         f"MLX & selected K/V execution & {_tex_escape(mlx['evidence_tier'])} & {mlx['seed_count']} & {100 * mlx['exact_recovery']:.0f}\\% & {mlx['max_logit_error']:.4g} \\\\",
-        f"SGLang & runner cache path & {_tex_escape(sglang['evidence_tier'])} & {sglang['seed_count']} & {100 * sglang['exact_recovery']:.0f}\\% & {sglang['max_logit_error']:.4g} \\\\",
+        f"SGLang & native cache path & {_tex_escape(sglang['evidence_tier'])} & {sglang['seed_count']} & {100 * sglang['exact_recovery']:.0f}\\% & {sglang['max_logit_error']:.4g} \\\\",
         f"vLLM-Metal & paged-attention kernel & {_tex_escape(vllm['evidence_tier'])} & {vllm['seed_count']} & kernel parity & {max(row['max_error'] for row in vllm['rows_by_selected_tokens']):.4g} \\\\",
         r"\bottomrule",
         r"\end{tabular}",
@@ -434,6 +474,90 @@ def write_native_tables(registry: dict) -> None:
     policy_lines.extend([r"\bottomrule", r"\end{tabular}"])
     (RESULTS / "generated_engine_residency_table.tex").write_text(
         "\n".join(policy_lines) + "\n", encoding="utf-8"
+    )
+
+    vllm_lines = [
+        r"\begin{tabular}{rrrrrr}",
+        r"\toprule",
+        r"Selected tok. & Fraction & Cold ms & Warm ms & Max error & Shared MB saved \\",
+        r"\midrule",
+    ]
+    for row in vllm["rows_by_selected_tokens"]:
+        vllm_lines.append(
+            f"{row['selected_tokens']} & {100 * row['selected_tokens'] / 8192:.2f}\\% & "
+            f"{row['cold_paged_attention_ms_mean']:.3f} & "
+            f"{row['warm_paged_attention_ms_mean']:.3f} & {row['max_error']:.4g} & "
+            f"{row['max_sharing_bytes_saved'] / 1048576:.2f} \\\\"
+        )
+    vllm_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["vllm"] / "generated_native_paged_table.tex").write_text(
+        "\n".join(vllm_lines) + "\n", encoding="utf-8"
+    )
+
+    mlx_raw = _load(ENGINE_DIRS["mlx"] / "native_kv.json")
+    mlx_lines = [
+        r"\begin{tabular}{lrrrr}",
+        r"\toprule",
+        r"Condition & Exact & Latency ms & Native MB & Max error \\",
+        r"\midrule",
+    ]
+    for condition in (
+        "ordinary_split_cache",
+        "native_selected_kv",
+        "native_selected_kv_rotating_local_64",
+    ):
+        values = [row for row in mlx_raw["rows"] if row["condition"] == condition]
+        label = {
+            "ordinary_split_cache": "Ordinary split cache",
+            "native_selected_kv": "Native selected K/V",
+            "native_selected_kv_rotating_local_64": "Native + rotating local 64",
+        }[condition]
+        mlx_lines.append(
+            f"{label} & {100 * fmean(float(row['exact_recovery']) for row in values):.0f}\\% & "
+            f"{fmean(row['completion_latency_ms'] for row in values):.1f} & "
+            f"{fmean(row['active_native_kv_bytes'] for row in values) / 1048576:.1f} & "
+            f"{max(row['max_logit_error_vs_ordinary_split'] for row in values):.4g} \\\\"
+        )
+    mlx_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_native_kv_table.tex").write_text(
+        "\n".join(mlx_lines) + "\n", encoding="utf-8"
+    )
+    model_lines = [
+        r"\begin{tabular}{lrrrr}",
+        r"\toprule",
+        r"Model & Seeds & Native exact & Rotating exact & Native MB \\",
+        r"\midrule",
+    ]
+    for row in mlx["models"]:
+        model_label = {
+            "mlx-community/Qwen3-0.6B-4bit": "Qwen3 0.6B 4-bit",
+            "mlx-community/Llama-3.2-1B-Instruct-4bit": "Llama 3.2 1B 4-bit",
+            "mlx-community/gemma-3-1b-it-4bit": "Gemma 3 1B 4-bit",
+        }.get(row["model_id"], row["model_id"])
+        model_lines.append(
+            f"{_tex_escape(model_label)} & {row['seed_count']} & "
+            f"{100 * row['exact_recovery']:.0f}\\% & "
+            f"{100 * row['rotating_exact_recovery']:.0f}\\% & "
+            f"{row['active_native_kv_bytes_mean'] / 1048576:.2f} \\\\"
+        )
+    model_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_native_models_table.tex").write_text(
+        "\n".join(model_lines) + "\n", encoding="utf-8"
+    )
+
+    sglang_lines = [
+        r"\begin{tabular}{rrrrr}",
+        r"\toprule",
+        r"Seeds & Exact & Argmax parity & Radix separation & Latency ms \\",
+        r"\midrule",
+        f"{sglang['seed_count']} & {100 * sglang['exact_recovery']:.0f}\\% & "
+        f"100\\% & {100 * sglang['radix_identity_separation_rate']:.0f}\\% & "
+        f"{sglang['completion_latency_ms_mean']:.1f} \\\\ ",
+        r"\bottomrule",
+        r"\end{tabular}",
+    ]
+    (ENGINE_DIRS["sglang"] / "generated_native_kv_table.tex").write_text(
+        "\n".join(sglang_lines) + "\n", encoding="utf-8"
     )
 
 

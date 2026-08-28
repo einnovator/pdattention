@@ -97,6 +97,7 @@ class EnginePRAResidencyManager:
         max_resident_bytes: int,
         policy: PRAEvictionPolicy | str = PRAEvictionPolicy.LRU,
         prefetch_workers: int = 1,
+        payload_disposer: Callable[[object], None] | None = None,
     ) -> None:
         if max_resident_bytes <= 0:
             raise ValueError("PRA residency budget must be positive.")
@@ -105,6 +106,7 @@ class EnginePRAResidencyManager:
         self.block_store = block_store
         self.max_resident_bytes = int(max_resident_bytes)
         self.policy = PRAEvictionPolicy(policy)
+        self._payload_disposer = payload_disposer or (lambda _payload: None)
         self._entries: dict[str, _PhysicalEntry] = {}
         self._futures: dict[str, Future[object]] = {}
         self._load_counts: dict[str, int] = {}
@@ -130,6 +132,8 @@ class EnginePRAResidencyManager:
 
         self._pool.shutdown(wait=True, cancel_futures=False)
         with self._lock:
+            if any(entry.pin_count for entry in self._entries.values()):
+                raise RuntimeError("Cannot close with request-pinned PRA blocks.")
             for key, entry in self._entries.items():
                 if entry.prefetched and not entry.consumed_after_prefetch:
                     self._wasted_prefetches += 1
@@ -142,6 +146,11 @@ class EnginePRAResidencyManager:
                             wasted=True,
                         )
                     )
+                self._payload_disposer(entry.payload)
+                current = self.block_store.get(key)
+                if current.state != PRAResidencyState.INVALID:
+                    self.block_store.transition(key, PRAResidencyState.OFF_DEVICE)
+            self._entries.clear()
 
     def _resident_bytes(self) -> int:
         return sum(entry.byte_count for entry in self._entries.values())
@@ -173,6 +182,7 @@ class EnginePRAResidencyManager:
             if not order:
                 raise MemoryError("Pinned PRA blocks exhaust the residency budget.")
             key, entry = order[0]
+            self._payload_disposer(entry.payload)
             del self._entries[key]
             self.block_store.transition(key, PRAResidencyState.OFF_DEVICE)
             self._evictions += 1
@@ -380,6 +390,7 @@ class EnginePRAResidencyManager:
                 if entry is not None and entry.pin_count:
                     raise RuntimeError("Cannot invalidate a request-pinned PRA block.")
                 if entry is not None:
+                    self._payload_disposer(entry.payload)
                     del self._entries[key]
                     self._bytes_evicted += entry.byte_count
                 self._events.append(PRAResidencyEvent("invalidate", key, time.monotonic_ns()))

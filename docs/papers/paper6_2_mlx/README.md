@@ -10,6 +10,7 @@ cd docs/papers/paper6_2_mlx
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```
 
-The current paper does not claim native PRA K/V. It establishes selected-text
-and prompt-cache behavior and a controlled negative boundary for rotating K/V.
-
+The paper now includes an in-process native selected-K/V executor, exact
+split-cache parity on Qwen, Llama, and Gemma, and 5/5 rotating-local recovery on
+Qwen and Llama. Gemma's ordinary and native answer-format controls both score
+0/5 despite exact logits, so that row is mechanism parity rather than quality.

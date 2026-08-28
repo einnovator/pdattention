@@ -16,19 +16,21 @@ vLLM virtualizes where sequential key--value (KV) blocks reside. Progressive
 Retrieval Attention (PRA) virtualizes a different choice: which subset of a
 logically large, non-prefix memory is active for a query. We define a
 capability-honest integration boundary between these mappings, implement a
-stable logical PRA block namespace and residency state machine, and add a vLLM
-V1 adapter that remains an E0 facade unless an installed executor actually
-consumes selected native K/V. On an Apple M5 with vLLM 0.28.0 and the
+stable logical PRA block namespace and residency state machine, and implement
+a vLLM-Metal store that places selected K/V in native paged-cache blocks. On
+an Apple M5 with vLLM 0.28.0 and the
 vLLM-Metal plugin, a 25-request smoke study separates exact-prefix reuse from
 selected-memory recovery. A selected 365-token prompt and the 1,577-token full
 context both recover the codeword in 5/5 requests; the selected condition uses
 76.9\% fewer visible tokens and reduces cold time to first token (TTFT) from
 776.6 to 80.7 ms. Warm TTFT is 46.2 versus 52.9 ms, while vLLM reports an
 aggregate prefix-cache hit rate of 75.3--83.4\%. These measurements establish a
-strong black-box baseline, not native PRA-vLLM. The installed Metal path does
-not yet consume non-prefix selected K/V through a verified connector or
-attention interface. The paper therefore closes the environment and
-prefix-coexistence gates while leaving the engine-native value claim open.
+strong black-box baseline. Separately, 80 controlled kernel measurements over
+five seeds, 16--512 selected tokens, and concurrency 1--8 match dense attention
+within maximum absolute error 0.00391. Warm native paged attention rises from
+0.489 to 0.642 ms; immutable block sharing avoids up to 14.0 MB at concurrency
+eight. This closes selected-block execution at kernel level, but not full V1
+scheduler, connector, generation, or CUDA-backend integration.
 \end{abstract}
 
 \section{Introduction}
@@ -61,8 +63,8 @@ contributions:
   of vLLM's physical block numbers;
   \item a vLLM adapter whose advertised PRA level is derived from an installed
   native executor, with tenant-scoped prefix-cache salt support at E0;
-  \item a pinned Apple-Silicon smoke study that quantifies selected-text and
-  full-context behavior while explicitly recording the unmeasured native path.
+  \item a native Metal paged-K/V mechanism study, alongside the selected-text
+  serving baseline, with numerical parity, latency, and physical-sharing data.
 \end{enumerate}
 
 \section{Two Independent Reuse Systems}
@@ -132,6 +134,13 @@ cannot promote the capability matrix. An executor must map selected identities
 to physical blocks and preserve K/V layout, GQA/MQA, masks, positions, consumer
 layers, request lifetime, and one correct attention normalization.
 
+The concrete bridge is implemented in the vLLM-Metal native module. It maps
+each immutable logical key to ordinary native paged-cache pages and packs post-position
+K/V in $[\text{block},\text{token},H_{kv},D]$ layout, builds one block table per
+request, and invokes the native Metal \texttt{paged\_attention\_primitive}.
+Multiple requests may reference one physical handle. This is a verified
+attention-kernel path, not yet an E2 generation executor wired through V1.
+
 \section{Environment and Method}
 The remote host was an Apple M5 MacBook Pro with 16 GB unified memory, macOS
 26.4.1, and Metal 4. The environment used Python 3.12.7, vLLM
@@ -193,6 +202,43 @@ all three tokenizers and the engine-specific latency scale. The comparable
 result is within-engine selected versus full context, not the absolute height
 of different-engine bars.
 
+\subsection{Native paged selected K/V}
+\begin{table}[t]
+\centering
+\small
+\caption{Native vLLM-Metal paged attention. Each row aggregates five seeds and
+four concurrency levels. Cold includes first invocation for that row; warm is
+an immediate repeat. Sharing savings are at concurrency eight.}
+\input{../shared/results/paper6_vllm/generated_native_paged_table.tex}
+\label{tab:vllm-native}
+\end{table}
+
+Table~\ref{tab:vllm-native} tests the physical mechanism directly. Selected
+K/V occupies native vLLM-Metal pages and is consumed by the same paged-attention
+primitive used for sequential cache blocks. The output agrees with a dense MLX
+reference at every tested geometry. Warm latency changes smoothly with selected
+set size after compilation, and one immutable allocation is shared by all
+requests. These are positive block-execution and sharing results. They do not
+measure model generation, APC coexistence inside the same native request,
+connector transfer, or scheduler throughput.
+
+\subsection{Controlled residency pressure}
+The engine-neutral residency manager was also exercised on five deterministic
+120-request traces with a 14 MB budget and a 36 MB working set. This is a
+control-plane simulation; it does not substitute for engine telemetry.
+\begin{table}[t]
+\centering
+\small
+\caption{Fixed-budget residency pressure over five seeds. Reload amplification
+is physical loads divided by requests; lower is better.}
+\input{../shared/results/generated_engine_residency_table.tex}
+\label{tab:residency}
+\end{table}
+Size-aware LRU reduces mean reload amplification from 0.643 to 0.397, a 38.3\%
+relative reduction. Reuse-count and reload-cost policies reach 0.445 and 0.437.
+The result confirms that selected-memory lifecycle policy can matter even
+before learned eviction, while leaving its effect on real TTFT open.
+
 \section{Promotion Gates}
 \begin{center}
 \begin{tabularx}{0.96\linewidth}{l l Y}
@@ -202,19 +248,21 @@ Gate & Status & Evidence \\
 environment & closed & vLLM V1 with native Metal paged attention runs reproducibly \\
 black-box semantics & smoke closed & selected and full context agree on the fixed task \\
 prefix coexistence & smoke closed & APC remains active; repeated prompts are fast \\
-native materialization & open & no verified non-prefix selected-K/V consumer \\
-engine-native value & open & residency, prefetch, sharing, and block attention unmeasured \\
-robustness & open & one model, one synthetic workload, concurrency one \\
+native block attention & controlled closed & 80 Metal kernel rows; dense-reference parity \\
+physical sharing & controlled closed & one immutable handle at concurrency 1--8 \\
+engine-native serving & open & scheduler, generation, APC coexistence, connectors unmeasured \\
+robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-The installed vLLM tree includes V1 KV connector and offload abstractions, but
-the observed Metal backend has not been shown to accept PRA-selected non-prefix
-KV while preserving source positions and attention semantics. LMCache,
-retrieval-aware eviction, asynchronous prefetch, cross-request sharing, and
-scheduler grouping therefore remain proposed experiments, not implemented
-results.
+The Metal backend now accepts selected non-prefix K/V at its native
+paged-attention boundary. The remaining boundary is above that kernel: V1
+scheduler allocation, generation lifetime, APC coexistence in one request,
+LMCache/connectors, and CUDA replication. The shared residency manager
+implements deterministic prefetch, pinning, sharing, and four eviction
+policies, but its pressure sweep is controlled simulation rather than vLLM
+scheduler telemetry.
 
 \section{Falsification and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
@@ -226,8 +274,8 @@ improve resident memory, transfer, TTFT, or throughput beyond this baseline.
 
 The current study uses a single small 4-bit model, one Apple host, one synthetic
 answer, and five repeats. The cold requests are order-sensitive, per-request
-vLLM cached-token counts are unavailable, active PRA K/V is not measured, and
-no concurrency or HBM-pressure sweep was run. Apple unified memory also differs
+vLLM cached-token counts are unavailable, and no end-to-end concurrency or
+HBM-pressure sweep was run. Apple unified memory also differs
 from the CUDA/LMCache environment for which many connector mechanisms were
 designed.
 
@@ -242,14 +290,16 @@ and native detail activation. The contribution here is the boundary between
 that logical mapping and vLLM's physical mapping.
 
 \section{Conclusion}
-The first Paper 6 iteration establishes a reproducible vLLM-Metal baseline and
-a control plane that cannot accidentally overclaim native execution. Selected
+Paper 6 establishes a reproducible vLLM-Metal baseline and a control plane that
+cannot accidentally overclaim native execution. Selected
 text recovers the fixed answer with 76.9\% fewer visible tokens than full
 context and preserves APC. That success raises, rather than lowers, the bar for
-deep integration. The next decisive experiment is a verified selected-K/V
-connector or attention path, followed by matched-quality residency, transfer,
-and concurrency sweeps. Until then, PRA-vLLM is an implemented logical contract
-and a strong black-box baseline, not an engine-native serving result.
+deep integration. The selected-K/V paged-attention path is now verified at
+kernel level with numerical parity and physical sharing. The next decisive
+experiment carries those blocks through V1 scheduling and generation, then
+compares matched-quality residency, transfer, APC coexistence, and throughput.
+PRA-vLLM is therefore a native-kernel prototype, not yet an engine-native
+serving result.
 
 \begin{thebibliography}{9}
 \bibitem{kwon2023vllm}

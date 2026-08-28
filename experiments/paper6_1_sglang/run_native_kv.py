@@ -141,7 +141,7 @@ def main() -> None:
         "model_revision": args.revision,
         "seeds": list(SEEDS),
         "expected_answer": EXPECTED,
-        "native_pra_status": "MEASURED_RUNNER_CACHE_PATH",
+        "native_pra_status": "MEASURED_SGLANG_CACHE_PATH",
         "attention_semantics": "one_softmax_selected_memory_plus_local_kv",
         "patched_layers": patched_layers,
         "rows": rows,

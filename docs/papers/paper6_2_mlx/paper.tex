@@ -25,10 +25,11 @@ while the server prompt cache grows to 0.28 GB across five distinct sequences.
 In a separate five-seed Python-API experiment, full sequential KV recovers the
 answer in 5/5 cases with 112 MB of cache. Rotating KV at 64--512 tokens recovers
 0/5. Reintroducing the selected archive record reaches 2/5 only at 64 tokens
-and 0/5 at larger capacities. Thus prompt caching and selected context compose,
-but ordinary rotating KV plus late text is not a reliable substitute for
-native query-addressed memory in this control. Native PRA-MLX remains an open
-gate; the current result motivates rather than validates it.
+and 0/5 at larger capacities. We then implement native selected K/V at every
+layer. Across five seeds it is bit-exact to ordinary split-cache execution,
+recovers 5/5 answers, and remains 5/5 when local sequential K/V rotates at 64
+tokens. Thus native PRA restores archived evidence without making it visible
+prompt text; broader workloads, quantized detail, and concurrency remain open.
 \end{abstract}
 
 \section{Introduction}
@@ -77,12 +78,21 @@ mislabel it as CUDA host-to-device transfer.
 automatic prefix caching and text fallback, but no native K/V. An in-process
 \texttt{MLXNativeExecutor} is required before the adapter advertises E2,
 selected interval materialization, logical resource deltas, or explicit prompt
-cache handles. This executor does not yet exist in the measured branch.
+cache handles. \path{src/pra_mlx/native.py} now provides that executor.
 
 The design choice is important. Precomputing a prompt cache from selected text
 still makes that text a sequential prefix. A native executor must instead
 preserve the selected region's identity and positional policy while combining
 its K/V with local K/V under correct model attention.
+
+The implementation encodes immutable resource text once and retains post-RoPE
+K/V in $[B,H_{kv},T,D]$ form for every layer. A request-local cache returns
+\emph{selected memory plus local sequential K/V} to each attention module and
+constructs a mask in which every query sees selected memory while local keys
+remain causal. Query positions advance from the source extent; selected text
+never appears in the visible prompt. The residency manager deduplicates
+materialization, pins blocks for request lifetime, and evicts only unpinned
+detail under a bounded byte budget.
 
 \section{Environment}
 The host was an Apple M5 MacBook Pro with 10 CPU and 10 GPU cores, 16 GB unified
@@ -159,14 +169,49 @@ instability, not merely loss of the early fact.
 This non-monotonic result should not be read as evidence that smaller cache is
 better. It indicates that the direct rotating-cache intervention changes more
 than evidence availability for this model and prompt. The selected-text
-fallback does not restore stable computation. A native PRA executor would need
-to retain local sequential semantics while adding selected memory separately;
-that is precisely the mechanism not measured here.
+fallback does not restore stable computation. A native PRA executor must
+retain local sequential semantics while adding selected memory separately;
+the next section evaluates that mechanism directly.
 
 Peak process memory remains about 1.01--1.07 GB across these conditions despite
 the 7--112 MB cache range. Model and runtime allocations dominate on this small
 checkpoint, so layer-cache bytes are the interpretable economy metric. Larger
 models and memory pressure are required before process-level savings claims.
+
+\section{Native Selected-K/V Experiment}
+\begin{table}[t]
+\centering
+\small
+\caption{Five-seed native selected-K/V control. Latency excludes the separately
+reported one-time native encoding cost. Native MB is all-layer selected K/V.}
+\input{../shared/results/paper6_2_mlx/generated_native_kv_table.tex}
+\label{tab:mlx-native}
+\end{table}
+
+The source contains 141 tokens. Ordinary split-cache and native selected-K/V
+produce identical logits, identical argmax tokens, and 5/5 exact recovery.
+Native selected execution averages 166.3 ms after a separately measured 55.4
+ms one-time encoding step and retains 15.4 MB of all-layer K/V. Most
+importantly, replacing the local sequential cache by a 64-token rotating cache
+still recovers 5/5. The selected archive is therefore independent of local
+rotation rather than late visible text competing inside that bounded cache.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Cross-model native selected-K/V replication. Native and rotating
+columns report exact recovery over five seeds; error is zero for every row.}
+\input{../shared/results/paper6_2_mlx/generated_native_models_table.tex}
+\label{tab:mlx-models}
+\end{table}
+
+Table~\ref{tab:mlx-models} repeats the mechanism on Llama 3.2 1B and Gemma 3
+1B. Llama achieves 5/5 native and rotating-local recovery with exact
+split-cache logits while retaining 4.34 MB. Gemma also has zero logit error and
+matching argmax decisions, but both its ordinary and native conditions are 0/5
+on this particular answer-format task. Gemma therefore establishes mechanism
+parity, not answer recovery. Together the runs cover three attention
+topologies and tokenizers; they are not yet natural-workload results.
 
 \section{Promotion Gates}
 \begin{center}
@@ -177,8 +222,9 @@ Gate & Status & Evidence \\
 environment & closed & MLX Metal generation and server repeat reliably \\
 prompt-cache coexistence & smoke closed & 364/365 selected tokens reused warm \\
 rotating-cache control & controlled closed & five seeds, four capacities \\
-native semantic parity & open & no selected non-prefix K/V executor \\
-lazy native region & open & selected text only \\
+native semantic parity & controlled closed & five seeds, zero logit error, 5/5 recovery \\
+rotating plus native & controlled closed & 5/5 with 64-token local cache \\
+lazy native region & prototype closed & selected resources encode on first selection \\
 quantized PRA detail & open & model weights are 4-bit; PRA K/V unmeasured \\
 concurrency/pressure & open & one request at a time, one small model \\
 \bottomrule
@@ -195,7 +241,7 @@ archive.
 The study uses one 4-bit model, one machine, a synthetic server task, and a
 controlled five-seed rotating fixture. The server experiment has only five
 repeats per condition, so p95/p99 are not reported. No native Q/K index,
-selected K/V, detail-layer profile, K/V quantization, persisted PRA cache,
+detail-layer profile, K/V quantization, persisted PRA cache,
 concurrency, or memory-pressure failure is measured. The rotating intervention
 also changes effective local context and can perturb chat-template semantics.
 
@@ -213,11 +259,12 @@ MLX prompt caching and selected context compose cleanly: the fixed answer is
 preserved with 76.9\% fewer visible tokens, and repeated selected prompts reuse
 364 of 365 tokens. Rotating K/V provides large layer-cache savings but fails as
 an archive in the five-seed control; late selected text does not reliably
-repair it. These results define a useful next step: implement an in-process
-native executor that keeps local sequential K/V intact and attaches selected
-non-prefix K/V under explicit positions and layer profiles. Until that gate is
-passed, PRA-MLX is a measured gateway/control-plane integration with a clear
-native hypothesis, not a completed native runtime.
+repair it. The in-process native executor passes the missing mechanism gate:
+selected non-prefix K/V is bit-exact to ordinary split-cache execution and
+preserves 5/5 recovery with a rotating local cache. PRA-MLX is therefore a
+working native prototype. Quantized detail, calibrated layer profiles,
+additional models, persistence, and concurrent memory pressure remain necessary
+before production claims.
 
 \begin{thebibliography}{9}
 \bibitem{hannun2023mlx}

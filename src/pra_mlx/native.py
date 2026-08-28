@@ -196,6 +196,8 @@ class MLXInProcessNativeExecutor:
     typed budget.
     """
 
+    integration_level = "E2"
+
     def __init__(
         self,
         model: object,

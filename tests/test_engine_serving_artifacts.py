@@ -23,7 +23,9 @@ def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     native = registry["native_results"]
     assert native["mlx"]["status"] == "MEASURED"
     assert native["mlx"]["exact_recovery"] == 1.0
-    assert native["sglang"]["status"] == "MEASURED_RUNNER_CACHE_PATH"
+    assert len(native["mlx"]["models"]) == 3
+    assert all(row["max_logit_error"] == 0.0 for row in native["mlx"]["models"])
+    assert native["sglang"]["status"] == "MEASURED_SGLANG_CACHE_PATH"
     assert native["sglang"]["radix_identity_separation_rate"] == 1.0
     assert native["vllm"]["status"] == "MEASURED_KERNEL_PATH"
 

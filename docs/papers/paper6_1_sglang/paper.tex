@@ -15,18 +15,19 @@
 SGLang's RadixAttention reuses exact token prefixes. Progressive Retrieval
 Attention (PRA) selects versioned non-prefix resources and intervals according
 to the current query. We implement a logical PRA object namespace and an
-SGLang adapter that remains an E0 facade until an installed executor consumes
-selected native K/V. A 25-request Apple-M5 smoke study with patched SGLang MLX
+SGLang adapter and an MLX runner-cache bridge that keeps PRA memory outside
+Radix prefix accounting while consuming it as selected native K/V. A
+25-request Apple-M5 smoke study with patched SGLang MLX
 separates exact radix reuse from selected-memory recovery. Prefix plus selected
 memory and full context both recover the fixed answer in 5/5 requests, while
 the no-evidence controls are 0/5. Selection uses 365 prompt tokens instead of
 1,577. The scheduler reports 364 cached tokens on warm selected requests and
 1,576 on warm full-context requests; warm TTFT is 34.1 and 52.7 ms,
-respectively. These results demonstrate complementarity between exact prefix
-reuse and black-box selected context. They do not establish hierarchical
-non-prefix residency: HiCache was disabled, and no PRA-selected K/V object was
-consumed by SGLang attention. The engine-native hypothesis therefore remains
-open behind a strong RadixAttention baseline.
+respectively. In a separate five-seed native-cache experiment, selected K/V
+recovers 5/5 answers and is bit-exact to SGLang's ordinary split cache. All 28
+attention layers consume selected memory under one normalization, while the
+scheduler-visible local offset excludes every PRA token. HiCache placement and
+full scheduler-generation integration remain open.
 \end{abstract}
 
 \section{Introduction}
@@ -45,9 +46,8 @@ whether a stable non-prefix PRA identity can share SGLang's physical cache
 hierarchy and scheduling substrate without being misrepresented as a prefix.
 
 This iteration contributes an engine-independent logical object lifecycle, a
-capability-honest SGLang adapter, and a measured RadixAttention baseline. It
-also records a negative scope boundary: neither HiCache nor native selected-K/V
-execution was active, so deep-integration claims are deferred.
+capability-honest SGLang adapter, a measured RadixAttention baseline, and a
+native runner-cache bridge. HiCache placement remains a separate open boundary.
 
 \section{Two Address Spaces}
 The two logical keys are
@@ -86,6 +86,16 @@ An eventual hierarchical bridge must map PRA identities to an independent
 HiCache namespace or equivalent. It must not insert arbitrary resources into
 the radix tree as artificial prefixes. It must also preserve GQA/MQA layout,
 source positions, masks, consumer layers, and request lifetime.
+
+\path{src/pra_sglang/mlx_native.py} implements the first attention bridge.
+Each layer cache exposes a local \texttt{offset} to scheduler and Radix
+bookkeeping, a distinct \texttt{rope\_offset} to attention, and concatenated
+selected-plus-local K/V only inside the attention view. Prefix-pool
+synchronization sees local K/V arrays, so PRA detail cannot be mistaken for an
+exact prefix. Hooks for initial prefill and the runner's batched-decode cache
+protocol are implemented, while the measured artifact exercises the SGLang
+cache and attention path directly. HiCache has no PRA side namespace yet, so
+the bridge is classified E1.
 
 \section{Environment}
 The host was an Apple M5 MacBook Pro with 16 GB unified memory, Metal 4, and
@@ -146,12 +156,21 @@ unquantized model while vLLM and MLX-LM used a 4-bit checkpoint.}
 \end{figure}
 
 \section{What the Result Does Not Show}
+\begin{table}[t]
+\centering
+\small
+\caption{Five-seed SGLang native-cache mechanism result. Radix separation is
+the fraction for which scheduler-local length excludes selected PRA tokens.}
+\input{../shared/results/paper6_1_sglang/generated_native_kv_table.tex}
+\label{tab:sglang-native}
+\end{table}
+
+The native path recovers all five answers, preserves next-token logits exactly,
+and keeps PRA tokens out of scheduler prefix length in every case. Mean
+completion latency is 222.0 ms. This closes cache semantics, not hierarchy.
 HiCache was disabled, so no L1/L2/L3 placement, promotion, demotion, transfer,
-or reload metric exists. The SGLang MLX stub reports zero ordinary GPU KV pool
-allocation in the control plane because MLX owns inference state. No selected
-PRA K/V was registered as a hierarchical object, prefetched, shared, or
-consumed by attention. The present native fields are therefore
-\texttt{NOT\_MEASURED}, not zero.
+or reload metric exists. The SGLang MLX control plane reports no ordinary GPU
+KV pool because MLX owns inference state.
 
 \begin{center}
 \begin{tabularx}{0.96\linewidth}{l l Y}
@@ -162,21 +181,21 @@ environment & closed & patched pinned SGLang-MLX starts reproducibly \\
 radix baseline & smoke closed & exact scheduler cache-token trace \\
 selected-text parity & smoke closed & selected and full are 5/5 \\
 HiCache non-prefix object & open & hierarchy disabled \\
-selected native attention & open & no installed executor \\
+selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
+radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\
 robustness & open & one model, one fixture, concurrency one \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
 \section{Next Engine-Native Experiment}
-The next useful patch is deliberately narrow. It should define an immutable
-PRA object key beside, not inside, the radix key; place selected detail in host
-or unified-memory backing; promote it before first use; and feed the selected
-K/V through an attention path that shares normalization with local K/V. The
-matched comparison is RadixAttention plus black-box selected text versus Radix
-plus native PRA at equal quality and selected-token budget. Only then should
-prefetch, eviction, archived-head conversion, or cache-aware scheduling be
-optimized.
+The next useful patch moves the verified cache object into an independent
+HiCache side namespace. It should place selected detail in host or unified
+memory, promote it before first use, and retain the logical PRA key beside the
+radix key. The matched comparison is RadixAttention plus black-box selected
+text versus Radix plus native PRA at equal quality and selected-token budget.
+Only then should prefetch, eviction, archived-head conversion, or cache-aware
+scheduling be optimized.
 
 \section{Falsification and Limitations}
 Deep SGLang integration is unnecessary if RadixAttention plus the tuned
@@ -186,9 +205,8 @@ registry cannot satisfy the claim.
 
 The measurements use one small model, a local compatibility patch, one Apple
 host, one synthetic answer, and five repeats. The model precision differs from
-the 4-bit runs in the shared figure. HiCache, concurrency, tail latency,
-resource-affinity routing, archived-head transition, and native detail bytes
-are unmeasured.
+the 4-bit runs in the shared figure. HiCache, end-to-end concurrency, tail
+latency, resource-affinity routing, and archived-head transition are unmeasured.
 
 \section{Related Work}
 SGLang combines a structured runtime with RadixAttention for shared prefix
@@ -203,10 +221,11 @@ identities rather than collapse one into the other.
 On the pinned SGLang-MLX environment, selected context and RadixAttention are
 clearly complementary: the selected condition preserves 5/5 recovery, removes
 76.9\% of visible prompt tokens, and reuses 364 of 365 tokens on warm requests.
-That is a useful black-box result. It is not evidence that HiCache can host PRA
-objects or that SGLang attention can consume selected non-prefix K/V. Paper 6.1
-therefore closes the radix-coexistence gate and leaves the engine-native thesis
-open for a focused hierarchical-object experiment.
+The native SGLang-cache path additionally gives 5/5 recovery and exact logit
+parity without adding PRA tokens to Radix prefix length. SGLang attention can
+therefore consume selected non-prefix K/V while preserving the two address
+spaces. Paper 6.1 leaves HiCache placement, full scheduler integration, and
+pressure-scale serving as the focused next experiments.
 
 \begin{thebibliography}{9}
 \bibitem{zheng2024sglang}

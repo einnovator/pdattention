@@ -10,5 +10,7 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```
 
 The measured environment uses the pinned SGLang MLX checkout and its documented
-loader compatibility patch. HiCache and engine-native PRA remain open gates.
-
+loader compatibility patch. The native SGLang-cache path passes five-seed
+semantic parity while keeping PRA tokens outside Radix prefix accounting. The
+runner hook is implemented; live scheduler-generation and HiCache placement
+remain open gates.
