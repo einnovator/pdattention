@@ -33,6 +33,7 @@ class PRAResidencyState(str, Enum):
 _TRANSITIONS = {
     PRAResidencyState.INDEXED_ONLY: {
         PRAResidencyState.OFF_DEVICE,
+        PRAResidencyState.PREFETCHING,
         PRAResidencyState.RESIDENT,
         PRAResidencyState.INVALID,
     },
@@ -173,6 +174,21 @@ class LogicalPRABlockStore:
         with self._lock:
             return self._blocks[key]
 
+    def record_detail_bytes(self, key: str, detail_bytes: int) -> LogicalPRABlock:
+        """Record measured physical detail size without changing logical identity."""
+
+        if detail_bytes < 0:
+            raise ValueError("PRA block byte counts cannot be negative.")
+        with self._lock:
+            current = self._blocks[key]
+            if current.state in {PRAResidencyState.PINNED, PRAResidencyState.INVALID}:
+                raise RuntimeError("Cannot resize pinned or invalid PRA detail.")
+            if current.detail_bytes not in {0, detail_bytes}:
+                raise ValueError("Immutable PRA detail changed physical size.")
+            updated = replace(current, detail_bytes=detail_bytes)
+            self._blocks[key] = updated
+            return updated
+
     def transition(
         self,
         key: str,
@@ -293,4 +309,3 @@ class LogicalPRABlockStore:
             selections=sum(row.selections for row in valid),
             reuses=sum(row.reuses for row in valid),
         )
-
