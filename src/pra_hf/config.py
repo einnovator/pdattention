@@ -9,6 +9,8 @@ from typing import Any
 
 from pra_torch.hf import ATTENTION_INPUT_HIDDEN_STATE, PRAHFConfig
 
+from .native_geometry import NativeMaterializationMode, materialization_profile
+
 
 _DEFAULT_CONSUMPTION_LAYERS = tuple(range(-8, 0))
 
@@ -35,6 +37,11 @@ class PRAConfig:
     max_direct_context: int = 256
     native_operation_limit: int = 512
     max_materialized_tokens: int = 256
+    materialization_profile: str | None = None
+    materialization_mode: str = NativeMaterializationMode.SELECTED_CHUNK.value
+    materialization_context_tokens: int = 0
+    materialization_left_context_tokens: int | None = None
+    materialization_right_context_tokens: int | None = None
     materialization_target_tokens: int | None = None
     materialization_full_selected_record: bool = False
     context_safety_reserve_tokens: int = 4
@@ -67,6 +74,16 @@ class PRAConfig:
 
     def __post_init__(self) -> None:
         self.consumption_layers = tuple(int(layer) for layer in self.consumption_layers)
+        if self.materialization_profile is not None:
+            profile = materialization_profile(self.materialization_profile)
+            self.chunk_tokens = profile.routing_chunk_tokens
+            self.chunk_overlap_tokens = profile.routing_chunk_overlap_tokens
+            self.materialization_mode = profile.mode.value
+            self.materialization_left_context_tokens = profile.left_context_tokens
+            self.materialization_right_context_tokens = profile.right_context_tokens
+        self.materialization_mode = NativeMaterializationMode(
+            self.materialization_mode
+        ).value
         if not self.consumption_layers:
             raise ValueError("consumption_layers cannot be empty.")
         if self.selected_fraction is not None and not 0 < self.selected_fraction <= 1:
@@ -81,6 +98,17 @@ class PRAConfig:
             raise ValueError(
                 "materialization_target_tokens and materialization_full_selected_record are mutually exclusive."
             )
+        contexts = (
+            self.materialization_context_tokens,
+            self.materialization_left_context_tokens,
+            self.materialization_right_context_tokens,
+        )
+        if any(value is not None and value < 0 for value in contexts):
+            raise ValueError("Materialization context widths must be non-negative.")
+        if self.materialization_full_selected_record:
+            self.materialization_mode = NativeMaterializationMode.FULL_SELECTED_RECORD.value
+        elif self.materialization_target_tokens is not None:
+            self.materialization_mode = NativeMaterializationMode.EXPANDED_WINDOW.value
         if not 0 <= self.chunk_overlap_tokens < self.chunk_tokens:
             raise ValueError("chunk_overlap_tokens must be in [0, chunk_tokens).")
         local_tokens = self.local_gist_tokens or min(32, self.chunk_tokens)
@@ -120,6 +148,19 @@ class PRAConfig:
         }:
             return f"{self.routing_mode}_closure"
         return "selected_fraction" if self.selected_fraction is not None else "top_k"
+
+    @property
+    def materialization_context(self) -> tuple[int, int]:
+        """Resolve symmetric and side-specific context into left/right widths."""
+
+        return (
+            self.materialization_context_tokens
+            if self.materialization_left_context_tokens is None
+            else self.materialization_left_context_tokens,
+            self.materialization_context_tokens
+            if self.materialization_right_context_tokens is None
+            else self.materialization_right_context_tokens,
+        )
 
     @property
     def iterative_config(self):

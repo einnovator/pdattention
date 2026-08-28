@@ -30,6 +30,9 @@ def test_runtime_artifacts_are_complete_and_internally_consistent() -> None:
     assert manifest["engine_speed_claims"] is False
     assert manifest["quality_metrics_recomputed"] is False
     assert manifest["paper8_native_geometry_integrated"] is True
+    assert manifest["hf_reference_gate"]["decode_lifetime_pass"] is True
+    assert manifest["hf_reference_gate"]["gateway_streaming_pass"] is True
+    assert manifest["hf_reference_gate"]["prefix_equivalence_max_abs_error_fp32"] < 1e-6
     assert manifest["agent_plugin_profile"].startswith("two public event vocabularies")
     assert manifest["protocol"]["quality_selection_frozen"] is True
     assert manifest["protocol"]["scope"] == "portable selected-KV mechanism microbenchmark"
@@ -45,6 +48,20 @@ def test_runtime_artifacts_are_complete_and_internally_consistent() -> None:
     assert "\\newcommand{\\ExecutionRoutingReduction}{3.0}" in macros
     assert (RESULTS / "execution_policy_tradeoff.pdf").is_file()
     assert (PAPER / "paper.pdf").stat().st_size > 100_000
+
+    required = (
+        "hf_native_prefix_equivalence.csv",
+        "hf_native_full_scope_parity.csv",
+        "hf_interval_dedup_results.csv",
+        "hf_decode_lifetime_results.csv",
+        "hf_materialization_profile_results.csv",
+        "hf_modern_gpu_compile_results.csv",
+        "hf_async_transfer_results.csv",
+        "hf_multitenant_cache_results.csv",
+        "hf_gateway_streaming_results.csv",
+        "engine_feature_applicability.md",
+    )
+    assert all((RESULTS / name).is_file() for name in required)
 
 
 def test_compatibility_matrix_keeps_claim_levels_explicit() -> None:

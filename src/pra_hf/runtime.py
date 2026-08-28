@@ -564,20 +564,45 @@ class CacheStats:
         }
 
 
+@dataclass(frozen=True)
+class RuntimeKVCacheKey:
+    """Authorization-scoped identity for reusable native runtime payloads."""
+
+    tenant_id: str
+    user_id: str
+    session_id: str
+    resource_id: str
+    layer_id: int | None = None
+    variant: str = "native_kv"
+
+    def __post_init__(self) -> None:
+        if not all((self.tenant_id, self.user_id, self.session_id, self.resource_id)):
+            raise ValueError("A native cache key requires tenant, user, session, and resource IDs.")
+
+
 class RuntimeKVCache:
     """Thread-safe byte-bounded LRU for opaque warm or hot runtime payloads."""
 
-    def __init__(self, *, max_bytes: int, max_entries: int) -> None:
+    def __init__(
+        self,
+        *,
+        max_bytes: int,
+        max_entries: int,
+        max_bytes_per_tenant: int | None = None,
+    ) -> None:
         if max_bytes <= 0 or max_entries <= 0:
             raise ValueError("Cache limits must be positive.")
         self.max_bytes = int(max_bytes)
         self.max_entries = int(max_entries)
-        self._entries: OrderedDict[str, tuple[Any, int]] = OrderedDict()
+        self.max_bytes_per_tenant = int(max_bytes_per_tenant or max_bytes)
+        if self.max_bytes_per_tenant <= 0:
+            raise ValueError("max_bytes_per_tenant must be positive.")
+        self._entries: OrderedDict[object, tuple[Any, int]] = OrderedDict()
         self._resident_bytes = 0
         self._lock = threading.RLock()
         self.stats = CacheStats()
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: object) -> Any | None:
         with self._lock:
             row = self._entries.pop(key, None)
             if row is None:
@@ -588,7 +613,18 @@ class RuntimeKVCache:
             self.stats.bytes_reused += row[1]
             return row[0]
 
-    def put(self, key: str, value: Any, *, nbytes: int) -> None:
+    @staticmethod
+    def _tenant(key: object) -> str | None:
+        return key.tenant_id if isinstance(key, RuntimeKVCacheKey) else None
+
+    def _tenant_bytes(self, tenant_id: str) -> int:
+        return sum(
+            nbytes
+            for key, (_, nbytes) in self._entries.items()
+            if self._tenant(key) == tenant_id
+        )
+
+    def put(self, key: object, value: Any, *, nbytes: int) -> None:
         if nbytes < 0:
             raise ValueError("nbytes cannot be negative.")
         with self._lock:
@@ -598,6 +634,16 @@ class RuntimeKVCache:
             self._entries[key] = (value, int(nbytes))
             self._resident_bytes += int(nbytes)
             self.stats.bytes_loaded += int(nbytes)
+            tenant_id = self._tenant(key)
+            while tenant_id is not None and self._tenant_bytes(tenant_id) > self.max_bytes_per_tenant:
+                victim = next(
+                    candidate
+                    for candidate in self._entries
+                    if self._tenant(candidate) == tenant_id
+                )
+                _, removed_bytes = self._entries.pop(victim)
+                self._resident_bytes -= removed_bytes
+                self.stats.evictions += 1
             while self._entries and (
                 self._resident_bytes > self.max_bytes
                 or len(self._entries) > self.max_entries
@@ -606,14 +652,39 @@ class RuntimeKVCache:
                 self._resident_bytes -= removed_bytes
                 self.stats.evictions += 1
 
+    def clear_scope(self, *, tenant_id: str, session_id: str | None = None) -> None:
+        """Evict one tenant or session without touching another authorization scope."""
+
+        with self._lock:
+            victims = [
+                key
+                for key in self._entries
+                if isinstance(key, RuntimeKVCacheKey)
+                and key.tenant_id == tenant_id
+                and (session_id is None or key.session_id == session_id)
+            ]
+            for key in victims:
+                _, removed_bytes = self._entries.pop(key)
+                self._resident_bytes -= removed_bytes
+
     def clear(self) -> None:
         with self._lock:
             self._entries.clear()
             self._resident_bytes = 0
 
-    def snapshot(self) -> dict[str, int | float]:
+    def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return self.stats.snapshot(self._resident_bytes, len(self._entries))
+            snapshot = self.stats.snapshot(self._resident_bytes, len(self._entries))
+            tenants = {
+                self._tenant(key)
+                for key in self._entries
+                if self._tenant(key) is not None
+            }
+            snapshot["tenant_resident_bytes"] = {
+                tenant: self._tenant_bytes(tenant)
+                for tenant in sorted(tenants)
+            }
+            return snapshot
 
 
 @dataclass(frozen=True)

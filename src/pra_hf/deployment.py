@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 import urllib.request
 import uuid
@@ -242,6 +243,7 @@ class HuggingFaceEngineAdapter:
             cpu_kv=True,
             gpu_kv=True,
             semantic_cache=True,
+            streaming=True,
             tool_resources=True,
         )
 
@@ -271,7 +273,80 @@ class HuggingFaceEngineAdapter:
                 self.model.remove_reference(handle)
 
     def stream(self, request: PRAWireRequest) -> Iterator[Mapping[str, Any]]:
-        raise NotImplementedError("HF gateway streaming is a planned extension.")
+        """Stream HF text deltas while retaining native references for the request.
+
+        Cancellation is cooperative at the token boundary. The generator's
+        ``finally`` block waits for the worker before releasing request-owned
+        reference handles, so native K/V cannot disappear during decode.
+        """
+
+        import torch
+        from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
+
+        class _Cancelled(StoppingCriteria):
+            def __init__(self, event: threading.Event) -> None:
+                self.event = event
+
+            def __call__(self, input_ids, scores, **kwargs):
+                del scores, kwargs
+                return torch.full(
+                    (input_ids.shape[0],), self.event.is_set(), device=input_ids.device
+                )
+
+        handles = []
+        cancel = threading.Event()
+        errors: list[BaseException] = []
+        streamer = TextIteratorStreamer(
+            self.model.tokenizer,
+            skip_prompt=True,
+            skip_special_tokens=True,
+            timeout=None,
+        )
+        for resource in request.resources:
+            if resource.text:
+                handles.append(self.model.add_reference(resource.uri, text=resource.text))
+
+        def run() -> None:
+            try:
+                self.model.chat(
+                    request.messages,
+                    pra_policy=request.pra_policy or None,
+                    max_new_tokens=int(request.engine_hints.get("max_new_tokens", 64)),
+                    streamer=streamer,
+                    stopping_criteria=StoppingCriteriaList([_Cancelled(cancel)]),
+                )
+            except BaseException as error:  # propagated on the consumer thread
+                errors.append(error)
+                streamer.on_finalized_text("", stream_end=True)
+
+        worker = threading.Thread(target=run, name=f"pra-hf-{request.request_id}", daemon=True)
+        worker.start()
+        index = 0
+        try:
+            for delta in streamer:
+                if delta:
+                    yield {
+                        "type": "delta",
+                        "index": index,
+                        "text": delta,
+                        "request_id": request.request_id,
+                        "session_id": request.session_id,
+                    }
+                    index += 1
+            worker.join()
+            if errors:
+                raise errors[0]
+            yield {
+                "type": "done",
+                "request_id": request.request_id,
+                "session_id": request.session_id,
+                "trace": {"stage": "engine_native_stream", "native_kv": True},
+            }
+        finally:
+            cancel.set()
+            worker.join()
+            for handle in handles:
+                self.model.remove_reference(handle)
 
     def close_session(self, session_id: str) -> None:
         return None

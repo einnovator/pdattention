@@ -24,6 +24,12 @@ The implementation adds:
 - DeepSeek Harness and Pi event/RPC bridges with tested ordinary-engine fallback;
 - validated model-managed task operations, adaptive metadata widening, and frozen
   record-bounded native-consumption plans inherited from Paper 8;
+- source-relative native positions with direct queries placed after the longest
+  active record, named Paper 3/7/8 materialization profiles, and raw-versus-unique
+  interval diagnostics;
+- permanent visible-prefix/native-logit and prefill/decode lifetime regressions;
+- portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
+- tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
 - CLI and executed notebook workflows.
 
 Reproduce the measured portable profile:
@@ -48,6 +54,8 @@ The current runtime also integrates Paper 8's durable task/session layer. The
 `pra-hf agent chat` command demonstrates the same SDK with task-scoped typed
 records, reusable toolsets, local persistence, and per-call write authorization.
 
-Launch the non-streaming reference gateway with `pra gateway serve`. G10 is an
+Launch the reference gateway with `pra gateway serve`. HF-backed adapters expose
+OpenAI-compatible streaming; request-owned references remain active until decode
+or cancellation cleanup completes. G10 is an
 explicit text-materialization fallback; it is not native-K/V PRA. SGLang and
 FreeToken are E0 protocol targets only in this artifact.

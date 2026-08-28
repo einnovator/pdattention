@@ -8,6 +8,7 @@ interval union to layer-native K/V without crossing a reference boundary.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from enum import Enum
 from typing import Iterable, Mapping, Sequence
 
 from pra_torch.memory import (
@@ -55,6 +56,58 @@ class NativeInterval:
         return self.end - self.start
 
 
+class NativeMaterializationMode(str, Enum):
+    """How frozen routing anchors become record-local native K/V intervals."""
+
+    SELECTED_CHUNK = "selected_chunk"
+    EXPANDED_WINDOW = "expanded_window"
+    FULL_SELECTED_RECORD = "full_selected_record"
+    FULL_SCOPE = "full_scope"
+
+
+@dataclass(frozen=True)
+class NativeMaterializationProfile:
+    """Named, ordinary configuration for reproducible materialization geometry."""
+
+    name: str
+    routing_chunk_tokens: int
+    routing_chunk_overlap_tokens: int
+    mode: NativeMaterializationMode
+    left_context_tokens: int = 0
+    right_context_tokens: int = 0
+
+
+MATERIALIZATION_PROFILES: Mapping[str, NativeMaterializationProfile] = {
+    # Frozen Paper 3 used 32-token, non-overlapping parent chunks and a
+    # zero-radius evidence-centered materialization. Consumer layers remain a
+    # dataset/model choice and are therefore intentionally not hidden here.
+    "paper3_default": NativeMaterializationProfile(
+        "paper3_default", 32, 0, NativeMaterializationMode.EXPANDED_WINDOW
+    ),
+    "paper7_selected_detail": NativeMaterializationProfile(
+        "paper7_selected_detail", 32, 0, NativeMaterializationMode.SELECTED_CHUNK
+    ),
+    "paper8_full_record_diagnostic": NativeMaterializationProfile(
+        "paper8_full_record_diagnostic",
+        32,
+        0,
+        NativeMaterializationMode.FULL_SELECTED_RECORD,
+    ),
+}
+
+
+def materialization_profile(name: str) -> NativeMaterializationProfile:
+    """Resolve a canonical research profile without embedding magic constants."""
+
+    try:
+        return MATERIALIZATION_PROFILES[name]
+    except KeyError as error:
+        raise ValueError(
+            f"Unknown native materialization profile {name!r}; "
+            f"choose one of {sorted(MATERIALIZATION_PROFILES)}."
+        ) from error
+
+
 @dataclass(frozen=True)
 class FrozenNativeSelection:
     """Replayable routing decision whose anchors do not change across a sweep."""
@@ -80,8 +133,11 @@ class NativeMaterializationPlan:
     frozen: FrozenNativeSelection
     intervals: tuple[NativeInterval, ...]
     selections_by_layer: Mapping[int, tuple[SelectedChunk, ...]]
+    record_token_counts: Mapping[str, int]
     target_span_tokens: int | None
     full_selected_record: bool
+    raw_interval_count: int
+    raw_native_tokens: int
 
     @property
     def unique_native_tokens(self) -> int:
@@ -90,6 +146,24 @@ class NativeMaterializationPlan:
     @property
     def consumption_layers(self) -> tuple[int, ...]:
         return tuple(sorted(self.selections_by_layer))
+
+    @property
+    def query_position_offset(self) -> int:
+        """Place query positions after the longest independent source record."""
+
+        return max(self.record_token_counts.values(), default=0)
+
+    @property
+    def overlap_removed_tokens(self) -> int:
+        """Return duplicate source positions removed by interval normalization."""
+
+        return self.raw_native_tokens - self.unique_native_tokens
+
+    @property
+    def duplication_ratio(self) -> float:
+        """Return raw selected positions divided by the unique source union."""
+
+        return self.raw_native_tokens / max(self.unique_native_tokens, 1)
 
 
 @dataclass(frozen=True)
@@ -118,6 +192,8 @@ def expand_frozen_intervals(
     *,
     target_span_tokens: int | None = None,
     full_selected_record: bool = False,
+    left_context_tokens: int | None = None,
+    right_context_tokens: int | None = None,
 ) -> tuple[NativeInterval, ...]:
     """Expand each anchor symmetrically, clamp to its record, then merge overlap."""
 
@@ -125,6 +201,10 @@ def expand_frozen_intervals(
         raise ValueError("target_span_tokens must be positive or None.")
     if full_selected_record and target_span_tokens is not None:
         raise ValueError("Full-record and fixed-width materialization are mutually exclusive.")
+    if left_context_tokens is not None and left_context_tokens < 0:
+        raise ValueError("left_context_tokens must be non-negative or None.")
+    if right_context_tokens is not None and right_context_tokens < 0:
+        raise ValueError("right_context_tokens must be non-negative or None.")
     expanded = []
     for anchor in frozen.anchors:
         record_end = int(record_token_counts[anchor.reference_uri])
@@ -132,6 +212,9 @@ def expand_frozen_intervals(
             raise ValueError("Frozen anchor extends beyond its owning record.")
         if full_selected_record:
             start, end = 0, record_end
+        elif left_context_tokens is not None or right_context_tokens is not None:
+            start = max(0, anchor.logical_start - int(left_context_tokens or 0))
+            end = min(record_end, anchor.logical_end + int(right_context_tokens or 0))
         elif target_span_tokens is None or target_span_tokens <= anchor.logical_end - anchor.logical_start:
             start, end = anchor.logical_start, anchor.logical_end
         else:
@@ -231,6 +314,8 @@ def build_native_materialization_plan(
     consumption_layers: Sequence[int],
     target_span_tokens: int | None = None,
     full_selected_record: bool = False,
+    left_context_tokens: int | None = None,
+    right_context_tokens: int | None = None,
 ) -> NativeMaterializationPlan:
     """Construct unique record-local K/V slices for each requested consumer layer."""
 
@@ -247,12 +332,19 @@ def build_native_materialization_plan(
         for uri, entry in by_uri.items()
         if uri in {row.reference_uri for row in frozen.anchors}
     }
-    intervals = expand_frozen_intervals(
-        frozen,
-        counts,
-        target_span_tokens=target_span_tokens,
-        full_selected_record=full_selected_record,
+    raw_intervals = tuple(
+        interval
+        for anchor in frozen.anchors
+        for interval in expand_frozen_intervals(
+            FrozenNativeSelection((anchor,)),
+            counts,
+            target_span_tokens=target_span_tokens,
+            full_selected_record=full_selected_record,
+            left_context_tokens=left_context_tokens,
+            right_context_tokens=right_context_tokens,
+        )
     )
+    intervals = _merge_intervals(raw_intervals)
     layers = tuple(sorted({int(layer) for layer in consumption_layers}))
     if not layers:
         raise ValueError("At least one consumption layer is required.")
@@ -267,8 +359,11 @@ def build_native_materialization_plan(
         frozen,
         intervals,
         selections,
+        counts,
         target_span_tokens,
         full_selected_record,
+        len(raw_intervals),
+        sum(row.tokens for row in raw_intervals),
     )
 
 

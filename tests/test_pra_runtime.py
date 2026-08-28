@@ -25,6 +25,7 @@ from pra_hf import (
     PRARuntimeConfig,
     ResourceDiscoveryEngine,
     RuntimeKVCache,
+    RuntimeKVCacheKey,
     RuntimeProfiler,
     TypeContextPolicy,
     TaskOperation,
@@ -177,6 +178,27 @@ def test_lru_cache_accounts_reuse_and_evicts_by_physical_bytes():
     assert snapshot["evictions"] == 1
     assert snapshot["bytes_reused"] == 6
     assert snapshot["resident_bytes"] == 6
+
+
+def test_native_cache_keys_isolate_tenants_and_per_tenant_eviction() -> None:
+    cache = RuntimeKVCache(max_bytes=32, max_entries=8, max_bytes_per_tenant=10)
+    a1 = RuntimeKVCacheKey("tenant-a", "user", "session-a", "record-1", 3)
+    a2 = RuntimeKVCacheKey("tenant-a", "user", "session-a", "record-2", 3)
+    b1 = RuntimeKVCacheKey("tenant-b", "user", "session-b", "record-1", 3)
+    cache.put(a1, "a1", nbytes=6)
+    cache.put(b1, "b1", nbytes=6)
+    cache.put(a2, "a2", nbytes=6)
+
+    assert cache.get(a1) is None
+    assert cache.get(a2) == "a2"
+    assert cache.get(b1) == "b1"
+    assert cache.snapshot()["tenant_resident_bytes"] == {
+        "tenant-a": 6,
+        "tenant-b": 6,
+    }
+    cache.clear_scope(tenant_id="tenant-a", session_id="session-a")
+    assert cache.get(a2) is None
+    assert cache.get(b1) == "b1"
 
 
 def test_profiler_emits_stage_level_time_bytes_and_metadata():

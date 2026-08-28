@@ -38,6 +38,7 @@ from .memory_adapter import PRAMemoryAdapter
 from .native_geometry import (
     FrozenNativeAnchor,
     FrozenNativeSelection,
+    NativeMaterializationMode,
     NativeMaterializationPlan,
     build_native_materialization_plan,
 )
@@ -938,16 +939,36 @@ class PRAForCausalLM:
     ) -> NativeMaterializationPlan:
         """Expand frozen anchors and map the interval union to native layer K/V."""
 
-        target = (
-            self.config.materialization_target_tokens
-            if target_span_tokens is None
-            else target_span_tokens
-        )
-        full = (
-            self.config.materialization_full_selected_record
-            if full_selected_record is None
-            else bool(full_selected_record)
-        )
+        explicit_geometry = target_span_tokens is not None or full_selected_record is not None
+        mode = NativeMaterializationMode(self.config.materialization_mode)
+        target = target_span_tokens
+        full = bool(full_selected_record) if full_selected_record is not None else False
+        left_context = right_context = None
+        effective_frozen = frozen
+        if not explicit_geometry:
+            target = self.config.materialization_target_tokens
+            full = mode in {
+                NativeMaterializationMode.FULL_SELECTED_RECORD,
+                NativeMaterializationMode.FULL_SCOPE,
+            }
+            if mode == NativeMaterializationMode.EXPANDED_WINDOW and target is None:
+                left_context, right_context = self.config.materialization_context
+            if mode == NativeMaterializationMode.FULL_SCOPE:
+                anchors = []
+                for entry in self._handle.cache.all_entries():
+                    memory = entry.layer_memory.get(self.routing_layer)
+                    if memory is None or not memory.chunks:
+                        continue
+                    total = max(int(chunk.logical_end) for chunk in memory.chunks)
+                    anchors.append(
+                        FrozenNativeAnchor(
+                            entry.uri,
+                            memory.chunks[0].chunk_id,
+                            0,
+                            total,
+                        )
+                    )
+                effective_frozen = FrozenNativeSelection(tuple(anchors))
         layers = tuple(
             self.consumption_layers
             if consumption_layers is None
@@ -955,11 +976,48 @@ class PRAForCausalLM:
         )
         return build_native_materialization_plan(
             self._handle.cache.all_entries(),
-            frozen,
+            effective_frozen,
             consumption_layers=layers,
             target_span_tokens=target,
             full_selected_record=full,
+            left_context_tokens=left_context,
+            right_context_tokens=right_context,
         )
+
+    @torch.no_grad()
+    def native_next_token_logits(
+        self,
+        prompt: str,
+        plan: NativeMaterializationPlan,
+    ) -> torch.Tensor:
+        """Return final-prompt logits under one fixed native-memory request."""
+
+        with self._execution_lock:
+            encoded = self.tokenizer(
+                prompt, return_tensors="pt", add_special_tokens=False
+            )
+            prepared = self._handle.prepare_long_prompt(
+                encoded.input_ids.to(self.device),
+                position_offset=plan.query_position_offset,
+            )
+            fixed = {
+                layer: [list(rows)]
+                for layer, rows in plan.selections_by_layer.items()
+            }
+            self._handle.configure_memory_layers(
+                set(plan.consumption_layers), fixed_selections=fixed
+            )
+            self._handle.reset_memory_lifetime_trace()
+            try:
+                output = self.model(
+                    input_ids=prepared.input_ids.to(self.device),
+                    attention_mask=prepared.attention_mask.to(self.device),
+                    position_ids=prepared.position_ids.to(self.device),
+                    use_cache=False,
+                )
+                return output.logits[:, -1, :].detach()
+            finally:
+                self._handle.configure_memory_layers(set())
 
     @torch.no_grad()
     def generate_with_native_plan(
@@ -975,10 +1033,11 @@ class PRAForCausalLM:
 
         with self._execution_lock:
             encoded = self.tokenizer(
-                prompt, return_tensors="pt", add_special_tokens=True
+                prompt, return_tensors="pt", add_special_tokens=False
             )
             prepared = self._handle.prepare_long_prompt(
-                encoded.input_ids.to(self.device)
+                encoded.input_ids.to(self.device),
+                position_offset=plan.query_position_offset,
             )
             input_ids = prepared.input_ids.to(self.device)
             attention_mask = prepared.attention_mask.to(self.device)
@@ -990,6 +1049,7 @@ class PRAForCausalLM:
             self._handle.configure_memory_layers(
                 set(plan.consumption_layers), fixed_selections=fixed
             )
+            self._handle.reset_memory_lifetime_trace()
             if self.device.type == "cuda":
                 major, _ = torch.cuda.get_device_capability(self.device)
                 if major < 7:
@@ -1009,6 +1069,7 @@ class PRAForCausalLM:
             generated = output[:, input_ids.shape[1] :]
             text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
             diagnostics = self._handle.diagnostics_by_layer()
+            lifetime = self._handle.memory_lifetime_by_layer()
             resident_bytes = sum(
                 hit.chunk.token_kv.k.numel()
                 * hit.chunk.token_kv.k.element_size()
@@ -1022,6 +1083,10 @@ class PRAForCausalLM:
                 "routing_seconds": 0.0,
                 "query_encoding_seconds": 0.0,
                 "requested_kv_tokens": plan.unique_native_tokens,
+                "raw_selected_kv_tokens": plan.raw_native_tokens,
+                "overlap_removed_tokens": plan.overlap_removed_tokens,
+                "raw_interval_count": plan.raw_interval_count,
+                "unique_interval_count": len(plan.intervals),
                 "materialized_kv_tokens": plan.unique_native_tokens,
                 "active_native_tokens": (
                     plan.unique_native_tokens * len(plan.consumption_layers)
@@ -1038,6 +1103,8 @@ class PRAForCausalLM:
                 ],
                 "frozen_source_identity": plan.frozen.source_identity,
                 "diagnostics_by_layer": diagnostics,
+                "memory_lifetime_by_layer": lifetime,
+                "query_position_offset": plan.query_position_offset,
                 "generation_seconds": latency,
                 "head_tokens": prepared.head_tokens,
             }
@@ -1049,6 +1116,78 @@ class PRAForCausalLM:
                 self._last_stats,
             )
             return result if return_details else result.text
+
+    @torch.no_grad()
+    def debug_decode_with_native_plan(
+        self,
+        prompt: str,
+        plan: NativeMaterializationPlan,
+        *,
+        max_new_tokens: int = 8,
+    ) -> GenerationResult:
+        """Reference prefill/decode loop used to localize cache and lifetime faults."""
+
+        if max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive.")
+        with self._execution_lock:
+            encoded = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
+            prepared = self._handle.prepare_long_prompt(
+                encoded.input_ids.to(self.device),
+                position_offset=plan.query_position_offset,
+            )
+            fixed = {layer: [list(rows)] for layer, rows in plan.selections_by_layer.items()}
+            self._handle.configure_memory_layers(set(plan.consumption_layers), fixed_selections=fixed)
+            self._handle.reset_memory_lifetime_trace()
+            input_ids = prepared.input_ids.to(self.device)
+            attention_mask = prepared.attention_mask.to(self.device)
+            generated = []
+            started = time.perf_counter()
+            try:
+                output = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=prepared.position_ids.to(self.device),
+                    use_cache=True,
+                )
+                past = output.past_key_values
+                next_token = output.logits[:, -1, :].argmax(dim=-1, keepdim=True)
+                generated.append(next_token)
+                for step in range(1, max_new_tokens):
+                    attention_mask = torch.cat(
+                        (attention_mask, torch.ones_like(next_token)), dim=1
+                    )
+                    position = torch.full_like(
+                        next_token,
+                        plan.query_position_offset + input_ids.shape[1] + step - 1,
+                    )
+                    output = self.model(
+                        input_ids=next_token,
+                        attention_mask=attention_mask,
+                        position_ids=position,
+                        past_key_values=past,
+                        use_cache=True,
+                    )
+                    past = output.past_key_values
+                    next_token = output.logits[:, -1, :].argmax(dim=-1, keepdim=True)
+                    generated.append(next_token)
+            finally:
+                self._handle.configure_memory_layers(set())
+            tokens = torch.cat(generated, dim=1)
+            latency = time.perf_counter() - started
+            stats = {
+                "decode_path": "explicit_reference_loop",
+                "query_position_offset": plan.query_position_offset,
+                "memory_lifetime_by_layer": self._handle.memory_lifetime_by_layer(),
+                "raw_selected_kv_tokens": plan.raw_native_tokens,
+                "materialized_kv_tokens": plan.unique_native_tokens,
+            }
+            return GenerationResult(
+                self.tokenizer.decode(tokens[0], skip_special_tokens=True),
+                int(input_ids.shape[1]),
+                int(tokens.shape[1]),
+                latency,
+                stats,
+            )
 
     def chat(self, messages: Iterable[dict[str, str]], **generation_kwargs):
         """Format chat messages with the base tokenizer and call ``generate``."""

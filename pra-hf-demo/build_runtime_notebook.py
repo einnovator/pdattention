@@ -89,6 +89,7 @@ from pra_hf import (
     MaterializationPlan,
     NativeEncoding,
     NativeKV,
+    NativeMaterializationMode,
     PackedNativeKVStore,
     PersistentResourceIndex,
     PRAConfig,
@@ -110,6 +111,7 @@ from pra_hf import (
     RecordType,
     RecordViewName,
     RuntimeKVCache,
+    RuntimeKVCacheKey,
     RuntimeProfiler,
     SafeToolExecutor,
     SelectedKVGather,
@@ -1236,7 +1238,10 @@ pi_result = pi_bridge.generate(
 Model-managed tasks remain proposals: the runtime validates the complete operation sequence on a
 copy of the graph, then persists accepted replay events. Native geometry follows the same split.
 Routing identities freeze first; only then may the caller widen record-local spans or choose a full
-selected record. Every consumer resolves those logical intervals to its own native K/V.
+selected record. Every consumer resolves those logical intervals to its own native K/V. The direct
+query begins after the longest independent source extent, preserving source-relative RoPE positions
+without concatenating separate records into one positional sequence. Named profiles reproduce the
+Paper 3, Paper 7, and Paper 8 geometries without notebook-local constants.
 '''
     ),
     code(
@@ -1266,7 +1271,51 @@ native_result = runtime.generate_with_native_plan(
     "native_intervals": native_plan.intervals,
     "consumer_layers": native_plan.consumption_layers,
     "materialized_tokens": native_plan.unique_native_tokens,
+    "raw_selected_tokens": native_plan.raw_native_tokens,
+    "overlap_removed_tokens": native_plan.overlap_removed_tokens,
+    "query_position_offset": native_plan.query_position_offset,
+    "decode_lifetime": native_result.stats["memory_lifetime_by_layer"],
     "generated_tokens": native_result.generated_tokens,
+}
+'''
+    ),
+    md(
+        r'''
+## 26. Canonical profiles, tenant-scoped cache keys, and streaming boundary
+
+Materialization mode is independent of routing chunk geometry. `SELECTED_CHUNK` keeps the frozen
+chunk, `EXPANDED_WINDOW` adds bounded left/right context, `FULL_SELECTED_RECORD` diagnoses one
+selected record, and `FULL_SCOPE` activates every current record. The cache key includes tenant,
+user, session, resource, layer, and variant, preventing accidental cross-tenant reuse. The
+HF-backed gateway can stream deltas; this offline notebook records the contract while HTTP tests
+exercise SSE and cancellation cleanup.
+'''
+    ),
+    code(
+        r'''
+profiles = {
+    name: PRAConfig(materialization_profile=name).to_dict()
+    for name in (
+        "paper3_default",
+        "paper7_selected_detail",
+        "paper8_full_record_diagnostic",
+    )
+}
+scoped_cache = RuntimeKVCache(
+    max_bytes=64, max_entries=8, max_bytes_per_tenant=16
+)
+tenant_a = RuntimeKVCacheKey("tenant-a", "user-a", "session-a", "record", 1)
+tenant_b = RuntimeKVCacheKey("tenant-b", "user-b", "session-b", "record", 1)
+scoped_cache.put(tenant_a, "A", nbytes=8)
+scoped_cache.put(tenant_b, "B", nbytes=8)
+{
+    "profile_modes": {
+        name: values["materialization_mode"] for name, values in profiles.items()
+    },
+    "full_scope_mode": NativeMaterializationMode.FULL_SCOPE.value,
+    "tenant_a_value": scoped_cache.get(tenant_a),
+    "tenant_b_value": scoped_cache.get(tenant_b),
+    "tenant_bytes": scoped_cache.snapshot()["tenant_resident_bytes"],
 }
 '''
     ),
@@ -1308,6 +1357,10 @@ Demonstrated here:
 - a logical gateway request and explicitly labeled text fallback;
 - DeepSeek Harness and Pi typed-event bridges over that fallback contract;
 - validated task-operation proposals and frozen record-bounded native geometry;
+- canonical Paper 3/7/8 materialization profiles and source-relative query rebinding;
+- compact prefill/decode native-memory lifetime telemetry;
+- tenant-scoped cache identities and per-tenant byte accounting;
+- portable HF gateway streaming, cancellation, and request-owned cleanup (covered by tests);
 - a scheduler-unaware vLLM request contract.
 
 Not demonstrated here:
@@ -1317,7 +1370,7 @@ Not demonstrated here:
 - Triton/custom CUDA fusion;
 - asynchronous transfer overlap or production prefetch;
 - continuous batching, p95/p99 serving latency, or a deep vLLM scheduler integration;
-- streaming gateway proxying or phase-level HF selection;
+- phase-level HF selection;
 - native or measured SGLang, FreeToken, TensorRT-LLM, MLX, llama.cpp, TGI, or Ollama adapters.
 
 Those omissions are explicit capability gates, not hidden eager fallbacks.

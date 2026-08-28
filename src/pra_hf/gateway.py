@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 from .deployment import (
     PRAEngineAdapter,
@@ -32,7 +32,7 @@ class PRAGateway:
         return {
             "gateway_mode": self.mode.value,
             "engine": self.adapter.capabilities().to_dict(),
-            "streaming_implemented": False,
+            "streaming_implemented": self.adapter.capabilities().streaming,
         }
 
     def _negotiate(self, request: PRAWireRequest) -> tuple[list[str], list[str]]:
@@ -128,6 +128,50 @@ class PRAGateway:
         )
         return PRAEngineResult(result.text, result.raw, trace)
 
+    def stream(
+        self, request: PRAWireRequest | Mapping[str, Any]
+    ) -> Iterator[Mapping[str, Any]]:
+        """Stream portable deltas after applying the same deterministic mediation."""
+
+        if not isinstance(request, PRAWireRequest):
+            request = PRAWireRequest.from_dict(request)
+        if not self.adapter.capabilities().streaming:
+            raise PRACapabilityError(
+                f"Engine {self.adapter.capabilities().adapter!r} does not support streaming."
+            )
+        unsupported, downgrades = self._negotiate(request)
+        selected_ids: list[str] = []
+        transformed = request
+        if self.mode == PRAGatewayMode.G10_TEXT_FALLBACK:
+            transformed, selected_ids = self._text_fallback(request)
+        elif self.mode == PRAGatewayMode.G01_UPGRADE:
+            transformed = self._upgrade(request)
+            if transformed.resources and not self.adapter.capabilities().logical_refs:
+                raise PRACapabilityError("G01 upgrade requires an engine with logical_refs.")
+        elif self.mode == PRAGatewayMode.G11_MEDIATION:
+            if request.resources and not self.adapter.capabilities().logical_refs:
+                raise PRACapabilityError(
+                    "G11 mediation requires logical_refs; choose explicit G10 text fallback."
+                )
+        def rows() -> Iterator[Mapping[str, Any]]:
+            yield {
+                "type": "trace",
+                "request_id": request.request_id,
+                "trace": {
+                    "stage": "protocol_translation",
+                    "gateway_mode": self.mode.value,
+                    "correlation_id": request.correlation_id,
+                    "unsupported_capabilities": unsupported,
+                    "downgrades": downgrades,
+                    "selected_resource_ids": selected_ids,
+                    "native_kv": self.adapter.capabilities().native_kv
+                    and self.mode != PRAGatewayMode.G10_TEXT_FALLBACK,
+                },
+            }
+            yield from self.adapter.stream(transformed)
+
+        return rows()
+
 
 def _handler(gateway: PRAGateway):
     class GatewayHandler(BaseHTTPRequestHandler):
@@ -140,6 +184,26 @@ def _handler(gateway: PRAGateway):
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
+
+        def _sse(self, rows: Iterator[Mapping[str, Any]]) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            iterator = iter(rows)
+            try:
+                for row in iterator:
+                    payload = json.dumps(row, default=str)
+                    self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            finally:
+                close = getattr(iterator, "close", None)
+                if close is not None:
+                    close()
 
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
             if self.path == "/health":
@@ -155,18 +219,21 @@ def _handler(gateway: PRAGateway):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 if self.path == "/v1/chat/completions":
                     request = PRAWireRequest.from_openai(payload)
-                    result = gateway.generate(request)
-                    self._json(
-                        200,
-                        {
-                            "id": request.request_id,
-                            "object": "chat.completion",
-                            "choices": [
-                                {"index": 0, "message": {"role": "assistant", "content": result.text}}
-                            ],
-                            "pra_trace": list(result.trace),
-                        },
-                    )
+                    if bool(payload.get("stream", False)):
+                        self._sse(gateway.stream(request))
+                    else:
+                        result = gateway.generate(request)
+                        self._json(
+                            200,
+                            {
+                                "id": request.request_id,
+                                "object": "chat.completion",
+                                "choices": [
+                                    {"index": 0, "message": {"role": "assistant", "content": result.text}}
+                                ],
+                                "pra_trace": list(result.trace),
+                            },
+                        )
                 elif self.path == "/v1/pra/generate":
                     self._json(200, gateway.generate(payload).to_dict())
                 else:
@@ -186,7 +253,7 @@ def serve_gateway(
     host: str = "127.0.0.1",
     port: int = 8080,
 ) -> None:
-    """Run the standalone non-streaming reference gateway until interrupted."""
+    """Run the standalone reference gateway until interrupted."""
 
     create_gateway_server(gateway, host=host, port=port).serve_forever()
 

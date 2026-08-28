@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from types import SimpleNamespace
 
 import pytest
@@ -10,7 +11,16 @@ import torch
 transformers = pytest.importorskip("transformers")
 from transformers import LlamaConfig, LlamaForCausalLM
 
-from pra_hf import PRAConfig, PRAForCausalLM, PRARouter
+from pra_hf import (
+    FrozenNativeAnchor,
+    FrozenNativeSelection,
+    HuggingFaceEngineAdapter,
+    PRAConfig,
+    PRAForCausalLM,
+    PRARouter,
+    PRAWireRequest,
+    PRAWireResource,
+)
 
 
 class TinyTokenizer:
@@ -143,6 +153,79 @@ def test_route_only_uses_production_selection_without_generation():
     assert result.selected
     assert result.stats["requested_chunks"] == len(result.selected)
     assert result.stats["generation_seconds"] == 0.0
+
+
+def test_full_native_reference_logits_and_explicit_decode_lifetime_match_prefix() -> None:
+    """HF reference E0 and request-owned decode-lifetime regression."""
+
+    torch.manual_seed(3061)
+    visible = _model()
+    pra = PRAForCausalLM.from_model(
+        copy.deepcopy(visible),
+        TinyTokenizer(),
+        pra_config=_config(
+            routing_layer=1,
+            consumption_layers=(0, 1),
+            materialization_profile="paper8_full_record_diagnostic",
+        ),
+    )
+    reference_text = "abcdefgh"
+    prompt = "question"
+    handle = pra.add_reference(reference_text)
+    entry = pra._handle.cache.get(handle.uri)
+    assert entry is not None
+    chunk = entry.layer_memory[pra.routing_layer].chunks[0]
+    frozen = FrozenNativeSelection((FrozenNativeAnchor(
+        handle.uri,
+        chunk.chunk_id,
+        int(chunk.logical_start),
+        int(chunk.logical_end),
+    ),))
+    plan = pra.plan_native_materialization(frozen)
+    tokenizer = TinyTokenizer()
+    reference_ids = tokenizer(reference_text).input_ids
+    prompt_ids = tokenizer(prompt).input_ids
+
+    with torch.no_grad():
+        expected = visible(
+            torch.cat((reference_ids, prompt_ids), dim=1), use_cache=False
+        ).logits[:, -1, :]
+    actual = pra.native_next_token_logits(prompt, plan)
+
+    torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-6)
+    decoded = pra.debug_decode_with_native_plan(prompt, plan, max_new_tokens=3)
+    assert decoded.generated_tokens == 3
+    for layer in (0, 1):
+        trace = decoded.stats["memory_lifetime_by_layer"][layer]
+        assert len(trace) == 3
+        assert all(row["active_native_tokens"] == reference_ids.shape[1] for row in trace)
+        assert [row["query_tokens"] for row in trace] == [prompt_ids.shape[1], 1, 1]
+
+
+def test_hf_engine_stream_owns_references_until_decode_finishes() -> None:
+    torch.manual_seed(3062)
+    pra = PRAForCausalLM.from_model(_model(), TinyTokenizer(), pra_config=_config())
+    adapter = HuggingFaceEngineAdapter(pra)
+    request = PRAWireRequest(
+        model="offline/tiny",
+        messages=({"role": "user", "content": "question"},),
+        tenant_id="tenant-a",
+        session_id="session-a",
+        resources=(PRAWireResource(
+            "facts",
+            "pra://tenant-a/facts",
+            text="abcdefgh",
+            metadata={"tenant_id": "tenant-a"},
+        ),),
+        engine_hints={"max_new_tokens": 2},
+    )
+
+    rows = list(adapter.stream(request))
+
+    assert rows[-1]["type"] == "done"
+    assert rows[-1]["request_id"] == request.request_id
+    assert adapter.capabilities().streaming is True
+    assert pra.stats()["references"] == []
 
 
 def test_request_per_layer_routes_each_layer_once_and_reports_policy():

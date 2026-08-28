@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from pra_hf import (
     FrozenNativeAnchor,
     FrozenNativeSelection,
     PRAConfig,
+    NativeMaterializationMode,
     build_native_materialization_plan,
     evidence_token_intervals,
     expand_frozen_intervals,
     intervals_cover,
+    materialization_profile,
 )
 from pra_torch.memory import (
     ChunkRoutingGist,
@@ -95,6 +98,7 @@ def test_plan_slices_unique_native_tokens_at_every_consumption_layer() -> None:
         [_entry()], _frozen(), consumption_layers=(3, 7), target_span_tokens=64
     )
     assert plan.unique_native_tokens == 64
+    assert plan.query_position_offset == 80
     assert plan.frozen.source_identity == _frozen().source_identity
     for layer, rows in plan.selections_by_layer.items():
         assert sum(row.selected_token_count for row in rows) == 64
@@ -104,6 +108,54 @@ def test_plan_slices_unique_native_tokens_at_every_consumption_layer() -> None:
         assert spans[0][0] == 8
         assert spans[-1][1] == 72
         assert all(left[1] == right[0] for left, right in zip(spans, spans[1:]))
+
+
+def test_interval_normalizer_reports_raw_overlap_without_crossing_records() -> None:
+    frozen = FrozenNativeSelection((
+        FrozenNativeAnchor("record://a", "record://a#chunk=0:32", 0, 32),
+        FrozenNativeAnchor("record://a", "record://a#chunk=24:56", 24, 56),
+    ))
+    plan = build_native_materialization_plan(
+        [_entry()], frozen, consumption_layers=(3,)
+    )
+
+    assert plan.raw_interval_count == 2
+    assert plan.raw_native_tokens == 64
+    assert plan.unique_native_tokens == 56
+    assert plan.overlap_removed_tokens == 8
+    assert plan.duplication_ratio == pytest.approx(64 / 56)
+
+
+def test_query_offset_uses_longest_record_without_merging_reference_positions() -> None:
+    second = _entry("record://b", total=64)
+    frozen = FrozenNativeSelection((
+        FrozenNativeAnchor("record://a", "record://a#chunk=24:56", 24, 56),
+        FrozenNativeAnchor("record://b", "record://b#chunk=0:32", 0, 32),
+    ))
+    plan = build_native_materialization_plan(
+        [_entry(), second], frozen, consumption_layers=(3,), full_selected_record=True
+    )
+
+    assert plan.query_position_offset == 80
+    assert [(row.reference_uri, row.start, row.end) for row in plan.intervals] == [
+        ("record://a", 0, 80),
+        ("record://b", 0, 64),
+    ]
+
+
+def test_asymmetric_window_and_named_profiles_resolve_to_normal_config() -> None:
+    interval = expand_frozen_intervals(
+        _frozen(),
+        {"record://a": 80},
+        left_context_tokens=4,
+        right_context_tokens=12,
+    )[0]
+    assert (interval.start, interval.end) == (20, 68)
+    assert materialization_profile("paper3_default").routing_chunk_tokens == 32
+    assert materialization_profile("paper3_default").routing_chunk_overlap_tokens == 0
+    config = PRAConfig(materialization_profile="paper8_full_record_diagnostic")
+    assert config.materialization_mode == NativeMaterializationMode.FULL_SELECTED_RECORD.value
+    assert config.chunk_tokens == 32
 
 
 def test_evidence_interval_coverage_distinguishes_answer_from_semantic_context() -> None:

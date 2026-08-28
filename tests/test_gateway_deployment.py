@@ -20,7 +20,7 @@ from pra_torch.cli import cli as pra_cli
 
 
 class RecordingAdapter:
-    def __init__(self, *, logical_refs=False, native_kv=False):
+    def __init__(self, *, logical_refs=False, native_kv=False, streaming=False):
         self.requests = []
         self.closed = []
         self._capabilities = PRAEngineCapabilities(
@@ -30,6 +30,7 @@ class RecordingAdapter:
             typed_records=logical_refs,
             text_fallback=True,
             native_kv=native_kv,
+            streaming=streaming,
         )
 
     def capabilities(self):
@@ -43,7 +44,10 @@ class RecordingAdapter:
         return PRAEngineResult("answer", {"ok": True})
 
     def stream(self, request):
-        yield {"text": "answer"}
+        self.requests.append(request)
+        yield {"type": "delta", "text": "ans", "request_id": request.request_id}
+        yield {"type": "delta", "text": "wer", "request_id": request.request_id}
+        yield {"type": "done", "request_id": request.request_id}
 
     def close_session(self, session_id):
         self.closed.append(session_id)
@@ -177,6 +181,55 @@ def test_openai_envelope_and_http_health_boundary():
             completion = json.loads(response.read())
         assert completion["choices"][0]["message"]["content"] == "answer"
         assert completion["pra_trace"][0]["correlation_id"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_gateway_stream_preserves_ids_and_uses_the_same_mediation() -> None:
+    adapter = RecordingAdapter(logical_refs=True, native_kv=True, streaming=True)
+    request = _request(resources=(_resource(),))
+
+    rows = list(PRAGateway(adapter, mode="G11").stream(request))
+
+    assert rows[0]["type"] == "trace"
+    assert rows[0]["request_id"] == request.request_id
+    assert rows[0]["trace"]["native_kv"] is True
+    assert "".join(row.get("text", "") for row in rows) == "answer"
+    assert adapter.requests[0].session_id == request.session_id
+
+
+def test_gateway_stream_rejects_unsupported_transport_before_iteration() -> None:
+    with pytest.raises(PRACapabilityError, match="does not support streaming"):
+        PRAGateway(RecordingAdapter(), mode="G00").stream(_request())
+
+
+def test_openai_http_stream_uses_sse_and_terminates() -> None:
+    gateway = PRAGateway(
+        RecordingAdapter(streaming=True), mode="G00"
+    )
+    server = create_gateway_server(gateway, host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps({
+            "model": "offline/model",
+            "messages": [{"role": "user", "content": "question"}],
+            "stream": True,
+            "pra": {"session_id": "session-a", "tenant_id": "tenant-a"},
+        }).encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            body = response.read().decode("utf-8")
+            assert response.headers["Content-Type"] == "text/event-stream"
+        assert '"text": "ans"' in body
+        assert '"text": "wer"' in body
+        assert "data: [DONE]" in body
     finally:
         server.shutdown()
         server.server_close()

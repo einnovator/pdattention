@@ -344,6 +344,11 @@ class QwenPRAAttentionAdapter(PRAHFAttentionAdapter):
             attention_mask,
             query_tokens=int(query.shape[2]),
         )
+        self.record_memory_lifetime(
+            query_tokens=int(query.shape[2]),
+            local_cache_tokens=int(key.shape[2]),
+            active_native_tokens=int(combined.memory_width),
+        )
         started = (
             torch.cuda.Event(enable_timing=True)
             if query.is_cuda and self.pra_config.collect_detailed_timing

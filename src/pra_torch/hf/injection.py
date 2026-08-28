@@ -225,6 +225,20 @@ class PRAHFModel:
         """Return latest routing, materialization, GQA, and timing metrics."""
         return {layer: dict(adapter.last_diagnostics) for layer, adapter in self.adapters.items()}
 
+    def reset_memory_lifetime_trace(self) -> None:
+        """Reset compact native-memory traces before one request begins."""
+
+        for adapter in self.adapters.values():
+            adapter.reset_memory_lifetime_trace()
+
+    def memory_lifetime_by_layer(self) -> dict[int, tuple[dict[str, int], ...]]:
+        """Return immutable copies of prefill/decode native-memory activity."""
+
+        return {
+            layer: tuple(dict(row) for row in adapter.memory_lifetime_trace)
+            for layer, adapter in self.adapters.items()
+        }
+
     def _record_native_operation(self, tokens: int) -> None:
         self.max_native_operation_tokens = max(self.max_native_operation_tokens, int(tokens))
         if tokens > self.pra_config.effective_model_max_context_tokens:
@@ -477,18 +491,38 @@ class PRAHFModel:
         self.cache.put(entry)
         return entry
 
-    def prepare_long_prompt(self, input_ids: torch.Tensor) -> PreparedLongPrompt:
-        """Publish displaced prompt history as ``#__head`` and return a bounded tail."""
+    def prepare_long_prompt(
+        self,
+        input_ids: torch.Tensor,
+        *,
+        position_offset: int = 0,
+    ) -> PreparedLongPrompt:
+        """Publish displaced history and place the direct tail after native memory.
+
+        ``position_offset`` is a logical RoPE coordinate rather than a physical
+        cache length. Full-reference equivalence uses the longest source extent,
+        while independent records keep their own source-relative coordinates.
+        """
         if input_ids.ndim == 1:
             input_ids = input_ids.unsqueeze(0)
         direct = self.pra_config.effective_prompt_direct_tokens
+        if position_offset < 0:
+            raise ValueError("position_offset must be non-negative.")
         if input_ids.shape[1] <= direct:
-            positions = torch.arange(input_ids.shape[1], device=input_ids.device).unsqueeze(0)
+            positions = torch.arange(
+                position_offset,
+                position_offset + input_ids.shape[1],
+                device=input_ids.device,
+            ).unsqueeze(0)
             return PreparedLongPrompt(input_ids, torch.ones_like(input_ids), positions, 0)
         head_tokens = int(input_ids.shape[1] - direct)
         self.add_reference("#__head", input_ids[:, :head_tokens], text="implicit prompt head")
         tail = input_ids[:, head_tokens:].to(self.device)
-        positions = torch.arange(head_tokens, head_tokens + tail.shape[1], device=self.device).unsqueeze(0)
+        positions = torch.arange(
+            position_offset + head_tokens,
+            position_offset + head_tokens + tail.shape[1],
+            device=self.device,
+        ).unsqueeze(0)
         return PreparedLongPrompt(tail, torch.ones_like(tail), positions, head_tokens)
 
 
