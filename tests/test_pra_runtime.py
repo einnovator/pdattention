@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 import torch
@@ -199,6 +200,18 @@ def test_native_cache_keys_isolate_tenants_and_per_tenant_eviction() -> None:
     cache.clear_scope(tenant_id="tenant-a", session_id="session-a")
     assert cache.get(a2) is None
     assert cache.get(b1) == "b1"
+
+
+def test_native_cache_reuse_requires_identical_geometry_and_revision() -> None:
+    key = RuntimeKVCacheKey("tenant", "user", "session", "record", 3)
+
+    assert key.reuse_compatible(replace(key))
+    assert not key.reuse_compatible(replace(key, source_revision="v2"))
+    assert not key.reuse_compatible(replace(key, position_signature="absolute:64"))
+    assert not key.reuse_compatible(
+        replace(key, materialization_signature="packed:0-8,16-24")
+    )
+    assert not key.reuse_compatible(replace(key, scope_signature="request:req-2"))
 
 
 def test_profiler_emits_stage_level_time_bytes_and_metadata():

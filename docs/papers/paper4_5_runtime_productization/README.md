@@ -30,6 +30,8 @@ The implementation adds:
 - permanent visible-prefix/native-logit and prefill/decode lifetime regressions;
 - portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
 - tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
+- source-revision, position, materialization, and scope-safe physical payload reuse;
+- pinned Qwen3-0.6B, Llama-3.2-1B mirror, and Gemma-3-1B cross-model gates;
 - CLI and executed notebook workflows.
 
 Reproduce the measured portable profile:
@@ -39,8 +41,16 @@ $env:PYTHONPATH = "src;."
 python -m experiments.paper4_5_runtime.run_runtime_profile
 python -m experiments.paper4_5_runtime.run_execution_policy_profile
 python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
+python -m experiments.paper4_5_runtime.run_cross_model_validation --model all --device cuda
 python -m experiments.paper4_5_runtime.summarize_runtime
 ```
+
+The cross-model command is restartable with `--model qwen`, `--model llama`,
+`--model gemma`, and `--model finalize`. The official Meta Llama checkpoint was
+access-blocked during this run, so the checked-in Llama row names the exact
+public weight mirror. Gemma is reported as partial topology: native global-layer
+mechanics pass, while unchanged local sliding layers prevent full-prefix
+equivalence.
 
 Build the paper:
 

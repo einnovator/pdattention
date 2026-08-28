@@ -234,8 +234,11 @@ def main() -> None:
     )
     capabilities = cuda["capabilities"]
     compatibility = [
+        {"runtime": "Qwen/Qwen3-0.6B", "status": "full semantic gate passed", "boundary": "official revision; all 28 decoder layers"},
+        {"runtime": "unsloth/Llama-3.2-1B", "status": "full semantic gate passed", "boundary": "public weight mirror; official Meta repository access blocked"},
+        {"runtime": "google/gemma-3-1b-it", "status": "partial topology", "boundary": "native global layers pass; local sliding layers remain unchanged"},
         {"runtime": "HF/PyTorch eager", "status": "measured", "boundary": "native PRA model and portable K/V primitives"},
-        {"runtime": "Standalone gateway", "status": "contract tested", "boundary": "G00/G10/G01/G11 JSON mediation; non-streaming"},
+        {"runtime": "Standalone gateway", "status": "contract tested", "boundary": "G00/G10/G01/G11 JSON mediation and portable SSE streaming"},
         {"runtime": "OpenAI-compatible HTTP", "status": "E0 implemented", "boundary": "pass-through and explicit text fallback"},
         {"runtime": "DeepSeek/Pi agent bridges", "status": "contract tested", "boundary": "typed event/RPC capture and explicit G10 fallback"},
         {"runtime": "torch.compile", "status": "blocked on host", "boundary": "API implemented; CPU compiler absent and GPU too old for Triton"},
@@ -256,6 +259,22 @@ def main() -> None:
         "execution_policy_profile": "five-seed tiny random-weight HF mechanism check",
         "agent_plugin_profile": "two public event vocabularies, five deterministic seeds each",
         "paper8_native_geometry_integrated": True,
+        "hf_reference_gate": {
+            "decode_lifetime_pass": True,
+            "gateway_streaming_pass": True,
+            "interval_dedup_pass": True,
+            "multitenant_cache_pass": True,
+            "native_position_fix": "query begins after longest independent source extent",
+            "prefix_equivalence_max_abs_error_fp32": 5.960464477539063e-08,
+            "profiles": [
+                "paper3_default",
+                "paper7_selected_detail",
+                "paper8_full_record_diagnostic",
+            ],
+        },
+        "cross_model_validation": "hf_cross_model_manifest.csv",
+        "cross_model_semantic_rows": 36,
+        "cross_model_models": ["qwen", "llama", "gemma"],
     }
     (OUTPUT / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"

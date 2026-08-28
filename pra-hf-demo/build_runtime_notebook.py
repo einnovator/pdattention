@@ -41,7 +41,7 @@ The two notebooks are complementary, not replacements.
 | Question | `pra_hf_model_families.ipynb` (Paper 2) | This notebook (Paper 4.5) |
 |---|---|---|
 | Primary concern | Does PRA attach to supported HF model families? | Does sparse selection become a controllable physical runtime? |
-| Models exercised | Qwen 3, Llama, and Gemma 3 sessions | One tiny Llama, keeping attention on systems mechanisms |
+| Models exercised | Qwen 3, Llama, and Gemma 3 sessions | One offline tiny Llama plus checked-in pretrained cross-model gate summaries |
 | References | Direct text references through `PRAForCausalLM` | Direct references plus authenticated external cold/warm/hot resources |
 | K/V internals | Model-level routing and generation statistics | Exact intervals, budgets, GQA/MQA shape, layouts, transfer and temporary bytes |
 | Runtime state | Per-model examples | Versioned config, sessions, LRU reuse, eviction, and stage profiler |
@@ -55,6 +55,7 @@ the unified SDK and the boundary between logical selection and physical executio
     code(
         r'''
 from pathlib import Path
+import csv
 import json
 import platform
 import sys
@@ -152,6 +153,50 @@ until the corresponding path is actually executed and measured on the current ho
         r'''
 capabilities = runtime_capabilities()
 capabilities
+'''
+    ),
+    md(
+        r'''
+## 1.1 Measured HF family compatibility
+
+The executable cells below remain offline and use a tiny random Llama fixture, but the checked-in
+Paper 4.5 gate was also run on pinned pretrained Qwen, Llama, and Gemma checkpoints. Qwen is the
+primary semantic reference. The Llama row uses an explicitly named public weight mirror because
+the official Meta repository was inaccessible. Gemma is a partial topology result: disabled
+behavior, native MQA shape, source positions, and decode lifetime pass, while global-layer-only
+memory does not reproduce a visible prefix processed by unchanged local sliding layers.
+
+The four semantic conditions keep record selection, token width, and consumer-layer coverage
+visible as separate axes. A sparse layer profile is therefore not treated as equivalent merely
+because it selected the correct record.
+'''
+    ),
+    code(
+        r'''
+cross_model_dir = PROJECT_ROOT / "docs" / "papers" / "shared" / "results" / "paper4_5_runtime"
+
+with (cross_model_dir / "hf_cross_model_manifest.csv").open(encoding="utf-8") as stream:
+    cross_model_manifest = list(csv.DictReader(stream))
+with (cross_model_dir / "hf_cross_model_native_parity.csv").open(encoding="utf-8") as stream:
+    cross_model_parity = list(csv.DictReader(stream))
+
+[
+    {
+        "model": row["model"],
+        "status": row["status"],
+        "full_native_max_logit_error": float(row["full_native_max_logit_error"]),
+        "full_native_top_token_equal": row["full_native_top_token_equal"],
+        "topology_coverage": row["topology_coverage"],
+    }
+    for row in cross_model_parity
+]
+'''
+    ),
+    code(
+        r'''
+from IPython.display import Image, display
+
+display(Image(filename=str(cross_model_dir / "hf_cross_model_semantic_gate.png")))
 '''
     ),
     md(

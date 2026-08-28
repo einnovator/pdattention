@@ -89,6 +89,25 @@ def test_g00_pass_through_preserves_structured_messages():
     assert result.trace[1]["downgrades"] == []
 
 
+def test_hf_capability_contract_names_supported_runtime_boundaries():
+    capabilities = PRAEngineCapabilities(
+        adapter="hf",
+        integration_level="E1",
+        native_kv=True,
+        selected_interval_materialization=True,
+        request_lifetime=True,
+        host_device_residency=True,
+        tenant_isolation=True,
+    )
+
+    assert capabilities.supports("selected_interval_materialization")
+    assert capabilities.supports("request_lifetime")
+    assert capabilities.supports("host_device_residency")
+    assert capabilities.supports("tenant_isolation")
+    assert not capabilities.supports("phase_selection")
+    assert not capabilities.supports("scheduler_hints")
+
+
 def test_g10_is_an_explicit_text_fallback_not_native_pra():
     adapter = RecordingAdapter()
     request = _request(

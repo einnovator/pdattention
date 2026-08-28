@@ -48,6 +48,12 @@ class PRAEngineCapabilities:
     gpu_kv: bool = False
     semantic_cache: bool = False
     streaming: bool = False
+    selected_interval_materialization: bool = False
+    request_lifetime: bool = False
+    phase_selection: bool = False
+    host_device_residency: bool = False
+    scheduler_hints: bool = False
+    tenant_isolation: bool = False
     callback_routing: bool = False
     pra_scheduler: bool = False
     tool_resources: bool = False
@@ -244,6 +250,12 @@ class HuggingFaceEngineAdapter:
             gpu_kv=True,
             semantic_cache=True,
             streaming=True,
+            selected_interval_materialization=True,
+            request_lifetime=True,
+            phase_selection=False,
+            host_device_residency=True,
+            scheduler_hints=False,
+            tenant_isolation=True,
             tool_resources=True,
         )
 

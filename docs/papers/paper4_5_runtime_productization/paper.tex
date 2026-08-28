@@ -7,6 +7,7 @@
 \graphicspath{{../shared/results/paper4_5_runtime/}}
 \input{../shared/results/paper4_5_runtime/generated_runtime_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_agent_plugin_results.tex}
+\input{../shared/results/paper4_5_runtime/generated_cross_model_results.tex}
 
 \title{From Sparse Selection to Physical Savings:\\
 A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
@@ -37,7 +38,12 @@ cleanup. A native-reference audit found and corrected a positional collision:
 external keys retained source-relative RoPE coordinates while direct queries
 restarted at zero. On a random tiny Qwen fixture, the corrected full-reference
 path matches visible-prefix logits to $5.97\times10^{-8}$ maximum absolute
-error. DeepSeek Harness and Pi bridges preserve typed
+error. On three one-token continuation cases, full native replay preserves
+visible-prefix top tokens and answer accuracy for Qwen3-0.6B and a public
+Llama-3.2-1B weight mirror. Gemma-3-1B preserves disabled behavior, native MQA
+shape, positions, and decode lifetime, but its four global PRA consumers do not
+reproduce the semantics of a visible prefix passing through 22 unchanged local
+sliding layers; we report that family as partial topology. DeepSeek Harness and Pi bridges preserve typed
 tool-result identity through explicit ordinary-engine fallback in all
 \AgentPluginCases{} contract cases. In a five-seed tiny-HF mechanism profile, token-shared
 selection required
@@ -92,41 +98,24 @@ policies.
 The contributions are:
 
 \begin{itemize}[leftmargin=*]
-\item a unified \texttt{PRARuntime} API over model memory, external resources,
-typed capabilities, compact result backing, and safe execution;
-\item a product-facing \texttt{PRAAgent} with durable in-memory or local-disk
-sessions, a validated task DAG, task-scoped context, reusable toolsets, and a
-resumable terminal interface;
-\item lazy-by-default registration for Python tools, explicit skills, and
-OpenAI- or Anthropic-style skill folders, with bounded selection palettes and
-exact full-view activation;
-\item session-scoped, hash-verified result backing with type-aware compaction,
-retrieval-only addresses, selected replay, cursors, token/byte native-index
-gates, per-type overrides, explicit lifecycle state, and lazy selected-region
-native encoding;
-\item an explicit physical K/V contract with native grouped-query heads,
-deduplicated intervals, hard token budgets, transfer accounting, and a
-byte-bounded LRU;
-\item independent selection-stage, layer-scope, materialization-lifetime, and
-residency policies with request-over-model-over-global precedence;
-\item a standalone G00/G10/G01/G11 gateway, logical JSON wire contract, and
-E0--E3 engine capability model that makes every downgrade visible;
-\item thin DeepSeek Harness and Pi event bridges that preserve typed result,
-task, session, and provenance identity while supporting explicit ordinary-engine
-text fallback;
-\item validated model-proposed task operations, auditable adaptive scope
-widening, and record-bounded frozen native-materialization plans inherited from
-Paper 8;
-\item a corrected source-relative native-position convention, named Paper 3/7/8
-materialization profiles, and permanent visible-prefix, interval, and decode-lifetime gates;
-\item portable HF-backed SSE streaming with cooperative cancellation and
-tenant/user/session-scoped cache identities;
-\item stage-level instrumentation and a structured benchmark that separates
-cold compilation, warm primitives, memory residency, and unsupported paths;
-\item a thin serving handoff that withholds semantic scores from the scheduler,
-thereby defining the boundary before deep vLLM integration; and
-\item a measured eager baseline plus negative compiler and engine gates on the
-available host.
+\item a unified runtime contract joining model memory, authenticated resources,
+typed capabilities and results, durable tasks and sessions, and independently
+authorized tool execution without collapsing their policy boundaries;
+\item a physical K/V contract that preserves grouped-query heads, separates
+selection sparsity, materialization width, and consumer-layer coverage, merges
+intervals before budgeting, and accounts for transfers, temporary bytes, and
+bounded cache reuse;
+\item a corrected source-relative position and request-lifetime implementation,
+with exact disabled behavior and measured full-native semantic gates on Qwen
+and Llama plus a localized Gemma global/local topology limitation;
+\item an engine-neutral gateway and capability model covering logical references,
+streaming, interval materialization, lifetime, residency, and tenant isolation,
+while rejecting unsupported phase selection and scheduler hints;
+\item lazy tools and skills, size-adaptive typed-result indexing, task-scoped
+acquisition, external-agent bridges, and a user-facing runtime/agent interface;
+and
+\item reproducible eager measurements and explicit negative gates for compilation,
+modern-GPU transfer overlap, and native serving-engine integration.
 \end{itemize}
 
 \section{The Systems Gap}
@@ -457,6 +446,91 @@ ranked correctly even when later generation fails. The remaining boundary is
 autoregressive composition across materialization depth and layer coverage;
 training is not proposed as a remedy for a broken native path.
 
+\subsection{Cross-model semantic reference gate}
+
+We next apply one architecture-neutral protocol to three frozen pretrained
+models. The exact checkpoints are Qwen/Qwen3-0.6B revision
+\texttt{c1899de2}, \texttt{unsloth/Llama-3.2-1B} revision \texttt{9535bd9b},
+and \texttt{google/gemma-3-1b-it} revision \texttt{dcc83ea8}. The official
+Meta Llama revision \texttt{4e20de36} remained license-gated to the available
+account; the experiment therefore uses a public weight mirror and records that
+substitution rather than implying that the official repository was tested.
+All runs use eager FP16 CUDA on the GTX 950M, one model per process.
+
+Before the semantic cases, each model must preserve logits, hidden states,
+greedy generation, and the complete dynamic cache exactly with PRA disabled.
+Reference registration must retain native K/V-head count and head width without
+query-head expansion, preserve source-relative positions, and remain active for
+two explicit decode calls. The four measured conditions are a visible prefix,
+the same complete reference as native K/V, an explicitly selected complete
+record, and a family-declared sparse layer profile. Three one-token
+continuations test a capital, color, and numeric code. This small diagnostic
+localizes integration failures; it is not an answer-quality benchmark.
+
+\begin{table}[H]
+\centering
+\caption{Cross-model HF semantic gate. Selected-full and sparse columns report
+one-token exact accuracy over three cases. Full-native errors are against the
+same visible prefix. KV-head fidelity and request-lifetime checks pass for all
+rows.}
+\label{tab:cross-model}
+\small
+\begin{tabularx}{\linewidth}{p{.17\linewidth} l Y r Y Y}
+\toprule
+Model & Disabled & Full native & Selected full & Sparse profile & KV heads\\
+\midrule
+Qwen3-0.6B & exact & \QwenFullMaxError{} max & \QwenSelectedAccuracy{}\% &
+8/28 layers; \QwenSparseAccuracy{}\% & 8/16 preserved\\
+Llama-3.2-1B mirror & exact & \LlamaFullMaxError{} max & \LlamaSelectedAccuracy{}\% &
+8/16 layers; \LlamaSparseAccuracy{}\% & 8/32 preserved\\
+Gemma-3-1B & exact & partial; \GemmaFullMaxError{} max & \GemmaSelectedAccuracy{}\% &
+2/4 global; \GemmaSparseAccuracy{}\% & 1/4 preserved\\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{hf_cross_model_semantic_gate.pdf}
+\caption{The full and selected-full conditions preserve expected-token rank for
+Qwen and Llama. Reducing consumer-layer coverage changes semantics despite
+selecting the same complete record. Gemma's global-only path retains the top
+token in these cases but has large logit deviation because unchanged local
+sliding layers do not consume external K/V.}
+\label{fig:cross-model}
+\end{figure}
+
+For Qwen and Llama, full-native replay preserves the visible-prefix top token
+in all three cases. Maximum FP16 logit error is \QwenFullMaxError{} and
+\LlamaFullMaxError{}, respectively. The sparse condition exposes the three
+independent materialization axes: record selection remains fixed, token width
+remains the complete selected record, but consumer layers fall from 28 to 8
+for Qwen and from 16 to 8 for Llama. Mean expected-token rank consequently
+moves from 1.33 to \QwenSparseRank{} and \LlamaSparseRank{}, and Llama accuracy
+falls from \LlamaSelectedAccuracy{}\% to \LlamaSparseAccuracy{}\%. Sparse
+routing therefore does not establish a semantically adequate consumption
+profile.
+
+Gemma is a useful failed abstraction boundary. Its 26-layer decoder contains
+four global-attention layers; the adapter intentionally leaves 22 local
+sliding-window layers native. Disabled parity, single-head MQA storage,
+positions, and decode lifetime pass, but global-only native replay differs from
+the visible prefix by \GemmaFullMaxError{} maximum and \GemmaFullMeanError{}
+mean absolute logit error. The one-token top answers remain unchanged, but that
+coarse agreement is not full-prefix equivalence. We therefore report
+\emph{partial topology}, not cross-family semantic parity.
+
+The task smoke invokes the inherited Paper 8 task graph, provenance attachment,
+and task-structural selector rather than copying expected IDs into the
+report. It selects the expected record in all 18 model/condition rows (three
+tasks, three models, visible and selected-full conditions). Selected-full
+one-token accuracy equals visible-prefix accuracy for every model. Tool and
+skill disclosure, safe execution, compact results, and session persistence are
+shared control-plane contracts and pass the executed SDK tests and notebook;
+we do not label them model-generated tool-use results. The base Llama mirror has
+no chat template, so no Llama tool-call claim is made.
+
 \subsection{Caching and reload amplification}
 
 The runtime includes a thread-safe, byte-bounded LRU for opaque warm or hot
@@ -468,10 +542,16 @@ A_{\mathrm{reload}} = \frac{B_{\mathrm{loaded}}}{\max(B_{\mathrm{resident}},1)}.
 An apparently high hit rate can still be costly if the misses repeatedly load
 large references.  Conversely, byte reuse can be high even when object-level
 hit rate is modest.  Both views are needed.
-Native reusable keys include tenant, user, session, resource, layer, and
-payload variant. Per-tenant byte caps evict within that tenant before the global
+Native reusable keys include tenant, user, session, resource, layer, payload
+variant, source revision, positional frame, materialization layout, and scope
+signature. Raw backing can be reused across compatible encodings, but per-layer,
+rebound, and packed payloads require exact geometry identity. The audit accepts
+only the identical key and rejects changed source, position, packing, or request
+scope. Per-tenant byte caps evict within that tenant before the global
 cap is considered, and scope-local cleanup cannot evict another tenant's
-entries. This is logical/runtime isolation, not hard GPU partitioning.
+entries. A concurrent same-URI fixture confirms tenant isolation under pressure
+and cancellation cleanup. This is logical/runtime isolation, not hard GPU
+partitioning.
 
 \section{Compilation and Engine Boundaries}
 
@@ -501,6 +581,9 @@ G10. The trace then names the unsupported capabilities, downgrade, selected
 logical IDs, gateway mode, correlation ID, and whether native K/V was used.
 Cross-tenant resources and credential-like request metadata are rejected before
 translation. Relevance still does not grant source or tool authorization.
+G01 promotes only explicit record boundaries---system records, tool results,
+attachments, and already typed messages. It does not infer semantic records
+from arbitrary unstructured user traffic.
 
 We distinguish E0 protocol integration, E1 native PRA attention, E2 a PRA-aware
 memory runtime, and E3 scheduler-aware batching. The local HF adapter is the E1
@@ -512,6 +595,13 @@ HF adapter implements incremental deltas and the HTTP gateway emits
 OpenAI-compatible server-sent events. Cancellation is cooperative at token
 boundaries; request-owned references are released only after the decode worker
 stops. No backing content is included in trace metadata.
+The capability object names native K/V, logical references, streaming,
+selected-interval materialization, request lifetime, host/device residency,
+tenant isolation, phase selection, and scheduler hints independently. The HF
+reference advertises the first seven supported properties and explicitly
+rejects phase selection and scheduler hints. This prevents an E1 adapter from
+being mistaken for an E3 scheduler merely because both accept the same logical
+wire request.
 
 \subsection{Agent-side compatibility before native engine work}
 
@@ -867,11 +957,22 @@ concurrent multi-tenant partitioning of model-resident result K/V remains an
 engine-level gate.
 The multi-axis HF bridge serializes high-level generation on one wrapped model
 to isolate temporary adapter state. It is a correctness reference, not a
-continuous-batching implementation. Phase selection, request-resident physical
-payload reuse across changing direct-token budgets and E2/E3 engine integration
-remain open. The G01 parser recognizes explicit
+continuous-batching implementation. The cache key now rejects physical reuse
+across changed source revisions, positions, materialization layouts, or scopes,
+and a concurrent fixture covers logical tenant isolation, pressure, and
+cancellation. It does not establish hard GPU partitioning or production
+multi-tenant throughput. Phase selection and E2/E3 engine integration remain
+open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
+
+The cross-model cohort contains only three one-token continuations per model.
+It is sufficient to expose exact disabled behavior, K/V topology, position,
+lifetime, and coarse semantic drift, but not to estimate broad language quality.
+The Llama row uses a public weight mirror because the pinned official repository
+was inaccessible. Gemma is partial rather than passed: its global-only adapter
+cannot make external K/V visible to unchanged local sliding layers. Sparse
+profiles are declared per family and are not assumed to preserve quality.
 
 The next experiment should move to a compute-capability 8.0 or newer GPU with a
 pinned software stack.  It should first reproduce eager parity, then measure
@@ -887,7 +988,8 @@ hold selected-token budgets fixed, and compare answer quality, TTFT, inter-token
 latency, selection churn, and routing-layer disagreement. Phase/shared requires
 a cache-correct prefill handoff before it enters that comparison.
 
-The first deeper engine integration should remain thin: external routing, selected
+The first deeper engine integration should remain outside Paper 4.5 and begin
+thin: external routing, selected
 native-K/V materialization, then ordinary vLLM execution.  Disabled-PRA parity,
 native positions, masks, GQA, and batching must pass before speed comparisons.
 If useful behavior requires semantic residency, retrieval-aware scheduling, or
@@ -906,8 +1008,10 @@ recovery interfaces and promote selected regions lazily. Its policy lattice
 makes routing frequency and physical lifetime
 inspectable, while the gateway permits ordinary and PRA-aware agents and
 engines to coexist without sending native tensors over the logical wire. The
-HF semantic reference now passes full-prefix logit equivalence, record-boundary
-deduplication, and request-long decode-lifetime gates. The eager primitives are exact and inexpensive in isolation, but
+HF semantic reference now passes full-prefix logit equivalence on the tested
+Qwen and Llama checkpoints, plus record-boundary deduplication and request-long
+decode-lifetime gates. Gemma validates native MQA mechanics but identifies a
+global/local topology boundary rather than a full semantic pass. The eager primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
 and optional engines remain negative or unmeasured gates.  The practical
 conclusion is conservative: cache locality, physical residency, and context
@@ -980,6 +1084,12 @@ the cancellation criterion, and cleanup. Gateway mediation and SSE framing are
 separate at \path{src/pra_hf/gateway.py:131--231}, so a transport disconnect
 closes the iterator without exposing backing content. Tenant-scoped cache
 identity and local eviction are in \path{src/pra_hf/runtime.py:568--672}.
+Cache identity includes source revision, positional and materialization
+signatures, and scope; equality is the reuse predicate rather than a heuristic
+URI match. Engine capability fields separately expose interval materialization,
+request lifetime, residency, tenant isolation, phase selection, and scheduler
+hints. An independent implementation should fail a required unsupported field
+before reference registration.
 
 \subsection{Execution and deployment code map}
 
@@ -1053,6 +1163,9 @@ engine capabilities, E0/E1 adapters, G00--G11 mediation, and HTTP process\\
 layer-native K/V plans\\
 \path{experiments/paper4_5_runtime/run_execution_policy_profile.py} &
 Five-seed multi-axis mechanism profile and trade-off figure\\
+\path{experiments/paper4_5_runtime/run_cross_model_validation.py} &
+Restartable Qwen/Llama/Gemma semantic gates, physical accounting, reuse and
+multi-tenant controls, and cross-model figure\\
 \path{src/pra_hf/runtime_benchmark.py} & Structured eager/compiled and
 hierarchy microbenchmark\\
 \path{src/pra_hf/agent_resources.py} & Typed resource identities and

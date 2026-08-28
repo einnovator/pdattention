@@ -566,7 +566,11 @@ class CacheStats:
 
 @dataclass(frozen=True)
 class RuntimeKVCacheKey:
-    """Authorization-scoped identity for reusable native runtime payloads."""
+    """Authorization- and geometry-scoped identity for reusable native payloads.
+
+    Native tensors are reusable only when their source revision, positional
+    frame, materialization layout, and authorization scope all agree.
+    """
 
     tenant_id: str
     user_id: str
@@ -574,10 +578,31 @@ class RuntimeKVCacheKey:
     resource_id: str
     layer_id: int | None = None
     variant: str = "native_kv"
+    source_revision: str = "current"
+    position_signature: str = "source_relative"
+    materialization_signature: str = "full_record"
+    scope_signature: str = "session"
 
     def __post_init__(self) -> None:
-        if not all((self.tenant_id, self.user_id, self.session_id, self.resource_id)):
+        if not all(
+            (
+                self.tenant_id,
+                self.user_id,
+                self.session_id,
+                self.resource_id,
+                self.variant,
+                self.source_revision,
+                self.position_signature,
+                self.materialization_signature,
+                self.scope_signature,
+            )
+        ):
             raise ValueError("A native cache key requires tenant, user, session, and resource IDs.")
+
+    def reuse_compatible(self, other: object) -> bool:
+        """Return whether ``other`` names the exact same reusable geometry."""
+
+        return isinstance(other, RuntimeKVCacheKey) and self == other
 
 
 class RuntimeKVCache:
