@@ -29,6 +29,8 @@ def test_runtime_artifacts_are_complete_and_internally_consistent() -> None:
 
     assert manifest["engine_speed_claims"] is False
     assert manifest["quality_metrics_recomputed"] is False
+    assert manifest["paper8_native_geometry_integrated"] is True
+    assert manifest["agent_plugin_profile"].startswith("two public event vocabularies")
     assert manifest["protocol"]["quality_selection_frozen"] is True
     assert manifest["protocol"]["scope"] == "portable selected-KV mechanism microbenchmark"
     assert "\\newcommand{\\RuntimeCudaIndexBatchOneMs}" in macros
@@ -37,6 +39,9 @@ def test_runtime_artifacts_are_complete_and_internally_consistent() -> None:
     assert findings["token_per_layer_routing_operations"] == pytest.approx(
         3 * findings["token_shared_routing_operations"]
     )
+    assert findings["agent_plugin_cases"] == 10
+    assert findings["deepseek_agent_contract_pass_rate"] == 1
+    assert findings["pi_agent_contract_pass_rate"] == 1
     assert "\\newcommand{\\ExecutionRoutingReduction}{3.0}" in macros
     assert (RESULTS / "execution_policy_tradeoff.pdf").is_file()
     assert (PAPER / "paper.pdf").stat().st_size > 100_000
@@ -53,6 +58,22 @@ def test_compatibility_matrix_keeps_claim_levels_explicit() -> None:
     assert rows["OpenAI-compatible HTTP"] == "E0 implemented"
     assert rows["SGLang/FreeToken"] == "E0 feasible, not run"
     assert rows["TensorRT-LLM/MLX"] == "architectural only"
+
+
+def test_agent_plugin_contract_artifacts_preserve_explicit_fallback() -> None:
+    summary = json.loads(
+        (RESULTS / "agent_plugin_contract_summary.json").read_text(encoding="utf-8")
+    )
+    with (RESULTS / "agent_plugin_contract_results.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert len(rows) == 10
+    assert set(summary) == {"deepseek_harness", "pi_coding_agent"}
+    assert all(value["contract_pass_rate"] == 1 for value in summary.values())
+    assert all(row["native_kv_claimed"] == "0" for row in rows)
+    assert all(row["fallback_contains_evidence"] == "1" for row in rows)
 
 
 def test_runtime_demo_is_executed_and_covers_the_unified_sdk() -> None:

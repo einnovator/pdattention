@@ -72,6 +72,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 from pra_hf import (
     AgentConfig,
+    DeepSeekHarnessPRAAdapter,
     InMemorySessionService,
     AuthContext,
     CapabilityEncodingPolicy,
@@ -93,6 +94,7 @@ from pra_hf import (
     PRAConfig,
     PRAAgent,
     PRAAgentConfig,
+    PRAAgentPluginConfig,
     PRAEngineCapabilities,
     PRAEngineResult,
     PRAGateway,
@@ -100,6 +102,7 @@ from pra_hf import (
     PRAWireResource,
     PRARuntime,
     PRARuntimeConfig,
+    PiCodingAgentPRAAdapter,
     ResolverRegistry,
     ResourceDiscoveryEngine,
     ResourceStat,
@@ -113,6 +116,7 @@ from pra_hf import (
     Skill,
     Tool,
     Toolset,
+    TaskOperation,
     TypeContextPolicy,
     VLLMThinBackend,
     default_toolset,
@@ -1180,6 +1184,94 @@ gateway_result = gateway.generate(PRAWireRequest(
     ),
     md(
         r'''
+## 24. Existing-agent bridges
+
+DeepSeek Harness and Pi already expose durable tool-result boundaries. The SDK bridges consume
+those public event shapes, preserve task/session/provenance identity, and emit the same logical
+request as the HTTP API. They do not put native tensors in the agent process. This cell uses the
+ordinary notebook engine, so G10 is an explicit text fallback and the trace must say that native
+K/V was not used.
+'''
+    ),
+    code(
+        r'''
+plugin_config = PRAAgentPluginConfig("offline/tiny-llama")
+deepseek_bridge = DeepSeekHarnessPRAAdapter(
+    plugin_config, session_id="deepseek-demo", task_id="inspect"
+)
+deepseek_bridge.ingest_event({
+    "type": "tool/result",
+    "id": "deepseek-read-1",
+    "toolName": "read_file",
+    "result": {"content": [{"type": "text", "text": "DeepSeek exact result"}]},
+})
+pi_bridge = PiCodingAgentPRAAdapter(
+    plugin_config, session_id="pi-demo", task_id="inspect"
+)
+pi_bridge.ingest_event({
+    "type": "tool_execution_end",
+    "toolCallId": "pi-read-1",
+    "toolName": "read",
+    "result": {"content": [{"type": "text", "text": "Pi exact result"}]},
+    "isError": False,
+})
+deepseek_result = deepseek_bridge.generate(
+    gateway, [{"role": "user", "content": "Use the tool result."}]
+)
+pi_result = pi_bridge.generate(
+    gateway, [{"role": "user", "content": "Use the tool result."}]
+)
+{
+    "deepseek_resource": deepseek_bridge.resources[0],
+    "pi_resource": pi_bridge.resources[0],
+    "deepseek_native_claim": deepseek_result.trace[1]["native_kv"],
+    "pi_native_claim": pi_result.trace[1]["native_kv"],
+}
+'''
+    ),
+    md(
+        r'''
+## 25. Validated task proposals and frozen native geometry
+
+Model-managed tasks remain proposals: the runtime validates the complete operation sequence on a
+copy of the graph, then persists accepted replay events. Native geometry follows the same split.
+Routing identities freeze first; only then may the caller widen record-local spans or choose a full
+selected record. Every consumer resolves those logical intervals to its own native K/V.
+'''
+    ),
+    code(
+        r'''
+task_state = task_runtime.apply_task_operations(task_agent.session, (
+    TaskOperation("create", "acquired-a", "Collect runtime evidence"),
+    TaskOperation(
+        "create", "acquired-b", "Summarize runtime evidence", depends_on=("acquired-a",)
+    ),
+))
+
+routing = runtime.route("Where is the runtime fact?")
+frozen = runtime.freeze_native_selection(routing.selected)
+native_plan = runtime.plan_native_materialization(
+    frozen, full_selected_record=True
+)
+native_result = runtime.generate_with_native_plan(
+    "Use the selected runtime fact:",
+    native_plan,
+    max_new_tokens=1,
+    return_details=True,
+    do_sample=False,
+)
+{
+    "acquired_tasks": [task.task_id for task in task_state.tasks.tasks],
+    "frozen_identity": frozen.source_identity,
+    "native_intervals": native_plan.intervals,
+    "consumer_layers": native_plan.consumption_layers,
+    "materialized_tokens": native_plan.unique_native_tokens,
+    "generated_tokens": native_result.generated_tokens,
+}
+'''
+    ),
+    md(
+        r'''
 ## CLI equivalents
 
 The same systems surface is available without notebook state:
@@ -1214,6 +1306,8 @@ Demonstrated here:
 - reusable workspace toolsets and a resumable coding-agent terminal UI;
 - request/per-layer and token/shared execution with request-owned traces;
 - a logical gateway request and explicitly labeled text fallback;
+- DeepSeek Harness and Pi typed-event bridges over that fallback contract;
+- validated task-operation proposals and frozen record-bounded native geometry;
 - a scheduler-unaware vLLM request contract.
 
 Not demonstrated here:

@@ -14,6 +14,7 @@ from pra_hf import (
     DiscoveryRequest,
     ExecutionAuthorization,
     HuggingFaceBackend,
+    InMemorySessionService,
     KVInterval,
     KVMaterializer,
     MaterializationPlan,
@@ -26,6 +27,7 @@ from pra_hf import (
     RuntimeKVCache,
     RuntimeProfiler,
     TypeContextPolicy,
+    TaskOperation,
     VLLMThinBackend,
 )
 from pra_hf.context_records import RecordType
@@ -259,3 +261,34 @@ def test_unified_facade_discovers_and_executes_with_separate_authority():
     assert denied.reason == "tool_not_authorized"
     assert accepted.executed
     assert runtime.inspect()["safe_executor_installed"] is True
+
+
+def test_runtime_validates_model_task_operations_through_durable_session_graph():
+    runtime = PRARuntime(
+        config=PRARuntimeConfig(),
+        backend=_FakeModelBackend(),
+        session_service=InMemorySessionService(),
+    )
+    session = runtime.open_session(
+        session_id="tasks", user_id="user", tenant_id="tenant"
+    )
+
+    state = runtime.apply_task_operations(session, (
+        TaskOperation("create", "collect", "Collect evidence"),
+        TaskOperation("create", "write", "Write answer", depends_on=("collect",)),
+        TaskOperation("activate", "collect"),
+    ))
+
+    assert state.active_task_id == "collect"
+    write = next(task for task in state.tasks.tasks if task.task_id == "write")
+    assert write.depends_on == ("collect",)
+    assert state.tasks.last_sequence == 3
+
+
+def test_runtime_native_geometry_methods_delegate_or_fail_explicitly():
+    runtime = PRARuntime(config=PRARuntimeConfig(), backend=_FakeModelBackend())
+
+    with pytest.raises(RuntimeError, match="frozen routing"):
+        runtime.route("question")
+    with pytest.raises(RuntimeError, match="freeze native"):
+        runtime.freeze_native_selection(({"chunk_id": "c"},))

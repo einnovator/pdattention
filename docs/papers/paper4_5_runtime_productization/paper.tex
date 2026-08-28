@@ -6,6 +6,7 @@
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \graphicspath{{../shared/results/paper4_5_runtime/}}
 \input{../shared/results/paper4_5_runtime/generated_runtime_results.tex}
+\input{../shared/results/paper4_5_runtime/generated_agent_plugin_results.tex}
 
 \title{From Sparse Selection to Physical Savings:\\
 A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
@@ -31,7 +32,9 @@ encoding, durable task-aware agent state, selective replay, deduplicated K/V int
 accounting, bounded caching, profiling, and a scheduler-unaware serving
 handoff. A standalone gateway now separates agent semantics, PRA mediation,
 and engine-native state through a JSON logical-reference contract and explicit
-capability negotiation. In a five-seed tiny-HF mechanism profile, token-shared
+capability negotiation. DeepSeek Harness and Pi bridges preserve typed
+tool-result identity through explicit ordinary-engine fallback in all
+\AgentPluginCases{} contract cases. In a five-seed tiny-HF mechanism profile, token-shared
 selection required
 \ExecutionTokenSharedRoutes{} routing operations per request, versus
 \ExecutionTokenPerLayerRoutes{} for token-per-layer, a
@@ -103,6 +106,12 @@ byte-bounded LRU;
 residency policies with request-over-model-over-global precedence;
 \item a standalone G00/G10/G01/G11 gateway, logical JSON wire contract, and
 E0--E3 engine capability model that makes every downgrade visible;
+\item thin DeepSeek Harness and Pi event bridges that preserve typed result,
+task, session, and provenance identity while supporting explicit ordinary-engine
+text fallback;
+\item validated model-proposed task operations, auditable adaptive scope
+widening, and record-bounded frozen native-materialization plans inherited from
+Paper 8;
 \item stage-level instrumentation and a structured benchmark that separates
 cold compilation, warm primitives, memory residency, and unsupported paths;
 \item a thin serving handoff that withholds semantic scores from the scheduler,
@@ -445,6 +454,23 @@ compatible HTTP surfaces, so they are reachable at E0; neither has a PRA-native
 backend in this artifact~\cite{sglangDocs2026,freetokenDocs2026}. Streaming is an interface extension, not an
 implemented result in this version.
 
+\subsection{Agent-side compatibility before native engine work}
+
+The pre-SGLang deployment gate asks whether PRA's logical record semantics can
+survive an existing agent without patching its model runtime. The
+\texttt{DeepSeekHarnessPRAAdapter} consumes durable tool-result, session-reference,
+and attachment events. The \texttt{PiCodingAgentPRAAdapter} consumes Pi's public
+tool-completion and completed-message events. Both deduplicate event identities,
+retain typed provenance and task/session IDs, and emit the same tensor-free
+\texttt{PRAWireRequest} used by the HTTP gateway.
+
+Across \AgentPluginCases{} deterministic five-seed contract cases, the DeepSeek
+and Pi bridges each pass \DeepSeekPluginPass\% and \PiPluginPass\% of identity,
+typing, task-metadata, deduplication, and explicit-fallback checks. In every G10
+case the ordinary engine receives labeled evidence text, zero logical resources,
+and no native-K/V claim. These tests validate the integration boundary, not the
+quality or latency of either upstream agent.
+
 \subsection{Compilation ladder}
 
 The eager path is the correctness baseline.  The first compiled primitive is a
@@ -739,6 +765,7 @@ Runtime & Status & Boundary\\
 HF/PyTorch eager & measured & Native PRA model API and portable K/V primitives\\
 Standalone gateway & contract tested & G00/G10/G01/G11 JSON mediation; non-streaming\\
 OpenAI-compatible HTTP & E0 implemented & Pass-through and explicit text fallback\\
+DeepSeek/Pi agent bridges & contract tested & Typed event/RPC capture and explicit G10 fallback\\
 \texttt{torch.compile} & blocked on host & API implemented; compiler/GPU gates recorded\\
 Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
 vLLM thin & contract only & Scheduler-unaware identity and K/V handoff\\
@@ -844,6 +871,17 @@ materialized-token metadata, never semantic scores.  Tool execution receives a
 separate authorization object after discovery.  These boundaries allow another
 runtime to reproduce the interface without adopting the Python implementation.
 
+Paper 8's finalized geometry adds one further invariant. A frozen selection is
+an immutable set of source-local anchors. Expansion may change the interval
+width or choose the complete selected record, but it cannot cross record
+boundaries or change source identity. Overlap is merged before budgeting, and
+each consumer resolves the same logical interval to that layer's own projected
+K/V. The public sequence is \texttt{route}, \texttt{freeze\_native\_selection},
+\texttt{plan\_native\_materialization}, then
+\texttt{generate\_with\_native\_plan}. Task operations follow the analogous
+control boundary: parse untrusted proposals, validate them against a copy of
+the task graph, and only then replay accepted events through the session service.
+
 \subsection{Execution and deployment code map}
 
 Line references identify the artifact version accompanying this paper.
@@ -862,7 +900,7 @@ per-record token/byte limits, inheritance, deferral, and serialization.
 states; lines 347--391 define the public audit and lazy-region records; and
 lines 602--773 perform idempotent size-gated full indexing and selected-region
 native encoding. The facade in
-\path{src/pra_hf/runtime.py:1073--1204} applies automatic preparation at
+\path{src/pra_hf/runtime.py:1119--1268} applies automatic preparation at
 ingestion and exposes preparation, lazy promotion, and lifecycle inspection.
 This order is important: policy is resolved before model-native construction,
 and a gate rejection preserves the backing identity and recovery interfaces.
@@ -872,7 +910,7 @@ bridge. At the routing layer it turns the current hidden representation into a
 logical plan. For shared scope it remaps the source-layer hits through
 \texttt{map\_chunk\_identities\_to\_layers}; each destination therefore receives
 its own native grouped-query K/V. The public request lock and precedence entry
-point are in \path{src/pra_hf/model.py:704--889}. Qwen, Llama, and Gemma call
+point are in \path{src/pra_hf/model.py:710--895}. Qwen, Llama, and Gemma call
 the same bridge from their thin attention adapter.
 
 For a distributed implementation, begin with
@@ -884,6 +922,12 @@ G00--G11 second, and append component-local trace events last. The HTTP process
 starts at line 183; the CLI binding is
 \path{src/pra_hf/gateway_cli.py:35--59}. This order keeps an unsupported
 native request from being mistaken for successful text fallback.
+The agent bridge implementation is
+\path{src/pra_hf/agent_plugins.py:1--253}; its family-specific parsers terminate
+in the common logical request builder rather than engine calls. Frozen interval
+expansion and layer-native slicing are in
+\path{src/pra_hf/native_geometry.py:1--317}; the SDK facade delegates through
+\path{src/pra_hf/runtime.py} so users do not access adapter internals.
 
 \section{Artifact Map}
 
@@ -905,6 +949,9 @@ plans, precedence, lifecycle, and analytical routing count\\
 token/per-layer HF execution bridge\\
 \path{src/pra_hf/deployment.py}, \path{src/pra_hf/gateway.py} & JSON wire types,
 engine capabilities, E0/E1 adapters, G00--G11 mediation, and HTTP process\\
+\path{src/pra_hf/agent_plugins.py} & DeepSeek Harness and Pi typed-event bridges\\
+\path{src/pra_hf/native_geometry.py} & Frozen record-bounded intervals and
+layer-native K/V plans\\
 \path{experiments/paper4_5_runtime/run_execution_policy_profile.py} &
 Five-seed multi-axis mechanism profile and trade-off figure\\
 \path{src/pra_hf/runtime_benchmark.py} & Structured eager/compiled and

@@ -21,6 +21,9 @@ The implementation adds:
 - eager and `torch.compile` gather gates;
 - a scheduler-unaware vLLM handoff contract;
 - a standalone G00/G10/G01/G11 gateway and E0/E1 capability adapters;
+- DeepSeek Harness and Pi event/RPC bridges with tested ordinary-engine fallback;
+- validated model-managed task operations, adaptive metadata widening, and frozen
+  record-bounded native-consumption plans inherited from Paper 8;
 - CLI and executed notebook workflows.
 
 Reproduce the measured portable profile:
@@ -29,6 +32,7 @@ Reproduce the measured portable profile:
 $env:PYTHONPATH = "src;."
 python -m experiments.paper4_5_runtime.run_runtime_profile
 python -m experiments.paper4_5_runtime.run_execution_policy_profile
+python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
 python -m experiments.paper4_5_runtime.summarize_runtime
 ```
 

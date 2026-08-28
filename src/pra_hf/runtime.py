@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Protocol, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol, Sequence
 
 import torch
 
@@ -51,6 +51,7 @@ from .context_records import ContextRecord, RecordType, RecordViewName
 from .context_store import RecordScope
 from .external_memory import AuthContext, ExternalMemoryManager, PRASession
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
+from .native_geometry import FrozenNativeSelection, NativeMaterializationPlan
 from .progressive_context import (
     ContextExecutionResult,
     LazyNativeRegion,
@@ -62,6 +63,10 @@ from .progressive_context import (
 from .typed_context import AdaptiveContextRecord
 from .session_service import AgentSessionState, SessionService
 from .task_context import TaskEvent, TaskGraph, TaskProvenance, attach_task_provenance
+from .task_planning import (
+    TaskOperation,
+    apply_task_operations as validate_task_operations,
+)
 from .task_scope import ScopeSelection, TaskScopePolicy, TaskScopeSelector
 
 
@@ -706,6 +711,26 @@ class HuggingFaceBackend:
     def generate(self, prompt: str, **kwargs: Any) -> str | GenerationResult:
         return self.model.generate(prompt, **kwargs)
 
+    def route(self, prompt: str):
+        """Expose frozen-routing diagnostics without coupling the facade to HF internals."""
+
+        return self.model.route(prompt)
+
+    def freeze_native_selection(
+        self, selected: Iterable[dict[str, Any]]
+    ) -> FrozenNativeSelection:
+        return self.model.freeze_native_selection(selected)
+
+    def plan_native_materialization(
+        self, frozen: FrozenNativeSelection, **kwargs: Any
+    ) -> NativeMaterializationPlan:
+        return self.model.plan_native_materialization(frozen, **kwargs)
+
+    def generate_with_native_plan(
+        self, prompt: str, plan: NativeMaterializationPlan, **kwargs: Any
+    ) -> str | GenerationResult:
+        return self.model.generate_with_native_plan(prompt, plan, **kwargs)
+
     def inspect(self) -> Mapping[str, Any]:
         return self.model.stats()
 
@@ -1002,6 +1027,25 @@ class PRARuntime:
         self.logical_sessions[session.session_id] = updated
         return updated
 
+    def apply_task_operations(
+        self,
+        session: PRASession,
+        operations: Sequence[TaskOperation],
+    ) -> AgentSessionState:
+        """Validate model-proposed mutations, then persist their replayable events."""
+
+        logical = self.logical_session_for(session)
+        validation_graph = TaskGraph(logical.tasks)
+        events = validate_task_operations(
+            validation_graph,
+            operations,
+            sequence_start=logical.tasks.last_sequence,
+        )
+        updated = logical
+        for event in events:
+            updated = self.apply_task_event(session, event)
+        return updated
+
     def select_task_context(
         self,
         session: PRASession,
@@ -1010,6 +1054,7 @@ class PRARuntime:
         policy: TaskScopePolicy | str = TaskScopePolicy.TASK_ADAPTIVE,
         max_records: int = 8,
         minimum_records: int = 1,
+        metadata_complete: bool = True,
     ) -> ScopeSelection:
         """Scope the durable record stream by task before ordinary retrieval."""
 
@@ -1024,6 +1069,7 @@ class PRARuntime:
             policy=policy,
             max_records=max_records,
             minimum_records=minimum_records,
+            metadata_complete=metadata_complete,
         )
 
     def context_for(self, session: PRASession) -> ProgressiveContextRuntime:
@@ -1304,6 +1350,49 @@ class PRARuntime:
 
     def generate(self, prompt: str, **kwargs: Any) -> str | GenerationResult:
         return self.backend.generate(prompt, **kwargs)
+
+    def route(self, prompt: str):
+        """Run discovery without generation when the selected backend supports it."""
+
+        operation = getattr(self.backend, "route", None)
+        if operation is None:
+            raise RuntimeError("The selected backend does not expose frozen routing.")
+        return operation(prompt)
+
+    def freeze_native_selection(
+        self, selected: Iterable[dict[str, Any]]
+    ) -> FrozenNativeSelection:
+        """Freeze source identities so materialization geometry can vary independently."""
+
+        operation = getattr(self.backend, "freeze_native_selection", None)
+        if operation is None:
+            raise RuntimeError("The selected backend cannot freeze native selections.")
+        return operation(selected)
+
+    def plan_native_materialization(
+        self,
+        frozen: FrozenNativeSelection,
+        **kwargs: Any,
+    ) -> NativeMaterializationPlan:
+        """Create a record-bounded layer-native materialization plan."""
+
+        operation = getattr(self.backend, "plan_native_materialization", None)
+        if operation is None:
+            raise RuntimeError("The selected backend cannot plan native materialization.")
+        return operation(frozen, **kwargs)
+
+    def generate_with_native_plan(
+        self,
+        prompt: str,
+        plan: NativeMaterializationPlan,
+        **kwargs: Any,
+    ) -> str | GenerationResult:
+        """Generate with a frozen plan while preserving backend capability checks."""
+
+        operation = getattr(self.backend, "generate_with_native_plan", None)
+        if operation is None:
+            raise RuntimeError("The selected backend cannot consume native plans.")
+        return operation(prompt, plan, **kwargs)
 
     def inspect(self) -> dict[str, Any]:
         capability_state = None

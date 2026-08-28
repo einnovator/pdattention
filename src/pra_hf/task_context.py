@@ -254,7 +254,10 @@ class TaskGraph:
                 return
             visiting.add(task_id)
             task = tasks[task_id]
-            for dependency in (*task.depends_on, *task.after):
+            relations = [*task.depends_on, *task.after]
+            if task.parent_task_id:
+                relations.append(task.parent_task_id)
+            for dependency in relations:
                 visit(dependency)
             visiting.remove(task_id)
             visited.add(task_id)
@@ -389,4 +392,3 @@ class TaskGraph:
             if task_id in other.depends_on or other.parent_task_id == task_id:
                 related.add(other.task_id)
         return tuple(sorted(related))
-

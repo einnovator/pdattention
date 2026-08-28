@@ -3,6 +3,17 @@
 from .config import PRAConfig
 from .evaluation import evaluate_router_features
 from .memory_adapter import PRAMemoryAdapter
+from .native_geometry import (
+    EvidenceTokenIntervals,
+    FrozenNativeAnchor,
+    FrozenNativeSelection,
+    NativeInterval,
+    NativeMaterializationPlan,
+    build_native_materialization_plan,
+    evidence_token_intervals,
+    expand_frozen_intervals,
+    intervals_cover,
+)
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle, RoutingResult
 from .router import PRARouter
 from pra_torch.execution import (
@@ -77,6 +88,13 @@ from .agent_resources import (
 from .tool_records import ToolRecord, ToolSchema, tool_record_from_callable
 from .toolsets import Tool, Toolset, default_toolset
 from .agent import AgentTurn, PRAAgent, PRAAgentConfig
+from .agent_plugins import (
+    AgentFamily,
+    DeepSeekHarnessPRAAdapter,
+    PiCodingAgentPRAAdapter,
+    PRAAgentPluginAdapter,
+    PRAAgentPluginConfig,
+)
 from .session_service import (
     AgentSessionState,
     InMemorySessionService,
@@ -98,19 +116,29 @@ from .task_context import (
     task_state_record,
 )
 from .task_planning import (
+    TaskOperation,
+    TaskOperationKind,
+    apply_task_operations,
     ComplexityGate,
     PlannedTask,
+    extract_json_payload,
+    parse_model_json_plan,
+    parse_model_markdown_plan,
     parse_json_plan,
     parse_markdown_plan,
+    parse_task_operations,
     plan_events,
     validate_plan,
 )
 from .task_scope import (
     DetailDepth,
     ResidencyState,
+    ScopePartition,
     ScopeSelection,
+    TaskResidency,
     TaskScopePolicy,
     TaskScopeSelector,
+    TaskSwitchResult,
     TaskWorkingSet,
 )
 from .skill_records import (
@@ -206,6 +234,11 @@ from .gateway import PRACapabilityError, PRAGateway, create_gateway_server, serv
 __version__ = "0.2.0rc1"
 
 __all__ = [
+    "EvidenceTokenIntervals",
+    "FrozenNativeAnchor",
+    "FrozenNativeSelection",
+    "NativeInterval",
+    "NativeMaterializationPlan",
     "GenerationResult",
     "AuthContext",
     "DiscoveryCandidate",
@@ -370,6 +403,11 @@ __all__ += [
     "tool_record_from_callable",
     "AgentSessionState",
     "AgentTurn",
+    "AgentFamily",
+    "DeepSeekHarnessPRAAdapter",
+    "PiCodingAgentPRAAdapter",
+    "PRAAgentPluginAdapter",
+    "PRAAgentPluginConfig",
     "ComplexityGate",
     "DetailDepth",
     "InMemorySessionService",
@@ -393,12 +431,26 @@ __all__ += [
     "TaskState",
     "TaskStatus",
     "TaskWorkingSet",
+    "TaskOperation",
+    "TaskOperationKind",
+    "TaskResidency",
+    "TaskSwitchResult",
+    "ScopePartition",
     "Tool",
     "Toolset",
     "attach_task_provenance",
+    "apply_task_operations",
+    "build_native_materialization_plan",
     "default_toolset",
+    "evidence_token_intervals",
+    "expand_frozen_intervals",
+    "extract_json_payload",
+    "intervals_cover",
+    "parse_model_json_plan",
+    "parse_model_markdown_plan",
     "parse_json_plan",
     "parse_markdown_plan",
+    "parse_task_operations",
     "plan_events",
     "task_state_record",
     "validate_plan",

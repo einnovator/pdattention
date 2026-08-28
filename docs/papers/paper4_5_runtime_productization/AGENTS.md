@@ -8,8 +8,11 @@ headed "Paper 5.5"; the branch and paper use the user-requested Paper 4.5
 identifier without changing its systems scope.
 
 The current evidence supports a portable eager materialization baseline and a
-measurement contract, multi-axis HF mechanism checks, and a contract-tested
-non-streaming gateway. It does not support a `torch.compile`, Triton, custom
+measurement contract, multi-axis HF mechanism checks, a contract-tested
+non-streaming gateway, and DeepSeek Harness/Pi logical event bridges through
+explicit ordinary-engine fallback. Paper 8's validated task-operation and
+record-bounded frozen-native geometry surfaces are integrated into the SDK. It
+does not support a `torch.compile`, Triton, custom
 CUDA, vLLM, SGLang, TensorRT-LLM, or MLX speed claim. Optional runtime paths
 must be reported as measured, contract-only, unavailable, or architectural.
 

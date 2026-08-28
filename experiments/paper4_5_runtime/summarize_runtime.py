@@ -184,6 +184,9 @@ def main() -> None:
         mode: _row(combined, "layout_gather", mode, "cuda", 4)
         for mode in ("layer_major", "reference_major", "chunk_major", "block_major")
     }
+    agent_plugins = json.loads(
+        (OUTPUT / "agent_plugin_contract_summary.json").read_text(encoding="utf-8")
+    )
     findings = {
         "status": "portable_eager_measured_compile_and_engine_gates_negative",
         "cuda_indexed_gather_ms_batch1": 1000 * cuda_index_b1["median_seconds"],
@@ -218,6 +221,13 @@ def main() -> None:
         "token_per_layer_routing_operations": execution["token_per_layer"][
             "routing_operations_mean"
         ],
+        "agent_plugin_cases": sum(row["cases"] for row in agent_plugins.values()),
+        "deepseek_agent_contract_pass_rate": agent_plugins["deepseek_harness"][
+            "contract_pass_rate"
+        ],
+        "pi_agent_contract_pass_rate": agent_plugins["pi_coding_agent"][
+            "contract_pass_rate"
+        ],
     }
     (OUTPUT / "findings.json").write_text(
         json.dumps(findings, indent=2, sort_keys=True), encoding="utf-8"
@@ -227,6 +237,7 @@ def main() -> None:
         {"runtime": "HF/PyTorch eager", "status": "measured", "boundary": "native PRA model and portable K/V primitives"},
         {"runtime": "Standalone gateway", "status": "contract tested", "boundary": "G00/G10/G01/G11 JSON mediation; non-streaming"},
         {"runtime": "OpenAI-compatible HTTP", "status": "E0 implemented", "boundary": "pass-through and explicit text fallback"},
+        {"runtime": "DeepSeek/Pi agent bridges", "status": "contract tested", "boundary": "typed event/RPC capture and explicit G10 fallback"},
         {"runtime": "torch.compile", "status": "blocked on host", "boundary": "API implemented; CPU compiler absent and GPU too old for Triton"},
         {"runtime": "Triton/custom CUDA", "status": "not run", "boundary": "requires supported GPU/toolchain after profiling"},
         {"runtime": "vLLM thin", "status": "contract only", "boundary": "scheduler-unaware identity/KV handoff"},
@@ -243,6 +254,8 @@ def main() -> None:
         "quality_metrics_recomputed": False,
         "engine_speed_claims": False,
         "execution_policy_profile": "five-seed tiny random-weight HF mechanism check",
+        "agent_plugin_profile": "two public event vocabularies, five deterministic seeds each",
+        "paper8_native_geometry_integrated": True,
     }
     (OUTPUT / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"

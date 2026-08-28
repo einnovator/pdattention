@@ -107,8 +107,45 @@ effects continue through the independent host authorization boundary.
 
 ## Agent integrations
 
-DeepSeek- and Pi-style agents can use the OpenAI-compatible gateway without native
-plugins by changing their base URL. A dedicated plugin should later preserve typed
-tool-result boundaries, `session_id`, `task_id`, logical resources, and the `pra`
-extension envelope. That work is intentionally a client integration plan; this branch
-does not claim tested upstream plugins.
+DeepSeek Harness and Pi can use the OpenAI-compatible gateway without native model
+support. `DeepSeekHarnessPRAAdapter` consumes durable `tool/result`,
+`session/reference`, and attachment events. `PiCodingAgentPRAAdapter` consumes the
+documented `tool_execution_end` RPC/extension event and completed `toolResult` or
+`bashExecution` messages. Both adapters deduplicate stable event identities, retain
+typed provenance plus `session_id` and `task_id`, and emit a tensor-free
+`PRAWireRequest`.
+
+```python
+from pra_hf import PiCodingAgentPRAAdapter, PRAAgentPluginConfig
+
+bridge = PiCodingAgentPRAAdapter(
+    PRAAgentPluginConfig("qwen", allow_text_fallback=True),
+    session_id="pi-session",
+    task_id="inspect-build",
+)
+bridge.ingest_event(pi_rpc_event)
+result = bridge.generate(gateway, [{"role": "user", "content": "Continue"}])
+```
+
+The adapters target the public event seams documented by
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)
+and [Pi](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md).
+They are Python/RPC bridges rather than patches carried inside those upstream
+repositories. Ten five-seed contract cases verify typed identity, deduplication,
+task metadata, explicit G10 fallback, and absence of a native-K/V claim. They do not
+measure either upstream agent end to end.
+
+## Task acquisition and frozen native geometry
+
+Model-generated JSON, bounded Markdown, and online task operations are parsed as
+untrusted proposals. `PRARuntime.apply_task_operations()` validates them against a
+copy of the durable task graph before replaying accepted events through the session
+service. Adaptive task scope records why it widened and can move from structural to
+related and finally session scope when metadata is incomplete.
+
+`freeze_native_selection()`, `plan_native_materialization()`, and
+`generate_with_native_plan()` separate routing identity from physical span width.
+Expansion is symmetric but record bounded, overlapping intervals are merged, and
+every consuming layer receives its own native projected K/V for the same logical
+source interval. This is the SDK counterpart of Paper 8's consumption diagnostic;
+it does not convert a negative frozen-consumption result into a serving claim.

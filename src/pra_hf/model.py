@@ -35,6 +35,12 @@ from .iterative import (
     IterativeRoutingResult,
 )
 from .memory_adapter import PRAMemoryAdapter
+from .native_geometry import (
+    FrozenNativeAnchor,
+    FrozenNativeSelection,
+    NativeMaterializationPlan,
+    build_native_materialization_plan,
+)
 from .router import PRARouter
 from .hf_execution import PRAHFExecutionBridge, selected_rows_to_identities
 
@@ -889,6 +895,160 @@ class PRAForCausalLM:
             stats=self._last_stats,
         )
         return result if return_details else result.text
+
+    def freeze_native_selection(
+        self, selected: Iterable[dict[str, Any]]
+    ) -> FrozenNativeSelection:
+        """Resolve serialized routing hits to immutable source-local anchors."""
+
+        chunks = {
+            chunk.chunk_id: (entry, chunk)
+            for entry in self._handle.cache.all_entries()
+            for memory in [entry.layer_memory.get(self.routing_layer)]
+            if memory is not None
+            for chunk in memory.chunks
+        }
+        anchors = []
+        for rank, row in enumerate(selected, start=1):
+            chunk_id = str(row.get("chunk_id", row.get("backing_chunk_id", "")))
+            if chunk_id not in chunks:
+                raise ValueError(
+                    f"Frozen chunk is absent from the active routing cache: {chunk_id}"
+                )
+            entry, chunk = chunks[chunk_id]
+            anchors.append(FrozenNativeAnchor(
+                entry.uri,
+                chunk.chunk_id,
+                int(chunk.logical_start),
+                int(chunk.logical_end),
+                float(row.get("reference_score", row.get("routing_score", 0.0))),
+                float(row.get("chunk_score", row.get("routing_score", 0.0))),
+                int(row.get("reference_rank", rank)),
+                int(row.get("rank_within_reference", row.get("selected_rank", rank))),
+            ))
+        return FrozenNativeSelection(tuple(anchors))
+
+    def plan_native_materialization(
+        self,
+        frozen: FrozenNativeSelection,
+        *,
+        target_span_tokens: int | None = None,
+        full_selected_record: bool | None = None,
+        consumption_layers: Iterable[int] | None = None,
+    ) -> NativeMaterializationPlan:
+        """Expand frozen anchors and map the interval union to native layer K/V."""
+
+        target = (
+            self.config.materialization_target_tokens
+            if target_span_tokens is None
+            else target_span_tokens
+        )
+        full = (
+            self.config.materialization_full_selected_record
+            if full_selected_record is None
+            else bool(full_selected_record)
+        )
+        layers = tuple(
+            self.consumption_layers
+            if consumption_layers is None
+            else consumption_layers
+        )
+        return build_native_materialization_plan(
+            self._handle.cache.all_entries(),
+            frozen,
+            consumption_layers=layers,
+            target_span_tokens=target,
+            full_selected_record=full,
+        )
+
+    @torch.no_grad()
+    def generate_with_native_plan(
+        self,
+        prompt: str,
+        plan: NativeMaterializationPlan,
+        *,
+        max_new_tokens: int = 64,
+        return_details: bool = False,
+        **generation_kwargs,
+    ) -> str | GenerationResult:
+        """Generate from one frozen record-bounded native materialization plan."""
+
+        with self._execution_lock:
+            encoded = self.tokenizer(
+                prompt, return_tensors="pt", add_special_tokens=True
+            )
+            prepared = self._handle.prepare_long_prompt(
+                encoded.input_ids.to(self.device)
+            )
+            input_ids = prepared.input_ids.to(self.device)
+            attention_mask = prepared.attention_mask.to(self.device)
+            position_ids = prepared.position_ids.to(self.device)
+            fixed = {
+                layer: [list(rows)]
+                for layer, rows in plan.selections_by_layer.items()
+            }
+            self._handle.configure_memory_layers(
+                set(plan.consumption_layers), fixed_selections=fixed
+            )
+            if self.device.type == "cuda":
+                major, _ = torch.cuda.get_device_capability(self.device)
+                if major < 7:
+                    generation_kwargs.setdefault("disable_compile", True)
+            started = time.perf_counter()
+            try:
+                output = self.model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    max_new_tokens=max_new_tokens,
+                    **generation_kwargs,
+                )
+            finally:
+                self._handle.configure_memory_layers(set())
+            latency = time.perf_counter() - started
+            generated = output[:, input_ids.shape[1] :]
+            text = self.tokenizer.decode(generated[0], skip_special_tokens=True)
+            diagnostics = self._handle.diagnostics_by_layer()
+            resident_bytes = sum(
+                hit.chunk.token_kv.k.numel()
+                * hit.chunk.token_kv.k.element_size()
+                + hit.chunk.token_kv.v.numel()
+                * hit.chunk.token_kv.v.element_size()
+                for rows in plan.selections_by_layer.values()
+                for hit in rows
+            )
+            self._last_stats = {
+                "selection_policy": "frozen_record_bounded_geometry",
+                "routing_seconds": 0.0,
+                "query_encoding_seconds": 0.0,
+                "requested_kv_tokens": plan.unique_native_tokens,
+                "materialized_kv_tokens": plan.unique_native_tokens,
+                "active_native_tokens": (
+                    plan.unique_native_tokens * len(plan.consumption_layers)
+                ),
+                "resident_detail_kv_bytes": resident_bytes,
+                "consumption_layers": list(plan.consumption_layers),
+                "materialization_intervals": [
+                    {
+                        "reference_uri": row.reference_uri,
+                        "logical_start": row.start,
+                        "logical_end": row.end,
+                    }
+                    for row in plan.intervals
+                ],
+                "frozen_source_identity": plan.frozen.source_identity,
+                "diagnostics_by_layer": diagnostics,
+                "generation_seconds": latency,
+                "head_tokens": prepared.head_tokens,
+            }
+            result = GenerationResult(
+                text,
+                int(input_ids.shape[1]),
+                int(generated.shape[1]),
+                latency,
+                self._last_stats,
+            )
+            return result if return_details else result.text
 
     def chat(self, messages: Iterable[dict[str, str]], **generation_kwargs):
         """Format chat messages with the base tokenizer and call ``generate``."""
