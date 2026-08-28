@@ -10,20 +10,23 @@ from pathlib import Path
 
 SEEDS = (11, 23, 37, 53, 71)
 KV_SIZES = (64, 128, 256)
-EXPECTED = "PRA_ARCHIVE_7391"
+EXPECTED = "7391"
 
 
 def _prompt(tokenizer, seed: int, *, selected_archive: bool) -> str:
-    source = f"Archived fact: the verification code is {EXPECTED}."
-    distractors = "\n".join(
-        f"Log record {seed}-{index}: decoy code DECOY_{seed}_{index}. "
-        + "routine status nominal; no requested verification value. " * 3
-        for index in range(28)
-    )
+    source = f"Authoritative archived fact: the verification code is {EXPECTED}."
+    vocabulary = (
+        "routine status nominal observation archive background telemetry "
+        "maintenance report ordinary context unrelated note"
+    ).split()
+    shift = seed % len(vocabulary)
+    rotated = vocabulary[shift:] + vocabulary[:shift]
+    distractors = " ".join(rotated * 70)
     selected = f"\nSelected archive record:\n{source}\n" if selected_archive else ""
     content = (
         f"{source}\n\n{distractors}{selected}\n"
-        "Question: what is the archived verification code? Return only the code."
+        "Question: what is the authoritative archived verification code? "
+        "Return only its four digits."
     )
     return tokenizer.apply_chat_template(
         [{"role": "user", "content": content}],
@@ -113,4 +116,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
