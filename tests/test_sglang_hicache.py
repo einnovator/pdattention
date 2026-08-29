@@ -57,6 +57,21 @@ def test_hicache_l2_pressure_persists_oldest_memory_to_l3(tmp_path) -> None:
     assert cache.metrics().l2_to_l3_demotions == 1
 
 
+def test_default_host_codec_can_demote_an_already_host_owned_memory(tmp_path) -> None:
+    size = _memory(1).nbytes
+    cache = SGLangPRAHiCache(
+        tmp_path,
+        max_l1_bytes=size,
+        max_l2_bytes=size,
+    )
+
+    cache.put("resource-A", _memory(1), tier=PRAHiCacheTier.L2)
+    cache.put("resource-B", _memory(2), tier=PRAHiCacheTier.L2)
+
+    assert cache.placement("resource-A") is PRAHiCacheTier.L3
+    assert cache.metrics().l2_to_l3_demotions == 1
+
+
 def test_hicache_reports_warm_l1_hit_without_another_promotion(tmp_path) -> None:
     cache = _cache(tmp_path)
     cache.put("resource-R", _memory(1), tier=PRAHiCacheTier.L2)

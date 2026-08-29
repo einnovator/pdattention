@@ -73,6 +73,8 @@ class _HostArray:
 def _host_array(array: object) -> _HostArray:
     import numpy as np
 
+    if isinstance(array, _HostArray):
+        return array
     logical_dtype = str(array.dtype)
     if "bfloat16" in logical_dtype:
         import mlx.core as mx
