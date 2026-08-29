@@ -111,6 +111,10 @@ def main() -> None:
             ]
             output, generation_ms = _generate(model, tokenizer, query, native)
             mx.eval(*(layer.keys for layer in selected.layers))
+            l1_pressure_key = f"resource-{seed}-l1-pressure"
+            l2_pressure_key = f"resource-{seed}-l2-pressure"
+            cache.put(l1_pressure_key, memory, tier=PRAHiCacheTier.L1)
+            cache.put(l2_pressure_key, memory, tier=PRAHiCacheTier.L2)
             metrics = cache.metrics()
             rows.append(
                 {
@@ -128,6 +132,11 @@ def main() -> None:
                     "pra_tokens_absent_from_radix_prefix": (
                         native[0].keys is native[0].local_cache.keys
                     ),
+                    "pressure_placements": {
+                        key: cache.placement(key).value,
+                        l1_pressure_key: cache.placement(l1_pressure_key).value,
+                        l2_pressure_key: cache.placement(l2_pressure_key).value,
+                    },
                     "hicache": metrics.to_dict(),
                 }
             )
