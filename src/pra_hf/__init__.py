@@ -187,6 +187,24 @@ from .task_planning import (
     plan_events,
     validate_plan,
 )
+from .storage_lifecycle import (
+    FileKVStore,
+    InMemoryHotBridge,
+    MemoryKVStore,
+    PRARetentionClass,
+    PRAStorageEntry,
+    PRAStorageEvictionPolicy,
+    PRAStorageFingerprint,
+    PRAStorageManager,
+    PRAStoragePolicy,
+    PRAStorageTier,
+    PRAStorageTierConfig,
+    ResidencyManagerHotBridge,
+    dequantize_int8_array,
+    parse_byte_size,
+    parse_duration,
+    quantize_int8_array,
+)
 from .task_scope import (
     DetailDepth,
     ResidencyState,

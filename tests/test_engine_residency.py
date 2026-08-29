@@ -103,16 +103,38 @@ def test_unused_prefetch_is_reported_as_waste() -> None:
 
 
 def test_waiting_for_prefetch_records_late_stall() -> None:
+    import threading
+
     store = LogicalPRABlockStore()
     key = _register(store, "record-1")
     manager = EnginePRAResidencyManager(store, max_resident_bytes=64)
+    started = threading.Event()
+    release = threading.Event()
 
     def slow():
-        time.sleep(0.01)
+        started.set()
+        assert release.wait(timeout=1.0)
         return "payload", 32
 
-    manager.prefetch(key, slow)
-    assert manager.resolve(key, slow) == "payload"
+    future = manager.prefetch(key, slow)
+    assert started.wait(timeout=1.0)
+    waiting = threading.Event()
+    original_result = future.result
+
+    def observed_result(*args, **kwargs):
+        waiting.set()
+        return original_result(*args, **kwargs)
+
+    future.result = observed_result
+    resolved = []
+    worker = threading.Thread(target=lambda: resolved.append(manager.resolve(key, slow)))
+    worker.start()
+    assert waiting.wait(timeout=1.0)
+    time.sleep(0.02)
+    release.set()
+    worker.join(timeout=1.0)
+    assert not worker.is_alive()
+    assert resolved == ["payload"]
     assert manager.metrics().late_block_stall_ns > 0
     manager.close()
 

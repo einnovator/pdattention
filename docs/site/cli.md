@@ -57,3 +57,15 @@ resolver when the optional Hub dependency is installed.
 Human-readable output is the default. Add `--json` or `--yaml` for scripts.
 Product configuration precedence is explicit CLI values, command YAML, bundle
 or profile, project config, user config, then package defaults.
+# Storage profiles
+
+The runtime commands accept a named semantic storage profile or a detailed
+YAML policy. Inspection emits the fully resolved policy.
+
+```powershell
+pra runtime serve Qwen/Qwen3-1.7B -e hf --storage balanced
+pra runtime inspect Qwen/Qwen3-1.7B -e mlx --storage-config storage.yaml --json
+pra runtime benchmark Qwen/Qwen3-1.7B -e hf --storage minimal -o .pra/bench
+```
+
+See [Semantic storage lifecycle](storage.md) for tier and retention semantics.

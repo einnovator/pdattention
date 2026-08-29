@@ -394,6 +394,23 @@ promotion gate.
 The offline V1 API emits the 24-token completion as one engine result, so TTFT
 and ITL are reported as unavailable rather than inferred from completion time.
 
+\subsection{Shared semantic storage boundary}
+Paper 4.5 now supplies the engine-neutral HOT/WARM/COLD/SOURCE policy used above
+the vLLM bridge. In this mapping, only HOT is a native vLLM-Metal page set.
+WARM and COLD are scheduler-invisible PRA backends; promotion allocates PRA
+pages, restores the fingerprint-compatible selected K/V, and attaches their
+identity to request-local metadata. Demotion first unpins and releases those
+pages. Record type, task closure, persistence grace, and quota eviction do not
+belong in the V1 executor, and selected detail is never returned to APC as
+ordinary sequential K/V.
+
+The shared five-seed-per-engine lifecycle control obtains exact lossless tier
+round-trip and SOURCE reconstruction in all 20 policy runs. It is not a second
+vLLM generation benchmark: the live V1 and matched E0/E2 experiments remain the
+physical and semantic evidence for this engine. LMCache or a connector can
+replace the WARM byte backend only after identity, request isolation,
+one-copy attachment, and fingerprint rejection pass unchanged.
+
 \subsection{Capture/replay and position audit}
 We then copy ordinary source-prefill pages from vLLM's own paged cache and
 replay them through the scheduler-invisible PRA tail. Every native request uses

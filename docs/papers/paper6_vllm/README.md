@@ -20,6 +20,7 @@ Rebuild the generated artifacts and paper from the repository root:
 
 ```bash
 python -m experiments.engine_serving.summarize
+PYTHONPATH=src:. python -m experiments.paper4_5_runtime.run_storage_lifecycle
 cd docs/papers/paper6_vllm
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```

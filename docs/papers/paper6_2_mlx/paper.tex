@@ -515,6 +515,25 @@ not evidence that more residency generally improves answer quality or complete
 request latency. No pinned block is evicted and compact detail never enters an
 ordinary prompt or rotating cache.
 
+\subsection{Shared storage lifecycle and MLX realization}
+The product runtime now defines engine-neutral HOT/WARM/COLD/SOURCE semantics.
+MLX attention-ready arrays are HOT. Lossless retained arrays or strict
+fingerprinted files are WARM. Compressed persistence is COLD, with K/V
+quantization configured independently from compression. Apple unified memory
+can physically host both HOT and WARM, but readiness and lifecycle remain
+different service states.
+
+Across the common four-label, five-seed policy workload, lossless tier recovery
+and SOURCE reconstruction are exact in 20/20 runs. Weighted retention keeps the
+shared document where plain LRU does not; active-task and dependency guards hold
+in 20/20, and a grace period avoids 20/20 transient writes. A generic
+per-array symmetric-int8 codec occupies 0.25 of FP32 bytes with 0.0103 RMSE.
+That codec result is not an MLX answer-quality claim. The model-native per-head
+experiment in this paper is the applicable quality evidence and obtains a
+roughly twofold compact-residency reduction because its metadata and scale
+layout differ. COLD still dequantizes before attention, so compact persistence
+does not reduce active attention bytes.
+
 \FloatBarrier
 \section{Promotion Gates}
 \begin{center}

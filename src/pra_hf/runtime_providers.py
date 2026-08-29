@@ -21,6 +21,7 @@ from .deployment import PRAEngineCapabilities
 from .engine_profiles import EngineType, PrefixCacheMode
 from .product_config import pra_home
 from .runtime_benchmark import run_runtime_microbenchmark, write_runtime_benchmark
+from .storage_lifecycle import PRAStoragePolicy
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,8 @@ class RuntimeConfig:
     cache_affinity: bool = False
     engine_options: Mapping[str, Any] = field(default_factory=dict)
     verbose: bool = False
+    storage_profile: str = "balanced"
+    storage_config: str | None = None
 
     def __post_init__(self) -> None:
         if not (0 < self.port < 65536):
@@ -54,6 +57,16 @@ class RuntimeConfig:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def resolved_storage_policy(self) -> PRAStoragePolicy:
+        """Resolve a named profile, then apply an optional YAML policy."""
+
+        if self.storage_config is not None:
+            policy = PRAStoragePolicy.from_yaml(self.storage_config)
+            if policy.profile != self.storage_profile and self.storage_profile != "balanced":
+                raise ValueError("--storage and storage-config profile disagree.")
+            return policy
+        return PRAStoragePolicy.named(self.storage_profile)
 
 
 @dataclass(frozen=True)
@@ -119,6 +132,7 @@ class RuntimeProvider(ABC):
             "endpoint": config.resolved_endpoint,
             "capabilities": self.capabilities(config).to_dict(),
             "source": "static_provider",
+            "storage": config.resolved_storage_policy().to_dict(),
         }
 
     def doctor(self, config: RuntimeConfig) -> RuntimeDoctorReport:
@@ -249,6 +263,9 @@ class HFRuntimeProvider(RuntimeProvider):
         ]
         if config.revision:
             command += ["--revision", config.revision]
+        command += ["--storage", config.storage_profile]
+        if config.storage_config:
+            command += ["--storage-config", config.storage_config]
         return command
 
 

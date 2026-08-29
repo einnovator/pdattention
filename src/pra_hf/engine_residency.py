@@ -174,6 +174,64 @@ class EnginePRAResidencyManager:
             )
         return sorted(candidates, key=key_fn)
 
+    def release(self, key: str) -> int:
+        """Release one unpinned HOT payload without invalidating its identity."""
+
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return 0
+            if entry.pin_count:
+                raise RuntimeError("Cannot release a request-pinned PRA block.")
+            self._payload_disposer(entry.payload)
+            del self._entries[key]
+            current = self.block_store.get(key)
+            if current.state != PRAResidencyState.INVALID:
+                self.block_store.transition(key, PRAResidencyState.OFF_DEVICE)
+            self._evictions += 1
+            self._bytes_evicted += entry.byte_count
+            self._events.append(
+                PRAResidencyEvent(
+                    "release_hot", key, time.monotonic_ns(), bytes=entry.byte_count
+                )
+            )
+            return entry.byte_count
+
+    def hot_bytes(self, key: str) -> int:
+        """Return physical bytes for one HOT logical block, or zero."""
+
+        with self._lock:
+            entry = self._entries.get(key)
+            return 0 if entry is None else entry.byte_count
+
+    def pin(self, key: str, request_id: str) -> None:
+        """Pin one resolved block until the matching request cleanup."""
+
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                raise RuntimeError("PRA blocks must be resolved before request pinning.")
+            entry.pin_count += 1
+            if entry.pin_count == 1:
+                self.block_store.transition(key, PRAResidencyState.PINNED)
+            self._events.append(
+                PRAResidencyEvent("pin", key, time.monotonic_ns(), request_id=request_id)
+            )
+
+    def unpin(self, key: str, request_id: str) -> None:
+        """Release one request pin while retaining the HOT payload."""
+
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None or entry.pin_count <= 0:
+                raise RuntimeError("PRA block has no matching request pin.")
+            entry.pin_count -= 1
+            if entry.pin_count == 0:
+                self.block_store.transition(key, PRAResidencyState.RESIDENT)
+            self._events.append(
+                PRAResidencyEvent("unpin", key, time.monotonic_ns(), request_id=request_id)
+            )
+
     def _make_room(self, incoming_bytes: int) -> None:
         if incoming_bytes > self.max_resident_bytes:
             raise MemoryError("One PRA block exceeds the complete residency budget.")
@@ -357,29 +415,14 @@ class EnginePRAResidencyManager:
             if missing:
                 raise RuntimeError("PRA blocks must be resolved before request pinning.")
             for key in unique:
-                entry = self._entries[key]
-                entry.pin_count += 1
-                if entry.pin_count == 1:
-                    self.block_store.transition(key, PRAResidencyState.PINNED)
-                self._events.append(
-                    PRAResidencyEvent("pin", key, time.monotonic_ns(), request_id=request_id)
-                )
+                self.pin(key, request_id)
         try:
             yield
         finally:
             with self._lock:
                 for key in unique:
-                    entry = self._entries.get(key)
-                    if entry is None:
-                        continue
-                    entry.pin_count -= 1
-                    if entry.pin_count == 0:
-                        self.block_store.transition(key, PRAResidencyState.RESIDENT)
-                    self._events.append(
-                        PRAResidencyEvent(
-                            "unpin", key, time.monotonic_ns(), request_id=request_id
-                        )
-                    )
+                    if key in self._entries:
+                        self.unpin(key, request_id)
 
     def invalidate(self, keys: Iterable[str]) -> None:
         """Drop physical payloads after their logical versions are invalidated."""

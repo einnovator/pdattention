@@ -63,6 +63,7 @@ from .progressive_context import (
 from .typed_context import AdaptiveContextRecord
 from .gateway_session import GatewaySessionRegistry, ResolvedSessionTurn
 from .session_service import AgentSessionState, SessionService
+from .storage_lifecycle import PRAStorageManager, PRAStoragePolicy
 from .task_context import TaskEvent, TaskGraph, TaskProvenance, attach_task_provenance
 from .task_planning import (
     TaskOperation,
@@ -116,6 +117,7 @@ class PRARuntimeConfig:
     synchronize_timing: bool = True
     context_policy: ContextPolicy = field(default_factory=ContextPolicy)
     auto_prepare_native_results: bool = True
+    storage: PRAStoragePolicy = field(default_factory=PRAStoragePolicy)
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -123,6 +125,8 @@ class PRARuntimeConfig:
             self.pra = PRAConfig.from_dict(self.pra)
         if isinstance(self.context_policy, dict):
             self.context_policy = ContextPolicy.from_dict(self.context_policy)
+        if isinstance(self.storage, dict):
+            self.storage = PRAStoragePolicy.from_dict(self.storage)
         if self.profile is not None:
             self.pra.profile = self.profile
         if self.workload is not None:
@@ -145,6 +149,7 @@ class PRARuntimeConfig:
         values = asdict(self)
         values["pra"] = self.pra.to_dict()
         values["context_policy"] = self.context_policy.to_dict()
+        values["storage"] = self.storage.to_dict()
         return values
 
     @classmethod
@@ -931,6 +936,7 @@ class PRARuntime:
         context_policy: ContextPolicy | None = None,
         native_result_routing: bool = False,
         session_service: SessionService | None = None,
+        storage_manager: PRAStorageManager | None = None,
     ) -> None:
         if agent_config is not None and capability_sdk is not None:
             raise ValueError("Pass agent_config or capability_sdk, not both.")
@@ -949,6 +955,7 @@ class PRARuntime:
         self.context_policy = context_policy or config.context_policy
         self.native_result_routing = bool(native_result_routing)
         self.session_service = session_service
+        self.storage = storage_manager or PRAStorageManager(config.storage)
         self.engine_sessions = GatewaySessionRegistry(session_service)
         if self.native_result_routing and not isinstance(self.backend, HuggingFaceBackend):
             raise ValueError("Native result routing requires the Hugging Face backend.")
@@ -1066,6 +1073,7 @@ class PRARuntime:
         return session
 
     def close_session(self, session: PRASession) -> None:
+        self.storage.close_session(session.session_id)
         context = self.result_contexts.pop(session.session_id, None)
         if context is not None:
             model = context.registry.pra_model
@@ -1136,6 +1144,8 @@ class PRARuntime:
             logical.user_id, logical.session_id, event
         )
         self.logical_sessions[session.session_id] = updated
+        task = next(row for row in updated.tasks.tasks if row.task_id == event.task_id)
+        self.storage.update_task_status(task.task_id, task.status)
         return updated
 
     def apply_task_operations(
@@ -1602,6 +1612,7 @@ class PRARuntime:
             "native_result_routing": self.native_result_routing,
             "engine_sessions": self.engine_sessions.inspect_all(),
             "hot_cache": self.hot_cache.snapshot(),
+            "storage": self.storage.inspect(),
         }
 
     def save_pretrained(self, directory: str | Path) -> Path:

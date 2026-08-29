@@ -20,7 +20,7 @@ from .onboarding import DoctorService, ModelInspector, ModelValidator, Onboardin
 from .product_config import dump_data
 from .profile_benchmarks import ProfileBenchmarkRegistry
 from .router import PRARouter
-from .runtime import VLLMThinBackend, runtime_capabilities
+from .runtime import PRARuntimeConfig, VLLMThinBackend, runtime_capabilities
 from .runtime_providers import RuntimeConfig, RuntimeManager, parse_engine_arguments
 from .training import load_feature_rows, train_router
 from .tui import AgentShell
@@ -42,7 +42,7 @@ def _output_options(function):
     return function
 
 
-def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, engine_args=(), verbose=False):
+def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args=(), verbose=False):
     try:
         options = parse_engine_arguments(engine_args)
     except ValueError as error:
@@ -50,7 +50,8 @@ def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bu
     return RuntimeConfig(
         engine=engine, model=model, revision=revision, device=device, endpoint=endpoint,
         host=host, port=port, pra_bundle=pra_bundle, profile=profile,
-        engine_options=options, verbose=verbose,
+        engine_options=options, verbose=verbose, storage_profile=storage,
+        storage_config=str(storage_config) if storage_config is not None else None,
     )
 
 
@@ -239,7 +240,11 @@ def profiles_cli() -> None:
 @_output_options
 def profiles_show(model, workload, registry, json_output, yaml_output) -> None:
     values = ProfileBenchmarkRegistry.from_path(registry) if registry else ProfileBenchmarkRegistry.default()
-    _emit(values.inspect(model, workload=workload), json_output=json_output, yaml_output=yaml_output)
+    _emit(
+        values.inspect(model, workload=workload),
+        json_output=json_output or not yaml_output,
+        yaml_output=yaml_output,
+    )
 
 
 @profiles_cli.command("calibrate")
@@ -353,12 +358,37 @@ def runtime_cli() -> None:
     """Launch engines through the RuntimeProvider contract."""
 
 
+@runtime_cli.command("init")
+@click.argument("directory", type=click.Path(path_type=Path))
+@click.option("--max-native-index-tokens", type=click.IntRange(min=1))
+@click.option("--max-native-index-bytes", type=click.IntRange(min=1))
+@click.option("--defer-native-index", is_flag=True)
+@click.option("--storage", type=click.Choice(["memory", "balanced", "persistent", "minimal"]), default="balanced", show_default=True)
+def runtime_init(directory, max_native_index_tokens, max_native_index_bytes, defer_native_index, storage) -> None:
+    """Create a portable PRA runtime configuration directory."""
+
+    from .adaptive_context_runtime import ContextPolicy
+    from .storage_lifecycle import PRAStoragePolicy
+
+    config = PRARuntimeConfig(
+        context_policy=ContextPolicy(
+            max_native_index_tokens=max_native_index_tokens,
+            max_native_index_bytes=max_native_index_bytes,
+            defer_native_index=defer_native_index,
+        ),
+        storage=PRAStoragePolicy.named(storage),
+    )
+    click.echo(str(config.save_pretrained(directory)))
+
+
 def _runtime_options(function):
     decorators = (
         click.option("-e", "--engine", default="hf", show_default=True), click.option("-r", "--revision"),
         click.option("-d", "--device", default="auto", show_default=True), click.option("-u", "--endpoint"),
         click.option("--host", default="127.0.0.1", show_default=True), click.option("--port", type=int, default=8000, show_default=True),
         click.option("-a", "--pra-bundle"), click.option("-p", "--profile"),
+        click.option("--storage", type=click.Choice(["memory", "balanced", "persistent", "minimal"]), default="balanced", show_default=True),
+        click.option("--storage-config", type=click.Path(exists=True, dir_okay=False, path_type=Path)),
         click.option("--engine-arg", "engine_args", multiple=True), click.option("-v", "--verbose", is_flag=True),
     )
     for decorator in reversed(decorators):
@@ -370,8 +400,8 @@ def _runtime_options(function):
 @click.argument("model")
 @_runtime_options
 @_output_options
-def runtime_serve(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, engine_args, verbose, json_output, yaml_output) -> None:
-    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, engine_args, verbose)
+def runtime_serve(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
+    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose)
     try:
         manager = RuntimeManager()
         handle = manager.serve(config)
@@ -386,8 +416,8 @@ def runtime_serve(model, engine, revision, device, endpoint, host, port, pra_bun
 @click.argument("model", required=False)
 @_runtime_options
 @_output_options
-def runtime_inspect(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, engine_args, verbose, json_output, yaml_output) -> None:
-    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, engine_args, verbose)
+def runtime_inspect(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
+    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose)
     try:
         value = RuntimeManager().inspect(config)
     except KeyError as error:
@@ -413,9 +443,11 @@ def runtime_doctor(engine, endpoint, json_output, yaml_output) -> None:
 @click.option("-p", "--profile")
 @click.option("-d", "--device", default="auto", show_default=True)
 @click.option("-o", "--output", type=click.Path(path_type=Path), required=True)
+@click.option("--storage", type=click.Choice(["memory", "balanced", "persistent", "minimal"]), default="balanced", show_default=True)
+@click.option("--storage-config", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @_output_options
-def runtime_benchmark(model, engine, profile, device, output, json_output, yaml_output) -> None:
-    value = RuntimeManager().benchmark(RuntimeConfig(engine=engine, model=model, profile=profile, device=device), output)
+def runtime_benchmark(model, engine, profile, device, output, storage, storage_config, json_output, yaml_output) -> None:
+    value = RuntimeManager().benchmark(RuntimeConfig(engine=engine, model=model, profile=profile, device=device, storage_profile=storage, storage_config=str(storage_config) if storage_config else None), output)
     _emit(value, json_output=json_output, yaml_output=yaml_output)
 
 

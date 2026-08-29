@@ -1260,6 +1260,62 @@ recall is 0.875.  The result validates state transitions and shows the size of
 the reuse opportunity, but it is not an LM answer-quality or production-serving
 measurement.
 
+\subsection{Semantic storage lifecycle}
+
+The runtime now makes the cache hierarchy a shared semantic contract rather
+than an engine-specific accident. Each typed record has an authoritative
+SOURCE representation and may have derived native detail in COLD, WARM, or HOT
+form. HOT means attention-ready and request-pinnable; WARM means lossless native
+detail suitable for fast promotion; COLD means capacity-oriented persistence
+with lossless compression and optional, separately named K/V quantization.
+The physical HOT object remains an engine concern---vLLM pages, an independent
+SGLang object, or MLX arrays---but record type, task status, dependencies,
+reconstructability, grace periods, and quotas are decided once by
+\texttt{PRAStorageManager}.
+
+The deterministic policy retains plain LRU, size-aware LRU, reuse-count, and
+reload-cost controls, and adds weighted LRU. Its score combines recency,
+frequency, reconstruction cost, typed-record prior, task state, authorized
+sharing, dependency count, byte cost, and reconstructability. Open, blocked,
+or waiting tasks enforce minimum WARM lifetimes. Completion schedules delayed
+compaction rather than deletion; an open dependent task cancels aggressive
+compaction. Session close releases transient native detail without treating a
+native-cache quota as permission to delete SOURCE. Newly encoded detail first
+observes a grace period, avoiding speculative persistence of short-lived tool
+and terminal records.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Shared lifecycle controls over HF, vLLM, SGLang, and MLX labels with
+five seeds each (20 runs). Rates are policy outcomes under a fixed synthetic
+pressure trace, not end-task model quality.}
+\input{../shared/results/paper4_5_runtime/storage_lifecycle/generated_storage_lifecycle_table.tex}
+\label{tab:semantic-storage-lifecycle}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper4_5_runtime/storage_lifecycle/storage_lifecycle_tradeoffs.pdf}
+\caption{Engine-neutral retention controls and generic symmetric-int8 byte
+transport. The int8 result is a codec diagnostic; model-specific quality and
+active-attention bytes remain separate gates.}
+\label{fig:semantic-storage-lifecycle}
+\end{figure}
+
+Lossless HOT$\rightarrow$WARM$\rightarrow$COLD$\rightarrow$HOT recovery and
+SOURCE reconstruction are exact in 20/20 runs. Under a 24-byte pressure
+fixture, plain LRU loses the shared document in every run whereas the weighted
+policy retains it in 20/20; active-task and downstream-dependency protections
+also hold in 20/20. A persistence grace period reduces writes for the transient
+closure trace from 20 to zero. Generic symmetric int8 occupies 0.25 of FP32
+bytes with 0.0103 RMSE, 0.28 ms median quantization, and 0.07 ms median
+dequantization on this host. This does not supersede the MLX model-specific
+int8 quality result, nor show that WARM and COLD improve generation latency.
+It establishes policy parity, exact lossless recovery, and a measurable reason
+to defer transient writes; natural lifecycle distributions and engine-native
+promotion tails remain open.
+
 \section{Compatibility and Product Boundary}
 
 \begin{table}[H]

@@ -320,6 +320,22 @@ cost ratio of 1.122. The wrapper concatenates selected and local arrays at each
 consumer layer and decode step, so native transport is semantically closed
 while fused materialization and decode economics remain open.
 
+\subsection{Semantic tiers versus HiCache tiers}
+The shared runtime now owns HOT/WARM/COLD/SOURCE as semantic service levels.
+For this paper, HOT maps to the attention-ready PRA object, WARM can map to a
+lossless host or HiCache L2 representation, and COLD can map to the built-in
+file backend or another validated L3 provider. This does not merge PRA identity
+with Radix identity. HiCache supplies physical storage and transport; the
+shared manager supplies typed-record priors, task/dependency retention,
+persistence grace, and deterministic quota eviction.
+
+A common 20-run policy control (four engine labels, five seeds) preserves exact
+lossless tier round-trip and SOURCE reconstruction, retains open-task and
+dependent records in every run, and avoids all 20 immediate writes for a
+transient closure trace. Those are policy and byte-transport checks, not SGLang
+generation or distributed-HiCache measurements. The live runner, combined
+Radix/HiCache lifecycle, and matched E0/E2 rows below remain the engine evidence.
+
 \subsection{External HiCache placement}
 \begin{table}[!htbp]
 \centering

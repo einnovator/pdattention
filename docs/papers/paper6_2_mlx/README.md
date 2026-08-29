@@ -6,6 +6,7 @@ HTTP server; the rotating-cache study uses the in-process Python API.
 
 ```bash
 python -m experiments.engine_serving.summarize
+PYTHONPATH=src:. python -m experiments.paper4_5_runtime.run_storage_lifecycle
 cd docs/papers/paper6_2_mlx
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```

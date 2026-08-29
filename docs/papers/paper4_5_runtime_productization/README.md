@@ -50,6 +50,10 @@ The implementation adds:
   cold, warm, multi-query, and concurrency-eight schedules on MLX-LM,
   SGLang-MLX, and vLLM-Metal, with disjoint quality, input, PRA, ingestion,
   serving, and reuse metrics.
+- an engine-neutral `HOT/WARM/COLD/SOURCE` storage manager with named profiles,
+  strict fingerprints, lossless WARM/COLD stores, independent compression and
+  int8 policy, deterministic weighted eviction, typed-record priors, task and
+  dependency retention, delayed closure compaction, and session cleanup.
 
 Reproduce the measured portable profile:
 
@@ -59,6 +63,7 @@ python -m experiments.paper4_5_runtime.run_runtime_profile
 python -m experiments.paper4_5_runtime.run_execution_policy_profile
 python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
 python -m experiments.paper4_5_runtime.run_gateway_session_profile
+python -m experiments.paper4_5_runtime.run_storage_lifecycle
 python -m experiments.paper4_5_runtime.run_cross_model_validation --model all --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwen --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda

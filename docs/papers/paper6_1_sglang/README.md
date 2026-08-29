@@ -5,6 +5,7 @@ The structured artifacts are in
 
 ```bash
 python -m experiments.engine_serving.summarize
+PYTHONPATH=src:. python -m experiments.paper4_5_runtime.run_storage_lifecycle
 cd docs/papers/paper6_1_sglang
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```

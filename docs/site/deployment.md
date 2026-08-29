@@ -177,3 +177,9 @@ Expansion is symmetric but record bounded, overlapping intervals are merged, and
 every consuming layer receives its own native projected K/V for the same logical
 source interval. This is the SDK counterpart of Paper 8's consumption diagnostic;
 it does not convert a negative frozen-consumption result into a serving claim.
+
+Storage policy is resolved before provider launch. Use `--storage` for the
+`memory`, `balanced`, `persistent`, or `minimal` profile, or
+`--storage-config PATH` for record/task-aware YAML. Providers share semantic
+`HOT/WARM/COLD/SOURCE` decisions; only their physical HOT representation and
+promotion transport differ. See [Storage lifecycle](storage.md).
