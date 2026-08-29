@@ -1330,7 +1330,11 @@ namespace, APC supplies 128--144 prompt tokens. Alternating
 selected and ordinary rows satisfy their expected outcome in 40/40 cases. On
 SGLang-MLX, an 81-token shared-prefix hit composes with external HiCache:
 selected A/C recover 10/10, cleanup B recovers 0/5, and every selected request
-contains exactly one memory copy. On MLX-LM, routed ordinary and native K/V
+contains exactly one memory copy. A separate five-seed bridge uses SGLang's
+built-in file-storage backend: fresh adapters hit and recover 5/5, with 38.7 ms
+mean writes, 122.2 ms mean cold L1 restoration (36.2 ms median), and 0.013 ms
+warm lookup. This is a local backend-contract result, not distributed HiCache.
+On MLX-LM, routed ordinary and native K/V
 agree on 60/60 original-answer QA pairs; evidence recall@4 ranges from 0.348 to
 0.775, so the companion result retains an explicit open oracle gap. These are
 pinned controlled realizations,

@@ -14,8 +14,8 @@ loader compatibility patch. The native SGLang-cache path passes five-seed
 semantic parity while keeping PRA tokens outside Radix prefix accounting. The
 runner hook now passes real prefill and batched decode at concurrency 1--8. It
 also includes five-seed QASPER and HotpotQA natural-text transport controls.
-Local external HiCache placement and combined Radix-plus-native execution are
-measured. A frozen 60-example routed-QA cohort also gives 120/120 exact E0/E2
+Local external HiCache placement, SGLang's built-in file-storage API, and
+combined Radix-plus-native execution are measured. A frozen 60-example routed-QA cohort also gives 120/120 exact E0/E2
 output pairs with 90.5--93.0% fewer visible tokens. Distributed HiCache,
 scheduler affinity, online concurrency tails, and fused selected-cache decode
 remain open.

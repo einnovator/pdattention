@@ -32,6 +32,10 @@ L2 arrays, and compressed NPZ L3 backing without entering the Radix namespace.
 Across five seeds, answer recovery and Radix separation are 5/5; warm L1,
 L2-to-L1, and L3-to-L1 resolution average 0.009, 4.0, and 405.6 ms. Forced
 capacity pressure performs both L1-to-L2 and L2-to-L3 demotion in every seed.
+The same logical-object cache is then connected to SGLang's built-in
+\texttt{HiCacheStorage} file backend. Five fresh-adapter reads recover 5/5
+answers; raw 14.35 MB blobs write in 38.7 ms on average, restore to L1 in
+122.2 ms on average (36.2 ms median), and hit warm L1 in 0.013 ms.
 In a combined runner-level cohort, an 81-token shared-prefix hit and external
 HiCache selection coexist in one request. Selected A and reselected C recover
 5/5, cleanup request B recovers 0/5, and all selected requests contain exactly
@@ -66,8 +70,9 @@ hierarchy and scheduling substrate without being misrepresented as a prefix.
 This iteration contributes an engine-independent logical object lifecycle, a
 capability-honest SGLang adapter, a measured RadixAttention baseline, and a
 native runner-cache bridge measured through live prefill and batched decode.
-External HiCache placement and the combined shared-prefix/native path are now
-measured locally; distributed placement remains open.
+External placement, the built-in SGLang file-storage bridge, and the combined
+shared-prefix/native path are now measured locally; off-node distributed
+placement remains open.
 
 \section{Two Address Spaces}
 The two logical keys are
@@ -110,6 +115,16 @@ forms L3. LRU pressure demotes L1 to L2 and L2 to L3; lookup promotes in the
 opposite direction before attention. On unified memory, L1 and L2 describe
 ownership and readiness rather than physically separate GPU and CPU DRAM.
 
+\path{src/pra_sglang/hicache_backend.py} adds an immutable blob protocol over
+SGLang's actual \texttt{HiCacheStorage} interface. A fixed header carries the
+payload length required by the backend's preallocated-read contract; a hashed
+namespace key hides the resource URI. The same adapter can wrap the built-in
+file backend or a backend returned by SGLang's factory. The portable interface
+does not expose per-key physical deletion, so PRA invalidation revokes logical
+access and relies on versioned identities plus backend eviction for byte
+reclamation. Raw framing is the default: an initial compressed transport added
+2.8--3.0 seconds of CPU work and was rejected before final measurement.
+
 \path{src/pra_sglang/mlx_native.py} implements the first attention bridge.
 Each layer cache exposes a local \texttt{offset} to scheduler and Radix
 bookkeeping, a distinct \texttt{rope\_offset} to attention, and concatenated
@@ -136,8 +151,9 @@ The model was \texttt{Qwen/Qwen3-0.6B} at revision
 \texttt{c1899de289a04d12100db370d81485cdf75e47ca}. The server used one running
 request, 2,048 total tokens, disabled CUDA-graph backends, and the MLX runner.
 Startup identified \texttt{UnifiedRadixCache} with LRU eviction. Built-in
-distributed HiCache was disabled for the HTTP control; the separate experiment
-uses the external PRA hierarchy described above. The control plane reported
+distributed HiCache was disabled for the HTTP control. A separate experiment
+uses SGLang's built-in file backend through \texttt{StorageBackendFactory}; it
+tests the engine storage contract but not off-node transport. The control plane reported
 \texttt{torch\_native}, while model
 inference was delegated to MLX; both facts are retained in the artifact.
 
@@ -158,7 +174,7 @@ token counts. Tail percentiles are not reported from five samples.
 This HTTP matrix is \textsc{Smoke} evidence. Separate five-seed controlled
 experiments exercise native prefill, decode, request cleanup, concurrency
 1--8, natural-text causal controls, and external L1/L2/L3 placement. They do
-not measure distributed cache affinity.
+not measure off-node cache affinity.
 
 \section{Results}
 \begin{table}[t]
@@ -304,6 +320,38 @@ one-object L1 and L2 budgets, inserting two additional resources forces one
 L1-to-L2 and one L2-to-L3 demotion in every seed. This closes local hierarchy
 mechanics; it does not establish distributed HiCache or server tail latency.
 
+\subsection{Built-in SGLang storage backend}
+The next control replaces the private NPZ L3 path with SGLang's registered
+\texttt{file} backend while retaining the independent PRA logical namespace.
+For each seed, one adapter writes an immutable object and a fresh adapter,
+without process-local placement metadata, checks the backend and promotes it
+through L3 to attention-ready L1 before generation.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Five-seed SGLang \texttt{HiCacheStorage} file-backend bridge. Times
+are milliseconds; the cold-read mean includes one 476.6 ms outlier.}
+\begin{tabular}{lrrr}
+\toprule
+Measure & Mean & Median & Result \\
+\midrule
+raw object write & 38.7 & 39.0 & 5/5 stored \\
+cold backend read $\rightarrow$ L1 & 122.2 & 36.2 & 5/5 hits \\
+warm L1 lookup & 0.013 & 0.012 & 5/5 hits \\
+generation after restore & --- & --- & 5/5 exact \\
+\bottomrule
+\end{tabular}
+\label{tab:sglang-builtin-hicache}
+\end{table}
+
+Each source has 125 tokens and 14.336 MB of native K/V; framing adds 17.2 KB.
+The result closes compatibility with SGLang's real storage abstraction and
+fresh-adapter discovery. It does not establish Mooncake, NIXL, HF3FS, AIBrix,
+shared-memory, or cross-host transfer. Those backends can now be selected
+without changing PRA serialization or logical identity, but each requires its
+own measured correctness, transfer, and cleanup gate.
+
 \subsection{Combined shared-prefix and external-memory lifecycle}
 \begin{table}[!htbp]
 \centering
@@ -347,6 +395,7 @@ environment & closed & patched pinned SGLang-MLX starts reproducibly \\
 radix baseline & smoke closed & exact scheduler cache-token trace \\
 selected-text parity & smoke closed & selected and full are 5/5 \\
 HiCache non-prefix object & controlled closed & five-seed L1/L2/L3 promotion and forced demotion \\
+built-in HiCache storage & controlled closed & file backend, fresh adapter 5/5, restored generation 5/5 \\
 selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
 radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\
 Radix + HiCache request & controlled closed & A/C 10/10, cleanup B 0/5, exactly one selected copy \\
@@ -361,7 +410,7 @@ robustness & partial & one model; synthetic and two natural-text transport fixtu
 
 \section{Next Engine-Native Experiment}
 The matched single-request comparison is now complete. The next useful patch
-moves the verified local composition into distributed HiCache placement and
+moves the verified local composition into off-node HiCache placement and
 scheduler affinity, including prefetch overlap, concurrent cold/warm tier
 curves, and server p50/p95/p99. Only then should learned placement or
 cache-aware scheduling be optimized.
@@ -405,7 +454,8 @@ eight, and passes 80/80 natural-text transport decisions while disabled and
 shuffled controls fall near chance. SGLang attention can therefore consume
 selected non-prefix K/V while preserving the two address spaces. Paper 6.1
 also establishes local L1/L2/L3 promotion and forced demotion without entering
-the Radix namespace. A final A/B/C cohort composes the shared-prefix pool with
+the Radix namespace and uses SGLang's built-in file storage through a fresh
+adapter with 5/5 recovery. A final A/B/C cohort composes the shared-prefix pool with
 external HiCache, preserves 10/10 selected recoveries, prevents 5/5 cleanup
 leaks, and attaches exactly one memory copy. It leaves distributed HiCache,
 full-scheduler integration, and pressure-scale server validation as the focused

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from statistics import fmean
+from statistics import fmean, median
 
 import matplotlib.pyplot as plt
 
@@ -163,10 +163,10 @@ def build_registry() -> dict:
         {
             "engine": "SGLang MLX",
             "model": metadata["sglang"]["model_id"],
-            "profile": "Radix prefix + external L1/L2/L3 selected K/V",
+            "profile": "Radix + selected K/V + built-in HiCache file storage",
             "hardware": metadata["sglang"]["hardware"],
             "evidence_tier": native["sglang"]["hicache"]["evidence_tier"],
-            "status": "controlled combined lifecycle",
+            "status": "controlled storage and combined lifecycle",
         },
         {
             "engine": "MLX-LM",
@@ -210,6 +210,9 @@ def _native_results() -> dict:
     sglang_hicache = _load(ENGINE_DIRS["sglang"] / "hicache_l123.json")
     sglang_combined = _load(
         ENGINE_DIRS["sglang"] / "radix_hicache_combined.json"
+    )
+    sglang_builtin_hicache = _load(
+        ENGINE_DIRS["sglang"] / "builtin_hicache_backend.json"
     )
     sglang_natural = {
         dataset: _load(ENGINE_DIRS["sglang"] / f"natural_{dataset}.json")
@@ -644,6 +647,34 @@ def _native_results() -> dict:
                 "radix_separation_rate": fmean(
                     float(row["pra_tokens_absent_from_radix_prefix"])
                     for row in hicache_rows
+                ),
+            },
+            "builtin_hicache_storage": {
+                "evidence_tier": sglang_builtin_hicache["evidence_tier"],
+                "backend": sglang_builtin_hicache["storage_backend"],
+                "off_node_transport": sglang_builtin_hicache["off_node_transport"],
+                "seed_count": len(sglang_builtin_hicache["rows"]),
+                "exact_recovery": fmean(
+                    float(row["exact_recovery"])
+                    for row in sglang_builtin_hicache["rows"]
+                ),
+                "fresh_adapter_hit_rate": fmean(
+                    float(row["fresh_adapter_backend_hit"])
+                    for row in sglang_builtin_hicache["rows"]
+                ),
+                "write_ms_mean": fmean(
+                    row["write_ms"] for row in sglang_builtin_hicache["rows"]
+                ),
+                "cold_read_to_l1_ms_mean": fmean(
+                    row["cold_backend_read_to_l1_ms"]
+                    for row in sglang_builtin_hicache["rows"]
+                ),
+                "cold_read_to_l1_ms_median": median(
+                    row["cold_backend_read_to_l1_ms"]
+                    for row in sglang_builtin_hicache["rows"]
+                ),
+                "warm_l1_ms_mean": fmean(
+                    row["warm_l1_ms"] for row in sglang_builtin_hicache["rows"]
                 ),
             },
             "radix_hicache_combined": {
