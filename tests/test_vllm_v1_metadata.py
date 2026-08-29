@@ -48,3 +48,14 @@ def test_live_request_cannot_change_selected_pages() -> None:
 
     registry.unregister("request")
     assert registry.active_request_count() == 0
+
+
+def test_registry_exposes_active_request_snapshot() -> None:
+    registry = VLLMNativeStepRegistry()
+    registry.register("req-a", _selected())
+    registry.register("req-b", _selected())
+
+    assert registry.active_request_ids() == ("req-a", "req-b")
+
+    registry.unregister("req-a")
+    assert registry.active_request_ids() == ("req-b",)

@@ -33,8 +33,12 @@ eight. A subsequent five-seed live V1 experiment reserves scheduler-invisible
 tail pages and prepends them only to attention block tables. Native and full
 context recover 5/5 answers, disabled memory recovers 0/5, cleanup leaks are
 0/5, and wrong memory controls follow the wrong fact in 5/5 cases. This closes
-controlled V1 generation on Metal, but not APC coexistence in the same native
-request, serving concurrency, connectors, or CUDA integration.
+controlled V1 generation on Metal. A second five-seed cohort combines native
+PRA with APC over concurrency 1--8: selected memory recovers 75/75 answers,
+alternating selected and ordinary requests score 40/40 on their expected
+outcome, APC supplies 128--144 prompt tokens, and throughput reaches 35.88
+requests/s at concurrency eight. Connectors, online server tails, cross-model
+replication, and CUDA integration remain open.
 \end{abstract}
 
 \section{Introduction}
@@ -268,6 +272,44 @@ code in every seed. Mean completion time is 159.7 ms for native memory and
 not a throughput claim. Active selected K/V is 3.50 MiB. The experiment closes
 generation, causal influence, and request cleanup on this pinned Metal path.
 
+\subsection{Native PRA, APC, and concurrent V1 requests}
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Five-seed APC and concurrency cohort. Success denotes exact recovery
+for selected requests, non-recovery for ordinary/disabled requests, and exact
+redirection for wrong-memory controls. Throughput is the mean across seeds.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_vllm/generated_v1_apc_concurrency_table.tex}}
+\label{tab:vllm-apc-concurrency}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.72\linewidth]{../shared/results/paper6_vllm/v1_apc_concurrency.pdf}
+\caption{Live native-PRA V1 throughput with APC. The line is the five-seed
+mean; the band spans the observed seed range. Recovery is 100\% at every
+concurrency shown.}
+\label{fig:vllm-apc-concurrency}
+\end{figure}
+
+Table~\ref{tab:vllm-apc-concurrency} closes the previously separate APC and
+native-generation paths. vLLM reports 128--144 ordinary cached prompt tokens,
+and the bridge observes the same scheduler-owned boundaries before adding 32
+selected tokens at the attention boundary. Thus selected pages are neither
+counted as APC hits nor inserted into the ordinary prefix namespace. Native
+recovery is 75/75 as concurrency increases from one to eight. In the strongest
+isolation condition, alternating rows in the same eight-request batch receive
+selected pages: all 20 selected rows recover the code and all 20 adjacent
+ordinary rows do not. A subsequent disabled batch leaks in 0/40 requests.
+
+Figure~\ref{fig:vllm-apc-concurrency} shows mean throughput increasing from
+5.85 requests/s at concurrency one to 35.88 at concurrency eight. This is
+offline V1 batching on one Apple M5, not an HTTP arrival-process or tail-latency
+benchmark. Wrong memory redirects 26/40 outputs to its counterfactual code;
+the imperfect rate limits the strength of that prompt-level causal control,
+while the earlier short-prefix experiment supplies the cleaner 5/5 result.
+
 \subsection{Controlled residency pressure}
 The engine-neutral residency manager was also exercised on five deterministic
 120-request traces with a 14 MB budget and a 36 MB working set. This is a
@@ -293,12 +335,13 @@ Gate & Status & Evidence \\
 \midrule
 environment & closed & vLLM V1 with native Metal paged attention runs reproducibly \\
 black-box semantics & smoke closed & selected and full context agree on the fixed task \\
-prefix coexistence & smoke closed & APC remains active; repeated prompts are fast \\
+prefix coexistence & controlled closed & 128--144 APC tokens observed before native-page augmentation \\
 native block attention & controlled closed & 80 Metal kernel rows; dense-reference parity \\
 physical sharing & controlled closed & one immutable handle at concurrency 1--8 \\
 V1 metadata contract & controlled closed & selected block tables and positions remain scheduler-disjoint \\
 live V1 generation & controlled closed & positive, disabled, wrong-memory, and cleanup controls over five seeds \\
-engine-native serving & partial & live generation measured; APC coexistence, concurrency, connectors remain open \\
+concurrent isolation & controlled closed & 20/20 selected recoveries and 0/20 adjacent ordinary recoveries \\
+engine-native serving & partial & native APC and concurrency measured; connectors, online tails, and CUDA remain open \\
 robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule
 \end{tabularx}
@@ -306,9 +349,9 @@ robustness & open & one model family, one kernel backend, controlled tensors \\
 
 The Metal backend now accepts selected non-prefix K/V at its native
 paged-attention boundary and carries scheduler-invisible pages through V1
-generation. Remaining boundaries are APC coexistence in the same selected
-request, continuous-batching concurrency, LMCache/connectors, and CUDA
-replication. The shared residency manager
+generation. Native pages now coexist with scheduler-owned APC state through
+eight-request V1 batches. Remaining boundaries are an online arrival process,
+LMCache/connectors, cross-model replication, and CUDA. The shared residency manager
 implements deterministic prefetch, pinning, sharing, and four eviction
 policies, but its pressure sweep is controlled simulation rather than vLLM
 scheduler telemetry.
@@ -322,9 +365,9 @@ tokens than full context, and coexists with APC. A native implementation must
 improve resident memory, transfer, TTFT, or throughput beyond this baseline.
 
 The current study uses a single small 4-bit model, one Apple host, synthetic
-answers, and five seeds. The cold requests are order-sensitive, per-request
-vLLM cached-token counts are unavailable, and no native APC-coexistence,
-continuous-batching concurrency, or HBM-pressure sweep was run. The live bridge
+answers, and five seeds. The cold requests are order-sensitive; concurrency is
+measured through the offline V1 engine rather than an HTTP server, and no
+arrival-rate, tail-latency, or HBM-pressure sweep was run. The live bridge
 requires page alignment, one K/V cache group, all consumer layers, and
 unquantized selected K/V. Apple unified memory also differs
 from the CUDA/LMCache environment for which many connector mechanisms were
@@ -347,9 +390,11 @@ text recovers the fixed answer with 76.9\% fewer visible tokens than full
 context and preserves APC. That success raises, rather than lowers, the bar for
 deep integration. The selected-K/V path is now verified at kernel level and in
 live V1 generation, including wrong-memory causality and post-request isolation.
-PRA-vLLM is therefore an engine-native controlled prototype on Metal. The next
-decisive experiment compares matched-quality residency, transfer, native APC
-coexistence, continuous-batching throughput, and a CUDA implementation.
+Native pages also coexist with APC and preserve request isolation through
+concurrency eight. PRA-vLLM is therefore an engine-native controlled prototype
+on Metal. The next decisive experiment compares online tail latency,
+matched-quality residency and transfer, connectors, another model family, and
+a CUDA implementation.
 
 \begin{thebibliography}{9}
 \bibitem{kwon2023vllm}

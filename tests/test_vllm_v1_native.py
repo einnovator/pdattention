@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import pytest
 
 from pra_vllm.v1_metadata import VLLMNativeBlockSet
-from pra_vllm.v1_native import augment_paged_context
+from pra_vllm.v1_native import augment_paged_context, observe_prefill_rows
 
 
 @dataclass
@@ -69,3 +70,34 @@ def test_context_requires_one_request_identity_per_attention_row() -> None:
 
     with pytest.raises(RuntimeError, match="request rows"):
         augment_paged_context(context, ("A",), {})
+
+
+def test_prefill_observation_preserves_scheduler_owned_apc_geometry() -> None:
+    rows = observe_prefill_rows(
+        (
+            SimpleNamespace(
+                req_id="selected",
+                start_pos=64,
+                token_ids=[10, 11, 12],
+                prompt_len=67,
+            ),
+            SimpleNamespace(
+                req_id="ordinary",
+                start_pos=32,
+                token_ids=[13, 14],
+                prompt_len=None,
+            ),
+        ),
+        {"selected"},
+    )
+
+    assert rows[0].as_dict() == {
+        "request_id": "selected",
+        "scheduler_cache_start": 64,
+        "scheduled_query_tokens": 3,
+        "prompt_tokens": 67,
+        "selected_registered": True,
+    }
+    assert rows[1].scheduler_cache_start == 32
+    assert rows[1].prompt_tokens is None
+    assert not rows[1].selected_registered

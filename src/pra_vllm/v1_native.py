@@ -10,13 +10,60 @@ from __future__ import annotations
 
 import contextvars
 import math
+import threading
 import types
+from dataclasses import dataclass
 from dataclasses import replace
 from typing import Mapping, Sequence
 
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_mlx.native import MLXNativeMemory
 from pra_vllm.v1_metadata import VLLMNativeBlockSet, VLLMNativeStepRegistry
+
+
+@dataclass(frozen=True)
+class VLLMSchedulerObservation:
+    """One scheduler-owned prefill row observed before PRA augmentation.
+
+    ``scheduler_cache_start`` is vLLM-Metal's reconciled APC boundary. PRA
+    pages are added later, at the attention metadata boundary, so this record
+    distinguishes ordinary prefix reuse from selected non-prefix memory.
+    """
+
+    request_id: str
+    scheduler_cache_start: int
+    scheduled_query_tokens: int
+    prompt_tokens: int | None
+    selected_registered: bool
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "scheduler_cache_start": self.scheduler_cache_start,
+            "scheduled_query_tokens": self.scheduled_query_tokens,
+            "prompt_tokens": self.prompt_tokens,
+            "selected_registered": self.selected_registered,
+        }
+
+
+def observe_prefill_rows(
+    prefill_requests: Sequence[object],
+    registered_request_ids: set[str],
+) -> tuple[VLLMSchedulerObservation, ...]:
+    """Capture scheduler geometry before selected pages enter attention."""
+
+    return tuple(
+        VLLMSchedulerObservation(
+            request_id=str(request.req_id),
+            scheduler_cache_start=int(request.start_pos),
+            scheduled_query_tokens=len(request.token_ids),
+            prompt_tokens=(
+                None if request.prompt_len is None else int(request.prompt_len)
+            ),
+            selected_registered=str(request.req_id) in registered_request_ids,
+        )
+        for request in prefill_requests
+    )
 
 
 def augment_paged_context(
@@ -81,6 +128,8 @@ class VLLMMetalV1NativeBridge:
         self.reserve_blocks = int(reserve_blocks)
         self.registry = VLLMNativeStepRegistry()
         self.isolation = EnginePRAIsolationGuard()
+        self._observation_lock = threading.RLock()
+        self._scheduler_observations: list[VLLMSchedulerObservation] = []
         self._handles: dict[str, tuple[int, ...]] = {}
         self._free = list(
             range(self.scheduler_blocks, self.scheduler_blocks + self.reserve_blocks)
@@ -235,6 +284,11 @@ class VLLMMetalV1NativeBridge:
         bridge = self
 
         def start(_runner, batch, prefill_reqs, decode_reqs, scheduler_output):
+            registered = set(bridge.registry.active_request_ids())
+            observations = observe_prefill_rows(prefill_reqs, registered)
+            if observations:
+                with bridge._observation_lock:
+                    bridge._scheduler_observations.extend(observations)
             token = bridge._active_rows.set(
                 (
                     tuple(str(req_id) for req_id, _ in decode_reqs),
@@ -291,6 +345,20 @@ class VLLMMetalV1NativeBridge:
         )
         self._model_runner_module.prepare_grouped = prepare
 
+    def scheduler_observations(
+        self, request_ids: Sequence[str] | None = None
+    ) -> tuple[Mapping[str, object], ...]:
+        """Return immutable pre-augmentation scheduler observations."""
+
+        selected_ids = None if request_ids is None else set(map(str, request_ids))
+        with self._observation_lock:
+            rows = tuple(self._scheduler_observations)
+        return tuple(
+            row.as_dict()
+            for row in rows
+            if selected_ids is None or row.request_id in selected_ids
+        )
+
     def close(self) -> None:
         """Restore runner hooks and clear request-scoped metadata."""
 
@@ -307,4 +375,5 @@ class VLLMMetalV1NativeBridge:
             "ordinary_prefix_namespace_used": False,
             "page_aligned_selection_required": True,
             "consumer_layers": "all",
+            "scheduler_prefix_observability": True,
         }

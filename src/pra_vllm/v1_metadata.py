@@ -114,3 +114,9 @@ class VLLMNativeStepRegistry:
     def active_request_count(self) -> int:
         with self._lock:
             return len(self._requests)
+
+    def active_request_ids(self) -> tuple[str, ...]:
+        """Return a stable snapshot for scheduler-boundary observability."""
+
+        with self._lock:
+            return tuple(self._requests)
