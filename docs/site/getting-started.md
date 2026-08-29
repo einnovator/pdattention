@@ -8,6 +8,23 @@ Create a Python 3.10 or newer environment and install the project in editable mo
 python -m pip install -e .
 ```
 
+`pra doctor` reports capabilities of the Python environment that installed the
+CLI; it is not a machine-wide accelerator scan. Install the desired PyTorch
+build before the project, or expose an existing accelerator-enabled installation
+to the project environment. For example, this Windows workspace reuses its
+CUDA-enabled Python 3.10 packages with:
+
+```powershell
+py -3.10 -m venv --system-site-packages .venv
+.\.venv\Scripts\python.exe -m pip install -e . --no-deps
+.\.venv\Scripts\pra.exe doctor
+```
+
+The resulting doctor output should show `CUDA / AVAILABLE / True`. `MPS` is
+PyTorch's Apple Metal Performance Shaders device backend, not a PRA serving
+engine; it is expected to be unsupported on Windows. MLX, vLLM, and SGLang are
+reported separately because they are runtime engines or integration targets.
+
 Install documentation tooling as well:
 
 ```bash

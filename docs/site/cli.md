@@ -3,6 +3,12 @@
 `pra` is the product command. `pra-hf` remains a deprecated alias for one
 release cycle, and `pra-standalone` retains the from-scratch research trainer.
 
+The command runs inside the Python environment where it was installed.
+Accordingly, `pra doctor` reports that environment's Torch build and device
+backends. A CPU-only virtual environment reports CPU-only Torch even when a
+different Python installation on the same host has CUDA. `MPS` denotes the
+PyTorch Apple Metal backend; it is a device backend rather than an engine.
+
 ```bash
 pra doctor
 pra model inspect Qwen/Qwen3-1.7B
@@ -51,4 +57,3 @@ resolver when the optional Hub dependency is installed.
 Human-readable output is the default. Add `--json` or `--yaml` for scripts.
 Product configuration precedence is explicit CLI values, command YAML, bundle
 or profile, project config, user config, then package defaults.
-
