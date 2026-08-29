@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
-from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
+from pra_mlx.native import (
+    MLXNativeLayerKV,
+    MLXNativeMemory,
+    combine_native_memories,
+)
+from pra_sglang.hicache import SGLangPRAHiCache
 
 
 class _AttentionCacheView:
@@ -203,8 +208,11 @@ class SGLangMLXNativeBridge:
 
     integration_level = "E1"
 
-    def __init__(self, runner: object) -> None:
+    def __init__(
+        self, runner: object, *, hicache: SGLangPRAHiCache | None = None
+    ) -> None:
         self.runner = runner
+        self.hicache = hicache
         if getattr(runner._cache_layout, "has_auxiliary_state", False):
             raise NotImplementedError(
                 "SGLang PRA does not yet wrap hybrid auxiliary-state caches."
@@ -228,10 +236,18 @@ class SGLangMLXNativeBridge:
     def register(
         self,
         req_id: str,
-        memory: MLXNativeMemory,
+        memory: MLXNativeMemory | None = None,
         *,
         logical_keys: tuple[str, ...] = (),
     ) -> None:
+        if memory is None:
+            if self.hicache is None or not logical_keys:
+                raise ValueError(
+                    "SGLang PRA registration requires memory or HiCache logical keys."
+                )
+            memory = combine_native_memories(
+                tuple(self.hicache.get(key) for key in logical_keys)
+            )
         if len(memory.layers) != self.runner._cache_layout.num_layers:
             raise ValueError("Selected memory does not match SGLang model layers.")
         if any(int(layer.keys.shape[2]) != memory.source_tokens for layer in memory.layers):
@@ -326,6 +342,9 @@ class SGLangMLXNativeBridge:
             "integration_level": self.integration_level,
             "native_kv": True,
             "radix_prefix_identity_separate": True,
-            "hicache_external_namespace": False,
+            "hicache_external_namespace": self.hicache is not None,
+            "hicache_metrics": (
+                None if self.hicache is None else self.hicache.metrics().to_dict()
+            ),
             "patched_layers": self.patched_layers,
         }
