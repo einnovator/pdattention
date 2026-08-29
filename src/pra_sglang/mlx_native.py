@@ -13,6 +13,7 @@ import types
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
 
 
@@ -213,6 +214,7 @@ class SGLangMLXNativeBridge:
                 "SGLang PRA batched decode does not yet support sliding-window layers."
             )
         self._requests: dict[str, SGLangNativeRequest] = {}
+        self.isolation = EnginePRAIsolationGuard()
         self._active_req: contextvars.ContextVar[str | None] = contextvars.ContextVar(
             "sglang_pra_request", default=None
         )
@@ -234,15 +236,20 @@ class SGLangMLXNativeBridge:
             raise ValueError("Selected memory does not match SGLang model layers.")
         if any(int(layer.keys.shape[2]) != memory.source_tokens for layer in memory.layers):
             raise ValueError("Selected memory token geometry disagrees with its position base.")
-        self._requests[str(req_id)] = SGLangNativeRequest(memory, logical_keys)
+        identifier = str(req_id)
+        self.isolation.open_request(identifier, logical_keys)
+        self._requests[identifier] = SGLangNativeRequest(memory, logical_keys)
 
     def unregister(self, req_id: str) -> None:
-        self._requests.pop(str(req_id), None)
+        identifier = str(req_id)
+        self._requests.pop(identifier, None)
+        self.isolation.close_request(identifier, require_attached=False)
 
     def _wrap_cache(self, req_id: str, caches: list[object]) -> list[object]:
         request = self._requests.get(req_id)
         if request is None:
             return caches
+        self.isolation.attach_once(req_id, request.logical_keys)
         memory = request.memory
         return [
             SGLangSelectedKVCache(cache, layer, position_base=memory.source_tokens)
@@ -312,6 +319,7 @@ class SGLangMLXNativeBridge:
         self.runner.prefill_start = self._original_prefill_start
         self.runner._build_batched_decode_context = self._original_build_context
         self._requests.clear()
+        self.isolation.close()
 
     def capabilities(self) -> Mapping[str, object]:
         return {

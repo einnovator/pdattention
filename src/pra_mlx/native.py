@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
+from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_hf.engine_memory import LogicalPRABlock, LogicalPRABlockId, LogicalPRABlockStore
 from pra_hf.engine_residency import EnginePRAResidencyManager, PRAEvictionPolicy
 
@@ -379,6 +380,7 @@ class MLXInProcessNativeExecutor:
             policy=eviction_policy,
         )
         self._session_keys: dict[str, set[str]] = {}
+        self.isolation = EnginePRAIsolationGuard()
 
     @classmethod
     def from_pretrained(
@@ -510,33 +512,40 @@ class MLXInProcessNativeExecutor:
         from mlx_lm.sample_utils import make_sampler
 
         memory, keys, selected_tokens = self._resolve_memory(request)
-        detail_layers = request.pra_policy.get("detail_kv_layers")
-        cache = make_native_prompt_cache(
-            self.model,
-            memory,
-            selected_layers=None if detail_layers is None else tuple(detail_layers),
-        )
-        prompt = self._prompt(request)
-        started = time.perf_counter()
-        with self.residency.pin_request(request.request_id, keys):
-            for response in stream_generate(
+        self.isolation.open_request(request.request_id, keys)
+        try:
+            self.isolation.attach_once(request.request_id, keys)
+            detail_layers = request.pra_policy.get("detail_kv_layers")
+            cache = make_native_prompt_cache(
                 self.model,
-                self.tokenizer,
-                prompt,
-                max_tokens=request.resolved_max_new_tokens,
-                prompt_cache=cache,
-                sampler=make_sampler(temp=float(request.engine_hints.get("temperature", 0))),
-            ):
-                yield {
-                    "text": response.text,
-                    "finish_reason": getattr(response, "finish_reason", None),
-                    "prompt_tokens": int(response.prompt_tokens),
-                    "generation_tokens": int(response.generation_tokens),
-                    "selected_native_tokens": selected_tokens,
-                    "active_native_kv_bytes": memory.selected_nbytes(detail_layers),
-                    "elapsed_ms": (time.perf_counter() - started) * 1000.0,
-                    "native_kv_used": True,
-                }
+                memory,
+                selected_layers=None if detail_layers is None else tuple(detail_layers),
+            )
+            prompt = self._prompt(request)
+            started = time.perf_counter()
+            with self.residency.pin_request(request.request_id, keys):
+                for response in stream_generate(
+                    self.model,
+                    self.tokenizer,
+                    prompt,
+                    max_tokens=request.resolved_max_new_tokens,
+                    prompt_cache=cache,
+                    sampler=make_sampler(
+                        temp=float(request.engine_hints.get("temperature", 0))
+                    ),
+                ):
+                    yield {
+                        "text": response.text,
+                        "finish_reason": getattr(response, "finish_reason", None),
+                        "prompt_tokens": int(response.prompt_tokens),
+                        "generation_tokens": int(response.generation_tokens),
+                        "selected_native_tokens": selected_tokens,
+                        "active_native_kv_bytes": memory.selected_nbytes(detail_layers),
+                        "elapsed_ms": (time.perf_counter() - started) * 1000.0,
+                        "native_kv_used": True,
+                    }
+        finally:
+            self.isolation.close_request(request.request_id, require_attached=False)
 
     def generate(
         self, request: PRAWireRequest, block_store: LogicalPRABlockStore
@@ -559,4 +568,5 @@ class MLXInProcessNativeExecutor:
             )
 
     def close(self) -> None:
+        self.isolation.close()
         self.residency.close()
