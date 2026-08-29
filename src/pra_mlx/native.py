@@ -55,6 +55,91 @@ class MLXNativeMemory:
 
 
 @dataclass(frozen=True)
+class MLXQuantizedLayerKV:
+    """Symmetric int8 K/V plus per-head scales for one model layer."""
+
+    keys: object
+    values: object
+    key_scale: object
+    value_scale: object
+    original_dtype: str
+
+    @property
+    def nbytes(self) -> int:
+        return int(
+            self.keys.nbytes
+            + self.values.nbytes
+            + self.key_scale.nbytes
+            + self.value_scale.nbytes
+        )
+
+
+@dataclass(frozen=True)
+class MLXQuantizedMemory:
+    """Compact selected-K/V residency dequantized only for materialization."""
+
+    layers: tuple[MLXQuantizedLayerKV, ...]
+    source_tokens: int
+    scheme: str = "symmetric_int8_per_head"
+
+    @property
+    def nbytes(self) -> int:
+        return sum(layer.nbytes for layer in self.layers)
+
+
+def quantize_native_memory(memory: MLXNativeMemory) -> MLXQuantizedMemory:
+    """Quantize selected K/V to symmetric int8 with ``[B,H,1,1]`` scales."""
+
+    import mlx.core as mx
+
+    layers = []
+    for layer in memory.layers:
+        arrays = []
+        for value in (layer.keys, layer.values):
+            maximum = mx.max(mx.abs(value.astype(mx.float32)), axis=(2, 3), keepdims=True)
+            scale = mx.maximum(maximum / 127.0, mx.array(1e-8, dtype=mx.float32))
+            quantized = mx.clip(mx.round(value.astype(mx.float32) / scale), -127, 127)
+            arrays.append((quantized.astype(mx.int8), scale.astype(mx.float16)))
+        layers.append(
+            MLXQuantizedLayerKV(
+                keys=arrays[0][0],
+                values=arrays[1][0],
+                key_scale=arrays[0][1],
+                value_scale=arrays[1][1],
+                original_dtype=str(layer.keys.dtype),
+            )
+        )
+    result = MLXQuantizedMemory(tuple(layers), memory.source_tokens)
+    mx.eval(
+        *(
+            array
+            for layer in result.layers
+            for array in (layer.keys, layer.values, layer.key_scale, layer.value_scale)
+        )
+    )
+    return result
+
+
+def dequantize_native_memory(memory: MLXQuantizedMemory) -> MLXNativeMemory:
+    """Restore model-native arrays for the current MLX attention protocol."""
+
+    import mlx.core as mx
+
+    layers = []
+    for layer in memory.layers:
+        dtype = getattr(mx, layer.original_dtype, mx.float16)
+        layers.append(
+            MLXNativeLayerKV(
+                (layer.keys.astype(mx.float32) * layer.key_scale).astype(dtype),
+                (layer.values.astype(mx.float32) * layer.value_scale).astype(dtype),
+            )
+        )
+    result = MLXNativeMemory(tuple(layers), memory.source_tokens)
+    mx.eval(*(array for layer in result.layers for array in (layer.keys, layer.values)))
+    return result
+
+
+@dataclass(frozen=True)
 class MLXNativeFingerprint:
     """Compatibility fields required before persisted K/V may be reused."""
 

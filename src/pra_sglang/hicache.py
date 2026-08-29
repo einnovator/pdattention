@@ -74,7 +74,7 @@ def _host_array(array: object) -> _HostArray:
     import numpy as np
 
     logical_dtype = str(array.dtype)
-    if logical_dtype == "bfloat16":
+    if "bfloat16" in logical_dtype:
         import mlx.core as mx
 
         data = np.asarray(array.view(mx.uint16)).copy()
@@ -100,7 +100,7 @@ def _default_to_device(memory: MLXNativeMemory) -> MLXNativeMemory:
         if not isinstance(array, _HostArray):
             return mx.array(array)
         value = mx.array(array.data)
-        if array.logical_dtype == "bfloat16":
+        if "bfloat16" in array.logical_dtype:
             return value.view(mx.bfloat16)
         dtype = getattr(mx, array.logical_dtype, None)
         return value if dtype is None else value.astype(dtype)

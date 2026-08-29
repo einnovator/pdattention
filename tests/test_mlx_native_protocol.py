@@ -7,6 +7,8 @@ from pra_mlx.native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
     MLXPositionedKVCache,
+    MLXQuantizedLayerKV,
+    MLXQuantizedMemory,
     combine_native_memories,
 )
 
@@ -22,6 +24,21 @@ def test_native_memory_reports_disjoint_kv_bytes() -> None:
     memory = MLXNativeMemory((layer, layer), source_tokens=4)
     assert layer.nbytes == 64
     assert memory.nbytes == 128
+
+
+def test_quantized_memory_counts_payload_and_scale_bytes() -> None:
+    layer = MLXQuantizedLayerKV(
+        keys=_Array(32, (1, 2, 4, 8)),
+        values=_Array(32, (1, 2, 4, 8)),
+        key_scale=_Array(4, (1, 2, 1, 1)),
+        value_scale=_Array(4, (1, 2, 1, 1)),
+        original_dtype="float16",
+    )
+    memory = MLXQuantizedMemory((layer, layer), source_tokens=4)
+
+    assert layer.nbytes == 72
+    assert memory.nbytes == 144
+    assert memory.scheme == "symmetric_int8_per_head"
 
 
 def test_single_memory_combination_preserves_identity() -> None:
