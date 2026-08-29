@@ -33,7 +33,7 @@ def main() -> None:
         args.model,
         revision=args.revision,
         disable_radix_cache=True,
-        enable_sampling=False,
+        enable_sampling=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
     answer_token_ids = {
