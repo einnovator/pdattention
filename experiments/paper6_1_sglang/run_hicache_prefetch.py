@@ -66,16 +66,24 @@ def main() -> None:
                 )
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     started = time.perf_counter()
+                    completion_time: list[float] = []
                     future = cache.prefetch(
                         logical_key, executor, target=PRAHiCacheTier.L1
                     )
+                    future.add_done_callback(
+                        lambda _future: completion_time.append(time.perf_counter())
+                    )
                     time.sleep(lead_ms / 1000.0)
                     demand_started = time.perf_counter()
+                    ready_at_demand = future.done()
                     restored = future.result()
+                    demand_finished = time.perf_counter()
                     demand_stall_ms = (
-                        time.perf_counter() - demand_started
+                        demand_finished - demand_started
                     ) * 1000.0
-                    total_promotion_ms = (time.perf_counter() - started) * 1000.0
+                    completed = completion_time[0] if completion_time else demand_finished
+                    promotion_ms = (completed - started) * 1000.0
+                    actual_lead_ms = (demand_started - started) * 1000.0
                 mx.eval(*(layer.keys for layer in restored.layers))
                 max_key_delta = max(
                     float(mx.max(mx.abs(left.keys - right.keys)).item())
@@ -87,14 +95,15 @@ def main() -> None:
                         "lead_ms": lead_ms,
                         "source_tokens": len(tokens),
                         "native_kv_bytes": memory.nbytes,
-                        "total_promotion_ms": total_promotion_ms,
+                        "promotion_ms": promotion_ms,
+                        "requested_lead_ms": lead_ms,
+                        "actual_lead_ms": actual_lead_ms,
+                        "ready_at_demand": ready_at_demand,
                         "demand_stall_ms": demand_stall_ms,
-                        "observed_overlap_ms": max(
-                            0.0, total_promotion_ms - demand_stall_ms
-                        ),
+                        "observed_overlap_ms": max(0.0, promotion_ms - demand_stall_ms),
                         "stall_fraction": (
-                            demand_stall_ms / total_promotion_ms
-                            if total_promotion_ms
+                            demand_stall_ms / promotion_ms
+                            if promotion_ms
                             else 0.0
                         ),
                         "max_key_delta": max_key_delta,
