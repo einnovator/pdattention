@@ -6,7 +6,11 @@ from types import SimpleNamespace
 import pytest
 
 from pra_vllm.v1_metadata import VLLMNativeBlockSet
-from pra_vllm.v1_native import augment_paged_context, observe_prefill_rows
+from pra_vllm.v1_native import (
+    VLLMMetalV1NativeBridge,
+    augment_paged_context,
+    observe_prefill_rows,
+)
 
 
 @dataclass
@@ -101,3 +105,15 @@ def test_prefill_observation_preserves_scheduler_owned_apc_geometry() -> None:
     assert rows[1].scheduler_cache_start == 32
     assert rows[1].prompt_tokens is None
     assert not rows[1].selected_registered
+
+
+def test_release_returns_reserved_pages_and_is_idempotent() -> None:
+    bridge = object.__new__(VLLMMetalV1NativeBridge)
+    bridge._handles = {"resource": (7, 5)}
+    bridge._free = [6]
+
+    bridge.release("resource")
+    bridge.release("resource")
+
+    assert bridge._free == [5, 6, 7]
+    assert bridge._handles == {}

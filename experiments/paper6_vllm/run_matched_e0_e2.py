@@ -175,6 +175,9 @@ def main() -> None:
                             **timing,
                         }
                     )
+            # Reuse is measured by the two requests above. Unrelated examples
+            # must return their reserved pages before the next source is loaded.
+            bridge.release(key)
     finally:
         bridge.close()
 
