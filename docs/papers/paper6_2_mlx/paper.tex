@@ -35,8 +35,14 @@ reloads in 7.2 ms with zero logit error, and shared-memory throughput rises
 from 6.04 to 16.01 requests/s between concurrency one and eight. On 40 QASPER
 and 40 HotpotQA natural-text transport controls per condition, ordinary and
 native memory rank the answer correctly in every case; disabled and shuffled
-memory remain near chance. Quantized detail and pressure-scale serving remain
-open.
+memory remain near chance. A larger Qwen3-1.7B natural-QA study then uses the
+datasets' original questions and answers. Full-precision native K/V exactly
+matches ordinary split-cache token F1 and answer log-probability on QASPER,
+HotpotQA, and 2WikiMultiHopQA. Shuffled and absent memory degrade both metrics
+on QASPER and HotpotQA; on 2Wiki the gold-answer log-probability degrades while
+free-generation F1 is noisy. Per-head int8
+residency halves selected-K/V bytes and preserves this small cohort's quality,
+with request-local dequantization before attention.
 \end{abstract}
 
 \section{Introduction}
@@ -59,7 +65,8 @@ archive record recover old evidence? Third, what software boundary is needed
 before an MLX adapter may claim native PRA K/V rather than selected visible
 text? Fourth, how much native K/V can consumer-layer profiles remove without
 losing the controlled answer? Fifth, do persistence, request sharing, and
-natural-text causal controls preserve the mechanism?
+natural-text causal controls, original benchmark questions, and quantized
+residency preserve the mechanism?
 
 \section{Cache Taxonomy}
 We keep three mechanisms distinct:
@@ -103,6 +110,12 @@ never appears in the visible prompt. The residency manager deduplicates
 materialization, pins blocks for request lifetime, and evicts only unpinned
 detail under a bounded byte budget.
 
+For compact residency, each K and V head receives a symmetric int8 scale over
+its token and head-width axes. Compact arrays remain the retained object;
+selection dequantizes them to the model-native dtype before constructing the
+request-local attention cache. This version measures storage economy, not an
+int8 attention kernel: active attention still consumes full-precision K/V.
+
 Consumer-layer profiles preserve the source-relative query position even on
 layers that omit selected detail. Such a layer receives only request-local K/V,
 but its RoPE offset still advances from the source extent; otherwise a profile
@@ -120,6 +133,11 @@ memory, Metal 4, and macOS 26.4.1. The environment used Python 3.12.7, MLX
 to 16 prompt-cache entries. It emits an explicit warning that its basic
 security checks are not production-grade; we treat it as an experimental
 deployment baseline.
+
+The end-task study uses \texttt{mlx-community/Qwen3-1.7B-4bit}, MLX-LM 0.31.3,
+five seeds, and four held-out examples per seed and dataset. Evidence is
+oracle-scoped from dataset annotations and truncated to 384 tokens; routing
+quality is deliberately outside this engine-transport experiment.
 
 \section{Server Prompt-Cache Experiment}
 The shared fixed task contains a stable 309-token prefix, one authoritative
@@ -298,6 +316,61 @@ QASPER and 52.5\% on HotpotQA; shuffled memory is 50.0\% on both. The causal
 controls therefore rule out query-only label bias as the source of native
 success for this transport task.
 
+\section{Original-Answer QA and Quantized Residency}
+The next experiment removes the inserted answer code. It evaluates original
+QASPER, HotpotQA, and 2WikiMultiHopQA questions and short gold answers. For each
+example, annotated evidence is placed first and natural distractor or abstract
+text fills the 384-token source budget. This is an oracle-evidence
+materialization study: it asks whether the engine transports useful native K/V,
+not whether PRA routing found the evidence.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Natural-QA generation with Qwen3-1.7B-4bit over five seeds. Strict EM
+is zero because the model often continues after the answer; token F1 and total
+gold-answer log-probability retain the useful quality signal.}
+\input{../shared/results/paper6_2_mlx/generated_answer_quality_table.tex}
+\label{tab:mlx-answer-quality}
+\end{table}
+
+Table~\ref{tab:mlx-answer-quality} shows exact full-precision transport parity:
+ordinary split-cache and native K/V have identical aggregate token F1 and gold
+answer log-probability on every completed dataset. On QASPER the two paths both
+reach 0.136 F1 and $-28.66$ mean log-probability; on HotpotQA both reach 0.129
+and $-10.95$; on 2Wiki both reach 0.059 and $-10.30$. Shuffling memory lowers
+F1 to 0.057 and 0.045 on QASPER and HotpotQA and makes gold log-probability
+substantially worse on all three datasets. On 2Wiki, shuffled and no-memory F1
+are slightly higher despite worse gold log-probability, exposing verbose
+generation as a noisy metric rather than supporting a quality gain. The exact
+transport parity and answer-likelihood controls establish source-dependent
+computation; broader decoding evaluation remains necessary.
+
+Per-head int8 residency reduces mean selected storage from 37.6 to 18.8 MiB on
+QASPER and from 42.0 to 21.0 MiB on HotpotQA. Its aggregate F1 and gold
+log-probability are slightly higher in this small cohort, but this is not
+evidence that quantization improves quality: generation is discrete and the
+sample is small. The supported conclusion is non-degradation here plus a
+near-exact $2\times$ residency reduction. Dequantization restores model-native
+K/V before attention, so active materialization bytes are not reduced.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Hard two-resource int8 residency budget under the repeated access
+pattern A--B--C--D--A. Values are means over five seeds.}
+\input{../shared/results/paper6_2_mlx/generated_bounded_pressure_table.tex}
+\label{tab:mlx-bounded-pressure}
+\end{table}
+
+Table~\ref{tab:mlx-bounded-pressure} validates physical lifecycle rather than
+theoretical byte sums. Compact K/V is loaded under a hard two-resource budget;
+each request pins one selected block, dequantizes it locally, generates, and
+releases it. The final return to A must reload it after intervening evictions.
+Every seed records five loads, three evictions, and one reload, with two compact
+blocks and 42.0 MiB resident at peak. No pinned block is evicted and compact
+detail never enters an ordinary prompt or rotating cache.
+
 \FloatBarrier
 \section{Promotion Gates}
 \begin{center}
@@ -315,8 +388,9 @@ consumer profile & controlled candidate & last 14/28 layers retain 5/5 at half K
 persistence & controlled closed & strict fingerprint; zero-error reload in 7.2 ms mean \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided at eight \\
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
-quantized PRA detail & open & model weights are 4-bit; PRA K/V unmeasured \\
-memory pressure & open & no forced unified-memory pressure or OOM frontier \\
+natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\
+quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
+memory pressure & controlled partial & hard two-resource budget forces eviction and reload; no OOM frontier \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -331,9 +405,12 @@ archive.
 The study uses one 4-bit model for profile and natural controls, one machine, a
 synthetic server task, and controlled transport fixtures. The server experiment
 has only five repeats per condition, so p95/p99 are not reported. The natural
-controls contain real dataset text but an inserted fixed answer-code mechanism;
-they are not end-task QASPER or HotpotQA scores. No native Q/K index, K/V
-quantization, queued server concurrency, or memory-pressure failure is measured.
+controls contain real dataset text but an inserted fixed answer-code mechanism.
+The later end-task study uses original answers but oracle-scoped evidence, only
+20 examples per condition and dataset, and no routing. Strict EM is confounded
+by verbose continuation. Int8 detail is restored before attention, so it saves
+retained bytes rather than active attention bytes. No native Q/K index, queued
+server concurrency, or OOM frontier is measured.
 The rotating intervention also changes effective local context and can perturb
 chat-template semantics.
 
@@ -354,11 +431,13 @@ an archive in the five-seed control; late selected text does not reliably
 repair it. The in-process native executor passes the missing mechanism gate:
 selected non-prefix K/V is bit-exact to ordinary split-cache execution and
 preserves 5/5 recovery with a rotating local cache. PRA-MLX is therefore a
-working native prototype. Quantized detail and pressure-scale server validation
-remain necessary before production claims. The current controlled candidate is
-last-half consumption: it preserves all synthetic and natural-transport
-decisions with half the selected K/V bytes, but requires broader workload
-calibration before receiving a product profile name.
+working native prototype. Full-precision native transport also matches ordinary
+split-cache quality on original-answer QA, while wrong and absent memory fail
+causally. Per-head int8 halves retained detail without measured degradation in
+the small cohort, and hard-budget lifecycle testing forces real eviction and
+reload. Queued server pressure, an OOM frontier, and broader quality cohorts
+remain necessary before production claims. Last-half consumption and int8
+residency are controlled candidates, not product profile defaults.
 
 \begin{thebibliography}{9}
 \bibitem{hannun2023mlx}

@@ -151,6 +151,32 @@ def build_registry() -> dict:
             "peak_memory_gb_mean": fmean(row["peak_memory_gb"] for row in values),
         })
     native = _native_results()
+    product_matrix = [
+        {
+            "engine": "vLLM-Metal V1",
+            "model": native["vllm"]["live_generation"]["model_id"],
+            "profile": "all-layer selected native K/V",
+            "hardware": metadata["vllm"]["hardware"],
+            "evidence_tier": native["vllm"]["live_generation"]["evidence_tier"],
+            "status": "controlled live generation",
+        },
+        {
+            "engine": "SGLang MLX",
+            "model": metadata["sglang"]["model_id"],
+            "profile": "external L1/L2/L3 selected K/V",
+            "hardware": metadata["sglang"]["hardware"],
+            "evidence_tier": native["sglang"]["hicache"]["evidence_tier"],
+            "status": "controlled hierarchy",
+        },
+        {
+            "engine": "MLX-LM",
+            "model": "mlx-community/Qwen3-1.7B-4bit",
+            "profile": "FP/int8 all-layer selected K/V",
+            "hardware": metadata["mlx"]["hardware"],
+            "evidence_tier": "NATURAL_QA_ORACLE_EVIDENCE_MATERIALIZATION",
+            "status": "natural QA transport",
+        },
+    ]
     return {
         "schema_version": "1.0",
         "registry_version": "2026-08-paper6-engine-native-v2",
@@ -165,6 +191,7 @@ def build_registry() -> dict:
             "summary": rotating_summary,
         },
         "native_results": native,
+        "product_matrix": product_matrix,
         "rows": rows,
     }
 
@@ -180,11 +207,13 @@ def _native_results() -> dict:
             mlx_model_artifacts.append(_load(path))
     sglang = _load(ENGINE_DIRS["sglang"] / "native_kv.json")
     sglang_live = _load(ENGINE_DIRS["sglang"] / "live_runner.json")
+    sglang_hicache = _load(ENGINE_DIRS["sglang"] / "hicache_l123.json")
     sglang_natural = {
         dataset: _load(ENGINE_DIRS["sglang"] / f"natural_{dataset}.json")
         for dataset in ("qasper", "hotpotqa")
     }
     vllm = _load(ENGINE_DIRS["vllm"] / "native_paged_kv.json")
+    vllm_live = _load(ENGINE_DIRS["vllm"] / "v1_live_generation.json")
     residency = _load(RESULTS / "engine_residency_sweep.json")
     mlx_profiles = _load(
         ENGINE_DIRS["mlx"] / "profiles_persistence_concurrency.json"
@@ -193,6 +222,13 @@ def _native_results() -> dict:
         dataset: _load(ENGINE_DIRS["mlx"] / f"natural_transport_{dataset}.json")
         for dataset in ("qasper", "hotpotqa")
     }
+    mlx_answer_quality = {}
+    for dataset in ("qasper", "hotpotqa", "2wikimultihopqa"):
+        path = ENGINE_DIRS["mlx"] / f"answer_quality_{dataset}.json"
+        if path.exists():
+            mlx_answer_quality[dataset] = _load(path)
+    pressure_path = ENGINE_DIRS["mlx"] / "bounded_residency_hotpotqa.json"
+    mlx_pressure = _load(pressure_path) if pressure_path.exists() else None
 
     mlx_native = [row for row in mlx["rows"] if row["condition"] == "native_selected_kv"]
     vllm_by_tokens = []
@@ -300,6 +336,66 @@ def _native_results() -> dict:
                 )
         return summary
 
+    def answer_quality_summary(artifacts: dict[str, dict]) -> list[dict]:
+        summary = []
+        for dataset, artifact in artifacts.items():
+            for condition in (
+                "ordinary_split",
+                "native_fp",
+                "native_int8_resident",
+                "native_shuffled",
+                "no_memory",
+            ):
+                values = [
+                    row for row in artifact["rows"] if row["condition"] == condition
+                ]
+                if not values:
+                    continue
+                summary.append(
+                    {
+                        "dataset": dataset,
+                        "condition": condition,
+                        "sample_count": len(values),
+                        "seed_count": len({row["seed"] for row in values}),
+                        "exact_match": fmean(row["exact_match"] for row in values),
+                        "token_f1": fmean(row["token_f1"] for row in values),
+                        "gold_answer_logprob": fmean(
+                            row["gold_answer_logprob"] for row in values
+                        ),
+                        "completion_latency_ms": fmean(
+                            row["completion_latency_ms"] for row in values
+                        ),
+                        "resident_selected_kv_bytes": fmean(
+                            row["resident_selected_kv_bytes"] for row in values
+                        ),
+                        "storage_compression_ratio": fmean(
+                            row["storage_compression_ratio"] for row in values
+                        ),
+                    }
+                )
+        return summary
+
+    hicache_rows = sglang_hicache["rows"]
+    vllm_live_rows = vllm_live["rows"]
+    pressure_summary = None
+    if mlx_pressure is not None:
+        summaries = mlx_pressure["seed_summaries"]
+        revisits = [row for row in mlx_pressure["rows"] if row["revisit_after_eviction"]]
+        pressure_summary = {
+            "dataset": mlx_pressure["dataset"],
+            "evidence_tier": mlx_pressure["evidence_tier"],
+            "seed_count": len(summaries),
+            "resident_resource_budget": mlx_pressure["resident_resource_budget"],
+            "loads_mean": fmean(row["loads"] for row in summaries),
+            "evictions_mean": fmean(row["evictions"] for row in summaries),
+            "reloads_mean": fmean(row["reloads"] for row in summaries),
+            "peak_resident_bytes_mean": fmean(
+                row["peak_resident_bytes"] for row in summaries
+            ),
+            "revisit_token_f1": fmean(row["token_f1"] for row in revisits),
+            "revisit_logprob": fmean(row["gold_answer_logprob"] for row in revisits),
+        }
+
     sglang_concurrency_summary = []
     for concurrency in sorted(
         {row["concurrency"] for row in sglang_live["concurrency_rows"]}
@@ -380,6 +476,8 @@ def _native_results() -> dict:
                 ),
             },
             "natural": natural_summary(mlx_natural),
+            "answer_quality": answer_quality_summary(mlx_answer_quality),
+            "bounded_pressure": pressure_summary,
         },
         "sglang": {
             "status": sglang["native_pra_status"],
@@ -411,12 +509,67 @@ def _native_results() -> dict:
             },
             "concurrency": sglang_concurrency_summary,
             "natural": natural_summary(sglang_natural),
+            "hicache": {
+                "evidence_tier": sglang_hicache["evidence_tier"],
+                "seed_count": len(hicache_rows),
+                "exact_recovery": fmean(
+                    float(row["exact_recovery"]) for row in hicache_rows
+                ),
+                "l1_hit_ms_mean": fmean(row["l1_hit_ms"] for row in hicache_rows),
+                "l2_to_l1_ms_mean": fmean(
+                    row["l2_to_l1_ms"] for row in hicache_rows
+                ),
+                "l3_to_l1_ms_mean": fmean(
+                    row["l3_to_l1_ms"] for row in hicache_rows
+                ),
+                "warm_l1_ms_mean": fmean(row["warm_l1_ms"] for row in hicache_rows),
+                "l1_to_l2_demotion_rate": fmean(
+                    float(row["hicache"]["l1_to_l2_demotions"] > 0)
+                    for row in hicache_rows
+                ),
+                "l2_to_l3_demotion_rate": fmean(
+                    float(row["hicache"]["l2_to_l3_demotions"] > 0)
+                    for row in hicache_rows
+                ),
+                "radix_separation_rate": fmean(
+                    float(row["pra_tokens_absent_from_radix_prefix"])
+                    for row in hicache_rows
+                ),
+            },
         },
         "vllm": {
             "status": vllm["native_pra_status"],
             "evidence_tier": vllm["evidence_tier"],
             "seed_count": len(vllm["seeds"]),
             "rows_by_selected_tokens": vllm_by_tokens,
+            "live_generation": {
+                "evidence_tier": vllm_live["evidence_tier"],
+                "engine_version": vllm_live["engine_version"],
+                "model_id": vllm_live["model_id"],
+                "seed_count": len(vllm_live_rows),
+                "full_context_exact": fmean(
+                    float(row["full_context_exact_recovery"])
+                    for row in vllm_live_rows
+                ),
+                "native_exact": fmean(
+                    float(row["native_exact_recovery"]) for row in vllm_live_rows
+                ),
+                "disabled_exact": fmean(
+                    float(row["disabled_exact_recovery"]) for row in vllm_live_rows
+                ),
+                "post_cleanup_leak": fmean(
+                    float(row["post_cleanup_leak"]) for row in vllm_live_rows
+                ),
+                "wrong_memory_follows_wrong_code": fmean(
+                    float(row["wrong_memory_follows_wrong_code"])
+                    for row in vllm_live_rows
+                ),
+                "full_context_ms_mean": fmean(
+                    row["full_context_ms"] for row in vllm_live_rows
+                ),
+                "native_ms_mean": fmean(row["native_ms"] for row in vllm_live_rows),
+                "active_native_kv_bytes": vllm_live_rows[0]["active_native_kv_bytes"],
+            },
         },
         "residency": {
             "evidence_tier": residency["evidence_tier"],
@@ -793,6 +946,110 @@ def write_native_tables(registry: dict) -> None:
     )
 
 
+def write_latest_engine_tables(registry: dict) -> None:
+    """Write the live-generation, hierarchy, QA, and product-matrix tables."""
+
+    native = registry["native_results"]
+    vllm = native["vllm"]["live_generation"]
+    vllm_lines = [
+        r"\begin{tabular}{lrr}",
+        r"\toprule",
+        r"Condition & Control success & Mean latency ms \\",
+        r"\midrule",
+        f"Full visible context & {100 * vllm['full_context_exact']:.0f}\\% & {vllm['full_context_ms_mean']:.1f} \\\\",
+        f"Selected native K/V & {100 * vllm['native_exact']:.0f}\\% & {vllm['native_ms_mean']:.1f} \\\\",
+        f"Disabled memory (must fail) & {100 * (1 - vllm['disabled_exact']):.0f}\\% & -- \\\\",
+        f"Post-cleanup isolation & {100 * (1 - vllm['post_cleanup_leak']):.0f}\\% & -- \\\\",
+        f"Wrong-memory causality & {100 * vllm['wrong_memory_follows_wrong_code']:.0f}\\% & -- \\\\",
+        r"\bottomrule",
+        r"\end{tabular}",
+    ]
+    (ENGINE_DIRS["vllm"] / "generated_v1_live_table.tex").write_text(
+        "\n".join(vllm_lines) + "\n", encoding="utf-8"
+    )
+
+    hicache = native["sglang"]["hicache"]
+    hicache_lines = [
+        r"\begin{tabular}{lrr}",
+        r"\toprule",
+        r"Path or invariant & Mean latency ms & Success \\",
+        r"\midrule",
+        f"Warm L1 hit & {hicache['warm_l1_ms_mean']:.3f} & -- \\\\",
+        f"L2 $\\rightarrow$ L1 & {hicache['l2_to_l1_ms_mean']:.1f} & -- \\\\",
+        f"L3 $\\rightarrow$ L1 & {hicache['l3_to_l1_ms_mean']:.1f} & -- \\\\",
+        f"Answer recovery & -- & {100 * hicache['exact_recovery']:.0f}\\% \\\\",
+        f"L1/L2 pressure demotion & -- & {100 * min(hicache['l1_to_l2_demotion_rate'], hicache['l2_to_l3_demotion_rate']):.0f}\\% \\\\",
+        f"Radix namespace separation & -- & {100 * hicache['radix_separation_rate']:.0f}\\% \\\\",
+        r"\bottomrule",
+        r"\end{tabular}",
+    ]
+    (ENGINE_DIRS["sglang"] / "generated_hicache_table.tex").write_text(
+        "\n".join(hicache_lines) + "\n", encoding="utf-8"
+    )
+
+    condition_labels = {
+        "ordinary_split": "Ordinary split K/V",
+        "native_fp": "Native FP K/V",
+        "native_int8_resident": "Native int8 resident",
+        "native_shuffled": "Shuffled native K/V",
+        "no_memory": "No memory",
+    }
+    qa_lines = [
+        r"\begin{tabular}{llrrrr}",
+        r"\toprule",
+        r"Dataset & Condition & $n$ & Token F1 & Gold log-prob. & Resident MiB \\",
+        r"\midrule",
+    ]
+    for row in native["mlx"]["answer_quality"]:
+        qa_lines.append(
+            f"{_tex_escape(row['dataset'])} & {_tex_escape(condition_labels[row['condition']])} & "
+            f"{row['sample_count']} & {row['token_f1']:.3f} & "
+            f"{row['gold_answer_logprob']:.2f} & "
+            f"{row['resident_selected_kv_bytes'] / 1048576:.1f} \\\\"
+        )
+    qa_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_answer_quality_table.tex").write_text(
+        "\n".join(qa_lines) + "\n", encoding="utf-8"
+    )
+
+    pressure = native["mlx"]["bounded_pressure"]
+    if pressure is not None:
+        pressure_lines = [
+            r"\begin{tabular}{lrrrrrr}",
+            r"\toprule",
+            r"Dataset & Seeds & Capacity & Loads & Evictions & Reloads & Peak MiB \\",
+            r"\midrule",
+            f"{_tex_escape(pressure['dataset'])} & {pressure['seed_count']} & "
+            f"{pressure['resident_resource_budget']} & {pressure['loads_mean']:.1f} & "
+            f"{pressure['evictions_mean']:.1f} & {pressure['reloads_mean']:.1f} & "
+            f"{pressure['peak_resident_bytes_mean'] / 1048576:.1f} \\\\ ",
+            r"\bottomrule",
+            r"\end{tabular}",
+        ]
+        (ENGINE_DIRS["mlx"] / "generated_bounded_pressure_table.tex").write_text(
+            "\n".join(pressure_lines) + "\n", encoding="utf-8"
+        )
+
+    product_lines = [
+        r"\begin{tabularx}{\linewidth}{lYYY}",
+        r"\toprule",
+        r"Engine/model & Profile & Evidence tier & Status \\",
+        r"\midrule",
+    ]
+    for row in registry["product_matrix"]:
+        model = row["model"].split("/")[-1]
+        evidence = row["evidence_tier"].replace("_", " ").lower()
+        product_lines.append(
+            f"{_tex_escape(row['engine'])} / {_tex_escape(model)} & "
+            f"{_tex_escape(row['profile'])} & {_tex_escape(evidence)} & "
+            f"{_tex_escape(row['status'])} \\\\"
+        )
+    product_lines.extend([r"\bottomrule", r"\end{tabularx}"])
+    (RESULTS / "generated_engine_product_matrix.tex").write_text(
+        "\n".join(product_lines) + "\n", encoding="utf-8"
+    )
+
+
 def write_native_plots(registry: dict) -> None:
     native = registry["native_results"]
     rows = native["vllm"]["rows_by_selected_tokens"]
@@ -911,6 +1168,7 @@ def main() -> None:
     write_plots(registry)
     write_mlx_rotating_table(registry)
     write_native_tables(registry)
+    write_latest_engine_tables(registry)
     write_native_plots(registry)
 
 

@@ -29,8 +29,12 @@ strong black-box baseline. Separately, 80 controlled kernel measurements over
 five seeds, 16--512 selected tokens, and concurrency 1--8 match dense attention
 within maximum absolute error 0.00391. Warm native paged attention rises from
 0.489 to 0.642 ms; immutable block sharing avoids up to 14.0 MB at concurrency
-eight. This closes selected-block execution at kernel level, but not full V1
-scheduler, connector, generation, or CUDA-backend integration.
+eight. A subsequent five-seed live V1 experiment reserves scheduler-invisible
+tail pages and prepends them only to attention block tables. Native and full
+context recover 5/5 answers, disabled memory recovers 0/5, cleanup leaks are
+0/5, and wrong memory controls follow the wrong fact in 5/5 cases. This closes
+controlled V1 generation on Metal, but not APC coexistence in the same native
+request, serving concurrency, connectors, or CUDA integration.
 \end{abstract}
 
 \section{Introduction}
@@ -63,8 +67,9 @@ contributions:
   of vLLM's physical block numbers;
   \item a vLLM adapter whose advertised PRA level is derived from an installed
   native executor, with tenant-scoped prefix-cache salt support at E0;
-  \item a native Metal paged-K/V mechanism study, alongside the selected-text
-  serving baseline, with numerical parity, latency, and physical-sharing data.
+  \item native Metal paged-K/V kernel and live V1 generation studies, alongside
+  the selected-text serving baseline, with parity, causality, cleanup, latency,
+  and physical-sharing controls.
 \end{enumerate}
 
 \section{Two Independent Reuse Systems}
@@ -138,8 +143,8 @@ The concrete bridge is implemented in the vLLM-Metal native module. It maps
 each immutable logical key to ordinary native paged-cache pages and packs post-position
 K/V in $[\text{block},\text{token},H_{kv},D]$ layout, builds one block table per
 request, and invokes the native Metal \texttt{paged\_attention\_primitive}.
-Multiple requests may reference one physical handle. This is a verified
-attention-kernel path, not yet an E2 generation executor wired through V1.
+Multiple requests may reference one physical handle. This is the verified
+attention-kernel foundation used by the live V1 bridge below.
 
 The next integration layer is implemented in
 \path{src/pra_vllm/v1_metadata.py}. A request registers immutable logical keys,
@@ -153,8 +158,14 @@ either. Thus two quantities remain explicit:
 \]
 Appending selected pages to ordinary scheduler block tables would instead make
 V1 count them as sequential prefix state and assign the wrong query positions.
-The registry validates immutable request registration and explicit cleanup, but
-does not by itself constitute a model-runner attention hook or E2 generation.
+The registry validates immutable request registration and explicit cleanup.
+\path{src/pra_vllm/v1_native.py} supplies the corresponding model-runner hook:
+it extends the physical Metal cache with a reserved tail, writes immutable
+selected pages there, and prepends those page IDs only to request-local
+attention metadata. Scheduler slot mappings, sequential token counts, and
+ordinary prefix identities remain unchanged. Query positions advance by the
+source-position base. This first E2 path requires page-aligned selections, one
+cache group, all attention layers, and non-TurboQuant K/V.
 
 \section{Environment and Method}
 The remote host was an Apple M5 MacBook Pro with 16 GB unified memory, macOS
@@ -233,9 +244,29 @@ K/V occupies native vLLM-Metal pages and is consumed by the same paged-attention
 primitive used for sequential cache blocks. The output agrees with a dense MLX
 reference at every tested geometry. Warm latency changes smoothly with selected
 set size after compilation, and one immutable allocation is shared by all
-requests. These are positive block-execution and sharing results. They do not
-measure model generation, APC coexistence inside the same native request,
-connector transfer, or scheduler throughput.
+requests. These are positive block-execution and sharing results; the next
+experiment tests their use during generation.
+
+\subsection{Live V1 generation}
+\begin{table}[t]
+\centering
+\small
+\caption{Five-seed live vLLM-Metal V1 generation controls. ``Control success''
+means recovery for positive conditions, failure for disabled memory, absence
+of post-request leakage, or following the deliberately wrong memory.}
+\input{../shared/results/paper6_vllm/generated_v1_live_table.tex}
+\label{tab:vllm-v1-live}
+\end{table}
+
+Table~\ref{tab:vllm-v1-live} carries 32 selected native tokens through actual
+V1 generation while only 15 query tokens are visible. Native selected K/V and
+full visible context both recover the target in all five seeds. Query-only
+generation never recovers it, the request after native cleanup shows no leak,
+and substituting a wrong native memory changes the answer to that memory's
+code in every seed. Mean completion time is 159.7 ms for native memory and
+197.3 ms for full context; this small controlled cohort is a mechanism timing,
+not a throughput claim. Active selected K/V is 3.50 MiB. The experiment closes
+generation, causal influence, and request cleanup on this pinned Metal path.
 
 \subsection{Controlled residency pressure}
 The engine-neutral residency manager was also exercised on five deterministic
@@ -265,21 +296,22 @@ black-box semantics & smoke closed & selected and full context agree on the fixe
 prefix coexistence & smoke closed & APC remains active; repeated prompts are fast \\
 native block attention & controlled closed & 80 Metal kernel rows; dense-reference parity \\
 physical sharing & controlled closed & one immutable handle at concurrency 1--8 \\
-V1 metadata contract & prototype closed & selected block tables and positions remain scheduler-disjoint \\
-engine-native serving & open & scheduler, generation, APC coexistence, connectors unmeasured \\
+V1 metadata contract & controlled closed & selected block tables and positions remain scheduler-disjoint \\
+live V1 generation & controlled closed & positive, disabled, wrong-memory, and cleanup controls over five seeds \\
+engine-native serving & partial & live generation measured; APC coexistence, concurrency, connectors remain open \\
 robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
 The Metal backend now accepts selected non-prefix K/V at its native
-paged-attention boundary. The remaining boundary is above that kernel: V1
-scheduler allocation, generation lifetime, APC coexistence in one request,
-LMCache/connectors, and CUDA replication. The shared residency manager
+paged-attention boundary and carries scheduler-invisible pages through V1
+generation. Remaining boundaries are APC coexistence in the same selected
+request, continuous-batching concurrency, LMCache/connectors, and CUDA
+replication. The shared residency manager
 implements deterministic prefetch, pinning, sharing, and four eviction
 policies, but its pressure sweep is controlled simulation rather than vLLM
-scheduler telemetry. The V1 step registry removes a semantic ambiguity from the
-remaining patch, but the runner and attention backend must still consume it.
+scheduler telemetry.
 
 \section{Falsification and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
@@ -289,10 +321,12 @@ black-box baseline already preserves quality, uses 76.9\% fewer visible prompt
 tokens than full context, and coexists with APC. A native implementation must
 improve resident memory, transfer, TTFT, or throughput beyond this baseline.
 
-The current study uses a single small 4-bit model, one Apple host, one synthetic
-answer, and five repeats. The cold requests are order-sensitive, per-request
-vLLM cached-token counts are unavailable, and no end-to-end concurrency or
-HBM-pressure sweep was run. Apple unified memory also differs
+The current study uses a single small 4-bit model, one Apple host, synthetic
+answers, and five seeds. The cold requests are order-sensitive, per-request
+vLLM cached-token counts are unavailable, and no native APC-coexistence,
+continuous-batching concurrency, or HBM-pressure sweep was run. The live bridge
+requires page alignment, one K/V cache group, all consumer layers, and
+unquantized selected K/V. Apple unified memory also differs
 from the CUDA/LMCache environment for which many connector mechanisms were
 designed.
 
@@ -311,12 +345,11 @@ Paper 6 establishes a reproducible vLLM-Metal baseline and a control plane that
 cannot accidentally overclaim native execution. Selected
 text recovers the fixed answer with 76.9\% fewer visible tokens than full
 context and preserves APC. That success raises, rather than lowers, the bar for
-deep integration. The selected-K/V paged-attention path is now verified at
-kernel level with numerical parity and physical sharing. The next decisive
-experiment carries those blocks through V1 scheduling and generation, then
-compares matched-quality residency, transfer, APC coexistence, and throughput.
-The disjoint step-metadata contract is now explicit and tested, but PRA-vLLM is
-still a native-kernel prototype, not yet an engine-native serving result.
+deep integration. The selected-K/V path is now verified at kernel level and in
+live V1 generation, including wrong-memory causality and post-request isolation.
+PRA-vLLM is therefore an engine-native controlled prototype on Metal. The next
+decisive experiment compares matched-quality residency, transfer, native APC
+coexistence, continuous-batching throughput, and a CUDA implementation.
 
 \begin{thebibliography}{9}
 \bibitem{kwon2023vllm}
