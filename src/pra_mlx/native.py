@@ -10,8 +10,10 @@ part of the visible prompt.
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
@@ -41,6 +43,87 @@ class MLXNativeMemory:
     @property
     def nbytes(self) -> int:
         return sum(layer.nbytes for layer in self.layers)
+
+    def selected_nbytes(self, layer_indices: Iterable[int] | None = None) -> int:
+        """Return active bytes for a consumer-layer profile."""
+
+        if layer_indices is None:
+            return self.nbytes
+        selected = set(map(int, layer_indices))
+        return sum(layer.nbytes for index, layer in enumerate(self.layers) if index in selected)
+
+
+@dataclass(frozen=True)
+class MLXNativeFingerprint:
+    """Compatibility fields required before persisted K/V may be reused."""
+
+    model_id: str
+    model_revision: str
+    tokenizer_revision: str
+    dtype: str
+    position_policy: str
+    consumer_profile: str
+    resource_version: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "model_id": self.model_id,
+            "model_revision": self.model_revision,
+            "tokenizer_revision": self.tokenizer_revision,
+            "dtype": self.dtype,
+            "position_policy": self.position_policy,
+            "consumer_profile": self.consumer_profile,
+            "resource_version": self.resource_version,
+        }
+
+
+class MLXPositionedKVCache:
+    """Local-only cache whose queries retain the source-position frame.
+
+    Non-consumer layers do not receive selected memory, but their query and
+    local K/V positions must still match ordinary split-cache execution.
+    """
+
+    def __init__(self, local_cache: object, position_base: int) -> None:
+        self.local_cache = local_cache
+        self.position_base = int(position_base)
+
+    @property
+    def offset(self) -> int:
+        return self.position_base + int(self.local_cache.offset)
+
+    @property
+    def local_offset(self) -> int:
+        return int(self.local_cache.offset)
+
+    @property
+    def state(self):
+        return self.local_cache.state
+
+    @property
+    def nbytes(self) -> int:
+        return int(getattr(self.local_cache, "nbytes", 0))
+
+    def empty(self) -> bool:
+        return bool(getattr(self.local_cache, "empty", lambda: self.local_offset == 0)())
+
+    def is_trimmable(self) -> bool:
+        operation = getattr(self.local_cache, "is_trimmable", None)
+        return bool(operation and operation())
+
+    def trim(self, n: int) -> int:
+        return int(self.local_cache.trim(n))
+
+    def update_and_fetch(self, keys, values):
+        return self.local_cache.update_and_fetch(keys, values)
+
+    def make_mask(self, n: int, return_array: bool = False, window_size=None, **kwargs):
+        return self.local_cache.make_mask(
+            n,
+            return_array=return_array,
+            window_size=window_size,
+            **kwargs,
+        )
 
 
 class MLXSelectedKVCache:
@@ -172,7 +255,11 @@ def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMem
 
 
 def make_native_prompt_cache(
-    model: object, memory: MLXNativeMemory, *, max_kv_size: int | None = None
+    model: object,
+    memory: MLXNativeMemory,
+    *,
+    max_kv_size: int | None = None,
+    selected_layers: Iterable[int] | None = None,
 ):
     """Create request-local sequential caches backed by immutable selected K/V."""
 
@@ -181,10 +268,82 @@ def make_native_prompt_cache(
     local = make_prompt_cache(model, max_kv_size=max_kv_size)
     if len(local) != len(memory.layers):
         raise ValueError("MLX native memory does not match the model layer count.")
+    selected = (
+        set(range(len(memory.layers)))
+        if selected_layers is None
+        else set(map(int, selected_layers))
+    )
+    invalid = selected - set(range(len(memory.layers)))
+    if invalid:
+        raise ValueError(f"MLX consumer layers are out of range: {sorted(invalid)}")
     return [
-        MLXSelectedKVCache(cache, layer, memory.source_tokens)
-        for cache, layer in zip(local, memory.layers)
+        (
+            MLXSelectedKVCache(cache, layer, memory.source_tokens)
+            if index in selected
+            else MLXPositionedKVCache(cache, memory.source_tokens)
+        )
+        for index, (cache, layer) in enumerate(zip(local, memory.layers))
     ]
+
+
+def save_native_memory(
+    path: str | Path,
+    memory: MLXNativeMemory,
+    fingerprint: MLXNativeFingerprint,
+) -> tuple[Path, Path]:
+    """Persist immutable selected K/V and a strict compatibility manifest."""
+
+    import mlx.core as mx
+
+    target = Path(path)
+    arrays_path = target.with_suffix(".npz")
+    manifest_path = target.with_suffix(".json")
+    arrays_path.parent.mkdir(parents=True, exist_ok=True)
+    arrays = {}
+    for index, layer in enumerate(memory.layers):
+        arrays[f"layer_{index:04d}_k"] = layer.keys
+        arrays[f"layer_{index:04d}_v"] = layer.values
+    mx.savez(str(arrays_path), **arrays)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "source_tokens": memory.source_tokens,
+                "layer_count": len(memory.layers),
+                "fingerprint": fingerprint.to_dict(),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return arrays_path, manifest_path
+
+
+def load_native_memory(
+    path: str | Path,
+    *,
+    expected_fingerprint: MLXNativeFingerprint,
+) -> MLXNativeMemory:
+    """Load persisted K/V only when every compatibility field agrees."""
+
+    import mlx.core as mx
+
+    target = Path(path)
+    arrays_path = target.with_suffix(".npz")
+    manifest = json.loads(target.with_suffix(".json").read_text(encoding="utf-8"))
+    if manifest.get("fingerprint") != expected_fingerprint.to_dict():
+        raise ValueError("Persisted MLX PRA cache fingerprint does not match runtime.")
+    arrays = mx.load(str(arrays_path))
+    layers = tuple(
+        MLXNativeLayerKV(
+            arrays[f"layer_{index:04d}_k"],
+            arrays[f"layer_{index:04d}_v"],
+        )
+        for index in range(int(manifest["layer_count"]))
+    )
+    memory = MLXNativeMemory(layers, source_tokens=int(manifest["source_tokens"]))
+    return memory
 
 
 class MLXInProcessNativeExecutor:
@@ -351,7 +510,12 @@ class MLXInProcessNativeExecutor:
         from mlx_lm.sample_utils import make_sampler
 
         memory, keys, selected_tokens = self._resolve_memory(request)
-        cache = make_native_prompt_cache(self.model, memory)
+        detail_layers = request.pra_policy.get("detail_kv_layers")
+        cache = make_native_prompt_cache(
+            self.model,
+            memory,
+            selected_layers=None if detail_layers is None else tuple(detail_layers),
+        )
         prompt = self._prompt(request)
         started = time.perf_counter()
         with self.residency.pin_request(request.request_id, keys):
@@ -369,7 +533,7 @@ class MLXInProcessNativeExecutor:
                     "prompt_tokens": int(response.prompt_tokens),
                     "generation_tokens": int(response.generation_tokens),
                     "selected_native_tokens": selected_tokens,
-                    "active_native_kv_bytes": memory.nbytes,
+                    "active_native_kv_bytes": memory.selected_nbytes(detail_layers),
                     "elapsed_ms": (time.perf_counter() - started) * 1000.0,
                     "native_kv_used": True,
                 }

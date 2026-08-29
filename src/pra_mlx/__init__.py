@@ -5,10 +5,14 @@ from .native import (
     MLXInProcessNativeExecutor,
     MLXNativeLayerKV,
     MLXNativeMemory,
+    MLXNativeFingerprint,
+    MLXPositionedKVCache,
     MLXSelectedKVCache,
     combine_native_memories,
     encode_native_memory,
     make_native_prompt_cache,
+    load_native_memory,
+    save_native_memory,
 )
 
 __all__ = [
@@ -17,8 +21,12 @@ __all__ = [
     "MLXNativeExecutor",
     "MLXNativeLayerKV",
     "MLXNativeMemory",
+    "MLXNativeFingerprint",
+    "MLXPositionedKVCache",
     "MLXSelectedKVCache",
     "combine_native_memories",
     "encode_native_memory",
     "make_native_prompt_cache",
+    "load_native_memory",
+    "save_native_memory",
 ]
