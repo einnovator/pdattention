@@ -38,6 +38,7 @@ def main() -> None:
     from pra_mlx.native import encode_native_memory
     from pra_sglang.mlx_native import SGLangMLXNativeBridge, SGLangSelectedKVCache
     from sglang.srt.hardware_backend.mlx.model_runner import MlxModelRunner
+    from transformers import AutoTokenizer
 
     runner = MlxModelRunner(
         args.model,
@@ -45,7 +46,7 @@ def main() -> None:
         disable_radix_cache=True,
         enable_sampling=False,
     )
-    tokenizer = runner.tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
     bridge = SGLangMLXNativeBridge(runner)
     rows = []
     try:
