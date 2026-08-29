@@ -47,13 +47,19 @@ def main() -> None:
         enable_sampling=False,
     )
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
+    prepared = []
+    for seed in SEEDS:
+        source = tokenizer.encode(_source(seed), add_special_tokens=False)
+        query = tokenizer.encode(_query(), add_special_tokens=False)
+        memory = encode_native_memory(runner.model, source)
+        prepared.append((seed, source, query, memory))
+
+    # Native memories are encoded before installing the request-time wrapper;
+    # the bridge is a consumer path and must never participate in ingestion.
     bridge = SGLangMLXNativeBridge(runner)
     rows = []
     try:
-        for seed in SEEDS:
-            source = tokenizer.encode(_source(seed), add_special_tokens=False)
-            query = tokenizer.encode(_query(), add_special_tokens=False)
-            memory = encode_native_memory(runner.model, source)
+        for seed, source, query, memory in prepared:
             requests = (
                 (f"full-{seed}", source + query, False),
                 (f"native-{seed}", query, True),
