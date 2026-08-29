@@ -173,13 +173,13 @@ def build_registry() -> dict:
             "model": "mlx-community/Qwen3-1.7B-4bit",
             "profile": "FP/int8 all-layer selected K/V",
             "hardware": metadata["mlx"]["hardware"],
-            "evidence_tier": "NATURAL_QA_ORACLE_EVIDENCE_MATERIALIZATION",
-            "status": "natural QA transport",
+            "evidence_tier": "NATURAL_QA_ROUTED_EVIDENCE_MATERIALIZATION",
+            "status": "routed natural QA; oracle gap remains",
         },
     ]
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-native-v3",
+        "registry_version": "2026-08-paper6-engine-native-v4",
         "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
@@ -227,10 +227,14 @@ def _native_results() -> dict:
         for dataset in ("qasper", "hotpotqa")
     }
     mlx_answer_quality = {}
+    mlx_routed_quality = {}
     for dataset in ("qasper", "hotpotqa", "2wikimultihopqa"):
         path = ENGINE_DIRS["mlx"] / f"answer_quality_{dataset}.json"
         if path.exists():
             mlx_answer_quality[dataset] = _load(path)
+        routed_path = ENGINE_DIRS["mlx"] / f"routed_answer_quality_{dataset}.json"
+        if routed_path.exists():
+            mlx_routed_quality[dataset] = _load(routed_path)
     pressure_path = ENGINE_DIRS["mlx"] / "bounded_residency_hotpotqa.json"
     mlx_pressure = _load(pressure_path) if pressure_path.exists() else None
 
@@ -379,6 +383,97 @@ def _native_results() -> dict:
                 )
         return summary
 
+    def routed_quality_summary(artifacts: dict[str, dict]) -> dict[str, list[dict]]:
+        routing = []
+        conditions = []
+        parity = []
+        for dataset, artifact in artifacts.items():
+            routed = [
+                row for row in artifact["rows"] if row["condition"] == "routed_native"
+            ]
+            routing.append(
+                {
+                    "dataset": dataset,
+                    "sample_count": len(routed),
+                    "seed_count": len({row["seed"] for row in routed}),
+                    "candidate_documents": fmean(
+                        row["candidate_documents"] for row in routed
+                    ),
+                    "selected_documents": fmean(
+                        row["selected_documents"] for row in routed
+                    ),
+                    "evidence_recall_at_1": fmean(
+                        row["evidence_recall_at_1"] for row in routed
+                    ),
+                    "evidence_recall_at_2": fmean(
+                        row["evidence_recall_at_2"] for row in routed
+                    ),
+                    "evidence_recall_at_4": fmean(
+                        row["evidence_recall_at_4"] for row in routed
+                    ),
+                    "routed_source_tokens": fmean(
+                        row["routed_source_tokens"] for row in routed
+                    ),
+                    "index_build_ms": fmean(row["index_build_ms"] for row in routed),
+                    "routing_ms": fmean(row["routing_ms"] for row in routed),
+                    "index_bytes": fmean(row["index_bytes"] for row in routed),
+                }
+            )
+            for condition in (
+                "oracle_native",
+                "routed_ordinary",
+                "routed_native",
+                "routed_shuffled",
+                "no_memory",
+            ):
+                values = [
+                    row for row in artifact["rows"] if row["condition"] == condition
+                ]
+                if values:
+                    conditions.append(
+                        {
+                            "dataset": dataset,
+                            "condition": condition,
+                            "sample_count": len(values),
+                            "token_f1": fmean(row["token_f1"] for row in values),
+                            "gold_answer_logprob": fmean(
+                                row["gold_answer_logprob"] for row in values
+                            ),
+                            "completion_latency_ms": fmean(
+                                row["completion_latency_ms"] for row in values
+                            ),
+                        }
+                    )
+            ordinary = {
+                (row["seed"], row["example_id"]): row
+                for row in artifact["rows"]
+                if row["condition"] == "routed_ordinary"
+            }
+            paired = [
+                row for row in artifact["rows"] if row["condition"] == "routed_native"
+            ]
+            parity.append(
+                {
+                    "dataset": dataset,
+                    "pair_count": len(paired),
+                    "matching_outputs": sum(
+                        row["output"]
+                        == ordinary[(row["seed"], row["example_id"])]["output"]
+                        for row in paired
+                    ),
+                    "max_logprob_delta": max(
+                        abs(
+                            row["gold_answer_logprob"]
+                            - ordinary[(row["seed"], row["example_id"])][
+                                "gold_answer_logprob"
+                            ]
+                        )
+                        for row in paired
+                    ),
+                }
+            )
+        return {"routing": routing, "conditions": conditions, "parity": parity}
+
     hicache_rows = sglang_hicache["rows"]
     sglang_combined_conditions = [
         condition
@@ -491,6 +586,7 @@ def _native_results() -> dict:
             },
             "natural": natural_summary(mlx_natural),
             "answer_quality": answer_quality_summary(mlx_answer_quality),
+            "routed_answer_quality": routed_quality_summary(mlx_routed_quality),
             "bounded_pressure": pressure_summary,
         },
         "sglang": {
@@ -1088,6 +1184,50 @@ def write_latest_engine_tables(registry: dict) -> None:
         "\n".join(qa_lines) + "\n", encoding="utf-8"
     )
 
+    routed = native["mlx"]["routed_answer_quality"]
+    routed_lines = [
+        r"\begin{tabular}{lrrrrrrr}",
+        r"\toprule",
+        r"Dataset & $n$ & Candidates & R@1 & R@2 & R@4 & Tokens & Route ms \\",
+        r"\midrule",
+    ]
+    for row in routed["routing"]:
+        routed_lines.append(
+            f"{_tex_escape(row['dataset'])} & {row['sample_count']} & "
+            f"{row['candidate_documents']:.1f} & {row['evidence_recall_at_1']:.3f} & "
+            f"{row['evidence_recall_at_2']:.3f} & {row['evidence_recall_at_4']:.3f} & "
+            f"{row['routed_source_tokens']:.1f} & {row['routing_ms']:.2f} \\\\"
+        )
+    routed_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_routed_recall_table.tex").write_text(
+        "\n".join(routed_lines) + "\n", encoding="utf-8"
+    )
+
+    routed_condition_labels = {
+        "oracle_native": "Oracle",
+        "routed_native": "Routed",
+        "routed_shuffled": "Shuffled",
+        "no_memory": "No memory",
+    }
+    routed_quality_lines = [
+        r"\begin{tabular}{llrrr}",
+        r"\toprule",
+        r"Dataset & Condition & $n$ & Token F1 & Gold log-prob. \\",
+        r"\midrule",
+    ]
+    for row in routed["conditions"]:
+        if row["condition"] not in routed_condition_labels:
+            continue
+        routed_quality_lines.append(
+            f"{_tex_escape(row['dataset'])} & "
+            f"{routed_condition_labels[row['condition']]} & {row['sample_count']} & "
+            f"{row['token_f1']:.3f} & {row['gold_answer_logprob']:.2f} \\\\"
+        )
+    routed_quality_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_routed_quality_table.tex").write_text(
+        "\n".join(routed_quality_lines) + "\n", encoding="utf-8"
+    )
+
     pressure = native["mlx"]["bounded_pressure"]
     if pressure is not None:
         pressure_lines = [
@@ -1192,6 +1332,57 @@ def write_native_plots(registry: dict) -> None:
     fig.tight_layout()
     fig.savefig(ENGINE_DIRS["mlx"] / "native_profile_concurrency.png", dpi=180)
     fig.savefig(ENGINE_DIRS["mlx"] / "native_profile_concurrency.pdf")
+    plt.close(fig)
+
+    routed = mlx["routed_answer_quality"]
+    datasets = [row["dataset"] for row in routed["routing"]]
+    fig, axes = plt.subplots(1, 2, figsize=(10.2, 3.7))
+    width = 0.23
+    positions = list(range(len(datasets)))
+    for offset, (key, label, color) in enumerate(
+        (
+            ("evidence_recall_at_1", "R@1", "#6b7280"),
+            ("evidence_recall_at_2", "R@2", "#2f6f9f"),
+            ("evidence_recall_at_4", "R@4", "#2f855a"),
+        )
+    ):
+        axes[0].bar(
+            [position + (offset - 1) * width for position in positions],
+            [row[key] for row in routed["routing"]],
+            width=width,
+            label=label,
+            color=color,
+        )
+    axes[0].set_xticks(positions, datasets)
+    axes[0].set_ylim(0, 1.0)
+    axes[0].set_ylabel("Gold evidence recall")
+    axes[0].set_title("SDK hybrid document routing")
+    axes[0].legend(frameon=False)
+    quality_conditions = ("oracle_native", "routed_native", "routed_shuffled")
+    colors = ("#2f855a", "#2f6f9f", "#b35c1e")
+    for offset, (condition, color) in enumerate(zip(quality_conditions, colors)):
+        values = {
+            row["dataset"]: row["gold_answer_logprob"]
+            for row in routed["conditions"]
+            if row["condition"] == condition
+        }
+        axes[1].bar(
+            [position + (offset - 1) * width for position in positions],
+            [values[dataset] for dataset in datasets],
+            width=width,
+            label=condition.replace("_native", "").replace("routed_", ""),
+            color=color,
+        )
+    axes[1].set_xticks(positions, datasets)
+    axes[1].set_ylabel("Gold-answer log-probability")
+    axes[1].set_title("Oracle, routed, and wrong memory")
+    axes[1].legend(frameon=False)
+    for axis in axes:
+        axis.spines[["top", "right"]].set_visible(False)
+        axis.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(ENGINE_DIRS["mlx"] / "routed_qa_recall_quality.png", dpi=180)
+    fig.savefig(ENGINE_DIRS["mlx"] / "routed_qa_recall_quality.pdf")
     plt.close(fig)
 
     sglang = native["sglang"]

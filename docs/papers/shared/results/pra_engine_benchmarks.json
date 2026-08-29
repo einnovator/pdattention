@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "registry_version": "2026-08-paper6-engine-native-v3",
+  "registry_version": "2026-08-paper6-engine-native-v4",
   "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
   "environment": {
     "vllm": {
@@ -546,6 +546,194 @@
           "storage_compression_ratio": 1.0
         }
       ],
+      "routed_answer_quality": {
+        "routing": [
+          {
+            "dataset": "qasper",
+            "sample_count": 20,
+            "seed_count": 5,
+            "candidate_documents": 46.6,
+            "selected_documents": 4.0,
+            "evidence_recall_at_1": 0.11875,
+            "evidence_recall_at_2": 0.13958333333333334,
+            "evidence_recall_at_4": 0.34791666666666665,
+            "routed_source_tokens": 370.6,
+            "index_build_ms": 32.98114180797711,
+            "routing_ms": 11.923941725399345,
+            "index_bytes": 76475.85
+          },
+          {
+            "dataset": "hotpotqa",
+            "sample_count": 20,
+            "seed_count": 5,
+            "candidate_documents": 10.0,
+            "selected_documents": 4.0,
+            "evidence_recall_at_1": 0.4,
+            "evidence_recall_at_2": 0.6,
+            "evidence_recall_at_4": 0.725,
+            "routed_source_tokens": 376.3,
+            "index_build_ms": 8.20367494598031,
+            "routing_ms": 3.5749291419051588,
+            "index_bytes": 17151.1
+          },
+          {
+            "dataset": "2wikimultihopqa",
+            "sample_count": 20,
+            "seed_count": 5,
+            "candidate_documents": 10.0,
+            "selected_documents": 4.0,
+            "evidence_recall_at_1": 0.4875,
+            "evidence_recall_at_2": 0.6625,
+            "evidence_recall_at_4": 0.775,
+            "routed_source_tokens": 341.5,
+            "index_build_ms": 6.558235385455191,
+            "routing_ms": 2.8478249558247626,
+            "index_bytes": 13707.1
+          }
+        ],
+        "conditions": [
+          {
+            "dataset": "qasper",
+            "condition": "oracle_native",
+            "sample_count": 20,
+            "token_f1": 0.14773634492442542,
+            "gold_answer_logprob": -27.250519466400146,
+            "completion_latency_ms": 328.9342665928416
+          },
+          {
+            "dataset": "qasper",
+            "condition": "routed_ordinary",
+            "sample_count": 20,
+            "token_f1": 0.11553300792774476,
+            "gold_answer_logprob": -38.36442413330078,
+            "completion_latency_ms": 368.3859604992904
+          },
+          {
+            "dataset": "qasper",
+            "condition": "routed_native",
+            "sample_count": 20,
+            "token_f1": 0.11553300792774476,
+            "gold_answer_logprob": -38.36442413330078,
+            "completion_latency_ms": 327.368354157079
+          },
+          {
+            "dataset": "qasper",
+            "condition": "routed_shuffled",
+            "sample_count": 20,
+            "token_f1": 0.03375426461410443,
+            "gold_answer_logprob": -54.134545516967776,
+            "completion_latency_ms": 328.70106864720583
+          },
+          {
+            "dataset": "qasper",
+            "condition": "no_memory",
+            "sample_count": 20,
+            "token_f1": 0.02599701023614067,
+            "gold_answer_logprob": -60.20111141204834,
+            "completion_latency_ms": 284.2593082692474
+          },
+          {
+            "dataset": "hotpotqa",
+            "condition": "oracle_native",
+            "sample_count": 20,
+            "token_f1": 0.12909511240393595,
+            "gold_answer_logprob": -10.954554748535156,
+            "completion_latency_ms": 335.8024436980486
+          },
+          {
+            "dataset": "hotpotqa",
+            "condition": "routed_ordinary",
+            "sample_count": 20,
+            "token_f1": 0.09102941176470589,
+            "gold_answer_logprob": -15.976115131378174,
+            "completion_latency_ms": 370.0010563014075
+          },
+          {
+            "dataset": "hotpotqa",
+            "condition": "routed_native",
+            "sample_count": 20,
+            "token_f1": 0.09102941176470589,
+            "gold_answer_logprob": -15.976115131378174,
+            "completion_latency_ms": 334.30110219633207
+          },
+          {
+            "dataset": "hotpotqa",
+            "condition": "routed_shuffled",
+            "sample_count": 20,
+            "token_f1": 0.05419584500466853,
+            "gold_answer_logprob": -20.3036997795105,
+            "completion_latency_ms": 329.21640630811453
+          },
+          {
+            "dataset": "hotpotqa",
+            "condition": "no_memory",
+            "sample_count": 20,
+            "token_f1": 0.05775829562594268,
+            "gold_answer_logprob": -15.683781051635743,
+            "completion_latency_ms": 286.7858395911753
+          },
+          {
+            "dataset": "2wikimultihopqa",
+            "condition": "oracle_native",
+            "sample_count": 20,
+            "token_f1": 0.05932539682539682,
+            "gold_answer_logprob": -10.298653030395508,
+            "completion_latency_ms": 331.94357310421765
+          },
+          {
+            "dataset": "2wikimultihopqa",
+            "condition": "routed_ordinary",
+            "sample_count": 20,
+            "token_f1": 0.08246354952237306,
+            "gold_answer_logprob": -14.311743545532227,
+            "completion_latency_ms": 366.8268498615362
+          },
+          {
+            "dataset": "2wikimultihopqa",
+            "condition": "routed_native",
+            "sample_count": 20,
+            "token_f1": 0.08246354952237306,
+            "gold_answer_logprob": -14.311743545532227,
+            "completion_latency_ms": 327.4233770207502
+          },
+          {
+            "dataset": "2wikimultihopqa",
+            "condition": "routed_shuffled",
+            "sample_count": 20,
+            "token_f1": 0.054397773279352225,
+            "gold_answer_logprob": -16.995400428771973,
+            "completion_latency_ms": 326.6388582880609
+          },
+          {
+            "dataset": "2wikimultihopqa",
+            "condition": "no_memory",
+            "sample_count": 20,
+            "token_f1": 0.07333849329205366,
+            "gold_answer_logprob": -13.88079767227173,
+            "completion_latency_ms": 287.3667791602202
+          }
+        ],
+        "parity": [
+          {
+            "dataset": "qasper",
+            "pair_count": 20,
+            "matching_outputs": 20,
+            "max_logprob_delta": 0.0
+          },
+          {
+            "dataset": "hotpotqa",
+            "pair_count": 20,
+            "matching_outputs": 20,
+            "max_logprob_delta": 0.0
+          },
+          {
+            "dataset": "2wikimultihopqa",
+            "pair_count": 20,
+            "matching_outputs": 20,
+            "max_logprob_delta": 0.0
+          }
+        ]
+      },
       "bounded_pressure": {
         "dataset": "hotpotqa",
         "evidence_tier": "CONTROLLED_NATURAL_QA_PRESSURE",
@@ -818,8 +1006,8 @@
       "model": "mlx-community/Qwen3-1.7B-4bit",
       "profile": "FP/int8 all-layer selected K/V",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
-      "evidence_tier": "NATURAL_QA_ORACLE_EVIDENCE_MATERIALIZATION",
-      "status": "natural QA transport"
+      "evidence_tier": "NATURAL_QA_ROUTED_EVIDENCE_MATERIALIZATION",
+      "status": "routed natural QA; oracle gap remains"
     }
   ],
   "rows": [

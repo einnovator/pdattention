@@ -42,7 +42,13 @@ HotpotQA, and 2WikiMultiHopQA. Shuffled and absent memory degrade both metrics
 on QASPER and HotpotQA; on 2Wiki the gold-answer log-probability degrades while
 free-generation F1 is noisy. Per-head int8
 residency halves selected-K/V bytes and preserves this small cohort's quality,
-with request-local dequantization before attention.
+with request-local dequantization before attention. Finally, an SDK hybrid
+router selects four documents or paper paragraphs before native
+materialization. Native and ordinary consumption agree exactly on all 60
+paired generations. Gold evidence recall at four is 0.348 on QASPER, 0.725 on
+HotpotQA, and 0.775 on 2Wiki. Routed memory outperforms shuffled memory on
+answer likelihood in all three datasets, but remains below oracle evidence;
+discovery, rather than MLX transport, is now the measured bottleneck.
 \end{abstract}
 
 \section{Introduction}
@@ -59,14 +65,15 @@ different object:
 Unified memory may reduce copy overhead, but it does not make every retained
 token free to index, keep, or attend to.
 
-This paper studies five questions. First, can selected context coexist with
+This paper studies six questions. First, can selected context coexist with
 MLX's exact prompt cache? Second, can a bounded rotating cache plus a selected
 archive record recover old evidence? Third, what software boundary is needed
 before an MLX adapter may claim native PRA K/V rather than selected visible
 text? Fourth, how much native K/V can consumer-layer profiles remove without
 losing the controlled answer? Fifth, do persistence, request sharing, and
 natural-text causal controls, original benchmark questions, and quantized
-residency preserve the mechanism?
+residency preserve the mechanism? Sixth, when the runtime itself selects
+evidence, can we separate routing error from native-K/V consumption error?
 
 \section{Cache Taxonomy}
 We keep three mechanisms distinct:
@@ -137,7 +144,10 @@ deployment baseline.
 The end-task study uses \texttt{mlx-community/Qwen3-1.7B-4bit}, MLX-LM 0.31.3,
 five seeds, and four held-out examples per seed and dataset. Evidence is
 oracle-scoped from dataset annotations and truncated to 384 tokens; routing
-quality is deliberately outside this engine-transport experiment.
+quality is deliberately outside the first engine-transport experiment. A
+second matched-budget cohort retains every HotpotQA and 2Wiki candidate
+document and every QASPER paper paragraph, then routes four candidates before
+native materialization.
 
 \section{Server Prompt-Cache Experiment}
 The shared fixed task contains a stable 309-token prefix, one authoritative
@@ -354,6 +364,64 @@ sample is small. The supported conclusion is non-degradation here plus a
 near-exact $2\times$ residency reduction. Dequantization restores model-native
 K/V before attention, so active materialization bytes are not reduced.
 
+\subsection{Routed evidence rather than oracle evidence}
+We next remove the oracle ordering. Each HotpotQA and 2Wiki article, or each
+QASPER paragraph, becomes a typed \texttt{AgentResource}. The product SDK's
+\texttt{PersistentResourceIndex} combines normalized token overlap, indexed
+BM25, and a deterministic signed-hash semantic control. It ranks the original
+question against all candidates; the top four are joined in rank order,
+truncated to the same 384-token budget, and encoded as native K/V. This is a
+parameter-free product-path baseline, not a learned retriever. Each dataset
+contains 20 distinct examples sampled under five seeds.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Document routing before MLX materialization. Recall is the fraction
+of annotated evidence documents recovered in the first $k$ ranks. Route time
+excludes one-time index construction.}
+\input{../shared/results/paper6_2_mlx/generated_routed_recall_table.tex}
+\label{tab:mlx-routed-recall}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Original-answer generation after routed materialization. Oracle uses
+annotation-scoped evidence; shuffled supplies another example's routed K/V.}
+\input{../shared/results/paper6_2_mlx/generated_routed_quality_table.tex}
+\label{tab:mlx-routed-quality}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_2_mlx/routed_qa_recall_quality.png}
+\caption{Left: evidence discovery improves as four candidates are admitted,
+but QASPER paragraph routing remains difficult. Right: routed memory carries
+more answer signal than shuffled memory, while the oracle gap remains.}
+\label{fig:mlx-routed-quality}
+\end{figure}
+
+Table~\ref{tab:mlx-routed-recall} exposes the discovery boundary. HotpotQA and
+2Wiki have ten candidate documents per question and reach 0.725 and 0.775
+recall@4. QASPER averages 46.6 paragraph candidates and reaches only 0.348.
+The selected sources consume 342--376 tokens. Mean scoring time is 2.85 ms on
+2Wiki, 3.57 ms on HotpotQA, and 11.92 ms on QASPER; corresponding one-time
+index construction means are 6.56, 8.20, and 32.98 ms. These small exhaustive
+Python cohorts establish cost accounting, not a production latency claim.
+
+The routed ordinary-cache and native-K/V paths produce the same output and
+exactly equal gold-answer log-probability on all 60 pairs. MLX consumption
+therefore adds no measured quality error after selection. Routed memory is
+better than shuffled memory in both F1 and gold likelihood on every dataset.
+It remains below oracle likelihood, however: QASPER changes from $-27.25$ to
+$-38.36$, HotpotQA from $-10.95$ to $-15.98$, and 2Wiki from $-10.30$ to
+$-14.31$. HotpotQA and 2Wiki routed likelihood also does not consistently beat
+the absent-memory control, despite better routed F1. Partial retrieval can be
+insufficient or misleading, while short free generation is noisy. The result
+closes the routed engine path and localizes the remaining deficit to evidence
+selection; it does not close a production QA-quality gate.
+
 \begin{table}[!htbp]
 \centering
 \small
@@ -389,6 +457,7 @@ persistence & controlled closed & strict fingerprint; zero-error reload in 7.2 m
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided at eight \\
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\
+routed natural QA & controlled partial & 60/60 consumption parity; recall@4 0.348--0.775; oracle gap open \\
 quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
 memory pressure & controlled partial & hard two-resource budget forces eviction and reload; no OOM frontier \\
 \bottomrule
@@ -406,11 +475,14 @@ The study uses one 4-bit model for profile and natural controls, one machine, a
 synthetic server task, and controlled transport fixtures. The server experiment
 has only five repeats per condition, so p95/p99 are not reported. The natural
 controls contain real dataset text but an inserted fixed answer-code mechanism.
-The later end-task study uses original answers but oracle-scoped evidence, only
-20 examples per condition and dataset, and no routing. Strict EM is confounded
-by verbose continuation. Int8 detail is restored before attention, so it saves
-retained bytes rather than active attention bytes. No native Q/K index, queued
-server concurrency, or OOM frontier is measured.
+The first end-task study uses original answers but oracle-scoped evidence. The
+routed extension has only 20 examples per condition and dataset, a
+parameter-free lexical/hash index, and four selected candidates. Its five seeds
+sample distinct examples but do not substitute for a larger cohort. Strict EM
+is confounded by verbose continuation. Int8 detail is restored before
+attention, so it saves retained bytes rather than active attention bytes. No
+learned native Q/K index, queued server concurrency, or OOM frontier is
+measured.
 The rotating intervention also changes effective local context and can perturb
 chat-template semantics.
 
@@ -435,9 +507,13 @@ working native prototype. Full-precision native transport also matches ordinary
 split-cache quality on original-answer QA, while wrong and absent memory fail
 causally. Per-head int8 halves retained detail without measured degradation in
 the small cohort, and hard-budget lifecycle testing forces real eviction and
-reload. Queued server pressure, an OOM frontier, and broader quality cohorts
-remain necessary before production claims. Last-half consumption and int8
-residency are controlled candidates, not product profile defaults.
+reload. With SDK routing, native and ordinary paths remain identical on 60/60
+paired generations, but recall@4 ranges from 0.348 to 0.775 and answer
+likelihood remains below oracle evidence. The next quality improvement belongs
+in discovery, not the MLX cache transport. Queued server pressure, an OOM
+frontier, learned routing, and broader quality cohorts remain necessary before
+production claims. Last-half consumption and int8 residency are controlled
+candidates, not product profile defaults.
 
 \begin{thebibliography}{9}
 \bibitem{hannun2023mlx}
