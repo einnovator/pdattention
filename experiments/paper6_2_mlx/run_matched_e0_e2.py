@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import time
 from pathlib import Path
@@ -144,87 +145,118 @@ def main() -> None:
             multi_query_count=args.multi_query_count,
             concurrency=args.concurrency,
         )
-        for request in requests:
+        regular_requests = tuple(
+            request
+            for request in requests
+            if request.regime != "concurrent_shared_resource"
+        )
+        concurrent_requests = tuple(
+            request
+            for request in requests
+            if request.regime == "concurrent_shared_resource"
+        )
+
+        def execute(request, condition):
             query = list(
                 tokenizer.encode(request.query.text, add_special_tokens=False)
             )
+            cache_factory = (
+                (lambda: _restore_cache(model, ordinary_states))
+                if condition == "e0_selected_text"
+                else (lambda: make_native_prompt_cache(model, native_memory))
+            )
+            logprob = _answer_logprob(model, query, answer, cache_factory())
+            generated = _generate_timed(
+                model, tokenizer, query, cache_factory(), args.max_new_tokens
+            )
+            exact, f1 = _metrics(generated["output"], example.answer)
+            return request, condition, query, generated, logprob, exact, f1
+
+        def append_result(result, requests_per_second=None):
+            request, condition, query, generated, logprob, exact, f1 = result
+            native = condition == "e2_native_kv"
             reused = request.regime != "cold_one_shot"
-            for condition in ("e0_selected_text", "e2_native_kv"):
-                cache_factory = (
-                    (lambda: _restore_cache(model, ordinary_states))
-                    if condition == "e0_selected_text"
-                    else (lambda: make_native_prompt_cache(model, native_memory))
-                )
-                logprob = _answer_logprob(model, query, answer, cache_factory())
-                generated = _generate_timed(
-                    model, tokenizer, query, cache_factory(), args.max_new_tokens
-                )
-                exact, f1 = _metrics(generated["output"], example.answer)
-                ingestion_ms = (
-                    e0_ingestion_ms
-                    if condition == "e0_selected_text"
-                    else e2_ingestion_ms
-                )
-                native = condition == "e2_native_kv"
-                rows.append(
-                    benchmark_row(
-                        condition=condition,
-                        selection=example.selection,
-                        request=request,
-                        output=str(generated["output"]),
-                        metrics=benchmark_metrics(
-                            exact_match=exact,
-                            token_f1=f1,
-                            gold_answer_logprob=logprob,
-                            evidence_recall=example.evidence_recall,
-                            candidate_tokens=len(candidate_tokens),
-                            selected_source_tokens=len(source),
-                            visible_prompt_tokens=(
-                                len(query) if native else len(source) + len(query)
-                            ),
-                            selected_native_kv_tokens=len(source) if native else 0,
-                            active_detail_bytes=native_memory.nbytes if native else 0,
-                            retained_detail_bytes=native_memory.nbytes if native else 0,
-                            text_preparation_ms=text_preparation_ms,
-                            kv_encode_ms=ingestion_ms,
-                            index_construction_ms=0.0,
-                            time_to_usable_context_ms=(
-                                text_preparation_ms + ingestion_ms
-                            ),
-                            ttft_ms=float(generated["ttft_ms"]),
-                            itl_ms=float(generated["itl_ms"]),
-                            total_latency_ms=float(
-                                generated["completion_latency_ms"]
-                            ),
-                            generated_tokens=int(generated["generated_tokens"]),
-                            ordinary_prefix_cache_hit_tokens=(
-                                len(source) if reused and not native else 0
-                            ),
-                            pra_hot_hit=native and reused,
-                            pra_warm_hit=False,
-                            bytes_read=native_memory.nbytes if native else 0,
-                            bytes_promoted=0,
-                            bytes_avoided=(
-                                native_memory.nbytes if native and reused else 0
-                            ),
-                            duplicate_physical_kv_avoided_bytes=(
-                                native_memory.nbytes if native and reused else 0
-                            ),
+            ingestion_ms = e2_ingestion_ms if native else e0_ingestion_ms
+            rows.append(
+                benchmark_row(
+                    condition=condition,
+                    selection=example.selection,
+                    request=request,
+                    output=str(generated["output"]),
+                    metrics=benchmark_metrics(
+                        exact_match=exact,
+                        token_f1=f1,
+                        gold_answer_logprob=logprob,
+                        evidence_recall=example.evidence_recall,
+                        candidate_tokens=len(candidate_tokens),
+                        selected_source_tokens=len(source),
+                        visible_prompt_tokens=(
+                            len(query) if native else len(source) + len(query)
                         ),
-                        extra={
-                            "dataset": example.dataset,
-                            "seed": example.seed,
-                            "gold_answer": example.answer,
-                            "execution_source_sha256": example.selected_source_sha256,
-                            "e0_prefix_kv_bytes": _cache_nbytes(ordinary_states),
-                            "concurrency_execution": (
-                                "shared_residency_serialized"
-                                if request.regime == "concurrent_shared_resource"
-                                else "single_request"
-                            ),
-                        },
+                        selected_native_kv_tokens=len(source) if native else 0,
+                        active_detail_bytes=native_memory.nbytes if native else 0,
+                        retained_detail_bytes=native_memory.nbytes if native else 0,
+                        text_preparation_ms=text_preparation_ms,
+                        kv_encode_ms=ingestion_ms,
+                        index_construction_ms=0.0,
+                        time_to_usable_context_ms=text_preparation_ms + ingestion_ms,
+                        ttft_ms=float(generated["ttft_ms"]),
+                        itl_ms=float(generated["itl_ms"]),
+                        total_latency_ms=float(generated["completion_latency_ms"]),
+                        generated_tokens=int(generated["generated_tokens"]),
+                        ordinary_prefix_cache_hit_tokens=(
+                            len(source) if reused and not native else 0
+                        ),
+                        pra_hot_hit=native and reused,
+                        pra_warm_hit=False,
+                        bytes_read=native_memory.nbytes if native else 0,
+                        bytes_promoted=0,
+                        bytes_avoided=native_memory.nbytes if native and reused else 0,
+                        duplicate_physical_kv_avoided_bytes=(
+                            native_memory.nbytes
+                            if native
+                            and reused
+                            and (
+                                request.regime != "concurrent_shared_resource"
+                                or request.request_ordinal > 0
+                            )
+                            else 0
+                        ),
+                        requests_per_second=requests_per_second,
+                    ),
+                    extra={
+                        "dataset": example.dataset,
+                        "seed": example.seed,
+                        "gold_answer": example.answer,
+                        "execution_source_sha256": example.selected_source_sha256,
+                        "e0_prefix_kv_bytes": _cache_nbytes(ordinary_states),
+                        "concurrency_execution": (
+                            "threaded_shared_residency"
+                            if request.regime == "concurrent_shared_resource"
+                            else "single_request"
+                        ),
+                    },
+                )
+            )
+
+        for request in regular_requests:
+            for condition in ("e0_selected_text", "e2_native_kv"):
+                append_result(execute(request, condition))
+        for condition in ("e0_selected_text", "e2_native_kv"):
+            started = time.perf_counter()
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=args.concurrency
+            ) as pool:
+                results = tuple(
+                    pool.map(
+                        lambda request: execute(request, condition),
+                        concurrent_requests,
                     )
                 )
+            wall_ms = (time.perf_counter() - started) * 1000.0
+            throughput = len(results) / max(wall_ms / 1000.0, 1e-9)
+            for result in results:
+                append_result(result, throughput)
 
     payload = {
         "schema_version": SCHEMA_VERSION,

@@ -106,6 +106,52 @@ def _run(
     }
 
 
+def _run_batch(
+    llm,
+    bridge,
+    sampling,
+    prompts,
+    *,
+    key=None,
+    source_tokens=0,
+):
+    """Run one genuinely concurrent V1 wave over a shared selected resource."""
+
+    cache_salt = None
+    if key is not None:
+        from pra_vllm.v1_native import native_request_cache_salt
+
+        cache_salt = native_request_cache_salt(
+            (key,),
+            selected_token_count=source_tokens,
+            source_position_base=source_tokens,
+        )
+    started = time.perf_counter()
+    request_ids = []
+    for prompt_tokens in prompts:
+        [request_id] = llm.enqueue(
+            _prompt(prompt_tokens, cache_salt), sampling, use_tqdm=False
+        )
+        request_ids.append(str(request_id))
+        if key is not None:
+            bridge.register(
+                request_id,
+                (key,),
+                selected_token_count=source_tokens,
+                source_position_base=source_tokens,
+            )
+    outputs = llm.wait_for_completion(use_tqdm=False)
+    wall_ms = (time.perf_counter() - started) * 1000.0
+    by_id = {str(output.request_id): output for output in outputs}
+    ordered = [by_id[request_id.split("-", 1)[0]] for request_id in request_ids]
+    return request_ids, ordered, {
+        "ttft_ms": None,
+        "itl_ms": None,
+        "completion_latency_ms": wall_ms,
+        "requests_per_second": len(request_ids) / max(wall_ms / 1000.0, 1e-9),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -176,7 +222,11 @@ def main() -> None:
                 multi_query_count=args.multi_query_count,
                 concurrency=args.concurrency,
             )
-            for request in requests:
+            for request in (
+                item
+                for item in requests
+                if item.regime != "concurrent_shared_resource"
+            ):
                 query = list(
                     tokenizer.encode(request.query.text, add_special_tokens=False)
                 )
@@ -254,6 +304,105 @@ def main() -> None:
                                     if request.regime
                                     == "concurrent_shared_resource"
                                     else "single_request"
+                                ),
+                            },
+                        )
+                    )
+            concurrent_requests = tuple(
+                item
+                for item in requests
+                if item.regime == "concurrent_shared_resource"
+            )
+            for condition in ("e0_selected_text", "e2_native_kv"):
+                native = condition == "e2_native_kv"
+                queries = [
+                    list(
+                        tokenizer.encode(
+                            request.query.text, add_special_tokens=False
+                        )
+                    )
+                    for request in concurrent_requests
+                ]
+                prompts = [
+                    query if native else source + query for query in queries
+                ]
+                request_ids, outputs, timing = _run_batch(
+                    llm,
+                    bridge,
+                    sampling,
+                    prompts,
+                    key=key if native else None,
+                    source_tokens=len(source),
+                )
+                for request, query, request_id, output in zip(
+                    concurrent_requests, queries, request_ids, outputs
+                ):
+                    text = str(output.outputs[0].text).strip()
+                    exact, f1 = _metrics(text, example.answer)
+                    ingestion_ms = encode_ms + materialize_ms if native else 0.0
+                    rows.append(
+                        benchmark_row(
+                            condition=condition,
+                            selection=example.selection,
+                            request=request,
+                            output=text,
+                            metrics=benchmark_metrics(
+                                exact_match=exact,
+                                token_f1=f1,
+                                gold_answer_logprob=None,
+                                evidence_recall=example.evidence_recall,
+                                candidate_tokens=len(candidate_tokens),
+                                selected_source_tokens=len(source),
+                                visible_prompt_tokens=(
+                                    len(query) if native else len(source) + len(query)
+                                ),
+                                selected_native_kv_tokens=len(source) if native else 0,
+                                active_detail_bytes=memory.nbytes if native else 0,
+                                retained_detail_bytes=memory.nbytes if native else 0,
+                                text_preparation_ms=text_preparation_ms,
+                                kv_encode_ms=encode_ms if native else None,
+                                index_construction_ms=(
+                                    materialize_ms if native else None
+                                ),
+                                time_to_usable_context_ms=(
+                                    text_preparation_ms + ingestion_ms
+                                ),
+                                ttft_ms=None,
+                                itl_ms=None,
+                                total_latency_ms=float(
+                                    timing["completion_latency_ms"]
+                                ),
+                                generated_tokens=len(output.outputs[0].token_ids),
+                                ordinary_prefix_cache_hit_tokens=int(
+                                    output.num_cached_tokens
+                                ),
+                                pra_hot_hit=native,
+                                pra_warm_hit=False,
+                                bytes_read=memory.nbytes if native else 0,
+                                bytes_promoted=0,
+                                bytes_avoided=memory.nbytes if native else 0,
+                                duplicate_physical_kv_avoided_bytes=(
+                                    memory.nbytes
+                                    if native and request.request_ordinal > 0
+                                    else 0
+                                ),
+                                requests_per_second=float(
+                                    timing["requests_per_second"]
+                                ),
+                            ),
+                            extra={
+                                "dataset": example.dataset,
+                                "seed": example.seed,
+                                "request_id": str(request_id),
+                                "gold_answer": example.answer,
+                                "selected_source_tokens_before_alignment": len(
+                                    raw_source
+                                ),
+                                "num_cache_creation_tokens": int(
+                                    output.num_cache_creation_tokens
+                                ),
+                                "concurrency_execution": (
+                                    "vllm_v1_continuous_batch"
                                 ),
                             },
                         )

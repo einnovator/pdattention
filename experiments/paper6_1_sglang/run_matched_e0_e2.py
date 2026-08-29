@@ -83,6 +83,53 @@ def _generate_timed(
     }
 
 
+def _generate_batch_timed(runner, tokenizer, specs, max_tokens: int):
+    """Prefill request suffixes independently, then decode them as one batch."""
+
+    started = time.perf_counter()
+    generated = {req_id: [] for req_id, *_ in specs}
+    arrivals = {req_id: [] for req_id, *_ in specs}
+    for req_id, query, source, slots in specs:
+        pending = runner.prefill_start(
+            req_id,
+            query,
+            source + query,
+            slots,
+            [],
+            1 if slots else 0,
+        )
+        runner.eval_pending(pending)
+        generated[req_id].append(int(runner.prefill_finalize(pending)))
+        arrivals[req_id].append((time.perf_counter() - started) * 1000.0)
+    req_ids = [req_id for req_id, *_ in specs]
+    for _ in range(max_tokens - 1):
+        decode = runner.decode_batch_start(req_ids)
+        runner.eval_pending(decode)
+        timestamp = (time.perf_counter() - started) * 1000.0
+        for req_id, token in zip(req_ids, runner.decode_batch_finalize(decode)):
+            generated[req_id].append(int(token))
+            arrivals[req_id].append(timestamp)
+    wall_ms = (time.perf_counter() - started) * 1000.0
+    results = {}
+    for req_id in req_ids:
+        times = arrivals[req_id]
+        itl_ms = (
+            sum(right - left for left, right in zip(times, times[1:]))
+            / (len(times) - 1)
+            if len(times) > 1
+            else 0.0
+        )
+        results[req_id] = {
+            "output": tokenizer.decode(generated[req_id]).strip(),
+            "output_token_ids": generated[req_id],
+            "generated_tokens": len(generated[req_id]),
+            "ttft_ms": times[0],
+            "itl_ms": itl_ms,
+            "completion_latency_ms": wall_ms,
+        }
+    return results, wall_ms
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -159,7 +206,11 @@ def main() -> None:
                 multi_query_count=args.multi_query_count,
                 concurrency=args.concurrency,
             )
-            for request in requests:
+            for request in (
+                item
+                for item in requests
+                if item.regime != "concurrent_shared_resource"
+            ):
                 query = list(
                     tokenizer.encode(request.query.text, add_special_tokens=False)
                 )
@@ -262,6 +313,121 @@ def main() -> None:
                     )
                     runner.remove_request(req_id)
                     if condition == "e2_native_kv":
+                        bridge.unregister(req_id)
+
+            concurrent_requests = tuple(
+                item
+                for item in requests
+                if item.regime == "concurrent_shared_resource"
+            )
+            for condition in ("e0_selected_text", "e2_native_kv"):
+                native = condition == "e2_native_kv"
+                specs = []
+                query_by_id = {}
+                request_by_id = {}
+                for request in concurrent_requests:
+                    req_id = (
+                        f"matched-{example_index}-{request.regime}-"
+                        f"{request.request_ordinal}-{condition}"
+                    )
+                    query = list(
+                        tokenizer.encode(request.query.text, add_special_tokens=False)
+                    )
+                    if native:
+                        bridge.register(
+                            req_id,
+                            memory,
+                            logical_keys=(f"matched-{example.example_id}",),
+                        )
+                    specs.append(
+                        (
+                            req_id,
+                            query,
+                            [] if native else source,
+                            [] if native else prefix_slots,
+                        )
+                    )
+                    query_by_id[req_id] = query
+                    request_by_id[req_id] = request
+                generated_by_id, wall_ms = _generate_batch_timed(
+                    runner, tokenizer, specs, args.max_new_tokens
+                )
+                throughput = len(specs) / max(wall_ms / 1000.0, 1e-9)
+                ingestion_ms = e2_ingestion_ms if native else e0_ingestion_ms
+                for req_id, *_ in specs:
+                    request = request_by_id[req_id]
+                    query = query_by_id[req_id]
+                    generated = generated_by_id[req_id]
+                    cache = runner._req_caches[req_id][
+                        runner._cache_layout.first_attention_layer_index
+                    ]
+                    is_selected = isinstance(cache, SGLangSelectedKVCache)
+                    exact, f1 = _metrics(str(generated["output"]), example.answer)
+                    rows.append(
+                        benchmark_row(
+                            condition=condition,
+                            selection=example.selection,
+                            request=request,
+                            output=str(generated["output"]),
+                            metrics=benchmark_metrics(
+                                exact_match=exact,
+                                token_f1=f1,
+                                gold_answer_logprob=None,
+                                evidence_recall=example.evidence_recall,
+                                candidate_tokens=len(candidate_tokens),
+                                selected_source_tokens=len(source),
+                                visible_prompt_tokens=(
+                                    len(query) if native else len(source) + len(query)
+                                ),
+                                selected_native_kv_tokens=len(source) if native else 0,
+                                active_detail_bytes=memory.nbytes if native else 0,
+                                retained_detail_bytes=memory.nbytes if native else 0,
+                                text_preparation_ms=text_preparation_ms,
+                                kv_encode_ms=ingestion_ms,
+                                index_construction_ms=0.0,
+                                time_to_usable_context_ms=(
+                                    text_preparation_ms + ingestion_ms
+                                ),
+                                ttft_ms=float(generated["ttft_ms"]),
+                                itl_ms=float(generated["itl_ms"]),
+                                total_latency_ms=float(
+                                    generated["completion_latency_ms"]
+                                ),
+                                generated_tokens=int(generated["generated_tokens"]),
+                                ordinary_prefix_cache_hit_tokens=(
+                                    len(source) if not native else 0
+                                ),
+                                pra_hot_hit=native,
+                                pra_warm_hit=False,
+                                bytes_read=memory.nbytes if native else 0,
+                                bytes_promoted=0,
+                                bytes_avoided=memory.nbytes if native else 0,
+                                duplicate_physical_kv_avoided_bytes=(
+                                    memory.nbytes
+                                    if native and request.request_ordinal > 0
+                                    else 0
+                                ),
+                                requests_per_second=throughput,
+                            ),
+                            extra={
+                                "dataset": example.dataset,
+                                "seed": example.seed,
+                                "request_id": req_id,
+                                "gold_answer": example.answer,
+                                "scheduler_counts_exclude_pra": (
+                                    cache.offset
+                                    == len(query) + args.max_new_tokens - 1
+                                    if is_selected
+                                    else None
+                                ),
+                                "concurrency_execution": (
+                                    "independent_prefill_batched_decode"
+                                ),
+                            },
+                        )
+                    )
+                    runner.remove_request(req_id)
+                    if native:
                         bridge.unregister(req_id)
     finally:
         capabilities = dict(bridge.capabilities())
