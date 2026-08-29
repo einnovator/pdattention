@@ -217,6 +217,7 @@ class SGLangMLXNativeBridge:
             "sglang_pra_request", default=None
         )
         self._original_acquire = runner._acquire_cache
+        self._original_release = runner._release_cache
         self._original_prefill_start = runner.prefill_start
         self._original_build_context = runner._build_batched_decode_context
         self.patched_layers = install_selected_kv_attention(runner.model)
@@ -248,6 +249,15 @@ class SGLangMLXNativeBridge:
             for cache, layer in zip(caches, memory.layers)
         ]
 
+    @staticmethod
+    def _unwrap_cache(caches: list[object]) -> list[object]:
+        """Return only request-local caches to SGLang's reusable pool."""
+
+        return [
+            cache.local_cache if isinstance(cache, SGLangSelectedKVCache) else cache
+            for cache in caches
+        ]
+
     def _install_hooks(self) -> None:
         bridge = self
 
@@ -255,6 +265,9 @@ class SGLangMLXNativeBridge:
             caches = bridge._original_acquire()
             req_id = bridge._active_req.get()
             return caches if req_id is None else bridge._wrap_cache(req_id, caches)
+
+        def release(_runner, caches):
+            return bridge._original_release(bridge._unwrap_cache(caches))
 
         def prefill(_runner, req_id, *args, **kwargs):
             token = bridge._active_req.set(str(req_id))
@@ -287,6 +300,7 @@ class SGLangMLXNativeBridge:
             return ctx
 
         self.runner._acquire_cache = types.MethodType(acquire, self.runner)
+        self.runner._release_cache = types.MethodType(release, self.runner)
         self.runner.prefill_start = types.MethodType(prefill, self.runner)
         self.runner._build_batched_decode_context = types.MethodType(
             build_context, self.runner
@@ -294,6 +308,7 @@ class SGLangMLXNativeBridge:
 
     def close(self) -> None:
         self.runner._acquire_cache = self._original_acquire
+        self.runner._release_cache = self._original_release
         self.runner.prefill_start = self._original_prefill_start
         self.runner._build_batched_decode_context = self._original_build_context
         self._requests.clear()
