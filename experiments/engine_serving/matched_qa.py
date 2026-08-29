@@ -19,6 +19,7 @@ class MatchedQAExample:
     """One question with a frozen ordered set of selected source documents."""
 
     dataset: str
+    seed: int
     example_id: str
     question: str
     answer: str
@@ -70,6 +71,7 @@ def manifest_entries_from_rows(
         entries.append(
             {
                 "dataset": example.dataset,
+                "seed": int(row["seed"]),
                 "example_id": example.example_id,
                 "question": example.question,
                 "answer": example.answer,
@@ -79,7 +81,7 @@ def manifest_entries_from_rows(
                 "evidence_recall_at_4": float(row["evidence_recall_at_4"]),
             }
         )
-    return sorted(entries, key=lambda row: str(row["example_id"]))
+    return sorted(entries, key=lambda row: (int(row["seed"]), str(row["example_id"])))
 
 
 def build_manifest(
@@ -130,6 +132,7 @@ def load_matched_examples(
         matched.append(
             MatchedQAExample(
                 dataset=dataset,
+                seed=int(entry["seed"]),
                 example_id=example.example_id,
                 question=example.question,
                 answer=example.answer,

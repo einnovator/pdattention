@@ -33,18 +33,21 @@ def test_manifest_entries_keep_one_native_row_per_example():
     rows = [
         {
             "condition": "routed_native",
+            "seed": 11,
             "example_id": example.example_id,
             "selected_document_ids": ["second", "first"],
             "evidence_recall_at_4": 1.0,
         },
         {
             "condition": "routed_native",
+            "seed": 11,
             "example_id": example.example_id,
             "selected_document_ids": ["second", "first"],
             "evidence_recall_at_4": 1.0,
         },
         {
             "condition": "no_memory",
+            "seed": 11,
             "example_id": example.example_id,
             "selected_document_ids": ["first"],
             "evidence_recall_at_4": 0.0,
@@ -52,6 +55,7 @@ def test_manifest_entries_keep_one_native_row_per_example():
     ]
     [entry] = manifest_entries_from_rows((example,), rows)
     assert entry["selected_document_ids"] == ["second", "first"]
+    assert entry["seed"] == 11
     assert entry["selected_source_characters"] > 0
 
 
