@@ -230,6 +230,8 @@ class SGLangMLXNativeBridge:
         self._original_release = runner._release_cache
         self._original_prefill_start = runner.prefill_start
         self._original_build_context = runner._build_batched_decode_context
+        self._original_cache_from_prefix = runner._cache_with_pool_backed_attention
+        self._original_materialize_prefix = runner._materialize_pool_backed_attention
         self.patched_layers = install_selected_kv_attention(runner.model)
         self._install_hooks()
 
@@ -265,11 +267,24 @@ class SGLangMLXNativeBridge:
         request = self._requests.get(req_id)
         if request is None:
             return caches
-        self.isolation.attach_once(req_id, request.logical_keys)
+        wrapped = [isinstance(cache, SGLangSelectedKVCache) for cache in caches]
+        if any(wrapped):
+            if not all(wrapped[index] for index in self.runner._cache_layout.attention_layer_indices):
+                raise RuntimeError("SGLang PRA cache list is only partially wrapped.")
+            return caches
+        view = self.isolation.view(req_id)
+        if view is not None and not view.attached:
+            self.isolation.attach_once(req_id, request.logical_keys)
         memory = request.memory
         return [
-            SGLangSelectedKVCache(cache, layer, position_base=memory.source_tokens)
-            for cache, layer in zip(caches, memory.layers)
+            (
+                SGLangSelectedKVCache(
+                    cache, memory.layers[index], position_base=memory.source_tokens
+                )
+                if index in self.runner._cache_layout.attention_layer_indices
+                else cache
+            )
+            for index, cache in enumerate(caches)
         ]
 
     @staticmethod
@@ -299,6 +314,17 @@ class SGLangMLXNativeBridge:
             finally:
                 bridge._active_req.reset(token)
 
+        def cache_from_prefix(_runner, prefix_slot_ids, prefix_len):
+            caches = bridge._original_cache_from_prefix(prefix_slot_ids, prefix_len)
+            req_id = bridge._active_req.get()
+            return caches if req_id is None else bridge._wrap_cache(req_id, caches)
+
+        def materialize_prefix(_runner, caches):
+            # Pool materialization consumes only scheduler-owned prefix K/V.
+            # The patched acquire path wraps the resulting contiguous cache
+            # again for selected-memory attention without a second attach.
+            return bridge._original_materialize_prefix(bridge._unwrap_cache(caches))
+
         def build_context(_runner, caches, req_ids):
             ctx = bridge._original_build_context(caches, req_ids)
             selected = [
@@ -325,6 +351,12 @@ class SGLangMLXNativeBridge:
         self.runner._acquire_cache = types.MethodType(acquire, self.runner)
         self.runner._release_cache = types.MethodType(release, self.runner)
         self.runner.prefill_start = types.MethodType(prefill, self.runner)
+        self.runner._cache_with_pool_backed_attention = types.MethodType(
+            cache_from_prefix, self.runner
+        )
+        self.runner._materialize_pool_backed_attention = types.MethodType(
+            materialize_prefix, self.runner
+        )
         self.runner._build_batched_decode_context = types.MethodType(
             build_context, self.runner
         )
@@ -333,6 +365,8 @@ class SGLangMLXNativeBridge:
         self.runner._acquire_cache = self._original_acquire
         self.runner._release_cache = self._original_release
         self.runner.prefill_start = self._original_prefill_start
+        self.runner._cache_with_pool_backed_attention = self._original_cache_from_prefix
+        self.runner._materialize_pool_backed_attention = self._original_materialize_prefix
         self.runner._build_batched_decode_context = self._original_build_context
         self._requests.clear()
         self.isolation.close()
@@ -342,6 +376,7 @@ class SGLangMLXNativeBridge:
             "integration_level": self.integration_level,
             "native_kv": True,
             "radix_prefix_identity_separate": True,
+            "radix_prefix_and_native_same_request": True,
             "hicache_external_namespace": self.hicache is not None,
             "hicache_metrics": (
                 None if self.hicache is None else self.hicache.metrics().to_dict()

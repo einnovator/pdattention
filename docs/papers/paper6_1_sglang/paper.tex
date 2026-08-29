@@ -32,7 +32,10 @@ L2 arrays, and compressed NPZ L3 backing without entering the Radix namespace.
 Across five seeds, answer recovery and Radix separation are 5/5; warm L1,
 L2-to-L1, and L3-to-L1 resolution average 0.009, 4.0, and 405.6 ms. Forced
 capacity pressure performs both L1-to-L2 and L2-to-L3 demotion in every seed.
-The bridge now also runs through
+In a combined runner-level cohort, an 81-token shared-prefix hit and external
+HiCache selection coexist in one request. Selected A and reselected C recover
+5/5, cleanup request B recovers 0/5, and all selected requests contain exactly
+one memory copy. The bridge also runs through
 SGLang's real prefill and batched-decode lifecycle: native and full context
 recover 5/5, disabled memory recovers 0/5, and native throughput rises from
 6.59 to 14.54 requests/s between concurrency one and eight. Shared immutable
@@ -59,7 +62,8 @@ hierarchy and scheduling substrate without being misrepresented as a prefix.
 This iteration contributes an engine-independent logical object lifecycle, a
 capability-honest SGLang adapter, a measured RadixAttention baseline, and a
 native runner-cache bridge measured through live prefill and batched decode.
-HiCache placement remains a separate open boundary.
+External HiCache placement and the combined shared-prefix/native path are now
+measured locally; distributed placement remains open.
 
 \section{Two Address Spaces}
 The two logical keys are
@@ -261,6 +265,32 @@ one-object L1 and L2 budgets, inserting two additional resources forces one
 L1-to-L2 and one L2-to-L3 demotion in every seed. This closes local hierarchy
 mechanics; it does not establish distributed HiCache or server tail latency.
 
+\subsection{Combined shared-prefix and external-memory lifecycle}
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Five-seed A/B/C lifecycle through SGLang's shared-prefix pool and
+external PRA HiCache. Ordinary B should not recover the selected fact.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_1_sglang/generated_radix_hicache_combined_table.tex}}
+\label{tab:sglang-radix-hicache}
+\end{table}
+
+Table~\ref{tab:sglang-radix-hicache} drives the runner interface used after an
+exact Radix match. A warm request writes 81 stable-prefix tokens into SGLang's
+shared K/V pool. Request A gathers those prefix slots while the PRA bridge
+promotes its separately named memory from L2 to attention-ready L1. Request B
+uses the same shared prefix after A is removed, but receives no PRA identity.
+Request C selects that identity again from warm L1. A and C recover 5/5; B
+recovers 0/5. Scheduler-local length excludes PRA in all 15 requests, and each
+selected cache reports the source token count once rather than twice.
+
+This closes the local composition and cleanup mechanism. It also exercises
+capacity pressure across the five resources: three L1-to-L2 and six L2-to-L3
+demotions occur while preserving recovery. The experiment directly controls
+the prefix-slot handoff rather than entering through SGLang's HTTP scheduler;
+distributed HiCache, scheduler affinity, and online tail latency remain open.
+
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=0.98\linewidth]{../shared/results/paper6_1_sglang/live_runner_natural.png}
@@ -280,6 +310,7 @@ selected-text parity & smoke closed & selected and full are 5/5 \\
 HiCache non-prefix object & controlled closed & five-seed L1/L2/L3 promotion and forced demotion \\
 selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
 radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\
+Radix + HiCache request & controlled closed & A/C 10/10, cleanup B 0/5, exactly one selected copy \\
 runner lifecycle & controlled closed & prefill, batched decode, and clean request release \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided \\
 natural transport & controlled closed & native/full 80/80; causal controls near chance \\
@@ -289,7 +320,7 @@ robustness & partial & one model; synthetic and two natural-text transport fixtu
 \end{center}
 
 \section{Next Engine-Native Experiment}
-The next useful patch connects the verified external hierarchy to distributed
+The next useful patch moves the verified local composition into distributed
 HiCache placement and scheduler affinity. The matched comparison is
 RadixAttention plus black-box selected text versus Radix plus native PRA at
 equal quality and selected-token budget, including cold/warm tier location,
@@ -304,9 +335,10 @@ registry cannot satisfy the claim.
 
 The measurements use one small model family, a local compatibility patch, and
 one Apple host. The HTTP and native runs use different model precisions. The
-live native runner disables Radix pooling so this iteration does not yet measure
-prefix and native memory inside the same scheduled request. Distributed
-HiCache, HTTP-level native concurrency, tail latency, resource-affinity routing,
+broad concurrency and natural-text runner cohorts disable Radix pooling; the
+dedicated combined cohort instead drives the exact prefix-slot boundary
+directly, without the HTTP scheduler. Distributed HiCache, HTTP-level native
+concurrency, tail latency, resource-affinity routing,
 and archived-head transition remain unmeasured. L3 timing includes only five
 loads and one large outlier. The natural controls contain real dataset text
 but an inserted answer-code task; they are not QASPER or HotpotQA end-task
@@ -332,9 +364,11 @@ eight, and passes 80/80 natural-text transport decisions while disabled and
 shuffled controls fall near chance. SGLang attention can therefore consume
 selected non-prefix K/V while preserving the two address spaces. Paper 6.1
 also establishes local L1/L2/L3 promotion and forced demotion without entering
-the Radix namespace. It leaves distributed HiCache, combined
-Radix-plus-native scheduling, and pressure-scale server validation as the
-focused next experiments.
+the Radix namespace. A final A/B/C cohort composes the shared-prefix pool with
+external HiCache, preserves 10/10 selected recoveries, prevents 5/5 cleanup
+leaks, and attaches exactly one memory copy. It leaves distributed HiCache,
+full-scheduler integration, and pressure-scale server validation as the focused
+next experiments.
 
 \begin{thebibliography}{9}
 \bibitem{zheng2024sglang}
