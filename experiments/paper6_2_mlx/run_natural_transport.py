@@ -80,6 +80,10 @@ def main() -> None:
     model, tokenizer = load(args.model, revision=args.revision)
     layer_count = len(getattr(getattr(model, "model", model), "layers"))
     last_half = tuple(range(layer_count // 2, layer_count))
+    answer_token_ids = {
+        answer: int(tokenizer.encode(f" {answer}", add_special_tokens=False)[0])
+        for answer in ("yes", "no")
+    }
     rows = []
     for seed in SEEDS:
         examples = list(_examples(args.dataset, seed, args.examples_per_seed, args.cache_dir))
@@ -93,36 +97,54 @@ def main() -> None:
             memories.append(encode_native_memory(model, source))
             prepared.append((example, source, query))
         for index, ((example, source, query), memory) in enumerate(zip(prepared, memories)):
-            ordinary = make_prompt_cache(model)
-            model(mx.array(source, dtype=mx.int32)[None], cache=ordinary)
-            ordinary_logits = model(mx.array(query, dtype=mx.int32)[None], cache=ordinary)[
-                :, -1, :
-            ]
+            shuffled_memory = memories[(index + 1) % len(memories)]
             conditions = (
-                ("ordinary_split", ordinary, memory),
-                ("native_all", make_native_prompt_cache(model, memory), memory),
+                ("ordinary_split", memory),
+                ("native_all", memory),
                 (
                     "native_last_half",
-                    make_native_prompt_cache(model, memory, selected_layers=last_half),
                     memory,
                 ),
                 (
                     "native_disabled",
-                    make_native_prompt_cache(model, memory, selected_layers=()),
                     memory,
                 ),
                 (
                     "native_shuffled",
-                    make_native_prompt_cache(model, memories[(index + 1) % len(memories)]),
-                    memories[(index + 1) % len(memories)],
+                    shuffled_memory,
                 ),
             )
-            for condition, cache, active_memory in conditions:
+
+            def cache_for(condition: str, active_memory):
                 if condition == "ordinary_split":
-                    # Rebuild because the scoring forward already appended the query.
                     cache = make_prompt_cache(model)
                     model(mx.array(source, dtype=mx.int32)[None], cache=cache)
-                text, latency_ms = _generate(model, tokenizer, query, cache)
+                    return cache
+                if condition == "native_last_half":
+                    return make_native_prompt_cache(
+                        model, active_memory, selected_layers=last_half
+                    )
+                if condition == "native_disabled":
+                    return make_native_prompt_cache(model, active_memory, selected_layers=())
+                return make_native_prompt_cache(model, active_memory)
+
+            for condition, active_memory in conditions:
+                logits = model(
+                    mx.array(query, dtype=mx.int32)[None],
+                    cache=cache_for(condition, active_memory),
+                )[:, -1, :]
+                mx.eval(logits)
+                scores = {
+                    answer: float(logits[0, token_id].item())
+                    for answer, token_id in answer_token_ids.items()
+                }
+                ranked_answer = max(scores, key=scores.get)
+                text, latency_ms = _generate(
+                    model,
+                    tokenizer,
+                    query,
+                    cache_for(condition, active_memory),
+                )
                 predicted = _answer(text)
                 rows.append(
                     {
@@ -133,6 +155,12 @@ def main() -> None:
                         "gold_answer": example.answer,
                         "predicted_answer": predicted,
                         "exact": predicted == example.answer,
+                        "ranked_answer": ranked_answer,
+                        "ranked_exact": ranked_answer == example.answer,
+                        "yes_logit": scores["yes"],
+                        "no_logit": scores["no"],
+                        "gold_answer_margin": scores[example.answer]
+                        - scores["no" if example.answer == "yes" else "yes"],
                         "source_tokens": len(source),
                         "query_tokens": len(query),
                         "active_native_kv_bytes": (
@@ -156,6 +184,7 @@ def main() -> None:
         "dataset": args.dataset,
         "model_id": args.model,
         "model_revision": args.revision,
+        "answer_token_ids": answer_token_ids,
         "seeds": list(SEEDS),
         "examples_per_seed": args.examples_per_seed,
         "rows": rows,
