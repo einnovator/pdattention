@@ -104,7 +104,8 @@ class SGLangSelectedKVCache:
         if int(local_k.shape[2]) != expected_local_tokens:
             raise RuntimeError(
                 "SGLang local cache returned contaminated K/V: "
-                f"expected {expected_local_tokens} tokens, got {local_k.shape[2]}."
+                f"expected {expected_local_tokens} tokens, got {local_k.shape[2]} "
+                f"from {type(self.local_cache).__name__}."
             )
         return (
             mx.concatenate((self.memory.keys, local_k), axis=2),
