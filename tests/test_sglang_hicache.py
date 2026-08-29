@@ -1,4 +1,4 @@
-from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -153,3 +153,18 @@ def test_backend_remove_revokes_logical_access_without_global_clear() -> None:
 
     assert not backend.exists("resource-R")
     assert storage.values  # Physical reclamation belongs to backend eviction.
+
+
+def test_hicache_prefetch_uses_caller_executor_and_reports_completion(tmp_path) -> None:
+    cache = _cache(tmp_path)
+    cache.put("resource-R", _memory(4), tier=PRAHiCacheTier.L2)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        restored = cache.prefetch("resource-R", executor).result()
+
+    assert np.array_equal(restored.layers[0].keys, _memory(4).layers[0].keys)
+    metrics = cache.metrics()
+    assert metrics.prefetch_requests == 1
+    assert metrics.prefetch_completed == 1
+    assert metrics.prefetch_failures == 0
+    assert metrics.prefetched_bytes == restored.nbytes

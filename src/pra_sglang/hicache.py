@@ -48,6 +48,10 @@ class PRAHiCacheMetrics:
     l1_bytes: int = 0
     l2_bytes: int = 0
     l3_bytes: int = 0
+    prefetch_requests: int = 0
+    prefetch_completed: int = 0
+    prefetch_failures: int = 0
+    prefetched_bytes: int = 0
 
     def to_dict(self) -> dict[str, int | float]:
         return asdict(self)
@@ -368,6 +372,35 @@ class SGLangPRAHiCache:
         ):
             return PRAHiCacheTier.L3
         return None
+
+    def prefetch(
+        self,
+        logical_key: str,
+        executor: object,
+        *,
+        target: PRAHiCacheTier | str = PRAHiCacheTier.L1,
+    ):
+        """Start promotion on a caller-owned executor before first use.
+
+        SGLang's scheduler owns when selection becomes known and how work is
+        overlapped. The cache owns only the immutable promotion operation, so
+        it accepts an executor rather than creating hidden worker lifetime.
+        """
+
+        self._metrics.prefetch_requests += 1
+        future = executor.submit(self.get, logical_key, target=target)
+
+        def completed(result) -> None:
+            try:
+                memory = result.result()
+            except Exception:
+                self._metrics.prefetch_failures += 1
+            else:
+                self._metrics.prefetch_completed += 1
+                self._metrics.prefetched_bytes += memory.nbytes
+
+        future.add_done_callback(completed)
+        return future
 
     def remove(self, logical_key: str) -> None:
         """Remove all tier representations for one logical PRA identity."""
