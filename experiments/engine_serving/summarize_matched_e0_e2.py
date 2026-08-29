@@ -32,6 +32,11 @@ def _numbers(rows: list[dict[str, object]], key: str) -> list[float]:
     return [float(row[key]) for row in rows if row.get(key) is not None]
 
 
+def _mean(rows: list[dict[str, object]], key: str) -> float | None:
+    values = _numbers(rows, key)
+    return mean(values) if values else None
+
+
 def _ttft(row: dict[str, object]) -> float | None:
     value = row.get("online_ttft_ms")
     if value is None:
@@ -42,6 +47,50 @@ def _ttft(row: dict[str, object]) -> float | None:
 def _normalize(payload: dict[str, object], source: Path) -> list[dict[str, object]]:
     normalized = []
     for raw in payload["rows"]:
+        if payload.get("schema_version") == "2.0":
+            metrics = raw["metrics"]
+            extra = raw.get("extra", {})
+            selection = raw["selection"]
+            serving = metrics["serving"]
+            ingestion = metrics["ingestion"]
+            total = serving["total_latency_ms"]
+            usable = ingestion["time_to_usable_context_ms"]
+            row = {
+                "engine": payload["engine"],
+                "model_id": payload["model_id"],
+                "dataset": selection["dataset"],
+                "example_id": selection["example_id"],
+                "selection_id": selection["selection_id"],
+                "condition": raw["condition"],
+                "regime": raw["regime"],
+                "request_ordinal": raw["request_ordinal"],
+                "query_sha256": raw["query_sha256"],
+                "output": raw["output"],
+                "source_file": source.as_posix(),
+                **metrics["quality"],
+                **metrics["input"],
+                **metrics["pra"],
+                **ingestion,
+                **serving,
+                **metrics["reuse"],
+                "cold_end_to_end_ttft_ms": (
+                    float(usable) + float(serving["ttft_ms"])
+                    if raw["regime"] == "cold_one_shot"
+                    and usable is not None
+                    and serving["ttft_ms"] is not None
+                    else None
+                ),
+                "cold_end_to_end_completion_ms": (
+                    float(usable) + float(total)
+                    if raw["regime"] == "cold_one_shot"
+                    and usable is not None
+                    and total is not None
+                    else None
+                ),
+                "concurrency_execution": extra.get("concurrency_execution"),
+            }
+            normalized.append(row)
+            continue
         row = dict(raw)
         ttft = _ttft(row)
         ingestion = row.get("one_time_ingestion_ms")
@@ -59,6 +108,17 @@ def _normalize(payload: dict[str, object], source: Path) -> list[dict[str, objec
         )
         row["engine"] = payload["engine"]
         row["model_id"] = payload["model_id"]
+        row["regime"] = (
+            "cold_one_shot" if row["reuse_state"] == "cold" else "warm_repeated"
+        )
+        row["selection_id"] = f"{row['dataset']}:{row['example_id']}"
+        row["request_ordinal"] = int(row.get("repeat", 0))
+        row["query_sha256"] = "legacy-v1"
+        row["total_latency_ms"] = row["completion_latency_ms"]
+        row["selected_native_kv_tokens"] = row.get("selected_native_tokens", 0)
+        row["active_detail_bytes"] = row.get("selected_kv_bytes", 0)
+        row["retained_detail_bytes"] = row.get("selected_kv_bytes", 0)
+        row["time_to_usable_context_ms"] = row.get("one_time_ingestion_ms")
         row["source_file"] = source.as_posix()
         normalized.append(row)
     return normalized
@@ -70,72 +130,89 @@ def _aggregate(rows: list[dict[str, object]]) -> list[dict[str, object]]:
         groups[(
             str(row["engine"]),
             str(row["dataset"]),
+            str(row["regime"]),
             str(row["condition"]),
-            str(row["reuse_state"]),
         )].append(row)
     result = []
-    for (engine, dataset, condition, reuse), group in sorted(groups.items()):
-        ttft = _numbers(group, "online_ttft_ms")
-        completion = _numbers(group, "completion_latency_ms")
+    for (engine, dataset, regime, condition), group in sorted(groups.items()):
+        ttft = _numbers(group, "ttft_ms")
+        completion = _numbers(group, "total_latency_ms")
         result.append(
             {
                 "engine": engine,
                 "dataset": dataset,
+                "regime": regime,
                 "condition": condition,
-                "reuse_state": reuse,
                 "examples": len(group),
-                "exact_match": mean(_numbers(group, "exact_match")),
-                "token_f1": mean(_numbers(group, "token_f1")),
-                "visible_prompt_tokens": mean(_numbers(group, "visible_prompt_tokens")),
-                "selected_native_tokens": mean(_numbers(group, "selected_native_tokens")),
-                "selected_kv_mib": mean(_numbers(group, "selected_kv_bytes")) / 2**20,
-                "one_time_ingestion_ms": (
-                    mean(_numbers(group, "one_time_ingestion_ms"))
-                    if _numbers(group, "one_time_ingestion_ms")
-                    else None
+                "exact_match": _mean(group, "exact_match"),
+                "token_f1": _mean(group, "token_f1"),
+                "gold_answer_logprob": _mean(group, "gold_answer_logprob"),
+                "evidence_recall": _mean(group, "evidence_recall"),
+                "candidate_tokens": _mean(group, "candidate_tokens"),
+                "selected_source_tokens": _mean(group, "selected_source_tokens"),
+                "visible_prompt_tokens": _mean(group, "visible_prompt_tokens"),
+                "selected_native_kv_tokens": _mean(
+                    group, "selected_native_kv_tokens"
                 ),
-                "cold_end_to_end_ttft_ms": (
-                    mean(_numbers(group, "cold_end_to_end_ttft_ms"))
-                    if _numbers(group, "cold_end_to_end_ttft_ms")
-                    else None
+                "active_detail_mib": (_mean(group, "active_detail_bytes") or 0) / 2**20,
+                "retained_detail_mib": (
+                    _mean(group, "retained_detail_bytes") or 0
+                ) / 2**20,
+                "text_preparation_ms": _mean(group, "text_preparation_ms"),
+                "kv_encode_ms": _mean(group, "kv_encode_ms"),
+                "index_construction_ms": _mean(group, "index_construction_ms"),
+                "time_to_usable_context_ms": _mean(
+                    group, "time_to_usable_context_ms"
+                ),
+                "cold_end_to_end_ttft_ms": _mean(
+                    group, "cold_end_to_end_ttft_ms"
                 ),
                 "ttft_p50_ms": _percentile(ttft, 0.50),
                 "ttft_p95_ms": _percentile(ttft, 0.95),
                 "ttft_p99_ms": _percentile(ttft, 0.99),
-                "itl_mean_ms": (
-                    mean(_numbers(group, "itl_ms"))
-                    if _numbers(group, "itl_ms")
-                    else None
-                ),
-                "cold_end_to_end_completion_ms": (
-                    mean(_numbers(group, "cold_end_to_end_completion_ms"))
-                    if _numbers(group, "cold_end_to_end_completion_ms")
-                    else None
+                "itl_mean_ms": _mean(group, "itl_ms"),
+                "tokens_per_second": _mean(group, "tokens_per_second"),
+                "requests_per_second": _mean(group, "requests_per_second"),
+                "cold_end_to_end_completion_ms": _mean(
+                    group, "cold_end_to_end_completion_ms"
                 ),
                 "completion_p50_ms": _percentile(completion, 0.50),
                 "completion_p95_ms": _percentile(completion, 0.95),
                 "completion_p99_ms": _percentile(completion, 0.99),
+                "ordinary_prefix_cache_hit_tokens": _mean(
+                    group, "ordinary_prefix_cache_hit_tokens"
+                ),
+                "pra_hot_hit_rate": _mean(group, "pra_hot_hit"),
+                "pra_warm_hit_rate": _mean(group, "pra_warm_hit"),
+                "bytes_read": _mean(group, "bytes_read"),
+                "bytes_promoted": _mean(group, "bytes_promoted"),
+                "bytes_avoided": _mean(group, "bytes_avoided"),
+                "duplicate_physical_kv_avoided_bytes": _mean(
+                    group, "duplicate_physical_kv_avoided_bytes"
+                ),
             }
         )
     return result
 
 
 def _parity(rows: list[dict[str, object]]) -> list[dict[str, object]]:
-    pairs: dict[tuple[str, str, str, str], dict[str, dict[str, object]]] = defaultdict(dict)
+    pairs: dict[tuple[object, ...], dict[str, dict[str, object]]] = defaultdict(dict)
     for row in rows:
         key = (
             str(row["engine"]),
             str(row["dataset"]),
-            str(row["example_id"]),
-            str(row["reuse_state"]),
+            str(row["selection_id"]),
+            str(row["regime"]),
+            int(row["request_ordinal"]),
+            str(row["query_sha256"]),
         )
         pairs[key][str(row["condition"])] = row
-    grouped: dict[tuple[str, str], list[dict[str, dict[str, object]]]] = defaultdict(list)
-    for (engine, dataset, _example, _reuse), pair in pairs.items():
+    grouped: dict[tuple[str, str, str], list[dict[str, dict[str, object]]]] = defaultdict(list)
+    for (engine, dataset, _selection, regime, _ordinal, _query), pair in pairs.items():
         if set(pair) == set(CONDITIONS):
-            grouped[(engine, dataset)].append(pair)
+            grouped[(engine, dataset, regime)].append(pair)
     result = []
-    for (engine, dataset), complete in sorted(grouped.items()):
+    for (engine, dataset, regime), complete in sorted(grouped.items()):
         exact_outputs = sum(
             pair[CONDITIONS[0]].get("output") == pair[CONDITIONS[1]].get("output")
             for pair in complete
@@ -144,6 +221,7 @@ def _parity(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             {
                 "engine": engine,
                 "dataset": dataset,
+                "regime": regime,
                 "paired_requests": len(complete),
                 "exact_output_parity": exact_outputs / len(complete),
                 "mean_f1_delta_e2_minus_e0": mean(
@@ -184,52 +262,51 @@ def _write_tex(
         (
             str(row["engine"]),
             str(row["dataset"]),
+            str(row["regime"]),
             str(row["condition"]),
-            str(row["reuse_state"]),
         ): row
         for row in aggregates
     }
     parity_lookup = {
-        (str(row["engine"]), str(row["dataset"])): row for row in parity
+        (str(row["engine"]), str(row["dataset"]), str(row["regime"])): row
+        for row in parity
     }
     identities = sorted(parity_lookup)
     quality = [
-        r"\begin{tabular}{llrrrr}",
+        r"\begin{tabular}{lllrrrr}",
         r"\toprule",
-        r"Engine & Dataset & Visible E0/E2 & Reduction & F1 E0/E2 & Exact parity \\",
+        r"Engine & Dataset & Regime & Visible E0/E2 & Reduction & F1 E0/E2 & Exact parity \\",
         r"\midrule",
     ]
     latency = [
-        r"\begin{tabular}{llrrrr}",
+        r"\begin{tabular}{lllrrrr}",
         r"\toprule",
-        r"Engine & Dataset & Cold completion E0/E2 & Warm completion E0/E2 & Warm TTFT E0/E2 & E2 ingest \\",
+        r"Engine & Dataset & Regime & Completion E0/E2 & TTFT E0/E2 & E2 usable & E2 reuse MiB \\",
         r"\midrule",
     ]
-    for engine, dataset in identities:
-        cold_e0 = lookup[(engine, dataset, CONDITIONS[0], "cold")]
-        cold_e2 = lookup[(engine, dataset, CONDITIONS[1], "cold")]
-        warm_e0 = lookup[(engine, dataset, CONDITIONS[0], "warm")]
-        warm_e2 = lookup[(engine, dataset, CONDITIONS[1], "warm")]
+    for engine, dataset, regime in identities:
+        e0 = lookup[(engine, dataset, regime, CONDITIONS[0])]
+        e2 = lookup[(engine, dataset, regime, CONDITIONS[1])]
         reduction = 100.0 * (
-            float(cold_e0["visible_prompt_tokens"])
-            - float(cold_e2["visible_prompt_tokens"])
-        ) / float(cold_e0["visible_prompt_tokens"])
+            float(e0["visible_prompt_tokens"])
+            - float(e2["visible_prompt_tokens"])
+        ) / float(e0["visible_prompt_tokens"])
         parity_value = 100.0 * float(
-            parity_lookup[(engine, dataset)]["exact_output_parity"]
+            parity_lookup[(engine, dataset, regime)]["exact_output_parity"]
         )
         quality.append(
-            f"{engine} & {dataset} & "
-            f"{_value(cold_e0['visible_prompt_tokens'], 0)}/{_value(cold_e2['visible_prompt_tokens'], 0)} & "
+            f"{engine} & {dataset} & {regime.replace('_', ' ')} & "
+            f"{_value(e0['visible_prompt_tokens'], 0)}/{_value(e2['visible_prompt_tokens'], 0)} & "
             f"{reduction:.1f}\\% & "
-            f"{_value(cold_e0['token_f1'], 3)}/{_value(cold_e2['token_f1'], 3)} & "
+            f"{_value(e0['token_f1'], 3)}/{_value(e2['token_f1'], 3)} & "
             f"{parity_value:.1f}\\% \\\\"
         )
         latency.append(
-            f"{engine} & {dataset} & "
-            f"{_value(cold_e0['cold_end_to_end_completion_ms'])}/{_value(cold_e2['cold_end_to_end_completion_ms'])} & "
-            f"{_value(warm_e0['completion_p50_ms'])}/{_value(warm_e2['completion_p50_ms'])} & "
-            f"{_value(warm_e0['ttft_p50_ms'])}/{_value(warm_e2['ttft_p50_ms'])} & "
-            f"{_value(cold_e2['one_time_ingestion_ms'])} \\\\"
+            f"{engine} & {dataset} & {regime.replace('_', ' ')} & "
+            f"{_value(e0['completion_p50_ms'])}/{_value(e2['completion_p50_ms'])} & "
+            f"{_value(e0['ttft_p50_ms'])}/{_value(e2['ttft_p50_ms'])} & "
+            f"{_value(e2['time_to_usable_context_ms'])} & "
+            f"{_value(float(e2['bytes_avoided'] or 0) / 2**20, 2)} \\\\"
         )
     quality.extend((r"\bottomrule", r"\end{tabular}"))
     latency.extend((r"\bottomrule", r"\end{tabular}"))
@@ -245,7 +322,7 @@ def _plot(path: Path, aggregates: list[dict[str, object]]) -> None:
     import matplotlib.pyplot as plt
     import numpy as np
 
-    cold = [row for row in aggregates if row["reuse_state"] == "cold"]
+    cold = [row for row in aggregates if row["regime"] == "cold_one_shot"]
     identities = sorted({(str(row["engine"]), str(row["dataset"])) for row in cold})
     lookup = {
         (str(row["engine"]), str(row["dataset"]), str(row["condition"])): row
@@ -303,8 +380,8 @@ def main() -> None:
     (args.output_dir / "matched_e0_e2_summary.json").write_text(
         json.dumps(
             {
-                "schema_version": "1.0",
-                "experiment": "cross_engine_matched_e0_e2_summary_v1",
+                "schema_version": "2.0",
+                "experiment": "cross_engine_matched_e0_e2_summary_v2",
                 "sources": sources,
                 "aggregates": aggregates,
                 "parity": parity,

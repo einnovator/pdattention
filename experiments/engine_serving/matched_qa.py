@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
 
+from experiments.engine_serving.matched_e0_e2_contract import (
+    SCHEMA_VERSION,
+    FrozenSelectionIdentity,
+    FrozenSourceInterval,
+)
 from experiments.paper6_2_mlx.run_answer_quality_pressure import QAExample, _examples
 
 
@@ -23,9 +28,26 @@ class MatchedQAExample:
     example_id: str
     question: str
     answer: str
+    candidate_document_ids: tuple[str, ...]
+    candidate_source: str
     selected_document_ids: tuple[str, ...]
+    selected_intervals: tuple[FrozenSourceInterval, ...]
     selected_source: str
     selected_source_sha256: str
+    evidence_recall: float
+
+    @property
+    def selection(self) -> FrozenSelectionIdentity:
+        """Return the selector-owned identity shared by E0 and E2."""
+
+        return FrozenSelectionIdentity(
+            dataset=self.dataset,
+            example_id=self.example_id,
+            candidate_document_ids=self.candidate_document_ids,
+            selected_document_ids=self.selected_document_ids,
+            selected_intervals=self.selected_intervals,
+            selected_source_sha256=self.selected_source_sha256,
+        )
 
 
 def selected_source(example: QAExample, document_ids: Iterable[str]) -> str:
@@ -50,6 +72,27 @@ def source_digest(source: str) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
+def selection_identity(
+    example: QAExample, document_ids: Iterable[str]
+) -> FrozenSelectionIdentity:
+    """Freeze the complete candidate set and ordered full-document intervals."""
+
+    selected_ids = tuple(map(str, document_ids))
+    documents = {document.document_id: document for document in example.documents}
+    source = selected_source(example, selected_ids)
+    return FrozenSelectionIdentity(
+        dataset=example.dataset,
+        example_id=example.example_id,
+        candidate_document_ids=tuple(document.document_id for document in example.documents),
+        selected_document_ids=selected_ids,
+        selected_intervals=tuple(
+            FrozenSourceInterval(document_id, 0, len(documents[document_id].text))
+            for document_id in selected_ids
+        ),
+        selected_source_sha256=source_digest(source),
+    )
+
+
 def manifest_entries_from_rows(
     examples: Iterable[QAExample], rows: Iterable[Mapping[str, object]]
 ) -> list[dict[str, object]]:
@@ -68,6 +111,7 @@ def manifest_entries_from_rows(
         example = by_id[example_id]
         document_ids = tuple(str(value) for value in row["selected_document_ids"])
         source = selected_source(example, document_ids)
+        selection = selection_identity(example, document_ids)
         entries.append(
             {
                 "dataset": example.dataset,
@@ -75,8 +119,7 @@ def manifest_entries_from_rows(
                 "example_id": example.example_id,
                 "question": example.question,
                 "answer": example.answer,
-                "selected_document_ids": list(document_ids),
-                "selected_source_sha256": source_digest(source),
+                **selection.to_dict(),
                 "selected_source_characters": len(source),
                 "evidence_recall_at_4": float(row["evidence_recall_at_4"]),
             }
@@ -99,8 +142,8 @@ def build_manifest(
         examples = _examples(dataset, cache_dir)
         entries.extend(manifest_entries_from_rows(examples, payload["rows"]))
     return {
-        "schema_version": "1.0",
-        "cohort": "paper6_cross_engine_matched_e0_e2_v1",
+        "schema_version": SCHEMA_VERSION,
+        "cohort": "paper6_cross_engine_matched_e0_e2_v2",
         "selection_policy": "frozen Paper 6.2 SDK hybrid top-4 document routing",
         "datasets": list(datasets),
         "entry_count": len(entries),
@@ -129,6 +172,20 @@ def load_matched_examples(
             )
         if example.question != entry["question"] or example.answer != entry["answer"]:
             raise RuntimeError(f"Dataset content changed for {dataset}/{example.example_id}")
+        identity = selection_identity(example, document_ids)
+        if "candidate_document_ids" in entry:
+            expected = identity.to_dict()
+            for field in (
+                "candidate_document_ids",
+                "candidate_set_sha256",
+                "selected_intervals",
+                "selection_id",
+            ):
+                if entry.get(field) != expected[field]:
+                    raise RuntimeError(
+                        f"Frozen selection {field} mismatch for "
+                        f"{dataset}/{example.example_id}"
+                    )
         matched.append(
             MatchedQAExample(
                 dataset=dataset,
@@ -136,9 +193,15 @@ def load_matched_examples(
                 example_id=example.example_id,
                 question=example.question,
                 answer=example.answer,
+                candidate_document_ids=identity.candidate_document_ids,
+                candidate_source=selected_source(
+                    example, identity.candidate_document_ids
+                ),
                 selected_document_ids=document_ids,
+                selected_intervals=identity.selected_intervals,
                 selected_source=source,
                 selected_source_sha256=digest,
+                evidence_recall=float(entry["evidence_recall_at_4"]),
             )
         )
     return manifest, matched

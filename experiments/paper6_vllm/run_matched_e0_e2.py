@@ -8,6 +8,13 @@ import os
 import time
 from pathlib import Path
 
+from experiments.engine_serving.matched_e0_e2_contract import (
+    SCHEMA_VERSION,
+    benchmark_metrics,
+    benchmark_row,
+    regime_schedule,
+    validate_payload,
+)
 from experiments.engine_serving.matched_qa import load_matched_examples
 from experiments.paper6_2_mlx.run_answer_quality_pressure import _bounded_source, _metrics
 
@@ -114,7 +121,9 @@ def main() -> None:
     parser.add_argument("--max-source-tokens", type=int, default=384)
     parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument("--max-examples", type=int, default=0)
-    parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--warm-repeats", type=int, default=2)
+    parser.add_argument("--multi-query-count", type=int, default=3)
+    parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--reserve-blocks", type=int, default=64)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -133,7 +142,7 @@ def main() -> None:
     llm = LLM(
         model=args.model,
         max_model_len=512,
-        max_num_seqs=1,
+        max_num_seqs=max(1, args.concurrency),
         gpu_memory_utilization=0.4,
         enable_prefix_caching=True,
     )
@@ -144,15 +153,15 @@ def main() -> None:
     rows = []
     try:
         for example in examples:
+            prepared_at = time.perf_counter()
+            candidate_tokens = list(
+                tokenizer.encode(example.candidate_source, add_special_tokens=False)
+            )
             raw_source = _bounded_source(
                 tokenizer, example.selected_source, args.max_source_tokens
             )
             source = _aligned(raw_source, tokenizer, bridge.block_size)
-            query_text = (
-                "Answer the question using the available evidence. Give only the "
-                f"short answer.\nQuestion: {example.question}\nAnswer:"
-            )
-            query = list(tokenizer.encode(query_text, add_special_tokens=False))
+            text_preparation_ms = (time.perf_counter() - prepared_at) * 1000.0
             started = time.perf_counter()
             memory = encode_native_memory(runner.model, source)
             encode_ms = (time.perf_counter() - started) * 1000.0
@@ -161,7 +170,17 @@ def main() -> None:
             bridge.materialize(key, memory)
             materialize_ms = (time.perf_counter() - started) * 1000.0
 
-            for repeat in range(args.repeats):
+            requests = regime_schedule(
+                example.question,
+                warm_repeats=args.warm_repeats,
+                multi_query_count=args.multi_query_count,
+                concurrency=args.concurrency,
+            )
+            for request in requests:
+                query = list(
+                    tokenizer.encode(request.query.text, add_special_tokens=False)
+                )
+                reused = request.regime != "cold_one_shot"
                 for condition in ("e0_selected_text", "e2_native_kv"):
                     prompt_tokens = source + query if condition == "e0_selected_text" else query
                     request_id, output, timing = _run(
@@ -174,38 +193,70 @@ def main() -> None:
                     )
                     text = str(output.outputs[0].text).strip()
                     exact, f1 = _metrics(text, example.answer)
+                    native = condition == "e2_native_kv"
+                    ingestion_ms = encode_ms + materialize_ms if native else 0.0
                     rows.append(
-                        {
-                            "dataset": example.dataset,
-                            "seed": example.seed,
-                            "example_id": example.example_id,
-                            "source_sha256": example.selected_source_sha256,
-                            "condition": condition,
-                            "repeat": repeat,
-                            "reuse_state": "cold" if repeat == 0 else "warm",
-                            "request_id": str(request_id),
-                            "gold_answer": example.answer,
-                            "output": text,
-                            "exact_match": exact,
-                            "token_f1": f1,
-                            "visible_prompt_tokens": len(prompt_tokens),
-                            "selected_source_tokens": len(source),
-                            "selected_source_tokens_before_alignment": len(raw_source),
-                            "selected_native_tokens": (
-                                len(source) if condition == "e2_native_kv" else 0
+                        benchmark_row(
+                            condition=condition,
+                            selection=example.selection,
+                            request=request,
+                            output=text,
+                            metrics=benchmark_metrics(
+                                exact_match=exact,
+                                token_f1=f1,
+                                gold_answer_logprob=None,
+                                evidence_recall=example.evidence_recall,
+                                candidate_tokens=len(candidate_tokens),
+                                selected_source_tokens=len(source),
+                                visible_prompt_tokens=len(prompt_tokens),
+                                selected_native_kv_tokens=len(source) if native else 0,
+                                active_detail_bytes=memory.nbytes if native else 0,
+                                retained_detail_bytes=memory.nbytes if native else 0,
+                                text_preparation_ms=text_preparation_ms,
+                                kv_encode_ms=encode_ms if native else None,
+                                index_construction_ms=(
+                                    materialize_ms if native else None
+                                ),
+                                time_to_usable_context_ms=(
+                                    text_preparation_ms + ingestion_ms
+                                ),
+                                ttft_ms=timing["ttft_ms"],
+                                itl_ms=timing["itl_ms"],
+                                total_latency_ms=float(
+                                    timing["completion_latency_ms"]
+                                ),
+                                generated_tokens=len(output.outputs[0].token_ids),
+                                ordinary_prefix_cache_hit_tokens=int(
+                                    output.num_cached_tokens
+                                ),
+                                pra_hot_hit=native and reused,
+                                pra_warm_hit=False,
+                                bytes_read=memory.nbytes if native else 0,
+                                bytes_promoted=0,
+                                bytes_avoided=(memory.nbytes if native and reused else 0),
+                                duplicate_physical_kv_avoided_bytes=(
+                                    memory.nbytes if native and reused else 0
+                                ),
                             ),
-                            "selected_kv_bytes": memory.nbytes,
-                            "one_time_ingestion_ms": (
-                                encode_ms + materialize_ms
-                                if condition == "e2_native_kv"
-                                else None
-                            ),
-                            "num_cached_tokens": output.num_cached_tokens,
-                            "num_cache_creation_tokens": output.num_cache_creation_tokens,
-                            "generated_tokens": len(output.outputs[0].token_ids),
-                            "resource_reused": repeat > 0,
-                            **timing,
-                        }
+                            extra={
+                                "dataset": example.dataset,
+                                "seed": example.seed,
+                                "request_id": str(request_id),
+                                "gold_answer": example.answer,
+                                "selected_source_tokens_before_alignment": len(
+                                    raw_source
+                                ),
+                                "num_cache_creation_tokens": int(
+                                    output.num_cache_creation_tokens
+                                ),
+                                "concurrency_execution": (
+                                    "shared_residency_serialized"
+                                    if request.regime
+                                    == "concurrent_shared_resource"
+                                    else "single_request"
+                                ),
+                            },
+                        )
                     )
             # Reuse is measured by the two requests above. Unrelated examples
             # must return their reserved pages before the next source is loaded.
@@ -214,8 +265,8 @@ def main() -> None:
         bridge.close()
 
     payload = {
-        "schema_version": "1.0",
-        "experiment": "paper6_cross_engine_matched_e0_e2_vllm_v1",
+        "schema_version": SCHEMA_VERSION,
+        "experiment": "paper6_cross_engine_matched_e0_e2_vllm_v2",
         "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
         "engine": "vllm-metal",
         "engine_version": getattr(vllm, "__version__", "unknown"),
@@ -224,9 +275,12 @@ def main() -> None:
         "cohort": manifest["cohort"],
         "selection_policy": manifest["selection_policy"],
         "page_alignment_required": True,
-        "repeats": args.repeats,
+        "warm_repeats": args.warm_repeats,
+        "multi_query_count": args.multi_query_count,
+        "concurrency": args.concurrency,
         "rows": rows,
     }
+    validate_payload(payload)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
