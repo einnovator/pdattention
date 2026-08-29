@@ -25,6 +25,23 @@ def _run_request(runner, req_id: str, prompt: list[int], max_tokens: int = 12):
     return generated, (time.perf_counter() - started) * 1000.0
 
 
+def _run_batch(runner, req_ids: list[str], prompt: list[int], max_tokens: int = 12):
+    """Prefill independently, then use SGLang's real batched decode path."""
+
+    started = time.perf_counter()
+    generated = {req_id: [] for req_id in req_ids}
+    for req_id in req_ids:
+        pending = runner.prefill_start(req_id, prompt, prompt, [], [], 0)
+        runner.eval_pending(pending)
+        generated[req_id].append(runner.prefill_finalize(pending))
+    for _ in range(max_tokens - 1):
+        pending = runner.decode_batch_start(req_ids)
+        runner.eval_pending(pending)
+        for req_id, token in zip(req_ids, runner.decode_batch_finalize(pending)):
+            generated[req_id].append(token)
+    return generated, (time.perf_counter() - started) * 1000.0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
@@ -58,6 +75,7 @@ def main() -> None:
     # the bridge is a consumer path and must never participate in ingestion.
     bridge = SGLangMLXNativeBridge(runner)
     rows = []
+    concurrency_rows = []
     try:
         for seed, source, query, memory in prepared:
             requests = (
@@ -105,6 +123,40 @@ def main() -> None:
                 )
                 runner.remove_request(req_id)
                 bridge.unregister(req_id)
+
+        seed, source, query, memory = prepared[0]
+        for concurrency in (1, 2, 4, 8):
+            req_ids = [f"batch-{concurrency}-{index}" for index in range(concurrency)]
+            for req_id in req_ids:
+                bridge.register(req_id, memory, logical_keys=(f"seed-{seed}",))
+            generated, wall_ms = _run_batch(runner, req_ids, query)
+            outputs = [tokenizer.decode(generated[req_id]) for req_id in req_ids]
+            caches = [
+                runner._req_caches[req_id][
+                    runner._cache_layout.first_attention_layer_index
+                ]
+                for req_id in req_ids
+            ]
+            concurrency_rows.append(
+                {
+                    "concurrency": concurrency,
+                    "wall_ms": wall_ms,
+                    "requests_per_second": concurrency / max(wall_ms / 1000.0, 1e-9),
+                    "exact_recovery_rate": sum(EXPECTED in text for text in outputs)
+                    / concurrency,
+                    "shared_native_kv_bytes": memory.nbytes,
+                    "duplicate_native_kv_bytes": memory.nbytes * concurrency,
+                    "sharing_bytes_saved": memory.nbytes * (concurrency - 1),
+                    "scheduler_counts_exclude_pra": all(
+                        cache.offset == len(query) + len(generated[req_id]) - 1
+                        for req_id, cache in zip(req_ids, caches)
+                    ),
+                    "outputs": outputs,
+                }
+            )
+            for req_id in req_ids:
+                runner.remove_request(req_id)
+                bridge.unregister(req_id)
     finally:
         bridge.close()
 
@@ -120,6 +172,7 @@ def main() -> None:
         "seeds": list(SEEDS),
         "bridge_capabilities": dict(bridge.capabilities()),
         "rows": rows,
+        "concurrency_rows": concurrency_rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
