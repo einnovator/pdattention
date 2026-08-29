@@ -161,12 +161,16 @@ def _twowiki_examples(cache_dir: Path) -> list[QAExample]:
     examples = []
     for row in rows:
         context = row["context"]
+        if isinstance(context, str):
+            context = json.loads(context)
         if isinstance(context, Mapping):
             titles, sentences = context["title"], context["sentences"]
         else:
             titles = [item[0] for item in context]
             sentences = [item[1] for item in context]
         facts = row["supporting_facts"]
+        if isinstance(facts, str):
+            facts = json.loads(facts)
         supporting = (
             set(map(str, facts["title"]))
             if isinstance(facts, Mapping)
