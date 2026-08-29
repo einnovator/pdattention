@@ -24,7 +24,7 @@ class PRAHiCacheL3Backend(Protocol):
     def remove(self, logical_key: str) -> None: ...
 
 
-def _serialize_memory(memory: MLXNativeMemory) -> bytes:
+def _serialize_memory(memory: MLXNativeMemory, *, compress: bool = False) -> bytes:
     """Serialize K/V shapes and logical dtypes into one backend-neutral blob."""
 
     import numpy as np
@@ -52,7 +52,8 @@ def _serialize_memory(memory: MLXNativeMemory) -> bytes:
     ).encode("utf-8")
     arrays["__pra_metadata__"] = np.frombuffer(metadata, dtype=np.uint8)
     stream = io.BytesIO()
-    np.savez_compressed(stream, **arrays)
+    writer = np.savez_compressed if compress else np.savez
+    writer(stream, **arrays)
     return stream.getvalue()
 
 
@@ -95,9 +96,16 @@ class SGLangHiCacheStorageBackend:
 
     header_bytes = 512
 
-    def __init__(self, storage: object, *, namespace: str = "pra") -> None:
+    def __init__(
+        self,
+        storage: object,
+        *,
+        namespace: str = "pra",
+        compress: bool = False,
+    ) -> None:
         self.storage = storage
         self.namespace = str(namespace)
+        self.compress = bool(compress)
         self._sizes: dict[str, int] = {}
         self._revoked: set[str] = set()
 
@@ -117,7 +125,7 @@ class SGLangHiCacheStorageBackend:
         return torch.from_numpy(np.frombuffer(payload, dtype=np.uint8).copy())
 
     def put(self, logical_key: str, memory: MLXNativeMemory) -> int:
-        payload = _serialize_memory(memory)
+        payload = _serialize_memory(memory, compress=self.compress)
         header = json.dumps(
             {"schema": "pra-hicache-header-v1", "payload_bytes": len(payload)},
             separators=(",", ":"),

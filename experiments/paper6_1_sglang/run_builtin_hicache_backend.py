@@ -136,6 +136,7 @@ def main() -> None:
         "model_id": args.model,
         "model_revision": args.revision,
         "storage_backend": "sglang_hicache_file",
+        "storage_blob_compression": "none",
         "off_node_transport": False,
         "ordinary_radix_namespace_used": False,
         "patched_layers": patched_layers,
