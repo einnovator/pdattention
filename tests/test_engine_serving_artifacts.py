@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     registry = build_registry()
-    assert registry["registry_version"] == "2026-08-paper6-engine-native-v2"
+    assert registry["registry_version"] == "2026-08-paper6-engine-native-v4"
     assert len(registry["rows"]) == 15
     assert {row["engine"] for row in registry["rows"]} == {"vllm", "sglang", "mlx"}
     assert all(row["evidence_tier"] == "SMOKE" for row in registry["rows"])

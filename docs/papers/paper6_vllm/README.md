@@ -8,7 +8,9 @@ The current evidence validates vLLM-Metal serving, Automatic Prefix Caching
 coexistence, selected-text recovery, the SDK's logical-block lifecycle, and a
 native Metal paged-attention path for selected K/V. The native path is measured
 at kernel level and through live V1 generation, APC, cleanup, and offline
-concurrency eight. A matched 60-example routed-QA cohort removes 91--93% of
+concurrency eight. APC identity now includes the opaque hidden-memory selection,
+preventing reuse across different native memories while retaining reuse within
+one selection. A matched 60-example routed-QA cohort removes 91--93% of
 visible tokens but exposes an unresolved output-parity gap, so matched-quality
 promotion, online token latency, connectors, and CUDA remain open.
 

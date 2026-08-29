@@ -1324,8 +1324,9 @@ exposes a post-selection integration gap on two of three datasets.}
 \end{figure}
 
 The matrix now distinguishes companion evidence from generic provider defaults.
-On vLLM-Metal, selected native pages recover 75/75 answers with 128--144
-ordinary APC tokens and reach 35.88 requests/s at concurrency eight; alternating
+On vLLM-Metal, selected native pages recover 75/75 answers and reach 34.41
+requests/s at concurrency eight; after the first request in a native-selection
+namespace, APC supplies 128--144 prompt tokens. Alternating
 selected and ordinary rows satisfy their expected outcome in 40/40 cases. On
 SGLang-MLX, an 81-token shared-prefix hit composes with external HiCache:
 selected A/C recover 10/10, cleanup B recovers 0/5, and every selected request
@@ -1343,6 +1344,18 @@ only 5.0--20.0\% exact output parity and loses mean F1 on two datasets. The SDK
 therefore treats the pinned MLX and SGLang paths as semantic mechanism passes,
 keeps their economic status experimental, and keeps vLLM matched-quality
 promotion pending. Engine labels alone never select these capabilities.
+
+The vLLM audit also establishes a product invariant that is easy to miss at an
+HTTP boundary. APC hashes visible prompt state, but native PRA evidence is
+hidden from that state. A native provider must therefore derive an opaque APC
+salt from tenant scope, ordered logical-memory identity, selected-token count,
+position policy, and consumer layers. Stable selections retain warm reuse;
+changed selections cannot inherit query K/V produced under another memory.
+The SDK exposes this derivation as an engine helper and tests equal-selection
+reuse, changed-selection isolation, geometry sensitivity, and identifier
+non-disclosure. A five-example capture/replay audit then preserves E0's first
+token in 5/5 cases at the nominal position base, although only 3/5 complete
+24-token outputs are exact. This narrows, but does not close, vLLM promotion.
 
 The product surface includes installable package metadata, Hugging Face loading,
 runtime config serialization, direct and external reference registration,
@@ -1522,7 +1535,8 @@ vLLM-Metal V1 generation. A shared matched benchmark now closes E0/E2 semantic
 parity for SGLang and MLX but exposes a vLLM-Metal quality gap and decode
 overhead in both exact paths. Those results remain environment-specific and do not
 turn the generic provider into an unconditional E2 claim. Native APC and
-offline concurrency now pass on the pinned Metal path; CUDA replication,
+offline concurrency now pass on the pinned Metal path when cache identity
+includes native selection and geometry; CUDA replication,
 online queued concurrency, distributed placement, broader positions, masks,
 GQA, and heterogeneous batching must pass before portable speed comparisons.
 If useful behavior requires semantic residency, retrieval-aware scheduling, or
