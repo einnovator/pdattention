@@ -32,4 +32,6 @@ jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeou
 Remote pretrained-model cells are opt-in and disabled by default.
 
 The notebook constructs an agent SDK without downloading a chat model. For an interactive
-pretrained session, use `pra-hf agent chat MODEL --workspace . --task "..."`.
+pretrained session, use `pra agent chat MODEL -w . -t "..."`. The canonical CLI also
+supports named agent profiles, model onboarding, runtime providers, bundles, and the
+optional `pra agent start` web surface; `pra-hf` is retained only as a deprecated alias.

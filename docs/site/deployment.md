@@ -54,6 +54,34 @@ Raw K/V does not cross the normal harness/gateway wire boundary. `PRAWireRequest
 contains JSON-serializable messages, stable resource IDs, budgets, query facets,
 policy hints, and requested capabilities.
 
+## Runtime providers
+
+`pra runtime serve MODEL -e ENGINE` is the canonical engine launch path. Click
+commands delegate to `RuntimeManager`, which resolves a `RuntimeProvider` and
+translates the common model/revision/PRA profile/session contract into the
+upstream engine's supported launcher. Repeated `--engine-arg KEY=VALUE` options
+remain an escape hatch rather than cloning every upstream CLI.
+
+```text
+pra runtime serve
+        |
+ RuntimeProvider
+   /    |     |    \
+ HF   vLLM  SGLang  MLX
+```
+
+The gateway remains optional and separate:
+
+```text
+agent -> gateway -> runtime -> engine
+```
+
+`runtime inspect` reports static provider declarations, while `runtime doctor`
+checks installed dependencies and remote readiness. The vLLM provider remains
+E0 because its safe V1 metadata boundary is not yet wired through generation.
+The SGLang and MLX providers expose the companion papers' measured E1 native
+mechanism integrations without claiming E2 memory scheduling.
+
 ## Gateway modes
 
 | Mode | Input | Engine | Behavior |
@@ -85,16 +113,16 @@ logical request.
 | Level | Meaning | Current status |
 | --- | --- | --- |
 | E0 | protocol facade or text fallback | implemented for OpenAI-compatible HTTP |
-| E1 | native PRA attention execution | implemented by local HF eager adapter |
+| E1 | native PRA attention execution | HF reference; companion SGLang/MLX mechanism integrations |
 | E2 | PRA-aware memory residency/runtime | not implemented |
 | E3 | PRA-aware scheduler and batching | not implemented |
 
-SGLang documents an OpenAI-compatible server and a model gateway, so the current
-adapter can target it at E0. Its configurable attention backends identify a plausible
-future E1 boundary, but no PRA backend has been implemented or measured
+SGLang documents an OpenAI-compatible server and a model gateway. The companion
+Paper 6.1 integration exercises its MLX runner at E1, while the generic remote
+provider remains usable at E0
 ([SGLang quickstart](https://github.com/sgl-project/sglang/blob/main/docs/docs/get-started/quickstart.mdx),
 [attention backends](https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/attention_backend.md)).
-FreeToken likewise documents OpenAI and Anthropic endpoints, which makes E0 transport
+FreeToken documents OpenAI and Anthropic endpoints, which makes E0 transport
 feasible; native PRA cache integration remains unimplemented
 ([FreeToken quickstart](https://github.com/FlashML-org/FreeToken/blob/main/docs/quickstart.md)).
 

@@ -1134,7 +1134,7 @@ resumed = task_agent.start_session(physical_id, resume=True)
         r'''
 ## 21. Agent CLI and terminal UI
 
-`pra-hf agent chat` assembles the model, PRA runtime, local session service, optional OpenAI- or
+`pra agent chat` assembles the model, PRA runtime, local session service, optional OpenAI- or
 Anthropic-style skills, and workspace toolset. Slash commands expose `/sessions`, `/tasks`,
 `/task new`, `/task use`, `/task done`, `/context`, and `/tools`. Writes are denied by default and
 confirmed one call at a time in the terminal. `--allow-writes` is an explicit unattended-host
@@ -1628,18 +1628,50 @@ display(Image(filename=str(cross_model_dir / "gateway_two_cache_architecture.png
 The same systems surface is available without notebook state:
 
 ```powershell
-python -m pra_hf.cli runtime init ./runtime-config --kv-layout block_major
-python -m pra_hf.cli runtime inspect ./runtime-config
-python -m pra_hf.cli runtime capabilities
-python -m pra_hf.cli runtime benchmark --output ./runtime-results
-python -m pra_hf.cli runtime prepare-vllm "A user prompt" --selected-uri memory://demo/facts
-python -m pra_hf.cli profiles show Qwen/Qwen3-0.6B --workload semantic_smoke
-python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect the repository"
-python -m pra_hf.cli agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
+pra doctor
+pra model inspect Qwen/Qwen3-0.6B
+pra model adapt Qwen/Qwen3-0.6B -o ./.pra/adapters/qwen3
+pra profiles calibrate Qwen/Qwen3-0.6B -s smoke -o ./runtime-results
+pra bundle build ./runtime-results -o ./.pra/bundles/qwen3
+pra runtime inspect Qwen/Qwen3-0.6B -e hf
+pra runtime benchmark Qwen/Qwen3-0.6B -e hf -o ./runtime-results/physical
+pra agent chat Qwen/Qwen3-0.6B -w . -t "Inspect the repository"
+pra agent run -p work "Summarize the active task"
+pra agent start -p work -o
 pra gateway serve --mode G10 --backend sglang --backend-url http://localhost:30000
 pra gateway serve --mode G10 --backend vllm --backend-url http://localhost:8000 --prefix-cache-mode automatic_prefix_cache
 pra gateway serve --mode G11 --backend custom --backend-url http://localhost:9000 --pra-level E1 --session-state --incremental-messages --resource-delta --cache-affinity
 ```
+
+The product CLI distinguishes architecture integration, learned adapters, profile
+calibration, engine launch, agent behavior, and optional Hub publication. `pra-hf`
+remains a deprecated alias for one release cycle.
+'''
+    ),
+    code(
+        r'''
+from pra_hf.agent_profiles import AgentProfileRegistry
+from pra_hf.runtime_providers import RuntimeConfig, RuntimeManager, RuntimeProviderRegistry
+
+provider_names = RuntimeProviderRegistry.default().names()
+hf_runtime = RuntimeManager().inspect(RuntimeConfig(
+    engine="hf", model="offline/tiny-llama", profile="REFERENCE_CORRECTNESS"
+))
+default_agent_profile = AgentProfileRegistry().load().resolve().redacted_dict()
+{
+    "runtime_providers": provider_names,
+    "hf_runtime": hf_runtime,
+    "default_agent_profile": default_agent_profile,
+}
+'''
+    ),
+    md(
+        r'''
+Agent profiles are intentionally separate from `pra.yaml`: runtime configuration controls
+model/context execution, while an agent profile controls the endpoint, workspace, sessions,
+tool authorization, skill directories, MCP declarations, task policy, and generation budget.
+The TUI and experimental FastAPI/WebSocket UI resolve through the same `AgentLauncher` and
+durable `SessionService`; credentials remain server-side references.
 
 ## What this notebook proves, and what it does not
 
@@ -1666,6 +1698,7 @@ Demonstrated here:
 - compact prefill/decode native-memory lifetime telemetry;
 - tenant-scoped cache identities and per-tenant byte accounting;
 - portable HF gateway streaming, cancellation, and request-owned cleanup (covered by tests);
+- the canonical product CLI, provider registry, named agent profiles, and bundle boundary;
 - a scheduler-unaware vLLM request contract.
 
 Not demonstrated here:
@@ -1676,7 +1709,8 @@ Not demonstrated here:
 - asynchronous transfer overlap or production prefetch;
 - continuous batching, p95/p99 serving latency, or a deep vLLM scheduler integration;
 - phase-level HF selection;
-- native or measured SGLang, FreeToken, TensorRT-LLM, MLX, llama.cpp, TGI, or Ollama adapters.
+- Paper-4.5-scale engine performance; companion papers own the measured SGLang and MLX mechanisms;
+- native FreeToken, TensorRT-LLM, llama.cpp, TGI, or Ollama adapters.
 
 Those omissions are explicit capability gates, not hidden eager fallbacks.
 '''

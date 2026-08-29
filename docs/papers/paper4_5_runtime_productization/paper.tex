@@ -3,6 +3,7 @@
 \usepackage{amsmath,amssymb,booktabs,graphicx,tabularx,longtable,array,enumitem,float}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xcolor}
+\setlength{\emergencystretch}{2em}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \newcommand{\QualityMaxCandidate}{\texttt{QUALITY\_\allowbreak MAX\_\allowbreak CANDIDATE}}
 \newcommand{\QualityMax}{\texttt{QUALITY\_\allowbreak MAX}}
@@ -819,11 +820,12 @@ from arbitrary unstructured user traffic.
 We distinguish E0 protocol integration, E1 native PRA attention, E2 a PRA-aware
 memory runtime, and E3 scheduler-aware batching. The local HF adapter is the E1
 semantic reference. The OpenAI-compatible HTTP adapter and standalone
-\texttt{pra gateway serve} process implement E0. SGLang and FreeToken expose
-compatible HTTP surfaces, so they are reachable at E0; neither has a PRA-native
-backend in this Paper 4.5 artifact~\cite{sglangDocs2026,freetokenDocs2026}.
-Companion Papers 6--6.2 separately exercise vLLM-Metal, SGLang-MLX, and MLX-LM
-at E0; those black-box serving runs do not promote this runtime to E2. The portable
+\texttt{pra gateway serve} process implement E0. FreeToken remains reachable
+through that E0 surface~\cite{freetokenDocs2026}. Companion Papers 6.1 and 6.2
+exercise native SGLang-MLX and MLX-LM E1 mechanisms; their provider declarations
+are available here, but their engine measurements do not promote Paper 4.5 to
+E2. Paper 6's vLLM V1 metadata remains E0 until generation and scheduler paths
+consume it. The portable
 HF adapter implements E1 native execution and streaming but remains stateless
 between gateway calls. The configurable remote E1 envelope carries incremental
 messages and resource operations when the selected engine advertises those
@@ -874,7 +876,8 @@ A versioned engine registry resolves OpenAI-generic, vLLM, SGLang, FreeToken,
 Ollama, Hugging Face, llama.cpp, MLX, and custom profiles. Unknown compatible
 servers safely remain E0, full-history, and cache-telemetry-unknown. vLLM and
 SGLang profiles represent automatic prefix-cache capability but do not infer
-native PRA from engine availability or from the companion E0 smoke runs. The
+native PRA from an engine label. Companion E1 mechanism results are registered
+through explicit providers and remain separate from Paper 4.5 evidence. The
 local HF reference remains E1-native but
 stateless across calls; the session/resource-delta row is exercised by a
 deterministic remote-engine contract fixture. Explicit configuration may
@@ -1268,12 +1271,14 @@ engine profiles and explicit text fallback\\
 DeepSeek/Pi agent bridges & contract tested & Typed event/RPC capture and explicit G10 fallback\\
 \texttt{torch.compile} & blocked on host & API implemented; compiler/GPU gates recorded\\
 Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
-vLLM thin & contract only & Scheduler-unaware identity and K/V handoff; E0 engine
-smoke is reported separately in Paper 6\\
-SGLang/FreeToken & E0 contract & Compatible HTTP; SGLang E0 smoke is reported
-separately in Paper 6.1; no native PRA backend\\
-TensorRT-LLM/MLX & architectural only & MLX E0 and rotating-cache controls are
-reported separately in Paper 6.2; no Paper 4.5 engine claim\\
+vLLM & provider E0 & A safe V1 metadata boundary exists, but selected PRA pages
+are not yet wired through generation or scheduler accounting\\
+SGLang & provider E1 & Companion Paper 6.1 measures native runner integration;
+Paper 4.5 inherits the capability declaration, not its performance evidence\\
+MLX & provider E1 & Companion Paper 6.2 measures native layer profiles,
+persistence, and concurrency; Paper 4.5 remains HF-centered\\
+FreeToken/TensorRT-LLM & E0/architectural & Remote fallback or planned provider;
+no native Paper 4.5 result\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1284,15 +1289,100 @@ session isolation, callable and folder-backed capability registration, lazy
 view activation, typed resource discovery, safe execution, compact result
 ingestion, selected replay, address search, cursors, size-adaptive native result
 routing, lazy native-region promotion, generation, inspection, benchmark
-commands, and two executed
-notebooks.  The CLI exposes
-\texttt{runtime init}, \texttt{inspect}, \texttt{capabilities},
-\texttt{benchmark}, \texttt{prepare-vllm}, and a persistent
-\texttt{agent chat} terminal. The \texttt{pra gateway serve} and
-\texttt{pra-hf gateway serve} commands launch the same independently testable
+commands, and two executed notebooks. The canonical \texttt{pra} CLI exposes
+separate \texttt{model}, \texttt{adapter}, \texttt{profiles}, \texttt{bundle},
+\texttt{runtime}, \texttt{agent}, \texttt{gateway}, and Hub-only \texttt{hf}
+namespaces. \texttt{pra-hf} remains a deprecated alias for one release cycle.
+The \texttt{pra gateway serve} command launches the independently testable
 gateway with health, capability, logical-request, and OpenAI-compatible
 endpoints. A deployment can therefore
 discover unsupported paths before serving.
+
+\subsection{Model onboarding, calibration, and community distribution}
+
+The product workflow treats architecture adaptation, learned routing
+adaptation, profile calibration, engine realization, and Hub distribution as
+different operations. \texttt{ModelInspector} reads configuration metadata
+without loading weights. \texttt{StructuralAdapterBuilder} emits a versioned
+declarative mapping for conventional Qwen, Llama, and Gemma decoder attention.
+\texttt{ModelValidator} records V0--V9 independently, so discovering Q/K/V
+projections cannot be reported as semantic success. The later stages cover
+disabled-PRA parity, native capture, visible-prefix equivalence, source-relative
+position geometry, cached decode, grouped-query layout, selected-region
+consumption, and generation.
+
+\texttt{ProfileCalibrator} packages measured rows from the existing benchmark
+registry. A small-cohort optimum remains \QualityMaxCandidate{} with
+\textsc{Smoke}/\CalibrationPending{} evidence; only benchmark-scale validation
+may assign \QualityMax{}. \texttt{PRAModelBundle} then combines immutable base
+model identity, structural and learned adapters, profiles, evidence, runtime
+compatibility, engine realizations, and provenance without copying base-model
+weights. Hub pull and push are optional transport operations under
+\texttt{pra hf}; generic Transformers execution does not depend on Hub login.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.88\linewidth}\centering
+HF model $\rightarrow$ inspect $\rightarrow$ structural adapter
+$\rightarrow$ semantic validation $\rightarrow$ optional learned adapter\\[3pt]
+$\rightarrow$ profile calibration $\rightarrow$ PRA bundle
+$\rightarrow$ runtime/agent/engines $\rightarrow$ optional Hub publication
+\end{minipage}}
+\caption{The model-onboarding path. Each arrow is a separately inspectable
+service boundary rather than an implicit side effect of one CLI callback.}
+\label{fig:model-onboarding}
+\end{figure}
+
+\subsection{Engine-neutral runtime providers}
+
+The canonical launch path is \texttt{pra runtime serve} with a model and
+\texttt{-e ENGINE}. Click parses the request, \texttt{RuntimeManager} resolves a provider, and that
+provider translates a common model, revision, PRA bundle/profile, device,
+session, and cache contract to the upstream engine. Repeated
+\texttt{--engine-arg KEY=VALUE} values preserve engine-specific escape hatches
+without cloning upstream CLIs. Providers return serializable handles and
+distinguish process start from readiness. Inspection reports static declarations;
+doctor checks report installed dependencies and live endpoints separately.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.86\linewidth}\centering
+\texttt{pra runtime serve} $\rightarrow$ \texttt{RuntimeProvider}
+$\rightarrow$ \{HF, vLLM, SGLang, MLX\}\\[3pt]
+agent $\rightarrow$ [optional gateway] $\rightarrow$ runtime $\rightarrow$ engine
+\end{minipage}}
+\caption{One runtime command preserves the separation between agent policy,
+optional gateway mediation, and engine-native execution.}
+\label{fig:runtime-provider}
+\end{figure}
+
+The vLLM provider deliberately advertises E0: Paper 6's kernel and V1 metadata
+work do not yet establish generation-path or scheduler integration. SGLang and
+MLX advertise the companion papers' measured E1 mechanism support, while E2
+memory management and E3 scheduler-aware PRA remain false. The shared
+capability object feeds runtime inspection, gateway negotiation, agent launch,
+and benchmark records.
+
+\subsection{Agent-level configuration and interactive surfaces}
+
+Low-level \texttt{pra.yaml} controls model/context execution. A separate,
+versioned agent profile controls model endpoint, workspace, durable sessions,
+tool approval, skill directories, MCP declarations, task policy, and generation
+budgets. Resolution is explicit CLI options, selected named profile, default
+profile, project config, user config, then package defaults. The short option
+\texttt{-p} selects an agent profile; \texttt{-P} independently overrides PRA.
+Credential files remain server-side references and are redacted from session,
+inspection, benchmark, and model-card output.
+
+\texttt{pra agent chat} is the stable TUI reference and can resolve a default
+profile without model flags. \texttt{pra agent run} provides a noninteractive
+form. The optional FastAPI/WebSocket UI is another presentation layer over the
+same \texttt{PRAAgent}, \texttt{AgentLauncher}, session, task, and authorization
+services. It supports multiple durable conversations and sequence-based replay
+after reconnect. A dangerous tool call remains blocked until the backend
+receives a typed one-shot approval; the browser cannot bypass host policy. The
+UI binds to loopback by default and is experimental rather than a scientific
+contribution or production security claim.
 
 \section{Limitations and Next Gates}
 
@@ -1362,9 +1452,9 @@ latency, selection churn, and routing-layer disagreement. Phase/shared requires
 a cache-correct prefill handoff before it enters that comparison.
 
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
-have now established reproducible E0 baselines; their next step remains thin:
-external routing, selected
-native-K/V materialization, then ordinary vLLM execution.  Disabled-PRA parity,
+have established SGLang and MLX E1 mechanism baselines, while vLLM remains at
+a metadata boundary. Its next step remains thin: external routing, selected
+native-K/V materialization, then ordinary vLLM execution. Disabled-PRA parity,
 native positions, masks, GQA, and batching must pass before speed comparisons.
 If useful behavior requires semantic residency, retrieval-aware scheduling, or
 cross-request PRA block sharing, that work belongs to the deep engine paper.
@@ -1397,8 +1487,8 @@ make persistent storage and request-time computation independently auditable;
 missing detail can never trigger a silent profile downgrade. The eager
 primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
-remains a negative gate, and companion E0 engine runs leave native E2/E3
-integration unmeasured.  The practical
+remains a negative gate. Companion E1 mechanism runs still leave native E2/E3
+integration unmeasured. The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.
@@ -1580,6 +1670,14 @@ Artifact & Role\\
 \endhead
 \path{src/pra_hf/runtime.py} & Unified facade, plans, materializer, cache,
 profiler, HF adapter, thin vLLM contract\\
+\path{src/pra_hf/runtime_providers.py} & Provider registry, canonical runtime
+configuration, conservative capabilities, managed handles, readiness, and
+upstream launcher translation\\
+\path{src/pra_hf/onboarding.py}, \path{src/pra_hf/bundle.py} & Structural
+inspection/adaptation/validation, profile packaging, portable bundles, and the
+optional Hub boundary\\
+\path{src/pra_hf/cli.py} & Thin canonical \texttt{pra} command tree and
+deprecated \texttt{pra-hf} aliases\\
 \path{src/pra_torch/execution.py} & Engine-neutral policy axes, logical
 plans, precedence, lifecycle, and analytical routing count\\
 \path{src/pra_hf/hf_execution.py} & Request-owned token/shared and
@@ -1625,6 +1723,10 @@ discovery\\
 host authorization\\
 \path{src/pra_hf/agent.py} & Task-aware turn orchestration and persistent
 agent facade\\
+\path{src/pra_hf/agent_profiles.py} & Versioned named profiles, precedence,
+credential redaction, runtime mapping, and shared agent launcher\\
+\path{src/pra_hf/agent_web/} & Optional FastAPI/WebSocket multi-session
+presentation, reconnect replay, one-shot approval, and safe detached lifecycle\\
 \path{src/pra_hf/session_service.py} & In-memory and atomic local logical
 session persistence\\
 \path{src/pra_hf/task_context.py}, \path{src/pra_hf/task_scope.py} & Versioned

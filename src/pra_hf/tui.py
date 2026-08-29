@@ -43,8 +43,9 @@ class AgentShell:
             return False
         if command == "/help":
             self.output(
-                "/status  /sessions  /tasks  /task new <text>  "
-                "/task use <id>  /task done <id>  /context  /tools  /clear  /exit"
+                "/status  /profile  /model  /runtime  /session  /sessions  /tasks  "
+                "/task new <text>  /task use <id>  /task done <id>  /context  "
+                "/tools  /skills  /metrics  /clear  /exit"
             )
         elif command == "/status":
             self.output(self.status())
@@ -52,6 +53,20 @@ class AgentShell:
             service = self.agent.runtime.session_service
             rows = service.list_sessions(self.agent.config.user_id) if service else ()
             self.output("\n".join(f"{row.session_id}\t{row.active_task_id or '-'}\t{len(row.records)} records" for row in rows) or "No sessions.")
+        elif command in {"/profile", "/model", "/runtime"}:
+            summary = getattr(self.agent, "product_summary", {})
+            key = command[1:]
+            if key == "profile":
+                self.output(f"agent={summary.get('agent_profile', '-')} pra={summary.get('pra_profile', '-')}")
+            elif key == "model":
+                self.output(f"model={summary.get('model', '-')} revision={summary.get('revision', '-')}")
+            else:
+                self.output(
+                    f"mode={summary.get('runtime_mode', '-')} engine={summary.get('engine', '-')} "
+                    f"endpoint={summary.get('endpoint', '-')}"
+                )
+        elif command == "/session":
+            self.output(self.status())
         elif command == "/tasks":
             rows = self.agent.state.tasks.tasks
             self.output("\n".join(f"{row.task_id}\t{row.status.value}\t{row.description}" for row in rows) or "No tasks.")
@@ -83,6 +98,11 @@ class AgentShell:
         elif command == "/tools":
             resources = self.agent.runtime.capability_resources(kinds=("tool",)) if self.agent.runtime.capabilities else ()
             self.output("\n".join(f"{row.name}\t{row.side_effect_class.value}" for row in resources) or "No tools.")
+        elif command == "/skills":
+            resources = self.agent.runtime.capability_resources(kinds=("skill",)) if self.agent.runtime.capabilities else ()
+            self.output("\n".join(f"{row.name}\t{row.uri}" for row in resources) or "No skills.")
+        elif command == "/metrics":
+            self.output(str(self.agent.runtime.inspect()))
         elif command == "/clear":
             click.clear()
         else:

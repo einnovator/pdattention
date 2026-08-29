@@ -113,6 +113,38 @@ from .agent_resources import (
 from .tool_records import ToolRecord, ToolSchema, tool_record_from_callable
 from .toolsets import Tool, Toolset, default_toolset
 from .agent import AgentTurn, PRAAgent, PRAAgentConfig
+from .agent_profiles import (
+    AgentLaunch,
+    AgentLauncher,
+    AgentProfile,
+    AgentProfileDocument,
+    AgentProfileRegistry,
+    ToolPolicy,
+)
+from .bundle import BundleBuilder, HubPublisher, PRAModelBundle
+from .onboarding import (
+    DoctorService,
+    ModelInspector,
+    ModelValidator,
+    OnboardingPipeline,
+    ProfileCalibrator,
+    StructuralAdapterBuilder,
+    StructuralAdapterSpec,
+)
+from .runtime_providers import (
+    GenericOpenAIRuntimeProvider,
+    HFRuntimeProvider,
+    MLXRuntimeProvider,
+    RuntimeConfig,
+    RuntimeDoctorReport,
+    RuntimeHandle,
+    RuntimeHealth,
+    RuntimeManager,
+    RuntimeProvider,
+    RuntimeProviderRegistry,
+    SGLangRuntimeProvider,
+    VLLMRuntimeProvider,
+)
 from .agent_plugins import (
     AgentFamily,
     DeepSeekHarnessPRAAdapter,
@@ -410,6 +442,37 @@ __all__ += [
     "VLLMThinRequest",
     "parse_tool_call",
     "runtime_capabilities",
+]
+
+__all__ += [
+    "AgentLaunch",
+    "AgentLauncher",
+    "AgentProfile",
+    "AgentProfileDocument",
+    "AgentProfileRegistry",
+    "BundleBuilder",
+    "DoctorService",
+    "GenericOpenAIRuntimeProvider",
+    "HFRuntimeProvider",
+    "HubPublisher",
+    "MLXRuntimeProvider",
+    "ModelInspector",
+    "ModelValidator",
+    "OnboardingPipeline",
+    "PRAModelBundle",
+    "ProfileCalibrator",
+    "RuntimeConfig",
+    "RuntimeDoctorReport",
+    "RuntimeHandle",
+    "RuntimeHealth",
+    "RuntimeManager",
+    "RuntimeProvider",
+    "RuntimeProviderRegistry",
+    "SGLangRuntimeProvider",
+    "StructuralAdapterBuilder",
+    "StructuralAdapterSpec",
+    "ToolPolicy",
+    "VLLMRuntimeProvider",
 ]
 
 __all__ += [

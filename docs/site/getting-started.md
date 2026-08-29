@@ -24,6 +24,14 @@ python -m pra_torch.cli config show
 python -m pra_torch.cli dataset show -g stage0_synthetic_memory -m 2
 ```
 
+Inspect a pretrained model and the local runtime separately:
+
+```bash
+pra doctor
+pra model inspect Qwen/Qwen3-1.7B
+pra runtime inspect Qwen/Qwen3-1.7B -e hf
+```
+
 ## Train and evaluate
 
 Run the standalone entry points:
@@ -165,13 +173,15 @@ agent.close()
 The coding-agent terminal exposes task, context, tool, and session inspection:
 
 ```bash
-pra-hf agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect this repository"
-pra-hf agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
+pra agent chat Qwen/Qwen3-0.6B -w . -t "Inspect this repository"
+pra agent chat -p work -r
+pra agent run -p work "Summarize the current task state."
 ```
 
 The built-in toolset can list, read, search, edit, inspect Git, and run a command inside
 the configured workspace. Writes are denied by default and require one interactive host
-approval. `--allow-writes` is intended only for explicitly trusted unattended runs.
+approval. Named agent profiles keep this policy separate from low-level PRA
+runtime configuration; see [Agent Profiles and UI](agent-ui.md).
 
 ## Build this site
 

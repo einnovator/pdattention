@@ -1,0 +1,27 @@
+:root { color-scheme: light; --ink:#172126; --muted:#647078; --line:#d7dde0; --paper:#f6f7f7; --teal:#087f78; --blue:#2255a4; }
+* { box-sizing:border-box; letter-spacing:0; }
+body { margin:0; color:var(--ink); background:var(--paper); font-family:Inter,Segoe UI,sans-serif; overflow:hidden; }
+.app-bar { height:52px; padding:0 14px; display:flex; align-items:center; gap:18px; background:#172126; color:white; border-bottom:3px solid var(--teal); }
+.brand { display:flex; align-items:center; gap:9px; font-size:16px; }
+.brand svg,.btn svg,.send svg { width:18px; height:18px; }
+.runtime-summary { margin-left:auto; display:flex; align-items:center; gap:7px; color:#d9e1e3; font-size:13px; }
+.status-dot { width:8px; height:8px; border-radius:50%; background:#93a0a6; }
+.status-dot.live { background:#30c48d; }
+#dockview { height:calc(100vh - 52px); }
+.pane { height:100%; min-width:0; padding:12px; background:#fff; overflow:auto; }
+.pane h2 { font-size:13px; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
+.chat-pane { display:flex; flex-direction:column; padding:0; }
+.messages { flex:1; overflow:auto; padding:18px max(18px,calc((100% - 780px)/2)); }
+.message { padding:10px 12px; margin:0 0 12px; border-left:3px solid var(--line); white-space:pre-wrap; }
+.message.user { border-color:var(--blue); background:#f3f7fc; }
+.message.assistant { border-color:var(--teal); }
+#composer { display:grid; grid-template-columns:1fr 42px; gap:8px; padding:12px max(18px,calc((100% - 780px)/2)); border-top:1px solid var(--line); }
+#prompt { resize:none; width:100%; border:1px solid #aeb8bd; border-radius:6px; padding:10px; font:inherit; }
+.send { border:0; border-radius:6px; color:white; background:var(--teal); display:grid; place-items:center; }
+.detail-tabs { display:flex; border-bottom:1px solid var(--line); margin:-4px 0 10px; }
+.detail-tabs button { border:0; background:transparent; padding:7px 10px; font-size:12px; color:var(--muted); }
+.detail-tabs button.active { color:var(--teal); border-bottom:2px solid var(--teal); }
+#details { font-size:12px; white-space:pre-wrap; }
+.conversation { width:100%; text-align:left; border:0; border-bottom:1px solid var(--line); background:white; padding:10px 8px; font-size:13px; }
+.conversation.active { background:#edf7f6; color:#075f5a; }
+@media (max-width:720px) { .runtime-summary { display:none; } #dockview { height:calc(100vh - 52px); } }

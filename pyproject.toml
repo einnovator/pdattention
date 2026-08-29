@@ -13,6 +13,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+hf-hub = [
+  "huggingface-hub>=0.26",
+]
+web = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "psutil>=5.9",
+]
+hf-runtime = [
+  "transformers>=4.45",
+]
 docs = [
   "mkdocs>=1.6,<2",
   "mkdocs-material>=9.6,<10",
@@ -29,8 +40,9 @@ research = [
 ]
 
 [project.scripts]
-pra = "pra_torch.cli:cli"
-pra-hf = "pra_hf.cli:cli"
+pra = "pra_hf.cli:cli"
+pra-hf = "pra_hf.cli:deprecated_cli"
+pra-standalone = "pra_torch.cli:cli"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

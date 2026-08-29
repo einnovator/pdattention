@@ -104,8 +104,8 @@ pra dataset show
 The product SDK also includes a persistent task-aware agent shell:
 
 ```bash
-pra-hf agent chat Qwen/Qwen3-0.6B --workspace . --task "Inspect this repository"
-pra-hf agent chat Qwen/Qwen3-0.6B --resume --user-id local-user
+pra agent chat Qwen/Qwen3-0.6B -w . -t "Inspect this repository"
+pra agent chat -p work -r
 ```
 
 `PRAAgent` resolves durable typed sessions by user and session ID. `Toolset` registers

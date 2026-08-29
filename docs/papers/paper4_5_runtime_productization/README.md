@@ -41,6 +41,10 @@ The implementation adds:
 - tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
 - source-revision, position, materialization, and scope-safe physical payload reuse;
 - pinned Qwen3-0.6B, Llama-3.2-1B mirror, and Gemma-3-1B cross-model gates;
+- the canonical `pra` model-onboarding, profile, bundle, runtime-provider,
+  agent, gateway, and Hub command tree, with `pra-hf` retained as a deprecated
+  alias;
+- versioned named agent profiles and an optional FastAPI/WebSocket multi-session UI;
 - CLI and executed notebook workflows.
 
 Reproduce the measured portable profile:
@@ -75,16 +79,19 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 Try the SDK notebook under `pra-hf-demo/pra_runtime_productization.ipynb`.
 
 The current runtime also integrates Paper 8's durable task/session layer. The
-`pra-hf agent chat` command demonstrates the same SDK with task-scoped typed
+`pra agent chat` command demonstrates the same SDK with task-scoped typed
 records, reusable toolsets, local persistence, and per-call write authorization.
 
 Launch the reference gateway with `pra gateway serve`. HF-backed adapters expose
 OpenAI-compatible streaming; request-owned references remain active until decode
 or cancellation cleanup completes. G10 is an
-explicit text-materialization fallback; it is not native-K/V PRA. SGLang and
-FreeToken are E0 protocol targets only in this artifact. Companion Papers 6--6.2
-measure vLLM-Metal, SGLang-MLX, and MLX-LM E0 baselines separately; those runs do
-not change Paper 4.5's HF-centered evidence tier. The gateway experiment measures
+explicit text-materialization fallback; it is not native-K/V PRA. FreeToken is
+an E0 protocol target in this artifact. Companion Papers 6.1 and 6.2 measure
+SGLang-MLX and MLX-LM E1 mechanisms separately; those runs do not change Paper
+4.5's HF-centered evidence tier. The gateway experiment measures
 exact logical-prefix stability and transport bytes with a simulated
 adapter. It does not report a physical engine cache hit, scheduler affinity,
-or remote-engine speedup.
+or remote-engine speedup. `pra runtime serve MODEL -e ENGINE` is now the common
+launch path. vLLM remains conservatively E0; companion SGLang and MLX providers
+advertise measured E1 mechanism support without importing those papers' metrics
+into Paper 4.5.
