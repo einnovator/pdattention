@@ -90,7 +90,11 @@ def main() -> None:
                             else cache.offset
                         ),
                         "pra_tokens_absent_from_scheduler_count": (
-                            bool(native and cache.offset == len(query) + len(generated))
+                            bool(
+                                native
+                                and cache.offset
+                                == len(query) + len(generated) - 1
+                            )
                             if native
                             else None
                         ),
