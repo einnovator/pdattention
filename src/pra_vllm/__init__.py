@@ -7,13 +7,16 @@ from .v1_metadata import (
     VLLMNativeStep,
     VLLMNativeStepRegistry,
 )
+from .v1_native import VLLMMetalV1NativeBridge, augment_paged_context
 
 __all__ = [
     "VLLMEngineAdapter",
     "VLLMMetalBlockHandle",
     "VLLMMetalPRAStore",
+    "VLLMMetalV1NativeBridge",
     "VLLMNativeBlockSet",
     "VLLMNativeExecutor",
     "VLLMNativeStep",
     "VLLMNativeStepRegistry",
+    "augment_paged_context",
 ]

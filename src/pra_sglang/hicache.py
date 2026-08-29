@@ -49,12 +49,44 @@ class PRAHiCacheMetrics:
         return asdict(self)
 
 
-def _default_to_host(memory: MLXNativeMemory) -> MLXNativeMemory:
+@dataclass(frozen=True)
+class _HostArray:
+    """NumPy-compatible payload plus the MLX dtype it must reconstruct."""
+
+    data: object
+    logical_dtype: str
+
+    @property
+    def nbytes(self) -> int:
+        return int(self.data.nbytes)
+
+    @property
+    def shape(self):
+        return self.data.shape
+
+    def __array__(self, dtype=None):
+        import numpy as np
+
+        return np.asarray(self.data, dtype=dtype)
+
+
+def _host_array(array: object) -> _HostArray:
     import numpy as np
 
+    logical_dtype = str(array.dtype)
+    if logical_dtype == "bfloat16":
+        import mlx.core as mx
+
+        data = np.asarray(array.view(mx.uint16)).copy()
+    else:
+        data = np.asarray(array).copy()
+    return _HostArray(data, logical_dtype)
+
+
+def _default_to_host(memory: MLXNativeMemory) -> MLXNativeMemory:
     return MLXNativeMemory(
         tuple(
-            MLXNativeLayerKV(np.asarray(layer.keys), np.asarray(layer.values))
+            MLXNativeLayerKV(_host_array(layer.keys), _host_array(layer.values))
             for layer in memory.layers
         ),
         source_tokens=memory.source_tokens,
@@ -64,9 +96,18 @@ def _default_to_host(memory: MLXNativeMemory) -> MLXNativeMemory:
 def _default_to_device(memory: MLXNativeMemory) -> MLXNativeMemory:
     import mlx.core as mx
 
+    def restore(array: object):
+        if not isinstance(array, _HostArray):
+            return mx.array(array)
+        value = mx.array(array.data)
+        if array.logical_dtype == "bfloat16":
+            return value.view(mx.bfloat16)
+        dtype = getattr(mx, array.logical_dtype, None)
+        return value if dtype is None else value.astype(dtype)
+
     result = MLXNativeMemory(
         tuple(
-            MLXNativeLayerKV(mx.array(layer.keys), mx.array(layer.values))
+            MLXNativeLayerKV(restore(layer.keys), restore(layer.values))
             for layer in memory.layers
         ),
         source_tokens=memory.source_tokens,
@@ -127,9 +168,16 @@ class SGLangPRAHiCache:
         host = self._to_host(memory)
         arrays_path, manifest_path = self._paths(logical_key)
         arrays = {}
+        dtypes = {}
         for index, layer in enumerate(host.layers):
-            arrays[f"layer_{index:04d}_k"] = layer.keys
-            arrays[f"layer_{index:04d}_v"] = layer.values
+            for suffix, array in (("k", layer.keys), ("v", layer.values)):
+                name = f"layer_{index:04d}_{suffix}"
+                arrays[name] = array.data if isinstance(array, _HostArray) else array
+                dtypes[name] = (
+                    array.logical_dtype
+                    if isinstance(array, _HostArray)
+                    else str(array.dtype)
+                )
         np.savez_compressed(arrays_path, **arrays)
         manifest_path.write_text(
             json.dumps(
@@ -137,6 +185,7 @@ class SGLangPRAHiCache:
                     "logical_key": logical_key,
                     "source_tokens": host.source_tokens,
                     "layer_count": len(host.layers),
+                    "logical_dtypes": dtypes,
                 },
                 indent=2,
             )
@@ -162,8 +211,20 @@ class SGLangPRAHiCache:
         with np.load(arrays_path) as arrays:
             layers = tuple(
                 MLXNativeLayerKV(
-                    arrays[f"layer_{index:04d}_k"].copy(),
-                    arrays[f"layer_{index:04d}_v"].copy(),
+                    _HostArray(
+                        arrays[f"layer_{index:04d}_k"].copy(),
+                        manifest.get("logical_dtypes", {}).get(
+                            f"layer_{index:04d}_k",
+                            str(arrays[f"layer_{index:04d}_k"].dtype),
+                        ),
+                    ),
+                    _HostArray(
+                        arrays[f"layer_{index:04d}_v"].copy(),
+                        manifest.get("logical_dtypes", {}).get(
+                            f"layer_{index:04d}_v",
+                            str(arrays[f"layer_{index:04d}_v"].dtype),
+                        ),
+                    ),
                 )
                 for index in range(int(manifest["layer_count"]))
             )
