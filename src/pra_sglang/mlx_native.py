@@ -98,7 +98,14 @@ class SGLangSelectedKVCache:
     def update_and_fetch(self, keys, values):
         import mlx.core as mx
 
+        prior_offset = self.offset
         local_k, local_v = self.local_cache.update_and_fetch(keys, values)
+        expected_local_tokens = prior_offset + int(keys.shape[2])
+        if int(local_k.shape[2]) != expected_local_tokens:
+            raise RuntimeError(
+                "SGLang local cache returned contaminated K/V: "
+                f"expected {expected_local_tokens} tokens, got {local_k.shape[2]}."
+            )
         return (
             mx.concatenate((self.memory.keys, local_k), axis=2),
             mx.concatenate((self.memory.values, local_v), axis=2),
@@ -223,6 +230,8 @@ class SGLangMLXNativeBridge:
     ) -> None:
         if len(memory.layers) != self.runner._cache_layout.num_layers:
             raise ValueError("Selected memory does not match SGLang model layers.")
+        if any(int(layer.keys.shape[2]) != memory.source_tokens for layer in memory.layers):
+            raise ValueError("Selected memory token geometry disagrees with its position base.")
         self._requests[str(req_id)] = SGLangNativeRequest(memory, logical_keys)
 
     def unregister(self, req_id: str) -> None:
