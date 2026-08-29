@@ -1272,9 +1272,9 @@ DeepSeek/Pi agent bridges & contract tested & Typed event/RPC capture and explic
 \texttt{torch.compile} & blocked on host & API implemented; compiler/GPU gates recorded\\
 Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
 vLLM & provider E0; companion E2 & Default provider remains conservative;
-Paper 6 measures scheduler-invisible selected pages through live Metal V1 generation\\
+Paper 6 measures native APC and request isolation through concurrency eight\\
 SGLang & provider E1 & Companion Paper 6.1 measures native runner integration;
-Paper 4.5 inherits the capability declaration, not its performance evidence\\
+local Radix-prefix and external-HiCache composition is controlled\\
 MLX & provider E1 & Companion Paper 6.2 measures native layer profiles,
 persistence, and concurrency; Paper 4.5 remains HF-centered\\
 FreeToken/TensorRT-LLM & E0/architectural & Remote fallback or planned provider;
@@ -1291,6 +1291,15 @@ realizations; they do not promote Paper 4.5's HF-centered profile evidence.}
 \input{../shared/results/generated_engine_product_matrix.tex}
 \label{tab:engine-product-matrix}
 \end{table}
+
+The matrix now distinguishes companion evidence from generic provider defaults.
+On vLLM-Metal, selected native pages recover 75/75 answers with 128--144
+ordinary APC tokens and reach 35.88 requests/s at concurrency eight; alternating
+selected and ordinary rows satisfy their expected outcome in 40/40 cases. On
+SGLang-MLX, an 81-token shared-prefix hit composes with external HiCache:
+selected A/C recover 10/10, cleanup B recovers 0/5, and every selected request
+contains exactly one memory copy. These are pinned controlled realizations,
+not portable claims that the default SDK provider may advertise unconditionally.
 
 The product surface includes installable package metadata, Hugging Face loading,
 runtime config serialization, direct and external reference registration,
@@ -1367,10 +1376,12 @@ optional gateway mediation, and engine-native execution.}
 
 The default vLLM provider deliberately advertises E0 unless the measured native
 bridge is installed: Paper 6 now establishes a controlled Metal V1 generation
-path, but not a portable CUDA or production continuous-batching realization.
+path with APC and offline concurrency through eight, but not a portable CUDA or
+production online-scheduling realization.
 SGLang and MLX advertise the companion papers' measured native mechanism
-support under their pinned environments, while E3 scheduler-aware PRA remains
-false. The shared
+support under their pinned environments. Paper 6.1 additionally closes local
+shared-prefix/HiCache composition at the runner boundary, while distributed
+HiCache and E3 scheduler-aware PRA remain false. The shared
 capability object feeds runtime inspection, gateway negotiation, agent launch,
 and benchmark records.
 
@@ -1465,9 +1476,10 @@ a cache-correct prefill handoff before it enters that comparison.
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
 have established SGLang and MLX native mechanism baselines and controlled
 vLLM-Metal V1 generation. Those results remain environment-specific and do not
-turn the generic provider into an unconditional E2 claim. Native APC
-coexistence, CUDA replication, queued concurrency, positions, masks, GQA, and
-batching must pass before portable speed comparisons.
+turn the generic provider into an unconditional E2 claim. Native APC and
+offline concurrency now pass on the pinned Metal path; CUDA replication,
+online queued concurrency, distributed placement, broader positions, masks,
+GQA, and heterogeneous batching must pass before portable speed comparisons.
 If useful behavior requires semantic residency, retrieval-aware scheduling, or
 cross-request PRA block sharing, that work belongs to the deep engine paper.
 

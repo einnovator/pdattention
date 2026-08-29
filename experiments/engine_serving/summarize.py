@@ -155,18 +155,18 @@ def build_registry() -> dict:
         {
             "engine": "vLLM-Metal V1",
             "model": native["vllm"]["live_generation"]["model_id"],
-            "profile": "all-layer selected native K/V",
+            "profile": "all-layer native K/V + APC, concurrency 1--8",
             "hardware": metadata["vllm"]["hardware"],
             "evidence_tier": native["vllm"]["live_generation"]["evidence_tier"],
-            "status": "controlled live generation",
+            "status": "controlled APC/concurrency",
         },
         {
             "engine": "SGLang MLX",
             "model": metadata["sglang"]["model_id"],
-            "profile": "external L1/L2/L3 selected K/V",
+            "profile": "Radix prefix + external L1/L2/L3 selected K/V",
             "hardware": metadata["sglang"]["hardware"],
             "evidence_tier": native["sglang"]["hicache"]["evidence_tier"],
-            "status": "controlled hierarchy",
+            "status": "controlled combined lifecycle",
         },
         {
             "engine": "MLX-LM",
@@ -179,7 +179,7 @@ def build_registry() -> dict:
     ]
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-native-v2",
+        "registry_version": "2026-08-paper6-engine-native-v3",
         "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
@@ -208,12 +208,16 @@ def _native_results() -> dict:
     sglang = _load(ENGINE_DIRS["sglang"] / "native_kv.json")
     sglang_live = _load(ENGINE_DIRS["sglang"] / "live_runner.json")
     sglang_hicache = _load(ENGINE_DIRS["sglang"] / "hicache_l123.json")
+    sglang_combined = _load(
+        ENGINE_DIRS["sglang"] / "radix_hicache_combined.json"
+    )
     sglang_natural = {
         dataset: _load(ENGINE_DIRS["sglang"] / f"natural_{dataset}.json")
         for dataset in ("qasper", "hotpotqa")
     }
     vllm = _load(ENGINE_DIRS["vllm"] / "native_paged_kv.json")
     vllm_live = _load(ENGINE_DIRS["vllm"] / "v1_live_generation.json")
+    vllm_apc = _load(ENGINE_DIRS["vllm"] / "v1_apc_concurrency.json")
     residency = _load(RESULTS / "engine_residency_sweep.json")
     mlx_profiles = _load(
         ENGINE_DIRS["mlx"] / "profiles_persistence_concurrency.json"
@@ -376,7 +380,17 @@ def _native_results() -> dict:
         return summary
 
     hicache_rows = sglang_hicache["rows"]
+    sglang_combined_conditions = [
+        condition
+        for row in sglang_combined["rows"]
+        for condition in row["conditions"]
+    ]
     vllm_live_rows = vllm_live["rows"]
+    vllm_apc_native_rows = [
+        row
+        for row in vllm_apc["rows"]
+        if row["condition"] == "native_pra_plus_apc"
+    ]
     pressure_summary = None
     if mlx_pressure is not None:
         summaries = mlx_pressure["seed_summaries"]
@@ -536,6 +550,33 @@ def _native_results() -> dict:
                     for row in hicache_rows
                 ),
             },
+            "radix_hicache_combined": {
+                "evidence_tier": sglang_combined["evidence_tier"],
+                "seed_count": len(sglang_combined["rows"]),
+                "selected_exact": fmean(
+                    float(row["exact_recovery"])
+                    for row in sglang_combined_conditions
+                    if row["condition"] in {"selected_A", "reselected_C"}
+                ),
+                "ordinary_cleanup_recovery": fmean(
+                    float(row["exact_recovery"])
+                    for row in sglang_combined_conditions
+                    if row["condition"] == "ordinary_B_after_cleanup"
+                ),
+                "radix_separation": fmean(
+                    float(row["selected_tokens_excluded_from_radix_length"])
+                    for row in sglang_combined_conditions
+                ),
+                "exactly_one_copy": fmean(
+                    float(row["exactly_one_selected_copy"])
+                    for row in sglang_combined_conditions
+                    if row["exactly_one_selected_copy"] is not None
+                ),
+                "l1_hits": sglang_combined["hicache_metrics"]["l1_hits"],
+                "l2_to_l1_promotions": sglang_combined["hicache_metrics"][
+                    "l2_to_l1_promotions"
+                ],
+            },
         },
         "vllm": {
             "status": vllm["native_pra_status"],
@@ -569,6 +610,41 @@ def _native_results() -> dict:
                 ),
                 "native_ms_mean": fmean(row["native_ms"] for row in vllm_live_rows),
                 "active_native_kv_bytes": vllm_live_rows[0]["active_native_kv_bytes"],
+            },
+            "apc_concurrency": {
+                "evidence_tier": vllm_apc["evidence_tier"],
+                "seed_count": len(vllm_apc["seeds"]),
+                "native_exact": fmean(
+                    float(output["exact_recovery"])
+                    for row in vllm_apc_native_rows
+                    for output in row["outputs"]
+                ),
+                "mixed_isolation_success": fmean(
+                    (
+                        float(output["exact_recovery"])
+                        if output["selected_registered"]
+                        else float(not output["exact_recovery"])
+                    )
+                    for row in vllm_apc["rows"]
+                    if row["condition"] == "mixed_selected_and_ordinary"
+                    for output in row["outputs"]
+                ),
+                "cached_tokens_min": min(
+                    output["num_cached_tokens"]
+                    for row in vllm_apc_native_rows
+                    for output in row["outputs"]
+                ),
+                "cached_tokens_max": max(
+                    output["num_cached_tokens"]
+                    for row in vllm_apc_native_rows
+                    for output in row["outputs"]
+                ),
+                "max_concurrency": max(vllm_apc["concurrency_levels"]),
+                "max_concurrency_requests_per_second": fmean(
+                    row["requests_per_second"]
+                    for row in vllm_apc_native_rows
+                    if row["concurrency"] == max(vllm_apc["concurrency_levels"])
+                ),
             },
         },
         "residency": {

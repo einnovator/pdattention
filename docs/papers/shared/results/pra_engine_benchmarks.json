@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "registry_version": "2026-08-paper6-engine-native-v2",
+  "registry_version": "2026-08-paper6-engine-native-v3",
   "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
   "environment": {
     "vllm": {
@@ -679,6 +679,16 @@
         "l1_to_l2_demotion_rate": 1.0,
         "l2_to_l3_demotion_rate": 1.0,
         "radix_separation_rate": 1.0
+      },
+      "radix_hicache_combined": {
+        "evidence_tier": "CONTROLLED",
+        "seed_count": 5,
+        "selected_exact": 1.0,
+        "ordinary_cleanup_recovery": 0.0,
+        "radix_separation": 1.0,
+        "exactly_one_copy": 1.0,
+        "l1_hits": 5,
+        "l2_to_l1_promotions": 5
       }
     },
     "vllm": {
@@ -736,6 +746,16 @@
         "full_context_ms_mean": 197.3485913593322,
         "native_ms_mean": 159.72563321702182,
         "active_native_kv_bytes": 3670016
+      },
+      "apc_concurrency": {
+        "evidence_tier": "CONTROLLED",
+        "seed_count": 5,
+        "native_exact": 1.0,
+        "mixed_isolation_success": 1.0,
+        "cached_tokens_min": 128,
+        "cached_tokens_max": 144,
+        "max_concurrency": 8,
+        "max_concurrency_requests_per_second": 35.883957124803956
       }
     },
     "residency": {
@@ -780,18 +800,18 @@
     {
       "engine": "vLLM-Metal V1",
       "model": "mlx-community/Qwen3-0.6B-4bit",
-      "profile": "all-layer selected native K/V",
+      "profile": "all-layer native K/V + APC, concurrency 1--8",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "CONTROLLED",
-      "status": "controlled live generation"
+      "status": "controlled APC/concurrency"
     },
     {
       "engine": "SGLang MLX",
       "model": "Qwen/Qwen3-0.6B",
-      "profile": "external L1/L2/L3 selected K/V",
+      "profile": "Radix prefix + external L1/L2/L3 selected K/V",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "CONTROLLED",
-      "status": "controlled hierarchy"
+      "status": "controlled combined lifecycle"
     },
     {
       "engine": "MLX-LM",
