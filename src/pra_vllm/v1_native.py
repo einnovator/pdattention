@@ -9,6 +9,8 @@ prefix-cache identities, and sequential token counts remain unchanged.
 from __future__ import annotations
 
 import contextvars
+import hashlib
+import json
 import math
 import threading
 import types
@@ -19,6 +21,42 @@ from typing import Mapping, Sequence
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_mlx.native import MLXNativeMemory
 from pra_vllm.v1_metadata import VLLMNativeBlockSet, VLLMNativeStepRegistry
+
+
+def native_request_cache_salt(
+    logical_keys: Sequence[str],
+    *,
+    selected_token_count: int,
+    source_position_base: int,
+    consumer_layers: Sequence[int] | None = None,
+    namespace_secret: str | None = None,
+) -> str:
+    """Derive APC identity from the hidden native-memory selection.
+
+    vLLM hashes visible prompt tokens for automatic prefix caching. Native PRA
+    memory is deliberately absent from that prompt, so its immutable logical
+    identity and consumption geometry must enter ``cache_salt`` separately.
+    Only the digest crosses the engine boundary; resource names and optional
+    tenant/deployment secrets are never exposed in the cache key.
+    """
+
+    keys = tuple(map(str, logical_keys))
+    if not keys:
+        raise ValueError("Native PRA cache identity requires a logical key.")
+    if selected_token_count <= 0:
+        raise ValueError("selected_token_count must be positive.")
+    payload = {
+        "schema": "pra-vllm-apc-v1",
+        "logical_keys": keys,
+        "selected_token_count": int(selected_token_count),
+        "source_position_base": int(source_position_base),
+        "consumer_layers": (
+            None if consumer_layers is None else tuple(map(int, consumer_layers))
+        ),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    material = f"{namespace_secret or ''}\0{canonical}".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -46,6 +84,29 @@ class VLLMSchedulerObservation:
         }
 
 
+@dataclass(frozen=True)
+class VLLMPrefillPageObservation:
+    """Scheduler page identities used by one ordinary prefill row.
+
+    This diagnostic record permits a native capture/replay audit without
+    making PRA pages part of scheduler ownership. Block IDs remain physical,
+    process-local observations and are never stable logical resource IDs.
+    """
+
+    request_id: str
+    scheduler_cache_start: int
+    scheduled_query_tokens: int
+    block_ids_by_group: tuple[tuple[int, ...], ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "scheduler_cache_start": self.scheduler_cache_start,
+            "scheduled_query_tokens": self.scheduled_query_tokens,
+            "block_ids_by_group": [list(group) for group in self.block_ids_by_group],
+        }
+
+
 def observe_prefill_rows(
     prefill_requests: Sequence[object],
     registered_request_ids: set[str],
@@ -61,6 +122,24 @@ def observe_prefill_rows(
                 None if request.prompt_len is None else int(request.prompt_len)
             ),
             selected_registered=str(request.req_id) in registered_request_ids,
+        )
+        for request in prefill_requests
+    )
+
+
+def observe_prefill_pages(
+    prefill_requests: Sequence[object],
+) -> tuple[VLLMPrefillPageObservation, ...]:
+    """Capture scheduler page tables before PRA attention augmentation."""
+
+    return tuple(
+        VLLMPrefillPageObservation(
+            request_id=str(request.req_id),
+            scheduler_cache_start=int(request.start_pos),
+            scheduled_query_tokens=len(request.token_ids),
+            block_ids_by_group=tuple(
+                tuple(map(int, group)) for group in request.block_ids
+            ),
         )
         for request in prefill_requests
     )
@@ -130,6 +209,7 @@ class VLLMMetalV1NativeBridge:
         self.isolation = EnginePRAIsolationGuard()
         self._observation_lock = threading.RLock()
         self._scheduler_observations: list[VLLMSchedulerObservation] = []
+        self._prefill_page_observations: list[VLLMPrefillPageObservation] = []
         self._handles: dict[str, tuple[int, ...]] = {}
         self._free = list(
             range(self.scheduler_blocks, self.scheduler_blocks + self.reserve_blocks)
@@ -286,9 +366,11 @@ class VLLMMetalV1NativeBridge:
         def start(_runner, batch, prefill_reqs, decode_reqs, scheduler_output):
             registered = set(bridge.registry.active_request_ids())
             observations = observe_prefill_rows(prefill_reqs, registered)
-            if observations:
+            page_observations = observe_prefill_pages(prefill_reqs)
+            if observations or page_observations:
                 with bridge._observation_lock:
                     bridge._scheduler_observations.extend(observations)
+                    bridge._prefill_page_observations.extend(page_observations)
             token = bridge._active_rows.set(
                 (
                     tuple(str(req_id) for req_id, _ in decode_reqs),
@@ -353,6 +435,20 @@ class VLLMMetalV1NativeBridge:
         selected_ids = None if request_ids is None else set(map(str, request_ids))
         with self._observation_lock:
             rows = tuple(self._scheduler_observations)
+        return tuple(
+            row.as_dict()
+            for row in rows
+            if selected_ids is None or row.request_id in selected_ids
+        )
+
+    def prefill_page_observations(
+        self, request_ids: Sequence[str] | None = None
+    ) -> tuple[Mapping[str, object], ...]:
+        """Return process-local prefill page tables for capture/replay audits."""
+
+        selected_ids = None if request_ids is None else set(map(str, request_ids))
+        with self._observation_lock:
+            rows = tuple(self._prefill_page_observations)
         return tuple(
             row.as_dict()
             for row in rows

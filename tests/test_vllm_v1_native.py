@@ -9,8 +9,55 @@ from pra_vllm.v1_metadata import VLLMNativeBlockSet
 from pra_vllm.v1_native import (
     VLLMMetalV1NativeBridge,
     augment_paged_context,
+    native_request_cache_salt,
+    observe_prefill_pages,
     observe_prefill_rows,
 )
+
+
+def test_native_cache_salt_tracks_memory_identity_without_leaking_names() -> None:
+    first = native_request_cache_salt(
+        ("tenant-a/private-resource",),
+        selected_token_count=32,
+        source_position_base=32,
+        consumer_layers=(0, 1),
+        namespace_secret="deployment-secret",
+    )
+    repeated = native_request_cache_salt(
+        ("tenant-a/private-resource",),
+        selected_token_count=32,
+        source_position_base=32,
+        consumer_layers=(0, 1),
+        namespace_secret="deployment-secret",
+    )
+    other_memory = native_request_cache_salt(
+        ("tenant-a/other-resource",),
+        selected_token_count=32,
+        source_position_base=32,
+        consumer_layers=(0, 1),
+        namespace_secret="deployment-secret",
+    )
+
+    assert first == repeated
+    assert first != other_memory
+    assert "private-resource" not in first
+    assert "deployment-secret" not in first
+
+
+def test_native_cache_salt_tracks_consumption_geometry() -> None:
+    base = native_request_cache_salt(
+        ("resource",), selected_token_count=32, source_position_base=32
+    )
+    assert base != native_request_cache_salt(
+        ("resource",), selected_token_count=16, source_position_base=32
+    )
+    assert base != native_request_cache_salt(
+        ("resource",), selected_token_count=32, source_position_base=48
+    )
+    with pytest.raises(ValueError, match="logical key"):
+        native_request_cache_salt(
+            (), selected_token_count=32, source_position_base=32
+        )
 
 
 @dataclass
@@ -105,6 +152,26 @@ def test_prefill_observation_preserves_scheduler_owned_apc_geometry() -> None:
     assert rows[1].scheduler_cache_start == 32
     assert rows[1].prompt_tokens is None
     assert not rows[1].selected_registered
+
+
+def test_prefill_page_observation_keeps_groups_and_physical_scope() -> None:
+    [row] = observe_prefill_pages(
+        (
+            SimpleNamespace(
+                req_id="ordinary",
+                start_pos=16,
+                token_ids=[10, 11],
+                block_ids=[[3, 7], [12]],
+            ),
+        )
+    )
+
+    assert row.as_dict() == {
+        "request_id": "ordinary",
+        "scheduler_cache_start": 16,
+        "scheduled_query_tokens": 2,
+        "block_ids_by_group": [[3, 7], [12]],
+    }
 
 
 def test_release_returns_reserved_pages_and_is_idempotent() -> None:

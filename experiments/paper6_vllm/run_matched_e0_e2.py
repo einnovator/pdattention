@@ -22,23 +22,49 @@ def _aligned(tokens: list[int], tokenizer, block_size: int) -> list[int]:
     return result
 
 
-def _prompt(token_ids: list[int]) -> dict[str, list[int]]:
+def _prompt(token_ids: list[int], cache_salt: str | None = None) -> dict[str, object]:
     """Use token IDs so E0 and E2 cannot diverge through decode/re-tokenization."""
 
-    return {"prompt_token_ids": list(token_ids)}
+    prompt: dict[str, object] = {"prompt_token_ids": list(token_ids)}
+    if cache_salt is not None:
+        prompt["cache_salt"] = cache_salt
+    return prompt
 
 
-def _run(llm, bridge, sampling, prompt_tokens, *, key=None, source_tokens=0):
+def _run(
+    llm,
+    bridge,
+    sampling,
+    prompt_tokens,
+    *,
+    key=None,
+    source_tokens=0,
+    source_position_base=None,
+    cache_salt=None,
+):
     """Step V1 explicitly so TTFT and inter-token arrivals are observable."""
 
     started = time.perf_counter()
-    [request_id] = llm.enqueue(_prompt(prompt_tokens), sampling, use_tqdm=False)
+    position_base = (
+        source_tokens if source_position_base is None else int(source_position_base)
+    )
+    if key is not None and cache_salt is None:
+        from pra_vllm.v1_native import native_request_cache_salt
+
+        cache_salt = native_request_cache_salt(
+            (key,),
+            selected_token_count=source_tokens,
+            source_position_base=position_base,
+        )
+    [request_id] = llm.enqueue(
+        _prompt(prompt_tokens, cache_salt), sampling, use_tqdm=False
+    )
     if key is not None:
         bridge.register(
             request_id,
             (key,),
             selected_token_count=source_tokens,
-            source_position_base=source_tokens,
+            source_position_base=position_base,
         )
     arrivals: list[float] = []
     observed_tokens = 0
