@@ -179,8 +179,20 @@ def _native_results() -> dict:
         if path.exists():
             mlx_model_artifacts.append(_load(path))
     sglang = _load(ENGINE_DIRS["sglang"] / "native_kv.json")
+    sglang_live = _load(ENGINE_DIRS["sglang"] / "live_runner.json")
+    sglang_natural = {
+        dataset: _load(ENGINE_DIRS["sglang"] / f"natural_{dataset}.json")
+        for dataset in ("qasper", "hotpotqa")
+    }
     vllm = _load(ENGINE_DIRS["vllm"] / "native_paged_kv.json")
     residency = _load(RESULTS / "engine_residency_sweep.json")
+    mlx_profiles = _load(
+        ENGINE_DIRS["mlx"] / "profiles_persistence_concurrency.json"
+    )
+    mlx_natural = {
+        dataset: _load(ENGINE_DIRS["mlx"] / f"natural_transport_{dataset}.json")
+        for dataset in ("qasper", "hotpotqa")
+    }
 
     mlx_native = [row for row in mlx["rows"] if row["condition"] == "native_selected_kv"]
     vllm_by_tokens = []
@@ -214,6 +226,104 @@ def _native_results() -> dict:
             ),
             "bytes_loaded_mean": fmean(row["bytes_loaded"] for row in values),
         })
+
+    mlx_profile_summary = []
+    for profile in sorted({row["profile"] for row in mlx_profiles["profile_rows"]}):
+        values = [
+            row for row in mlx_profiles["profile_rows"] if row["profile"] == profile
+        ]
+        mlx_profile_summary.append(
+            {
+                "profile": profile,
+                "selected_layer_count": values[0]["selected_layer_count"],
+                "exact_recovery": fmean(
+                    float(row["exact_recovery"]) for row in values
+                ),
+                "active_native_kv_bytes": values[0]["active_native_kv_bytes"],
+                "completion_latency_ms_mean": fmean(
+                    row["completion_latency_ms"] for row in values
+                ),
+                "max_logit_error": max(
+                    row["max_logit_error_vs_ordinary_split"] for row in values
+                ),
+            }
+        )
+    mlx_concurrency_summary = []
+    for concurrency in sorted(
+        {row["concurrency"] for row in mlx_profiles["concurrency_rows"]}
+    ):
+        values = [
+            row
+            for row in mlx_profiles["concurrency_rows"]
+            if row["concurrency"] == concurrency
+        ]
+        mlx_concurrency_summary.append(
+            {
+                "concurrency": concurrency,
+                "requests_per_second_mean": fmean(
+                    row["requests_per_second"] for row in values
+                ),
+                "request_latency_ms_mean": fmean(
+                    row["mean_request_latency_ms"] for row in values
+                ),
+                "exact_recovery": fmean(
+                    row["exact_recovery_rate"] for row in values
+                ),
+                "sharing_bytes_saved": values[0]["sharing_bytes_saved"],
+            }
+        )
+
+    def natural_summary(artifacts: dict[str, dict]) -> list[dict]:
+        summary = []
+        for dataset, artifact in artifacts.items():
+            for condition in sorted({row["condition"] for row in artifact["rows"]}):
+                values = [
+                    row for row in artifact["rows"] if row["condition"] == condition
+                ]
+                summary.append(
+                    {
+                        "dataset": dataset,
+                        "condition": condition,
+                        "sample_count": len(values),
+                        "ranked_exact": fmean(
+                            float(row["ranked_exact"]) for row in values
+                        ),
+                        "latency_ms_mean": fmean(
+                            row["completion_latency_ms"] for row in values
+                        ),
+                        "gold_answer_margin_mean": (
+                            fmean(row["gold_answer_margin"] for row in values)
+                            if "gold_answer_margin" in values[0]
+                            else None
+                        ),
+                    }
+                )
+        return summary
+
+    sglang_concurrency_summary = []
+    for concurrency in sorted(
+        {row["concurrency"] for row in sglang_live["concurrency_rows"]}
+    ):
+        values = [
+            row
+            for row in sglang_live["concurrency_rows"]
+            if row["concurrency"] == concurrency
+        ]
+        sglang_concurrency_summary.append(
+            {
+                "concurrency": concurrency,
+                "requests_per_second_mean": fmean(
+                    row["requests_per_second"] for row in values
+                ),
+                "exact_recovery": fmean(
+                    row["exact_recovery_rate"] for row in values
+                ),
+                "sharing_bytes_saved": values[0]["sharing_bytes_saved"],
+                "scheduler_isolation": all(
+                    row["scheduler_counts_exclude_pra"] for row in values
+                ),
+            }
+        )
     return {
         "mlx": {
             "status": mlx["native_pra_status"],
@@ -251,6 +361,25 @@ def _native_results() -> dict:
                 }
                 for artifact in mlx_model_artifacts
             ],
+            "profiles": mlx_profile_summary,
+            "concurrency": mlx_concurrency_summary,
+            "persistence": {
+                "serialized_bytes_mean": fmean(
+                    row["serialized_bytes"]
+                    for row in mlx_profiles["persistence_rows"]
+                ),
+                "save_ms_mean": fmean(
+                    row["save_ms"] for row in mlx_profiles["persistence_rows"]
+                ),
+                "load_ms_mean": fmean(
+                    row["load_ms"] for row in mlx_profiles["persistence_rows"]
+                ),
+                "max_logit_error": max(
+                    row["max_logit_error_vs_ordinary_split"]
+                    for row in mlx_profiles["persistence_rows"]
+                ),
+            },
+            "natural": natural_summary(mlx_natural),
         },
         "sglang": {
             "status": sglang["native_pra_status"],
@@ -263,6 +392,25 @@ def _native_results() -> dict:
                 float(row["pra_tokens_absent_from_radix_prefix"])
                 for row in sglang["rows"]
             ),
+            "live_runner": {
+                "exact_recovery": fmean(
+                    float(row["exact_recovery"])
+                    for row in sglang_live["rows"]
+                    if row["condition"] == "native_runner"
+                ),
+                "disabled_recovery": fmean(
+                    float(row["exact_recovery"])
+                    for row in sglang_live["rows"]
+                    if row["condition"] == "disabled"
+                ),
+                "scheduler_isolation": all(
+                    row["pra_tokens_absent_from_scheduler_count"]
+                    for row in sglang_live["rows"]
+                    if row["condition"] == "native_runner"
+                ),
+            },
+            "concurrency": sglang_concurrency_summary,
+            "natural": natural_summary(sglang_natural),
         },
         "vllm": {
             "status": vllm["native_pra_status"],
@@ -544,6 +692,58 @@ def write_native_tables(registry: dict) -> None:
     (ENGINE_DIRS["mlx"] / "generated_native_models_table.tex").write_text(
         "\n".join(model_lines) + "\n", encoding="utf-8"
     )
+    profile_lines = [
+        r"\begin{tabular}{lrrrr}",
+        r"\toprule",
+        r"Consumer profile & Layers & Exact & Active MB & Max error \\",
+        r"\midrule",
+    ]
+    for row in mlx["profiles"]:
+        profile_lines.append(
+            f"{_tex_escape(row['profile'])} & {row['selected_layer_count']} & "
+            f"{100 * row['exact_recovery']:.0f}\\% & "
+            f"{row['active_native_kv_bytes'] / 1048576:.2f} & "
+            f"{row['max_logit_error']:.4g} \\\\"
+        )
+    profile_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_profile_table.tex").write_text(
+        "\n".join(profile_lines) + "\n", encoding="utf-8"
+    )
+    persistence = mlx["persistence"]
+    lifecycle_lines = [
+        r"\begin{tabular}{rrrrrr}",
+        r"\toprule",
+        r"Concurrency & Exact & Requests/s & Mean latency ms & Shared MB saved & Persist load ms \\",
+        r"\midrule",
+    ]
+    for row in mlx["concurrency"]:
+        lifecycle_lines.append(
+            f"{row['concurrency']} & {100 * row['exact_recovery']:.0f}\\% & "
+            f"{row['requests_per_second_mean']:.2f} & "
+            f"{row['request_latency_ms_mean']:.1f} & "
+            f"{row['sharing_bytes_saved'] / 1048576:.1f} & "
+            f"{persistence['load_ms_mean']:.1f} \\\\"
+        )
+    lifecycle_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_lifecycle_table.tex").write_text(
+        "\n".join(lifecycle_lines) + "\n", encoding="utf-8"
+    )
+    mlx_natural_lines = [
+        r"\begin{tabular}{llrrr}",
+        r"\toprule",
+        r"Dataset & Condition & Samples & Ranked exact & Margin \\",
+        r"\midrule",
+    ]
+    for row in mlx["natural"]:
+        mlx_natural_lines.append(
+            f"{_tex_escape(row['dataset'])} & {_tex_escape(row['condition'])} & "
+            f"{row['sample_count']} & {100 * row['ranked_exact']:.0f}\\% & "
+            f"{row['gold_answer_margin_mean']:.3f} \\\\"
+        )
+    mlx_natural_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_natural_table.tex").write_text(
+        "\n".join(mlx_natural_lines) + "\n", encoding="utf-8"
+    )
 
     sglang_lines = [
         r"\begin{tabular}{rrrrr}",
@@ -558,6 +758,38 @@ def write_native_tables(registry: dict) -> None:
     ]
     (ENGINE_DIRS["sglang"] / "generated_native_kv_table.tex").write_text(
         "\n".join(sglang_lines) + "\n", encoding="utf-8"
+    )
+    sglang_live_lines = [
+        r"\begin{tabular}{rrrrr}",
+        r"\toprule",
+        r"Concurrency & Exact & Requests/s & Shared MB saved & Scheduler isolation \\",
+        r"\midrule",
+    ]
+    for row in sglang["concurrency"]:
+        sglang_live_lines.append(
+            f"{row['concurrency']} & {100 * row['exact_recovery']:.0f}\\% & "
+            f"{row['requests_per_second_mean']:.2f} & "
+            f"{row['sharing_bytes_saved'] / 1048576:.1f} & "
+            f"{'yes' if row['scheduler_isolation'] else 'no'} \\\\"
+        )
+    sglang_live_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["sglang"] / "generated_live_runner_table.tex").write_text(
+        "\n".join(sglang_live_lines) + "\n", encoding="utf-8"
+    )
+    sglang_natural_lines = [
+        r"\begin{tabular}{llrr}",
+        r"\toprule",
+        r"Dataset & Condition & Samples & Ranked exact \\",
+        r"\midrule",
+    ]
+    for row in sglang["natural"]:
+        sglang_natural_lines.append(
+            f"{_tex_escape(row['dataset'])} & {_tex_escape(row['condition'])} & "
+            f"{row['sample_count']} & {100 * row['ranked_exact']:.0f}\\% \\\\"
+        )
+    sglang_natural_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["sglang"] / "generated_natural_table.tex").write_text(
+        "\n".join(sglang_natural_lines) + "\n", encoding="utf-8"
     )
 
 
@@ -589,6 +821,84 @@ def write_native_plots(registry: dict) -> None:
     fig.tight_layout()
     fig.savefig(RESULTS / "engine_native_systems.png", dpi=180)
     fig.savefig(RESULTS / "engine_native_systems.pdf")
+    plt.close(fig)
+
+    mlx = native["mlx"]
+    fig, axes = plt.subplots(1, 2, figsize=(10.2, 3.7))
+    profiles = sorted(mlx["profiles"], key=lambda row: row["active_native_kv_bytes"])
+    axes[0].plot(
+        [row["active_native_kv_bytes"] / 1048576 for row in profiles],
+        [row["exact_recovery"] for row in profiles],
+        marker="o",
+        color="#b35c1e",
+    )
+    for row in profiles:
+        axes[0].annotate(
+            row["profile"].replace("_", " "),
+            (row["active_native_kv_bytes"] / 1048576, row["exact_recovery"]),
+            xytext=(3, 4),
+            textcoords="offset points",
+            fontsize=8,
+        )
+    axes[0].set_xlabel("Active native K/V (MiB)")
+    axes[0].set_ylabel("Exact recovery")
+    axes[0].set_ylim(-0.05, 1.08)
+    axes[0].set_title("MLX consumer-layer frontier")
+    axes[1].plot(
+        [row["concurrency"] for row in mlx["concurrency"]],
+        [row["requests_per_second_mean"] for row in mlx["concurrency"]],
+        marker="s",
+        color="#2f855a",
+    )
+    axes[1].set_xlabel("Concurrent requests")
+    axes[1].set_ylabel("Requests/s")
+    axes[1].set_title("MLX shared-memory concurrency")
+    for axis in axes:
+        axis.spines[["top", "right"]].set_visible(False)
+        axis.grid(alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(ENGINE_DIRS["mlx"] / "native_profile_concurrency.png", dpi=180)
+    fig.savefig(ENGINE_DIRS["mlx"] / "native_profile_concurrency.pdf")
+    plt.close(fig)
+
+    sglang = native["sglang"]
+    fig, axes = plt.subplots(1, 2, figsize=(10.2, 3.7))
+    axes[0].plot(
+        [row["concurrency"] for row in sglang["concurrency"]],
+        [row["requests_per_second_mean"] for row in sglang["concurrency"]],
+        marker="o",
+        color="#2f855a",
+    )
+    axes[0].set_xlabel("Concurrent requests")
+    axes[0].set_ylabel("Requests/s")
+    axes[0].set_title("SGLang live native runner")
+    conditions = ["ordinary_full", "native", "disabled", "shuffled"]
+    width = 0.35
+    for dataset_index, dataset in enumerate(("qasper", "hotpotqa")):
+        values = {
+            row["condition"]: row["ranked_exact"]
+            for row in sglang["natural"]
+            if row["dataset"] == dataset
+        }
+        axes[1].bar(
+            [index + (dataset_index - 0.5) * width for index in range(len(conditions))],
+            [values[condition] for condition in conditions],
+            width=width,
+            label=dataset,
+        )
+    axes[1].set_xticks(
+        range(len(conditions)), [value.replace("_", "\n") for value in conditions]
+    )
+    axes[1].set_ylim(0, 1.08)
+    axes[1].set_ylabel("Ranked exact")
+    axes[1].set_title("Natural-text causal controls")
+    axes[1].legend(frameon=False)
+    for axis in axes:
+        axis.spines[["top", "right"]].set_visible(False)
+        axis.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(ENGINE_DIRS["sglang"] / "live_runner_natural.png", dpi=180)
+    fig.savefig(ENGINE_DIRS["sglang"] / "live_runner_natural.pdf")
     plt.close(fig)
 
 

@@ -1,6 +1,6 @@
 \documentclass[10pt]{article}
 \usepackage[margin=0.82in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor,placeins}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black,citecolor=blue!45!black}
 
@@ -29,7 +29,14 @@ and 0/5 at larger capacities. We then implement native selected K/V at every
 layer. Across five seeds it is bit-exact to ordinary split-cache execution,
 recovers 5/5 answers, and remains 5/5 when local sequential K/V rotates at 64
 tokens. Thus native PRA restores archived evidence without making it visible
-prompt text; broader workloads, quantized detail, and concurrency remain open.
+prompt text. A follow-up profile sweep finds that the last 14 of 28 layers
+retain 5/5 recovery with 7.71 rather than 15.42 MiB active K/V. Persisted K/V
+reloads in 7.2 ms with zero logit error, and shared-memory throughput rises
+from 6.04 to 16.01 requests/s between concurrency one and eight. On 40 QASPER
+and 40 HotpotQA natural-text transport controls per condition, ordinary and
+native memory rank the answer correctly in every case; disabled and shuffled
+memory remain near chance. Quantized detail and pressure-scale serving remain
+open.
 \end{abstract}
 
 \section{Introduction}
@@ -46,11 +53,13 @@ different object:
 Unified memory may reduce copy overhead, but it does not make every retained
 token free to index, keep, or attend to.
 
-This paper studies three questions. First, can selected context coexist with
+This paper studies five questions. First, can selected context coexist with
 MLX's exact prompt cache? Second, can a bounded rotating cache plus a selected
 archive record recover old evidence? Third, what software boundary is needed
 before an MLX adapter may claim native PRA K/V rather than selected visible
-text?
+text? Fourth, how much native K/V can consumer-layer profiles remove without
+losing the controlled answer? Fifth, do persistence, request sharing, and
+natural-text causal controls preserve the mechanism?
 
 \section{Cache Taxonomy}
 We keep three mechanisms distinct:
@@ -93,6 +102,14 @@ remain causal. Query positions advance from the source extent; selected text
 never appears in the visible prompt. The residency manager deduplicates
 materialization, pins blocks for request lifetime, and evicts only unpinned
 detail under a bounded byte budget.
+
+Consumer-layer profiles preserve the source-relative query position even on
+layers that omit selected detail. Such a layer receives only request-local K/V,
+but its RoPE offset still advances from the source extent; otherwise a profile
+sweep would confound memory removal with a positional-frame change. Persisted
+arrays carry a strict sidecar fingerprint over model and tokenizer revisions,
+dtype, position policy, consumer profile, and resource version. A mismatch is
+rejected before arrays enter attention.
 
 \section{Environment}
 The host was an Apple M5 MacBook Pro with 10 CPU and 10 GPU cores, 16 GB unified
@@ -213,6 +230,75 @@ on this particular answer-format task. Gemma therefore establishes mechanism
 parity, not answer recovery. Together the runs cover three attention
 topologies and tokenizers; they are not yet natural-workload results.
 
+\section{Profiles, Persistence, and Concurrency}
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Five-seed consumer-layer sweep. Active MB counts selected native K/V,
+not model weights or request-local K/V.}
+\input{../shared/results/paper6_2_mlx/generated_profile_table.tex}
+\label{tab:mlx-profiles}
+\end{table}
+
+Table~\ref{tab:mlx-profiles} exposes a sharp controlled boundary. Full native
+memory and the last-half profile both recover 5/5 answers. Last quarter, last
+four, and disabled profiles recover 0/5. Last half reduces active selected K/V
+from 15.42 to 7.71 MiB. Its nonzero logit difference is expected because
+fourteen layers no longer see the archive; exact recovery, not bit parity, is
+the profile criterion. This is a candidate economy profile for this fixture,
+not a production profile calibrated from five examples.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Five-seed persistence and concurrent request sharing. Persist load is
+the mean for a 15.43 MiB selected-K/V sidecar.}
+\input{../shared/results/paper6_2_mlx/generated_lifecycle_table.tex}
+\label{tab:mlx-lifecycle}
+\end{table}
+
+Persisting and reloading native arrays yields zero maximum logit error. Mean
+save and load times are 28.7 and 7.2 ms. Separate request-local caches share one
+immutable memory object: at concurrency eight this avoids 108.0 MiB of duplicate
+selected K/V. Aggregate throughput increases through concurrency four and then
+plateaus, while mean per-request latency rises from 164.9 to 383.9 ms. These are
+in-process controlled measurements, not queued server tail latency.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper6_2_mlx/native_profile_concurrency.png}
+\caption{Left: the controlled consumer-layer quality--memory boundary. Right:
+shared immutable K/V raises throughput until the small Apple host saturates.}
+\label{fig:mlx-profile-concurrency}
+\end{figure}
+
+\section{Natural-Text Causal Controls}
+The QASPER and HotpotQA builders draw natural paper or article text and place a
+balanced \texttt{AnswerCode yes/no} anchor among 63 source units. They test
+whether an answer-bearing natural-text resource survives the native transport;
+they do not claim unrestricted question answering. Each dataset contributes
+eight examples under each of five seeds, for 40 examples per condition. We rank
+the next-token logits for \texttt{yes} and \texttt{no}; free-form generation is
+retained only as a diagnostic because this small completion model often ignores
+the requested answer format.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Natural-text transport controls. Margin is the mean gold-minus-other
+answer logit.}
+\input{../shared/results/paper6_2_mlx/generated_natural_table.tex}
+\label{tab:mlx-natural}
+\end{table}
+
+Ordinary split-cache and all-layer native execution agree on all 80 examples
+and have identical mean margins within each dataset. Last-half execution also
+ranks all 80 correctly while reducing the margin. Disabled memory is 50.0\% on
+QASPER and 52.5\% on HotpotQA; shuffled memory is 50.0\% on both. The causal
+controls therefore rule out query-only label bias as the source of native
+success for this transport task.
+
+\FloatBarrier
 \section{Promotion Gates}
 \begin{center}
 \begin{tabularx}{0.96\linewidth}{l l Y}
@@ -225,8 +311,12 @@ rotating-cache control & controlled closed & five seeds, four capacities \\
 native semantic parity & controlled closed & five seeds, zero logit error, 5/5 recovery \\
 rotating plus native & controlled closed & 5/5 with 64-token local cache \\
 lazy native region & prototype closed & selected resources encode on first selection \\
+consumer profile & controlled candidate & last 14/28 layers retain 5/5 at half K/V bytes \\
+persistence & controlled closed & strict fingerprint; zero-error reload in 7.2 ms mean \\
+concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided at eight \\
+natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 quantized PRA detail & open & model weights are 4-bit; PRA K/V unmeasured \\
-concurrency/pressure & open & one request at a time, one small model \\
+memory pressure & open & no forced unified-memory pressure or OOM frontier \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -238,12 +328,14 @@ workloads. The server smoke makes that baseline competitive. Conversely, the
 rotating control shows that bounded sequential KV is not automatically a PRA
 archive.
 
-The study uses one 4-bit model, one machine, a synthetic server task, and a
-controlled five-seed rotating fixture. The server experiment has only five
-repeats per condition, so p95/p99 are not reported. No native Q/K index,
-detail-layer profile, K/V quantization, persisted PRA cache,
-concurrency, or memory-pressure failure is measured. The rotating intervention
-also changes effective local context and can perturb chat-template semantics.
+The study uses one 4-bit model for profile and natural controls, one machine, a
+synthetic server task, and controlled transport fixtures. The server experiment
+has only five repeats per condition, so p95/p99 are not reported. The natural
+controls contain real dataset text but an inserted fixed answer-code mechanism;
+they are not end-task QASPER or HotpotQA scores. No native Q/K index, K/V
+quantization, queued server concurrency, or memory-pressure failure is measured.
+The rotating intervention also changes effective local context and can perturb
+chat-template semantics.
 
 \section{Related Work}
 MLX targets efficient and flexible machine learning on Apple
@@ -262,9 +354,11 @@ an archive in the five-seed control; late selected text does not reliably
 repair it. The in-process native executor passes the missing mechanism gate:
 selected non-prefix K/V is bit-exact to ordinary split-cache execution and
 preserves 5/5 recovery with a rotating local cache. PRA-MLX is therefore a
-working native prototype. Quantized detail, calibrated layer profiles,
-additional models, persistence, and concurrent memory pressure remain necessary
-before production claims.
+working native prototype. Quantized detail and pressure-scale server validation
+remain necessary before production claims. The current controlled candidate is
+last-half consumption: it preserves all synthetic and natural-transport
+decisions with half the selected K/V bytes, but requires broader workload
+calibration before receiving a product profile name.
 
 \begin{thebibliography}{9}
 \bibitem{hannun2023mlx}

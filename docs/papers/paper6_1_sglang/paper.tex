@@ -1,6 +1,6 @@
 \documentclass[10pt]{article}
 \usepackage[margin=0.82in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor,placeins}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black,citecolor=blue!45!black}
 
@@ -27,7 +27,13 @@ respectively. In a separate five-seed native-cache experiment, selected K/V
 recovers 5/5 answers and is bit-exact to SGLang's ordinary split cache. All 28
 attention layers consume selected memory under one normalization, while the
 scheduler-visible local offset excludes every PRA token. HiCache placement and
-full scheduler-generation integration remain open.
+full hierarchical placement remain open. The bridge now also runs through
+SGLang's real prefill and batched-decode lifecycle: native and full context
+recover 5/5, disabled memory recovers 0/5, and native throughput rises from
+6.59 to 14.54 requests/s between concurrency one and eight. Shared immutable
+K/V avoids 108.0 MiB at concurrency eight. Across 40 QASPER and 40 HotpotQA
+natural-text transport controls per condition, native and full context are
+80/80, disabled is 40/80, and shuffled memory is 32/80.
 \end{abstract}
 
 \section{Introduction}
@@ -47,7 +53,8 @@ hierarchy and scheduling substrate without being misrepresented as a prefix.
 
 This iteration contributes an engine-independent logical object lifecycle, a
 capability-honest SGLang adapter, a measured RadixAttention baseline, and a
-native runner-cache bridge. HiCache placement remains a separate open boundary.
+native runner-cache bridge measured through live prefill and batched decode.
+HiCache placement remains a separate open boundary.
 
 \section{Two Address Spaces}
 The two logical keys are
@@ -92,10 +99,14 @@ Each layer cache exposes a local \texttt{offset} to scheduler and Radix
 bookkeeping, a distinct \texttt{rope\_offset} to attention, and concatenated
 selected-plus-local K/V only inside the attention view. Prefix-pool
 synchronization sees local K/V arrays, so PRA detail cannot be mistaken for an
-exact prefix. Hooks for initial prefill and the runner's batched-decode cache
-protocol are implemented, while the measured artifact exercises the SGLang
-cache and attention path directly. HiCache has no PRA side namespace yet, so
-the bridge is classified E1.
+exact prefix. Hooks cover initial prefill, request cleanup, and the runner's
+batched-decode cache protocol. Release-time unwrapping is essential: the first
+live run showed that returning a selected-memory wrapper to SGLang's reusable
+cache pool lets a later request inherit memory and can double-wrap a later
+native request. The corrected release hook returns only clean request-local K/V
+to the pool, and explicit geometry checks reject contaminated caches. HiCache
+has no PRA side namespace yet, so the bridge remains E1 despite live runner
+execution.
 
 \section{Environment}
 The host was an Apple M5 MacBook Pro with 16 GB unified memory, Metal 4, and
@@ -112,6 +123,12 @@ Startup identified \texttt{UnifiedRadixCache} with LRU eviction. HiCache was
 disabled. The control plane reported \texttt{torch\_native}, while model
 inference was delegated to MLX; both facts are retained in the artifact.
 
+The live native-runner experiments use the 4-bit
+\texttt{mlx-community/Qwen3-0.6B-4bit} checkpoint at revision
+\texttt{73e3e38d981303bc594367cd910ea6eb48349da8}. This separates them from
+the earlier unquantized HTTP smoke and prevents cross-precision latency
+comparison.
+
 \section{Method}
 We used the same synthetic codeword task and serialized prompts as the vLLM and
 MLX-LM calibration. Twelve distractor records surround one authoritative
@@ -120,9 +137,10 @@ prefix plus selected evidence, and full context. Each is repeated five times.
 SSE timing provides TTFT; SGLang scheduler logs provide exact new and cached
 token counts. Tail percentiles are not reported from five samples.
 
-This is \textsc{Smoke} evidence. It measures S0/S1 and the selected-text
-black-box baseline, not HiCache, native PRA attention, distributed cache
-affinity, or concurrency.
+This HTTP matrix is \textsc{Smoke} evidence. Separate five-seed controlled
+experiments exercise native prefill, decode, request cleanup, concurrency
+1--8, and natural-text causal controls. Neither experiment measures HiCache or
+distributed cache affinity.
 
 \section{Results}
 \begin{table}[t]
@@ -155,7 +173,7 @@ unquantized model while vLLM and MLX-LM used a 4-bit checkpoint.}
 \label{fig:sglang-shared}
 \end{figure}
 
-\section{What the Result Does Not Show}
+\section{Native Runner Results}
 \begin{table}[t]
 \centering
 \small
@@ -172,6 +190,56 @@ HiCache was disabled, so no L1/L2/L3 placement, promotion, demotion, transfer,
 or reload metric exists. The SGLang MLX control plane reports no ordinary GPU
 KV pool because MLX owns inference state.
 
+The next experiment installs the bridge on the real \texttt{MlxModelRunner}.
+It executes source ingestion separately, then runs selected memory through
+\texttt{prefill\_start}, \texttt{prefill\_finalize}, and batched decode. Full
+visible context and native memory recover 5/5 answers, while query-only disabled
+memory recovers 0/5. Every native request keeps all 141 source tokens outside
+the scheduler-local length.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Five-seed live-runner concurrency. One immutable selected memory is
+shared by every request in a batch.}
+\input{../shared/results/paper6_1_sglang/generated_live_runner_table.tex}
+\label{tab:sglang-live}
+\end{table}
+
+Table~\ref{tab:sglang-live} shows exact recovery at every tested concurrency.
+Mean throughput rises from 6.59 requests/s at one request to 14.54 at eight,
+with diminishing returns after four. Physical object sharing avoids 108.0 MiB
+of duplicate selected K/V at concurrency eight. These are controlled in-process
+measurements, not queued HTTP tail latency.
+
+\subsection{Natural-text controls}
+We also use balanced QASPER and HotpotQA text to build 40 examples per dataset
+and condition. Each source contains an inserted \texttt{AnswerCode yes/no}
+anchor among natural text. Constrained greedy decoding ranks the two answer
+tokens through SGLang's own logit-edit path. This measures native transport and
+causal dependence, not unrestricted benchmark QA.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{SGLang live-runner natural-text transport controls.}
+\input{../shared/results/paper6_1_sglang/generated_natural_table.tex}
+\label{tab:sglang-natural}
+\end{table}
+
+Native and ordinary full context are 40/40 on each dataset. Disabled memory is
+20/40 and shuffled memory is 16/40 on each. The negative controls establish
+that successful native decisions depend on the registered source rather than
+the query alone.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper6_1_sglang/live_runner_natural.png}
+\caption{Live native-runner throughput and natural-text causal controls.}
+\label{fig:sglang-live}
+\end{figure}
+
+\FloatBarrier
 \begin{center}
 \begin{tabularx}{0.96\linewidth}{l l Y}
 \toprule
@@ -183,7 +251,10 @@ selected-text parity & smoke closed & selected and full are 5/5 \\
 HiCache non-prefix object & open & hierarchy disabled \\
 selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
 radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\
-robustness & open & one model, one fixture, concurrency one \\
+runner lifecycle & controlled closed & prefill, batched decode, and clean request release \\
+concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided \\
+natural transport & controlled closed & native/full 80/80; causal controls near chance \\
+robustness & partial & one model; synthetic and two natural-text transport fixtures \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -203,10 +274,14 @@ black-box path matches native PRA on quality-adjusted memory, TTFT, and
 throughput. The current baseline is already strong, so a metadata-only object
 registry cannot satisfy the claim.
 
-The measurements use one small model, a local compatibility patch, one Apple
-host, one synthetic answer, and five repeats. The model precision differs from
-the 4-bit runs in the shared figure. HiCache, end-to-end concurrency, tail
-latency, resource-affinity routing, and archived-head transition are unmeasured.
+The measurements use one small model family, a local compatibility patch, and
+one Apple host. The HTTP and native runs use different model precisions. The
+live native runner disables Radix pooling so this iteration does not yet measure
+prefix and native memory inside the same scheduled request. HiCache, HTTP-level
+native concurrency, tail latency, resource-affinity routing, and archived-head
+transition remain unmeasured. The natural controls contain real dataset text
+but an inserted answer-code task; they are not QASPER or HotpotQA end-task
+scores.
 
 \section{Related Work}
 SGLang combines a structured runtime with RadixAttention for shared prefix
@@ -222,10 +297,13 @@ On the pinned SGLang-MLX environment, selected context and RadixAttention are
 clearly complementary: the selected condition preserves 5/5 recovery, removes
 76.9\% of visible prompt tokens, and reuses 364 of 365 tokens on warm requests.
 The native SGLang-cache path additionally gives 5/5 recovery and exact logit
-parity without adding PRA tokens to Radix prefix length. SGLang attention can
-therefore consume selected non-prefix K/V while preserving the two address
-spaces. Paper 6.1 leaves HiCache placement, full scheduler integration, and
-pressure-scale serving as the focused next experiments.
+parity without adding PRA tokens to Radix prefix length. The live runner keeps
+that result through batched decode, scales to 14.54 requests/s at concurrency
+eight, and passes 80/80 natural-text transport decisions while disabled and
+shuffled controls fall near chance. SGLang attention can therefore consume
+selected non-prefix K/V while preserving the two address spaces. Paper 6.1
+leaves HiCache placement, combined Radix-plus-native scheduling, and
+pressure-scale server validation as the focused next experiments.
 
 \begin{thebibliography}{9}
 \bibitem{zheng2024sglang}

@@ -203,6 +203,166 @@
           "max_logit_error": 0.0,
           "active_native_kv_bytes_mean": 3753984.0
         }
+      ],
+      "profiles": [
+        {
+          "profile": "all",
+          "selected_layer_count": 28,
+          "exact_recovery": 1.0,
+          "active_native_kv_bytes": 16171008,
+          "completion_latency_ms_mean": 174.47810820303857,
+          "max_logit_error": 0.0
+        },
+        {
+          "profile": "disabled",
+          "selected_layer_count": 0,
+          "exact_recovery": 0.0,
+          "active_native_kv_bytes": 0,
+          "completion_latency_ms_mean": 142.40483362227678,
+          "max_logit_error": 6.1875
+        },
+        {
+          "profile": "last_4",
+          "selected_layer_count": 4,
+          "exact_recovery": 0.0,
+          "active_native_kv_bytes": 2310144,
+          "completion_latency_ms_mean": 135.0867168046534,
+          "max_logit_error": 4.84375
+        },
+        {
+          "profile": "last_half",
+          "selected_layer_count": 14,
+          "exact_recovery": 1.0,
+          "active_native_kv_bytes": 8085504,
+          "completion_latency_ms_mean": 138.31546674482524,
+          "max_logit_error": 4.03125
+        },
+        {
+          "profile": "last_quarter",
+          "selected_layer_count": 7,
+          "exact_recovery": 0.0,
+          "active_native_kv_bytes": 4042752,
+          "completion_latency_ms_mean": 133.5398250259459,
+          "max_logit_error": 4.1875
+        }
+      ],
+      "concurrency": [
+        {
+          "concurrency": 1,
+          "requests_per_second_mean": 6.038208330263595,
+          "request_latency_ms_mean": 164.85937545076013,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 0
+        },
+        {
+          "concurrency": 2,
+          "requests_per_second_mean": 10.799049067020087,
+          "request_latency_ms_mean": 180.14275839086622,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 16171008
+        },
+        {
+          "concurrency": 4,
+          "requests_per_second_mean": 16.984087012355513,
+          "request_latency_ms_mean": 222.39070613868535,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 48513024
+        },
+        {
+          "concurrency": 8,
+          "requests_per_second_mean": 16.013213537003395,
+          "request_latency_ms_mean": 383.86879272875376,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 113197056
+        }
+      ],
+      "persistence": {
+        "serialized_bytes_mean": 16182790.0,
+        "save_ms_mean": 28.711249958723783,
+        "load_ms_mean": 7.1970665361732244,
+        "max_logit_error": 0.0
+      },
+      "natural": [
+        {
+          "dataset": "qasper",
+          "condition": "native_all",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 96.24848637031391,
+          "gold_answer_margin_mean": 2.953125
+        },
+        {
+          "dataset": "qasper",
+          "condition": "native_disabled",
+          "sample_count": 40,
+          "ranked_exact": 0.5,
+          "latency_ms_mean": 85.0718488858547,
+          "gold_answer_margin_mean": 0.0140625
+        },
+        {
+          "dataset": "qasper",
+          "condition": "native_last_half",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 89.73633331479505,
+          "gold_answer_margin_mean": 1.009375
+        },
+        {
+          "dataset": "qasper",
+          "condition": "native_shuffled",
+          "sample_count": 40,
+          "ranked_exact": 0.5,
+          "latency_ms_mean": 96.03606876335107,
+          "gold_answer_margin_mean": -0.1078125
+        },
+        {
+          "dataset": "qasper",
+          "condition": "ordinary_split",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 115.48104998655617,
+          "gold_answer_margin_mean": 2.953125
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "native_all",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 96.60926976357587,
+          "gold_answer_margin_mean": 2.88515625
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "native_disabled",
+          "sample_count": 40,
+          "ranked_exact": 0.525,
+          "latency_ms_mean": 87.22306250710972,
+          "gold_answer_margin_mean": -0.0015625
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "native_last_half",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 91.8426281074062,
+          "gold_answer_margin_mean": 1.1125
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "native_shuffled",
+          "sample_count": 40,
+          "ranked_exact": 0.5,
+          "latency_ms_mean": 96.03711149538867,
+          "gold_answer_margin_mean": 0.16640625
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "ordinary_split",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 118.79904497181997,
+          "gold_answer_margin_mean": 2.88515625
+        }
       ]
     },
     "sglang": {
@@ -212,7 +372,108 @@
       "exact_recovery": 1.0,
       "max_logit_error": 0.0,
       "completion_latency_ms_mean": 221.99536664411426,
-      "radix_identity_separation_rate": 1.0
+      "radix_identity_separation_rate": 1.0,
+      "live_runner": {
+        "exact_recovery": 1.0,
+        "disabled_recovery": 0.0,
+        "scheduler_isolation": true
+      },
+      "concurrency": [
+        {
+          "concurrency": 1,
+          "requests_per_second_mean": 6.5879819642211235,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 0,
+          "scheduler_isolation": true
+        },
+        {
+          "concurrency": 2,
+          "requests_per_second_mean": 9.905331177017255,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 16171008,
+          "scheduler_isolation": true
+        },
+        {
+          "concurrency": 4,
+          "requests_per_second_mean": 13.25366484628214,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 48513024,
+          "scheduler_isolation": true
+        },
+        {
+          "concurrency": 8,
+          "requests_per_second_mean": 14.540768790848485,
+          "exact_recovery": 1.0,
+          "sharing_bytes_saved": 113197056,
+          "scheduler_isolation": true
+        }
+      ],
+      "natural": [
+        {
+          "dataset": "qasper",
+          "condition": "disabled",
+          "sample_count": 40,
+          "ranked_exact": 0.5,
+          "latency_ms_mean": 12.517918791854754,
+          "gold_answer_margin_mean": null
+        },
+        {
+          "dataset": "qasper",
+          "condition": "native",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 14.68272190541029,
+          "gold_answer_margin_mean": null
+        },
+        {
+          "dataset": "qasper",
+          "condition": "ordinary_full",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 43.083212443161756,
+          "gold_answer_margin_mean": null
+        },
+        {
+          "dataset": "qasper",
+          "condition": "shuffled",
+          "sample_count": 40,
+          "ranked_exact": 0.4,
+          "latency_ms_mean": 31.995457276934758,
+          "gold_answer_margin_mean": null
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "disabled",
+          "sample_count": 40,
+          "ranked_exact": 0.5,
+          "latency_ms_mean": 12.707680294988677,
+          "gold_answer_margin_mean": null
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "native",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 14.643357280874625,
+          "gold_answer_margin_mean": null
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "ordinary_full",
+          "sample_count": 40,
+          "ranked_exact": 1.0,
+          "latency_ms_mean": 37.9875791084487,
+          "gold_answer_margin_mean": null
+        },
+        {
+          "dataset": "hotpotqa",
+          "condition": "shuffled",
+          "sample_count": 40,
+          "ranked_exact": 0.4,
+          "latency_ms_mean": 14.392899977974594,
+          "gold_answer_margin_mean": null
+        }
+      ]
     },
     "vllm": {
       "status": "MEASURED_KERNEL_PATH",

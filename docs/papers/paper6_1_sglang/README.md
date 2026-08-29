@@ -12,5 +12,6 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 The measured environment uses the pinned SGLang MLX checkout and its documented
 loader compatibility patch. The native SGLang-cache path passes five-seed
 semantic parity while keeping PRA tokens outside Radix prefix accounting. The
-runner hook is implemented; live scheduler-generation and HiCache placement
-remain open gates.
+runner hook now passes real prefill and batched decode at concurrency 1--8. It
+also includes five-seed QASPER and HotpotQA natural-text transport controls.
+Combined Radix-plus-native scheduling and HiCache placement remain open gates.

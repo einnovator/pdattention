@@ -141,6 +141,21 @@ request, and invokes the native Metal \texttt{paged\_attention\_primitive}.
 Multiple requests may reference one physical handle. This is a verified
 attention-kernel path, not yet an E2 generation executor wired through V1.
 
+The next integration layer is implemented in
+\path{src/pra_vllm/v1_metadata.py}. A request registers immutable logical keys,
+selected block tables per cache group, selected-token count, source-position
+base, and consumer layers. At each V1 step the registry combines that object
+with scheduler-owned local cache starts and query-token counts without rewriting
+either. Thus two quantities remain explicit:
+\[
+ p_{q,0}=p_{\mathrm{source}}+T_{\mathrm{local}},\qquad
+ T_{\mathrm{attn}}=T_{\mathrm{selected}}+T_{\mathrm{local}}+T_q.
+\]
+Appending selected pages to ordinary scheduler block tables would instead make
+V1 count them as sequential prefix state and assign the wrong query positions.
+The registry validates immutable request registration and explicit cleanup, but
+does not by itself constitute a model-runner attention hook or E2 generation.
+
 \section{Environment and Method}
 The remote host was an Apple M5 MacBook Pro with 16 GB unified memory, macOS
 26.4.1, and Metal 4. The environment used Python 3.12.7, vLLM
@@ -250,6 +265,7 @@ black-box semantics & smoke closed & selected and full context agree on the fixe
 prefix coexistence & smoke closed & APC remains active; repeated prompts are fast \\
 native block attention & controlled closed & 80 Metal kernel rows; dense-reference parity \\
 physical sharing & controlled closed & one immutable handle at concurrency 1--8 \\
+V1 metadata contract & prototype closed & selected block tables and positions remain scheduler-disjoint \\
 engine-native serving & open & scheduler, generation, APC coexistence, connectors unmeasured \\
 robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule
@@ -262,7 +278,8 @@ scheduler allocation, generation lifetime, APC coexistence in one request,
 LMCache/connectors, and CUDA replication. The shared residency manager
 implements deterministic prefetch, pinning, sharing, and four eviction
 policies, but its pressure sweep is controlled simulation rather than vLLM
-scheduler telemetry.
+scheduler telemetry. The V1 step registry removes a semantic ambiguity from the
+remaining patch, but the runner and attention backend must still consume it.
 
 \section{Falsification and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
@@ -298,8 +315,8 @@ deep integration. The selected-K/V paged-attention path is now verified at
 kernel level with numerical parity and physical sharing. The next decisive
 experiment carries those blocks through V1 scheduling and generation, then
 compares matched-quality residency, transfer, APC coexistence, and throughput.
-PRA-vLLM is therefore a native-kernel prototype, not yet an engine-native
-serving result.
+The disjoint step-metadata contract is now explicit and tested, but PRA-vLLM is
+still a native-kernel prototype, not yet an engine-native serving result.
 
 \begin{thebibliography}{9}
 \bibitem{kwon2023vllm}
