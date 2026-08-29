@@ -38,7 +38,12 @@ PRA with APC over concurrency 1--8: selected memory recovers 75/75 answers,
 alternating selected and ordinary requests score 40/40 on their expected
 outcome, APC supplies 128--144 prompt tokens, and throughput reaches 35.88
 requests/s at concurrency eight. Connectors, online server tails, cross-model
-replication, and CUDA integration remain open.
+replication, and CUDA integration remain open. A final matched-selection study
+uses the same routed QASPER, HotpotQA, and 2WikiMultiHopQA evidence for visible
+E0 and native E2 execution. E2 removes 90.6--93.0\% of visible prompt tokens,
+but exact output parity is only 5.0--20.0\% and mean F1 falls on HotpotQA and
+2Wiki. This isolates an unresolved native transport gap rather than a routing
+error, so matched-quality promotion remains open.
 \end{abstract}
 
 \section{Introduction}
@@ -310,6 +315,51 @@ benchmark. Wrong memory redirects 26/40 outputs to its counterfactual code;
 the imperfect rate limits the strength of that prompt-level causal control,
 while the earlier short-prefix experiment supplies the cleaner 5/5 result.
 
+\subsection{Matched selected text versus native K/V}
+The final experiment freezes 20 routed examples from each of QASPER, HotpotQA,
+and 2WikiMultiHopQA across five seeds. Within an example, E0 and E2 receive the
+same source-token sequence, question, greedy decoder, and 24-token output
+budget. E0 exposes the selected source as ordinary prompt text; E2 page-aligns
+that source, encodes it once, and attaches its native pages outside APC. Each
+condition runs once cold and once warm. This controls discovery: any output
+difference occurs after selection.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Cross-engine matched-selection quality. Paper 6 uses the vLLM-Metal
+rows; the other rows provide the common experimental reference.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
+\label{tab:vllm-matched-quality}
+\end{table}
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Matched-selection latency in milliseconds. Cold completion includes
+one-time E2 encoding/materialization; vLLM's offline V1 interface exposes
+completion but not per-token TTFT or ITL.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
+\label{tab:vllm-matched-latency}
+\end{table}
+
+E2 reduces mean visible tokens by 90.6--93.0\%. It does not yet preserve the
+E0 behavior: exact output parity is 5.0\% on QASPER, 20.0\% on HotpotQA, and
+17.5\% on 2Wiki. Mean E2-minus-E0 F1 is $+0.008$, $-0.033$, and $-0.034$,
+respectively. The neighboring MLX-LM and SGLang-MLX paths obtain exact parity
+on the same frozen selections, which rules out the cohort construction as an
+explanation. The remaining candidates include paged-cache precision/layout and
+position metadata at the vLLM-Metal boundary. Until a capture-and-replay audit
+matches ordinary paged K/V layer by layer, this result is a negative promotion
+gate, not evidence that native memory intrinsically harms QA.
+
+Cold end-to-end completion is 12--23 ms slower for E2 after its roughly 59 ms
+one-time ingestion. Warm completion ranges from 6 ms faster to 13 ms slower.
+The offline V1 API emits the 24-token completion as one engine result, so TTFT
+and ITL are reported as unavailable rather than inferred from completion time.
+
 \subsection{Controlled residency pressure}
 The engine-neutral residency manager was also exercised on five deterministic
 120-request traces with a 14 MB budget and a 36 MB working set. This is a
@@ -341,6 +391,7 @@ physical sharing & controlled closed & one immutable handle at concurrency 1--8 
 V1 metadata contract & controlled closed & selected block tables and positions remain scheduler-disjoint \\
 live V1 generation & controlled closed & positive, disabled, wrong-memory, and cleanup controls over five seeds \\
 concurrent isolation & controlled closed & 20/20 selected recoveries and 0/20 adjacent ordinary recoveries \\
+matched natural QA & partial & 91--93\% fewer visible tokens; exact output parity only 5--20\% \\
 engine-native serving & partial & native APC and concurrency measured; connectors, online tails, and CUDA remain open \\
 robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule
@@ -371,7 +422,9 @@ arrival-rate, tail-latency, or HBM-pressure sweep was run. The live bridge
 requires page alignment, one K/V cache group, all consumer layers, and
 unquantized selected K/V. Apple unified memory also differs
 from the CUDA/LMCache environment for which many connector mechanisms were
-designed.
+designed. Most importantly, the matched natural-QA cohort does not preserve E0
+behavior on vLLM-Metal. Offline V1 also withholds per-token arrivals, so its
+TTFT and ITL columns remain unavailable.
 
 \section{Related Work}
 vLLM introduced PagedAttention and continuous batching to reduce KV
@@ -392,9 +445,10 @@ deep integration. The selected-K/V path is now verified at kernel level and in
 live V1 generation, including wrong-memory causality and post-request isolation.
 Native pages also coexist with APC and preserve request isolation through
 concurrency eight. PRA-vLLM is therefore an engine-native controlled prototype
-on Metal. The next decisive experiment compares online tail latency,
-matched-quality residency and transfer, connectors, another model family, and
-a CUDA implementation.
+on Metal, but not yet a matched-quality realization. The next decisive patch
+must first reproduce ordinary paged-cache K/V through native capture and replay;
+only then should online tail latency, connectors, another model family, and a
+CUDA implementation be used for economic claims.
 
 \begin{thebibliography}{9}
 \bibitem{kwon2023vllm}

@@ -48,7 +48,12 @@ materialization. Native and ordinary consumption agree exactly on all 60
 paired generations. Gold evidence recall at four is 0.348 on QASPER, 0.725 on
 HotpotQA, and 0.775 on 2Wiki. Routed memory outperforms shuffled memory on
 answer likelihood in all three datasets, but remains below oracle evidence;
-discovery, rather than MLX transport, is now the measured bottleneck.
+discovery, rather than MLX transport, is now the measured bottleneck. On the
+same frozen routed selections, a matched E0/E2 economic benchmark preserves all
+120 cold/warm output pairs and removes 90.5--93.0\% of visible prompt tokens.
+Native ingestion is 6--10 ms cheaper and cold end-to-end TTFT is 4--8 ms lower,
+but the unfused selected-cache path adds 40--54 ms to median 24-token
+completion.
 \end{abstract}
 
 \section{Introduction}
@@ -422,6 +427,41 @@ insufficient or misleading, while short free generation is noisy. The result
 closes the routed engine path and localizes the remaining deficit to evidence
 selection; it does not close a production QA-quality gate.
 
+\subsection{Matched selected-text economics}
+The routed selections also support a direct E0/E2 comparison without changing
+the evidence. For 20 examples per dataset across five seeds, E0 restores an
+ordinary cache snapshot of the selected source and E2 restores its native PRA
+cache. The question, greedy decoder, 24-token output budget, and cold/warm
+schedule are identical.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Matched-selection quality on the shared three-engine cohort.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
+\label{tab:mlx-matched-quality}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Matched-selection latency in milliseconds. Cold completion includes
+one-time source ingestion.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
+\label{tab:mlx-matched-latency}
+\end{table}
+
+MLX-LM produces exactly the same E0 and E2 output in all 120 pairs, with equal
+F1 and gold evidence by construction. E2 reduces visible prompt tokens by
+90.5--93.0\%. Native encoding averages 35.5--37.0 ms, 5.5--10.0 ms less than
+ordinary source-cache ingestion, and cold end-to-end TTFT improves by 4.2--7.8
+ms. The current request cache concatenates selected and local arrays at every
+layer and decode step. Consequently, warm median completion is 40--54 ms
+slower and mean ITL is 1.6--2.2 ms higher. This is exact semantic transport,
+but not yet an optimized native-attention kernel.
+
 \begin{table}[!htbp]
 \centering
 \small
@@ -458,6 +498,7 @@ concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB a
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\
 routed natural QA & controlled partial & 60/60 consumption parity; recall@4 0.348--0.775; oracle gap open \\
+matched E0/E2 economics & controlled closed & 120/120 exact outputs; lower cold TTFT, slower unfused decode \\
 quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
 memory pressure & controlled partial & hard two-resource budget forces eviction and reload; no OOM frontier \\
 \bottomrule
@@ -482,7 +523,8 @@ sample distinct examples but do not substitute for a larger cohort. Strict EM
 is confounded by verbose continuation. Int8 detail is restored before
 attention, so it saves retained bytes rather than active attention bytes. No
 learned native Q/K index, queued server concurrency, or OOM frontier is
-measured.
+measured. The matched benchmark reuses only 20 examples per dataset and does
+not establish end-task quality beyond proving that E2 preserves its E0 input.
 The rotating intervention also changes effective local context and can perturb
 chat-template semantics.
 
@@ -512,7 +554,9 @@ paired generations, but recall@4 ranges from 0.348 to 0.775 and answer
 likelihood remains below oracle evidence. The next quality improvement belongs
 in discovery, not the MLX cache transport. Queued server pressure, an OOM
 frontier, learned routing, and broader quality cohorts remain necessary before
-production claims. Last-half consumption and int8 residency are controlled
+production claims. Matched E2 execution removes roughly 91--93\% of visible
+tokens and preserves every output, but its unfused decode is slower. Last-half
+consumption and int8 residency are controlled
 candidates, not product profile defaults.
 
 \begin{thebibliography}{9}

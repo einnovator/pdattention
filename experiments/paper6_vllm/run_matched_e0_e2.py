@@ -28,31 +28,9 @@ def _prompt(token_ids: list[int]) -> dict[str, list[int]]:
     return {"prompt_token_ids": list(token_ids)}
 
 
-def _timing(output, wall_ms: float) -> dict[str, float]:
-    metrics = getattr(output, "metrics", None)
-    completion = output.outputs[0]
-    token_count = len(completion.token_ids)
-    arrival = getattr(metrics, "arrival_time", None)
-    first = getattr(metrics, "first_token_time", None)
-    finished = getattr(metrics, "finished_time", None)
-    ttft_ms = (
-        (first - arrival) * 1000.0
-        if arrival is not None and first is not None
-        else wall_ms
-    )
-    itl_ms = (
-        (finished - first) * 1000.0 / (token_count - 1)
-        if first is not None and finished is not None and token_count > 1
-        else 0.0
-    )
-    return {
-        "ttft_ms": ttft_ms,
-        "itl_ms": itl_ms,
-        "completion_latency_ms": wall_ms,
-    }
-
-
 def _run(llm, bridge, sampling, prompt_tokens, *, key=None, source_tokens=0):
+    """Step V1 explicitly so TTFT and inter-token arrivals are observable."""
+
     started = time.perf_counter()
     [request_id] = llm.enqueue(_prompt(prompt_tokens), sampling, use_tqdm=False)
     if key is not None:
@@ -62,9 +40,37 @@ def _run(llm, bridge, sampling, prompt_tokens, *, key=None, source_tokens=0):
             selected_token_count=source_tokens,
             source_position_base=source_tokens,
         )
-    [output] = llm.wait_for_completion(use_tqdm=False)
+    arrivals: list[float] = []
+    observed_tokens = 0
+    output = None
+    while llm.llm_engine.has_unfinished_requests():
+        step_outputs = llm.llm_engine.step()
+        if len(step_outputs) > 1:
+            raise RuntimeError("Matched timing harness expects one active vLLM request.")
+        for candidate in step_outputs:
+            output = candidate
+            token_count = len(candidate.outputs[0].token_ids)
+            if token_count > observed_tokens:
+                timestamp = (time.perf_counter() - started) * 1000.0
+                arrivals.extend([timestamp] * (token_count - observed_tokens))
+                observed_tokens = token_count
+    if output is None or not output.finished:
+        raise RuntimeError(f"vLLM request {request_id} did not produce a final output.")
     wall_ms = (time.perf_counter() - started) * 1000.0
-    return request_id, output, _timing(output, wall_ms)
+    incremental_arrivals = len(set(arrivals)) > 1
+    itl_ms = (
+        sum(right - left for left, right in zip(arrivals, arrivals[1:]))
+        / (len(arrivals) - 1)
+        if len(arrivals) > 1 and incremental_arrivals
+        else None
+    )
+    return request_id, output, {
+        # vLLM-Metal's offline V1 runner currently emits a whole completion
+        # from one engine step. Do not mislabel that boundary as token TTFT.
+        "ttft_ms": arrivals[0] if arrivals and incremental_arrivals else None,
+        "itl_ms": itl_ms,
+        "completion_latency_ms": wall_ms,
+    }
 
 
 def main() -> None:

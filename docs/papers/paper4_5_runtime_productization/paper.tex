@@ -824,8 +824,9 @@ semantic reference. The OpenAI-compatible HTTP adapter and standalone
 through that E0 surface~\cite{freetokenDocs2026}. Companion Papers 6.1 and 6.2
 exercise native SGLang-MLX and MLX-LM E1 mechanisms; their provider declarations
 are available here, but their engine measurements do not promote Paper 4.5 to
-E2. Paper 6's vLLM V1 metadata remains E0 until generation and scheduler paths
-consume it. The portable
+E2. Paper 6 now exercises native vLLM-Metal V1 generation and
+scheduler-disjoint pages under a pinned provider, while its generic provider
+remains E0 unless that bridge is explicitly installed. The portable
 HF adapter implements E1 native execution and streaming but remains stateless
 between gateway calls. The configurable remote E1 envelope carries incremental
 messages and resource operations when the selected engine advertises those
@@ -1292,6 +1293,36 @@ realizations; they do not promote Paper 4.5's HF-centered profile evidence.}
 \label{tab:engine-product-matrix}
 \end{table}
 
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Frozen matched E0 selected-text versus E2 native-K/V quality. Each
+dataset contains 20 routed examples and cold/warm reuse; selection is held
+fixed before engine consumption.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
+\label{tab:engine-matched-quality}
+\end{table}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Matched execution economics in milliseconds. Cold completion includes
+one-time ingestion. Dashes denote timing unavailable from the offline API.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
+\label{tab:engine-matched-latency}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/matched_e0_e2/matched_e0_e2_summary.pdf}
+\caption{Holding routed evidence fixed separates visible-token reduction from
+semantic preservation. MLX-LM and SGLang-MLX retain F1 exactly; vLLM-Metal
+exposes a post-selection integration gap on two of three datasets.}
+\label{fig:engine-matched-summary}
+\end{figure}
+
 The matrix now distinguishes companion evidence from generic provider defaults.
 On vLLM-Metal, selected native pages recover 75/75 answers with 128--144
 ordinary APC tokens and reach 35.88 requests/s at concurrency eight; alternating
@@ -1303,6 +1334,15 @@ agree on 60/60 original-answer QA pairs; evidence recall@4 ranges from 0.348 to
 0.775, so the companion result retains an explicit open oracle gap. These are
 pinned controlled realizations,
 not portable claims that the default SDK provider may advertise unconditionally.
+
+The shared matched benchmark makes the product boundary sharper. MLX-LM and
+SGLang-MLX preserve all 120 cold/warm E0 outputs while moving 90.5--93.0\% of
+visible prompt tokens into native K/V. Their current selected-cache wrappers
+still add decode cost. vLLM-Metal obtains the same visible-token reduction but
+only 5.0--20.0\% exact output parity and loses mean F1 on two datasets. The SDK
+therefore treats the pinned MLX and SGLang paths as semantic mechanism passes,
+keeps their economic status experimental, and keeps vLLM matched-quality
+promotion pending. Engine labels alone never select these capabilities.
 
 The product surface includes installable package metadata, Hugging Face loading,
 runtime config serialization, direct and external reference registration,
@@ -1411,8 +1451,8 @@ contribution or production security claim.
 
 \section{Limitations and Next Gates}
 
-The current evidence is intentionally incomplete.  The GPU is old, the
-benchmark is synthetic, and no full serving engine is installed.  We have not
+The current evidence is intentionally incomplete. The local CUDA GPU is old,
+and the companion serving-engine measurements run on one Apple host. We have not
 measured continuous batching, request-level p95/p99, asynchronous transfer
 overlap, a production page allocator, prefetch, multi-session contention, or
 fused attention preparation.  The LRU fixture validates byte accounting but is
@@ -1430,7 +1470,7 @@ continuous-batching implementation. The cache key now rejects physical reuse
 across changed source revisions, positions, materialization layouts, or scopes,
 and a concurrent fixture covers logical tenant isolation, pressure, and
 cancellation. It does not establish hard GPU partitioning or production
-multi-tenant throughput. Phase selection and E2/E3 engine integration remain
+multi-tenant throughput. Phase selection and portable E2/E3 engine integration remain
 open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
@@ -1441,7 +1481,7 @@ does not measure physical prefix-cache hits, worker affinity, warm-prefix TTFT,
 continuous batching, index residency, or network cost. The reported reuse
 fraction counts exact serialized messages, not tokenizer tokens. Engine
 profiles are conservative defaults and require runtime probing or explicit
-configuration before stronger capabilities may be advertised. Companion E0
+configuration before stronger capabilities may be advertised. Companion
 engine studies do not change this profile's evidence tier and are intentionally
 kept outside Paper 4.5's HF-centered metric tables.
 
@@ -1478,7 +1518,9 @@ a cache-correct prefill handoff before it enters that comparison.
 
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
 have established SGLang and MLX native mechanism baselines and controlled
-vLLM-Metal V1 generation. Those results remain environment-specific and do not
+vLLM-Metal V1 generation. A shared matched benchmark now closes E0/E2 semantic
+parity for SGLang and MLX but exposes a vLLM-Metal quality gap and decode
+overhead in both exact paths. Those results remain environment-specific and do not
 turn the generic provider into an unconditional E2 claim. Native APC and
 offline concurrency now pass on the pinned Metal path; CUDA replication,
 online queued concurrency, distributed placement, broader positions, masks,
@@ -1514,8 +1556,8 @@ make persistent storage and request-time computation independently auditable;
 missing detail can never trigger a silent profile downgrade. The eager
 primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
-remains a negative gate. Companion E1 mechanism runs still leave native E2/E3
-integration unmeasured. The practical
+remains a negative gate. Companion engine runs establish pinned native
+realizations but still leave portable E2/E3 integration unmeasured. The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.

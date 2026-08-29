@@ -41,7 +41,11 @@ recover 5/5, disabled memory recovers 0/5, and native throughput rises from
 6.59 to 14.54 requests/s between concurrency one and eight. Shared immutable
 K/V avoids 108.0 MiB at concurrency eight. Across 40 QASPER and 40 HotpotQA
 natural-text transport controls per condition, native and full context are
-80/80, disabled is 40/80, and shuffled memory is 32/80.
+80/80, disabled is 40/80, and shuffled memory is 32/80. On a separate frozen
+60-example routed-QA cohort, E0 selected text and E2 native K/V produce exactly
+the same output in all 120 cold/warm pairs while E2 removes 90.5--93.0\% of
+visible prompt tokens. Warm TTFT is comparable, although the current selected
+cache adds 34--39 ms to median 24-token completion.
 \end{abstract}
 
 \section{Introduction}
@@ -244,6 +248,41 @@ Native and ordinary full context are 40/40 on each dataset. Disabled memory is
 that successful native decisions depend on the registered source rather than
 the query alone.
 
+\subsection{Matched selected text versus native K/V}
+We next freeze the routed selections for 20 original-answer examples from each
+of QASPER, HotpotQA, and 2WikiMultiHopQA. E0 writes the selected source once to
+ordinary Radix-owned prefix slots. E2 encodes exactly the same source tokens as
+immutable native K/V and leaves them outside Radix accounting. Both paths use
+the same query suffix, greedy decoder, 24-token output budget, and cold/warm
+reuse schedule.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Matched-selection quality on the shared three-engine cohort.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
+\label{tab:sglang-matched-quality}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Matched-selection latency in milliseconds. Cold completion includes
+the one-time source ingestion shown in the final column.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
+\label{tab:sglang-matched-latency}
+\end{table}
+
+SGLang preserves exact output and F1 on all 120 E0/E2 pairs. E2 reduces visible
+prompt tokens by 90.5--93.0\% and lowers mean cold end-to-end TTFT by 19--22 ms.
+Warm median TTFT is within 1.2 ms and is slightly lower for E2 on all three
+datasets. The current cache wrapper concatenates selected and local arrays at
+each consumer layer and decode step, however, so warm median completion is
+34--39 ms slower. Native transport is therefore semantically closed on this
+cohort, while fused materialization and decode economics remain open.
+
 \subsection{External HiCache placement}
 \begin{table}[!htbp]
 \centering
@@ -314,18 +353,18 @@ Radix + HiCache request & controlled closed & A/C 10/10, cleanup B 0/5, exactly 
 runner lifecycle & controlled closed & prefill, batched decode, and clean request release \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided \\
 natural transport & controlled closed & native/full 80/80; causal controls near chance \\
+matched natural QA & controlled closed & 120/120 exact E0/E2 outputs; 90.5--93.0\% fewer visible tokens \\
 robustness & partial & one model; synthetic and two natural-text transport fixtures \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
 \section{Next Engine-Native Experiment}
-The next useful patch moves the verified local composition into distributed
-HiCache placement and scheduler affinity. The matched comparison is
-RadixAttention plus black-box selected text versus Radix plus native PRA at
-equal quality and selected-token budget, including cold/warm tier location,
-prefetch overlap, server tail latency, and multi-request pressure. Only then
-should learned placement or cache-aware scheduling be optimized.
+The matched single-request comparison is now complete. The next useful patch
+moves the verified local composition into distributed HiCache placement and
+scheduler affinity, including prefetch overlap, concurrent cold/warm tier
+curves, and server p50/p95/p99. Only then should learned placement or
+cache-aware scheduling be optimized.
 
 \section{Falsification and Limitations}
 Deep SGLang integration is unnecessary if RadixAttention plus the tuned
@@ -341,8 +380,10 @@ directly, without the HTTP scheduler. Distributed HiCache, HTTP-level native
 concurrency, tail latency, resource-affinity routing,
 and archived-head transition remain unmeasured. L3 timing includes only five
 loads and one large outlier. The natural controls contain real dataset text
-but an inserted answer-code task; they are not QASPER or HotpotQA end-task
-scores.
+but an inserted answer-code task. The matched cohort uses original benchmark
+answers, but only 20 routed selections per dataset and a 24-token greedy decode.
+Its exact transport parity is stronger than its low absolute F1. No distributed
+HiCache or queued server result is implied.
 
 \section{Related Work}
 SGLang combines a structured runtime with RadixAttention for shared prefix
@@ -368,7 +409,10 @@ the Radix namespace. A final A/B/C cohort composes the shared-prefix pool with
 external HiCache, preserves 10/10 selected recoveries, prevents 5/5 cleanup
 leaks, and attaches exactly one memory copy. It leaves distributed HiCache,
 full-scheduler integration, and pressure-scale server validation as the focused
-next experiments.
+next experiments. On matched routed QA, it additionally preserves every E0
+output while moving 90.5--93.0\% of prompt tokens to native memory; the measured
+decode overhead makes fused selected-cache consumption the immediate systems
+optimization.
 
 \begin{thebibliography}{9}
 \bibitem{zheng2024sglang}

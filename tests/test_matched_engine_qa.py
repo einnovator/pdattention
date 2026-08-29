@@ -4,6 +4,7 @@ from experiments.engine_serving.matched_qa import (
     source_digest,
 )
 from experiments.paper6_2_mlx.run_answer_quality_pressure import QADocument, QAExample
+from experiments.engine_serving.summarize_matched_e0_e2 import _percentile
 
 
 def _example() -> QAExample:
@@ -66,3 +67,9 @@ def test_selected_source_rejects_unknown_document():
         assert "Unknown selected document" in str(error)
     else:
         raise AssertionError("unknown selected document should fail")
+
+
+def test_matched_summary_percentile_interpolates_small_cohort():
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 0.5) == 2.5
+    assert _percentile([1.0, 2.0, 3.0, 4.0], 0.95) == 3.8499999999999996
+    assert _percentile([], 0.99) is None

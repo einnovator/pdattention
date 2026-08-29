@@ -32,19 +32,31 @@ def _numbers(rows: list[dict[str, object]], key: str) -> list[float]:
     return [float(row[key]) for row in rows if row.get(key) is not None]
 
 
-def _timing_key(row: dict[str, object]) -> str:
-    return "online_ttft_ms" if row.get("online_ttft_ms") is not None else "ttft_ms"
+def _ttft(row: dict[str, object]) -> float | None:
+    value = row.get("online_ttft_ms")
+    if value is None:
+        value = row.get("ttft_ms")
+    return None if value is None else float(value)
 
 
 def _normalize(payload: dict[str, object], source: Path) -> list[dict[str, object]]:
     normalized = []
     for raw in payload["rows"]:
         row = dict(raw)
-        ttft = float(row[_timing_key(row)])
+        ttft = _ttft(row)
         ingestion = row.get("one_time_ingestion_ms")
-        if row.get("cold_end_to_end_ttft_ms") is None and row["reuse_state"] == "cold":
+        if (
+            row.get("cold_end_to_end_ttft_ms") is None
+            and row["reuse_state"] == "cold"
+            and ttft is not None
+        ):
             row["cold_end_to_end_ttft_ms"] = ttft + float(ingestion or 0.0)
         row["online_ttft_ms"] = ttft
+        row["cold_end_to_end_completion_ms"] = (
+            float(row["completion_latency_ms"]) + float(ingestion or 0.0)
+            if row["reuse_state"] == "cold"
+            else None
+        )
         row["engine"] = payload["engine"]
         row["model_id"] = payload["model_id"]
         row["source_file"] = source.as_posix()
@@ -90,7 +102,16 @@ def _aggregate(rows: list[dict[str, object]]) -> list[dict[str, object]]:
                 "ttft_p50_ms": _percentile(ttft, 0.50),
                 "ttft_p95_ms": _percentile(ttft, 0.95),
                 "ttft_p99_ms": _percentile(ttft, 0.99),
-                "itl_mean_ms": mean(_numbers(group, "itl_ms")),
+                "itl_mean_ms": (
+                    mean(_numbers(group, "itl_ms"))
+                    if _numbers(group, "itl_ms")
+                    else None
+                ),
+                "cold_end_to_end_completion_ms": (
+                    mean(_numbers(group, "cold_end_to_end_completion_ms"))
+                    if _numbers(group, "cold_end_to_end_completion_ms")
+                    else None
+                ),
                 "completion_p50_ms": _percentile(completion, 0.50),
                 "completion_p95_ms": _percentile(completion, 0.95),
                 "completion_p99_ms": _percentile(completion, 0.99),
@@ -148,6 +169,76 @@ def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _value(value: object, digits: int = 1) -> str:
+    return "--" if value is None else f"{float(value):.{digits}f}"
+
+
+def _write_tex(
+    output_dir: Path,
+    aggregates: list[dict[str, object]],
+    parity: list[dict[str, object]],
+) -> None:
+    lookup = {
+        (
+            str(row["engine"]),
+            str(row["dataset"]),
+            str(row["condition"]),
+            str(row["reuse_state"]),
+        ): row
+        for row in aggregates
+    }
+    parity_lookup = {
+        (str(row["engine"]), str(row["dataset"])): row for row in parity
+    }
+    identities = sorted(parity_lookup)
+    quality = [
+        r"\begin{tabular}{llrrrr}",
+        r"\toprule",
+        r"Engine & Dataset & Visible E0/E2 & Reduction & F1 E0/E2 & Exact parity \\",
+        r"\midrule",
+    ]
+    latency = [
+        r"\begin{tabular}{llrrrr}",
+        r"\toprule",
+        r"Engine & Dataset & Cold completion E0/E2 & Warm completion E0/E2 & Warm TTFT E0/E2 & E2 ingest \\",
+        r"\midrule",
+    ]
+    for engine, dataset in identities:
+        cold_e0 = lookup[(engine, dataset, CONDITIONS[0], "cold")]
+        cold_e2 = lookup[(engine, dataset, CONDITIONS[1], "cold")]
+        warm_e0 = lookup[(engine, dataset, CONDITIONS[0], "warm")]
+        warm_e2 = lookup[(engine, dataset, CONDITIONS[1], "warm")]
+        reduction = 100.0 * (
+            float(cold_e0["visible_prompt_tokens"])
+            - float(cold_e2["visible_prompt_tokens"])
+        ) / float(cold_e0["visible_prompt_tokens"])
+        parity_value = 100.0 * float(
+            parity_lookup[(engine, dataset)]["exact_output_parity"]
+        )
+        quality.append(
+            f"{engine} & {dataset} & "
+            f"{_value(cold_e0['visible_prompt_tokens'], 0)}/{_value(cold_e2['visible_prompt_tokens'], 0)} & "
+            f"{reduction:.1f}\\% & "
+            f"{_value(cold_e0['token_f1'], 3)}/{_value(cold_e2['token_f1'], 3)} & "
+            f"{parity_value:.1f}\\% \\\\"
+        )
+        latency.append(
+            f"{engine} & {dataset} & "
+            f"{_value(cold_e0['cold_end_to_end_completion_ms'])}/{_value(cold_e2['cold_end_to_end_completion_ms'])} & "
+            f"{_value(warm_e0['completion_p50_ms'])}/{_value(warm_e2['completion_p50_ms'])} & "
+            f"{_value(warm_e0['ttft_p50_ms'])}/{_value(warm_e2['ttft_p50_ms'])} & "
+            f"{_value(cold_e2['one_time_ingestion_ms'])} \\\\"
+        )
+    quality.extend((r"\bottomrule", r"\end{tabular}"))
+    latency.extend((r"\bottomrule", r"\end{tabular}"))
+    (output_dir / "generated_matched_quality_table.tex").write_text(
+        "\n".join(quality) + "\n", encoding="utf-8"
+    )
+    (output_dir / "generated_matched_latency_table.tex").write_text(
+        "\n".join(latency) + "\n", encoding="utf-8"
+    )
 
 
 def _plot(path: Path, aggregates: list[dict[str, object]]) -> None:
@@ -225,6 +316,7 @@ def main() -> None:
     )
     _write_csv(args.output_dir / "matched_e0_e2_summary.csv", aggregates)
     _write_csv(args.output_dir / "matched_e0_e2_parity.csv", parity)
+    _write_tex(args.output_dir, aggregates, parity)
     _plot(args.output_dir / "matched_e0_e2_summary.png", aggregates)
 
 

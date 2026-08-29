@@ -21,6 +21,9 @@ The original-answer extension now also routes four candidate documents or
 QASPER paragraphs with the SDK hybrid index. Across QASPER, HotpotQA, and
 2Wiki, routed ordinary and native execution agree on all 60 paired examples;
 the remaining oracle gap is evidence discovery rather than MLX consumption.
+A matched cold/warm E0/E2 benchmark preserves all 120 outputs and removes
+90.5--93.0% of visible prompt tokens. It also exposes slower unfused native
+decode despite lower ingestion cost and cold TTFT.
 
 The routed natural-QA artifacts can be regenerated on Apple Silicon with:
 
