@@ -17,6 +17,15 @@ SEEDS = (11, 23, 37, 53, 71)
 
 
 @dataclass(frozen=True)
+class QADocument:
+    """One independently routable document or paper paragraph."""
+
+    document_id: str
+    title: str
+    text: str
+
+
+@dataclass(frozen=True)
 class QAExample:
     dataset: str
     example_id: str
@@ -24,6 +33,8 @@ class QAExample:
     answer: str
     source: str
     source_scope: str
+    documents: tuple[QADocument, ...] = ()
+    evidence_document_ids: frozenset[str] = frozenset()
 
 
 def _normalize(text: str) -> str:
@@ -66,6 +77,17 @@ def _ordered_context(row: Mapping[str, object]) -> str:
     return "\n\n".join(f"Document: {title}\n{text}" for title, text in documents)
 
 
+def _multihop_documents(row: Mapping[str, object]) -> tuple[QADocument, ...]:
+    """Preserve the dataset's candidate order for routing experiments."""
+
+    return tuple(
+        QADocument(str(index), str(title), " ".join(map(str, sentences)))
+        for index, (title, sentences) in enumerate(
+            zip(row["context"]["title"], row["context"]["sentences"])
+        )
+    )
+
+
 def _hotpot_examples(cache_dir: Path) -> list[QAExample]:
     from datasets import load_dataset
 
@@ -75,18 +97,29 @@ def _hotpot_examples(cache_dir: Path) -> list[QAExample]:
         split="validation",
         cache_dir=str(cache_dir),
     )
-    return [
-        QAExample(
-            "hotpotqa",
-            str(row["id"]),
-            str(row["question"]),
-            str(row["answer"]),
-            _ordered_context(row),
-            "supporting_documents_first_plus_distractors",
+    examples = []
+    for row in rows:
+        if not str(row.get("answer", "")).strip():
+            continue
+        documents = _multihop_documents(row)
+        supporting = set(map(str, row["supporting_facts"]["title"]))
+        examples.append(
+            QAExample(
+                "hotpotqa",
+                str(row["id"]),
+                str(row["question"]),
+                str(row["answer"]),
+                _ordered_context(row),
+                "supporting_documents_first_plus_distractors",
+                documents,
+                frozenset(
+                    document.document_id
+                    for document in documents
+                    if document.title in supporting
+                ),
+            )
         )
-        for row in rows
-        if str(row.get("answer", "")).strip()
-    ]
+    return examples
 
 
 def _qasper_answer(answer: Mapping[str, object]) -> str | None:
@@ -110,6 +143,21 @@ def _qasper_examples(cache_dir: Path) -> list[QAExample]:
         "validation", cache_dir=cache_dir
     ).items():
         abstract = str(paper.get("abstract", ""))
+        documents = []
+        if abstract:
+            documents.append(QADocument("abstract", "Abstract", abstract))
+        for section_index, section in enumerate(paper.get("full_text", [])):
+            section_name = str(section.get("section_name", f"Section {section_index + 1}"))
+            for paragraph_index, paragraph in enumerate(section.get("paragraphs", [])):
+                text = str(paragraph).strip()
+                if text:
+                    documents.append(
+                        QADocument(
+                            f"section-{section_index}-paragraph-{paragraph_index}",
+                            section_name,
+                            text,
+                        )
+                    )
         for qa in paper.get("qas", []):
             candidates = []
             evidence = []
@@ -131,6 +179,21 @@ def _qasper_examples(cache_dir: Path) -> list[QAExample]:
             source = "Evidence:\n" + "\n".join(dict.fromkeys(evidence))
             if abstract:
                 source += "\n\nPaper abstract:\n" + abstract
+            normalized_evidence = tuple(_normalize(value) for value in evidence)
+            evidence_document_ids = frozenset(
+                document.document_id
+                for document in documents
+                if any(
+                    value
+                    and (
+                        value in _normalize(document.text)
+                        or _normalize(document.text) in value
+                    )
+                    for value in normalized_evidence
+                )
+            )
+            if not evidence_document_ids:
+                continue
             examples.append(
                 QAExample(
                     "qasper",
@@ -139,6 +202,8 @@ def _qasper_examples(cache_dir: Path) -> list[QAExample]:
                     answer,
                     source,
                     "annotated_evidence_first_plus_abstract",
+                    tuple(documents),
+                    evidence_document_ids,
                 )
             )
     return examples
@@ -176,10 +241,11 @@ def _twowiki_examples(cache_dir: Path) -> list[QAExample]:
             if isinstance(facts, Mapping)
             else {str(item[0]) for item in facts}
         )
-        documents = [
-            (str(title), " ".join(map(str, values)))
-            for title, values in zip(titles, sentences)
-        ]
+        routable_documents = tuple(
+            QADocument(str(index), str(title), " ".join(map(str, values)))
+            for index, (title, values) in enumerate(zip(titles, sentences))
+        )
+        documents = [(document.title, document.text) for document in routable_documents]
         documents.sort(key=lambda item: (item[0] not in supporting, item[0]))
         source = "\n\n".join(
             f"Document: {title}\n{text}" for title, text in documents
@@ -192,6 +258,12 @@ def _twowiki_examples(cache_dir: Path) -> list[QAExample]:
                 str(row["answer"]),
                 source,
                 "supporting_documents_first_plus_distractors",
+                routable_documents,
+                frozenset(
+                    document.document_id
+                    for document in routable_documents
+                    if document.title in supporting
+                ),
             )
         )
     return examples
