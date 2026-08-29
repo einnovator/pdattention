@@ -7,7 +7,11 @@ from .v1_metadata import (
     VLLMNativeStep,
     VLLMNativeStepRegistry,
 )
-from .v1_native import VLLMMetalV1NativeBridge, augment_paged_context
+from .v1_native import (
+    VLLMMetalV1NativeBridge,
+    augment_paged_context,
+    native_request_cache_salt,
+)
 
 __all__ = [
     "VLLMEngineAdapter",
@@ -19,4 +23,5 @@ __all__ = [
     "VLLMNativeStep",
     "VLLMNativeStepRegistry",
     "augment_paged_context",
+    "native_request_cache_salt",
 ]

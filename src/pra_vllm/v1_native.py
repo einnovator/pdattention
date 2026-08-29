@@ -472,4 +472,5 @@ class VLLMMetalV1NativeBridge:
             "page_aligned_selection_required": True,
             "consumer_layers": "all",
             "scheduler_prefix_observability": True,
+            "native_apc_identity_required": True,
         }

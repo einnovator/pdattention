@@ -47,10 +47,23 @@ def _prompt(prefix: str, slot: int) -> str:
     )
 
 
-def _enqueue_batch(llm, sampling, prompts: list[str]):
+def _enqueue_batch(
+    llm,
+    sampling,
+    prompts: list[str],
+    cache_salts: list[str | None] | None = None,
+):
     request_ids: list[str] = []
-    for prompt in prompts:
-        [request_id] = llm.enqueue(prompt, sampling, use_tqdm=False)
+    salts = cache_salts or [None] * len(prompts)
+    if len(salts) != len(prompts):
+        raise ValueError("Each prompt must have one APC salt decision.")
+    for prompt, cache_salt in zip(prompts, salts):
+        payload = (
+            prompt
+            if cache_salt is None
+            else {"prompt": prompt, "cache_salt": cache_salt}
+        )
+        [request_id] = llm.enqueue(payload, sampling, use_tqdm=False)
         request_ids.append(str(request_id))
     return request_ids
 
@@ -86,7 +99,22 @@ def _run_condition(
     selected_tokens: int,
     register_slots: set[int] | None = None,
 ) -> dict[str, object]:
-    request_ids = _enqueue_batch(llm, sampling, prompts)
+    cache_salts: list[str | None] = [None] * len(prompts)
+    if logical_key is not None:
+        from pra_vllm.v1_native import native_request_cache_salt
+
+        native_salt = native_request_cache_salt(
+            (logical_key,),
+            selected_token_count=selected_tokens,
+            source_position_base=selected_tokens,
+        )
+        cache_salts = [
+            native_salt
+            if register_slots is None or slot in register_slots
+            else None
+            for slot in range(len(prompts))
+        ]
+    request_ids = _enqueue_batch(llm, sampling, prompts, cache_salts)
     if logical_key is not None:
         for slot, request_id in enumerate(request_ids):
             if register_slots is not None and slot not in register_slots:
@@ -117,6 +145,7 @@ def _run_condition(
         "scheduler_observations": list(
             bridge.scheduler_observations(request_ids)
         ),
+        "native_apc_salt_applied": [salt is not None for salt in cache_salts],
     }
 
 
@@ -257,6 +286,7 @@ def main() -> None:
         "max_model_len": args.max_model_len,
         "gpu_memory_utilization": args.gpu_memory_utilization,
         "ordinary_prefix_namespace_used_for_pra": False,
+        "native_apc_identity": "sha256_logical_selection_and_geometry",
         "scheduler_observation_point": "before_pra_attention_augmentation",
         "rows": rows,
     }
