@@ -124,39 +124,44 @@ def main() -> None:
                 runner.remove_request(req_id)
                 bridge.unregister(req_id)
 
-        seed, source, query, memory = prepared[0]
-        for concurrency in (1, 2, 4, 8):
-            req_ids = [f"batch-{concurrency}-{index}" for index in range(concurrency)]
-            for req_id in req_ids:
-                bridge.register(req_id, memory, logical_keys=(f"seed-{seed}",))
-            generated, wall_ms = _run_batch(runner, req_ids, query)
-            outputs = [tokenizer.decode(generated[req_id]) for req_id in req_ids]
-            caches = [
-                runner._req_caches[req_id][
-                    runner._cache_layout.first_attention_layer_index
+        for seed, _source_tokens, query, memory in prepared:
+            for concurrency in (1, 2, 4, 8):
+                req_ids = [
+                    f"batch-{seed}-{concurrency}-{index}"
+                    for index in range(concurrency)
                 ]
-                for req_id in req_ids
-            ]
-            concurrency_rows.append(
-                {
-                    "concurrency": concurrency,
-                    "wall_ms": wall_ms,
-                    "requests_per_second": concurrency / max(wall_ms / 1000.0, 1e-9),
-                    "exact_recovery_rate": sum(EXPECTED in text for text in outputs)
-                    / concurrency,
-                    "shared_native_kv_bytes": memory.nbytes,
-                    "duplicate_native_kv_bytes": memory.nbytes * concurrency,
-                    "sharing_bytes_saved": memory.nbytes * (concurrency - 1),
-                    "scheduler_counts_exclude_pra": all(
-                        cache.offset == len(query) + len(generated[req_id]) - 1
-                        for req_id, cache in zip(req_ids, caches)
-                    ),
-                    "outputs": outputs,
-                }
-            )
-            for req_id in req_ids:
-                runner.remove_request(req_id)
-                bridge.unregister(req_id)
+                for req_id in req_ids:
+                    bridge.register(req_id, memory, logical_keys=(f"seed-{seed}",))
+                generated, wall_ms = _run_batch(runner, req_ids, query)
+                outputs = [tokenizer.decode(generated[req_id]) for req_id in req_ids]
+                caches = [
+                    runner._req_caches[req_id][
+                        runner._cache_layout.first_attention_layer_index
+                    ]
+                    for req_id in req_ids
+                ]
+                concurrency_rows.append(
+                    {
+                        "seed": seed,
+                        "concurrency": concurrency,
+                        "wall_ms": wall_ms,
+                        "requests_per_second": concurrency
+                        / max(wall_ms / 1000.0, 1e-9),
+                        "exact_recovery_rate": sum(EXPECTED in text for text in outputs)
+                        / concurrency,
+                        "shared_native_kv_bytes": memory.nbytes,
+                        "duplicate_native_kv_bytes": memory.nbytes * concurrency,
+                        "sharing_bytes_saved": memory.nbytes * (concurrency - 1),
+                        "scheduler_counts_exclude_pra": all(
+                            cache.offset == len(query) + len(generated[req_id]) - 1
+                            for req_id, cache in zip(req_ids, caches)
+                        ),
+                        "outputs": outputs,
+                    }
+                )
+                for req_id in req_ids:
+                    runner.remove_request(req_id)
+                    bridge.unregister(req_id)
     finally:
         bridge.close()
 
