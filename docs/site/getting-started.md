@@ -208,6 +208,10 @@ Generate the static HTML site under `site/`:
 python -m mkdocs build --strict
 ```
 
+The generated site uses explicit `.html` links so it can be browsed directly
+from disk. Open `site/index.html`; navigation does not require a local web
+server.
+
 Run a local development server with automatic source and documentation reloads:
 
 ```bash
