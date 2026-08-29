@@ -148,7 +148,13 @@ def _twowiki_examples(cache_dir: Path) -> list[QAExample]:
     from datasets import load_dataset
 
     rows = load_dataset(
-        "xanhho/2WikiMultihopQA",
+        "parquet",
+        data_files={
+            "dev": (
+                "https://huggingface.co/datasets/xanhho/2WikiMultihopQA/"
+                "resolve/main/dev.parquet"
+            )
+        },
         split="dev",
         cache_dir=str(cache_dir),
     )
