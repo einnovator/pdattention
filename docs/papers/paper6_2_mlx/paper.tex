@@ -53,7 +53,10 @@ same frozen routed selections, a matched E0/E2 economic benchmark preserves all
 120 cold/warm output pairs and removes 90.5--93.0\% of visible prompt tokens.
 Native ingestion is 6--10 ms cheaper and cold end-to-end TTFT is 4--8 ms lower,
 but the unfused selected-cache path adds 40--54 ms to median 24-token
-completion.
+completion. A 1,020-request pressure sweep then holds QA quality constant while
+varying an eight-resource session's compact-K/V budget. Budgets below eight
+reload every repeated access; fitting all eight resources eliminates reloads
+and halves mean resolution time at a 151--168 MiB residency cost.
 \end{abstract}
 
 \section{Introduction}
@@ -462,22 +465,42 @@ layer and decode step. Consequently, warm median completion is 40--54 ms
 slower and mean ITL is 1.6--2.2 ms higher. This is exact semantic transport,
 but not yet an optimized native-attention kernel.
 
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.99\linewidth]{../shared/results/paper6_2_mlx/residency_pressure_curve.png}
+\caption{Five-seed compact-K/V pressure over QASPER, HotpotQA, and 2Wiki. Each
+seed visits eight resources twice and then revisits the first. The budget
+$K=8$ is the first condition that fits the working set.}
+\label{fig:mlx-pressure-curve}
+\end{figure}
+
 \begin{table}[!htbp]
 \centering
 \small
-\caption{Hard two-resource int8 residency budget under the repeated access
-pattern A--B--C--D--A. Values are means over five seeds.}
-\input{../shared/results/paper6_2_mlx/generated_bounded_pressure_table.tex}
-\label{tab:mlx-bounded-pressure}
+\caption{Natural-QA residency curve. Each row contains 85 requests: 17 requests
+per seed over five seeds. Reload fraction divides reloads by the nine accesses
+after each resource's first load.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_2_mlx/generated_residency_pressure_curve_table.tex}}
+\label{tab:mlx-pressure-curve}
 \end{table}
 
-Table~\ref{tab:mlx-bounded-pressure} validates physical lifecycle rather than
-theoretical byte sums. Compact K/V is loaded under a hard two-resource budget;
-each request pins one selected block, dequantizes it locally, generates, and
-releases it. The final return to A must reload it after intervening evictions.
-Every seed records five loads, three evictions, and one reload, with two compact
-blocks and 42.0 MiB resident at peak. No pinned block is evicted and compact
-detail never enters an ordinary prompt or rotating cache.
+Figure~\ref{fig:mlx-pressure-curve} and
+Table~\ref{tab:mlx-pressure-curve} validate physical lifecycle rather than
+theoretical byte sums. Each request pins one selected block, dequantizes it
+locally, generates, and releases it. With budgets $K\in\{1,2,4\}$, the cyclic
+eight-resource working set reloads all nine repeated accesses per seed. At
+$K=8$, initial loads fall from 17 to eight, evictions and reloads fall to zero,
+and mean resolution falls from 113--119 ms to 53--57 ms. Peak compact residency
+rises from approximately 21 MiB at $K=1$ to 151 MiB on QASPER and 168 MiB on
+HotpotQA and 2Wiki at $K=8$.
+
+Token F1 is unchanged across all four budgets within every dataset, and mean
+completion latency remains within roughly 5 ms because generation dominates
+the saved resolution time. The result is therefore a working-set threshold,
+not evidence that more residency generally improves answer quality or complete
+request latency. No pinned block is evicted and compact detail never enters an
+ordinary prompt or rotating cache.
 
 \FloatBarrier
 \section{Promotion Gates}
@@ -500,7 +523,7 @@ natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers 
 routed natural QA & controlled partial & 60/60 consumption parity; recall@4 0.348--0.775; oracle gap open \\
 matched E0/E2 economics & controlled closed & 120/120 exact outputs; lower cold TTFT, slower unfused decode \\
 quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
-memory pressure & controlled partial & hard two-resource budget forces eviction and reload; no OOM frontier \\
+memory pressure & controlled closed & 1,020 requests; $K<8$ thrashes, $K=8$ eliminates reloads; OOM frontier open \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -523,7 +546,8 @@ sample distinct examples but do not substitute for a larger cohort. Strict EM
 is confounded by verbose continuation. Int8 detail is restored before
 attention, so it saves retained bytes rather than active attention bytes. No
 learned native Q/K index, queued server concurrency, or OOM frontier is
-measured. The matched benchmark reuses only 20 examples per dataset and does
+measured. The residency sweep varies a synthetic cyclic access schedule rather
+than a measured production session distribution. The matched benchmark reuses only 20 examples per dataset and does
 not establish end-task quality beyond proving that E2 preserves its E0 input.
 The rotating intervention also changes effective local context and can perturb
 chat-template semantics.
@@ -548,8 +572,10 @@ preserves 5/5 recovery with a rotating local cache. PRA-MLX is therefore a
 working native prototype. Full-precision native transport also matches ordinary
 split-cache quality on original-answer QA, while wrong and absent memory fail
 causally. Per-head int8 halves retained detail without measured degradation in
-the small cohort, and hard-budget lifecycle testing forces real eviction and
-reload. With SDK routing, native and ordinary paths remain identical on 60/60
+the small cohort. Across a 1,020-request hard-budget sweep, sub-working-set
+budgets cap compact residency but reload every repeated access; fitting all
+eight resources removes reloads and halves resolution time without changing
+F1. With SDK routing, native and ordinary paths remain identical on 60/60
 paired generations, but recall@4 ranges from 0.348 to 0.775 and answer
 likelihood remains below oracle evidence. The next quality improvement belongs
 in discovery, not the MLX cache transport. Queued server pressure, an OOM

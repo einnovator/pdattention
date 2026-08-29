@@ -174,12 +174,12 @@ def build_registry() -> dict:
             "profile": "FP/int8 all-layer selected K/V",
             "hardware": metadata["mlx"]["hardware"],
             "evidence_tier": "NATURAL_QA_ROUTED_EVIDENCE_MATERIALIZATION",
-            "status": "routed natural QA; oracle gap remains",
+            "status": "routed natural QA; bounded residency curve; oracle gap remains",
         },
     ]
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-native-v5",
+        "registry_version": "2026-08-paper6-engine-native-v6",
         "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
@@ -243,6 +243,15 @@ def _native_results() -> dict:
             mlx_routed_quality[dataset] = _load(routed_path)
     pressure_path = ENGINE_DIRS["mlx"] / "bounded_residency_hotpotqa.json"
     mlx_pressure = _load(pressure_path) if pressure_path.exists() else None
+    mlx_pressure_curves = {}
+    for dataset in ("qasper", "hotpotqa", "2wikimultihopqa"):
+        artifacts = []
+        for suffix in ("", "_budget8"):
+            path = ENGINE_DIRS["mlx"] / f"residency_pressure_curve_{dataset}{suffix}.json"
+            if path.exists():
+                artifacts.append(_load(path))
+        if artifacts:
+            mlx_pressure_curves[dataset] = artifacts
 
     mlx_native = [row for row in mlx["rows"] if row["condition"] == "native_selected_kv"]
     vllm_by_tokens = []
@@ -536,6 +545,56 @@ def _native_results() -> dict:
             "revisit_token_f1": fmean(row["token_f1"] for row in revisits),
             "revisit_logprob": fmean(row["gold_answer_logprob"] for row in revisits),
         }
+    pressure_curve_summary = []
+    for dataset, artifacts in mlx_pressure_curves.items():
+        budgets = sorted(
+            {
+                budget
+                for artifact in artifacts
+                for budget in artifact["resident_resource_budgets"]
+            }
+        )
+        for budget in budgets:
+            rows = [
+                row
+                for artifact in artifacts
+                for row in artifact["rows"]
+                if row["resident_resource_budget"] == budget
+            ]
+            summaries = [
+                row
+                for artifact in artifacts
+                for row in artifact["seed_summaries"]
+                if row["resident_resource_budget"] == budget
+            ]
+            resource_count = artifacts[0]["resources_per_seed"]
+            requests_per_seed = artifacts[0]["requests_per_budget_seed"]
+            repeated_accesses = requests_per_seed - resource_count
+            pressure_curve_summary.append(
+                {
+                    "dataset": dataset,
+                    "resident_resource_budget": budget,
+                    "seed_count": len(summaries),
+                    "request_count": len(rows),
+                    "loads_mean": fmean(row["loads"] for row in summaries),
+                    "evictions_mean": fmean(row["evictions"] for row in summaries),
+                    "reloads_mean": fmean(row["reloads"] for row in summaries),
+                    "reload_fraction": fmean(row["reloads"] for row in summaries)
+                    / repeated_accesses,
+                    "peak_resident_bytes_mean": fmean(
+                        row["peak_resident_bytes"] for row in summaries
+                    ),
+                    "resolve_ms_mean": fmean(row["resolve_ms"] for row in rows),
+                    "dequantize_ms_mean": fmean(
+                        row["dequantize_ms"] for row in rows
+                    ),
+                    "completion_latency_ms_mean": fmean(
+                        row["completion_latency_ms"] for row in rows
+                    ),
+                    "token_f1": fmean(row["token_f1"] for row in rows),
+                    "exact_match": fmean(row["exact_match"] for row in rows),
+                }
+            )
 
     sglang_concurrency_summary = []
     for concurrency in sorted(
@@ -620,6 +679,7 @@ def _native_results() -> dict:
             "answer_quality": answer_quality_summary(mlx_answer_quality),
             "routed_answer_quality": routed_quality_summary(mlx_routed_quality),
             "bounded_pressure": pressure_summary,
+            "residency_pressure_curve": pressure_curve_summary,
         },
         "sglang": {
             "status": sglang["native_pra_status"],
@@ -1318,6 +1378,29 @@ def write_latest_engine_tables(registry: dict) -> None:
             "\n".join(pressure_lines) + "\n", encoding="utf-8"
         )
 
+    curve_lines = [
+        r"\begin{tabular}{llrrrrr}",
+        r"\toprule",
+        r"Dataset & $K$ & $n$ & Peak MiB & Reload frac. & Resolve ms & Token F1 \\",
+        r"\midrule",
+    ]
+    curve_dataset_labels = {
+        "qasper": "QASPER",
+        "hotpotqa": "HotpotQA",
+        "2wikimultihopqa": "2Wiki",
+    }
+    for row in native["mlx"]["residency_pressure_curve"]:
+        curve_lines.append(
+            f"{curve_dataset_labels[row['dataset']]} & {row['resident_resource_budget']} & "
+            f"{row['request_count']} & {row['peak_resident_bytes_mean'] / 1048576:.1f} & "
+            f"{row['reload_fraction']:.2f} & {row['resolve_ms_mean']:.1f} & "
+            f"{row['token_f1']:.3f} \\\\"
+        )
+    curve_lines.extend([r"\bottomrule", r"\end{tabular}"])
+    (ENGINE_DIRS["mlx"] / "generated_residency_pressure_curve_table.tex").write_text(
+        "\n".join(curve_lines) + "\n", encoding="utf-8"
+    )
+
     product_lines = [
         r"\begin{tabularx}{\linewidth}{lYYY}",
         r"\toprule",
@@ -1455,6 +1538,59 @@ def write_native_plots(registry: dict) -> None:
     fig.tight_layout()
     fig.savefig(ENGINE_DIRS["mlx"] / "routed_qa_recall_quality.png", dpi=180)
     fig.savefig(ENGINE_DIRS["mlx"] / "routed_qa_recall_quality.pdf")
+    plt.close(fig)
+
+    pressure_rows = mlx["residency_pressure_curve"]
+    fig, axes = plt.subplots(1, 3, figsize=(12.0, 3.5))
+    colors = {
+        "qasper": "#2f6f9f",
+        "hotpotqa": "#2f855a",
+        "2wikimultihopqa": "#b35c1e",
+    }
+    labels = {
+        "qasper": "QASPER",
+        "hotpotqa": "HotpotQA",
+        "2wikimultihopqa": "2Wiki",
+    }
+    for dataset in labels:
+        values = [row for row in pressure_rows if row["dataset"] == dataset]
+        values.sort(key=lambda row: row["resident_resource_budget"])
+        budgets = [row["resident_resource_budget"] for row in values]
+        axes[0].plot(
+            budgets,
+            [row["peak_resident_bytes_mean"] / 1048576 for row in values],
+            marker="o",
+            color=colors[dataset],
+            label=labels[dataset],
+        )
+        axes[1].plot(
+            budgets,
+            [row["reload_fraction"] for row in values],
+            marker="o",
+            color=colors[dataset],
+        )
+        axes[2].plot(
+            budgets,
+            [row["resolve_ms_mean"] for row in values],
+            marker="o",
+            color=colors[dataset],
+        )
+    axes[0].set_ylabel("Peak compact K/V (MiB)")
+    axes[0].set_title("Bounded residency")
+    axes[0].legend(frameon=False)
+    axes[1].set_ylabel("Reloaded repeated accesses")
+    axes[1].set_ylim(-0.05, 1.05)
+    axes[1].set_title("Working-set cliff")
+    axes[2].set_ylabel("Mean resolve time (ms)")
+    axes[2].set_title("Materialization cost")
+    for axis in axes:
+        axis.set_xlabel("Resident resource budget K")
+        axis.set_xticks((1, 2, 4, 8))
+        axis.spines[["top", "right"]].set_visible(False)
+        axis.grid(alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(ENGINE_DIRS["mlx"] / "residency_pressure_curve.png", dpi=180)
+    fig.savefig(ENGINE_DIRS["mlx"] / "residency_pressure_curve.pdf")
     plt.close(fig)
 
     sglang = native["sglang"]

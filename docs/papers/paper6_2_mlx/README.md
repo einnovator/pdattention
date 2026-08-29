@@ -25,6 +25,12 @@ A matched cold/warm E0/E2 benchmark preserves all 120 outputs and removes
 90.5--93.0% of visible prompt tokens. It also exposes slower unfused native
 decode despite lower ingestion cost and cold TTFT.
 
+The bounded-residency extension covers 1,020 natural-QA requests over five
+seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable
+across budgets. Budgets below the eight-resource working set reload every
+repeated access; budget 8 eliminates reloads and reduces mean resolution from
+113--119 ms to 53--57 ms while raising peak compact residency to 151--168 MiB.
+
 The routed natural-QA artifacts can be regenerated on Apple Silicon with:
 
 ```bash

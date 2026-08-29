@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     registry = build_registry()
-    assert registry["registry_version"] == "2026-08-paper6-engine-native-v5"
+    assert registry["registry_version"] == "2026-08-paper6-engine-native-v6"
     assert len(registry["rows"]) == 15
     assert {row["engine"] for row in registry["rows"]} == {"vllm", "sglang", "mlx"}
     assert all(row["evidence_tier"] == "SMOKE" for row in registry["rows"])
@@ -25,6 +25,20 @@ def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     assert native["mlx"]["exact_recovery"] == 1.0
     assert len(native["mlx"]["models"]) == 3
     assert all(row["max_logit_error"] == 0.0 for row in native["mlx"]["models"])
+    pressure = native["mlx"]["residency_pressure_curve"]
+    assert len(pressure) == 12
+    assert all(row["seed_count"] == 5 for row in pressure)
+    assert all(row["request_count"] == 85 for row in pressure)
+    assert all(
+        row["reload_fraction"] == 1.0
+        for row in pressure
+        if row["resident_resource_budget"] < 8
+    )
+    assert all(
+        row["reload_fraction"] == 0.0
+        for row in pressure
+        if row["resident_resource_budget"] == 8
+    )
     assert native["sglang"]["status"] == "MEASURED_SGLANG_CACHE_PATH"
     assert native["sglang"]["radix_identity_separation_rate"] == 1.0
     prefetch = native["sglang"]["builtin_hicache_prefetch"]
