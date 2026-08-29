@@ -267,46 +267,84 @@ def _write_tex(
         ): row
         for row in aggregates
     }
-    parity_lookup = {
-        (str(row["engine"]), str(row["dataset"]), str(row["regime"])): row
-        for row in parity
-    }
-    identities = sorted(parity_lookup)
+    engines = sorted({str(row["engine"]) for row in aggregates})
+    datasets = sorted({str(row["dataset"]) for row in aggregates})
     quality = [
-        r"\begin{tabular}{lllrrrr}",
+        r"\begin{tabular}{llrrrrr}",
         r"\toprule",
-        r"Engine & Dataset & Regime & Visible E0/E2 & Reduction & F1 E0/E2 & Exact parity \\",
+        r"Engine & Dataset & Visible E0/E2 & Reduction & Cold F1 E0/E2 & Cold parity & All parity \\",
         r"\midrule",
     ]
     latency = [
-        r"\begin{tabular}{lllrrrr}",
+        r"\begin{tabular}{lrrrrr}",
         r"\toprule",
-        r"Engine & Dataset & Regime & Completion E0/E2 & TTFT E0/E2 & E2 usable & E2 reuse MiB \\",
+        r"Engine & Cold & Warm & Multi-query & Concurrent & E2 usable ms \\",
         r"\midrule",
     ]
-    for engine, dataset, regime in identities:
-        e0 = lookup[(engine, dataset, regime, CONDITIONS[0])]
-        e2 = lookup[(engine, dataset, regime, CONDITIONS[1])]
-        reduction = 100.0 * (
-            float(e0["visible_prompt_tokens"])
-            - float(e2["visible_prompt_tokens"])
-        ) / float(e0["visible_prompt_tokens"])
-        parity_value = 100.0 * float(
-            parity_lookup[(engine, dataset, regime)]["exact_output_parity"]
-        )
-        quality.append(
-            f"{engine} & {dataset} & {regime.replace('_', ' ')} & "
-            f"{_value(e0['visible_prompt_tokens'], 0)}/{_value(e2['visible_prompt_tokens'], 0)} & "
-            f"{reduction:.1f}\\% & "
-            f"{_value(e0['token_f1'], 3)}/{_value(e2['token_f1'], 3)} & "
-            f"{parity_value:.1f}\\% \\\\"
+    for engine in engines:
+        for dataset in datasets:
+            e0 = lookup[(engine, dataset, "cold_one_shot", CONDITIONS[0])]
+            e2 = lookup[(engine, dataset, "cold_one_shot", CONDITIONS[1])]
+            reduction = 100.0 * (
+                float(e0["visible_prompt_tokens"])
+                - float(e2["visible_prompt_tokens"])
+            ) / float(e0["visible_prompt_tokens"])
+            cohort = [
+                row
+                for row in parity
+                if row["engine"] == engine and row["dataset"] == dataset
+            ]
+            total = sum(int(row["paired_requests"]) for row in cohort)
+            all_parity = sum(
+                int(row["paired_requests"]) * float(row["exact_output_parity"])
+                for row in cohort
+            ) / total
+            cold_parity = next(
+                float(row["exact_output_parity"])
+                for row in cohort
+                if row["regime"] == "cold_one_shot"
+            )
+            quality.append(
+                f"{engine} & {dataset} & "
+                f"{_value(e0['visible_prompt_tokens'], 0)}/{_value(e2['visible_prompt_tokens'], 0)} & "
+                f"{reduction:.1f}\\% & "
+                f"{_value(e0['token_f1'], 3)}/{_value(e2['token_f1'], 3)} & "
+                f"{100.0 * cold_parity:.1f}\\% & {100.0 * all_parity:.1f}\\% \\\\"
+            )
+        ratios = []
+        for regime in (
+            "cold_one_shot",
+            "warm_repeated",
+            "multi_query_same_resource",
+            "concurrent_shared_resource",
+        ):
+            values = []
+            for dataset in datasets:
+                e0 = lookup[(engine, dataset, regime, CONDITIONS[0])]
+                e2 = lookup[(engine, dataset, regime, CONDITIONS[1])]
+                if regime == "cold_one_shot":
+                    numerator = e2["cold_end_to_end_completion_ms"]
+                    denominator = e0["cold_end_to_end_completion_ms"]
+                elif regime == "concurrent_shared_resource":
+                    numerator = e0["requests_per_second"]
+                    denominator = e2["requests_per_second"]
+                else:
+                    numerator = e2["completion_p50_ms"]
+                    denominator = e0["completion_p50_ms"]
+                values.append(float(numerator) / float(denominator))
+            ratios.append(mean(values))
+        usable = mean(
+            float(
+                lookup[
+                    (engine, dataset, "cold_one_shot", CONDITIONS[1])
+                ]["time_to_usable_context_ms"]
+            )
+            for dataset in datasets
         )
         latency.append(
-            f"{engine} & {dataset} & {regime.replace('_', ' ')} & "
-            f"{_value(e0['completion_p50_ms'])}/{_value(e2['completion_p50_ms'])} & "
-            f"{_value(e0['ttft_p50_ms'])}/{_value(e2['ttft_p50_ms'])} & "
-            f"{_value(e2['time_to_usable_context_ms'])} & "
-            f"{_value(float(e2['bytes_avoided'] or 0) / 2**20, 2)} \\\\"
+            f"{engine} & "
+            + " & ".join(f"{value:.3f}" for value in ratios)
+            + f" & {usable:.1f} \\\\"
         )
     quality.extend((r"\bottomrule", r"\end{tabular}"))
     latency.extend((r"\bottomrule", r"\end{tabular}"))
@@ -359,6 +397,75 @@ def _plot(path: Path, aggregates: list[dict[str, object]]) -> None:
     plt.close(figure)
 
 
+def _plot_regimes(path: Path, aggregates: list[dict[str, object]]) -> None:
+    """Plot transport economics separately from answer-quality parity."""
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    lookup = {
+        (
+            str(row["engine"]),
+            str(row["dataset"]),
+            str(row["regime"]),
+            str(row["condition"]),
+        ): row
+        for row in aggregates
+    }
+    engines = sorted({str(row["engine"]) for row in aggregates})
+    datasets = sorted({str(row["dataset"]) for row in aggregates})
+    regimes = (
+        "cold_one_shot",
+        "warm_repeated",
+        "multi_query_same_resource",
+        "concurrent_shared_resource",
+    )
+    ratios = {regime: [] for regime in regimes}
+    for engine in engines:
+        for regime in regimes:
+            values = []
+            for dataset in datasets:
+                e0 = lookup[(engine, dataset, regime, CONDITIONS[0])]
+                e2 = lookup[(engine, dataset, regime, CONDITIONS[1])]
+                if regime == "cold_one_shot":
+                    numerator = e2["cold_end_to_end_completion_ms"]
+                    denominator = e0["cold_end_to_end_completion_ms"]
+                elif regime == "concurrent_shared_resource":
+                    # Lower inverse throughput is better, matching latency ratios.
+                    numerator = e0["requests_per_second"]
+                    denominator = e2["requests_per_second"]
+                else:
+                    numerator = e2["completion_p50_ms"]
+                    denominator = e0["completion_p50_ms"]
+                if numerator is not None and denominator:
+                    values.append(float(numerator) / float(denominator))
+            ratios[regime].append(mean(values))
+
+    x = np.arange(len(engines))
+    width = 0.19
+    colors = ("#2b7a78", "#d08c32", "#586f9e", "#9b4f66")
+    figure, axis = plt.subplots(figsize=(9.8, 4.8))
+    for offset, (regime, color) in enumerate(zip(regimes, colors)):
+        axis.bar(
+            x + (offset - 1.5) * width,
+            ratios[regime],
+            width,
+            label=regime.replace("_", " "),
+            color=color,
+        )
+    axis.axhline(1.0, color="black", linewidth=1.0)
+    axis.set_ylabel("E2/E0 cost ratio (lower is better)")
+    axis.set_xticks(x, engines)
+    axis.set_ylim(0.75, max(1.3, max(max(values) for values in ratios.values()) + 0.05))
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(ncol=2, frameon=False)
+    figure.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(path, dpi=180)
+    figure.savefig(path.with_suffix(".pdf"))
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("inputs", nargs="+", type=Path)
@@ -395,6 +502,7 @@ def main() -> None:
     _write_csv(args.output_dir / "matched_e0_e2_parity.csv", parity)
     _write_tex(args.output_dir, aggregates, parity)
     _plot(args.output_dir / "matched_e0_e2_summary.png", aggregates)
+    _plot_regimes(args.output_dir / "matched_e0_e2_regimes.png", aggregates)
 
 
 if __name__ == "__main__":

@@ -1241,16 +1241,24 @@
       "model": "mlx-community/Qwen3-0.6B-4bit",
       "profile": "all-layer native K/V + APC, concurrency 1--8",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
-      "evidence_tier": "CONTROLLED",
-      "status": "controlled APC/concurrency"
+      "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+      "status": "593/840 exact; four-regime cost near parity; promotion pending"
     },
     {
       "engine": "SGLang MLX",
       "model": "Qwen/Qwen3-0.6B",
       "profile": "Radix + selected K/V + built-in HiCache file storage",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
-      "evidence_tier": "CONTROLLED",
-      "status": "controlled storage/lifecycle; native async prefetch open"
+      "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+      "status": "840/840 exact; reused/concurrent cost optimization open"
+    },
+    {
+      "engine": "MLX-LM",
+      "model": "mlx-community/Qwen3-0.6B-4bit",
+      "profile": "all-layer selected K/V, four matched regimes",
+      "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
+      "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+      "status": "840/840 exact; unfused native path slower in all regimes"
     },
     {
       "engine": "MLX-LM",

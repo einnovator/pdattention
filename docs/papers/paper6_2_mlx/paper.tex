@@ -50,10 +50,11 @@ HotpotQA, and 0.775 on 2Wiki. Routed memory outperforms shuffled memory on
 answer likelihood in all three datasets, but remains below oracle evidence;
 discovery, rather than MLX transport, is now the measured bottleneck. On the
 same frozen routed selections, a matched E0/E2 economic benchmark preserves all
-120 cold/warm output pairs and removes 90.5--93.0\% of visible prompt tokens.
-Native ingestion is 6--10 ms cheaper and cold end-to-end TTFT is 4--8 ms lower,
-but the unfused selected-cache path adds 40--54 ms to median 24-token
-completion. A 1,020-request pressure sweep then holds QA quality constant while
+840 output pairs across cold, warm, multi-query, and concurrency-eight
+schedules and removes 90.6--93.0\% of visible prompt tokens. Native ingestion
+is cheaper than ordinary source-cache construction, but the unfused
+selected-cache path yields macro E2/E0 cost ratios of 1.130, 1.155, 1.148, and
+1.132 across those schedules. A 1,020-request pressure sweep then holds QA quality constant while
 varying an eight-resource session's compact-K/V budget. Budgets below eight
 reload every repeated access; fitting all eight resources eliminates reloads
 and halves mean resolution time at a 151--168 MiB residency cost.
@@ -434,13 +435,16 @@ selection; it does not close a production QA-quality gate.
 The routed selections also support a direct E0/E2 comparison without changing
 the evidence. For 20 examples per dataset across five seeds, E0 restores an
 ordinary cache snapshot of the selected source and E2 restores its native PRA
-cache. The question, greedy decoder, 24-token output budget, and cold/warm
-schedule are identical.
+cache. The question, greedy decoder, and 24-token output budget are identical.
+The shared schedule includes cold one-shot, two warm repeats, three
+deterministic query formulations over the same resource, and eight threaded
+requests sharing one immutable cache object.
 
 \begin{table}[!htbp]
 \centering
 \scriptsize
-\caption{Matched-selection quality on the shared three-engine cohort.}
+\caption{Matched-selection quality on the shared three-engine cohort. All
+parity pools 840 request pairs per engine across four schedules.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
 \label{tab:mlx-matched-quality}
@@ -449,21 +453,30 @@ schedule are identical.
 \begin{table}[!htbp]
 \centering
 \scriptsize
-\caption{Matched-selection latency in milliseconds. Cold completion includes
-one-time source ingestion.}
+\caption{Macro E2/E0 execution-cost ratios; lower is better. Cold includes
+ingestion, concurrent is inverse requests/s, and E2 usable is milliseconds.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
 \label{tab:mlx-matched-latency}
 \end{table}
 
-MLX-LM produces exactly the same E0 and E2 output in all 120 pairs, with equal
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/matched_e0_e2/matched_e0_e2_regimes.pdf}
+\caption{Macro representation cost after freezing retrieval. Lower is better;
+concurrent cost is inverse throughput. The current unfused MLX native cache is
+semantically exact but slower in every schedule.}
+\label{fig:mlx-matched-regimes}
+\end{figure}
+
+MLX-LM produces exactly the same E0 and E2 output in all 840 pairs, with equal
 F1 and gold evidence by construction. E2 reduces visible prompt tokens by
-90.5--93.0\%. Native encoding averages 35.5--37.0 ms, 5.5--10.0 ms less than
-ordinary source-cache ingestion, and cold end-to-end TTFT improves by 4.2--7.8
-ms. The current request cache concatenates selected and local arrays at every
-layer and decode step. Consequently, warm median completion is 40--54 ms
-slower and mean ITL is 1.6--2.2 ms higher. This is exact semantic transport,
-but not yet an optimized native-attention kernel.
+90.6--93.0\%. Its mean time to usable context is 51.2 ms, but cold end-to-end
+cost is 1.130 times E0 because the unfused selected cache slows generation.
+Warm and multi-query ratios are 1.155 and 1.148. Under eight threaded requests,
+E2 reaches 88.4\% of E0 throughput, an inverse cost ratio of 1.132. This is
+exact semantic transport across all four regimes, but not yet an optimized
+native-attention kernel.
 
 \begin{figure}[!htbp]
 \centering
@@ -521,7 +534,7 @@ concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB a
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\
 routed natural QA & controlled partial & 60/60 consumption parity; recall@4 0.348--0.775; oracle gap open \\
-matched E0/E2 economics & controlled closed & 120/120 exact outputs; lower cold TTFT, slower unfused decode \\
+matched E0/E2 economics & controlled closed & 840/840 exact outputs; all four E2/E0 cost ratios exceed one \\
 quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
 memory pressure & controlled closed & 1,020 requests; $K<8$ thrashes, $K=8$ eliminates reloads; OOM frontier open \\
 \bottomrule

@@ -78,7 +78,12 @@ HBM-resident packing cost on this host.  Compilation is a negative capability
 gate: the CPU toolchain lacks an available compiler and the GPU is below the
 Triton capability floor.  No optional serving engine is installed.  The result
 is therefore a tested portable eager baseline and reproducible measurement
-contract, not a fused-kernel or serving-engine speed claim.
+contract, not a fused-kernel or serving-engine speed claim. Companion Apple-M5
+runs apply that contract to one frozen 60-example selection cohort in MLX-LM,
+SGLang-MLX, and vLLM-Metal. Native E2 removes 90.6--93.0\% of visible prompt
+tokens. MLX and SGLang preserve all 840 paired outputs; vLLM preserves 593/840
+with near-zero signed aggregate F1 change. Four-regime cost ratios show that
+semantic transport does not yet imply an economic win.
 \end{abstract}
 
 \section{Introduction}
@@ -1297,8 +1302,8 @@ realizations; they do not promote Paper 4.5's HF-centered profile evidence.}
 \centering
 \scriptsize
 \caption{Frozen matched E0 selected-text versus E2 native-K/V quality. Each
-dataset contains 20 routed examples and cold/warm reuse; selection is held
-fixed before engine consumption.}
+dataset contains 20 routed examples; selection is fixed before cold, warm,
+multi-query, and concurrency-eight engine consumption.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
 \label{tab:engine-matched-quality}
@@ -1307,8 +1312,9 @@ fixed before engine consumption.}
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Matched execution economics in milliseconds. Cold completion includes
-one-time ingestion. Dashes denote timing unavailable from the offline API.}
+\caption{Macro E2/E0 execution-cost ratios; lower is better. Cold includes
+one-time ingestion, warm and multi-query use median completion, concurrent uses
+inverse requests/s, and E2 usable is milliseconds.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
 \label{tab:engine-matched-latency}
@@ -1321,6 +1327,16 @@ one-time ingestion. Dashes denote timing unavailable from the offline API.}
 semantic preservation. MLX-LM and SGLang-MLX retain F1 exactly; vLLM-Metal
 exposes a post-selection integration gap on two of three datasets.}
 \label{fig:engine-matched-summary}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/matched_e0_e2/matched_e0_e2_regimes.pdf}
+\caption{Representation economics after freezing retrieval. Ratios below one
+favor native E2. The current SGLang path wins only cold ingestion-inclusive
+cost; vLLM is near parity; MLX and SGLang still pay unfused decode overhead in
+reused and concurrent regimes.}
+\label{fig:engine-matched-regimes}
 \end{figure}
 
 The matrix now distinguishes companion evidence from generic provider defaults.
@@ -1341,13 +1357,15 @@ pinned controlled realizations,
 not portable claims that the default SDK provider may advertise unconditionally.
 
 The shared matched benchmark makes the product boundary sharper. MLX-LM and
-SGLang-MLX preserve all 120 cold/warm E0 outputs while moving 90.5--93.0\% of
-visible prompt tokens into native K/V. Their current selected-cache wrappers
-still add decode cost. vLLM-Metal obtains the same visible-token reduction but
-only 5.0--20.0\% exact output parity and loses mean F1 on two datasets. The SDK
-therefore treats the pinned MLX and SGLang paths as semantic mechanism passes,
-keeps their economic status experimental, and keeps vLLM matched-quality
-promotion pending. Engine labels alone never select these capabilities.
+SGLang-MLX preserve all 840 E0 outputs while moving 90.6--93.0\% of visible
+prompt tokens into native K/V. Their current selected-cache wrappers remain
+11--16\% more expensive in reused or concurrent regimes. vLLM-Metal obtains
+the same visible-token reduction and near-zero aggregate signed F1 change, but
+only 593/840 exact outputs; mean absolute pairwise F1 change is 0.0098. Its
+four macro cost ratios lie between 0.988 and 1.030. The SDK therefore treats
+the pinned MLX and SGLang paths as semantic mechanism passes, keeps their
+economic status experimental, and keeps vLLM exact-parity promotion pending.
+Engine labels alone never select these capabilities.
 
 The vLLM audit also establishes a product invariant that is easy to miss at an
 HTTP boundary. APC hashes visible prompt state, but native PRA evidence is

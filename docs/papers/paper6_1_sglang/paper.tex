@@ -50,9 +50,12 @@ K/V avoids 108.0 MiB at concurrency eight. Across 40 QASPER and 40 HotpotQA
 natural-text transport controls per condition, native and full context are
 80/80, disabled is 40/80, and shuffled memory is 32/80. On a separate frozen
 60-example routed-QA cohort, E0 selected text and E2 native K/V produce exactly
-the same output in all 120 cold/warm pairs while E2 removes 90.5--93.0\% of
-visible prompt tokens. Warm TTFT is comparable, although the current selected
-cache adds 34--39 ms to median 24-token completion.
+the same output in all 840 pairs spanning cold, warm, multi-query, and
+concurrency-eight schedules while E2 removes 90.6--93.0\% of visible prompt
+tokens. Cold end-to-end cost is slightly lower for E2, but warm, multi-query,
+and concurrent cost ratios are 1.136, 1.140, and 1.122. Semantic transport is
+closed; the unfused selected-cache path remains an economic optimization
+target.
 \end{abstract}
 
 \section{Introduction}
@@ -272,13 +275,16 @@ We next freeze the routed selections for 20 original-answer examples from each
 of QASPER, HotpotQA, and 2WikiMultiHopQA. E0 writes the selected source once to
 ordinary Radix-owned prefix slots. E2 encodes exactly the same source tokens as
 immutable native K/V and leaves them outside Radix accounting. Both paths use
-the same query suffix, greedy decoder, 24-token output budget, and cold/warm
-reuse schedule.
+the same query suffix, greedy decoder, and 24-token output budget. The shared
+schedule includes cold one-shot, two warm repeats, three query formulations
+over the same resource, and an eight-request wave with independent prefill and
+batched decode.
 
 \begin{table}[!htbp]
 \centering
 \scriptsize
-\caption{Matched-selection quality on the shared three-engine cohort.}
+\caption{Matched-selection quality on the shared three-engine cohort. All
+parity pools 840 request pairs per engine across four schedules.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
 \label{tab:sglang-matched-quality}
@@ -287,20 +293,32 @@ reuse schedule.
 \begin{table}[!htbp]
 \centering
 \scriptsize
-\caption{Matched-selection latency in milliseconds. Cold completion includes
-the one-time source ingestion shown in the final column.}
+\caption{Macro E2/E0 execution-cost ratios; lower is better. Cold includes
+ingestion, concurrent is inverse requests/s, and E2 usable is milliseconds.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
 \label{tab:sglang-matched-latency}
 \end{table}
 
-SGLang preserves exact output and F1 on all 120 E0/E2 pairs. E2 reduces visible
-prompt tokens by 90.5--93.0\% and lowers mean cold end-to-end TTFT by 19--22 ms.
-Warm median TTFT is within 1.2 ms and is slightly lower for E2 on all three
-datasets. The current cache wrapper concatenates selected and local arrays at
-each consumer layer and decode step, however, so warm median completion is
-34--39 ms slower. Native transport is therefore semantically closed on this
-cohort, while fused materialization and decode economics remain open.
+\FloatBarrier
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/matched_e0_e2/matched_e0_e2_regimes.pdf}
+\caption{Macro representation cost after freezing retrieval. Lower is better;
+concurrent cost is inverse throughput. SGLang wins the ingestion-inclusive
+cold regime but pays unfused reuse and decode overhead.}
+\label{fig:sglang-matched-regimes}
+\end{figure}
+\FloatBarrier
+
+SGLang preserves exact output and F1 on all 840 E0/E2 pairs. E2 reduces visible
+prompt tokens by 90.6--93.0\%. Its macro cold end-to-end cost ratio is 0.976
+after 55.0 ms mean time to usable context: native ingestion offsets the slower
+online path for a one-shot request. Warm and multi-query ratios rise to 1.136
+and 1.140. At concurrency eight, E2 reaches 89.2\% of E0 throughput, an inverse
+cost ratio of 1.122. The wrapper concatenates selected and local arrays at each
+consumer layer and decode step, so native transport is semantically closed
+while fused materialization and decode economics remain open.
 
 \subsection{External HiCache placement}
 \begin{table}[!htbp]
@@ -442,7 +460,7 @@ Radix + HiCache request & controlled closed & A/C 10/10, cleanup B 0/5, exactly 
 runner lifecycle & controlled closed & prefill, batched decode, and clean request release \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided \\
 natural transport & controlled closed & native/full 80/80; causal controls near chance \\
-matched natural QA & controlled closed & 120/120 exact E0/E2 outputs; 90.5--93.0\% fewer visible tokens \\
+matched natural QA & controlled closed & 840/840 exact E0/E2 outputs; 90.6--93.0\% fewer visible tokens \\
 robustness & partial & one model; synthetic and two natural-text transport fixtures \\
 \bottomrule
 \end{tabularx}
@@ -503,8 +521,8 @@ leaks, and attaches exactly one memory copy. A five-seed prefetch diagnostic
 recovers all 20 tensors exactly but finds no useful Python-thread overlap: the
 caller is delayed by 193--235 ms. It leaves distributed HiCache, native
 asynchronous prefetch, full-scheduler integration, and pressure-scale server
-validation as the focused next experiments. On matched routed QA, it preserves every E0
-output while moving 90.5--93.0\% of prompt tokens to native memory; the measured
+validation as the focused next experiments. On matched routed QA, it preserves all 840 E0
+outputs while moving 90.6--93.0\% of prompt tokens to native memory; the measured
 decode overhead makes fused selected-cache consumption the immediate systems
 optimization.
 

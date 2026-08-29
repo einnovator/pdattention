@@ -21,9 +21,10 @@ The original-answer extension now also routes four candidate documents or
 QASPER paragraphs with the SDK hybrid index. Across QASPER, HotpotQA, and
 2Wiki, routed ordinary and native execution agree on all 60 paired examples;
 the remaining oracle gap is evidence discovery rather than MLX consumption.
-A matched cold/warm E0/E2 benchmark preserves all 120 outputs and removes
-90.5--93.0% of visible prompt tokens. It also exposes slower unfused native
-decode despite lower ingestion cost and cold TTFT.
+A matched four-regime E0/E2 benchmark preserves all 840 outputs and removes
+90.6--93.0% of visible prompt tokens. Cold, warm, multi-query, and concurrent
+E2/E0 cost ratios are 1.130, 1.155, 1.148, and 1.132, exposing the remaining
+unfused native-decode cost despite cheaper native ingestion.
 
 The bounded-residency extension covers 1,020 natural-QA requests over five
 seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable

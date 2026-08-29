@@ -157,16 +157,24 @@ def build_registry() -> dict:
             "model": native["vllm"]["live_generation"]["model_id"],
             "profile": "all-layer native K/V + APC, concurrency 1--8",
             "hardware": metadata["vllm"]["hardware"],
-            "evidence_tier": native["vllm"]["live_generation"]["evidence_tier"],
-            "status": "controlled APC/concurrency",
+            "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+            "status": "593/840 exact; four-regime cost near parity; promotion pending",
         },
         {
             "engine": "SGLang MLX",
             "model": metadata["sglang"]["model_id"],
             "profile": "Radix + selected K/V + built-in HiCache file storage",
             "hardware": metadata["sglang"]["hardware"],
-            "evidence_tier": native["sglang"]["hicache"]["evidence_tier"],
-            "status": "controlled storage/lifecycle; native async prefetch open",
+            "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+            "status": "840/840 exact; reused/concurrent cost optimization open",
+        },
+        {
+            "engine": "MLX-LM",
+            "model": "mlx-community/Qwen3-0.6B-4bit",
+            "profile": "all-layer selected K/V, four matched regimes",
+            "hardware": metadata["mlx"]["hardware"],
+            "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+            "status": "840/840 exact; unfused native path slower in all regimes",
         },
         {
             "engine": "MLX-LM",
@@ -1402,9 +1410,9 @@ def write_latest_engine_tables(registry: dict) -> None:
     )
 
     product_lines = [
-        r"\begin{tabularx}{\linewidth}{lYYY}",
+        r"\begin{tabularx}{\linewidth}{lYYYY}",
         r"\toprule",
-        r"Engine/model & Profile & Evidence tier & Status \\",
+        r"Engine/model & Hardware & Profile & Evidence tier & Status \\",
         r"\midrule",
     ]
     for row in registry["product_matrix"]:
@@ -1412,7 +1420,8 @@ def write_latest_engine_tables(registry: dict) -> None:
         evidence = row["evidence_tier"].replace("_", " ").lower()
         product_lines.append(
             f"{_tex_escape(row['engine'])} / {_tex_escape(model)} & "
-            f"{_tex_escape(row['profile'])} & {_tex_escape(evidence)} & "
+            f"{_tex_escape(row['hardware'])} & {_tex_escape(row['profile'])} & "
+            f"{_tex_escape(evidence)} & "
             f"{_tex_escape(row['status'])} \\\\"
         )
     product_lines.extend([r"\bottomrule", r"\end{tabularx}"])

@@ -10,9 +10,11 @@ native Metal paged-attention path for selected K/V. The native path is measured
 at kernel level and through live V1 generation, APC, cleanup, and offline
 concurrency eight. APC identity now includes the opaque hidden-memory selection,
 preventing reuse across different native memories while retaining reuse within
-one selection. A matched 60-example routed-QA cohort removes 91--93% of
-visible tokens but exposes an unresolved output-parity gap, so matched-quality
-promotion, online token latency, connectors, and CUDA remain open.
+one selection. A matched 60-example routed-QA cohort now covers 840 paired
+requests across cold, warm, multi-query, and concurrency-eight schedules. It
+removes 91--93% of visible tokens and reaches 70.6% exact output parity with
+near-zero signed aggregate F1 change; exact parity, online token latency,
+connectors, and CUDA remain open.
 
 Rebuild the generated artifacts and paper from the repository root:
 

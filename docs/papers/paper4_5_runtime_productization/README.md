@@ -45,7 +45,11 @@ The implementation adds:
   agent, gateway, and Hub command tree, with `pra-hf` retained as a deprecated
   alias;
 - versioned named agent profiles and an optional FastAPI/WebSocket multi-session UI;
-- CLI and executed notebook workflows.
+- CLI and executed notebook workflows;
+- a selector-frozen E0 selected-text versus E2 native-K/V benchmark spanning
+  cold, warm, multi-query, and concurrency-eight schedules on MLX-LM,
+  SGLang-MLX, and vLLM-Metal, with disjoint quality, input, PRA, ingestion,
+  serving, and reuse metrics.
 
 Reproduce the measured portable profile:
 

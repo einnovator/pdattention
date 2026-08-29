@@ -44,9 +44,12 @@ Connectors, online server tails, cross-model
 replication, and CUDA integration remain open. A final matched-selection study
 uses the same routed QASPER, HotpotQA, and 2WikiMultiHopQA evidence for visible
 E0 and native E2 execution. E2 removes 90.6--93.0\% of visible prompt tokens,
-but exact output parity is only 5.0--20.0\% and mean F1 falls on HotpotQA and
-2Wiki. This isolates an unresolved native transport gap rather than a routing
-error, so matched-quality promotion remains open.
+and 593 of 840 paired outputs are exact. Aggregate E2-minus-E0 F1 is
+$+0.0002$, but mean absolute pairwise F1 change is 0.0098. Cold, warm,
+multi-query, and concurrency cost ratios are 1.030, 1.001, 0.988, and 1.002,
+respectively, where lower is better. This substantially narrows but does not
+close the native transport gap, so exact matched-quality promotion remains
+open.
 \end{abstract}
 
 \section{Introduction}
@@ -338,14 +341,17 @@ and 2WikiMultiHopQA across five seeds. Within an example, E0 and E2 receive the
 same source-token sequence, question, greedy decoder, and 24-token output
 budget. E0 exposes the selected source as ordinary prompt text; E2 page-aligns
 that source, encodes it once, and attaches its native pages outside APC. Each
-condition runs once cold and once warm. This controls discovery: any output
-difference occurs after selection.
+condition follows four schedules: cold one-shot, two warm repeats, three query
+formulations over the same resource, and an eight-request continuous-batching
+wave. The selector runs only once, so any output difference occurs after
+selection.
 
 \begin{table}[t]
 \centering
 \scriptsize
-\caption{Cross-engine matched-selection quality. Paper 6 uses the vLLM-Metal
-rows; the other rows provide the common experimental reference.}
+\caption{Cross-engine matched-selection quality. All parity pools 840 paired
+requests per engine across four schedules. Paper 6 uses the vLLM-Metal rows;
+the other rows provide the common reference.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
 \label{tab:vllm-matched-quality}
@@ -354,26 +360,37 @@ rows; the other rows provide the common experimental reference.}
 \begin{table}[t]
 \centering
 \scriptsize
-\caption{Matched-selection latency in milliseconds. Cold completion includes
-one-time E2 encoding/materialization; vLLM's offline V1 interface exposes
-completion but not per-token TTFT or ITL.}
+\caption{Macro E2/E0 execution-cost ratios; lower is better. Cold includes
+one-time ingestion, warm and multi-query use median completion, and concurrent
+uses inverse requests/s. The final column is E2 time to usable context.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
 \label{tab:vllm-matched-latency}
 \end{table}
 
-E2 reduces mean visible tokens by 90.6--93.0\%. It does not yet preserve the
-E0 behavior: exact output parity is 5.0\% on QASPER, 20.0\% on HotpotQA, and
-17.5\% on 2Wiki. Mean E2-minus-E0 F1 is $+0.008$, $-0.033$, and $-0.034$,
-respectively. The neighboring MLX-LM and SGLang-MLX paths obtain exact parity
-on the same frozen selections, which rules out the cohort construction as an
-explanation. The remaining candidates include paged-cache precision/layout and
-position metadata at the vLLM-Metal boundary. Until a capture-and-replay audit
-matches ordinary paged K/V layer by layer, this result is a negative promotion
-gate, not evidence that native memory intrinsically harms QA.
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/matched_e0_e2/matched_e0_e2_regimes.pdf}
+\caption{Macro representation cost after freezing retrieval. Lower is better;
+concurrent cost is inverse throughput. vLLM-Metal is near E0 economic parity
+across all four schedules.}
+\label{fig:vllm-matched-regimes}
+\end{figure}
 
-Cold end-to-end completion is 12--23 ms slower for E2 after its roughly 59 ms
-one-time ingestion. Warm completion ranges from 6 ms faster to 13 ms slower.
+E2 reduces mean visible tokens by 90.6--93.0\%. Across all schedules, exact
+output parity is 71.1\% on 2Wiki, 70.0\% on HotpotQA, and 70.7\% on QASPER.
+The aggregate signed F1 delta is nearly zero ($+0.0002$), but the mean absolute
+pairwise change is 0.0098; cancellation therefore cannot be read as exact
+equivalence. The neighboring MLX-LM and SGLang-MLX paths obtain 840/840 exact
+pairs on the same selections, which rules out cohort construction as the
+explanation. Paged-cache precision, alignment padding, and position metadata
+remain candidates at the vLLM-Metal boundary.
+
+The macro cold end-to-end cost ratio is 1.030 after 67.8 ms mean E2 time to
+usable context. Warm is 1.001, multi-query is 0.988, and the concurrency-eight
+inverse-throughput ratio is 1.002. Thus vLLM-Metal is economically near parity
+in this small offline workload, while exact semantic parity remains the
+promotion gate.
 The offline V1 API emits the 24-token completion as one engine result, so TTFT
 and ITL are reported as unavailable rather than inferred from completion time.
 
@@ -445,7 +462,7 @@ V1 metadata contract & controlled closed & selected block tables and positions r
 live V1 generation & controlled closed & positive, disabled, wrong-memory, and cleanup controls over five seeds \\
 concurrent isolation & controlled closed & 20/20 selected recoveries and 0/20 adjacent ordinary recoveries \\
 native APC identity & controlled closed & selection-derived salt; 75/75 selected and 0/40 disabled recoveries \\
-matched natural QA & partial & 91--93\% fewer visible tokens; exact output parity only 5--20\% \\
+matched natural QA & partial & 593/840 exact outputs; aggregate signed F1 $+0.0002$; 91--93\% fewer visible tokens \\
 engine-native serving & partial & native APC and concurrency measured; connectors, online tails, and CUDA remain open \\
 robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule
