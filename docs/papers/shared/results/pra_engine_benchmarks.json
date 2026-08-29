@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "registry_version": "2026-08-paper6-engine-native-v4",
+  "registry_version": "2026-08-paper6-engine-native-v5",
   "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
   "environment": {
     "vllm": {
@@ -880,6 +880,51 @@
         "cold_read_to_l1_ms_median": 36.211958853527904,
         "warm_l1_ms_mean": 0.013341614976525307
       },
+      "builtin_hicache_prefetch": {
+        "evidence_tier": "CONTROLLED_ORACLE_PREFETCH",
+        "prefetch_signal": "oracle_selection_available_before_demand",
+        "off_node_transport": false,
+        "seed_count": 5,
+        "rows_by_requested_lead_ms": [
+          {
+            "requested_lead_ms": 0,
+            "sample_count": 5,
+            "exact_tensor_recovery": 1.0,
+            "promotion_ms_mean": 27.868066588416696,
+            "actual_lead_ms_mean": 0.3944417927414179,
+            "ready_at_demand_rate": 0.0,
+            "demand_stall_ms_mean": 27.562333224341273
+          },
+          {
+            "requested_lead_ms": 10,
+            "sample_count": 5,
+            "exact_tensor_recovery": 1.0,
+            "promotion_ms_mean": 27.567458199337125,
+            "actual_lead_ms_mean": 203.28920814208686,
+            "ready_at_demand_rate": 1.0,
+            "demand_stall_ms_mean": 0.09355023503303528
+          },
+          {
+            "requested_lead_ms": 25,
+            "sample_count": 5,
+            "exact_tensor_recovery": 1.0,
+            "promotion_ms_mean": 25.018825009465218,
+            "actual_lead_ms_mean": 192.5517251715064,
+            "ready_at_demand_rate": 1.0,
+            "demand_stall_ms_mean": 0.08793319575488567
+          },
+          {
+            "requested_lead_ms": 50,
+            "sample_count": 5,
+            "exact_tensor_recovery": 1.0,
+            "promotion_ms_mean": 26.26012503169477,
+            "actual_lead_ms_mean": 235.2735500317067,
+            "ready_at_demand_rate": 1.0,
+            "demand_stall_ms_mean": 0.10849181562662125
+          }
+        ],
+        "native_async_overlap_status": "OPEN_PYTHON_THREAD_BLOCKS_CALLER"
+      },
       "radix_hicache_combined": {
         "evidence_tier": "CONTROLLED",
         "seed_count": 5,
@@ -1011,7 +1056,7 @@
       "profile": "Radix + selected K/V + built-in HiCache file storage",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "CONTROLLED",
-      "status": "controlled storage and combined lifecycle"
+      "status": "controlled storage/lifecycle; native async prefetch open"
     },
     {
       "engine": "MLX-LM",

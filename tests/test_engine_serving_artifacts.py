@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     registry = build_registry()
-    assert registry["registry_version"] == "2026-08-paper6-engine-native-v4"
+    assert registry["registry_version"] == "2026-08-paper6-engine-native-v5"
     assert len(registry["rows"]) == 15
     assert {row["engine"] for row in registry["rows"]} == {"vllm", "sglang", "mlx"}
     assert all(row["evidence_tier"] == "SMOKE" for row in registry["rows"])
@@ -27,6 +27,20 @@ def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     assert all(row["max_logit_error"] == 0.0 for row in native["mlx"]["models"])
     assert native["sglang"]["status"] == "MEASURED_SGLANG_CACHE_PATH"
     assert native["sglang"]["radix_identity_separation_rate"] == 1.0
+    prefetch = native["sglang"]["builtin_hicache_prefetch"]
+    assert prefetch["seed_count"] == 5
+    assert prefetch["native_async_overlap_status"] == (
+        "OPEN_PYTHON_THREAD_BLOCKS_CALLER"
+    )
+    assert all(
+        row["exact_tensor_recovery"] == 1.0
+        for row in prefetch["rows_by_requested_lead_ms"]
+    )
+    assert min(
+        row["actual_lead_ms_mean"]
+        for row in prefetch["rows_by_requested_lead_ms"]
+        if row["requested_lead_ms"]
+    ) > 190.0
     assert native["vllm"]["status"] == "MEASURED_KERNEL_PATH"
 
 

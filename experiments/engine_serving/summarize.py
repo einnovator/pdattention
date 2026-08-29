@@ -166,7 +166,7 @@ def build_registry() -> dict:
             "profile": "Radix + selected K/V + built-in HiCache file storage",
             "hardware": metadata["sglang"]["hardware"],
             "evidence_tier": native["sglang"]["hicache"]["evidence_tier"],
-            "status": "controlled storage and combined lifecycle",
+            "status": "controlled storage/lifecycle; native async prefetch open",
         },
         {
             "engine": "MLX-LM",
@@ -179,7 +179,7 @@ def build_registry() -> dict:
     ]
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-native-v4",
+        "registry_version": "2026-08-paper6-engine-native-v5",
         "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
@@ -213,6 +213,9 @@ def _native_results() -> dict:
     )
     sglang_builtin_hicache = _load(
         ENGINE_DIRS["sglang"] / "builtin_hicache_backend.json"
+    )
+    sglang_hicache_prefetch = _load(
+        ENGINE_DIRS["sglang"] / "builtin_hicache_prefetch.json"
     )
     sglang_natural = {
         dataset: _load(ENGINE_DIRS["sglang"] / f"natural_{dataset}.json")
@@ -483,6 +486,32 @@ def _native_results() -> dict:
         for row in sglang_combined["rows"]
         for condition in row["conditions"]
     ]
+    sglang_prefetch_summary = []
+    for lead_ms in sglang_hicache_prefetch["lead_ms"]:
+        lead_rows = [
+            row
+            for row in sglang_hicache_prefetch["rows"]
+            if row["requested_lead_ms"] == lead_ms
+        ]
+        sglang_prefetch_summary.append(
+            {
+                "requested_lead_ms": lead_ms,
+                "sample_count": len(lead_rows),
+                "exact_tensor_recovery": fmean(
+                    float(row["exact_tensor_recovery"]) for row in lead_rows
+                ),
+                "promotion_ms_mean": fmean(row["promotion_ms"] for row in lead_rows),
+                "actual_lead_ms_mean": fmean(
+                    row["actual_lead_ms"] for row in lead_rows
+                ),
+                "ready_at_demand_rate": fmean(
+                    float(row["ready_at_demand"]) for row in lead_rows
+                ),
+                "demand_stall_ms_mean": fmean(
+                    row["demand_stall_ms"] for row in lead_rows
+                ),
+            }
+        )
     vllm_live_rows = vllm_live["rows"]
     vllm_apc_native_rows = [
         row
@@ -676,6 +705,18 @@ def _native_results() -> dict:
                 "warm_l1_ms_mean": fmean(
                     row["warm_l1_ms"] for row in sglang_builtin_hicache["rows"]
                 ),
+            },
+            "builtin_hicache_prefetch": {
+                "evidence_tier": sglang_hicache_prefetch["evidence_tier"],
+                "prefetch_signal": sglang_hicache_prefetch["prefetch_signal"],
+                "off_node_transport": sglang_hicache_prefetch[
+                    "off_node_transport"
+                ],
+                "seed_count": len(
+                    {row["seed"] for row in sglang_hicache_prefetch["rows"]}
+                ),
+                "rows_by_requested_lead_ms": sglang_prefetch_summary,
+                "native_async_overlap_status": "OPEN_PYTHON_THREAD_BLOCKS_CALLER",
             },
             "radix_hicache_combined": {
                 "evidence_tier": sglang_combined["evidence_tier"],

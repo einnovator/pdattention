@@ -36,6 +36,9 @@ The same logical-object cache is then connected to SGLang's built-in
 \texttt{HiCacheStorage} file backend. Five fresh-adapter reads recover 5/5
 answers; raw 14.35 MB blobs write in 38.7 ms on average, restore to L1 in
 122.2 ms on average (36.2 ms median), and hit warm L1 in 0.013 ms.
+An oracle prefetch sweep then rejects Python-thread overlap as a production
+mechanism: promotion takes 25--28 ms, but requested 10--50 ms leads delay the
+caller by 193--235 ms rather than overlapping useful work.
 In a combined runner-level cohort, an 81-token shared-prefix hit and external
 HiCache selection coexist in one request. Selected A and reselected C recover
 5/5, cleanup request B recovers 0/5, and all selected requests contain exactly
@@ -352,6 +355,42 @@ shared-memory, or cross-host transfer. Those backends can now be selected
 without changing PRA serialization or logical identity, but each requires its
 own measured correctness, transfer, and cleanup gate.
 
+\subsection{Prefetch overlap diagnostic}
+The storage bridge exposes a caller-owned prefetch hook so an engine scheduler
+can initiate promotion before a selected object is demanded. We evaluate an
+oracle signal, which removes selection uncertainty and gives the mechanism its
+most favorable timing case. Each condition contains five seeds and promotes a
+14.336 MB, 125-token native-K/V object from the built-in file backend to
+attention-ready L1.
+
+\begin{table}[!htbp]
+\centering
+\small
+\caption{Caller-owned Python-thread prefetch. ``Actual lead'' is elapsed time
+before the caller regains control and issues the demand. All 20 restored
+tensors are exact. Times are milliseconds.}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{rrrrr}
+\toprule
+Requested lead & Promotion & Actual lead & Ready at demand & Demand stall \\
+\midrule
+0  & 27.9 & 0.4   & 0/5 & 27.6 \\
+10 & 27.6 & 203.3 & 5/5 & 0.094 \\
+25 & 25.0 & 192.6 & 5/5 & 0.088 \\
+50 & 26.3 & 235.3 & 5/5 & 0.109 \\
+\bottomrule
+\end{tabular}}
+\label{tab:sglang-prefetch}
+\end{table}
+
+The near-zero demand stalls at nonzero requested leads are not an optimization
+result. Python deserialization and MLX array construction delay the caller, so
+the nominal 10--50 ms scheduling window expands to 193--235 ms. The experiment
+closes exact asynchronous API semantics but leaves useful overlap open. A
+production path must use SGLang's native asynchronous HiCache controller, a
+GIL-independent worker, or an equivalent engine-owned transfer path before
+prefetch latency claims are warranted.
+
 \subsection{Combined shared-prefix and external-memory lifecycle}
 \begin{table}[!htbp]
 \centering
@@ -396,6 +435,7 @@ radix baseline & smoke closed & exact scheduler cache-token trace \\
 selected-text parity & smoke closed & selected and full are 5/5 \\
 HiCache non-prefix object & controlled closed & five-seed L1/L2/L3 promotion and forced demotion \\
 built-in HiCache storage & controlled closed & file backend, fresh adapter 5/5, restored generation 5/5 \\
+prefetch overlap & negative/open & exact 20/20; 10--50 ms requests became 193--235 ms caller delays \\
 selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
 radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\
 Radix + HiCache request & controlled closed & A/C 10/10, cleanup B 0/5, exactly one selected copy \\
@@ -411,9 +451,11 @@ robustness & partial & one model; synthetic and two natural-text transport fixtu
 \section{Next Engine-Native Experiment}
 The matched single-request comparison is now complete. The next useful patch
 moves the verified local composition into off-node HiCache placement and
-scheduler affinity, including prefetch overlap, concurrent cold/warm tier
-curves, and server p50/p95/p99. Only then should learned placement or
-cache-aware scheduling be optimized.
+scheduler affinity. The Python-thread control shows that useful prefetch
+overlap requires SGLang-native asynchronous transfer rather than a host-thread
+wrapper. Concurrent cold/warm tier curves and server p50/p95/p99 should follow
+that integration. Only then should learned placement or cache-aware scheduling
+be optimized.
 
 \section{Falsification and Limitations}
 Deep SGLang integration is unnecessary if RadixAttention plus the tuned
@@ -457,9 +499,11 @@ also establishes local L1/L2/L3 promotion and forced demotion without entering
 the Radix namespace and uses SGLang's built-in file storage through a fresh
 adapter with 5/5 recovery. A final A/B/C cohort composes the shared-prefix pool with
 external HiCache, preserves 10/10 selected recoveries, prevents 5/5 cleanup
-leaks, and attaches exactly one memory copy. It leaves distributed HiCache,
-full-scheduler integration, and pressure-scale server validation as the focused
-next experiments. On matched routed QA, it additionally preserves every E0
+leaks, and attaches exactly one memory copy. A five-seed prefetch diagnostic
+recovers all 20 tensors exactly but finds no useful Python-thread overlap: the
+caller is delayed by 193--235 ms. It leaves distributed HiCache, native
+asynchronous prefetch, full-scheduler integration, and pressure-scale server
+validation as the focused next experiments. On matched routed QA, it preserves every E0
 output while moving 90.5--93.0\% of prompt tokens to native memory; the measured
 decode overhead makes fused selected-cache consumption the immediate systems
 optimization.

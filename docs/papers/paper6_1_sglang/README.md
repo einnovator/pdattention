@@ -18,4 +18,7 @@ Local external HiCache placement, SGLang's built-in file-storage API, and
 combined Radix-plus-native execution are measured. A frozen 60-example routed-QA cohort also gives 120/120 exact E0/E2
 output pairs with 90.5--93.0% fewer visible tokens. Distributed HiCache,
 scheduler affinity, online concurrency tails, and fused selected-cache decode
-remain open.
+remain open. A caller-owned prefetch hook is implemented, but its five-seed
+Python-thread sweep is a negative latency result: all 20 tensors restore
+exactly, while requested 10--50 ms leads delay the caller by 193--235 ms.
+Engine-native asynchronous transfer is therefore the next prefetch gate.
