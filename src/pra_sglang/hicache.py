@@ -16,8 +16,12 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Callable
+from typing import TYPE_CHECKING
 
 from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
+
+if TYPE_CHECKING:
+    from pra_sglang.hicache_backend import PRAHiCacheL3Backend
 
 
 class PRAHiCacheTier(str, Enum):
@@ -136,6 +140,7 @@ class SGLangPRAHiCache:
         max_l2_bytes: int,
         to_host: Callable[[MLXNativeMemory], MLXNativeMemory] = _default_to_host,
         to_device: Callable[[MLXNativeMemory], MLXNativeMemory] = _default_to_device,
+        l3_backend: PRAHiCacheL3Backend | None = None,
     ) -> None:
         if max_l1_bytes <= 0 or max_l2_bytes <= 0:
             raise ValueError("PRA HiCache L1 and L2 byte budgets must be positive.")
@@ -145,9 +150,10 @@ class SGLangPRAHiCache:
         self.max_l2_bytes = int(max_l2_bytes)
         self._to_host = to_host
         self._to_device = to_device
+        self._l3_backend = l3_backend
         self._l1: OrderedDict[str, MLXNativeMemory] = OrderedDict()
         self._l2: OrderedDict[str, MLXNativeMemory] = OrderedDict()
-        self._l3: dict[str, Path] = {}
+        self._l3: dict[str, Path | None] = {}
         self._metrics = PRAHiCacheMetrics()
 
     def _stem(self, logical_key: str) -> str:
@@ -160,12 +166,24 @@ class SGLangPRAHiCache:
     def _refresh_bytes(self) -> None:
         self._metrics.l1_bytes = sum(memory.nbytes for memory in self._l1.values())
         self._metrics.l2_bytes = sum(memory.nbytes for memory in self._l2.values())
-        self._metrics.l3_bytes = sum(
-            path.stat().st_size for path in self._l3.values() if path.exists()
-        )
+        if self._l3_backend is None:
+            self._metrics.l3_bytes = sum(
+                path.stat().st_size
+                for path in self._l3.values()
+                if path is not None and path.exists()
+            )
+        else:
+            self._metrics.l3_bytes = sum(
+                self._l3_backend.size(key) for key in self._l3
+            )
 
     def _write_l3(self, logical_key: str, memory: MLXNativeMemory) -> None:
         import numpy as np
+
+        if self._l3_backend is not None:
+            self._l3_backend.put(logical_key, memory)
+            self._l3[logical_key] = None
+            return
 
         host = self._to_host(memory)
         arrays_path, manifest_path = self._paths(logical_key)
@@ -198,6 +216,11 @@ class SGLangPRAHiCache:
 
     def _read_l3(self, logical_key: str) -> MLXNativeMemory:
         import numpy as np
+
+        if self._l3_backend is not None:
+            memory = self._l3_backend.get(logical_key)
+            self._l3[logical_key] = None
+            return memory
 
         arrays_path = self._l3.get(logical_key)
         if arrays_path is None:
@@ -337,7 +360,12 @@ class SGLangPRAHiCache:
         if key in self._l2:
             return PRAHiCacheTier.L2
         arrays_path, manifest_path = self._paths(key)
-        if key in self._l3 or (arrays_path.exists() and manifest_path.exists()):
+        backend_exists = (
+            self._l3_backend is not None and self._l3_backend.exists(key)
+        )
+        if key in self._l3 or backend_exists or (
+            arrays_path.exists() and manifest_path.exists()
+        ):
             return PRAHiCacheTier.L3
         return None
 
@@ -350,6 +378,8 @@ class SGLangPRAHiCache:
         arrays_path, manifest_path = self._paths(key)
         arrays_path.unlink(missing_ok=True)
         manifest_path.unlink(missing_ok=True)
+        if self._l3_backend is not None:
+            self._l3_backend.remove(key)
         self._l3.pop(key, None)
         self._refresh_bytes()
 

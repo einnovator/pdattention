@@ -2,6 +2,7 @@
 
 from .adapter import SGLangEngineAdapter, SGLangNativeExecutor
 from .hicache import PRAHiCacheMetrics, PRAHiCacheTier, SGLangPRAHiCache
+from .hicache_backend import SGLangHiCacheStorageBackend
 from .mlx_native import (
     SGLangMLXNativeBridge,
     SGLangNativeRequest,
@@ -17,6 +18,7 @@ __all__ = [
     "SGLangNativeExecutor",
     "SGLangNativeRequest",
     "SGLangPRAHiCache",
+    "SGLangHiCacheStorageBackend",
     "SGLangSelectedKVCache",
     "install_selected_kv_attention",
 ]
