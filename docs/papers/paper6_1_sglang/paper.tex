@@ -587,12 +587,21 @@ robustness & partial & one model; synthetic and two natural-text transport fixtu
 \end{center}
 
 \section{Next Engine-Native Experiment}
-The matched single-request comparison and event-loop overlap mechanism are now
-complete. The next useful patch moves the verified local composition into
-off-node HiCache placement and scheduler affinity. Concurrent WARM/COLD tier
-curves and distributed server tails should follow that integration; the current
-gateway p50/p95 describes one serialized local model runner. Only then should
-learned placement or cache-aware scheduling be optimized.
+The matched comparison and event-loop overlap mechanism are complete. A fresh
+environment audit finds no installed Mooncake, NIXL, HF3FS, or AIBrix backend
+on the Apple host. The built-in file backend is therefore local L3 evidence,
+not distributed HiCache evidence. The off-node gate is blocked because no
+supported remote backend is installed; no remote latency or bandwidth is
+inferred.
+
+The scheduler-owned prefetch control nevertheless identifies the required
+overlap behavior. With zero lead, no request is ready and median/p95 demand
+stall is 27.6/32.9 ms. At nominal leads of 10, 25, and 50 ms all 15 transfers
+are ready before demand, p95 stall is at most 0.138 ms, and every restored
+tensor is exact. The nominal lead is only a request parameter: observed caller
+delay can be longer on this serialized runner. An off-node follow-up must
+repeat this curve with network bytes, backend queueing, wasted prefetches, and
+resource/session affinity under sustained arrivals.
 
 \section{Falsification and Limitations}
 Deep SGLang integration is unnecessary if RadixAttention plus the tuned

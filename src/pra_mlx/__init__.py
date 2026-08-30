@@ -19,6 +19,7 @@ from .native import (
     load_native_memory,
     quantize_native_memory,
     save_native_memory,
+    segmented_selected_attention,
     serialize_native_memory,
 )
 from .native_storage import MLXNativeSegmentStore
@@ -44,5 +45,6 @@ __all__ = [
     "load_native_memory",
     "quantize_native_memory",
     "save_native_memory",
+    "segmented_selected_attention",
     "serialize_native_memory",
 ]

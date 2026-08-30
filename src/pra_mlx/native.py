@@ -301,6 +301,41 @@ class MLXSelectedKVCache:
         return mx.concatenate((memory, local), axis=1)
 
 
+def segmented_selected_attention(
+    queries: object,
+    memory_keys: object,
+    memory_values: object,
+    local_keys: object,
+    local_values: object,
+    *,
+    scale: float,
+) -> object:
+    """Attend over selected and local K/V with one exact normalization.
+
+    Inputs use ``[batch, heads, tokens, head_dim]`` after any GQA/MQA head
+    expansion required by the host model.  The function avoids materializing
+    ``concat(memory_kv, local_kv)``: it combines segment maxima, denominators,
+    and value numerators instead.  Decode-time callers must ensure that the
+    supplied local segment is already causally valid for the query.
+    """
+
+    import mlx.core as mx
+
+    memory_scores = (queries @ mx.swapaxes(memory_keys, -1, -2)) * scale
+    local_scores = (queries @ mx.swapaxes(local_keys, -1, -2)) * scale
+    maximum = mx.maximum(
+        mx.max(memory_scores, axis=-1, keepdims=True),
+        mx.max(local_scores, axis=-1, keepdims=True),
+    )
+    memory_weights = mx.exp(memory_scores - maximum)
+    local_weights = mx.exp(local_scores - maximum)
+    denominator = mx.sum(memory_weights, axis=-1, keepdims=True) + mx.sum(
+        local_weights, axis=-1, keepdims=True
+    )
+    numerator = memory_weights @ memory_values + local_weights @ local_values
+    return numerator / denominator
+
+
 def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMemory:
     """Encode one complete resource and retain post-RoPE K/V for every layer."""
 

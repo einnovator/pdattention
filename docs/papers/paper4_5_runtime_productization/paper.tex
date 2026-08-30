@@ -14,6 +14,8 @@
 \input{../shared/results/paper4_5_runtime/generated_agent_plugin_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_cross_model_results.tex}
 \input{../shared/results/paper4_5_runtime/agent_transport_protocol/generated_agent_transport_results.tex}
+\input{../shared/results/paper4_5_runtime/agent_transport_scaling/generated_agent_transport_scaling_results.tex}
+\input{../shared/results/paper4_5_runtime/agent_transport_model_backed/generated_agent_transport_model_results.tex}
 
 \title{From Sparse Selection to Physical Savings:\\
 A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
@@ -675,6 +677,23 @@ later request asks for missing detail.
 
 \subsection{Product profile and benchmark matrix}
 
+The registry also emits a strict machine-readable product row rather than
+mixing numbers and labels such as ``not measured.'' Numeric fields are numbers
+or null; status and provenance are separate required fields. Unknown columns,
+duplicate row identities, and invalid status values fail validation. The
+current 27-row registry contains 23 measured rows, while candidate and blocked
+cells remain explicit. Table~\ref{tab:product-matrix-v1} is generated from the
+same JSON artifact used by the SDK.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Compact product matrix. Sparse quality-max settings remain candidates
+until held-out workload calibration closes their evidence tier.}
+\resizebox{\linewidth}{!}{\input{../shared/results/generated_pra_product_matrix_v1.tex}}
+\label{tab:product-matrix-v1}
+\end{table}
+
 The calibrated layer candidates become useful to an SDK only after their
 semantics and evidence are inspectable. The current registry publishes four
 profiles: \ReferenceCorrectness,
@@ -1198,6 +1217,35 @@ status, and the provider-native tool schema. These are transport invariants,
 not evidence that logical PRA improves model quality. A matched model benchmark
 must hold selection, model, positions, profile, and generation fixed.
 
+We therefore repeated the comparison with a real MLX-LM Qwen3-0.6B model on
+ten held-out QASPER selections. Each condition used the same chat template,
+selected records, task state, provider-native tool schema, greedy decoder, and
+24-token budget. The gold answer remained in an out-of-band evaluator rather
+than request metadata. TEXT, PRA-FULL, and PRA-DELTA produced byte-identical
+model messages and identical outputs in \AgentModelParity{} examples; their
+mean gold-answer log probability was also identical at $-40.35625$. Mean TTFT
+was 507, 506, and 481 ms, respectively, but ten independent first turns do not
+support a latency-ordering claim. Their mean wire sizes were
+\AgentModelTextWire{}, \AgentModelFullWire{}, and \AgentModelDeltaWire{} bytes;
+first-turn typed metadata has a cost before delta reuse begins.
+
+The long-session fixture makes that reuse visible. At 50 turns, including one
+forced reconnect and full resynchronization, TEXT sends
+\AgentScalingTextBytes{} bytes, PRA-FULL sends \AgentScalingFullBytes{}, and
+PRA-DELTA sends \AgentScalingDeltaBytes{}. Delta transport is therefore
+\AgentScalingDeltaTextReduction{} smaller than repeated TEXT and
+\AgentScalingDeltaFullReduction{} smaller than PRA-FULL. It sends 21 resource
+bodies rather than 275 while preserving selection, task state, and tool schema.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\linewidth]{agent_transport_scaling/agent_transport_scaling.pdf}
+\caption{Cumulative wire bytes over 20- and 50-turn workflows. The reconnect
+forces one resource resynchronization; unchanged resources remain body-free on
+the other delta turns.}
+\label{fig:agent-transport-scaling}
+\end{figure}
+
 \subsection{Selection sharing removes repeated routing work}
 
 \begin{figure}[H]
@@ -1372,6 +1420,23 @@ the reuse opportunity, but it is not an LM answer-quality or production-serving
 measurement.
 
 \subsection{Semantic storage lifecycle}
+
+A 120-turn mixed trace compares plain LRU, size-aware LRU, and weighted
+task/type-aware retention at the same 80 KB WARM quota. Weighted retention
+raises the utility-weighted hit rate from 0.700 to 0.796, preserves every
+long-running task and shared-document access, and reduces SOURCE
+reconstructions from 214 to 184. Its estimated context-resolution cost falls
+from 1,170 to 936 ms. These are policy-trace results; the extra Python scoring
+work is not presented as engine serving speed.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.76\linewidth]{storage_policy_trace/storage_policy_trace.pdf}
+\caption{Equal-quota retention on a mixed task, document, and tool-result
+trace. Weighted policy protects active task state and shared documents while
+allowing reconstructable transient records to churn.}
+\label{fig:storage-policy-trace}
+\end{figure}
 
 The runtime now makes the cache hierarchy a shared semantic contract rather
 than an engine-specific accident. Each typed record has an authoritative
@@ -1937,6 +2002,12 @@ task/tool fixture, PRA-DELTA cuts wire bytes by
 \AgentTransportDeltaTextReduction{} relative to TEXT and sends
 \AgentTransportDeltaBodies{} rather than \AgentTransportFullBodies{} resource
 bodies, without changing selected identity or task metadata.
+At 50 turns, including reconnect and resynchronization, the reduction grows to
+\AgentScalingDeltaTextReduction{} versus TEXT and
+\AgentScalingDeltaFullReduction{} versus PRA-FULL. A ten-example MLX-LM
+QASPER cohort then preserves exact model input, output, and gold-answer
+log-probability across TEXT, PRA-FULL, and PRA-DELTA in \AgentModelParity{}
+cases. The protocol result is therefore behavioral as well as structural.
 Conventional sequential-prefix K/V and detached PRA resource/native state are
 now separate capability and lifecycle axes. The tested gateway preserves every
 eligible prior prefix in its five-turn fixture and sends typed message/resource
@@ -2186,6 +2257,18 @@ history/resource deltas, affinity, and invalidation\\
 \path{experiments/paper4_5_runtime/run_gateway_session_profile.py} &
 Five-turn prefix/session contract profile, two-cache architecture, traces,
 tables, and figures\\
+\path{experiments/paper4_5_runtime/run_agent_transport_scaling.py} &
+Deterministic 20/50-turn TEXT, PRA\_FULL, and PRA\_DELTA wire scaling with
+resynchronization and body-transmission accounting\\
+\path{experiments/paper4_5_runtime/run_agent_transport_model_backed.py} &
+Held-out model-backed G10 transport parity, task/tool visibility, gold-answer
+log-probability, TTFT, and execution-message checks\\
+\path{experiments/paper4_5_runtime/build_product_matrix_v1.py} &
+Strict engine--model--profile--hardware product matrix with explicit evidence
+tier, status, and missingness fields\\
+\path{experiments/paper4_5_runtime/run_storage_policy_trace.py} &
+Weighted-versus-LRU retention trace with task/shared reuse, reconstruction, and
+estimated context-cost accounting\\
 \path{docs/papers/shared/results/paper4_5_runtime/prefix_preservation_results.csv} &
 Canonical per-turn logical-prefix and transport measurements; physical hits
 remain unknown\\

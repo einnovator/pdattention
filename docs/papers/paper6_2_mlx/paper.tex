@@ -518,6 +518,18 @@ cold and concurrent penalty relative to the original 20-example-per-dataset
 run, but confirms that this unfused implementation remains slower than E0 in
 every regime.
 
+We isolate the principal decode allocation with a one-normalization segmented
+attention primitive. Rather than concatenate selected and local K/V, it forms
+their score blocks separately, shares one maximum and denominator, and sums
+the two value numerators. At local windows 2K, 8K, and 32K with 384 selected
+tokens, eight heads, and 128-dimensional heads, maximum fp16 error against
+concatenated attention is $1.22\times10^{-4}$, $6.10\times10^{-5}$, and
+$6.10\times10^{-5}$. The primitive avoids 9.5, 33.5, and 129.5 MiB of K/V
+concatenation per layer-call. Mean M5 time changes from 0.754 to 0.684 ms,
+2.515 to 1.597 ms, and 3.356 to 1.556 ms. These are isolated attention
+microbenchmarks, not revised end-to-end E2 ratios: installing the primitive in
+each model's GQA/MQA attention path remains an engine patch.
+
 \begin{figure}[!htbp]
 \centering
 \includegraphics[width=.92\linewidth]{../shared/results/expanded_mac_validation/matched_e0_e2/matched_e0_e2_regimes.pdf}
@@ -762,6 +774,27 @@ p95 over this mixture of small-source reconstruction: retaining all eight
 objects reaches 400--429 ms, while the tighter WARM budget reaches 347--398 ms.
 The product implication is cost-aware admission, not maximal persistence.
 
+The deterministic admission calculation makes that implication concrete.
+Across this pressure trace, SOURCE reconstruction averages 335.7 ms and WARM
+restore averages 346.0 ms; creating the WARM representation costs another
+396.8 ms on average. Thus
+\[
+ r(C_{\mathrm{source}}-C_{\mathrm{warm}})>C_{\mathrm{persist}}
+\]
+has no positive break-even reuse count on this cohort. The correct default for
+these small reconstructable QASPER records is SOURCE, not WARM. This is a
+hardware- and representation-specific decision, not a rejection of persistent
+K/V for expensive encoders or remote sources.
+
+The requested 2K, 8K, 32K, and full local-history frontier is not inferred
+from the 64/256-token cache-capacity control. Those cells require prompts that
+actually occupy each window. We therefore label the current joint frontier
+partial: resource budgets 2/8, concurrency 1--16, and consumer-layer profiles
+are measured, while long local-window occupancy remains a separate staged run.
+The last-half consumer profile preserves 5/5 controlled recoveries at half the
+active selected K/V bytes; last-quarter and last-four do not, so neither is a
+BALANCED or ECONOMY recommendation.
+
 \begin{table}[H]
 \centering
 \scriptsize
@@ -804,6 +837,8 @@ routed natural QA & controlled partial & 60/60 consumption parity; recall@4 0.34
 matched E0/E2 economics & controlled closed & 2,086/2,086 expanded outputs; all four E2/E0 cost ratios exceed one \\
 quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
 memory pressure & controlled closed & 3,145 requests across compact, long-session, and crossed tier/window pressure \\
+SOURCE/WARM admission & controlled closed & WARM is slower than SOURCE on the measured small-record cohort; no positive break-even reuse \\
+large local-window Pareto & open & 2K/8K/32K/full require occupied long histories and are not inferred from cache limits \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -867,7 +902,9 @@ frontier, learned routing, and broader quality cohorts remain necessary before
 production claims. Matched E2 execution removes roughly 91--93\% of visible
 tokens and preserves every output, but its unfused decode is slower. Last-half
 consumption and int8 residency are controlled
-candidates, not product profile defaults.
+candidates, not product profile defaults. A segmented one-softmax primitive
+removes the dominant K/V concatenation in isolation, but the model runner is
+not called fused until that primitive replaces the live attention path.
 
 \begin{thebibliography}{9}
 \bibitem{hannun2023mlx}
