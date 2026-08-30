@@ -81,6 +81,7 @@ class SGLangEngineAdapter(OpenAICompatibleEngineAdapter):
             gpu_kv=True,
             selected_interval_materialization=True,
             request_lifetime=True,
+            streaming=True,
             host_device_residency=True,
             scheduler_hints=True,
             tenant_isolation=True,
@@ -99,4 +100,3 @@ class SGLangEngineAdapter(OpenAICompatibleEngineAdapter):
     def close_session(self, session_id: str) -> None:
         if self.native_executor is not None:
             self.native_executor.close_session(session_id)
-

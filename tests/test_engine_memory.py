@@ -151,6 +151,7 @@ def test_native_executor_is_required_before_advertising_e2(adapter) -> None:
     assert capabilities.integration_level.value == "E2"
     assert capabilities.logical_refs
     assert capabilities.native_kv
+    assert capabilities.streaming
     result = adapter.generate(
         PRAWireRequest(model="model", messages=({"role": "user", "content": "hello"},))
     )
@@ -175,4 +176,3 @@ def test_vllm_http_request_serializes_cache_salt() -> None:
         assert adapter.generate(request).text == "ok"
     body = json.loads(urlopen.call_args.args[0].data)
     assert body["cache_salt"] == adapter._payload(request)["cache_salt"]
-
