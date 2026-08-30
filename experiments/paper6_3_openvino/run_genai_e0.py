@@ -3,14 +3,27 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import importlib.metadata
 import json
 import statistics
+import sys
 import time
 from pathlib import Path
 from typing import Any, Mapping
 
-from pra_hf.serving_benchmark import benchmark_messages, percentile
+
+def _load_harness():
+    """Load the stdlib benchmark helpers without importing the Torch SDK."""
+
+    source = Path(__file__).resolve().parents[2] / "src" / "pra_hf" / "serving_benchmark.py"
+    spec = importlib.util.spec_from_file_location("pra_serving_benchmark", source)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load serving benchmark from {source}.")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _metric(perf: object, method: str, *, statistic: str = "mean") -> float | None:
@@ -78,7 +91,12 @@ def _sample(pipe: object, genai: object, messages: list[dict[str, str]], max_tok
     }
 
 
-def _aggregate(condition: str, rows: list[Mapping[str, object]]) -> Mapping[str, object]:
+def _aggregate(
+    condition: str,
+    rows: list[Mapping[str, object]],
+    *,
+    percentile,
+) -> Mapping[str, object]:
     def values(name: str) -> list[float]:
         return [float(row[name]) for row in rows if row.get(name) is not None]
 
@@ -108,6 +126,8 @@ def _aggregate(condition: str, rows: list[Mapping[str, object]]) -> Mapping[str,
 def run(args: argparse.Namespace) -> Mapping[str, object]:
     import openvino_genai as genai
 
+    harness = _load_harness()
+
     scheduler = genai.SchedulerConfig()
     scheduler.enable_prefix_caching = args.prefix_caching
     scheduler.dynamic_split_fuse = args.dynamic_split_fuse
@@ -130,7 +150,7 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
     after_compile = _rss_bytes()
 
     samples: list[Mapping[str, object]] = []
-    conditions = benchmark_messages()
+    conditions = harness.benchmark_messages()
     for condition, messages in conditions.items():
         for repeat in range(args.repeats):
             values = _sample(pipe, genai, messages, args.max_tokens)
@@ -139,6 +159,7 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
         _aggregate(
             condition,
             [sample for sample in samples if sample["condition"] == condition],
+            percentile=harness.percentile,
         )
         for condition in conditions
     ]

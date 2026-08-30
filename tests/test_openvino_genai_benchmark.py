@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from experiments.paper6_3_openvino.run_genai_e0 import _aggregate, _metric
+from pra_hf.serving_benchmark import percentile
 
 
 class _Stats:
@@ -28,7 +29,7 @@ def test_openvino_aggregate_keeps_cold_warm_and_tails_distinct() -> None:
         }
         for value in (10.0, 5.0, 6.0, 7.0, 8.0)
     ]
-    result = _aggregate("pra_only", rows)
+    result = _aggregate("pra_only", rows, percentile=percentile)
     assert result["cold_ttft_ms"] == 10.0
     assert result["warm_ttft_ms_mean"] == 6.5
     assert result["quality_success_rate"] == 1.0
