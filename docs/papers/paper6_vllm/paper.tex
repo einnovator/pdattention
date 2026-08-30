@@ -581,6 +581,15 @@ implements deterministic prefetch, pinning, sharing, and four eviction
 policies, but its pressure sweep is controlled simulation rather than vLLM
 scheduler telemetry.
 
+A reproducible platform audit separates those boundaries from implementation
+status. vLLM-Metal 0.28.0 is available on the M5 and the native/APC path above
+is measured there. LMCache is not installed, the host has no CUDA device, and
+the Windows CUDA host is a compute-capability 5.0 GTX 950M. The production gate
+therefore remains
+\texttt{BLOCKED\_REQUIRES\_CUDA\_COMPUTE\_CAPABILITY\_8\_OR\_NEWER}; HBM,
+PCIe/NVLink, LMCache, tensor-parallel, and CUDA tail-latency columns remain null
+rather than being estimated from unified-memory Metal runs.
+
 \section{Falsification and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
 engine-aware implementation at equal quality across memory pressure,

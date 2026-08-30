@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_2_mlx_segmented_selected_attention_v1",
+  "evidence_tier": "METAL_KERNEL_MICROBENCHMARK",
+  "dtype": "float16",
+  "one_attention_normalization": true,
+  "model_runner_fused": false,
+  "rows": [
+    {
+      "local_tokens": 2048,
+      "memory_tokens": 384,
+      "heads": 8,
+      "head_dim": 128,
+      "max_absolute_error": 0.0001220703125,
+      "exact_within_fp16_tolerance": true,
+      "concatenated_mean_ms": 0.7535763434134424,
+      "concatenated_p95_ms": 0.8133749943226576,
+      "segmented_mean_ms": 0.6837012091030678,
+      "segmented_p95_ms": 0.7951250299811363,
+      "kv_concat_temporary_bytes_avoided": 9961472,
+      "segmented_score_temporary_bytes": 38912,
+      "integration_status": "PRIMITIVE_MEASURED_MODEL_ATTENTION_PATCH_PENDING"
+    },
+    {
+      "local_tokens": 8192,
+      "memory_tokens": 384,
+      "heads": 8,
+      "head_dim": 128,
+      "max_absolute_error": 6.103515625e-05,
+      "exact_within_fp16_tolerance": true,
+      "concatenated_mean_ms": 2.514986010889212,
+      "concatenated_p95_ms": 2.7332501485943794,
+      "segmented_mean_ms": 1.596555463038385,
+      "segmented_p95_ms": 1.8607499077916145,
+      "kv_concat_temporary_bytes_avoided": 35127296,
+      "segmented_score_temporary_bytes": 137216,
+      "integration_status": "PRIMITIVE_MEASURED_MODEL_ATTENTION_PATCH_PENDING"
+    },
+    {
+      "local_tokens": 32768,
+      "memory_tokens": 384,
+      "heads": 8,
+      "head_dim": 128,
+      "max_absolute_error": 6.103515625e-05,
+      "exact_within_fp16_tolerance": true,
+      "concatenated_mean_ms": 3.355805471073836,
+      "concatenated_p95_ms": 3.600750118494034,
+      "segmented_mean_ms": 1.5563263247410457,
+      "segmented_p95_ms": 1.9877920858561993,
+      "kv_concat_temporary_bytes_avoided": 135790592,
+      "segmented_score_temporary_bytes": 530432,
+      "integration_status": "PRIMITIVE_MEASURED_MODEL_ATTENTION_PATCH_PENDING"
+    }
+  ]
+}
