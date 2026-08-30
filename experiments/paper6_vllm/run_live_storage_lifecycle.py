@@ -184,6 +184,7 @@ def main() -> None:
                         "cold_int8_f1_delta": cold_f1 - hot_f1,
                         "outputs": outputs,
                         "completion_latency_ms": latencies,
+                        "lifecycle_request_latency_ms": dict(latencies),
                     }
                 )
                 manager.demote_hot(key, payload=payload)

@@ -409,7 +409,9 @@ class SGLangMLXNativeBridge:
             "native_kv": True,
             "radix_prefix_identity_separate": True,
             "radix_prefix_and_native_same_request": True,
-            "hicache_external_namespace": self.hicache is not None,
+            "hicache_external_namespace": (
+                self.hicache is not None or self.storage is not None
+            ),
             "shared_storage_lifecycle": self.storage is not None,
             "hicache_metrics": (
                 None if self.hicache is None else self.hicache.metrics().to_dict()

@@ -118,7 +118,9 @@ def main() -> None:
                 outputs: dict[str, str] = {}
                 output_tokens: dict[str, list[int]] = {}
                 latencies: dict[str, float] = {}
+                lifecycle_latencies: dict[str, float] = {}
                 for tier in ("hot", "warm", "cold"):
+                    lifecycle_started = time.perf_counter()
                     if tier != "hot":
                         manager.demote_hot(key, payload=payload)
                     if tier == "cold":
@@ -138,6 +140,9 @@ def main() -> None:
                     outputs[tier] = str(generated["output"])
                     output_tokens[tier] = list(map(int, generated["output_token_ids"]))
                     latencies[tier] = float(generated["completion_latency_ms"])
+                    lifecycle_latencies[tier] = (
+                        time.perf_counter() - lifecycle_started
+                    ) * 1000.0
                 hot_f1 = _metrics(outputs["hot"], example.answer)[1]
                 cold_f1 = _metrics(outputs["cold"], example.answer)[1]
                 rows.append(
@@ -159,6 +164,7 @@ def main() -> None:
                         "cold_int8_f1_delta": cold_f1 - hot_f1,
                         "outputs": outputs,
                         "completion_latency_ms": latencies,
+                        "lifecycle_request_latency_ms": lifecycle_latencies,
                     }
                 )
                 manager.demote_hot(key, payload=payload)

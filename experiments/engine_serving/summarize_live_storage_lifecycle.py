@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 def _engine_row(payload: dict[str, object]) -> dict[str, object]:
     rows = list(payload["rows"])
     summary = dict(payload["summary"])
-    hot = [float(row["completion_latency_ms"]["hot"]) for row in rows]
-    warm = [float(row["completion_latency_ms"]["warm"]) for row in rows]
-    cold = [float(row["completion_latency_ms"]["cold"]) for row in rows]
+    hot = [float(row["lifecycle_request_latency_ms"]["hot"]) for row in rows]
+    warm = [float(row["lifecycle_request_latency_ms"]["warm"]) for row in rows]
+    cold = [float(row["lifecycle_request_latency_ms"]["cold"]) for row in rows]
     return {
         "engine": payload["engine"],
         "model_id": payload["model_id"],
@@ -29,9 +29,9 @@ def _engine_row(payload: dict[str, object]) -> dict[str, object]:
             "mean_hot_cold_common_prefix_tokens"
         ],
         "cold_int8_f1_delta": summary["mean_cold_int8_f1_delta"],
-        "hot_completion_median_ms": statistics.median(hot),
-        "warm_completion_median_ms": statistics.median(warm),
-        "cold_completion_median_ms": statistics.median(cold),
+        "hot_lifecycle_median_ms": statistics.median(hot),
+        "warm_lifecycle_median_ms": statistics.median(warm),
+        "cold_lifecycle_median_ms": statistics.median(cold),
         "warm_over_hot_latency": statistics.median(warm)
         / max(statistics.median(hot), 1e-9),
         "cold_over_hot_latency": statistics.median(cold)
