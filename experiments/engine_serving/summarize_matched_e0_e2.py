@@ -15,6 +15,25 @@ from statistics import mean
 CONDITIONS = ("e0_selected_text", "e2_native_kv")
 
 
+def _wilson_interval(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
+    """Return a Wilson score interval without assuming perfect rates are certain."""
+
+    if trials <= 0:
+        raise ValueError("Wilson intervals require at least one trial.")
+    proportion = successes / trials
+    denominator = 1.0 + z**2 / trials
+    center = (proportion + z**2 / (2 * trials)) / denominator
+    radius = (
+        z
+        * math.sqrt(
+            proportion * (1.0 - proportion) / trials
+            + z**2 / (4 * trials**2)
+        )
+        / denominator
+    )
+    return center - radius, center + radius
+
+
 def _percentile(values: list[float], quantile: float) -> float | None:
     if not values:
         return None
@@ -217,6 +236,7 @@ def _parity(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             pair[CONDITIONS[0]].get("output") == pair[CONDITIONS[1]].get("output")
             for pair in complete
         )
+        parity_low, parity_high = _wilson_interval(exact_outputs, len(complete))
         result.append(
             {
                 "engine": engine,
@@ -224,6 +244,8 @@ def _parity(rows: list[dict[str, object]]) -> list[dict[str, object]]:
                 "regime": regime,
                 "paired_requests": len(complete),
                 "exact_output_parity": exact_outputs / len(complete),
+                "exact_output_parity_wilson95_low": parity_low,
+                "exact_output_parity_wilson95_high": parity_high,
                 "mean_f1_delta_e2_minus_e0": mean(
                     float(pair[CONDITIONS[1]]["token_f1"])
                     - float(pair[CONDITIONS[0]]["token_f1"])
