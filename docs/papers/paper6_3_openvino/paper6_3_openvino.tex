@@ -1,89 +1,242 @@
 \documentclass[10pt]{article}
 \usepackage[margin=1in]{geometry}
-\usepackage{booktabs,graphicx,amsmath,hyperref}
+\usepackage{booktabs,graphicx,amsmath,hyperref,float}
 \title{Progressive Retrieval Attention on OpenVINO GenAI:\\
-Semantic Non-Prefix Memory with Continuous Batching and Prefix Caching}
+Semantic Resource Identity, Continuous-Batching Evidence, and the Native K/V Boundary}
 \author{Jorge Sim\~ao}
-\date{\today}
-\begin{document}\maketitle
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
 \begin{abstract}
-Progressive Retrieval Attention (PRA) separates logical semantic resources from the active sequential context and materializes only selected detail into model attention. Prior work established a shared PRA runtime and native integrations for several inference stacks. This paper studies Intel OpenVINO GenAI and OpenVINO Model Server as a distinct execution target. OpenVINO already exposes bounded KV-block scheduling, prefix caching, eviction controls, continuous batching, and CPU/GPU/NPU execution. We ask whether query-addressed non-prefix PRA memory can coexist with these mechanisms without conflating semantic resource identity with sequential prefix identity. We define an engine adapter that reuses the shared PRA record, policy, storage, and wire contracts while delegating physical KV execution to OpenVINO. Experiments are designed to establish geometry-matched semantic parity, continuous-batching behavior, HOT/WARM/SOURCE economics, and device-specific latency/memory tradeoffs.
+OpenVINO GenAI provides continuous batching, bounded K/V scheduling, prefix
+caching, eviction controls, and execution across Intel CPU, GPU, and NPU
+devices. Progressive Retrieval Attention (PRA) adds semantic, query-addressed
+resources that must remain distinct from sequential prefixes. We implement an
+OpenVINO provider, an E0 selected-text adapter, and tested contracts for
+topology-bound native K/V handles, authorization, request pinning,
+exactly-once attachment, cleanup, and prefix-pool exclusion. A live audit of
+OpenVINO 2026.3.1 and OpenVINO GenAI 2026.3.1.0 confirms all required
+continuous-batching controls, but finds no public operation for attaching
+arbitrary selected non-prefix K/V. We therefore report native E2 as blocked,
+not as an implicit consequence of prefix caching. On Qwen2-0.5B-Instruct INT4,
+selected-text and full-context E0 recover the controlled answer in every
+evidence-bearing request on an Intel i7-1355U CPU and Iris Xe GPU. Selected
+text uses 63 input tokens instead of 1,573. On GPU it reduces cold TTFT from
+1,129.6 to 102.9 ms. Under explicitly warmed continuous batching at eight
+shared requests, it reaches 8.48 requests/s rather than 7.39 and reduces TTFT
+p99 from 297.7 to 148.9 ms. The result establishes a reproducible transport
+baseline and a precise extension boundary; it does not establish native
+OpenVINO PRA parity or memory savings.
 \end{abstract}
 
 \section{Introduction}
-Modern inference engines optimize the sequential KV cache, but agent and retrieval workloads repeatedly need non-prefix information drawn from documents, tool outputs, tasks, and structured resources. PRA treats these as independently addressable semantic resources. The central OpenVINO question is not whether another cache can be added, but whether semantic identity can remain separate from OpenVINO's existing prefix-cache and continuous-batching identities.
-
-\paragraph{Contributions.}
-We target: (1) a capability mapping from the shared PRA runtime to OpenVINO GenAI; (2) a native selected-KV path or a precise characterization of the minimal missing extension seam; (3) matched E0 selected-text versus E2 native-memory evaluation; (4) integration with PRA HOT/WARM/COLD/SOURCE lifecycle; and (5) CPU/GPU/NPU serving measurements where supported.
-
-\section{Background}
-\subsection{PRA runtime contract}
-PRA maintains typed logical records, query-time routing and selection, materialization profiles, authorization, task/session metadata, and derived native-memory lifecycle. The engine receives selected model-addressable regions and owns their physical execution.
-
-\subsection{OpenVINO GenAI}
-OpenVINO GenAI exposes continuous-batching scheduler controls including KV-block/cache budgets, sequence/token batching limits, prefix caching, eviction, and split/fuse behavior. These mechanisms manage physical sequential execution; PRA adds a distinct semantic-resource namespace.
-
-\section{Design}
-\subsection{Identity separation}
-We require
+An inference engine's prefix cache identifies previously computed sequential
+token histories. PRA identifies immutable logical resources selected by a
+query. These identities have different lifetimes and authorization rules:
 \[
-I_{\rm prefix}\neq I_{\rm PRA}\neq I_{\rm physical}.
+I_{\mathrm{prefix}} \ne I_{\mathrm{PRA}} \ne I_{\mathrm{physical}}.
 \]
-An identical visible query may legally use different PRA resources and must not inherit incompatible cached state.
+Identical visible prompts may select different protected resources, while the
+same resource may be shared safely by many sessions. A correct OpenVINO
+integration must preserve that distinction while allowing OpenVINO to keep
+control of compiled execution, K/V blocks, eviction, and batching.
 
-\subsection{Engine adapter}
-The proposed \texttt{OpenVINONativeExecutor} implements physical HOT materialization, request pinning, attachment, cleanup, and telemetry. The shared \texttt{PRAStorageManager} retains WARM/COLD/SOURCE policy.
+This study makes three contributions. It implements the PRA-side OpenVINO
+contracts, audits the installed GenAI scheduler and pipeline interfaces, and
+measures a common E0 workload across CPU, GPU, prefix reuse, and continuous
+batching. The audit also identifies the smallest missing native mechanism:
+request attention metadata cannot currently receive an arbitrary selected
+non-prefix K/V set through the public Python API.
 
-\subsection{Position and attention semantics}
-Selected K/V must preserve source geometry and use the same query-relative position policy as the reference runtime. Native consumption must perform one joint attention normalization over local and selected memory.
+\section{Claim Boundary}
+E0 renders selected source text into the visible prompt. E1 may retain derived
+engine state without exposing arbitrary selected K/V to attention. E2 consumes
+that K/V natively, preserving source geometry and combining local and memory
+scores in one softmax. All model measurements in this paper are E0. The native
+classes described below are executable lifecycle contracts, not evidence that
+OpenVINO already performs E2.
+
+\section{OpenVINO Mapping}
+\subsection{Responsibility split}
+PRA owns typed records, selection, authorization, task/session policy, semantic
+retention, and a four-tier storage lifecycle. OpenVINO owns compilation,
+device execution, sequential K/V blocks, prefix reuse, batching, and physical
+eviction. Physical tensor handles are derived state bound to a specific model,
+revision, device, precision, layer count, K/V-head count, and head dimension.
+
+\subsection{Implemented code}
+\texttt{src/pra\_openvino/adapter.py} provides
+\texttt{OpenVINOEngineAdapter}. Its HTTP/OVMS form is explicitly E0. It reports
+E2 only when an application supplies an \texttt{OpenVINONativeExecutor};
+package installation or prefix-cache availability is never enough.
+
+\texttt{src/pra\_openvino/native.py} provides a topology fingerprint,
+immutable K/V handles, a physical-store protocol, an in-memory deterministic
+store, and \texttt{OpenVINONativeAttachmentManager}. The manager validates
+topology before registration, authorizes a complete routed set before
+scheduler admission, pins it for the request lifetime, returns it exactly
+once, and unpins it during cleanup. A shared isolation guard rejects any PRA
+logical key offered to the ordinary sequential/prefix pool. Focused tests cover
+topology mismatch, cross-tenant access, duplicate attachment, cleanup, and
+capability honesty.
+
+\subsection{Live API boundary}
+\texttt{SchedulerConfig} exposes cache size or K/V-block count, sequence and
+batched-token limits, prefix caching, dynamic split/fuse, and cache eviction.
+Supplying this configuration activates continuous batching. The public
+\texttt{LLMPipeline} surface exposes generation, tokenizer/config access, and
+chat state. It does not expose selected external K/V, non-prefix tensor
+attachment, or an attention-metadata callback. Prefix caching therefore
+accelerates repeated visible histories but does not implement PRA E2.
 
 \section{Experimental Method}
-\subsection{Baselines}
-We compare no-PRA, prefix-only, selected-text, prefix+selected-text, full-context, and native-PRA conditions with frozen selection.
+\subsection{Environment}
+The remote Windows host runs Python 3.10.0, OpenVINO 2026.3.1, OpenVINO GenAI
+2026.3.1.0, and OpenVINO Tokenizers 2026.3.1.0. Available devices are a 13th
+Gen Intel Core i7-1355U CPU and Intel Iris Xe integrated GPU; no NPU is
+available. The model is OpenVINO Qwen2-0.5B-Instruct INT4. Scheduler settings
+use a 1 GiB cache, eight sequences, 2,048 batched tokens, prefix caching, and
+dynamic split/fuse. Greedy decoding is capped at 24 new tokens.
 
-\subsection{Parity ladder}
-We test ordinary full-prefix execution, geometry-matched cached-source execution, full native selected memory, sparse/multi-record memory, and cached decode. Metrics include exact output, first-token/logit agreement where observable, F1, and gold-answer log probability.
+\subsection{Conditions}
+The target resource contains \texttt{PRA\_EVIDENCE\_4821}; distractors contain
+different codes. The five one-shot conditions are no evidence, stable prefix
+only, selected text, prefix plus selected text, and full retained context. The
+same evidence is used in selected and full conditions. Each condition is run
+five times independently on CPU and GPU.
 
-\subsection{Serving}
-We sweep concurrency, cache budget, prefix caching, PRA HOT budget, and shared versus independent resources. We report TTFT, ITL/TPOT, completion latency, throughput, queue delay, cache occupancy, eviction/reload, and physical memory.
-
-\subsection{Devices}
-Where supported we compare Intel CPU, GPU, and NPU. Compilation time is reported separately from steady-state serving.
+The direct \texttt{ContinuousBatchingPipeline} experiment uses selected text
+and full context under shared-resource and independent-resource workloads.
+Concurrency is 1, 2, 4, and 8 with five measured waves. Every distinct resource
+is primed outside the timed interval. Reported p95/p99 values are smoke
+descriptors over small cohorts, not production service-level estimates.
 
 \section{Results}
-\begin{table}[h]\centering
-\caption{OpenVINO PRA capability and evidence status.}
-\begin{tabular}{lll}\toprule
-Capability & Status & Evidence\\\midrule
-E0 selected text & TBD & TBD\\
-Prefix-cache coexistence & TBD & TBD\\
-Native E2 selected K/V & TBD & TBD\\
-Geometry parity & TBD & TBD\\
-Continuous batching & TBD & TBD\\
-WARM restart & TBD & TBD\\
-\bottomrule\end{tabular}
+\subsection{Capability status}
+\begin{table}[H]
+\centering
+\caption{OpenVINO integration status after live package and hardware audit.}
+\begin{tabular}{lll}
+\toprule
+Capability & Status & Evidence \\
+\midrule
+Selected-text E0 & Ready & CPU/GPU live generation \\
+Prefix cache controls & Ready & live SchedulerConfig audit \\
+Continuous batching & Ready & direct batched generation \\
+PRA lifecycle/isolation & Contract ready & focused tests \\
+Native selected K/V E2 & Blocked & no public attachment operation \\
+OVMS E0 & Adapter ready & endpoint not installed on host \\
+NPU comparison & Not run & no NPU device available \\
+\bottomrule
+\end{tabular}
 \end{table}
 
-\begin{table}[h]\centering
-\caption{Matched E0/E2 serving results.}
-\begin{tabular}{lrrrrr}\toprule
-Regime & Exact & Visible $\downarrow$ & TTFT & ITL & Memory\\\midrule
-Cold & TBD & TBD & TBD & TBD & TBD\\
-Warm & TBD & TBD & TBD & TBD & TBD\\
-Shared concurrent & TBD & TBD & TBD & TBD & TBD\\
-\bottomrule\end{tabular}
+\subsection{CPU and GPU one-shot behavior}
+\begin{table}[ht]
+\centering
+\small
+\caption{Evidence-bearing E0 conditions. Visible is mean input tokens; times
+are milliseconds. Success is controlled answer recovery.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_e0_device_table.tex}}
 \end{table}
 
-\section{Related Work}
-We compare PRA with OpenVINO prefix caching and cache eviction, conventional RAG/context compression, and KV-cache optimization. The distinction is that PRA resources are query-addressed non-prefix semantic objects rather than merely retained sequential prefixes.
+Controls recover the answer in 0/10 requests across CPU and GPU; every
+evidence-bearing condition succeeds in 30/30. Selected text uses 63 tokens,
+96.0\% fewer than the 1,573-token full context. On CPU, cold TTFT falls from
+7,600.3 ms for full context to 549.2 ms for selected text. On GPU it falls from
+1,129.6 to 102.9 ms. Prefix caching changes the comparison: warm full-context
+TTFT is 180.6 ms on CPU and 98.2 ms on GPU, versus 336.8 and 99.1 ms for
+selected text. Thus selected text strongly reduces cold ingestion, while a
+fully reusable prefix can remove most repeated-prefill cost in this fixed
+one-resource smoke.
+
+Pipeline construction is reported separately: 1.58 s for the CPU one-shot
+process and 39.40 s for the first GPU one-shot process. The later direct
+continuous-batching GPU process constructs in 5.05 s after system/model caches
+have been populated; these are cold-process observations, not comparable
+steady-state request latencies.
+
+\subsection{Continuous batching}
+\begin{table}[ht]
+\centering
+\small
+\caption{Explicitly primed GPU continuous-batching endpoints. Every row has
+controlled answer success 1.00. RSS is process resident memory after the
+group.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_batching_table.tex}}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_3_openvino/continuous_batching_gpu.png}
+\caption{Warm OpenVINO GenAI E0 throughput and TTFT tail under direct continuous
+batching. Selected denotes rendered selected text, not native E2 K/V.}
+\label{fig:openvino-batching}
+\end{figure}
+
+With one shared resource and concurrency eight, selected text reaches 8.48
+requests/s compared with 7.39 for full context, while TTFT p99 falls from
+297.7 to 148.9 ms. For independent resources, selected text still lowers TTFT
+p99 (262.0 versus 319.8 ms) but reaches only 5.88 requests/s versus 7.07. This
+small reversal prevents a blanket throughput claim. It may reflect output
+length, scheduler packing, and churn in the explicitly primed independent set;
+larger cohorts and matched generated-token work are required.
+
+RSS spans roughly 1.95--2.19 GiB across endpoint rows and is not monotonic with
+transport or concurrency. The current experiment therefore supports a token
+and latency claim, not an engine-memory saving claim.
+
+\section{Interpretation}
+OpenVINO prefix caching and PRA selection address different reuse axes. When
+the same full context is repeatedly visible, prefix caching can make its warm
+TTFT competitive with selected text. When requests arrive concurrently,
+shorter selected inputs reduce scheduler work and improve the shared-resource
+frontier in this smoke. Native PRA would target a harder regime: encode a
+resource once, select different non-prefix intervals for many queries, and
+avoid making those source tokens visible. That regime cannot be measured until
+the attention attachment seam exists.
+
+\section{Required Native Extension}
+A minimal extension should accept an authorized set of topology-matched K/V
+handles plus source positions at request admission. The scheduler must pin the
+set, keep it outside ordinary prefix identity, expose it once to attention, and
+release it on completion or cancellation. Attention must normalize local and
+memory scores jointly. A geometry ladder should then compare ordinary prefix,
+geometry-matched cached source, full native source, sparse multi-record source,
+and cached decode before any economics claim.
 
 \section{Limitations}
-The initial study is bounded by available Intel devices, model support, and public OpenVINO extension seams. A missing native hook is reported as an integration boundary rather than hidden behind a text fallback.
+The controlled task verifies evidence transport, not natural QA. Only one
+small INT4 model, one CPU, one integrated GPU, and five waves are measured.
+There is no OVMS process, NPU, native K/V parity, device-memory telemetry,
+long-session pressure, eviction sweep, or natural QASPER/Hotpot/2Wiki cohort.
+All serving results are E0.
 
 \section{Conclusion}
-This paper tests whether OpenVINO's physical KV scheduler can remain responsible for efficient Intel execution while PRA supplies semantic resource identity and lifecycle. The decisive result is the quality/memory/latency frontier under geometry-matched E0/E2 execution and continuous batching.
+PRA can coexist with OpenVINO's public serving abstractions at E0 while
+preserving semantic identity and explicit capability reporting. Selected text
+substantially reduces cold ingestion and improves the shared-resource
+continuous-batching frontier on the tested GPU. OpenVINO GenAI exposes the
+physical scheduling controls needed around a future integration but not the
+public arbitrary non-prefix K/V attachment needed for E2. That boundary is now
+implemented as a safe contract and measured as an open gate.
 
 \section*{Reproducibility}
-All environment versions, hardware, model revisions, scheduler configuration, PRA profile, manifests, raw metrics, and generated tables/plots must be committed or registered as reproducible artifacts.
+Raw JSON, generated tables and plots, environment audit, and runners are under
+\path{docs/papers/shared/results/paper6_3_openvino} and
+\path{experiments/paper6_3_openvino}.
+
+\begin{thebibliography}{9}
+\bibitem{ovgenai}
+Intel. \emph{OpenVINO GenAI LLMPipeline and SchedulerConfig API Reference}.
+\url{https://docs.openvino.ai/2026/api/genai_api/}
+\bibitem{ovrepo}
+OpenVINO Toolkit. \emph{OpenVINO GenAI}.
+\url{https://github.com/openvinotoolkit/openvino.genai}
+\end{thebibliography}
 
 \end{document}
