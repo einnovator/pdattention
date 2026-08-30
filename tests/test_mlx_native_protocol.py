@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pra_mlx.native import (
+    MLXNativeColdCodec,
     MLXNativeFingerprint,
     MLXNativeLayerKV,
     MLXNativeMemory,
@@ -10,6 +11,8 @@ from pra_mlx.native import (
     MLXQuantizedLayerKV,
     MLXQuantizedMemory,
     combine_native_memories,
+    deserialize_native_memory,
+    serialize_native_memory,
 )
 
 
@@ -75,3 +78,21 @@ def test_native_fingerprint_is_explicit_and_stable() -> None:
         resource_version="resource-v1",
     )
     assert fingerprint.to_dict()["model_revision"] == "revision"
+
+
+def test_native_memory_wire_format_round_trips_and_quantizes() -> None:
+    import numpy as np
+
+    keys = np.linspace(-2, 2, 64, dtype=np.float32).reshape(1, 2, 4, 8)
+    values = keys * 0.5
+    memory = MLXNativeMemory((MLXNativeLayerKV(keys, values),), source_tokens=4)
+
+    lossless = serialize_native_memory(memory)
+    restored = deserialize_native_memory(lossless)
+    assert np.array_equal(restored.layers[0].keys, keys)
+
+    codec = MLXNativeColdCodec()
+    quantized, metadata = codec.encode(lossless, "int8")
+    decoded = deserialize_native_memory(codec.decode(quantized, metadata))
+    assert len(quantized) < len(lossless)
+    assert np.max(np.abs(decoded.layers[0].keys - keys)) < 0.02

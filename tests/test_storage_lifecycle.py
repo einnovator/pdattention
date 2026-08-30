@@ -9,8 +9,10 @@ from click.testing import CliRunner
 from pra_hf.cli import cli
 from pra_hf.storage_lifecycle import (
     FileKVStore,
+    Float32Int8ColdCodec,
     InMemoryHotBridge,
     MemoryKVStore,
+    MemoryMappedKVStore,
     PRARetentionClass,
     PRAStorageEntry,
     PRAStorageEvictionPolicy,
@@ -198,3 +200,92 @@ def test_engine_hot_realizations_share_identical_semantic_policy(tmp_path, engin
 
     assert manager.entries[f"{engine}:block"].current_tier == PRAStorageTier.WARM
     assert manager.inspect()["objects"] == {"hot": 0, "warm": 1, "cold": 0, "source": 0}
+
+
+def test_restart_rehydrates_warm_entry_without_process_local_loader(tmp_path):
+    policy = _policy(tmp_path)
+    state_path = tmp_path / "lifecycle.json"
+    first = PRAStorageManager(policy, state_path=state_path)
+    first.register(_entry("restart", task_status=None), b"durable-native", fingerprint="fp")
+    first.demote_hot("restart")
+    first.close()
+
+    recovered = PRAStorageManager(policy)
+
+    assert recovered.entries["restart"].current_tier == PRAStorageTier.WARM
+    assert recovered.promote("restart") == b"durable-native"
+
+
+def test_source_resolver_reconstructs_source_only_entry_after_restart(tmp_path):
+    policy = _policy(tmp_path, warm=PRAStorageTierConfig(enabled=False), cold=PRAStorageTierConfig(enabled=False))
+    state_path = tmp_path / "lifecycle.json"
+    first = PRAStorageManager(policy, state_path=state_path)
+    first.register_source(_entry("source-only"), lambda: b"original")
+    first.close()
+
+    recovered = PRAStorageManager(
+        policy,
+        source_resolver=lambda entry: f"rebuilt:{entry.logical_key}".encode(),
+        state_path=state_path,
+    )
+
+    assert recovered.promote("source-only") == b"rebuilt:source-only"
+
+
+def test_mmap_store_reads_named_segments_without_loading_neighbor(tmp_path):
+    store = MemoryMappedKVStore(tmp_path / "segments")
+    store.put_segments(
+        "memory",
+        {"layer-0-k": b"keys", "layer-0-v": b"values"},
+        {"fingerprint": "model-v1"},
+    )
+
+    assert store.get_segments(
+        "memory", ("layer-0-v",), {"fingerprint": "model-v1"}
+    ) == {"layer-0-v": b"values"}
+
+
+def test_cold_codec_quantizes_and_restores_float_payload(tmp_path):
+    import numpy as np
+
+    policy = _policy(
+        tmp_path,
+        warm=PRAStorageTierConfig(path=str(tmp_path / "warm"), max_bytes=4096, cold_grace_seconds=0),
+        cold=PRAStorageTierConfig(path=str(tmp_path / "cold"), max_bytes=4096, kv_quantization="int8"),
+    )
+    values = np.linspace(-1, 1, 128, dtype=np.float32)
+    manager = PRAStorageManager(policy, cold_codec=Float32Int8ColdCodec())
+    manager.register(_entry("quantized", task_status=None), values.tobytes(), now_ns=0)
+    manager.demote_hot("quantized", now_ns=1)
+    manager.run_maintenance(now_ns=8 * 86400 * 1_000_000_000)
+
+    assert manager.entries["quantized"].current_tier == PRAStorageTier.COLD
+    assert manager.entries["quantized"].cold_bytes < values.nbytes
+    restored = np.frombuffer(manager.promote("quantized"), dtype=np.float32)
+    assert np.max(np.abs(restored - values)) < 0.01
+
+
+def test_per_tenant_quota_cannot_be_consumed_by_another_tenant(tmp_path):
+    policy = _policy(
+        tmp_path,
+        warm=PRAStorageTierConfig(
+            max_bytes=100,
+            per_tenant_max_bytes=12,
+            cold_grace_seconds="1d",
+        ),
+        cold=PRAStorageTierConfig(enabled=False),
+    )
+    manager = PRAStorageManager(policy, warm=MemoryKVStore())
+    manager.register(_entry("a1", tenant_id="tenant-a", task_status=None), b"a" * 8)
+    manager.register(_entry("a2", "terminal_output", tenant_id="tenant-a", task_status=None), b"b" * 8)
+    manager.register(_entry("b1", tenant_id="tenant-b", task_status=None), b"c" * 8)
+    for key in ("a1", "a2", "b1"):
+        manager.demote_hot(key)
+    manager.run_maintenance()
+
+    assert sum(
+        entry.warm_bytes
+        for entry in manager.entries.values()
+        if entry.tenant_id == "tenant-a"
+    ) <= 12
+    assert manager.entries["b1"].current_tier == PRAStorageTier.WARM

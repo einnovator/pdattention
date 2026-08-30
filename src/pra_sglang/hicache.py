@@ -421,3 +421,47 @@ class SGLangPRAHiCache:
 
         self._refresh_bytes()
         return PRAHiCacheMetrics(**self._metrics.to_dict())
+
+
+class SGLangHiCacheHotBridge:
+    """Map shared semantic HOT state to attention-ready HiCache L1 objects."""
+
+    def __init__(self, cache: SGLangPRAHiCache) -> None:
+        self.cache = cache
+        self._sizes: dict[str, int] = {}
+        self._pins: dict[str, set[str]] = {}
+
+    def load_hot(self, logical_key: str, payload: bytes) -> int:
+        from pra_mlx.native import deserialize_native_memory
+
+        memory = deserialize_native_memory(payload)
+        self.cache.put(logical_key, memory, tier=PRAHiCacheTier.L1)
+        self._sizes[logical_key] = memory.nbytes
+        return memory.nbytes
+
+    def load_hot_value(self, logical_key: str, value: object, byte_count: int) -> int:
+        if not isinstance(value, MLXNativeMemory):
+            raise TypeError("SGLang HOT storage requires MLXNativeMemory.")
+        self.cache.put(logical_key, value, tier=PRAHiCacheTier.L1)
+        self._sizes[logical_key] = int(byte_count)
+        return self._sizes[logical_key]
+
+    def get_hot(self, logical_key: str) -> object:
+        return self.cache.get(logical_key, target=PRAHiCacheTier.L1)
+
+    def release_hot(self, logical_key: str) -> None:
+        if self._pins.get(logical_key):
+            raise RuntimeError("Cannot release request-pinned SGLang PRA memory.")
+        self.cache.remove(logical_key)
+        self._sizes.pop(logical_key, None)
+
+    def pin_hot(self, logical_key: str, request_id: str) -> None:
+        if self.cache.placement(logical_key) is not PRAHiCacheTier.L1:
+            raise KeyError(logical_key)
+        self._pins.setdefault(logical_key, set()).add(request_id)
+
+    def unpin_hot(self, logical_key: str, request_id: str) -> None:
+        self._pins.get(logical_key, set()).discard(request_id)
+
+    def hot_bytes(self, logical_key: str) -> int:
+        return self._sizes.get(logical_key, 0)

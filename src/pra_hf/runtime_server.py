@@ -6,8 +6,9 @@ import argparse
 
 from .deployment import HuggingFaceEngineAdapter
 from .gateway import PRAGateway, serve_gateway
+from .hf_storage import HFReferenceHotBridge
 from .model import PRAForCausalLM
-from .storage_lifecycle import PRAStoragePolicy
+from .storage_lifecycle import PRAStorageManager, PRAStoragePolicy
 
 
 def main() -> None:
@@ -21,9 +22,17 @@ def main() -> None:
     args = parser.parse_args()
     storage = PRAStoragePolicy.from_yaml(args.storage_config) if args.storage_config else PRAStoragePolicy.named(args.storage)
     model = PRAForCausalLM.from_pretrained(args.model, revision=args.revision)
-    gateway = PRAGateway(HuggingFaceEngineAdapter(model), mode="G00")
-    gateway.storage_policy = storage
-    serve_gateway(gateway, host=args.host, port=args.port)
+    storage_manager = PRAStorageManager(
+        storage, hot=HFReferenceHotBridge(model)
+    )
+    storage_manager.start_maintenance()
+    gateway = PRAGateway(
+        HuggingFaceEngineAdapter(model, storage_manager=storage_manager), mode="G00"
+    )
+    try:
+        serve_gateway(gateway, host=args.host, port=args.port)
+    finally:
+        storage_manager.close()
 
 
 if __name__ == "__main__":

@@ -189,8 +189,10 @@ from .task_planning import (
 )
 from .storage_lifecycle import (
     FileKVStore,
+    Float32Int8ColdCodec,
     InMemoryHotBridge,
     MemoryKVStore,
+    MemoryMappedKVStore,
     PRARetentionClass,
     PRAStorageEntry,
     PRAStorageEvictionPolicy,

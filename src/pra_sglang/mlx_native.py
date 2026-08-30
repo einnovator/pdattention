@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
+from pra_hf.storage_lifecycle import PRAStorageManager
 from pra_mlx.native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
@@ -196,6 +197,7 @@ class SGLangNativeRequest:
 
     memory: MLXNativeMemory
     logical_keys: tuple[str, ...] = ()
+    storage_pinned: bool = False
 
 
 class SGLangMLXNativeBridge:
@@ -209,10 +211,15 @@ class SGLangMLXNativeBridge:
     integration_level = "E1"
 
     def __init__(
-        self, runner: object, *, hicache: SGLangPRAHiCache | None = None
+        self,
+        runner: object,
+        *,
+        hicache: SGLangPRAHiCache | None = None,
+        storage_manager: PRAStorageManager | None = None,
     ) -> None:
         self.runner = runner
         self.hicache = hicache
+        self.storage = storage_manager
         if getattr(runner._cache_layout, "has_auxiliary_state", False):
             raise NotImplementedError(
                 "SGLang PRA does not yet wrap hybrid auxiliary-state caches."
@@ -242,25 +249,49 @@ class SGLangMLXNativeBridge:
         *,
         logical_keys: tuple[str, ...] = (),
     ) -> None:
+        identifier = str(req_id)
+        storage_pinned = False
         if memory is None:
-            if self.hicache is None or not logical_keys:
+            if not logical_keys:
                 raise ValueError(
-                    "SGLang PRA registration requires memory or HiCache logical keys."
+                    "SGLang PRA registration requires memory or lifecycle logical keys."
                 )
-            memory = combine_native_memories(
-                tuple(self.hicache.get(key) for key in logical_keys)
-            )
+            if self.storage is not None:
+                promoted = []
+                try:
+                    for key in logical_keys:
+                        promoted.append(
+                            self.storage.promote(key, request_id=identifier)
+                        )
+                except Exception:
+                    for key in logical_keys[: len(promoted)]:
+                        self.storage.unpin(key, identifier)
+                    raise
+                memory = combine_native_memories(tuple(promoted))
+                storage_pinned = True
+            elif self.hicache is not None:
+                memory = combine_native_memories(
+                    tuple(self.hicache.get(key) for key in logical_keys)
+                )
+            else:
+                raise ValueError(
+                    "SGLang PRA logical-key registration requires shared storage or HiCache."
+                )
         if len(memory.layers) != self.runner._cache_layout.num_layers:
             raise ValueError("Selected memory does not match SGLang model layers.")
         if any(int(layer.keys.shape[2]) != memory.source_tokens for layer in memory.layers):
             raise ValueError("Selected memory token geometry disagrees with its position base.")
-        identifier = str(req_id)
         self.isolation.open_request(identifier, logical_keys)
-        self._requests[identifier] = SGLangNativeRequest(memory, logical_keys)
+        self._requests[identifier] = SGLangNativeRequest(
+            memory, logical_keys, storage_pinned
+        )
 
     def unregister(self, req_id: str) -> None:
         identifier = str(req_id)
-        self._requests.pop(identifier, None)
+        request = self._requests.pop(identifier, None)
+        if request is not None and request.storage_pinned and self.storage is not None:
+            for key in request.logical_keys:
+                self.storage.unpin(key, identifier)
         self.isolation.close_request(identifier, require_attached=False)
 
     def _wrap_cache(self, req_id: str, caches: list[object]) -> list[object]:
@@ -368,7 +399,8 @@ class SGLangMLXNativeBridge:
         self.runner._cache_with_pool_backed_attention = self._original_cache_from_prefix
         self.runner._materialize_pool_backed_attention = self._original_materialize_prefix
         self.runner._build_batched_decode_context = self._original_build_context
-        self._requests.clear()
+        for request_id in tuple(self._requests):
+            self.unregister(request_id)
         self.isolation.close()
 
     def capabilities(self) -> Mapping[str, object]:
@@ -378,6 +410,7 @@ class SGLangMLXNativeBridge:
             "radix_prefix_identity_separate": True,
             "radix_prefix_and_native_same_request": True,
             "hicache_external_namespace": self.hicache is not None,
+            "shared_storage_lifecycle": self.storage is not None,
             "hicache_metrics": (
                 None if self.hicache is None else self.hicache.metrics().to_dict()
             ),

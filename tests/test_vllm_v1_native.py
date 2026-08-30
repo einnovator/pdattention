@@ -8,6 +8,7 @@ import pytest
 from pra_vllm.v1_metadata import VLLMNativeBlockSet
 from pra_vllm.v1_native import (
     VLLMMetalV1NativeBridge,
+    VLLMPageHotBridge,
     augment_paged_context,
     native_request_cache_salt,
     observe_prefill_pages,
@@ -184,3 +185,31 @@ def test_release_returns_reserved_pages_and_is_idempotent() -> None:
 
     assert bridge._free == [5, 6, 7]
     assert bridge._handles == {}
+
+
+def test_storage_hot_bridge_prevents_release_while_request_is_pinned() -> None:
+    import numpy as np
+    from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
+
+    class Physical:
+        def __init__(self):
+            self.values = {}
+
+        def materialize(self, key, memory):
+            self.values[key] = memory
+
+        def release(self, key):
+            self.values.pop(key, None)
+
+    physical = Physical()
+    hot = VLLMPageHotBridge(physical)
+    array = np.zeros((1, 1, 4, 2), dtype=np.float32)
+    memory = MLXNativeMemory((MLXNativeLayerKV(array, array),), 4)
+    hot.load_hot_value("resource", memory, memory.nbytes)
+    hot.pin_hot("resource", "request-a")
+
+    with pytest.raises(RuntimeError, match="request-pinned"):
+        hot.release_hot("resource")
+    hot.unpin_hot("resource", "request-a")
+    hot.release_hot("resource")
+    assert physical.values == {}

@@ -1,8 +1,13 @@
 """SGLang transport and hierarchical logical-memory bridges for PRA."""
 
 from .adapter import SGLangEngineAdapter, SGLangNativeExecutor
-from .hicache import PRAHiCacheMetrics, PRAHiCacheTier, SGLangPRAHiCache
-from .hicache_backend import SGLangHiCacheStorageBackend
+from .hicache import (
+    PRAHiCacheMetrics,
+    PRAHiCacheTier,
+    SGLangHiCacheHotBridge,
+    SGLangPRAHiCache,
+)
+from .hicache_backend import SGLangHiCacheByteBackend, SGLangHiCacheStorageBackend
 from .mlx_native import (
     SGLangMLXNativeBridge,
     SGLangNativeRequest,
@@ -19,6 +24,8 @@ __all__ = [
     "SGLangNativeRequest",
     "SGLangPRAHiCache",
     "SGLangHiCacheStorageBackend",
+    "SGLangHiCacheByteBackend",
+    "SGLangHiCacheHotBridge",
     "SGLangSelectedKVCache",
     "install_selected_kv_attention",
 ]

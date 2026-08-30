@@ -474,3 +474,51 @@ class VLLMMetalV1NativeBridge:
             "scheduler_prefix_observability": True,
             "native_apc_identity_required": True,
         }
+
+
+class VLLMPageHotBridge:
+    """Map semantic HOT objects to scheduler-invisible vLLM physical pages."""
+
+    def __init__(self, bridge: VLLMMetalV1NativeBridge) -> None:
+        self.bridge = bridge
+        self._memories: dict[str, MLXNativeMemory] = {}
+        self._sizes: dict[str, int] = {}
+        self._pins: dict[str, set[str]] = {}
+
+    def load_hot(self, logical_key: str, payload: bytes) -> int:
+        from pra_mlx.native import deserialize_native_memory
+
+        memory = deserialize_native_memory(payload)
+        self.bridge.materialize(logical_key, memory)
+        self._memories[logical_key] = memory
+        self._sizes[logical_key] = memory.nbytes
+        return memory.nbytes
+
+    def load_hot_value(self, logical_key: str, value: object, byte_count: int) -> int:
+        if not isinstance(value, MLXNativeMemory):
+            raise TypeError("vLLM HOT storage requires MLXNativeMemory.")
+        self.bridge.materialize(logical_key, value)
+        self._memories[logical_key] = value
+        self._sizes[logical_key] = int(byte_count)
+        return self._sizes[logical_key]
+
+    def get_hot(self, logical_key: str) -> object:
+        return self._memories[logical_key]
+
+    def release_hot(self, logical_key: str) -> None:
+        if self._pins.get(logical_key):
+            raise RuntimeError("Cannot release request-pinned vLLM PRA pages.")
+        self.bridge.release(logical_key)
+        self._memories.pop(logical_key, None)
+        self._sizes.pop(logical_key, None)
+
+    def pin_hot(self, logical_key: str, request_id: str) -> None:
+        if logical_key not in self._memories:
+            raise KeyError(logical_key)
+        self._pins.setdefault(logical_key, set()).add(request_id)
+
+    def unpin_hot(self, logical_key: str, request_id: str) -> None:
+        self._pins.get(logical_key, set()).discard(request_id)
+
+    def hot_bytes(self, logical_key: str) -> int:
+        return self._sizes.get(logical_key, 0)

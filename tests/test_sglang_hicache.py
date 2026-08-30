@@ -4,7 +4,10 @@ import numpy as np
 
 from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
 from pra_sglang.hicache import PRAHiCacheTier, SGLangPRAHiCache
-from pra_sglang.hicache_backend import SGLangHiCacheStorageBackend
+from pra_sglang.hicache_backend import (
+    SGLangHiCacheByteBackend,
+    SGLangHiCacheStorageBackend,
+)
 
 
 class _FakeSGLangStorage:
@@ -168,3 +171,17 @@ def test_hicache_prefetch_uses_caller_executor_and_reports_completion(tmp_path) 
     assert metrics.prefetch_completed == 1
     assert metrics.prefetch_failures == 0
     assert metrics.prefetched_bytes == restored.nbytes
+
+
+def test_hicache_byte_backend_round_trips_shared_lifecycle_payload() -> None:
+    import pytest
+
+    storage = _FakeSGLangStorage()
+    backend = SGLangHiCacheByteBackend(storage, namespace="lifecycle-test")
+    stored = backend.put("resource-R", b"native-bytes", {"fingerprint": "fp-1"})
+
+    assert backend.contains("resource-R")
+    assert backend.get("resource-R", {"fingerprint": "fp-1"}) == b"native-bytes"
+    assert backend.bytes_used() == stored
+    with pytest.raises(ValueError, match="fingerprint"):
+        backend.get("resource-R", {"fingerprint": "fp-2"})

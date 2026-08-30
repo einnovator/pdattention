@@ -9,15 +9,19 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import io
 import json
 import math
+import mmap
 import os
+import threading
 import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Protocol
+from typing import Callable, Iterable, Mapping, Protocol, Sequence
 
 from .context_records import RecordType
 from .product_config import pra_home, read_yaml
@@ -112,6 +116,7 @@ class PRAStorageTierConfig:
     enabled: bool = True
     path: str | None = None
     max_bytes: int | str | None = None
+    per_tenant_max_bytes: int | str | None = None
     representation: str = "native"
     compression: str = "none"
     kv_quantization: str = "none"
@@ -120,6 +125,9 @@ class PRAStorageTierConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "max_bytes", parse_byte_size(self.max_bytes))
+        object.__setattr__(
+            self, "per_tenant_max_bytes", parse_byte_size(self.per_tenant_max_bytes)
+        )
         object.__setattr__(self, "ttl_seconds", parse_duration(self.ttl_seconds))
         object.__setattr__(self, "cold_grace_seconds", parse_duration(self.cold_grace_seconds) or 0.0)
         if self.compression not in {"none", "gzip", "zstd"}:
@@ -211,6 +219,7 @@ class PRAStoragePolicy:
     task_states: Mapping[str, PRATaskRetentionPolicy] = field(default_factory=_default_task_policies)
     task_aware: bool = True
     immediate_persistence: bool = False
+    maintenance_interval_seconds: float | str = 30.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "eviction_policy", PRAStorageEvictionPolicy(self.eviction_policy))
@@ -222,6 +231,11 @@ class PRAStoragePolicy:
             str(key).lower(): value if isinstance(value, PRATaskRetentionPolicy) else PRATaskRetentionPolicy(**value)
             for key, value in self.task_states.items()
         })
+        object.__setattr__(
+            self,
+            "maintenance_interval_seconds",
+            parse_duration(self.maintenance_interval_seconds) or 0.0,
+        )
 
     @classmethod
     def named(cls, name: str, *, home: str | Path | None = None) -> "PRAStoragePolicy":
@@ -281,10 +295,13 @@ class PRAStoragePolicy:
         policy_name = eviction.pop("policy", base.eviction_policy.value)
         task_aware = bool(values.pop("task_aware", base.task_aware))
         immediate_persistence = bool(values.pop("immediate_persistence", base.immediate_persistence))
+        maintenance_interval_seconds = values.pop(
+            "maintenance_interval_seconds", base.maintenance_interval_seconds
+        )
         if eviction or values:
             unknown = sorted((*eviction, *values))
             raise ValueError(f"Unknown storage policy fields: {', '.join(unknown)}")
-        return cls(profile=profile, **tier_values, eviction_policy=policy_name, record_types=record_types, task_states=task_states, task_aware=task_aware, immediate_persistence=immediate_persistence)
+        return cls(profile=profile, **tier_values, eviction_policy=policy_name, record_types=record_types, task_states=task_states, task_aware=task_aware, immediate_persistence=immediate_persistence, maintenance_interval_seconds=maintenance_interval_seconds)
 
     @classmethod
     def from_yaml(cls, path: str | Path, *, home: str | Path | None = None) -> "PRAStoragePolicy":
@@ -383,6 +400,18 @@ class PRAStorageBackend(ABC):
     @abstractmethod
     def keys(self) -> tuple[str, ...]: ...
 
+    def metadata(self, key: str) -> Mapping[str, object]:
+        """Return durable metadata when the backend supports discovery."""
+
+        raise NotImplementedError
+
+    def get_range(
+        self, key: str, start: int, end: int, metadata: Mapping[str, object]
+    ) -> bytes:
+        """Read one byte interval without requiring callers to load the blob."""
+
+        return self.get(key, metadata)[start:end]
+
 
 class MemoryKVStore(PRAStorageBackend):
     """Lossless in-process WARM backend used by tests and memory profiles."""
@@ -413,6 +442,9 @@ class MemoryKVStore(PRAStorageBackend):
     def keys(self) -> tuple[str, ...]:
         return tuple(sorted(self._values))
 
+    def metadata(self, key: str) -> Mapping[str, object]:
+        return dict(self._values[key][1])
+
 
 class FileKVStore(PRAStorageBackend):
     """Hashed atomic file store with strict fingerprint verification."""
@@ -423,6 +455,8 @@ class FileKVStore(PRAStorageBackend):
         self.compression = compression
         if compression not in {"none", "gzip", "zstd"}:
             raise ValueError("Unsupported storage compression.")
+        for temporary in self.path.rglob("*.tmp"):
+            temporary.unlink(missing_ok=True)
 
     def _paths(self, key: str) -> tuple[Path, Path]:
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
@@ -459,11 +493,44 @@ class FileKVStore(PRAStorageBackend):
         manifest = {**dict(metadata), "logical_key": key, "stored_bytes": len(encoded), "compression": self.compression, "payload_sha256": hashlib.sha256(payload).hexdigest()}
         temp_payload = payload_path.with_suffix(".bin.tmp")
         temp_manifest = manifest_path.with_suffix(".json.tmp")
-        temp_payload.write_bytes(encoded)
-        temp_manifest.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
+        self._write_synced(temp_payload, encoded)
+        self._write_synced(
+            temp_manifest, json.dumps(manifest, sort_keys=True).encode("utf-8")
+        )
         os.replace(temp_payload, payload_path)
         os.replace(temp_manifest, manifest_path)
         return len(encoded)
+
+    @staticmethod
+    def _write_synced(path: Path, payload: bytes) -> None:
+        with path.open("wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    def put_segments(
+        self,
+        key: str,
+        segments: Mapping[str, bytes],
+        metadata: Mapping[str, object],
+    ) -> int:
+        """Atomically persist named contiguous regions for layer-aware WARM reads."""
+
+        if self.compression != "none":
+            raise ValueError("Named segment persistence requires an uncompressed store.")
+        ordered = tuple((str(name), bytes(value)) for name, value in segments.items())
+        offsets: dict[str, dict[str, object]] = {}
+        cursor = 0
+        buffer = io.BytesIO()
+        for name, value in ordered:
+            buffer.write(value)
+            offsets[name] = {
+                "start": cursor,
+                "end": cursor + len(value),
+                "sha256": hashlib.sha256(value).hexdigest(),
+            }
+            cursor += len(value)
+        return self.put(key, buffer.getvalue(), {**dict(metadata), "segments": offsets})
 
     def get(self, key: str, metadata: Mapping[str, object]) -> bytes:
         payload_path, manifest_path = self._paths(key)
@@ -494,11 +561,62 @@ class FileKVStore(PRAStorageBackend):
                 continue
         return tuple(sorted(keys))
 
+    def metadata(self, key: str) -> Mapping[str, object]:
+        _payload_path, manifest_path = self._paths(key)
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    def get_range(
+        self, key: str, start: int, end: int, metadata: Mapping[str, object]
+    ) -> bytes:
+        if start < 0 or end < start:
+            raise ValueError("Invalid PRA storage byte interval.")
+        if self.compression != "none":
+            return super().get_range(key, start, end, metadata)
+        payload_path, _manifest_path = self._paths(key)
+        with payload_path.open("rb") as stream:
+            with mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+                return bytes(mapped[start:end])
+
+    def get_segments(
+        self,
+        key: str,
+        names: Sequence[str],
+        metadata: Mapping[str, object],
+    ) -> dict[str, bytes]:
+        """Load only requested named regions and verify each region checksum."""
+
+        manifest = self.metadata(key)
+        expected = metadata.get("fingerprint")
+        if expected is not None and manifest.get("fingerprint") != expected:
+            raise ValueError("Persisted PRA fingerprint is incompatible.")
+        segments = dict(manifest.get("segments", {}))
+        result: dict[str, bytes] = {}
+        for name in names:
+            if name not in segments:
+                raise KeyError(f"Unknown persisted PRA segment: {name}")
+            descriptor = dict(segments[name])
+            payload = self.get_range(
+                key, int(descriptor["start"]), int(descriptor["end"]), metadata
+            )
+            if hashlib.sha256(payload).hexdigest() != descriptor["sha256"]:
+                raise ValueError(f"Persisted PRA segment checksum failed: {name}")
+            result[name] = payload
+        return result
+
+
+class MemoryMappedKVStore(FileKVStore):
+    """Uncompressed file backend optimized for direct and partial WARM reads."""
+
+    def __init__(self, path: str | Path) -> None:
+        super().__init__(path, compression="none")
+
 
 class PRAHotBridge(Protocol):
     """Only engine-specific contract needed by semantic storage policy."""
 
     def load_hot(self, logical_key: str, payload: bytes) -> int: ...
+    def load_hot_value(self, logical_key: str, value: object, byte_count: int) -> int: ...
+    def get_hot(self, logical_key: str) -> object: ...
     def release_hot(self, logical_key: str) -> None: ...
     def pin_hot(self, logical_key: str, request_id: str) -> None: ...
     def unpin_hot(self, logical_key: str, request_id: str) -> None: ...
@@ -509,17 +627,28 @@ class InMemoryHotBridge:
     """Portable HOT baseline shared by HF and engine policy tests."""
 
     def __init__(self) -> None:
-        self.payloads: dict[str, bytes] = {}
+        self.payloads: dict[str, object] = {}
+        self.sizes: dict[str, int] = {}
         self.pins: dict[str, set[str]] = {}
 
     def load_hot(self, logical_key: str, payload: bytes) -> int:
         self.payloads.setdefault(logical_key, bytes(payload))
-        return len(self.payloads[logical_key])
+        self.sizes.setdefault(logical_key, len(payload))
+        return self.sizes[logical_key]
+
+    def load_hot_value(self, logical_key: str, value: object, byte_count: int) -> int:
+        self.payloads.setdefault(logical_key, value)
+        self.sizes.setdefault(logical_key, int(byte_count))
+        return self.sizes[logical_key]
+
+    def get_hot(self, logical_key: str) -> object:
+        return self.payloads[logical_key]
 
     def release_hot(self, logical_key: str) -> None:
         if self.pins.get(logical_key):
             raise RuntimeError("Cannot release request-pinned PRA HOT state.")
         self.payloads.pop(logical_key, None)
+        self.sizes.pop(logical_key, None)
 
     def pin_hot(self, logical_key: str, request_id: str) -> None:
         if logical_key not in self.payloads:
@@ -530,7 +659,7 @@ class InMemoryHotBridge:
         self.pins.get(logical_key, set()).discard(request_id)
 
     def hot_bytes(self, logical_key: str) -> int:
-        return len(self.payloads.get(logical_key, b""))
+        return self.sizes.get(logical_key, 0)
 
 
 class ResidencyManagerHotBridge:
@@ -548,6 +677,13 @@ class ResidencyManagerHotBridge:
     def load_hot(self, logical_key: str, payload: bytes) -> int:
         self.manager.resolve(logical_key, lambda: (self.decode(payload), len(payload)))
         return self.manager.hot_bytes(logical_key)
+
+    def load_hot_value(self, logical_key: str, value: object, byte_count: int) -> int:
+        self.manager.resolve(logical_key, lambda: (value, int(byte_count)))
+        return self.manager.hot_bytes(logical_key)
+
+    def get_hot(self, logical_key: str) -> object:
+        return self.manager.get(logical_key)
 
     def release_hot(self, logical_key: str) -> None:
         self.manager.release(logical_key)
@@ -584,6 +720,41 @@ def dequantize_int8_array(payload: bytes, metadata: Mapping[str, object]) -> obj
     return np.frombuffer(payload, dtype=np.int8).reshape(shape).astype(np.float32) * float(metadata["scale"])
 
 
+class PRAColdCodec(Protocol):
+    """Engine codec for optional lossy COLD representation."""
+
+    def encode(
+        self, payload: bytes, quantization: str
+    ) -> tuple[bytes, Mapping[str, object]]: ...
+
+    def decode(self, payload: bytes, metadata: Mapping[str, object]) -> bytes: ...
+
+
+class Float32Int8ColdCodec:
+    """Reference codec for contiguous float32 payloads used by controls."""
+
+    def encode(
+        self, payload: bytes, quantization: str
+    ) -> tuple[bytes, Mapping[str, object]]:
+        if quantization == "none":
+            return bytes(payload), {"quantization": "none"}
+        if quantization != "int8":
+            raise ValueError(f"Unsupported COLD quantization: {quantization}")
+        import numpy as np
+
+        if len(payload) % np.dtype(np.float32).itemsize:
+            raise ValueError("Float32 int8 COLD codec requires aligned float32 bytes.")
+        values = np.frombuffer(payload, dtype=np.float32)
+        encoded, metadata = quantize_int8_array(values)
+        return encoded, {**metadata, "original_bytes": len(payload)}
+
+    def decode(self, payload: bytes, metadata: Mapping[str, object]) -> bytes:
+        if metadata.get("quantization", "none") == "none":
+            return bytes(payload)
+        values = dequantize_int8_array(payload, metadata)
+        return values.astype("float32").tobytes(order="C")
+
+
 @dataclass
 class PRAStorageMetrics:
     """Disjoint counters for tier, I/O, lifecycle, and policy behavior."""
@@ -613,15 +784,41 @@ class PRAStorageMetrics:
 class PRAStorageManager:
     """Apply record/task-aware lifecycle policy to opaque native K/V bytes."""
 
-    def __init__(self, policy: PRAStoragePolicy, *, hot: PRAHotBridge | None = None, warm: PRAStorageBackend | None = None, cold: PRAStorageBackend | None = None) -> None:
+    state_schema = "pra-storage-state-v2"
+
+    def __init__(
+        self,
+        policy: PRAStoragePolicy,
+        *,
+        hot: PRAHotBridge | None = None,
+        warm: PRAStorageBackend | None = None,
+        cold: PRAStorageBackend | None = None,
+        cold_codec: PRAColdCodec | None = None,
+        source_resolver: Callable[[PRAStorageEntry], bytes] | None = None,
+        state_path: str | Path | None = None,
+        recover: bool = True,
+    ) -> None:
         self.policy = policy
         self.hot = hot or InMemoryHotBridge()
         self.warm = warm or self._backend(policy.warm)
         self.cold = cold or self._backend(policy.cold)
+        self.cold_codec = cold_codec
+        if policy.cold.kv_quantization != "none" and cold_codec is None:
+            raise ValueError(
+                "Quantized COLD storage requires an engine-compatible cold_codec."
+            )
+        self.source_resolver = source_resolver
         self.entries: dict[str, PRAStorageEntry] = {}
         self._source_loaders: dict[str, Callable[[], bytes]] = {}
         self._fingerprints: dict[str, str] = {}
+        self._cold_metadata: dict[str, dict[str, object]] = {}
         self.metrics = PRAStorageMetrics()
+        self._lock = threading.RLock()
+        self._maintenance_stop = threading.Event()
+        self._maintenance_thread: threading.Thread | None = None
+        self.state_path = self._resolve_state_path(state_path)
+        if recover:
+            self.recover()
 
     @staticmethod
     def _backend(config: PRAStorageTierConfig) -> PRAStorageBackend | None:
@@ -629,14 +826,161 @@ class PRAStorageManager:
             return None
         if config.path is None:
             return MemoryKVStore()
+        if config.compression == "none" and config.representation in {
+            "native",
+            "mmap",
+            "contiguous",
+        }:
+            return MemoryMappedKVStore(config.path)
         return FileKVStore(config.path, compression=config.compression)
 
-    def register(self, entry: PRAStorageEntry, payload: bytes, *, source_loader: Callable[[], bytes] | None = None, fingerprint: str | None = None, now_ns: int | None = None) -> PRAStorageEntry:
+    def _resolve_state_path(self, state_path: str | Path | None) -> Path | None:
+        if state_path is not None:
+            return Path(state_path).expanduser().resolve()
+        for config in (self.policy.warm, self.policy.cold):
+            if config.enabled and config.path:
+                return Path(config.path).expanduser().resolve().parent / "lifecycle.json"
+        return None
+
+    @staticmethod
+    def _entry_dict(entry: PRAStorageEntry) -> dict[str, object]:
+        result = asdict(entry)
+        result["retention_class"] = entry.retention_class.value
+        result["current_tier"] = entry.current_tier.value
+        return result
+
+    def _persist_state(self) -> None:
+        if self.state_path is None:
+            return
+        payload = {
+            "schema": self.state_schema,
+            "profile": self.policy.profile,
+            "entries": [
+                {
+                    "entry": self._entry_dict(entry),
+                    "fingerprint": self._fingerprints.get(key),
+                    "cold_metadata": self._cold_metadata.get(key, {}),
+                }
+                for key, entry in sorted(self.entries.items())
+            ],
+        }
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
+        FileKVStore._write_synced(
+            temporary, json.dumps(payload, sort_keys=True).encode("utf-8")
+        )
+        os.replace(temporary, self.state_path)
+
+    def recover(self) -> int:
+        """Rehydrate durable semantic metadata after a runtime restart."""
+
+        if self.state_path is None or not self.state_path.exists():
+            return 0
+        payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        if payload.get("schema") != self.state_schema:
+            raise ValueError("Unsupported PRA storage lifecycle state schema.")
+        recovered = 0
+        for row in payload.get("entries", ()):
+            entry = PRAStorageEntry(**dict(row["entry"]))
+            key = entry.logical_key
+            if self.warm is not None and self.warm.contains(key):
+                manifest = self.warm.metadata(key)
+                entry = replace(
+                    entry,
+                    current_tier=PRAStorageTier.WARM,
+                    hot_bytes=0,
+                    warm_bytes=int(manifest.get("stored_bytes", entry.warm_bytes)),
+                )
+            elif self.cold is not None and self.cold.contains(key):
+                manifest = self.cold.metadata(key)
+                entry = replace(
+                    entry,
+                    current_tier=PRAStorageTier.COLD,
+                    hot_bytes=0,
+                    warm_bytes=0,
+                    cold_bytes=int(manifest.get("stored_bytes", entry.cold_bytes)),
+                )
+            else:
+                entry = replace(
+                    entry,
+                    current_tier=PRAStorageTier.SOURCE,
+                    hot_bytes=0,
+                    warm_bytes=0,
+                    cold_bytes=0,
+                )
+            entry = replace(entry, request_pin_count=0)
+            self.entries[key] = entry
+            if row.get("fingerprint") is not None:
+                self._fingerprints[key] = str(row["fingerprint"])
+            self._cold_metadata[key] = dict(row.get("cold_metadata", {}))
+            recovered += 1
+        return recovered
+
+    def attach_source_loader(self, key: str, loader: Callable[[], bytes]) -> None:
+        """Reconnect an authoritative SOURCE provider after restart."""
+
+        if key not in self.entries:
+            raise KeyError(key)
+        self._source_loaders[key] = loader
+
+    def _load_source(self, key: str) -> bytes:
+        loader = self._source_loaders.get(key)
+        if loader is not None:
+            return bytes(loader())
+        if self.source_resolver is not None:
+            return bytes(self.source_resolver(self.entries[key]))
+        raise FileNotFoundError(
+            f"PRA SOURCE for {key!r} is unavailable after durable-cache eviction."
+        )
+
+    def start_maintenance(self) -> None:
+        """Start one idempotent background policy-maintenance worker."""
+
+        interval = float(self.policy.maintenance_interval_seconds)
+        if interval <= 0 or self._maintenance_thread is not None:
+            return
+        self._maintenance_stop.clear()
+
+        def worker() -> None:
+            while not self._maintenance_stop.wait(interval):
+                self.run_maintenance()
+
+        self._maintenance_thread = threading.Thread(
+            target=worker, name="pra-storage-maintenance", daemon=True
+        )
+        self._maintenance_thread.start()
+
+    def close(self) -> None:
+        """Stop maintenance and durably checkpoint semantic lifecycle state."""
+
+        self._maintenance_stop.set()
+        thread = self._maintenance_thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=max(1.0, self.policy.maintenance_interval_seconds * 2))
+        self._maintenance_thread = None
+        with self._lock:
+            self._persist_state()
+
+    def register(
+        self,
+        entry: PRAStorageEntry,
+        payload: bytes,
+        *,
+        hot_value: object | None = None,
+        source_loader: Callable[[], bytes] | None = None,
+        fingerprint: str | None = None,
+        now_ns: int | None = None,
+    ) -> PRAStorageEntry:
         """Register derived detail HOT without immediately writing persistence."""
 
         now_ns = time.time_ns() if now_ns is None else now_ns
         record_policy = self.policy.record_policy(entry.record_type)
-        entry = replace(entry, retention_class=record_policy.retention_class, current_tier=PRAStorageTier.HOT, hot_bytes=self.hot.load_hot(entry.logical_key, payload), detail_bytes=len(payload), persistence_eligible_ns=now_ns + int(self.policy.warm.cold_grace_seconds * 1e9), compression="none", quantization="none")
+        hot_bytes = (
+            self.hot.load_hot(entry.logical_key, payload)
+            if hot_value is None
+            else self.hot.load_hot_value(entry.logical_key, hot_value, entry.detail_bytes)
+        )
+        entry = replace(entry, retention_class=record_policy.retention_class, current_tier=PRAStorageTier.HOT, hot_bytes=hot_bytes, detail_bytes=max(len(payload), entry.detail_bytes), persistence_eligible_ns=now_ns + int(self.policy.warm.cold_grace_seconds * 1e9), compression="none", quantization="none")
         self.entries[entry.logical_key] = entry
         self._source_loaders[entry.logical_key] = source_loader or (lambda value=bytes(payload): value)
         if fingerprint is not None:
@@ -644,11 +988,37 @@ class PRAStorageManager:
         self._enforce_hot_quota(entry.logical_key, now_ns)
         if self.policy.immediate_persistence:
             self.demote_hot(entry.logical_key, now_ns=now_ns)
+        self._persist_state()
         return self.entries[entry.logical_key]
+
+    def register_source(
+        self,
+        entry: PRAStorageEntry,
+        source_loader: Callable[[], bytes],
+        *,
+        fingerprint: str | None = None,
+    ) -> PRAStorageEntry:
+        """Register canonical SOURCE before native detail is materialized."""
+
+        record_policy = self.policy.record_policy(entry.record_type)
+        entry = replace(
+            entry,
+            retention_class=record_policy.retention_class,
+            current_tier=PRAStorageTier.SOURCE,
+            hot_bytes=0,
+            warm_bytes=0,
+            cold_bytes=0,
+        )
+        self.entries[entry.logical_key] = entry
+        self._source_loaders[entry.logical_key] = source_loader
+        if fingerprint is not None:
+            self._fingerprints[entry.logical_key] = fingerprint
+        self._persist_state()
+        return entry
 
     def _metadata(self, key: str) -> dict[str, object]:
         entry = self.entries[key]
-        return {"fingerprint": self._fingerprints.get(key), "record_type": entry.record_type, "retention_class": entry.retention_class.value, "tenant_id": entry.tenant_id, "session_id": entry.session_id, "task_id": entry.task_id}
+        return {"fingerprint": self._fingerprints.get(key), "record_type": entry.record_type, "retention_class": entry.retention_class.value, "tenant_id": entry.tenant_id, "session_id": entry.session_id, "task_id": entry.task_id, "storage_entry": self._entry_dict(entry)}
 
     def _enforce_hot_quota(self, protected_key: str, now_ns: int) -> None:
         limit = self.policy.hot.max_bytes
@@ -682,6 +1052,19 @@ class PRAStorageManager:
         now_ns = time.time_ns() if now_ns is None else now_ns
         entry = self.entries[key]
         self.entries[key] = replace(entry, last_access_ns=now_ns, last_selected_ns=now_ns if selected else entry.last_selected_ns, selection_count=entry.selection_count + int(selected), last_consumed_ns=now_ns if consumed else entry.last_consumed_ns, consumption_count=entry.consumption_count + int(consumed), reuse_count=entry.reuse_count + int(entry.selection_count > 0 and selected))
+        self._persist_state()
+
+    def update_dependencies(self, task_id: str, dependent_count: int) -> None:
+        """Synchronize open downstream task references with retention metadata."""
+
+        if dependent_count < 0:
+            raise ValueError("dependent_count cannot be negative.")
+        for key, entry in tuple(self.entries.items()):
+            if entry.task_id == task_id:
+                self.entries[key] = replace(
+                    entry, dependent_record_count=int(dependent_count)
+                )
+        self._persist_state()
 
     def demote_hot(self, key: str, *, payload: bytes | None = None, now_ns: int | None = None) -> PRAStorageEntry:
         """Release HOT and retain lossless WARM when policy permits."""
@@ -691,7 +1074,11 @@ class PRAStorageManager:
         if entry.request_pin_count:
             raise RuntimeError("Cannot demote request-pinned PRA storage.")
         if payload is None:
-            payload = self.hot.payloads[key] if isinstance(self.hot, InMemoryHotBridge) else self._source_loaders[key]()
+            if isinstance(self.hot, InMemoryHotBridge):
+                value = self.hot.get_hot(key)
+                payload = value if isinstance(value, bytes) else self._load_source(key)
+            else:
+                payload = self._load_source(key)
         stored = 0
         target = PRAStorageTier.SOURCE
         if self.warm is not None and self.policy.warm.enabled:
@@ -704,9 +1091,10 @@ class PRAStorageManager:
         self.hot.release_hot(key)
         self.metrics.demotions += 1
         self.entries[key] = replace(entry, current_tier=target, hot_bytes=0, warm_bytes=stored, last_access_ns=now_ns)
+        self._persist_state()
         return self.entries[key]
 
-    def promote(self, key: str, *, request_id: str | None = None, tenant_id: str | None = None, authorization_scopes: Iterable[str] = (), now_ns: int | None = None) -> bytes:
+    def promote(self, key: str, *, request_id: str | None = None, tenant_id: str | None = None, authorization_scopes: Iterable[str] = (), now_ns: int | None = None) -> object:
         """Promote exact WARM/COLD bytes, or reconstruct from SOURCE."""
 
         now_ns = time.time_ns() if now_ns is None else now_ns
@@ -717,37 +1105,88 @@ class PRAStorageManager:
             raise PermissionError("The request is not authorized for this PRA storage object.")
         started = time.monotonic_ns()
         payload: bytes
+        promoted_from: PRAStorageTier | None = None
         if entry.current_tier == PRAStorageTier.HOT:
             self.metrics.hits["hot"] += 1
-            payload = self.hot.payloads[key] if isinstance(self.hot, InMemoryHotBridge) else self._source_loaders[key]()
+            value = self.hot.get_hot(key)
+            if request_id is not None:
+                self.hot.pin_hot(key, request_id)
+                self.entries[key] = replace(
+                    entry,
+                    request_pin_count=entry.request_pin_count + 1,
+                    last_access_ns=now_ns,
+                )
+            return value
         elif self.warm is not None and self.warm.contains(key):
             self.metrics.hits["warm"] += 1
             payload = self.warm.get(key, self._metadata(key))
             self.metrics.bytes_read += entry.warm_bytes
             self.metrics.promotions += 1
             self.metrics.reloads += 1
+            promoted_from = PRAStorageTier.WARM
         elif self.cold is not None and self.cold.contains(key):
             self.metrics.hits["cold"] += 1
             payload = self.cold.get(key, self._metadata(key))
+            if self.cold_codec is not None:
+                decode_started = time.monotonic_ns()
+                payload = self.cold_codec.decode(
+                    payload, self._cold_metadata.get(key, {})
+                )
+                self.metrics.dequantization_latency_ns += (
+                    time.monotonic_ns() - decode_started
+                )
             self.metrics.bytes_read += entry.cold_bytes
             self.metrics.promotions += 1
             self.metrics.reloads += 1
+            promoted_from = PRAStorageTier.COLD
         else:
             self.metrics.hits["source"] += 1
-            payload = self._source_loaders[key]()
+            payload = self._load_source(key)
             self.metrics.reloads += 1
         hot_bytes = self.hot.load_hot(key, payload)
+        warm_bytes = entry.warm_bytes
+        cold_bytes = entry.cold_bytes
+        if promoted_from == PRAStorageTier.WARM and self.warm is not None:
+            self.warm.remove(key)
+            warm_bytes = 0
+        elif promoted_from == PRAStorageTier.COLD and self.cold is not None:
+            self.cold.remove(key)
+            cold_bytes = 0
         if request_id is not None:
             self.hot.pin_hot(key, request_id)
         self.metrics.promotion_latency_ns += time.monotonic_ns() - started
-        self.entries[key] = replace(entry, current_tier=PRAStorageTier.HOT, hot_bytes=hot_bytes, request_pin_count=entry.request_pin_count + int(request_id is not None), last_access_ns=now_ns)
+        self.entries[key] = replace(entry, current_tier=PRAStorageTier.HOT, hot_bytes=hot_bytes, warm_bytes=warm_bytes, cold_bytes=cold_bytes, request_pin_count=entry.request_pin_count + int(request_id is not None), last_access_ns=now_ns)
         self._enforce_hot_quota(key, now_ns)
-        return payload
+        self._persist_state()
+        return self.hot.get_hot(key)
 
     def unpin(self, key: str, request_id: str) -> None:
         entry = self.entries[key]
         self.hot.unpin_hot(key, request_id)
         self.entries[key] = replace(entry, request_pin_count=max(0, entry.request_pin_count - 1))
+        self._persist_state()
+
+    @contextmanager
+    def pin_request(self, request_id: str, keys: Iterable[str]):
+        """Pin one promoted object set across complete engine request lifetime."""
+
+        unique = tuple(dict.fromkeys(map(str, keys)))
+        for key in unique:
+            entry = self.entries[key]
+            if entry.current_tier != PRAStorageTier.HOT:
+                self.promote(key)
+                entry = self.entries[key]
+            self.hot.pin_hot(key, request_id)
+            self.entries[key] = replace(
+                entry, request_pin_count=entry.request_pin_count + 1
+            )
+        self._persist_state()
+        try:
+            yield
+        finally:
+            for key in unique:
+                if key in self.entries and self.entries[key].request_pin_count:
+                    self.unpin(key, request_id)
 
     def update_task_status(self, task_id: str, status: TaskStatus | str, *, now_ns: int | None = None) -> None:
         now_ns = time.time_ns() if now_ns is None else now_ns
@@ -758,6 +1197,7 @@ class PRAStorageManager:
             if entry.task_id == task_id:
                 due = now_ns + int(task_policy.compaction_delay_seconds * 1e9) if closed else None
                 self.entries[key] = replace(entry, task_status=status_value, compaction_due_ns=due)
+        self._persist_state()
 
     def close_session(self, session_id: str, *, now_ns: int | None = None) -> int:
         """Compact session-only native detail while preserving shared resources."""
@@ -770,6 +1210,7 @@ class PRAStorageManager:
             self._drop_to_source(key, remove_warm=True, remove_cold=entry.retention_class in {PRARetentionClass.EPHEMERAL, PRARetentionClass.TRANSIENT})
         freed = max(0, before - self.usage()["total_native_bytes"])
         self.metrics.session_close_bytes_freed += freed
+        self._persist_state()
         return freed
 
     def _drop_to_source(self, key: str, *, remove_warm: bool, remove_cold: bool) -> None:
@@ -831,8 +1272,21 @@ class PRAStorageManager:
             if entry.current_tier == PRAStorageTier.WARM and age >= warm_age_limit:
                 payload = self.warm.get(key, self._metadata(key)) if self.warm is not None and self.warm.contains(key) else None
                 if payload is not None and self.cold is not None and record.cold_enabled:
+                    cold_payload = payload
+                    cold_metadata: Mapping[str, object] = {
+                        "quantization": "none"
+                    }
+                    if self.cold_codec is not None:
+                        cold_payload, cold_metadata = self.cold_codec.encode(
+                            payload, self.policy.cold.kv_quantization
+                        )
                     started = time.monotonic_ns()
-                    stored = self.cold.put(key, payload, self._metadata(key))
+                    stored = self.cold.put(
+                        key,
+                        cold_payload,
+                        {**self._metadata(key), "cold_codec": dict(cold_metadata)},
+                    )
+                    self._cold_metadata[key] = dict(cold_metadata)
                     self.metrics.persistence_latency_ns += time.monotonic_ns() - started
                     self.metrics.bytes_written += stored
                     self.metrics.persistence_writes += 1
@@ -844,9 +1298,12 @@ class PRAStorageManager:
                 self._drop_to_source(key, remove_warm=False, remove_cold=True)
         self._enforce_quota(PRAStorageTier.WARM, self.warm, self.policy.warm.max_bytes, now_ns)
         self._enforce_quota(PRAStorageTier.COLD, self.cold, self.policy.cold.max_bytes, now_ns)
+        self._enforce_tenant_quotas(PRAStorageTier.WARM, self.warm, now_ns)
+        self._enforce_tenant_quotas(PRAStorageTier.COLD, self.cold, now_ns)
         after = self.usage()["total_native_bytes"]
         if after < before and any(entry.compaction_due_ns is not None and now_ns >= entry.compaction_due_ns for entry in self.entries.values()):
             self.metrics.task_close_bytes_freed += before - after
+        self._persist_state()
 
     def _enforce_quota(self, tier: PRAStorageTier, backend: PRAStorageBackend | None, limit: int | None, now_ns: int) -> None:
         if backend is None or limit is None:
@@ -859,6 +1316,55 @@ class PRAStorageManager:
             backend.remove(victim.logical_key)
             self.entries[victim.logical_key] = replace(victim, current_tier=PRAStorageTier.SOURCE, warm_bytes=0 if tier == PRAStorageTier.WARM else victim.warm_bytes, cold_bytes=0 if tier == PRAStorageTier.COLD else victim.cold_bytes)
             self.metrics.evictions += 1
+
+    def _enforce_tenant_quotas(
+        self,
+        tier: PRAStorageTier,
+        backend: PRAStorageBackend | None,
+        now_ns: int,
+    ) -> None:
+        if backend is None:
+            return
+        config = self.policy.warm if tier == PRAStorageTier.WARM else self.policy.cold
+        limit = config.per_tenant_max_bytes
+        if limit is None:
+            return
+        tenants = sorted({entry.tenant_id for entry in self.entries.values()})
+        for tenant_id in tenants:
+            def tenant_bytes() -> int:
+                return sum(
+                    entry.warm_bytes if tier == PRAStorageTier.WARM else entry.cold_bytes
+                    for entry in self.entries.values()
+                    if entry.tenant_id == tenant_id and entry.current_tier == tier
+                )
+
+            while tenant_bytes() > limit:
+                candidates = [
+                    entry
+                    for entry in self.entries.values()
+                    if entry.tenant_id == tenant_id
+                    and entry.current_tier == tier
+                    and not entry.request_pin_count
+                ]
+                if not candidates:
+                    raise MemoryError(
+                        f"Pinned PRA entries exceed tenant {tenant_id!r} {tier.value} quota."
+                    )
+                victim = min(
+                    candidates,
+                    key=lambda entry: (
+                        self.retention_score(entry, now_ns=now_ns),
+                        entry.logical_key,
+                    ),
+                )
+                backend.remove(victim.logical_key)
+                self.entries[victim.logical_key] = replace(
+                    victim,
+                    current_tier=PRAStorageTier.SOURCE,
+                    warm_bytes=0 if tier == PRAStorageTier.WARM else victim.warm_bytes,
+                    cold_bytes=0 if tier == PRAStorageTier.COLD else victim.cold_bytes,
+                )
+                self.metrics.evictions += 1
 
     def usage(self) -> dict[str, int]:
         hot = sum(entry.hot_bytes for entry in self.entries.values())

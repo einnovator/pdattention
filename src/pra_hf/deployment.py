@@ -8,6 +8,7 @@ import threading
 import time
 import urllib.request
 import uuid
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Iterator, Mapping, Protocol, Sequence
@@ -341,8 +342,136 @@ class OpenAICompatibleEngineAdapter:
 class HuggingFaceEngineAdapter:
     """E1 in-process adapter using the HF semantic-reference implementation."""
 
-    def __init__(self, model) -> None:
+    def __init__(self, model, *, storage_manager=None) -> None:
         self.model = model
+        self.storage = storage_manager
+        self._reference_lock = threading.RLock()
+
+    def _logical_key(self, request: PRAWireRequest, resource: PRAWireResource) -> str:
+        shareable = bool(resource.metadata.get("shareable", False))
+        identity = {
+            "tenant": request.tenant_id,
+            "session": None if shareable else request.session_id,
+            "uri": resource.uri,
+            "version": resource.metadata.get("version"),
+            "text_sha256": hashlib.sha256((resource.text or "").encode()).hexdigest(),
+            "model": getattr(self.model.model.config, "_name_or_path", "hf-model"),
+            "pra": self.model.config.to_dict(),
+        }
+        return "hf:" + hashlib.sha256(
+            json.dumps(identity, sort_keys=True, default=str).encode()
+        ).hexdigest()
+
+    def _add_stored_reference(
+        self, request: PRAWireRequest, resource: PRAWireResource, key: str
+    ):
+        from .hf_storage import serialize_reference
+        from .storage_lifecycle import PRARetentionClass, PRAStorageEntry
+
+        handle = self.model.add_reference(resource.uri, text=resource.text)
+        payload = serialize_reference(self.model, handle.uri)
+        entry = PRAStorageEntry(
+            logical_key=key,
+            record_type=resource.record_type,
+            retention_class=PRARetentionClass.RECONSTRUCTABLE,
+            tenant_id=request.tenant_id,
+            session_id=(
+                None if resource.metadata.get("shareable", False) else request.session_id
+            ),
+            task_id=(
+                None
+                if resource.metadata.get("task_id") is None
+                else str(resource.metadata["task_id"])
+            ),
+            task_status=(
+                None
+                if resource.metadata.get("task_status") is None
+                else str(resource.metadata["task_status"])
+            ),
+            resource_version=str(resource.metadata.get("version", "source-hash")),
+            detail_bytes=len(payload),
+            security_scope=resource.authorization_scope,
+            source_reconstructable=resource.text is not None,
+            reconstruction_cost_ms=float(
+                resource.metadata.get("reconstruction_cost_ms", 0.0)
+            ),
+            shared_reference_count=int(bool(resource.metadata.get("shareable", False))),
+        )
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "model": getattr(
+                        self.model.model.config, "_name_or_path", "hf-model"
+                    ),
+                    "pra": self.model.config.to_dict(),
+                    "resource_version": entry.resource_version,
+                },
+                sort_keys=True,
+                default=str,
+            ).encode()
+        ).hexdigest()
+        self.storage.register(
+            entry,
+            payload,
+            hot_value=handle,
+            source_loader=lambda payload=payload: payload,
+            fingerprint=fingerprint,
+        )
+        return handle
+
+    @contextmanager
+    def _request_references(self, request: PRAWireRequest):
+        """Expose only this request's authorized native references to routing."""
+
+        with self._reference_lock:
+            handles = []
+            keys = []
+            try:
+                for resource in request.resources:
+                    if not resource.text:
+                        continue
+                    if self.storage is None:
+                        handles.append(
+                            self.model.add_reference(resource.uri, text=resource.text)
+                        )
+                        continue
+                    key = self._logical_key(request, resource)
+                    keys.append(key)
+                    if (
+                        key not in self.storage.entries
+                        or self.storage.entries[key].current_tier.value == "source"
+                    ):
+                        handle = self._add_stored_reference(request, resource, key)
+                    else:
+                        handle = self.storage.promote(
+                            key,
+                            tenant_id=request.tenant_id,
+                            authorization_scopes=request.metadata.get(
+                                "authorization_scopes", ()
+                            ),
+                        )
+                    handles.append(handle)
+                    self.storage.record_access(key, selected=True)
+                if self.storage is None or not keys:
+                    yield handles
+                else:
+                    with self.storage.pin_request(request.request_id, keys):
+                        yield handles
+            finally:
+                if self.storage is None:
+                    for handle in handles:
+                        self.model.remove_reference(handle)
+                else:
+                    from .hf_storage import serialize_reference
+                    from .storage_lifecycle import PRAStorageTier
+
+                    for key in keys:
+                        entry = self.storage.entries.get(key)
+                        if entry is None or entry.current_tier != PRAStorageTier.HOT:
+                            continue
+                        handle = self.storage.hot.get_hot(key)
+                        payload = serialize_reference(self.model, handle.uri)
+                        self.storage.demote_hot(key, payload=payload)
 
     def capabilities(self) -> PRAEngineCapabilities:
         return PRAEngineCapabilities(
@@ -373,13 +502,7 @@ class HuggingFaceEngineAdapter:
         return request.session_id
 
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
-        handles = []
-        try:
-            for resource in request.resources:
-                if resource.text:
-                    handles.append(
-                        self.model.add_reference(resource.uri, text=resource.text)
-                    )
+        with self._request_references(request):
             text = self.model.chat(
                 request.messages,
                 return_details=True,
@@ -390,9 +513,6 @@ class HuggingFaceEngineAdapter:
                 {"stats": text.stats},
                 ({"stage": "engine_native_materialization", "native_kv": True},),
             )
-        finally:
-            for handle in handles:
-                self.model.remove_reference(handle)
 
     def stream(self, request: PRAWireRequest) -> Iterator[Mapping[str, Any]]:
         """Stream HF text deltas while retaining native references for the request.
@@ -415,7 +535,6 @@ class HuggingFaceEngineAdapter:
                     (input_ids.shape[0],), self.event.is_set(), device=input_ids.device
                 )
 
-        handles = []
         cancel = threading.Event()
         errors: list[BaseException] = []
         streamer = TextIteratorStreamer(
@@ -424,54 +543,50 @@ class HuggingFaceEngineAdapter:
             skip_special_tokens=True,
             timeout=None,
         )
-        for resource in request.resources:
-            if resource.text:
-                handles.append(self.model.add_reference(resource.uri, text=resource.text))
+        with self._request_references(request):
+            def run() -> None:
+                try:
+                    self.model.chat(
+                        request.messages,
+                        pra_policy=request.pra_policy or None,
+                        max_new_tokens=request.resolved_max_new_tokens,
+                        streamer=streamer,
+                        stopping_criteria=StoppingCriteriaList([_Cancelled(cancel)]),
+                    )
+                except BaseException as error:  # propagated on the consumer thread
+                    errors.append(error)
+                    streamer.on_finalized_text("", stream_end=True)
 
-        def run() -> None:
+            worker = threading.Thread(target=run, name=f"pra-hf-{request.request_id}", daemon=True)
+            worker.start()
+            index = 0
             try:
-                self.model.chat(
-                    request.messages,
-                    pra_policy=request.pra_policy or None,
-                    max_new_tokens=request.resolved_max_new_tokens,
-                    streamer=streamer,
-                    stopping_criteria=StoppingCriteriaList([_Cancelled(cancel)]),
-                )
-            except BaseException as error:  # propagated on the consumer thread
-                errors.append(error)
-                streamer.on_finalized_text("", stream_end=True)
-
-        worker = threading.Thread(target=run, name=f"pra-hf-{request.request_id}", daemon=True)
-        worker.start()
-        index = 0
-        try:
-            for delta in streamer:
-                if delta:
-                    yield {
-                        "type": "delta",
-                        "index": index,
-                        "text": delta,
-                        "request_id": request.request_id,
-                        "session_id": request.session_id,
-                    }
-                    index += 1
-            worker.join()
-            if errors:
-                raise errors[0]
-            yield {
-                "type": "done",
-                "request_id": request.request_id,
-                "session_id": request.session_id,
-                "trace": {"stage": "engine_native_stream", "native_kv": True},
-            }
-        finally:
-            cancel.set()
-            worker.join()
-            for handle in handles:
-                self.model.remove_reference(handle)
+                for delta in streamer:
+                    if delta:
+                        yield {
+                            "type": "delta",
+                            "index": index,
+                            "text": delta,
+                            "request_id": request.request_id,
+                            "session_id": request.session_id,
+                        }
+                        index += 1
+                worker.join()
+                if errors:
+                    raise errors[0]
+                yield {
+                    "type": "done",
+                    "request_id": request.request_id,
+                    "session_id": request.session_id,
+                    "trace": {"stage": "engine_native_stream", "native_kv": True},
+                }
+            finally:
+                cancel.set()
+                worker.join()
 
     def close_session(self, session_id: str) -> None:
-        return None
+        if self.storage is not None:
+            self.storage.close_session(session_id)
 
 
 def inferred_resource(message: Mapping[str, Any], index: int) -> PRAWireResource | None:

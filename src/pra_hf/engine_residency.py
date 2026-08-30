@@ -204,6 +204,17 @@ class EnginePRAResidencyManager:
             entry = self._entries.get(key)
             return 0 if entry is None else entry.byte_count
 
+    def get(self, key: str) -> object:
+        """Return one resident engine payload without changing its pin state."""
+
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                raise KeyError(key)
+            entry.access_count += 1
+            entry.last_access_ns = time.monotonic_ns()
+            return entry.payload
+
     def pin(self, key: str, request_id: str) -> None:
         """Pin one resolved block until the matching request cleanup."""
 

@@ -10,6 +10,7 @@ part of the visible prompt.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import time
 from dataclasses import dataclass
@@ -20,6 +21,13 @@ from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_hf.engine_memory import LogicalPRABlock, LogicalPRABlockId, LogicalPRABlockStore
 from pra_hf.engine_residency import EnginePRAResidencyManager, PRAEvictionPolicy
+from pra_hf.storage_lifecycle import (
+    PRARetentionClass,
+    PRAStorageEntry,
+    PRAStorageManager,
+    PRAStoragePolicy,
+    ResidencyManagerHotBridge,
+)
 
 
 @dataclass(frozen=True)
@@ -340,6 +348,128 @@ def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMem
     )
 
 
+def serialize_native_memory(
+    memory: MLXNativeMemory, *, quantization: str = "none"
+) -> bytes:
+    """Serialize complete native K/V with independent per-array quantization."""
+
+    import numpy as np
+
+    if quantization not in {"none", "int8"}:
+        raise ValueError("MLX native serialization supports none or int8 quantization.")
+    arrays: dict[str, object] = {}
+    descriptors: dict[str, dict[str, object]] = {}
+    for index, layer in enumerate(memory.layers):
+        for suffix, value in (("k", layer.keys), ("v", layer.values)):
+            name = f"layer_{index:04d}_{suffix}"
+            logical_dtype = str(value.dtype)
+            try:
+                host = np.asarray(value).copy()
+            except TypeError:
+                import mlx.core as mx
+
+                host = np.asarray(value.astype(mx.float32)).copy()
+            if quantization == "int8":
+                floating = host.astype(np.float32)
+                maximum = float(np.max(np.abs(floating))) if floating.size else 0.0
+                scale = maximum / 127.0 if maximum else 1.0
+                arrays[name] = np.rint(floating / scale).clip(-127, 127).astype(np.int8)
+                descriptors[name] = {
+                    "logical_dtype": logical_dtype,
+                    "quantization": "int8",
+                    "scale": scale,
+                }
+            else:
+                arrays[name] = host
+                descriptors[name] = {
+                    "logical_dtype": logical_dtype,
+                    "quantization": "none",
+                }
+    metadata = json.dumps(
+        {
+            "schema": "pra-native-memory-v2",
+            "source_tokens": memory.source_tokens,
+            "layer_count": len(memory.layers),
+            "quantization": quantization,
+            "arrays": descriptors,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    arrays["__pra_metadata__"] = np.frombuffer(metadata, dtype=np.uint8)
+    stream = io.BytesIO()
+    np.savez(stream, **arrays)
+    return stream.getvalue()
+
+
+def deserialize_native_memory(payload: bytes) -> MLXNativeMemory:
+    """Restore a serialized memory to MLX arrays when MLX is available."""
+
+    import numpy as np
+
+    with np.load(io.BytesIO(payload), allow_pickle=False) as archive:
+        metadata = json.loads(bytes(archive["__pra_metadata__"]).decode("utf-8"))
+        if metadata.get("schema") != "pra-native-memory-v2":
+            raise ValueError("Unsupported PRA native-memory payload schema.")
+        restored: dict[str, object] = {}
+        for name, descriptor in metadata["arrays"].items():
+            array = archive[name].copy()
+            if descriptor.get("quantization") == "int8":
+                array = array.astype(np.float32) * float(descriptor["scale"])
+            restored[name] = array
+    try:
+        import mlx.core as mx
+    except ImportError:
+        convert = lambda value, _dtype: value
+    else:
+        def convert(value, logical_dtype):
+            array = mx.array(value)
+            if "bfloat16" in logical_dtype:
+                return array.astype(mx.bfloat16)
+            dtype = getattr(mx, logical_dtype, None)
+            return array if dtype is None else array.astype(dtype)
+
+    layers = tuple(
+        MLXNativeLayerKV(
+            convert(
+                restored[f"layer_{index:04d}_k"],
+                metadata["arrays"][f"layer_{index:04d}_k"]["logical_dtype"],
+            ),
+            convert(
+                restored[f"layer_{index:04d}_v"],
+                metadata["arrays"][f"layer_{index:04d}_v"]["logical_dtype"],
+            ),
+        )
+        for index in range(int(metadata["layer_count"]))
+    )
+    memory = MLXNativeMemory(layers, int(metadata["source_tokens"]))
+    if "mx" in locals():
+        mx.eval(*(value for layer in layers for value in (layer.keys, layer.values)))
+    return memory
+
+
+class MLXNativeColdCodec:
+    """Transform lossless native-memory blobs to and from quantized COLD blobs."""
+
+    def encode(
+        self, payload: bytes, quantization: str
+    ) -> tuple[bytes, Mapping[str, object]]:
+        memory = deserialize_native_memory(payload)
+        encoded = serialize_native_memory(memory, quantization=quantization)
+        return encoded, {
+            "schema": "pra-mlx-cold-codec-v1",
+            "quantization": quantization,
+            "lossless_bytes": len(payload),
+            "encoded_bytes": len(encoded),
+        }
+
+    def decode(self, payload: bytes, metadata: Mapping[str, object]) -> bytes:
+        if metadata.get("schema") != "pra-mlx-cold-codec-v1":
+            raise ValueError("Unsupported PRA MLX COLD codec metadata.")
+        memory = deserialize_native_memory(payload)
+        return serialize_native_memory(memory, quantization="none")
+
+
 def make_native_prompt_cache(
     model: object,
     memory: MLXNativeMemory,
@@ -453,6 +583,8 @@ class MLXInProcessNativeExecutor:
         block_store: LogicalPRABlockStore,
         max_resident_bytes: int = 512 * 1024 * 1024,
         eviction_policy: PRAEvictionPolicy | str = PRAEvictionPolicy.LRU,
+        storage_policy: PRAStoragePolicy | None = None,
+        storage_manager: PRAStorageManager | None = None,
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
@@ -464,6 +596,12 @@ class MLXInProcessNativeExecutor:
             max_resident_bytes=max_resident_bytes,
             policy=eviction_policy,
         )
+        self.storage = storage_manager or PRAStorageManager(
+            storage_policy or PRAStoragePolicy.named("balanced"),
+            hot=ResidencyManagerHotBridge(self.residency, deserialize_native_memory),
+            cold_codec=MLXNativeColdCodec(),
+        )
+        self.storage.start_maintenance()
         self._session_keys: dict[str, set[str]] = {}
         self.isolation = EnginePRAIsolationGuard()
 
@@ -535,9 +673,57 @@ class MLXInProcessNativeExecutor:
         key = self.block_store.register(
             LogicalPRABlock(identity, address_bytes=32, detail_bytes=0)
         )
-        if request.session_id:
+        if request.session_id and identity.session_id is not None:
             self._session_keys.setdefault(request.session_id, set()).add(key)
         return key
+
+    def _storage_entry(
+        self,
+        request: PRAWireRequest,
+        resource: PRAWireResource,
+        key: str,
+        memory: MLXNativeMemory,
+    ) -> PRAStorageEntry:
+        return PRAStorageEntry(
+            logical_key=key,
+            record_type=resource.record_type,
+            retention_class=PRARetentionClass.RECONSTRUCTABLE,
+            tenant_id=request.tenant_id,
+            session_id=(
+                None if resource.metadata.get("shareable", False) else request.session_id
+            ),
+            task_id=(
+                None
+                if resource.metadata.get("task_id") is None
+                else str(resource.metadata["task_id"])
+            ),
+            task_status=(
+                None
+                if resource.metadata.get("task_status") is None
+                else str(resource.metadata["task_status"])
+            ),
+            resource_version=str(resource.metadata.get("version", "source-hash")),
+            detail_bytes=memory.nbytes,
+            security_scope=resource.authorization_scope,
+            source_reconstructable=resource.text is not None,
+            reconstruction_cost_ms=float(
+                resource.metadata.get("reconstruction_cost_ms", 0.0)
+            ),
+            shared_reference_count=int(bool(resource.metadata.get("shareable", False))),
+        )
+
+    def _storage_fingerprint(self, resource: PRAWireResource) -> str:
+        payload = {
+            "model_id": self.model_id,
+            "model_revision": self.model_revision,
+            "layout": "per-layer-bhld",
+            "position_policy": "source-local",
+            "resource_id": resource.resource_id,
+            "resource_version": resource.metadata.get("version"),
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()
 
     def _resolve_memory(
         self, request: PRAWireRequest
@@ -556,28 +742,34 @@ class MLXInProcessNativeExecutor:
         scopes = tuple(map(str, request.metadata.get("authorization_scopes", ())))
         self.block_store.select(keys, tenant_id=request.tenant_id, authorization_scopes=scopes)
 
-        futures = []
-        for key, (_, tokens) in zip(keys, tokenized):
-            futures.append(
-                self.residency.prefetch(
-                    key,
-                    lambda tokens=tokens: (
-                        (memory := encode_native_memory(self.model, tokens)),
-                        memory.nbytes,
-                    ),
+        memories = []
+        for key, (resource, tokens) in zip(keys, tokenized):
+            def encode(tokens=tokens):
+                memory = encode_native_memory(self.model, tokens)
+                return memory, serialize_native_memory(memory)
+
+            if key not in self.storage.entries:
+                memory, payload = encode()
+                self.storage.register(
+                    self._storage_entry(request, resource, key, memory),
+                    payload,
+                    hot_value=memory,
+                    source_loader=lambda payload=payload: payload,
+                    fingerprint=self._storage_fingerprint(resource),
                 )
-            )
-        memories = tuple(
-            self.residency.resolve(
+            else:
+                self.storage.attach_source_loader(
+                    key, lambda encode=encode: encode()[1]
+                )
+            memory = self.storage.promote(
                 key,
-                lambda future=future: (
-                    (memory := future.result()),
-                    memory.nbytes,
-                ),
-                request_id=request.request_id,
+                tenant_id=request.tenant_id,
+                authorization_scopes=scopes,
             )
-            for key, future in zip(keys, futures)
-        )
+            if not isinstance(memory, MLXNativeMemory):
+                raise TypeError("MLX lifecycle promotion returned non-native memory.")
+            memories.append(memory)
+            self.storage.record_access(key, selected=True)
         return combine_native_memories(memories), keys, total
 
     def _prompt(self, request: PRAWireRequest) -> str:
@@ -608,7 +800,7 @@ class MLXInProcessNativeExecutor:
             )
             prompt = self._prompt(request)
             started = time.perf_counter()
-            with self.residency.pin_request(request.request_id, keys):
+            with self.storage.pin_request(request.request_id, keys):
                 for response in stream_generate(
                     self.model,
                     self.tokenizer,
@@ -643,8 +835,10 @@ class MLXInProcessNativeExecutor:
 
     def close_session(self, session_id: str) -> None:
         keys = tuple(self._session_keys.pop(session_id, ()))
-        self.residency.invalidate(keys)
+        self.storage.close_session(session_id)
         for key in keys:
+            if key in self.storage.entries and self.storage.entries[key].current_tier.value != "source":
+                continue
             identity = self.block_store.get(key).identity
             self.block_store.invalidate_resource(
                 identity.tenant_id,
@@ -654,4 +848,5 @@ class MLXInProcessNativeExecutor:
 
     def close(self) -> None:
         self.isolation.close()
+        self.storage.close()
         self.residency.close()

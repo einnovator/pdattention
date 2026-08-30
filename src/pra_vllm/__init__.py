@@ -9,6 +9,7 @@ from .v1_metadata import (
 )
 from .v1_native import (
     VLLMMetalV1NativeBridge,
+    VLLMPageHotBridge,
     augment_paged_context,
     native_request_cache_salt,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "VLLMMetalBlockHandle",
     "VLLMMetalPRAStore",
     "VLLMMetalV1NativeBridge",
+    "VLLMPageHotBridge",
     "VLLMNativeBlockSet",
     "VLLMNativeExecutor",
     "VLLMNativeStep",

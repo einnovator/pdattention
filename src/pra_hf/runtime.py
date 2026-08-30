@@ -63,8 +63,19 @@ from .progressive_context import (
 from .typed_context import AdaptiveContextRecord
 from .gateway_session import GatewaySessionRegistry, ResolvedSessionTurn
 from .session_service import AgentSessionState, SessionService
-from .storage_lifecycle import PRAStorageManager, PRAStoragePolicy
-from .task_context import TaskEvent, TaskGraph, TaskProvenance, attach_task_provenance
+from .storage_lifecycle import (
+    PRARetentionClass,
+    PRAStorageEntry,
+    PRAStorageManager,
+    PRAStoragePolicy,
+)
+from .task_context import (
+    TaskEvent,
+    TaskGraph,
+    TaskProvenance,
+    TaskStatus,
+    attach_task_provenance,
+)
 from .task_planning import (
     TaskOperation,
     apply_task_operations as validate_task_operations,
@@ -1146,6 +1157,17 @@ class PRARuntime:
         self.logical_sessions[session.session_id] = updated
         task = next(row for row in updated.tasks.tasks if row.task_id == event.task_id)
         self.storage.update_task_status(task.task_id, task.status)
+        closed = {TaskStatus.COMPLETED, TaskStatus.CANCELLED}
+        for candidate in updated.tasks.tasks:
+            dependents = sum(
+                other.status not in closed
+                and (
+                    candidate.task_id in other.depends_on
+                    or other.parent_task_id == candidate.task_id
+                )
+                for other in updated.tasks.tasks
+            )
+            self.storage.update_dependencies(candidate.task_id, dependents)
         return updated
 
     def apply_task_operations(
@@ -1291,6 +1313,34 @@ class PRARuntime:
         )
         if self.native_result_routing and self.config.auto_prepare_native_results:
             context.prepare_native_index(record.record_id)
+        task_provenance = record.backing.provenance.get("task", {})
+        task_id = (
+            str(task_provenance.get("task_id"))
+            if isinstance(task_provenance, Mapping)
+            and task_provenance.get("task_id") is not None
+            else None
+        )
+        logical_key = f"record:{record.backing.scope.fingerprint}:{record.record_id}"
+        if logical_key not in self.storage.entries:
+            encoded_source = json.dumps(
+                payload, sort_keys=True, default=str
+            ).encode("utf-8")
+            self.storage.register_source(
+                PRAStorageEntry(
+                    logical_key=logical_key,
+                    record_type=record.record_type.value,
+                    retention_class=PRARetentionClass.RECONSTRUCTABLE,
+                    tenant_id=record.backing.scope.tenant_id,
+                    session_id=record.backing.scope.session_id,
+                    task_id=task_id,
+                    task_status=None,
+                    resource_version=record.backing.content_hash,
+                    detail_bytes=0,
+                    source_reconstructable=True,
+                ),
+                lambda value=encoded_source: value,
+                fingerprint=record.backing.content_hash,
+            )
         return record
 
     def compact_result(self, session: PRASession, record_id: str) -> object:

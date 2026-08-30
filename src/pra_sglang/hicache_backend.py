@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-from typing import Protocol
+from typing import Mapping, Protocol
 
+from pra_hf.storage_lifecycle import PRAStorageBackend
 from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
 
 
@@ -187,3 +188,132 @@ class SGLangHiCacheStorageBackend:
         key = str(logical_key)
         self._sizes.pop(key, None)
         self._revoked.add(key)
+
+
+class SGLangHiCacheByteBackend(PRAStorageBackend):
+    """Expose built-in or distributed HiCache as a shared lifecycle backend."""
+
+    header_bytes = 512
+
+    def __init__(self, storage: object, *, namespace: str = "pra-lifecycle") -> None:
+        self.storage = storage
+        self.namespace = str(namespace)
+        self._known: set[str] = set()
+        self._sizes: dict[str, int] = {}
+        self._revoked: set[str] = set()
+
+    def _keys(self, logical_key: str) -> tuple[str, str]:
+        digest = hashlib.sha256(str(logical_key).encode("utf-8")).hexdigest()
+        stem = f"{self.namespace}-{digest}"
+        return f"{stem}-header", f"{stem}-body"
+
+    @staticmethod
+    def _tensor(payload: bytes):
+        import numpy as np
+        import torch
+
+        return torch.from_numpy(np.frombuffer(payload, dtype=np.uint8).copy())
+
+    def _read(self, key: str, size: int) -> bytes:
+        import torch
+
+        target = torch.empty(size, dtype=torch.uint8)
+        result = self.storage.get(key, target)
+        if result is None:
+            raise KeyError(key)
+        return bytes(result.numpy())
+
+    def _header(self, logical_key: str) -> Mapping[str, object]:
+        header_key, _body_key = self._keys(logical_key)
+        payload = self._read(header_key, self.header_bytes)
+        header = json.loads(payload.split(b"\0", 1)[0].decode("utf-8"))
+        if header.get("schema") != "pra-hicache-bytes-v1":
+            raise ValueError("Unsupported PRA HiCache lifecycle header.")
+        return header
+
+    def contains(self, key: str) -> bool:
+        if str(key) in self._revoked:
+            return False
+        header_key, body_key = self._keys(key)
+        present = bool(self.storage.exists(header_key) and self.storage.exists(body_key))
+        if present:
+            self._known.add(str(key))
+        return present
+
+    def put(self, key: str, payload: bytes, metadata: Mapping[str, object]) -> int:
+        metadata_bytes = json.dumps(
+            dict(metadata), sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        body = metadata_bytes + bytes(payload)
+        header = json.dumps(
+            {
+                "schema": "pra-hicache-bytes-v1",
+                "metadata_bytes": len(metadata_bytes),
+                "payload_bytes": len(payload),
+                "payload_sha256": hashlib.sha256(payload).hexdigest(),
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if len(header) >= self.header_bytes:
+            raise RuntimeError("PRA HiCache lifecycle header exceeds allocation.")
+        header += b"\0" * (self.header_bytes - len(header))
+        header_key, body_key = self._keys(key)
+        if not self.storage.set(header_key, self._tensor(header)):
+            raise IOError("SGLang HiCache rejected PRA lifecycle metadata.")
+        if not self.storage.set(body_key, self._tensor(body)):
+            raise IOError("SGLang HiCache rejected PRA lifecycle payload.")
+        self._known.add(str(key))
+        self._revoked.discard(str(key))
+        self._sizes[str(key)] = len(header) + len(body)
+        return self._sizes[str(key)]
+
+    def get(self, key: str, metadata: Mapping[str, object]) -> bytes:
+        header = self._header(key)
+        _header_key, body_key = self._keys(key)
+        body = self._read(
+            body_key,
+            int(header["metadata_bytes"]) + int(header["payload_bytes"]),
+        )
+        split = int(header["metadata_bytes"])
+        stored_metadata = json.loads(body[:split].decode("utf-8"))
+        expected = metadata.get("fingerprint")
+        if expected is not None and stored_metadata.get("fingerprint") != expected:
+            raise ValueError("Persisted PRA fingerprint is incompatible.")
+        payload = body[split:]
+        if hashlib.sha256(payload).hexdigest() != header["payload_sha256"]:
+            raise ValueError("Persisted PRA HiCache payload checksum failed.")
+        return payload
+
+    def metadata(self, key: str) -> Mapping[str, object]:
+        header = self._header(key)
+        _header_key, body_key = self._keys(key)
+        body = self._read(
+            body_key,
+            int(header["metadata_bytes"]) + int(header["payload_bytes"]),
+        )
+        result = json.loads(body[: int(header["metadata_bytes"])].decode("utf-8"))
+        result["stored_bytes"] = self.size(key)
+        return result
+
+    def remove(self, key: str) -> None:
+        # Portable HiCache APIs do not expose point deletion. Revocation is
+        # immediate in this adapter; physical reclamation remains backend-owned.
+        self._known.discard(str(key))
+        self._sizes.pop(str(key), None)
+        self._revoked.add(str(key))
+
+    def size(self, key: str) -> int:
+        if key not in self._sizes:
+            header = self._header(key)
+            self._sizes[key] = (
+                self.header_bytes
+                + int(header["metadata_bytes"])
+                + int(header["payload_bytes"])
+            )
+        return self._sizes[key]
+
+    def bytes_used(self) -> int:
+        return sum(self.size(key) for key in self._known)
+
+    def keys(self) -> tuple[str, ...]:
+        return tuple(sorted(self._known))
