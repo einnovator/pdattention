@@ -49,8 +49,18 @@ def _history(genai: object, messages: list[dict[str, str]]) -> object:
     return history
 
 
-def _request_spec(harness: object, representation: str, resource_number: int) -> tuple[list[dict[str, str]], str]:
-    messages = harness.benchmark_messages()[representation]
+def _request_spec(
+    harness: object,
+    representation: str,
+    resource_number: int,
+    *,
+    distractor_count: int,
+    distractor_repeat: int,
+) -> tuple[list[dict[str, str]], str]:
+    messages = harness.benchmark_messages(
+        distractor_count=distractor_count,
+        distractor_repeat=distractor_repeat,
+    )[representation]
     expected = f"PRA_EVIDENCE_{4821 + resource_number}"
     return json.loads(json.dumps(messages).replace("PRA_EVIDENCE_4821", expected)), expected
 
@@ -70,7 +80,9 @@ def _aggregate(harness: object, rows: list[Mapping[str, object]], wall_seconds: 
         return [float(row[name]) for row in rows if row.get(name) is not None]
 
     ttft = values("ttft_ms")
+    tpot = values("tpot_ms")
     latency = values("generation_ms")
+    input_tokens = values("input_tokens")
     output_tokens = values("output_tokens")
     return {
         "sample_count": len(rows),
@@ -80,9 +92,14 @@ def _aggregate(harness: object, rows: list[Mapping[str, object]], wall_seconds: 
         "ttft_ms_p50": harness.percentile(ttft, 0.50),
         "ttft_ms_p95": harness.percentile(ttft, 0.95),
         "ttft_ms_p99": harness.percentile(ttft, 0.99),
+        "tpot_ms_p50": harness.percentile(tpot, 0.50),
+        "tpot_ms_p95": harness.percentile(tpot, 0.95),
+        "tpot_ms_p99": harness.percentile(tpot, 0.99),
         "generation_ms_p50": harness.percentile(latency, 0.50),
         "generation_ms_p95": harness.percentile(latency, 0.95),
         "generation_ms_p99": harness.percentile(latency, 0.99),
+        "mean_input_tokens": statistics.fmean(input_tokens) if input_tokens else None,
+        "mean_output_tokens": statistics.fmean(output_tokens) if output_tokens else None,
     }
 
 
@@ -114,7 +131,13 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                 for wave in range(args.waves):
                     for slot in range(concurrency):
                         number = 0 if workload == "shared_resource" else wave * concurrency + slot + 1
-                        messages, expected = _request_spec(harness, representation, number)
+                        messages, expected = _request_spec(
+                            harness,
+                            representation,
+                            number,
+                            distractor_count=args.distractor_count,
+                            distractor_repeat=args.distractor_repeat,
+                        )
                         specs.append((wave, slot, number, messages, expected))
 
                 unique = {spec[2]: spec for spec in specs}
@@ -196,6 +219,8 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
         "compile_ms": compile_ms,
         "concurrency": args.concurrency,
         "waves": args.waves,
+        "distractor_count": args.distractor_count,
+        "distractor_repeat": args.distractor_repeat,
         "samples": samples,
         "aggregates": aggregates,
     }
@@ -209,6 +234,8 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, nargs="+", default=[1, 2, 4, 8])
     parser.add_argument("--waves", type=int, default=5)
     parser.add_argument("--max-tokens", type=int, default=24)
+    parser.add_argument("--distractor-count", type=int, default=12)
+    parser.add_argument("--distractor-repeat", type=int, default=28)
     parser.add_argument("--cache-size-gb", type=int, default=1)
     parser.add_argument("--max-num-batched-tokens", type=int, default=2048)
     args = parser.parse_args()
