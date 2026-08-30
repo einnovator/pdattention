@@ -194,14 +194,18 @@ def main() -> None:
                                 f"{workload}-{tier}-{concurrency}-{index}"
                             )
                             started = time.perf_counter()
-                            active = manager.promote(key, request_id=request_id)
-                            promotion_ms = (time.perf_counter() - started) * 1000.0
-                            try:
-                                queue_started = time.perf_counter()
-                                with model_runner_lock:
-                                    queue_ms = (
-                                        time.perf_counter() - queue_started
-                                    ) * 1000.0
+                            queue_started = time.perf_counter()
+                            with model_runner_lock:
+                                queue_ms = (
+                                    time.perf_counter() - queue_started
+                                ) * 1000.0
+                                active = manager.promote(
+                                    key, request_id=request_id
+                                )
+                                promotion_ms = (
+                                    time.perf_counter() - queue_started - queue_ms / 1000.0
+                                ) * 1000.0
+                                try:
                                     generated = _generate_timed(
                                         model,
                                         tokenizer,
@@ -209,8 +213,8 @@ def main() -> None:
                                         make_native_prompt_cache(model, active),
                                         args.max_new_tokens,
                                     )
-                            finally:
-                                manager.unpin(key, request_id)
+                                finally:
+                                    manager.unpin(key, request_id)
                             request_ms = (time.perf_counter() - started) * 1000.0
                             example = item["example"]
                             output = str(generated["output"])

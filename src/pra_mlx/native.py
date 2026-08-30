@@ -843,23 +843,28 @@ class MLXInProcessNativeExecutor:
     ) -> Iterator[Mapping[str, object]]:
         if block_store is not self.block_store:
             raise ValueError("MLX executor and adapter must share one logical block store.")
-        from mlx_lm import stream_generate
-        from mlx_lm.sample_utils import make_sampler
+        with self._model_runner_lock:
+            from mlx_lm import stream_generate
+            from mlx_lm.sample_utils import make_sampler
 
-        memory, keys, selected_tokens = self._resolve_memory(request)
-        self.isolation.open_request(request.request_id, keys)
-        try:
-            self.isolation.attach_once(request.request_id, keys)
-            detail_layers = request.pra_policy.get("detail_kv_layers")
-            cache = make_native_prompt_cache(
-                self.model,
-                memory,
-                selected_layers=None if detail_layers is None else tuple(detail_layers),
-            )
-            prompt = self._prompt(request)
-            started = time.perf_counter()
-            with self.storage.pin_request(request.request_id, keys):
-                with self._model_runner_lock:
+            # Promotion may evaluate MLX arrays on the same global command
+            # stream as decode, so it belongs to the model-runner critical
+            # section together with cache construction and generation.
+            memory, keys, selected_tokens = self._resolve_memory(request)
+            self.isolation.open_request(request.request_id, keys)
+            try:
+                self.isolation.attach_once(request.request_id, keys)
+                detail_layers = request.pra_policy.get("detail_kv_layers")
+                cache = make_native_prompt_cache(
+                    self.model,
+                    memory,
+                    selected_layers=(
+                        None if detail_layers is None else tuple(detail_layers)
+                    ),
+                )
+                prompt = self._prompt(request)
+                started = time.perf_counter()
+                with self.storage.pin_request(request.request_id, keys):
                     for response in stream_generate(
                         self.model,
                         self.tokenizer,
@@ -880,8 +885,10 @@ class MLXInProcessNativeExecutor:
                             "elapsed_ms": (time.perf_counter() - started) * 1000.0,
                             "native_kv_used": True,
                         }
-        finally:
-            self.isolation.close_request(request.request_id, require_attached=False)
+            finally:
+                self.isolation.close_request(
+                    request.request_id, require_attached=False
+                )
 
     def generate(
         self, request: PRAWireRequest, block_store: LogicalPRABlockStore
