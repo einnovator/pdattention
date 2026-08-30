@@ -49,9 +49,16 @@ def percentile(values: Iterable[float], fraction: float) -> float | None:
 
 
 def benchmark_messages(
-    *, distractor_count: int = 12, distractor_repeat: int = 28
+    *,
+    distractor_count: int = 12,
+    distractor_repeat: int = 28,
 ) -> dict[str, list[dict[str, str]]]:
-    """Build fixed conditions that separate exact-prefix and selected memory."""
+    """Build conditions that separate exact-prefix and selected memory.
+
+    The defaults preserve the original smoke workload. Benchmark campaigns can
+    scale the retained context without changing the target evidence or prompt
+    structure, which keeps comparisons across engines selector-frozen.
+    """
 
     if distractor_count <= 0 or distractor_repeat <= 0:
         raise ValueError("Serving benchmark distractor dimensions must be positive.")
@@ -286,4 +293,3 @@ def run_serving_benchmark(
         "samples": [sample.to_dict() for sample in samples],
         "aggregates": aggregates,
     }
-
