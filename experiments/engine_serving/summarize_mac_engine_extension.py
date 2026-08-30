@@ -139,6 +139,72 @@ def _write_online_table(path: Path, payloads: list[dict[str, object]]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _pressure_rows(payloads: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Aggregate sustained-session residency by dataset and HOT capacity."""
+
+    result = []
+    for payload in payloads:
+        for budget in payload["resident_resource_budgets"]:
+            rows = [
+                row
+                for row in payload["rows"]
+                if int(row["resident_resource_budget"]) == int(budget)
+            ]
+            summaries = [
+                row
+                for row in payload["seed_summaries"]
+                if int(row["resident_resource_budget"]) == int(budget)
+            ]
+            final = [row for row in rows if row["final_revisit"]]
+            result.append(
+                {
+                    "dataset": payload["dataset"],
+                    "resident_resource_budget": int(budget),
+                    "resources_per_seed": int(payload["resources_per_seed"]),
+                    "session_rounds": int(payload["session_rounds"]),
+                    "requests": len(rows),
+                    "reloads_mean": fmean(float(row["reloads"]) for row in summaries),
+                    "evictions_mean": fmean(
+                        float(row["evictions"]) for row in summaries
+                    ),
+                    "final_revisit_reload_rate": fmean(
+                        bool(row["reload_on_request"]) for row in final
+                    ),
+                    "token_f1": fmean(float(row["token_f1"]) for row in rows),
+                    "gold_answer_logprob": fmean(
+                        float(row["gold_answer_logprob"]) for row in rows
+                    ),
+                    "resolve_p95_ms": _nearest(
+                        [float(row["resolve_ms"]) for row in rows], 0.95
+                    ),
+                    "completion_p95_ms": _nearest(
+                        [float(row["completion_latency_ms"]) for row in rows], 0.95
+                    ),
+                }
+            )
+    return result
+
+
+def _write_pressure_table(path: Path, rows: list[dict[str, object]]) -> None:
+    lines = [
+        r"\begin{tabular}{lrrrrrrr}",
+        r"\toprule",
+        r"Dataset & HOT resources & Requests & Reloads & Evictions & Final reload & F1 & p95 ms \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        lines.append(
+            f"{_tex(row['dataset'])} & {row['resident_resource_budget']} & "
+            f"{row['requests']} & {float(row['reloads_mean']):.1f} & "
+            f"{float(row['evictions_mean']):.1f} & "
+            f"{100 * float(row['final_revisit_reload_rate']):.0f}\\% & "
+            f"{float(row['token_f1']):.3f} & "
+            f"{float(row['completion_p95_ms']):.0f} \\\\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--results-root", type=Path, default=Path("docs/papers/shared/results"))
@@ -167,7 +233,17 @@ def main() -> None:
         root / "paper6_1_sglang" / "online_native_gateway_qasper.json",
     )
     online = [_load(path) for path in online_paths if path.exists()]
+    pressure = [
+        _load(path)
+        for path in (
+            root / "paper6_2_mlx" / "long_session_pressure_qasper.json",
+            root / "paper6_2_mlx" / "long_session_pressure_hotpotqa.json",
+            root / "paper6_2_mlx" / "long_session_pressure_2wikimultihopqa.json",
+        )
+        if path.exists()
+    ]
     async_summary = _async_rows(async_payloads)
+    pressure_summary = _pressure_rows(pressure)
     summary = {
         "schema_version": "1.0",
         "experiment": "paper6_mac_engine_extension_summary_v1",
@@ -175,6 +251,7 @@ def main() -> None:
         "selective_quantization": quantization["summary"],
         "storage_concurrency": concurrency["rows"],
         "online_gateway": online,
+        "long_session_pressure": pressure_summary,
     }
     (output / "mac_engine_extension_summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
@@ -189,6 +266,10 @@ def main() -> None:
     )
     if online:
         _write_online_table(output / "generated_online_gateway_table.tex", online)
+    if pressure_summary:
+        _write_pressure_table(
+            output / "generated_long_session_pressure_table.tex", pressure_summary
+        )
 
     import matplotlib.pyplot as plt
 
