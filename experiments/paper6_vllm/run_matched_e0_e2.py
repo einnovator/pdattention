@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import json
 import os
 import time
@@ -48,6 +49,7 @@ def _run(
     source_tokens=0,
     source_position_base=None,
     cache_salt=None,
+    storage=None,
 ):
     """Step V1 explicitly so TTFT and inter-token arrivals are observable."""
 
@@ -66,27 +68,35 @@ def _run(
     [request_id] = llm.enqueue(
         _prompt(prompt_tokens, cache_salt), sampling, use_tqdm=False
     )
-    if key is not None:
-        bridge.register(
-            request_id,
-            (key,),
-            selected_token_count=source_tokens,
-            source_position_base=position_base,
-        )
-    arrivals: list[float] = []
-    observed_tokens = 0
-    output = None
-    while llm.llm_engine.has_unfinished_requests():
-        step_outputs = llm.llm_engine.step()
-        if len(step_outputs) > 1:
-            raise RuntimeError("Matched timing harness expects one active vLLM request.")
-        for candidate in step_outputs:
-            output = candidate
-            token_count = len(candidate.outputs[0].token_ids)
-            if token_count > observed_tokens:
-                timestamp = (time.perf_counter() - started) * 1000.0
-                arrivals.extend([timestamp] * (token_count - observed_tokens))
-                observed_tokens = token_count
+    pin = (
+        storage.pin_request(str(request_id), (key,))
+        if key is not None and storage is not None
+        else nullcontext()
+    )
+    with pin:
+        if key is not None:
+            bridge.register(
+                request_id,
+                (key,),
+                selected_token_count=source_tokens,
+                source_position_base=position_base,
+            )
+        arrivals: list[float] = []
+        observed_tokens = 0
+        output = None
+        while llm.llm_engine.has_unfinished_requests():
+            step_outputs = llm.llm_engine.step()
+            if len(step_outputs) > 1:
+                raise RuntimeError(
+                    "Matched timing harness expects one active vLLM request."
+                )
+            for candidate in step_outputs:
+                output = candidate
+                token_count = len(candidate.outputs[0].token_ids)
+                if token_count > observed_tokens:
+                    timestamp = (time.perf_counter() - started) * 1000.0
+                    arrivals.extend([timestamp] * (token_count - observed_tokens))
+                    observed_tokens = token_count
     if output is None or not output.finished:
         raise RuntimeError(f"vLLM request {request_id} did not produce a final output.")
     wall_ms = (time.perf_counter() - started) * 1000.0
@@ -115,6 +125,7 @@ def _run_batch(
     key=None,
     source_tokens=0,
     cache_salt=None,
+    storage=None,
 ):
     """Run one genuinely concurrent V1 wave over a shared selected resource."""
 
@@ -128,19 +139,29 @@ def _run_batch(
         )
     started = time.perf_counter()
     request_ids = []
-    for prompt_tokens in prompts:
-        [request_id] = llm.enqueue(
-            _prompt(prompt_tokens, cache_salt), sampling, use_tqdm=False
-        )
-        request_ids.append(str(request_id))
-        if key is not None:
-            bridge.register(
-                request_id,
-                (key,),
-                selected_token_count=source_tokens,
-                source_position_base=source_tokens,
+    pinned = []
+    try:
+        for prompt_tokens in prompts:
+            [request_id] = llm.enqueue(
+                _prompt(prompt_tokens, cache_salt), sampling, use_tqdm=False
             )
-    outputs = llm.wait_for_completion(use_tqdm=False)
+            identifier = str(request_id)
+            request_ids.append(identifier)
+            if key is not None:
+                if storage is not None:
+                    storage.promote(key, request_id=identifier)
+                    pinned.append(identifier)
+                bridge.register(
+                    request_id,
+                    (key,),
+                    selected_token_count=source_tokens,
+                    source_position_base=source_tokens,
+                )
+        outputs = llm.wait_for_completion(use_tqdm=False)
+    finally:
+        if key is not None and storage is not None:
+            for identifier in pinned:
+                storage.unpin(key, identifier)
     wall_ms = (time.perf_counter() - started) * 1000.0
     by_id = {str(output.request_id): output for output in outputs}
     ordered = [by_id[request_id.split("-", 1)[0]] for request_id in request_ids]
