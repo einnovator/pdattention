@@ -55,9 +55,18 @@ concurrency-eight schedules while E2 removes 90.6--93.0\% of visible prompt
 tokens. Cold end-to-end cost is slightly lower for E2, but warm, multi-query,
 and concurrent cost ratios are 1.136, 1.140, and 1.122. Semantic transport is
 closed; the unfused selected-cache path remains an economic optimization
-target. An expanded lifecycle study routes logical keys through the shared
+target. An expanded 149-question confirmation preserves 2,086/2,086 pairs and
+reduces the reused-path penalties to 5.4--7.4\%. An expanded lifecycle study routes logical keys through the shared
 manager and built-in HiCache storage. WARM is 80/80 exact and restart recovery
-succeeds; int8 COLD is exact in only 14/80 sequences and remains opt-in.
+succeeds; int8 COLD is exact in only 14/80 sequences and remains opt-in. A
+five-example Llama-3.2-1B replication also preserves every lossless WARM
+output. Gemma-3-1B is not runnable on the pinned SGLang-MLX build because its
+per-layer sliding-window topology is unsupported before PRA is attached. An
+event-loop-owned replacement for Python-thread prefetch preserves 35/35
+outputs and, with 250 ms lead, reduces median demand stall to 0.013 ms. The
+native streaming gateway then covers concurrency one through eight,
+cancellation, and request-owned cleanup; TTFT tails expose the serialized
+model-runner queue rather than hidden parallel execution.
 \end{abstract}
 
 \section{Introduction}
@@ -322,6 +331,14 @@ cost ratio of 1.122. The wrapper concatenates selected and local arrays at each
 consumer layer and decode step, so native transport is semantically closed
 while fused materialization and decode economics remain open.
 
+An expanded confirmation increases the cohort to 149 unique questions (49
+QASPER, 50 HotpotQA, and 50 2Wiki). SGLang preserves all 2,086 paired outputs,
+with an engine-level Wilson 95\% lower bound of 0.9982. Visible-token reduction
+is 90.4--93.0\%. Macro cold, warm, multi-query, and concurrent E2/E0 cost ratios
+are 0.980, 1.074, 1.071, and 1.054. The larger cohort therefore retains the
+one-shot ingestion advantage and narrows, but does not remove, unfused reuse
+and decode overhead.
+
 \subsection{Semantic tiers versus HiCache tiers}
 The shared runtime now owns HOT/WARM/COLD/SOURCE as semantic service levels.
 For this paper, HOT maps to the attention-ready PRA object, WARM can map to a
@@ -370,7 +387,10 @@ QASPER at 1.7B. Lossless WARM is 80/80 exact and every manager recovers after
 restart; int8 COLD is exact in 14/80 sequences. WARM/HOT p50 ratios improve
 from 1.75 to 1.64 at 1.7B but remain 1.64--1.75 overall. This closes local
 lifecycle fidelity over a broader cohort, not distributed placement or online
-tail latency.
+tail latency. A separate five-example Llama-3.2-1B QASPER cohort is 5/5 WARM
+exact with restart recovery. The equivalent Gemma-3-1B run is blocked before
+PRA attachment by the pinned backend's lack of a per-layer sliding-window map;
+we preserve that failure as an explicit engine compatibility boundary.
 
 \begin{table}[!htbp]
 \centering
@@ -380,6 +400,41 @@ promotion and generation.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/live_storage_scaling/generated_live_storage_scaling_sglang_mlx.tex}}
 \label{tab:sglang-storage-scaling}
+\end{table}
+
+\subsection{Scheduler-owned promotion and online gateway}
+The earlier prefetch probe used a Python thread and delayed the caller even
+when nominal lead exceeded promotion time. The revised path gives promotion to
+the event loop, deduplicates in-flight logical keys, and admits completed
+objects to a bounded hot set. All 35 generations remain HOT-exact. With no
+lead, median demand stall is 210.3 ms and demand-path cost is 1.561 times HOT.
+At 250 ms, four of five objects are ready, median stall is 0.013 ms, and the
+ratio is 1.035; by 350 ms all five are ready. This closes local overlap as a
+mechanism, while distributed prefetch policy remains open.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Event-loop-owned WARM promotion. Lead and stall are milliseconds.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_async_warm_table.tex}}
+\label{tab:sglang-async-warm}
+\end{table}
+
+The native executor also runs through the OpenAI-compatible streaming gateway.
+Throughput is 3.04--3.20 requests/s from concurrency one to eight; TTFT p95
+rises from 40.4 to 2,336.9 ms under queued load. Cancellation after the first
+streamed token succeeds, and every exercised session releases request-owned
+PRA state. These measurements include HTTP handling and queueing but remain a
+single-host SGLang-MLX realization rather than distributed HiCache evidence.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Online native-gateway concurrency, including queueing. Times are ms.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_online_gateway_table.tex}}
+\label{tab:sglang-online-gateway}
 \end{table}
 
 \subsection{External HiCache placement}
@@ -495,7 +550,8 @@ This closes the local composition and cleanup mechanism. It also exercises
 capacity pressure across the five resources: three L1-to-L2 and six L2-to-L3
 demotions occur while preserving recovery. The experiment directly controls
 the prefix-slot handoff rather than entering through SGLang's HTTP scheduler;
-distributed HiCache, scheduler affinity, and online tail latency remain open.
+distributed HiCache, scheduler affinity, and concurrent WARM/COLD tier tails
+remain open. The local streaming-gateway queue is measured separately.
 
 \begin{figure}[!htbp]
 \centering
@@ -515,8 +571,9 @@ radix baseline & smoke closed & exact scheduler cache-token trace \\
 selected-text parity & smoke closed & selected and full are 5/5 \\
 HiCache non-prefix object & controlled closed & five-seed L1/L2/L3 promotion and forced demotion \\
 built-in HiCache storage & controlled closed & file backend, fresh adapter 5/5, restored generation 5/5 \\
-shared storage lifecycle & controlled closed & logical-key promotion; WARM 80/80 exact; restart recovery; int8 COLD 14/80 \\
+shared storage lifecycle & controlled closed & logical-key promotion; WARM 85/85 exact across Qwen/Llama; restart recovery \\
 prefetch overlap & negative/open & exact 20/20; 10--50 ms requests became 193--235 ms caller delays \\
+event-loop promotion & controlled closed & 35/35 exact; 250 ms lead reduces median demand stall to 0.013 ms \\
 selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
 radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\
 Radix + HiCache request & controlled closed & A/C 10/10, cleanup B 0/5, exactly one selected copy \\
@@ -530,13 +587,12 @@ robustness & partial & one model; synthetic and two natural-text transport fixtu
 \end{center}
 
 \section{Next Engine-Native Experiment}
-The matched single-request comparison is now complete. The next useful patch
-moves the verified local composition into off-node HiCache placement and
-scheduler affinity. The Python-thread control shows that useful prefetch
-overlap requires SGLang-native asynchronous transfer rather than a host-thread
-wrapper. Concurrent cold/warm tier curves and server p50/p95/p99 should follow
-that integration. Only then should learned placement or cache-aware scheduling
-be optimized.
+The matched single-request comparison and event-loop overlap mechanism are now
+complete. The next useful patch moves the verified local composition into
+off-node HiCache placement and scheduler affinity. Concurrent WARM/COLD tier
+curves and distributed server tails should follow that integration; the current
+gateway p50/p95 describes one serialized local model runner. Only then should
+learned placement or cache-aware scheduling be optimized.
 
 \section{Falsification and Limitations}
 Deep SGLang integration is unnecessary if RadixAttention plus the tuned
@@ -548,14 +604,16 @@ The measurements use one small model family, a local compatibility patch, and
 one Apple host. The HTTP and native runs use different model precisions. The
 broad concurrency and natural-text runner cohorts disable Radix pooling; the
 dedicated combined cohort instead drives the exact prefix-slot boundary
-directly, without the HTTP scheduler. Distributed HiCache, HTTP-level native
-concurrency, tail latency, resource-affinity routing,
-and archived-head transition remain unmeasured. L3 timing includes only five
+directly. The later HTTP gateway exercises native streaming, cancellation, and
+cleanup, but serializes one local model runner. Distributed HiCache,
+continuous-batching tails, resource-affinity routing, and archived-head
+transition remain unmeasured. L3 timing includes only five
 loads and one large outlier. The natural controls contain real dataset text
-but an inserted answer-code task. The matched cohort uses original benchmark
-answers, but only 20 routed selections per dataset and a 24-token greedy decode.
-Its exact transport parity is stronger than its low absolute F1. No distributed
-HiCache or queued server result is implied.
+but an inserted answer-code task. The original matched cohort uses only 20
+routed selections per dataset and a 24-token greedy decode; the expanded
+confirmation improves sample size while retaining the bounded decoder. Its
+exact transport parity is stronger than its low absolute F1. No distributed
+HiCache or distributed SGLang scheduling result is implied.
 
 \section{Related Work}
 SGLang combines a structured runtime with RadixAttention for shared prefix

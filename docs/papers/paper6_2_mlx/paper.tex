@@ -1,6 +1,6 @@
 \documentclass[10pt]{article}
 \usepackage[margin=0.82in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor,placeins}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor,placeins,float}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black,citecolor=blue!45!black}
 
@@ -54,13 +54,20 @@ same frozen routed selections, a matched E0/E2 economic benchmark preserves all
 schedules and removes 90.6--93.0\% of visible prompt tokens. Native ingestion
 is cheaper than ordinary source-cache construction, but the unfused
 selected-cache path yields macro E2/E0 cost ratios of 1.130, 1.155, 1.148, and
-1.132 across those schedules. A 1,020-request pressure sweep then holds QA quality constant while
+1.132 across those schedules. An expanded 149-question confirmation preserves
+2,086/2,086 pairs with ratios of 1.043, 1.139, 1.133, and 1.072. A 1,020-request pressure sweep then holds QA quality constant while
 varying an eight-resource session's compact-K/V budget. Budgets below eight
 reload every repeated access; fitting all eight resources eliminates reloads
 and halves mean resolution time at a 151--168 MiB residency cost. An expanded
 live lifecycle study adds layer-segmented mmap WARM storage: WARM is 80/80
 exact and restart recovery succeeds, while int8 COLD is exact in only 13/80
-sequences and remains an explicit, unpromoted option.
+sequences and remains an explicit, unpromoted option. Five-example Llama and
+Gemma replications also preserve every lossless WARM output, while their small
+int8 results remain calibration observations rather than defaults. Event-loop
+promotion hides the WARM stall with sufficient lead, and the native streaming
+gateway measures queueing through concurrency eight with cancellation-safe
+cleanup. A 1,125-request long-session extension confirms an eight-resource
+working-set threshold, while selective int8 remains below the lossless gate.
 \end{abstract}
 
 \section{Introduction}
@@ -434,6 +441,28 @@ insufficient or misleading, while short free generation is noisy. The result
 closes the routed engine path and localizes the remaining deficit to evidence
 selection; it does not close a production QA-quality gate.
 
+We then expand each dataset to 50 sampled examples (49 unique for QASPER and
+50 for the other two). Table~\ref{tab:mlx-routed-expanded} confirms exact
+ordinary/native consumption parity and sharpens the dataset-specific result.
+On QASPER, routed native memory raises F1 from 0.038 without memory to 0.113,
+while shuffled memory reaches 0.042; on HotpotQA the corresponding values are
+0.054, 0.113, and 0.034. Their gold-answer likelihoods move in the same causal
+direction. On 2Wiki, however, routed F1 is 0.076 versus 0.081 without memory
+and 0.089 shuffled, although routed likelihood remains better than shuffled.
+The larger cohort therefore confirms QASPER/Hotpot utility and a 2Wiki
+selection or answer-metric failure; it does not support a dataset-averaged
+quality claim.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Expanded routed QA. Selection is frozen before ordinary or native
+consumption; oracle and shuffled conditions are causal bounds.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/expanded_mac_validation/generated_expanded_routed_table.tex}}
+\label{tab:mlx-routed-expanded}
+\end{table}
+
 \subsection{Matched selected-text economics}
 The routed selections also support a direct E0/E2 comparison without changing
 the evidence. For 20 examples per dataset across five seeds, E0 restores an
@@ -480,6 +509,22 @@ Warm and multi-query ratios are 1.155 and 1.148. Under eight threaded requests,
 E2 reaches 88.4\% of E0 throughput, an inverse cost ratio of 1.132. This is
 exact semantic transport across all four regimes, but not yet an optimized
 native-attention kernel.
+
+The expanded 149-question confirmation preserves all 2,086 MLX pairs, with an
+engine-level Wilson 95\% lower bound of 0.9982. Visible-token reduction remains
+90.4--93.0\%. Macro cold, warm, multi-query, and concurrent cost ratios are
+1.043, 1.139, 1.133, and 1.072. The larger cohort thus reduces the measured
+cold and concurrent penalty relative to the original 20-example-per-dataset
+run, but confirms that this unfused implementation remains slower than E0 in
+every regime.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/expanded_mac_validation/matched_e0_e2/matched_e0_e2_regimes.pdf}
+\caption{Expanded 149-question representation-cost confirmation across all
+three engines. Retrieval and selected evidence are held fixed.}
+\label{fig:mlx-matched-expanded}
+\end{figure}
 
 \begin{figure}[!htbp]
 \centering
@@ -569,7 +614,11 @@ QASPER at Qwen3-1.7B. Lossless WARM remains 80/80 exact and all four managers
 recover after restart; int8 COLD is exact in 13/80 sequences. WARM/HOT p50
 ratios are 2.01--2.15, with WARM p95 between 710 and 817 ms. The larger cohort
 therefore strengthens persistence correctness while making request-time
-promotion, rather than array storage, the immediate systems bottleneck.
+promotion, rather than array storage, the immediate systems bottleneck. Two
+five-example QASPER replications add Llama-3.2-1B and Gemma-3-1B; both are 5/5
+lossless-WARM exact with restart recovery. Llama int8 is 2/5 exact and Gemma is
+5/5 in this small cohort, which is insufficient to override the broader
+Qwen-based opt-in gate.
 
 \begin{table}[!htbp]
 \centering
@@ -580,6 +629,157 @@ promotion and generation; int8 remains diagnostic.}
 \input{../shared/results/live_storage_scaling/generated_live_storage_scaling_mlx_lm.tex}}
 \label{tab:mlx-storage-scaling}
 \end{table}
+
+\subsection{Asynchronous promotion and online request behavior}
+The lifecycle ratios above charge a complete WARM promotion to the requesting
+thread. We therefore move promotion ownership to the event loop, deduplicate
+concurrent promotions by logical key, admit completed objects to a bounded hot
+set, and overlap promotion with query-side work. Table~\ref{tab:mlx-async-warm}
+and Figure~\ref{fig:mlx-async-warm} report five QASPER selections at each lead.
+Every generation remains HOT-exact. With no lead, median demand stall is
+383.7 ms and demand-path cost is 2.123 times HOT. A 250 ms lead lowers these to
+90.3 ms and 1.310; 350 ms makes 40\% ready at demand and reaches 1.048; 500 ms
+makes all five ready and reaches 0.983. Promotion is therefore hideable when
+the scheduler has enough useful work, but it has not become intrinsically
+cheaper.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Event-loop-owned WARM promotion. Lead and stall are milliseconds.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_async_warm_table.tex}}
+\label{tab:mlx-async-warm}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=.76\linewidth]{../shared/results/mac_engine_extension/async_warm_frontier.pdf}
+\caption{Promotion lead trades demand-path stall for speculative work. The
+dashed line is HOT request latency.}
+\label{fig:mlx-async-warm}
+\end{figure}
+
+The native executor is also exercised through the OpenAI-compatible gateway,
+including streaming, cancellation, cleanup, and session ownership. At
+concurrency one through eight, throughput is 1.56--1.66 requests/s; TTFT p95
+rises from 324 to 4,845 ms as the deliberately serialized model runner queues.
+The client cancels after the first streamed token (338 ms) and all 18 exercised sessions
+close without retaining request-owned native detail. This is a real HTTP-path
+measurement, but the single MLX model instance is intentionally serialized to
+avoid unsafe concurrent mutation of prompt-cache arrays.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Online native-gateway concurrency, including queueing. Times are ms.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_online_gateway_table.tex}}
+\label{tab:mlx-online-gateway}
+\end{table}
+
+\subsection{Concurrent physical-tier curves}
+The lifecycle manager is next stressed at concurrency
+$c\in\{1,2,4,8,16\}$ with either one shared immutable resource or one resource
+per request. The model runner remains deliberately serialized, so these finite
+waves measure queueing, promotion, and physical sharing rather than continuous
+batching. All 124 HOT/WARM requests reproduce their HOT baselines exactly.
+At $c=16$, shared HOT and WARM sustain 3.20 and 2.91 requests/s with request
+p95 of 4,996 and 5,491 ms. The shared WARM wave promotes one object and avoids
+630 MiB of duplicate physical K/V. Independent WARM instead promotes 16
+objects, reads 1.26 GiB, reaches 1.22 requests/s, and has 13,087 ms p95. The
+gap isolates resource sharing and promotion amplification; it is not evidence
+for parallel model execution. Int8 COLD remains outside the lossless gate.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/mac_engine_extension/storage_concurrency.pdf}
+\caption{MLX physical-tier concurrency. Shared WARM amortizes one promotion;
+independent WARM scales storage work with the number of resources.}
+\label{fig:mlx-storage-concurrency}
+\end{figure}
+
+\begin{table}[p]
+\centering
+\tiny
+\caption{Complete finite-wave storage-concurrency results. Times are ms;
+exact/HOT is the transport-fidelity gate.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_storage_concurrency_table.tex}}
+\label{tab:mlx-storage-concurrency}
+\end{table}
+
+\subsection{Selective quantization and sustained pressure}
+Twenty QASPER examples isolate which tensors can tolerate int8 COLD storage.
+Quantizing every key and value is sequence-exact in 4/20 cases. Keys alone are
+5/20; values alone are 10/20; the late half is 11/20; and the late quarter is
+14/20, with first-token parity in all 20 and a mean 18.85-token common prefix.
+Aggregate F1 changes remain small, but autoregressive divergence makes even
+the late-quarter profile a calibration candidate rather than a default.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Selective int8 COLD calibration on 20 QASPER examples.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_selective_quantization_table.tex}}
+\label{tab:mlx-selective-quant}
+\end{table}
+
+A separate sustained-session study issues 1,125 requests over QASPER,
+HotpotQA, and 2Wiki: five seeds, eight resources, three complete rounds and a
+final revisit, under HOT capacities two, four, and eight. Capacities two and
+four average 17 reloads per seed and reload the final revisit in every case;
+capacity eight has no reload or eviction. F1 and answer log-probability are
+identical across budgets within each dataset. The intervention changes physical
+reuse, not selected evidence or model semantics.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Long-session pressure. Reloads and evictions are means over five seeds.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_long_session_pressure_table.tex}}
+\label{tab:mlx-long-pressure}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/mac_engine_extension/long_session_pressure.pdf}
+\caption{The eight-resource working-set threshold appears consistently across
+all three datasets.}
+\label{fig:mlx-long-pressure}
+\end{figure}
+
+The final pressure experiment crosses physical HOT and WARM budgets with local
+rotating windows of 64 and 256 tokens over 1,000 QASPER requests. With
+HOT/WARM $=2/2$, 75.2\% of requests reconstruct from SOURCE; raising WARM to
+eight removes SOURCE starts. With HOT/WARM $=8/2$, starts are 68\% HOT, 8\%
+WARM, and 24\% SOURCE; at $8/8$, the latter two become 32\% WARM and zero
+SOURCE. F1 is 0.123 in every cell, and changing the local window does not
+materially move completion p95. Disk-backed WARM also fails to improve resolve
+p95 over this mixture of small-source reconstruction: retaining all eight
+objects reaches 400--429 ms, while the tighter WARM budget reaches 347--398 ms.
+The product implication is cost-aware admission, not maximal persistence.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Crossed physical-tier and local-window pressure. Start percentages
+name the representation available before each request. Times are ms.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/mac_engine_extension/generated_tier_window_pressure_table.tex}}
+\label{tab:mlx-tier-window-pressure}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.76\linewidth]{../shared/results/mac_engine_extension/tier_window_pressure.pdf}
+\caption{Local-window size has no quality effect in this bounded decode; HOT
+admission dominates median resolution, while broad WARM retention does not
+improve the tail on this host.}
+\label{fig:mlx-tier-window-pressure}
+\end{figure}
 
 \FloatBarrier
 \section{Promotion Gates}
@@ -596,14 +796,14 @@ rotating plus native & controlled closed & 5/5 with 64-token local cache \\
 lazy native region & prototype closed & selected resources encode on first selection \\
 consumer profile & controlled candidate & last 14/28 layers retain 5/5 at half K/V bytes \\
 persistence & controlled closed & strict fingerprint; zero-error reload in 7.2 ms mean \\
-shared storage lifecycle & controlled closed & segmented WARM 80/80 exact; restart recovery; int8 COLD 13/80 \\
+shared storage lifecycle & controlled closed & segmented WARM 90/90 exact across Qwen/Llama/Gemma; restart recovery; int8 remains gated \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided at eight \\
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\
 routed natural QA & controlled partial & 60/60 consumption parity; recall@4 0.348--0.775; oracle gap open \\
-matched E0/E2 economics & controlled closed & 840/840 exact outputs; all four E2/E0 cost ratios exceed one \\
+matched E0/E2 economics & controlled closed & 2,086/2,086 expanded outputs; all four E2/E0 cost ratios exceed one \\
 quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
-memory pressure & controlled closed & 1,020 requests; $K<8$ thrashes, $K=8$ eliminates reloads; OOM frontier open \\
+memory pressure & controlled closed & 3,145 requests across compact, long-session, and crossed tier/window pressure \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -615,19 +815,23 @@ workloads. The server smoke makes that baseline competitive. Conversely, the
 rotating control shows that bounded sequential KV is not automatically a PRA
 archive.
 
-The study uses one 4-bit model for profile and natural controls, one machine, a
-synthetic server task, and controlled transport fixtures. The server experiment
-has only five repeats per condition, so p95/p99 are not reported. The natural
-controls contain real dataset text but an inserted fixed answer-code mechanism.
+The profile and original natural controls center on one 4-bit Qwen model and
+one machine; Llama/Gemma lifecycle rows are smaller mechanism replications.
+The initial server experiment has only five repeats per condition, so its
+p95/p99 are not reported; the later gateway load curve reports finite-wave
+tails but serializes one model runner. The natural controls contain real
+dataset text but an inserted fixed answer-code mechanism.
 The first end-task study uses original answers but oracle-scoped evidence. The
-routed extension has only 20 examples per condition and dataset, a
-parameter-free lexical/hash index, and four selected candidates. Its five seeds
-sample distinct examples but do not substitute for a larger cohort. Strict EM
+routed extension now has 50 sampled examples per condition and dataset (49
+unique on QASPER), a parameter-free lexical/hash index, and four selected
+candidates. Strict EM
 is confounded by verbose continuation. Int8 detail is restored before
 attention, so it saves retained bytes rather than active attention bytes. No
-learned native Q/K index, queued server concurrency, or OOM frontier is
-measured. The residency sweep varies a synthetic cyclic access schedule rather
-than a measured production session distribution. The matched benchmark reuses only 20 examples per dataset and does
+learned native Q/K index, continuous batching, or OOM frontier is measured.
+The residency sweeps use deterministic cyclic schedules rather than a measured
+production session distribution. The original matched benchmark reuses only
+20 examples per dataset; the expanded selector-frozen confirmation increases
+that cohort but does
 not establish end-task quality beyond proving that E2 preserves its E0 input.
 The rotating intervention also changes effective local context and can perturb
 chat-template semantics.

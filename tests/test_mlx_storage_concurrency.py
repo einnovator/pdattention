@@ -1,6 +1,9 @@
 import pytest
 
-from experiments.paper6_2_mlx.run_live_storage_concurrency import _percentile
+from experiments.paper6_2_mlx.run_live_storage_concurrency import (
+    _experiment_groups,
+    _percentile,
+)
 
 
 def test_nearest_rank_percentiles_are_stable_for_small_concurrency_waves() -> None:
@@ -13,3 +16,17 @@ def test_nearest_rank_percentiles_are_stable_for_small_concurrency_waves() -> No
 def test_percentile_rejects_empty_wave() -> None:
     with pytest.raises(ValueError, match="empty"):
         _percentile([], 0.50)
+
+
+def test_concurrency_groups_do_not_let_cold_seed_hot_controls() -> None:
+    groups = _experiment_groups()
+
+    assert tuple(tier for tier, _workloads in groups) == (
+        "hot",
+        "warm",
+        "cold_int8",
+    )
+    assert all(
+        workloads == ("shared_resource", "independent_resources")
+        for _tier, workloads in groups
+    )

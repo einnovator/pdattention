@@ -57,16 +57,15 @@ def _async_rows(payloads: list[dict[str, object]]) -> list[dict[str, object]]:
 
 def _write_async_table(path: Path, rows: list[dict[str, object]]) -> None:
     lines = [
-        r"\begin{tabular}{lrrrrrr}",
+        r"\begin{tabular}{lrrrrr}",
         r"\toprule",
-        r"Engine & Lead & Ready & Exact & Stall p50 & Stall p95 & Demand/HOT \\",
+        r"Engine & Lead & Ready & Stall p50 & Stall p95 & Demand/HOT \\",
         r"\midrule",
     ]
     for row in rows:
         lines.append(
             f"{row['engine']} & {row['lead_ms']} ms & "
             f"{100 * float(row['ready_rate']):.0f}\\% & "
-            f"{100 * float(row['exact_rate']):.0f}\\% & "
             f"{float(row['demand_stall_p50_ms']):.1f} & "
             f"{float(row['demand_stall_p95_ms']):.1f} & "
             f"{float(row['demand_to_hot_p50']):.3f} \\\\"
@@ -116,6 +115,73 @@ def _write_concurrency_table(path: Path, rows: list[dict[str, object]]) -> None:
         )
     lines.extend((r"\bottomrule", r"\end{tabular}"))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _validate_concurrency(rows: list[dict[str, object]]) -> None:
+    """Reject contaminated lossless controls before generating paper artifacts."""
+
+    invalid = [
+        row
+        for row in rows
+        if row["tier"] in {"hot", "warm"}
+        and float(row["exact_vs_hot_rate"]) != 1.0
+    ]
+    if invalid:
+        cells = ", ".join(
+            f"{row['workload']}/{row['tier']}/c={row['concurrency']}"
+            for row in invalid
+        )
+        raise ValueError(
+            "Lossless storage concurrency rows diverge from HOT baseline: " + cells
+        )
+
+
+def _plot_concurrency(path: Path, rows: list[dict[str, object]]) -> None:
+    """Plot throughput and tail latency without conflating the two workloads."""
+
+    import matplotlib.pyplot as plt
+
+    figure, axes = plt.subplots(1, 2, figsize=(8.2, 3.4))
+    for workload in sorted({str(row["workload"]) for row in rows}):
+        for tier in sorted({str(row["tier"]) for row in rows}):
+            selected = sorted(
+                (
+                    row
+                    for row in rows
+                    if row["workload"] == workload and row["tier"] == tier
+                ),
+                key=lambda row: int(row["concurrency"]),
+            )
+            if not selected:
+                continue
+            label = f"{workload.replace('_', ' ')} / {tier.upper()}"
+            concurrency = [int(row["concurrency"]) for row in selected]
+            axes[0].plot(
+                concurrency,
+                [float(row["requests_per_second"]) for row in selected],
+                marker="o",
+                label=label,
+            )
+            axes[1].plot(
+                concurrency,
+                [float(row["request_p95_ms"]) for row in selected],
+                marker="o",
+                label=label,
+            )
+    axes[0].set_ylabel("Requests/s")
+    axes[1].set_ylabel("Request p95 (ms)")
+    for axis in axes:
+        axis.set_xlabel("Concurrent sessions")
+        axis.set_xscale("log", base=2)
+        axis.set_xticks((1, 2, 4, 8, 16))
+        axis.set_xticklabels(("1", "2", "4", "8", "16"))
+        axis.grid(alpha=0.25)
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="outside lower center", ncol=2, frameon=False)
+    figure.tight_layout(rect=(0, 0.16, 1, 1))
+    figure.savefig(path.with_suffix(".pdf"))
+    figure.savefig(path.with_suffix(".png"), dpi=180)
+    plt.close(figure)
 
 
 def _write_online_table(path: Path, payloads: list[dict[str, object]]) -> None:
@@ -205,6 +271,43 @@ def _write_pressure_table(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _plot_pressure(path: Path, rows: list[dict[str, object]]) -> None:
+    """Plot reload pressure separately for each natural workload."""
+
+    import matplotlib.pyplot as plt
+
+    figure, axes = plt.subplots(1, 2, figsize=(8.0, 3.4))
+    for dataset in sorted({str(row["dataset"]) for row in rows}):
+        selected = sorted(
+            (row for row in rows if row["dataset"] == dataset),
+            key=lambda row: int(row["resident_resource_budget"]),
+        )
+        budgets = [int(row["resident_resource_budget"]) for row in selected]
+        axes[0].plot(
+            budgets,
+            [float(row["reloads_mean"]) for row in selected],
+            marker="o",
+            label=dataset,
+        )
+        axes[1].plot(
+            budgets,
+            [100 * float(row["final_revisit_reload_rate"]) for row in selected],
+            marker="o",
+            label=dataset,
+        )
+    axes[0].set_ylabel("Mean reloads / seed")
+    axes[1].set_ylabel("Final revisit reload (%)")
+    for axis in axes:
+        axis.set_xlabel("HOT resource budget")
+        axis.set_xticks((2, 4, 8))
+        axis.grid(alpha=0.25)
+    axes[0].legend(frameon=False)
+    figure.tight_layout()
+    figure.savefig(path.with_suffix(".pdf"))
+    figure.savefig(path.with_suffix(".png"), dpi=180)
+    plt.close(figure)
+
+
 def _tier_window_rows(payload: dict[str, object] | None) -> list[dict[str, object]]:
     if payload is None:
         return []
@@ -253,9 +356,9 @@ def _tier_window_rows(payload: dict[str, object] | None) -> list[dict[str, objec
 
 def _write_tier_window_table(path: Path, rows: list[dict[str, object]]) -> None:
     lines = [
-        r"\begin{tabular}{rrrrrrrr}",
+        r"\begin{tabular}{rrrrrrrrrr}",
         r"\toprule",
-        r"HOT & WARM & Window & Requests & HOT start & WARM start & SOURCE start & Resolve p95 \\",
+        r"HOT & WARM & Window & Requests & HOT start & WARM start & SOURCE start & F1 & Resolve p95 & Total p95 \\",
         r"\midrule",
     ]
     for row in rows:
@@ -265,10 +368,66 @@ def _write_tier_window_table(path: Path, rows: list[dict[str, object]]) -> None:
             f"{100 * float(row['hot_start_rate']):.0f}\\% & "
             f"{100 * float(row['warm_start_rate']):.0f}\\% & "
             f"{100 * float(row['source_start_rate']):.0f}\\% & "
-            f"{float(row['resolve_p95_ms']):.1f} \\\\"
+            f"{float(row['token_f1']):.3f} & "
+            f"{float(row['resolve_p95_ms']):.1f} & "
+            f"{float(row['completion_p95_ms']):.0f} \\\\"
         )
     lines.extend((r"\bottomrule", r"\end{tabular}"))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _plot_tier_window(path: Path, rows: list[dict[str, object]]) -> None:
+    """Plot local-window effects at each physical HOT/WARM budget pair."""
+
+    import matplotlib.pyplot as plt
+
+    figure, axes = plt.subplots(1, 2, figsize=(8.0, 3.4))
+    budget_pairs = sorted(
+        {
+            (
+                int(row["hot_resource_budget"]),
+                int(row["warm_resource_budget"]),
+            )
+            for row in rows
+        }
+    )
+    for hot, warm in budget_pairs:
+        selected = sorted(
+            (
+                row
+                for row in rows
+                if int(row["hot_resource_budget"]) == hot
+                and int(row["warm_resource_budget"]) == warm
+            ),
+            key=lambda row: int(row["local_kv_size"]),
+        )
+        label = f"HOT {hot} / WARM {warm}"
+        windows = [int(row["local_kv_size"]) for row in selected]
+        axes[0].plot(
+            windows,
+            [float(row["resolve_p95_ms"]) for row in selected],
+            marker="o",
+            label=label,
+        )
+        axes[1].plot(
+            windows,
+            [float(row["token_f1"]) for row in selected],
+            marker="o",
+            label=label,
+        )
+    axes[0].set_ylabel("Resolve p95 (ms)")
+    axes[1].set_ylabel("Token F1")
+    for axis in axes:
+        axis.set_xlabel("Local rotating K/V window")
+        axis.set_xscale("log", base=2)
+        axis.set_xticks((64, 256))
+        axis.set_xticklabels(("64", "256"))
+        axis.grid(alpha=0.25)
+    axes[0].legend(frameon=False, fontsize=8)
+    figure.tight_layout()
+    figure.savefig(path.with_suffix(".pdf"))
+    figure.savefig(path.with_suffix(".png"), dpi=180)
+    plt.close(figure)
 
 
 def main() -> None:
@@ -294,6 +453,7 @@ def main() -> None:
     concurrency = _load(
         root / "paper6_2_mlx" / "live_storage_concurrency_qasper.json"
     )
+    _validate_concurrency(concurrency["rows"])
     online_paths = (
         root / "paper6_2_mlx" / "online_native_gateway_qasper.json",
         root / "paper6_1_sglang" / "online_native_gateway_qasper.json",
@@ -366,6 +526,11 @@ def main() -> None:
     figure.savefig(output / "async_warm_frontier.pdf")
     figure.savefig(output / "async_warm_frontier.png", dpi=180)
     plt.close(figure)
+    _plot_concurrency(output / "storage_concurrency", concurrency["rows"])
+    if pressure_summary:
+        _plot_pressure(output / "long_session_pressure", pressure_summary)
+    if tier_window:
+        _plot_tier_window(output / "tier_window_pressure", tier_window)
 
 
 if __name__ == "__main__":

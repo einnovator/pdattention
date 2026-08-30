@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     registry = build_registry()
-    assert registry["registry_version"] == "2026-08-paper6-engine-native-v8"
+    assert registry["registry_version"] == "2026-08-paper6-engine-native-v9"
     assert len(registry["rows"]) == 15
     assert {row["engine"] for row in registry["rows"]} == {"vllm", "sglang", "mlx"}
     assert all(row["evidence_tier"] == "SMOKE" for row in registry["rows"])
@@ -56,6 +56,21 @@ def test_engine_registry_separates_smoke_from_native_evidence() -> None:
         if row["requested_lead_ms"]
     ) > 190.0
     assert native["vllm"]["status"] == "MEASURED_KERNEL_PATH"
+    assert native["mac_engine_extension"] is not None
+    expanded_matched = native["expanded_matched_e0_e2"]
+    assert expanded_matched is not None
+    assert len(expanded_matched["parity"]) >= 24
+    assert all(
+        row["exact_output_parity"] == 1.0
+        for row in expanded_matched["parity"]
+    )
+    assert len(registry["product_matrix"]) == 10
+    assert any(
+        row["model"].endswith("gemma-3-1b-it-4bit")
+        and row["engine"] == "SGLang MLX"
+        and "blocked before PRA" in row["status"]
+        for row in registry["product_matrix"]
+    )
 
 
 def test_selected_text_recovers_codeword_with_fewer_tokens_than_full_context() -> None:

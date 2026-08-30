@@ -1,0 +1,276 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_2_mlx_online_native_gateway_v1",
+  "engine": "mlx-lm",
+  "model_id": "mlx-community/Qwen3-0.6B-4bit",
+  "model_revision": "main",
+  "dataset": "qasper",
+  "health_ms": 4.1054170578718185,
+  "capabilities": {
+    "status": "ok",
+    "gateway_mode": "G11",
+    "engine": {
+      "adapter": "mlx_lm_native",
+      "engine_type": "mlx",
+      "integration_level": "E2",
+      "prefix_cache_mode": "explicit_prefix_handle",
+      "automatic_prefix_cache": false,
+      "explicit_prefix_cache": true,
+      "session_state": true,
+      "incremental_messages": false,
+      "resource_delta": true,
+      "cache_affinity": true,
+      "prefix_cache_handle": true,
+      "logical_refs": true,
+      "typed_records": true,
+      "task_metadata": false,
+      "text_fallback": true,
+      "native_kv": true,
+      "external_kv_residency": true,
+      "cpu_kv": true,
+      "pinned_kv": false,
+      "gpu_kv": true,
+      "semantic_cache": false,
+      "streaming": true,
+      "selected_interval_materialization": true,
+      "request_lifetime": true,
+      "phase_selection": false,
+      "host_device_residency": false,
+      "scheduler_hints": false,
+      "tenant_isolation": true,
+      "callback_routing": false,
+      "pra_scheduler": false,
+      "tool_resources": false
+    },
+    "fallback_injection": "before_current_user",
+    "streaming_implemented": true
+  },
+  "prime": {
+    "status": 200,
+    "headers_ms": 860.6920000165701,
+    "ttft_ms": null,
+    "itl_ms": null,
+    "wall_ms": 860.9420829452574,
+    "output": "The scores of their system, as determined in the error analysis and algorithmic details, are not explicitly provided in the documents",
+    "trace": [
+      {
+        "stage": "gateway_parse",
+        "gateway_mode": "G11",
+        "correlation_id": "c1a172e33873486ab1fb42b45d60a114"
+      },
+      {
+        "stage": "protocol_translation",
+        "unsupported_capabilities": [],
+        "downgrades": [],
+        "selected_resource_ids": [],
+        "native_kv": true,
+        "seconds": 0.8590713341254741
+      },
+      {
+        "stage": "gateway_session",
+        "history_mode": "FULL",
+        "gateway_prefix_stable": false,
+        "prefix_changed_reason": "first_turn",
+        "prefix_invalidations": 0,
+        "prefix_digest": "4f67f7f36d586534255c33ca1c8cae393352967a378d5ec3deb319b82a41bbb9",
+        "prefix_message_count": 2,
+        "prefix_token_count": null,
+        "prefix_tokens_reusable": 0,
+        "prefix_reuse_fraction": 0.0,
+        "message_bytes_sent": 70,
+        "resource_bytes_sent": 3368,
+        "session_delta_bytes": 0,
+        "engine_prefix_cache_hit": null,
+        "engine_session_reuse": false,
+        "engine_session_present": true,
+        "cache_affinity_key": "pra-affinity:c556640883645018f5a8ae92",
+        "resource_ops": [
+          "ADD"
+        ]
+      },
+      {
+        "action": "load",
+        "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
+        "timestamp_ns": 1390374196720333,
+        "bytes": 64339968,
+        "duration_ns": 708,
+        "request_id": null,
+        "reused": false,
+        "wasted": false
+      },
+      {
+        "action": "resolve",
+        "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
+        "timestamp_ns": 1390374196765375,
+        "bytes": 64339968,
+        "duration_ns": 45458,
+        "request_id": null,
+        "reused": false,
+        "wasted": false
+      },
+      {
+        "action": "pin",
+        "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
+        "timestamp_ns": 1390374235886500,
+        "bytes": 0,
+        "duration_ns": 0,
+        "request_id": "prime-request",
+        "reused": false,
+        "wasted": false
+      },
+      {
+        "action": "unpin",
+        "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
+        "timestamp_ns": 1390374838313958,
+        "bytes": 0,
+        "duration_ns": 0,
+        "request_id": "prime-request",
+        "reused": false,
+        "wasted": false
+      }
+    ]
+  },
+  "streamed": {
+    "status": 200,
+    "headers_ms": 6.564958021044731,
+    "ttft_ms": 362.4520408920944,
+    "itl_ms": 10.972891306585591,
+    "wall_ms": 616.6647910140455,
+    "output": "The scores of their system, as determined in the error analysis and algorithmic details, are not explicitly provided in the documents",
+    "stream_chunks": 24
+  },
+  "concurrency_rows": [
+    {
+      "concurrency": 1,
+      "wave_ms": 607.6122499071062,
+      "requests_per_second": 1.6457864372432969,
+      "request_p50_ms": 607.0735000539571,
+      "request_p95_ms": 607.0735000539571,
+      "request_p99_ms": 607.0735000539571,
+      "ttft_p50_ms": 323.82937520742416,
+      "ttft_p95_ms": 323.82937520742416,
+      "exact_output_rate": 1.0,
+      "stream_chunk_min": 24
+    },
+    {
+      "concurrency": 2,
+      "wave_ms": 1202.8271248564124,
+      "requests_per_second": 1.662749333358067,
+      "request_p50_ms": 614.7994161583483,
+      "request_p95_ms": 1201.7151659820229,
+      "request_p99_ms": 1201.7151659820229,
+      "ttft_p50_ms": 335.61525004915893,
+      "ttft_p95_ms": 924.5441658422351,
+      "exact_output_rate": 1.0,
+      "stream_chunk_min": 24
+    },
+    {
+      "concurrency": 4,
+      "wave_ms": 2563.1679999642074,
+      "requests_per_second": 1.5605687961366,
+      "request_p50_ms": 1291.1614999175072,
+      "request_p95_ms": 2560.6270420830697,
+      "request_p99_ms": 2560.6270420830697,
+      "ttft_p50_ms": 1005.6570419110358,
+      "ttft_p95_ms": 2269.3571669515222,
+      "exact_output_rate": 1.0,
+      "stream_chunk_min": 24
+    },
+    {
+      "concurrency": 8,
+      "wave_ms": 5131.5400002058595,
+      "requests_per_second": 1.5589861912172696,
+      "request_p50_ms": 2663.472290849313,
+      "request_p95_ms": 5125.607083085924,
+      "request_p99_ms": 5125.607083085924,
+      "ttft_p50_ms": 2383.6319579277188,
+      "ttft_p95_ms": 4845.467624953017,
+      "exact_output_rate": 1.0,
+      "stream_chunk_min": 24
+    }
+  ],
+  "cancellation": {
+    "first_text_ms": 337.9272499587387,
+    "client_closed": true
+  },
+  "session_affinity": {
+    "engine_type": "mlx",
+    "known_resources": {
+      "online-1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0"
+    }
+  },
+  "cleanup": [
+    {
+      "closed": true,
+      "session_id": "concurrency-8-3"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-2-0"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-4-2"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-8-4"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-8-0"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-8-2"
+    },
+    {
+      "closed": true,
+      "session_id": "prime"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-8-1"
+    },
+    {
+      "closed": true,
+      "session_id": "cancelled-session"
+    },
+    {
+      "closed": true,
+      "session_id": "stream"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-2-1"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-4-0"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-8-5"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-4-3"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-8-6"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-1-0"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-8-7"
+    },
+    {
+      "closed": true,
+      "session_id": "concurrency-4-1"
+    }
+  ]
+}

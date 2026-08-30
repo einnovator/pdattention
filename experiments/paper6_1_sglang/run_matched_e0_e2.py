@@ -142,9 +142,12 @@ def main() -> None:
     )
     parser.add_argument("--cache-dir", type=Path, default=Path.home() / ".cache" / "pra")
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
-    parser.add_argument(
-        "--revision", default="73e3e38d981303bc594367cd910ea6eb48349da8"
-    )
+    # A revision belongs to a model repository.  The previous Qwen3-0.6B
+    # commit default was invalid as soon as --model selected Qwen3-1.7B (or
+    # another family).  Resolve the requested repository's main revision by
+    # default; reproducibility runs may still pin an explicit compatible
+    # commit with --revision.
+    parser.add_argument("--revision", default="main")
     parser.add_argument("--max-source-tokens", type=int, default=384)
     parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument("--max-examples", type=int, default=0)

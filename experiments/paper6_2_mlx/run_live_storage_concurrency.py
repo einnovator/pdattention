@@ -33,6 +33,15 @@ def _concurrency_values(value: str) -> tuple[int, ...]:
     return values
 
 
+def _experiment_groups() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Group workloads by tier so lossy COLD never seeds a HOT control."""
+
+    return tuple(
+        (tier, ("shared_resource", "independent_resources"))
+        for tier in ("hot", "warm", "cold_int8")
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -164,8 +173,14 @@ def main() -> None:
             baseline_outputs[key] = str(generated["output"])
         rows = []
         try:
-            for workload in ("shared_resource", "independent_resources"):
-                for tier in ("hot", "warm", "cold_int8"):
+            # Compare both workload geometries before advancing to a lossy
+            # physical tier.  Running all tiers for one workload first lets a
+            # COLD-int8 copy become the starting point of the next workload's
+            # nominal HOT control, which confounds resource sharing with prior
+            # quantization.  Tier-major order keeps HOT and WARM lossless for
+            # both workloads; only the explicitly named COLD rows are lossy.
+            for tier, workloads in _experiment_groups():
+                for workload in workloads:
                     for concurrency in args.concurrency:
                         selected = (
                             [prepared[0]] * concurrency

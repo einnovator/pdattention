@@ -115,7 +115,11 @@ def main() -> None:
                                     path=str(warm_root),
                                     max_bytes=warm_budget * max_payload_bytes,
                                     representation="mmap",
-                                    cold_grace_seconds=0,
+                                    # Keep recently demoted objects eligible for
+                                    # WARM while maintenance enforces the byte
+                                    # quota. A zero grace period would move every
+                                    # reconstructable object directly to SOURCE.
+                                    cold_grace_seconds="1d",
                                 ),
                                 cold=PRAStorageTierConfig(enabled=False),
                             ),
@@ -153,6 +157,7 @@ def main() -> None:
                             key = str(item["key"])
                             if manager.entries[key].current_tier is PRAStorageTier.HOT:
                                 manager.demote_hot(key, payload=payloads[key])
+                        manager.run_maintenance()
 
                         hot_lru: list[str] = []
                         before = manager.metrics.to_dict()
@@ -184,6 +189,10 @@ def main() -> None:
                                 if victim is None:
                                     break
                                 manager.demote_hot(victim, payload=payloads[victim])
+                            # Quotas are a maintenance policy, not a side effect
+                            # of backend writes. Enforce them after every request
+                            # so WARM={2,8} produces distinct physical histories.
+                            manager.run_maintenance()
                             exact, f1 = _metrics(
                                 str(generated["output"]), item["example"].answer
                             )

@@ -50,15 +50,23 @@ The implementation adds:
   cold, warm, multi-query, and concurrency-eight schedules on MLX-LM,
   SGLang-MLX, and vLLM-Metal, with disjoint quality, input, PRA, ingestion,
   serving, and reuse metrics.
+- an expanded 149-unique-question confirmation per engine: 6,258/6,258 exact
+  E0/E2 pairs overall, with engine-specific cost rather than a blanket speedup;
 - an engine-neutral `HOT/WARM/COLD/SOURCE` storage manager with named profiles,
   strict fingerprints, lossless WARM/COLD stores, independent compression and
   int8 policy, deterministic weighted eviction, typed-record priors, task and
   dependency retention, delayed closure compaction, and session cleanup.
 - live manager bridges for vLLM pages, SGLang HiCache-backed arrays, MLX arrays,
   segmented mmap WARM storage, durable restart recovery, and persistent
-  lifecycle metrics. The expanded lossless WARM study is exact on 240/240
-  engine/model/dataset pairs; int8 COLD is exact on only 44/240 and remains
-  opt-in.
+  lifecycle metrics. The expanded lossless WARM study is exact on 265/265
+  engine/model/dataset pairs across Qwen, Llama, and Gemma; int8 COLD is exact
+  on only 61/265 and remains opt-in. The pinned SGLang-MLX build cannot load
+  Gemma's per-layer sliding-window topology.
+- event-loop-owned, deduplicated WARM promotion with hot-set admission;
+- online SGLang/MLX streaming, cancellation, cleanup, and queueing curves;
+- shared- versus independent-resource concurrency through 16 sessions;
+- selective K/V int8 calibration and sustained multi-query pressure over
+  1,125 natural-QA requests.
 
 Reproduce the measured portable profile:
 
@@ -73,6 +81,7 @@ python -m experiments.paper6_vllm.run_live_storage_lifecycle
 python -m experiments.paper6_1_sglang.run_live_storage_lifecycle
 python -m experiments.paper6_2_mlx.run_live_storage_lifecycle
 python -m experiments.engine_serving.summarize_live_storage_lifecycle
+python -m experiments.engine_serving.summarize_mac_engine_extension
 python -m experiments.paper4_5_runtime.run_cross_model_validation --model all --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwen --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda

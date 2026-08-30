@@ -26,6 +26,9 @@ A matched four-regime E0/E2 benchmark preserves all 840 outputs and removes
 90.6--93.0% of visible prompt tokens. Cold, warm, multi-query, and concurrent
 E2/E0 cost ratios are 1.130, 1.155, 1.148, and 1.132, exposing the remaining
 unfused native-decode cost despite cheaper native ingestion.
+The expanded 149-unique-question confirmation is 2,086/2,086 exact and yields
+ratios 1.043/1.139/1.133/1.072; the native wrapper remains semantically exact
+but economically unoptimized.
 
 The shared lifecycle manager now uses independently checksummed, mmap-readable
 K/V segments per layer. Across 80 examples spanning three datasets at 0.6B and
@@ -33,11 +36,35 @@ QASPER at 1.7B, lossless WARM remains 80/80 exact and recovers after manager
 restart. Explicit int8 COLD is exact in only 13/80 generated sequences and
 remains outside the default profile.
 
+Five-example Llama-3.2-1B and Gemma-3-1B lifecycle replications are each 5/5
+lossless-WARM exact. Event-loop-owned promotion preserves all 35 outputs and,
+with 500 ms lead, makes all five objects HOT before demand. The native HTTP
+gateway now covers concurrency one through eight, streamed cancellation, and
+session cleanup. These are serialized-runner queueing measurements, not a
+claim of parallel model execution.
+
+A separate physical-tier curve covers concurrency 1, 2, 4, 8, and 16 for
+shared and independent resources. All 124 HOT/WARM requests remain
+baseline-exact. At concurrency 16, shared WARM avoids 630 MiB of duplicate K/V
+and sustains 2.91 requests/s; independent WARM performs 16 promotions and
+sustains 1.22 requests/s.
+
 The bounded-residency extension covers 1,020 natural-QA requests over five
 seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable
 across budgets. Budgets below the eight-resource working set reload every
 repeated access; budget 8 eliminates reloads and reduces mean resolution from
 113--119 ms to 53--57 ms while raising peak compact residency to 151--168 MiB.
+A separate 1,125-request long-session run uses three full rounds plus a final
+revisit: capacities two and four average 17 reloads per seed, while capacity
+eight eliminates reloads and evictions without changing F1 or answer
+log-probability. Selective int8 on 20 QASPER examples improves exact generation
+from 4/20 for all K/V to 14/20 for the late quarter, still below the lossless
+product gate.
+
+A final 1,000-request QASPER matrix crosses HOT/WARM resource budgets 2 and 8
+with local rotating windows 64 and 256. Tight WARM capacity produces SOURCE
+reconstruction as intended; F1 is identical in all cells, and retaining every
+small object in disk-backed WARM does not improve resolve p95 on this host.
 
 The routed natural-QA artifacts can be regenerated on Apple Silicon with:
 
@@ -54,4 +81,5 @@ Run the live lifecycle probe with:
 ```bash
 PYTHONPATH=src:. python -m experiments.paper6_2_mlx.run_live_storage_lifecycle
 PYTHONPATH=src:. python -m experiments.engine_serving.summarize_live_storage_lifecycle
+PYTHONPATH=src:. python -m experiments.engine_serving.summarize_mac_engine_extension
 ```

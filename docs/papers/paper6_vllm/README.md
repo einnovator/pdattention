@@ -16,7 +16,9 @@ removes 91--93% of visible tokens and reaches 840/840 exact output parity after
 matching E0 APC and E2 query-prefill geometry. Qwen3-1.7B,
 Llama-3.2-1B-Instruct, and Gemma-3-1B-IT each independently reach 840/840;
 all 3,360 paired completions are exact and all cost ratios are within 3.1% of
-parity. Online token latency, connectors, and CUDA remain open.
+parity. An expanded Qwen3-1.7B confirmation covers 149 unique examples and
+reaches 2,086/2,086 exact pairs; its four E2/E0 cost ratios are
+1.009/0.997/1.003/0.991. Online token latency, connectors, and CUDA remain open.
 
 The shared storage manager is also connected to live reserved pages. Across
 80 examples spanning three datasets at 0.6B and QASPER at 1.7B, lossless WARM

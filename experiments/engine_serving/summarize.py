@@ -151,6 +151,32 @@ def build_registry() -> dict:
             "peak_memory_gb_mean": fmean(row["peak_memory_gb"] for row in values),
         })
     native = _native_results()
+    lifecycle_rows = (
+        native.get("live_storage_scaling", {}).get("rows", [])
+        if native.get("live_storage_scaling")
+        else []
+    )
+
+    def lifecycle_status(engine: str, model_suffix: str) -> str:
+        row = next(
+            (
+                value
+                for value in lifecycle_rows
+                if value["engine"] == engine
+                and str(value["model_id"]).endswith(model_suffix)
+            ),
+            None,
+        )
+        if row is None:
+            return "not measured"
+        examples = int(row["examples"])
+        warm = round(float(row["warm_exact_rate"]) * examples)
+        int8 = round(float(row["int8_exact_rate"]) * examples)
+        return (
+            f"lossless WARM {warm}/{examples}; int8 COLD {int8}/{examples} "
+            "(smoke; gated)"
+        )
+
     product_matrix = [
         {
             "engine": "vLLM-Metal V1",
@@ -184,10 +210,66 @@ def build_registry() -> dict:
             "evidence_tier": "NATURAL_QA_ROUTED_EVIDENCE_MATERIALIZATION",
             "status": "routed natural QA; bounded residency curve; oracle gap remains",
         },
+        {
+            "engine": "vLLM-Metal V1",
+            "model": "mlx-community/Llama-3.2-1B-Instruct-4bit",
+            "profile": "all-layer native K/V + APC, four matched regimes",
+            "hardware": metadata["vllm"]["hardware"],
+            "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+            "status": "840/840 exact; "
+            + lifecycle_status(
+                "vllm-metal", "Llama-3.2-1B-Instruct-4bit"
+            ),
+        },
+        {
+            "engine": "vLLM-Metal V1",
+            "model": "mlx-community/gemma-3-1b-it-4bit",
+            "profile": "global/local native K/V + APC, four matched regimes",
+            "hardware": metadata["vllm"]["hardware"],
+            "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+            "status": "840/840 exact; "
+            + lifecycle_status("vllm-metal", "gemma-3-1b-it-4bit"),
+        },
+        {
+            "engine": "SGLang MLX",
+            "model": "mlx-community/Llama-3.2-1B-Instruct-4bit",
+            "profile": "selected K/V + lifecycle manager",
+            "hardware": metadata["sglang"]["hardware"],
+            "evidence_tier": "NATURAL_QA_LIFECYCLE_SMOKE",
+            "status": lifecycle_status(
+                "sglang-mlx", "Llama-3.2-1B-Instruct-4bit"
+            ),
+        },
+        {
+            "engine": "SGLang MLX",
+            "model": "mlx-community/gemma-3-1b-it-4bit",
+            "profile": "mixed global/sliding-window topology",
+            "hardware": metadata["sglang"]["hardware"],
+            "evidence_tier": "BACKEND_COMPATIBILITY",
+            "status": "blocked before PRA: per-layer window map unsupported",
+        },
+        {
+            "engine": "MLX-LM",
+            "model": "mlx-community/Llama-3.2-1B-Instruct-4bit",
+            "profile": "all-layer selected K/V + lifecycle manager",
+            "hardware": metadata["mlx"]["hardware"],
+            "evidence_tier": "NATURAL_QA_LIFECYCLE_SMOKE",
+            "status": lifecycle_status(
+                "mlx-lm", "Llama-3.2-1B-Instruct-4bit"
+            ),
+        },
+        {
+            "engine": "MLX-LM",
+            "model": "mlx-community/gemma-3-1b-it-4bit",
+            "profile": "global/local selected K/V + lifecycle manager",
+            "hardware": metadata["mlx"]["hardware"],
+            "evidence_tier": "NATURAL_QA_LIFECYCLE_SMOKE",
+            "status": lifecycle_status("mlx-lm", "gemma-3-1b-it-4bit"),
+        },
     ]
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-native-v8",
+        "registry_version": "2026-08-paper6-engine-native-v9",
         "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
@@ -218,6 +300,21 @@ def _native_results() -> dict:
     )
     live_storage_scaling = (
         _load(live_storage_scaling_path) if live_storage_scaling_path.exists() else None
+    )
+    mac_extension_path = (
+        RESULTS / "mac_engine_extension" / "mac_engine_extension_summary.json"
+    )
+    mac_extension = (
+        _load(mac_extension_path) if mac_extension_path.exists() else None
+    )
+    expanded_matched_path = (
+        RESULTS
+        / "expanded_mac_validation"
+        / "matched_e0_e2"
+        / "matched_e0_e2_summary.json"
+    )
+    expanded_matched = (
+        _load(expanded_matched_path) if expanded_matched_path.exists() else None
     )
     mlx_model_artifacts = [mlx]
     for name in ("native_kv_llama32_1b.json", "native_kv_gemma3_1b.json"):
@@ -649,6 +746,8 @@ def _native_results() -> dict:
             for engine, artifact in live_storage.items()
         },
         "live_storage_scaling": live_storage_scaling,
+        "mac_engine_extension": mac_extension,
+        "expanded_matched_e0_e2": expanded_matched,
         "mlx": {
             "status": mlx["native_pra_status"],
             "evidence_tier": mlx["evidence_tier"],
@@ -1436,11 +1535,21 @@ def write_latest_engine_tables(registry: dict) -> None:
         r"\midrule",
     ]
     for row in registry["product_matrix"]:
-        model = row["model"].split("/")[-1]
+        model_name = row["model"].split("/")[-1]
+        model = {
+            "Qwen3-0.6B-4bit": "Qwen3-0.6B",
+            "Qwen3-0.6B": "Qwen3-0.6B",
+            "Qwen3-1.7B-4bit": "Qwen3-1.7B",
+            "Llama-3.2-1B-Instruct-4bit": "Llama-3.2-1B",
+            "gemma-3-1b-it-4bit": "Gemma-3-1B",
+        }.get(model_name, model_name)
+        hardware = str(row["hardware"])
+        if hardware.startswith("Apple M5 MacBook Pro"):
+            hardware = "Apple M5 / 16 GB / Metal 4"
         evidence = row["evidence_tier"].replace("_", " ").lower()
         product_lines.append(
             f"{_tex_escape(row['engine'])} / {_tex_escape(model)} & "
-            f"{_tex_escape(row['hardware'])} & {_tex_escape(row['profile'])} & "
+            f"{_tex_escape(hardware)} & {_tex_escape(row['profile'])} & "
             f"{_tex_escape(evidence)} & "
             f"{_tex_escape(row['status'])} \\\\"
         )

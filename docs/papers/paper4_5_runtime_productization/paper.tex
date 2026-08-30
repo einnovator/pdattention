@@ -84,12 +84,15 @@ SGLang-MLX, and vLLM-Metal. Native E2 removes 90.6--93.0\% of visible prompt
 tokens, and all three engines preserve all 840 paired outputs. The corrected
 vLLM run first restores E0 source pages through APC and captures E2 source
 pages from vLLM's own prefill, preventing fused-kernel geometry from being
-confounded with representation. Four-regime cost ratios still show that
+confounded with representation. An expanded 149-question confirmation per
+engine preserves 6,258/6,258 pairs overall. Four-regime cost ratios still show that
 semantic transport does not by itself imply a large economic win. A separate
 live storage study connects the same lifecycle manager to vLLM pages, SGLang
-HiCache-backed arrays, and MLX arrays. Across 12 model/dataset cohorts,
-lossless WARM preserves 240/240 outputs and every manager recovers after
-restart; int8 COLD is exact in only 44/240 sequences and remains opt-in.
+HiCache-backed arrays, and MLX arrays. Across 17 model/dataset cohorts spanning
+Qwen, Llama, and Gemma, lossless WARM preserves 265/265 outputs and every
+manager recovers after restart; int8 COLD is exact in only 61/265 sequences and
+remains opt-in. Gemma is unsupported by the pinned SGLang-MLX backend because
+that runtime cannot represent its per-layer sliding-window topology.
 \end{abstract}
 
 \section{Introduction}
@@ -1366,11 +1369,14 @@ quality gate closes.
 
 We then scale the same live protocol to 20 examples per cohort: QASPER,
 HotpotQA, and 2WikiMultiHopQA at Qwen3-0.6B, plus QASPER at Qwen3-1.7B, for
-each engine. Lossless WARM reproduces HOT generation in 240/240 pairs and all
-12 managers recover after restart. Diagnostic int8 COLD is exact in only
-44/240 pairs. Table~\ref{tab:live-storage-scaling} keeps model and dataset
-identities separate; its percentiles describe these finite cohorts rather than
-an online arrival distribution.
+each engine. Five smaller QASPER cohorts add Llama-3.2-1B to all three engines
+and Gemma-3-1B to vLLM-Metal and MLX-LM. Lossless WARM reproduces HOT generation
+in 265/265 pairs and all 17 managers recover after restart. Diagnostic int8
+COLD is exact in only 61/265 pairs. The pinned SGLang-MLX build rejects Gemma's
+mixed global/sliding-window topology before PRA attachment; this is a backend
+compatibility boundary, not a PRA parity failure. Table~\ref{tab:live-storage-scaling}
+keeps model and dataset identities separate; its percentiles describe finite
+cohorts rather than an online arrival distribution.
 
 \begin{table}[H]
 \centering
@@ -1395,6 +1401,74 @@ product interpretation: persistent native K/V is now a correctness-qualified
 backing representation, but request-path promotion is not yet economically
 qualified. Prefetch, overlap, and hot-set admission must remove that stall;
 quantized COLD additionally requires a model-and-workload quality gate.
+
+The runtime now implements that next step without giving model-array mutation
+to background Python threads. An event-loop-owned coordinator deduplicates
+in-flight promotions by logical key, admits completed objects to a bounded hot
+set, and overlaps WARM reads with query-side work. Across five QASPER objects,
+MLX requires a 500 ms lead for 5/5 ready-at-demand and a 0.983 median
+demand/HOT ratio; SGLang reaches 5/5 by 350 ms and a 1.063 ratio. With no lead,
+the corresponding ratios are 2.123 and 1.561. All 70 paired outputs are exact.
+This demonstrates latency hiding under oracle lead, not a faster storage
+codec or a calibrated production predictor.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.74\linewidth]{../shared/results/mac_engine_extension/async_warm_frontier.pdf}
+\caption{Scheduler-owned WARM promotion can hide request-path stall when useful
+lead is available. The dashed line is HOT latency.}
+\label{fig:runtime-async-warm}
+\end{figure}
+
+The same native executors now traverse the HTTP streaming gateway. SGLang
+delivers 3.04--3.20 requests/s and MLX 1.56--1.66 requests/s over concurrency
+one through eight. Tail latency grows with the intentionally serialized model
+runners; cancellation after first token and cleanup succeed, with no retained
+request-owned native state across 36 exercised sessions. The model locks are a
+correctness boundary: an audit found that MLX cache captures were views into
+reusable arrays. Owning evaluated K/V arrays at the capture boundary restores
+HOT and WARM isolation and prevents later requests from mutating retained
+memory.
+
+A separate MLX finite-wave curve extends physical-tier concurrency to 16.
+Every one of 124 HOT/WARM requests is baseline-exact. At concurrency 16, a
+shared WARM resource requires one promotion, sustains 2.91 requests/s, and
+avoids 630 MiB of duplicate K/V; 16 independent WARM resources require 16
+promotions, read 1.26 GiB, and sustain 1.22 requests/s. This quantifies the
+benefit of immutable physical sharing while also exposing the queue cost of an
+unbatched, serialized runner.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=.76\linewidth]{../shared/results/mac_engine_extension/storage_concurrency.pdf}
+\caption{Shared and independent MLX resources through 16 concurrent sessions.
+The finite waves include promotion and serialized model queueing.}
+\label{fig:runtime-storage-concurrency}
+\end{figure}
+
+Long-session pressure adds 1,125 requests across QASPER, HotpotQA, and 2Wiki.
+With an eight-resource cyclic working set, HOT capacities two and four average
+17 reloads per seed and reload every final revisit; capacity eight has zero
+reloads and evictions. Quality is invariant because selection is frozen. A
+20-example QASPER selective-int8 study reaches only 4/20 exact generations
+when all K/V is quantized; restricting quantization to the late quarter reaches
+14/20, still below the lossless product gate despite small aggregate F1 change.
+
+A further 1,000-request QASPER matrix crosses HOT/WARM resource budgets
+$\{2,8\}$ with local rotating windows $\{64,256\}$. The small WARM budget
+produces 24--75\% SOURCE starts, whereas WARM eight eliminates them. F1 is
+identical in all eight cells and window size has no material completion-tail
+effect. Full disk-backed WARM does not reduce resolve p95 relative to
+re-encoding these bounded sources, making reload-cost-aware admission a runtime
+requirement rather than an optional optimization.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=.68\linewidth]{../shared/results/mac_engine_extension/long_session_pressure.pdf}
+\caption{Sustained pressure exposes a working-set threshold rather than a
+quality effect: once all eight resources fit, reloads disappear.}
+\label{fig:runtime-long-pressure}
+\end{figure}
 
 \section{Compatibility and Product Boundary}
 
@@ -1460,8 +1534,8 @@ inverse requests/s, and E2 usable is milliseconds.}
 \centering
 \includegraphics[width=0.96\linewidth]{../shared/results/matched_e0_e2/matched_e0_e2_summary.pdf}
 \caption{Holding routed evidence fixed separates visible-token reduction from
-semantic preservation. MLX-LM and SGLang-MLX retain F1 exactly; vLLM-Metal
-exposes a post-selection integration gap on two of three datasets.}
+semantic preservation. After restoring E0 through APC and capturing E2 from
+the same source prefill, all three engines retain every paired output and F1.}
 \label{fig:engine-matched-summary}
 \end{figure}
 
@@ -1503,6 +1577,32 @@ that APC-restored E0 and native E2 match 5/5 while full-prefix and APC-restored
 E0 themselves differ in 2/5. The SDK therefore treats all three pinned paths
 as semantic mechanism passes while keeping their economic status experimental.
 Engine labels alone never select these capabilities.
+
+The expanded confirmation raises each engine to 149 unique questions and
+2,086 paired requests. Every engine is 2,086/2,086 exact, for 6,258/6,258 pairs
+overall; the pooled Wilson 95\% lower bound is 0.9994. Visible-token reduction
+is 90.4--93.0\%. The macro ratios in Table~\ref{tab:engine-matched-expanded}
+show why semantic and economic gates remain separate: vLLM-Metal is within
+0.9\% of parity in every regime, SGLang-MLX pays 5.4--7.4\% on reused paths,
+and MLX-LM pays 7.2--13.9\% while using the same frozen evidence.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Expanded selector-frozen E2/E0 cost ratios over 149 unique questions
+and 2,086 paired requests per engine. Lower is better.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/expanded_mac_validation/matched_e0_e2/generated_matched_latency_table.tex}}
+\label{tab:engine-matched-expanded}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/expanded_mac_validation/matched_e0_e2/matched_e0_e2_summary.pdf}
+\caption{Expanded frozen-selection quality and visible-token accounting. Every
+engine preserves every paired output; confidence reflects finite sample size.}
+\label{fig:engine-matched-expanded}
+\end{figure}
 
 The vLLM audit also establishes a product invariant that is easy to miss at an
 HTTP boundary. APC hashes visible prompt state, but native PRA evidence is
