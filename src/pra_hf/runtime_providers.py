@@ -365,6 +365,31 @@ class MLXRuntimeProvider(CommandRuntimeProvider):
     prefix_cache_mode = PrefixCacheMode.SESSION_STATE
 
 
+class OpenVINORuntimeProvider(RuntimeProvider):
+    """Connect to an OVMS/OpenVINO facade without overclaiming native PRA.
+
+    OpenVINO GenAI exposes continuous batching and prefix-cache controls, but
+    its public Python API does not currently attach arbitrary non-prefix K/V to
+    a request. Managed model-server deployment is intentionally left to OVMS;
+    the PRA runtime connects to its configured OpenAI-compatible endpoint.
+    """
+
+    engine_type = "openvino"
+    package_name = "openvino_genai"
+    launch_mode = "connect_remote"
+
+    def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
+        return PRAEngineCapabilities(
+            adapter="openvino_http",
+            engine_type=EngineType.OPENVINO,
+            integration_level="E0",
+            prefix_cache_mode=PrefixCacheMode.AUTOMATIC_PREFIX_CACHE,
+            automatic_prefix_cache=True,
+            text_fallback=True,
+            streaming=True,
+        )
+
+
 class RuntimeProviderRegistry:
     """Mutable provider registry with optional package entry-point discovery."""
 
@@ -380,6 +405,7 @@ class RuntimeProviderRegistry:
             VLLMRuntimeProvider(),
             SGLangRuntimeProvider(),
             MLXRuntimeProvider(),
+            OpenVINORuntimeProvider(),
         ):
             registry.register(provider)
         registry.discover()

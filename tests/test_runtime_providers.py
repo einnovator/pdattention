@@ -5,6 +5,7 @@ import pytest
 from pra_hf.runtime_providers import (
     HFRuntimeProvider,
     MLXRuntimeProvider,
+    OpenVINORuntimeProvider,
     RuntimeConfig,
     RuntimeProviderRegistry,
     SGLangRuntimeProvider,
@@ -15,7 +16,7 @@ from pra_hf.runtime_providers import (
 
 def test_builtin_provider_registry_and_unknown_engine() -> None:
     registry = RuntimeProviderRegistry.default()
-    assert registry.names() == ("hf", "mlx", "openai", "sglang", "vllm")
+    assert registry.names() == ("hf", "mlx", "openai", "openvino", "sglang", "vllm")
     with pytest.raises(KeyError, match="Unknown runtime engine"):
         registry.resolve("missing")
 
@@ -31,6 +32,11 @@ def test_engine_capabilities_do_not_overclaim_vllm_scheduler_support() -> None:
     assert not vllm.pra_scheduler
     assert sglang.native_kv and sglang.integration_level.value == "E1"
     assert mlx.native_kv and mlx.integration_level.value == "E1"
+    openvino = OpenVINORuntimeProvider().capabilities(
+        RuntimeConfig(engine="openvino")
+    )
+    assert openvino.integration_level.value == "E0"
+    assert not openvino.native_kv
 
 
 def test_provider_build_command_preserves_upstream_escape_hatch() -> None:

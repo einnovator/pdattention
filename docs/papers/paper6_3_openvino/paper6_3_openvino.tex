@@ -1,0 +1,89 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,graphicx,amsmath,hyperref}
+\title{Progressive Retrieval Attention on OpenVINO GenAI:\\
+Semantic Non-Prefix Memory with Continuous Batching and Prefix Caching}
+\author{Jorge Sim\~ao}
+\date{\today}
+\begin{document}\maketitle
+\begin{abstract}
+Progressive Retrieval Attention (PRA) separates logical semantic resources from the active sequential context and materializes only selected detail into model attention. Prior work established a shared PRA runtime and native integrations for several inference stacks. This paper studies Intel OpenVINO GenAI and OpenVINO Model Server as a distinct execution target. OpenVINO already exposes bounded KV-block scheduling, prefix caching, eviction controls, continuous batching, and CPU/GPU/NPU execution. We ask whether query-addressed non-prefix PRA memory can coexist with these mechanisms without conflating semantic resource identity with sequential prefix identity. We define an engine adapter that reuses the shared PRA record, policy, storage, and wire contracts while delegating physical KV execution to OpenVINO. Experiments are designed to establish geometry-matched semantic parity, continuous-batching behavior, HOT/WARM/SOURCE economics, and device-specific latency/memory tradeoffs.
+\end{abstract}
+
+\section{Introduction}
+Modern inference engines optimize the sequential KV cache, but agent and retrieval workloads repeatedly need non-prefix information drawn from documents, tool outputs, tasks, and structured resources. PRA treats these as independently addressable semantic resources. The central OpenVINO question is not whether another cache can be added, but whether semantic identity can remain separate from OpenVINO's existing prefix-cache and continuous-batching identities.
+
+\paragraph{Contributions.}
+We target: (1) a capability mapping from the shared PRA runtime to OpenVINO GenAI; (2) a native selected-KV path or a precise characterization of the minimal missing extension seam; (3) matched E0 selected-text versus E2 native-memory evaluation; (4) integration with PRA HOT/WARM/COLD/SOURCE lifecycle; and (5) CPU/GPU/NPU serving measurements where supported.
+
+\section{Background}
+\subsection{PRA runtime contract}
+PRA maintains typed logical records, query-time routing and selection, materialization profiles, authorization, task/session metadata, and derived native-memory lifecycle. The engine receives selected model-addressable regions and owns their physical execution.
+
+\subsection{OpenVINO GenAI}
+OpenVINO GenAI exposes continuous-batching scheduler controls including KV-block/cache budgets, sequence/token batching limits, prefix caching, eviction, and split/fuse behavior. These mechanisms manage physical sequential execution; PRA adds a distinct semantic-resource namespace.
+
+\section{Design}
+\subsection{Identity separation}
+We require
+\[
+I_{\rm prefix}\neq I_{\rm PRA}\neq I_{\rm physical}.
+\]
+An identical visible query may legally use different PRA resources and must not inherit incompatible cached state.
+
+\subsection{Engine adapter}
+The proposed \texttt{OpenVINONativeExecutor} implements physical HOT materialization, request pinning, attachment, cleanup, and telemetry. The shared \texttt{PRAStorageManager} retains WARM/COLD/SOURCE policy.
+
+\subsection{Position and attention semantics}
+Selected K/V must preserve source geometry and use the same query-relative position policy as the reference runtime. Native consumption must perform one joint attention normalization over local and selected memory.
+
+\section{Experimental Method}
+\subsection{Baselines}
+We compare no-PRA, prefix-only, selected-text, prefix+selected-text, full-context, and native-PRA conditions with frozen selection.
+
+\subsection{Parity ladder}
+We test ordinary full-prefix execution, geometry-matched cached-source execution, full native selected memory, sparse/multi-record memory, and cached decode. Metrics include exact output, first-token/logit agreement where observable, F1, and gold-answer log probability.
+
+\subsection{Serving}
+We sweep concurrency, cache budget, prefix caching, PRA HOT budget, and shared versus independent resources. We report TTFT, ITL/TPOT, completion latency, throughput, queue delay, cache occupancy, eviction/reload, and physical memory.
+
+\subsection{Devices}
+Where supported we compare Intel CPU, GPU, and NPU. Compilation time is reported separately from steady-state serving.
+
+\section{Results}
+\begin{table}[h]\centering
+\caption{OpenVINO PRA capability and evidence status.}
+\begin{tabular}{lll}\toprule
+Capability & Status & Evidence\\\midrule
+E0 selected text & TBD & TBD\\
+Prefix-cache coexistence & TBD & TBD\\
+Native E2 selected K/V & TBD & TBD\\
+Geometry parity & TBD & TBD\\
+Continuous batching & TBD & TBD\\
+WARM restart & TBD & TBD\\
+\bottomrule\end{tabular}
+\end{table}
+
+\begin{table}[h]\centering
+\caption{Matched E0/E2 serving results.}
+\begin{tabular}{lrrrrr}\toprule
+Regime & Exact & Visible $\downarrow$ & TTFT & ITL & Memory\\\midrule
+Cold & TBD & TBD & TBD & TBD & TBD\\
+Warm & TBD & TBD & TBD & TBD & TBD\\
+Shared concurrent & TBD & TBD & TBD & TBD & TBD\\
+\bottomrule\end{tabular}
+\end{table}
+
+\section{Related Work}
+We compare PRA with OpenVINO prefix caching and cache eviction, conventional RAG/context compression, and KV-cache optimization. The distinction is that PRA resources are query-addressed non-prefix semantic objects rather than merely retained sequential prefixes.
+
+\section{Limitations}
+The initial study is bounded by available Intel devices, model support, and public OpenVINO extension seams. A missing native hook is reported as an integration boundary rather than hidden behind a text fallback.
+
+\section{Conclusion}
+This paper tests whether OpenVINO's physical KV scheduler can remain responsible for efficient Intel execution while PRA supplies semantic resource identity and lifecycle. The decisive result is the quality/memory/latency frontier under geometry-matched E0/E2 execution and continuous batching.
+
+\section*{Reproducibility}
+All environment versions, hardware, model revisions, scheduler configuration, PRA profile, manifests, raw metrics, and generated tables/plots must be committed or registered as reproducible artifacts.
+
+\end{document}
