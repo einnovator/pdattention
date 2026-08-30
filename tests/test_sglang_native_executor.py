@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+import pytest
+
 from pra_hf.deployment import PRAWireBudget, PRAWireRequest, PRAWireResource
 from pra_hf.engine_memory import LogicalPRABlockStore
 from pra_sglang.native_executor import SGLangInProcessNativeExecutor
@@ -52,3 +54,16 @@ def test_selected_resources_and_shareable_identity_are_stable() -> None:
     assert executor._logical_key(request, resource) == executor._logical_key(
         other_session, resource
     )
+
+
+def test_token_ids_normalizes_mapping_array_and_single_batch() -> None:
+    class Array:
+        def tolist(self):
+            return [[1, 2, 3]]
+
+    assert SGLangInProcessNativeExecutor._token_ids({"input_ids": Array()}) == [1, 2, 3]
+
+
+def test_token_ids_rejects_multiple_prompt_batches() -> None:
+    with pytest.raises(ValueError, match="more than one"):
+        SGLangInProcessNativeExecutor._token_ids([[1], [2]])

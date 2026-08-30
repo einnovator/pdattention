@@ -6,7 +6,7 @@ import hashlib
 import json
 import threading
 import time
-from typing import Iterator, Mapping
+from typing import Iterable, Iterator, Mapping
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
 from pra_hf.engine_memory import LogicalPRABlockStore
@@ -86,7 +86,27 @@ class SGLangInProcessNativeExecutor:
     def _resource_tokens(self, resource: PRAWireResource) -> list[int]:
         if resource.text is None:
             raise ValueError(f"Resource {resource.resource_id!r} has no text.")
-        return list(map(int, self.tokenizer.encode(resource.text, add_special_tokens=False)))
+        return self._token_ids(
+            self.tokenizer.encode(resource.text, add_special_tokens=False)
+        )
+
+    @staticmethod
+    def _token_ids(encoded: object) -> list[int]:
+        """Normalize tokenizer lists, arrays, batches, and mapping outputs."""
+
+        if isinstance(encoded, Mapping):
+            if "input_ids" not in encoded:
+                raise ValueError("Tokenizer mapping does not contain input_ids.")
+            encoded = encoded["input_ids"]
+        tolist = getattr(encoded, "tolist", None)
+        if callable(tolist):
+            encoded = tolist()
+        values = list(encoded) if isinstance(encoded, Iterable) else []
+        if values and isinstance(values[0], (list, tuple)):
+            if len(values) != 1:
+                raise ValueError("Tokenizer returned more than one prompt batch.")
+            values = list(values[0])
+        return list(map(int, values))
 
     def _prepare_keys(self, request: PRAWireRequest) -> tuple[tuple[str, ...], int]:
         resources = self._selected_resources(request)
@@ -100,11 +120,12 @@ class SGLangInProcessNativeExecutor:
         for resource, tokens in prepared:
             key = self._logical_key(request, resource)
             keys.append(key)
-            if key not in self.storage.entries:
-                memory = encode_native_memory(self.runner.model, tokens)
-                payload = serialize_native_memory(memory)
-                self.storage.register(
-                    PRAStorageEntry(
+            with self._runner_lock:
+                if key not in self.storage.entries:
+                    memory = encode_native_memory(self.runner.model, tokens)
+                    payload = serialize_native_memory(memory)
+                    self.storage.register(
+                        PRAStorageEntry(
                         logical_key=key,
                         record_type=resource.record_type,
                         retention_class=PRARetentionClass.RECONSTRUCTABLE,
@@ -123,15 +144,15 @@ class SGLangInProcessNativeExecutor:
                         shared_reference_count=int(
                             bool(resource.metadata.get("shareable", False))
                         ),
-                    ),
-                    payload,
-                    hot_value=memory,
-                    source_loader=lambda payload=payload: payload,
-                    fingerprint=(
-                        f"{self.model_id}:{self.model_revision}:"
-                        f"{len(memory.layers)}:{len(tokens)}"
-                    ),
-                )
+                        ),
+                        payload,
+                        hot_value=memory,
+                        source_loader=lambda payload=payload: payload,
+                        fingerprint=(
+                            f"{self.model_id}:{self.model_revision}:"
+                            f"{len(memory.layers)}:{len(tokens)}"
+                        ),
+                    )
             self.storage.record_access(key, selected=True)
         if request.session_id:
             self._session_keys.setdefault(request.session_id, set()).update(keys)
@@ -140,18 +161,17 @@ class SGLangInProcessNativeExecutor:
     def _prompt_tokens(self, request: PRAWireRequest) -> list[int]:
         apply = getattr(self.tokenizer, "apply_chat_template", None)
         if apply is not None:
-            return list(
-                map(
-                    int,
-                    apply(
-                        list(request.messages),
-                        tokenize=True,
-                        add_generation_prompt=True,
-                    ),
+            return self._token_ids(
+                apply(
+                    list(request.messages),
+                    tokenize=True,
+                    add_generation_prompt=True,
                 )
             )
         text = "\n".join(str(row.get("content", "")) for row in request.messages)
-        return list(map(int, self.tokenizer.encode(text, add_special_tokens=False)))
+        return self._token_ids(
+            self.tokenizer.encode(text, add_special_tokens=False)
+        )
 
     def stream(
         self, request: PRAWireRequest, block_store: LogicalPRABlockStore
