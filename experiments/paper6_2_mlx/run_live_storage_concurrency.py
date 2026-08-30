@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path
 import tempfile
+import threading
 import time
 
 from experiments.engine_serving.matched_qa import load_matched_examples
@@ -82,6 +83,11 @@ def main() -> None:
     )
     examples = examples[: args.max_examples]
     model, tokenizer = load(args.model, revision=args.revision)
+    # MLX-LM model objects are not reentrant. Requests may promote storage in
+    # parallel, but decode enters the same single-runner queue used by the HTTP
+    # adapter. Without this boundary, concurrent calls can mutate shared model
+    # state and attribute another request's completion to the current resource.
+    model_runner_lock = threading.RLock()
 
     with tempfile.TemporaryDirectory(prefix="pra-mlx-concurrency-") as directory:
         root = Path(directory)
@@ -191,13 +197,18 @@ def main() -> None:
                             active = manager.promote(key, request_id=request_id)
                             promotion_ms = (time.perf_counter() - started) * 1000.0
                             try:
-                                generated = _generate_timed(
-                                    model,
-                                    tokenizer,
-                                    list(item["query"]),
-                                    make_native_prompt_cache(model, active),
-                                    args.max_new_tokens,
-                                )
+                                queue_started = time.perf_counter()
+                                with model_runner_lock:
+                                    queue_ms = (
+                                        time.perf_counter() - queue_started
+                                    ) * 1000.0
+                                    generated = _generate_timed(
+                                        model,
+                                        tokenizer,
+                                        list(item["query"]),
+                                        make_native_prompt_cache(model, active),
+                                        args.max_new_tokens,
+                                    )
                             finally:
                                 manager.unpin(key, request_id)
                             request_ms = (time.perf_counter() - started) * 1000.0
@@ -208,6 +219,7 @@ def main() -> None:
                                 "key": key,
                                 "request_ms": request_ms,
                                 "promotion_ms": promotion_ms,
+                                "model_queue_ms": queue_ms,
                                 "output": output,
                                 "exact_match": exact,
                                 "token_f1": f1,
@@ -220,6 +232,9 @@ def main() -> None:
                         request_latencies = [float(row["request_ms"]) for row in requests]
                         promotion_latencies = [
                             float(row["promotion_ms"]) for row in requests
+                        ]
+                        queue_latencies = [
+                            float(row["model_queue_ms"]) for row in requests
                         ]
                         unique_bytes = sum(
                             int(item["native_bytes"]) for item in unique.values()
@@ -246,6 +261,12 @@ def main() -> None:
                                 ),
                                 "promotion_p95_ms": _percentile(
                                     promotion_latencies, 0.95
+                                ),
+                                "model_queue_p50_ms": _percentile(
+                                    queue_latencies, 0.50
+                                ),
+                                "model_queue_p95_ms": _percentile(
+                                    queue_latencies, 0.95
                                 ),
                                 "exact_match_rate": sum(
                                     bool(row["exact_match"]) for row in requests

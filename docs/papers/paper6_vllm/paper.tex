@@ -40,8 +40,7 @@ outcome, wrong memory redirects 30/40 outputs, and throughput reaches 34.41
 requests/s at concurrency eight. A selection-derived APC salt prevents the
 same visible query from reusing state created under different hidden memory;
 after the first selected request, APC supplies 128--144 prompt tokens.
-Connectors, online server tails, cross-family
-replication, and CUDA integration remain open. A final matched-selection study
+Connectors, online server tails, and CUDA integration remain open. A final matched-selection study
 uses the same routed QASPER, HotpotQA, and 2WikiMultiHopQA evidence for visible
 E0 and native E2 execution. E2 removes 90.6--93.0\% of visible prompt tokens,
 and all 840 paired outputs are exact. A geometry audit explains an earlier
@@ -51,9 +50,10 @@ source through APC and capturing E2 pages from vLLM's own source prefill holds
 that geometry fixed. Cold, warm, multi-query, and concurrency cost ratios are
 0.985, 1.004, 0.993, and 0.981, respectively, where lower is better. Exact
 matched-quality promotion is therefore closed for this model and backend;
-connectors and CUDA remain open. A Qwen3-1.7B replication also obtains 840/840
-exact pairs, with cold, warm, multi-query, and concurrent ratios of 1.007,
-0.992, 0.994, and 0.987. An expanded live storage study then obtains 80/80
+connectors and CUDA remain open. Replications with Qwen3-1.7B,
+Llama-3.2-1B-Instruct, and Gemma-3-1B-IT also obtain 840/840 exact pairs each.
+Across all four checkpoints and 3,360 pairs, every completion is exact and all
+four execution-cost ratios remain within 3.1\% of parity. An expanded live storage study then obtains 80/80
 lossless WARM output and array parity with restart recovery; int8 COLD is exact
 in only 17/80 sequences and is not promoted as a default.
 \end{abstract}
@@ -400,26 +400,28 @@ regimes. The differences are too small for a broad speed claim.
 The offline V1 API emits the 24-token completion as one engine result, so TTFT
 and ITL are reported as unavailable rather than inferred from completion time.
 
-We repeat the complete 840-pair protocol with Qwen3-1.7B, changing the model
-size while holding the tokenizer family, selector, source cap, schedules, and
-Metal backend fixed. Table~\ref{tab:vllm-cross-model} reports the result.
+We repeat the complete 840-pair protocol with Qwen3-1.7B,
+Llama-3.2-1B-Instruct, and Gemma-3-1B-IT. The selector, source cap, schedules,
+4-bit format, and Metal backend remain fixed while model architecture and
+tokenizer family vary. Table~\ref{tab:vllm-cross-model} reports the result.
 
 \begin{table}[t]
 \centering
 \small
-\caption{Matched E2/E0 execution across two Qwen3 sizes. Lower cost ratios are
-better. This is a size replication within one family, not cross-family evidence.}
+\caption{Matched E2/E0 execution across four checkpoints and three model
+families. Lower cost ratios are better. Each row contains 840 paired requests.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/paper6_vllm/cross_model_matched/generated_cross_model_matched_table.tex}}
 \label{tab:vllm-cross-model}
 \end{table}
 
-The 1.7B model also preserves all 840 paired outputs and zero pairwise F1
-change. Its macro ratios are 1.007 cold, 0.992 warm, 0.994 multi-query, and
-0.987 concurrent. Thus the corrected geometry and near-parity economics are
-not confined to the 0.6B checkpoint. The experiment still shares architecture,
-tokenizer family, quantization format, host, and kernel backend, so it narrows
-rather than closes the external-validity gap.
+All three replications preserve all 840 paired outputs and zero pairwise F1
+change. Llama's macro ratios are 0.992 cold, 0.991 warm, 1.001 multi-query,
+and 0.969 concurrent; Gemma's are 0.998, 1.007, 0.988, and 0.991. Thus the
+corrected geometry and near-parity economics are not confined to Qwen or one
+tokenizer. The experiment still shares the 4-bit format, Apple host, and Metal
+backend, so CUDA and other serving implementations remain external-validity
+boundaries.
 
 \subsection{Shared semantic storage boundary}
 Paper 4.5 now supplies the engine-neutral HOT/WARM/COLD/SOURCE policy used above
@@ -550,10 +552,10 @@ V1 metadata contract & controlled closed & selected block tables and positions r
 live V1 generation & controlled closed & positive, disabled, wrong-memory, and cleanup controls over five seeds \\
 concurrent isolation & controlled closed & 20/20 selected recoveries and 0/20 adjacent ordinary recoveries \\
 native APC identity & controlled closed & selection-derived salt; 75/75 selected and 0/40 disabled recoveries \\
-matched natural QA & controlled closed & 840/840 exact outputs at both 0.6B and 1.7B; zero pairwise F1 change \\
+matched natural QA & controlled closed & 3,360/3,360 exact outputs across Qwen, Llama, and Gemma; zero pairwise F1 change \\
 shared storage lifecycle & controlled closed & live pages; WARM 80/80 exact; restart recovery; int8 COLD 17/80 \\
 engine-native serving & partial & native APC and concurrency measured; connectors, online tails, and CUDA remain open \\
-robustness & partial & two Qwen3 sizes, one tokenizer family, one Metal backend \\
+robustness & partial & four checkpoints and three tokenizer families; one Metal backend \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -562,7 +564,7 @@ The Metal backend now accepts selected non-prefix K/V at its native
 paged-attention boundary and carries scheduler-invisible pages through V1
 generation. Native pages now coexist with scheduler-owned APC state through
 eight-request V1 batches. Remaining boundaries are an online arrival process,
-LMCache/connectors, cross-family replication, and CUDA. The shared residency manager
+LMCache/connectors and CUDA. The shared residency manager
 implements deterministic prefetch, pinning, sharing, and four eviction
 policies, but its pressure sweep is controlled simulation rather than vLLM
 scheduler telemetry.
@@ -575,8 +577,8 @@ black-box baseline already preserves quality, uses 76.9\% fewer visible prompt
 tokens than full context, and coexists with APC. A native implementation must
 improve resident memory, transfer, TTFT, or throughput beyond this baseline.
 
-The current study uses two 4-bit sizes from one Qwen3 family, one Apple host,
-and one frozen 60-example natural-QA cohort. The cold requests are
+The current study uses four 4-bit checkpoints from three model families, one
+Apple host, and one frozen 60-example natural-QA cohort per checkpoint. The cold requests are
 order-sensitive; concurrency is
 measured through the offline V1 engine rather than an HTTP server, and no
 arrival-rate, tail-latency, or HBM-pressure sweep was run. The live bridge

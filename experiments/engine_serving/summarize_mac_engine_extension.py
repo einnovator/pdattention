@@ -98,9 +98,9 @@ def _write_quant_table(path: Path, summary: dict[str, object]) -> None:
 
 def _write_concurrency_table(path: Path, rows: list[dict[str, object]]) -> None:
     lines = [
-        r"\begin{tabular}{lllrrrrr}",
+        r"\begin{tabular}{lllrrrrrr}",
         r"\toprule",
-        r"Workload & Tier & $c$ & req/s & p50 & p95 & p99 & exact/HOT \\",
+        r"Workload & Tier & $c$ & req/s & p50 & p95 & p99 & queue p95 & exact/HOT \\",
         r"\midrule",
     ]
     for row in rows:
@@ -111,6 +111,7 @@ def _write_concurrency_table(path: Path, rows: list[dict[str, object]]) -> None:
             f"{float(row['request_p50_ms']):.0f} & "
             f"{float(row['request_p95_ms']):.0f} & "
             f"{float(row['request_p99_ms']):.0f} & "
+            f"{float(row.get('model_queue_p95_ms', 0.0)):.0f} & "
             f"{100 * float(row['exact_vs_hot_rate']):.1f}\\% \\\\"
         )
     lines.extend((r"\bottomrule", r"\end{tabular}"))
