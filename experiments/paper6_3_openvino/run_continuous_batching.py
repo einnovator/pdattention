@@ -34,6 +34,14 @@ def _metric(perf: object, method: str) -> float | None:
         return None
 
 
+def _rss_bytes() -> int | None:
+    try:
+        import psutil
+    except ImportError:
+        return None
+    return int(psutil.Process().memory_info().rss)
+
+
 def _history(genai: object, messages: list[dict[str, str]]) -> object:
     history = genai.ChatHistory()
     for message in messages:
@@ -120,6 +128,7 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                 pipe.generate(warm_histories, warm_configs)
 
                 group_rows = []
+                rss_before = _rss_bytes()
                 group_started = time.perf_counter()
                 for wave in range(args.waves):
                     wave_specs = [spec for spec in specs if spec[0] == wave]
@@ -170,6 +179,8 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                         "waves": args.waves,
                         "warmup_requests": len(unique),
                         "wall_seconds": wall_seconds,
+                        "rss_before_bytes": rss_before,
+                        "rss_after_bytes": _rss_bytes(),
                         **_aggregate(harness, group_rows, wall_seconds),
                     }
                 )
