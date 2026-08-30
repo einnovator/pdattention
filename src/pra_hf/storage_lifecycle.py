@@ -16,6 +16,7 @@ import mmap
 import os
 import threading
 import time
+import uuid
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
@@ -895,11 +896,16 @@ class PRAStorageManager:
             ],
         }
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
-        FileKVStore._write_synced(
-            temporary, json.dumps(payload, sort_keys=True).encode("utf-8")
+        temporary = self.state_path.with_name(
+            f".{self.state_path.name}.{uuid.uuid4().hex}.tmp"
         )
-        os.replace(temporary, self.state_path)
+        try:
+            FileKVStore._write_synced(
+                temporary, json.dumps(payload, sort_keys=True).encode("utf-8")
+            )
+            os.replace(temporary, self.state_path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     @_storage_locked
     def recover(self) -> int:
@@ -1240,16 +1246,17 @@ class PRAStorageManager:
         """Pin one promoted object set across complete engine request lifetime."""
 
         unique = tuple(dict.fromkeys(map(str, keys)))
-        for key in unique:
-            entry = self.entries[key]
-            if entry.current_tier != PRAStorageTier.HOT:
-                self.promote(key)
+        with self._lock:
+            for key in unique:
                 entry = self.entries[key]
-            self.hot.pin_hot(key, request_id)
-            self.entries[key] = replace(
-                entry, request_pin_count=entry.request_pin_count + 1
-            )
-        self._persist_state()
+                if entry.current_tier != PRAStorageTier.HOT:
+                    self.promote(key)
+                    entry = self.entries[key]
+                self.hot.pin_hot(key, request_id)
+                self.entries[key] = replace(
+                    entry, request_pin_count=entry.request_pin_count + 1
+                )
+            self._persist_state()
         try:
             yield
         finally:

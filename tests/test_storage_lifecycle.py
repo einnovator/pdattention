@@ -305,6 +305,30 @@ def test_concurrent_promotions_share_one_hot_value_without_state_race(tmp_path):
     assert manager.metrics.reloads == 1
 
 
+def test_concurrent_request_pins_persist_atomically_and_cleanup(tmp_path):
+    manager = PRAStorageManager(
+        _policy(tmp_path), state_path=tmp_path / "lifecycle.json"
+    )
+    manager.register(_entry("shared-request", task_status=None), b"native-kv")
+
+    def use_block(index: int) -> None:
+        with manager.pin_request(f"request-{index}", ("shared-request",)):
+            assert manager.entries["shared-request"].request_pin_count >= 1
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tuple(pool.map(use_block, range(32)))
+
+    assert manager.entries["shared-request"].request_pin_count == 0
+    assert manager.state_path is not None
+    assert manager.state_path.exists()
+    assert not tuple(tmp_path.glob(".lifecycle.json.*.tmp"))
+
+    recovered = PRAStorageManager(
+        _policy(tmp_path), state_path=tmp_path / "lifecycle.json"
+    )
+    assert recovered.entries["shared-request"].request_pin_count == 0
+
+
 def test_hot_promotion_retains_durable_warm_copy_and_avoids_rewrite(tmp_path):
     policy = _policy(tmp_path)
     manager = PRAStorageManager(policy)
