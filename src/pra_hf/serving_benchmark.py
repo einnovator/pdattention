@@ -47,8 +47,20 @@ def percentile(values: Iterable[float], fraction: float) -> float | None:
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
 
-def benchmark_messages() -> dict[str, list[dict[str, str]]]:
-    """Build fixed conditions that separate exact-prefix and selected memory."""
+def benchmark_messages(
+    *,
+    distractor_count: int = 12,
+    distractor_repeat: int = 28,
+) -> dict[str, list[dict[str, str]]]:
+    """Build conditions that separate exact-prefix and selected memory.
+
+    The defaults preserve the original smoke workload. Benchmark campaigns can
+    scale the retained context without changing the target evidence or prompt
+    structure, which keeps comparisons across engines selector-frozen.
+    """
+
+    if distractor_count < 0 or distractor_repeat < 0:
+        raise ValueError("Distractor count and repeat must be non-negative.")
 
     stable_prefix = (
         "You are a deterministic evidence reader. Preserve this stable session "
@@ -60,8 +72,8 @@ def benchmark_messages() -> dict[str, list[dict[str, str]]]:
     )
     distractors = [
         f"Resource distractor {index}: code DECOY_{index:04d}. "
-        + "irrelevant-record-token " * 28
-        for index in range(12)
+        + "irrelevant-record-token " * distractor_repeat
+        for index in range(distractor_count)
     ]
     question = "What is the requested verification code? Return only the code."
     selected = f"Selected PRA text memory:\n{target}"
@@ -259,4 +271,3 @@ def run_serving_benchmark(
         "samples": [sample.to_dict() for sample in samples],
         "aggregates": aggregates,
     }
-
