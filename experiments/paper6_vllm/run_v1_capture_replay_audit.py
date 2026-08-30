@@ -16,27 +16,9 @@ from experiments.paper6_vllm.run_matched_e0_e2 import _aligned, _run
 def _capture_memory(bridge, block_ids: list[int], source_tokens: int):
     """Copy source pages from vLLM's ordinary cache into PRA memory layout."""
 
-    import mlx.core as mx
-    from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
+    from pra_vllm.v1_native import capture_paged_memory
 
-    cache = bridge.runtime.kv_cache
-    layers = []
-    for keys, values in zip(cache.key_caches, cache.value_caches):
-        page_keys = mx.array(keys[block_ids]).reshape(
-            -1, keys.shape[2], keys.shape[3]
-        )[:source_tokens]
-        page_values = mx.array(values[block_ids]).reshape(
-            -1, values.shape[2], values.shape[3]
-        )[:source_tokens]
-        layers.append(
-            MLXNativeLayerKV(
-                page_keys.transpose(1, 0, 2)[None],
-                page_values.transpose(1, 0, 2)[None],
-            )
-        )
-    memory = MLXNativeMemory(tuple(layers), source_tokens)
-    mx.eval(*(array for layer in memory.layers for array in (layer.keys, layer.values)))
-    return memory
+    return capture_paged_memory(bridge, block_ids, source_tokens)
 
 
 def _max_deltas(left, right) -> tuple[float, float]:

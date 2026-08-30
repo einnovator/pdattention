@@ -114,10 +114,10 @@ def _run_batch(
     *,
     key=None,
     source_tokens=0,
+    cache_salt=None,
 ):
     """Run one genuinely concurrent V1 wave over a shared selected resource."""
 
-    cache_salt = None
     if key is not None:
         from pra_vllm.v1_native import native_request_cache_salt
 
@@ -176,7 +176,6 @@ def main() -> None:
 
     os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
     import vllm
-    from pra_mlx.native import encode_native_memory
     from pra_vllm.v1_native import VLLMMetalV1NativeBridge
     from vllm import LLM, SamplingParams
 
@@ -196,6 +195,7 @@ def main() -> None:
     bridge = VLLMMetalV1NativeBridge(runner, reserve_blocks=args.reserve_blocks)
     tokenizer = llm.get_tokenizer()
     sampling = SamplingParams(temperature=0, max_tokens=args.max_new_tokens)
+    ingestion_sampling = SamplingParams(temperature=0, max_tokens=1)
     rows = []
     try:
         for example in examples:
@@ -208,10 +208,42 @@ def main() -> None:
             )
             source = _aligned(raw_source, tokenizer, bridge.block_size)
             text_preparation_ms = (time.perf_counter() - prepared_at) * 1000.0
-            started = time.perf_counter()
-            memory = encode_native_memory(runner.model, source)
-            encode_ms = (time.perf_counter() - started) * 1000.0
             key = f"matched-{example.dataset}-{example.example_id}"
+            e0_source_salt = f"e0-source-{example.selection.selection_id}"
+
+            # Prime E0's ordinary APC with source-only pages. E0 then prefills
+            # only the query suffix, matching E2's query-kernel geometry.
+            started = time.perf_counter()
+            _run(
+                llm,
+                bridge,
+                ingestion_sampling,
+                source,
+                cache_salt=e0_source_salt,
+            )
+            e0_ingestion_ms = (time.perf_counter() - started) * 1000.0
+
+            # Native PRA ingestion must use vLLM's own prefill path. A generic
+            # MLX cache encoder is not numerically identical to vLLM-Metal.
+            observation_start = len(bridge.prefill_page_observations())
+            started = time.perf_counter()
+            _run(
+                llm,
+                bridge,
+                ingestion_sampling,
+                source,
+                cache_salt=f"e2-ingest-{example.selection.selection_id}",
+            )
+            observations = bridge.prefill_page_observations()[observation_start:]
+            fresh = [row for row in observations if row["scheduler_cache_start"] == 0]
+            if not fresh:
+                raise RuntimeError("vLLM did not expose native source-ingestion pages.")
+            page_count = len(source) // bridge.block_size
+            source_blocks = list(fresh[0]["block_ids_by_group"][0][:page_count])
+            from pra_vllm.v1_native import capture_paged_memory
+
+            memory = capture_paged_memory(bridge, source_blocks, len(source))
+            encode_ms = (time.perf_counter() - started) * 1000.0
             started = time.perf_counter()
             bridge.materialize(key, memory)
             materialize_ms = (time.perf_counter() - started) * 1000.0
@@ -240,11 +272,18 @@ def main() -> None:
                         prompt_tokens,
                         key=key if condition == "e2_native_kv" else None,
                         source_tokens=len(source),
+                        cache_salt=(
+                            e0_source_salt
+                            if condition == "e0_selected_text"
+                            else None
+                        ),
                     )
                     text = str(output.outputs[0].text).strip()
                     exact, f1 = _metrics(text, example.answer)
                     native = condition == "e2_native_kv"
-                    ingestion_ms = encode_ms + materialize_ms if native else 0.0
+                    ingestion_ms = (
+                        encode_ms + materialize_ms if native else e0_ingestion_ms
+                    )
                     rows.append(
                         benchmark_row(
                             condition=condition,
@@ -333,13 +372,16 @@ def main() -> None:
                     prompts,
                     key=key if native else None,
                     source_tokens=len(source),
+                    cache_salt=None if native else e0_source_salt,
                 )
                 for request, query, request_id, output in zip(
                     concurrent_requests, queries, request_ids, outputs
                 ):
                     text = str(output.outputs[0].text).strip()
                     exact, f1 = _metrics(text, example.answer)
-                    ingestion_ms = encode_ms + materialize_ms if native else 0.0
+                    ingestion_ms = (
+                        encode_ms + materialize_ms if native else e0_ingestion_ms
+                    )
                     rows.append(
                         benchmark_row(
                             condition=condition,

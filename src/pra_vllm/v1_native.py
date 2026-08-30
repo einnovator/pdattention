@@ -145,6 +145,36 @@ def observe_prefill_pages(
     )
 
 
+def capture_paged_memory(
+    bridge: "VLLMMetalV1NativeBridge",
+    block_ids: Sequence[int],
+    source_tokens: int,
+) -> MLXNativeMemory:
+    """Copy engine-native source pages into immutable PRA memory layout."""
+
+    import mlx.core as mx
+    from pra_mlx.native import MLXNativeLayerKV
+
+    cache = bridge.runtime.kv_cache
+    layers = []
+    for keys, values in zip(cache.key_caches, cache.value_caches):
+        page_keys = mx.array(keys[list(block_ids)]).reshape(
+            -1, keys.shape[2], keys.shape[3]
+        )[:source_tokens]
+        page_values = mx.array(values[list(block_ids)]).reshape(
+            -1, values.shape[2], values.shape[3]
+        )[:source_tokens]
+        layers.append(
+            MLXNativeLayerKV(
+                page_keys.transpose(1, 0, 2)[None],
+                page_values.transpose(1, 0, 2)[None],
+            )
+        )
+    memory = MLXNativeMemory(tuple(layers), int(source_tokens))
+    mx.eval(*(array for layer in memory.layers for array in (layer.keys, layer.values)))
+    return memory
+
+
 def augment_paged_context(
     context: object,
     request_ids: Sequence[str],
