@@ -205,6 +205,72 @@ def _write_pressure_table(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _tier_window_rows(payload: dict[str, object] | None) -> list[dict[str, object]]:
+    if payload is None:
+        return []
+    result = []
+    rows = list(payload["rows"])
+    for hot in payload["hot_resource_budgets"]:
+        for warm in payload["warm_resource_budgets"]:
+            for window in payload["local_kv_sizes"]:
+                selected = [
+                    row
+                    for row in rows
+                    if int(row["hot_resource_budget"]) == int(hot)
+                    and int(row["warm_resource_budget"]) == int(warm)
+                    and int(row["local_kv_size"]) == int(window)
+                ]
+                result.append(
+                    {
+                        "hot_resource_budget": int(hot),
+                        "warm_resource_budget": int(warm),
+                        "local_kv_size": int(window),
+                        "requests": len(selected),
+                        "hot_start_rate": fmean(
+                            row["tier_before"] == "hot" for row in selected
+                        ),
+                        "warm_start_rate": fmean(
+                            row["tier_before"] == "warm" for row in selected
+                        ),
+                        "source_start_rate": fmean(
+                            row["tier_before"] == "source" for row in selected
+                        ),
+                        "token_f1": fmean(float(row["token_f1"]) for row in selected),
+                        "resolve_p50_ms": _nearest(
+                            [float(row["resolve_ms"]) for row in selected], 0.50
+                        ),
+                        "resolve_p95_ms": _nearest(
+                            [float(row["resolve_ms"]) for row in selected], 0.95
+                        ),
+                        "completion_p95_ms": _nearest(
+                            [float(row["completion_latency_ms"]) for row in selected],
+                            0.95,
+                        ),
+                    }
+                )
+    return result
+
+
+def _write_tier_window_table(path: Path, rows: list[dict[str, object]]) -> None:
+    lines = [
+        r"\begin{tabular}{rrrrrrrr}",
+        r"\toprule",
+        r"HOT & WARM & Window & Requests & HOT start & WARM start & SOURCE start & Resolve p95 \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        lines.append(
+            f"{row['hot_resource_budget']} & {row['warm_resource_budget']} & "
+            f"{row['local_kv_size']} & {row['requests']} & "
+            f"{100 * float(row['hot_start_rate']):.0f}\\% & "
+            f"{100 * float(row['warm_start_rate']):.0f}\\% & "
+            f"{100 * float(row['source_start_rate']):.0f}\\% & "
+            f"{float(row['resolve_p95_ms']):.1f} \\\\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--results-root", type=Path, default=Path("docs/papers/shared/results"))
@@ -242,6 +308,10 @@ def main() -> None:
         )
         if path.exists()
     ]
+    tier_window_path = root / "paper6_2_mlx" / "tier_window_pressure_qasper.json"
+    tier_window = _tier_window_rows(
+        _load(tier_window_path) if tier_window_path.exists() else None
+    )
     async_summary = _async_rows(async_payloads)
     pressure_summary = _pressure_rows(pressure)
     summary = {
@@ -252,6 +322,7 @@ def main() -> None:
         "storage_concurrency": concurrency["rows"],
         "online_gateway": online,
         "long_session_pressure": pressure_summary,
+        "tier_window_pressure": tier_window,
     }
     (output / "mac_engine_extension_summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
@@ -269,6 +340,10 @@ def main() -> None:
     if pressure_summary:
         _write_pressure_table(
             output / "generated_long_session_pressure_table.tex", pressure_summary
+        )
+    if tier_window:
+        _write_tier_window_table(
+            output / "generated_tier_window_pressure_table.tex", tier_window
         )
 
     import matplotlib.pyplot as plt

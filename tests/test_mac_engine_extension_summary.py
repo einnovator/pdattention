@@ -2,6 +2,7 @@ from experiments.engine_serving.summarize_mac_engine_extension import (
     _async_rows,
     _nearest,
     _pressure_rows,
+    _tier_window_rows,
     _write_concurrency_table,
 )
 
@@ -105,3 +106,30 @@ def test_pressure_summary_keeps_final_revisit_separate() -> None:
     assert rows[0]["final_revisit_reload_rate"] == 1.0
     assert rows[0]["token_f1"] == 0.75
     assert rows[0]["completion_p95_ms"] == 20.0
+
+
+def test_tier_window_summary_keeps_physical_start_tiers_disjoint() -> None:
+    rows = _tier_window_rows(
+        {
+            "hot_resource_budgets": [2],
+            "warm_resource_budgets": [4],
+            "local_kv_sizes": [64],
+            "rows": [
+                {
+                    "hot_resource_budget": 2,
+                    "warm_resource_budget": 4,
+                    "local_kv_size": 64,
+                    "tier_before": tier,
+                    "token_f1": 1.0,
+                    "resolve_ms": latency,
+                    "completion_latency_ms": 10.0,
+                }
+                for tier, latency in (("hot", 1.0), ("warm", 2.0), ("source", 3.0))
+            ],
+        }
+    )
+
+    assert rows[0]["hot_start_rate"] == 1 / 3
+    assert rows[0]["warm_start_rate"] == 1 / 3
+    assert rows[0]["source_start_rate"] == 1 / 3
+    assert rows[0]["resolve_p95_ms"] == 3.0
