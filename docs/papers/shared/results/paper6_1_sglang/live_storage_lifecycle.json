@@ -1,0 +1,165 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_1_sglang_live_storage_lifecycle_v1",
+  "engine": "sglang-mlx",
+  "engine_version": "0.0.0.dev1+gef20fab38.d20260828",
+  "model_id": "mlx-community/Qwen3-0.6B-4bit",
+  "rows": [
+    {
+      "dataset": "qasper",
+      "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.08,
+      "cold_int8_f1_delta": 0.08,
+      "outputs": {
+        "hot": "We have a list of scores for each model. The scores were calculated using the same algorithm and the same data set.",
+        "warm": "We have a list of scores for each model. The scores were calculated using the same algorithm and the same data set.",
+        "cold": "We were able to score their system's performance on the test set. We then compared the scores of their system to"
+      },
+      "completion_latency_ms": {
+        "hot": 331.41979202628136,
+        "warm": 310.09854190051556,
+        "cold": 286.5382090676576
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 332.9246661160141,
+        "warm": 572.1979581285268,
+        "cold": 526.6262921504676
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001125037670135498,
+        "warm": 158.0163750331849,
+        "cold": 361.56870797276497
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1908.05828-1462eb312944926469e7cee067dfc7f1267a2a8c",
+      "source_tokens": 317,
+      "native_bytes": 36356096,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(A) 10 (B) 12 (C) 14 (D) 16",
+        "warm": "(A) 10 (B) 12 (C) 14 (D) 16",
+        "cold": "(This is a question in the document)\nA) 10\nB) 1 the range of 1"
+      },
+      "completion_latency_ms": {
+        "hot": 276.6619580797851,
+        "warm": 307.40962480194867,
+        "cold": 302.4915000423789
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 278.77216693013906,
+        "warm": 529.0655421558768,
+        "cold": 530.0785829313099
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008330680429935455,
+        "warm": 181.69991695322096,
+        "cold": 789.3083749804646
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1911.00841-f0848e7a339da0828278f6803ed7990366c975f0",
+      "source_tokens": 294,
+      "native_bytes": 33718272,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.15999999999999998,
+      "cold_int8_answer_f1": 0.25,
+      "cold_int8_f1_delta": 0.09000000000000002,
+      "outputs": {
+        "hot": "We use a simple baseline for the NA, which is the number of questions that are unanswerable in the privacy policy",
+        "warm": "We use a simple baseline for the NA, which is the number of questions that are unanswerable in the privacy policy",
+        "cold": "We establish a no-answer baseline (NA) to quantify the effect of identifying every question as unanswerable. We include"
+      },
+      "completion_latency_ms": {
+        "hot": 266.6934998705983,
+        "warm": 310.66908314824104,
+        "cold": 296.50458390824497
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 269.1211251076311,
+        "warm": 497.09258298389614,
+        "cold": 487.5400420278311
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0013748649507761002,
+        "warm": 148.42025004327297,
+        "cold": 701.2707500252873
+      }
+    }
+  ],
+  "summary": {
+    "examples": 3,
+    "hot_warm_exact": 3,
+    "hot_cold_int8_exact": 0,
+    "hot_cold_first_token_equal": 2,
+    "mean_hot_cold_common_prefix_tokens": 0.6666666666666666,
+    "mean_cold_int8_f1_delta": 0.05666666666666668,
+    "restart_recovered": true,
+    "request_lifetime_pinning": true,
+    "warm_backend": "sglang_builtin_hicache_file",
+    "metrics": {
+      "hits": {
+        "cold": 3,
+        "hot": 3,
+        "source": 0,
+        "warm": 4
+      },
+      "misses": {
+        "cold": 0,
+        "hot": 0,
+        "source": 0,
+        "warm": 0
+      },
+      "promotions": 7,
+      "demotions": 9,
+      "evictions": 0,
+      "reloads": 7,
+      "bytes_read": 352866573,
+      "bytes_written": 553939362,
+      "persistence_writes": 11,
+      "wasted_persistence_writes": 0,
+      "task_aware_retention_hits": 0,
+      "task_close_bytes_freed": 0,
+      "session_close_bytes_freed": 0,
+      "promotion_latency_ns": 1486870626,
+      "persistence_latency_ns": 1022090126,
+      "decompression_latency_ns": 0,
+      "dequantization_latency_ns": 409607457
+    },
+    "usage": {
+      "hot_bytes": 33718272,
+      "warm_bytes": 228290791,
+      "cold_bytes": 40239078,
+      "total_native_bytes": 302248141,
+      "source_only_objects": 0
+    },
+    "capabilities": {
+      "integration_level": "E1",
+      "native_kv": true,
+      "radix_prefix_identity_separate": true,
+      "radix_prefix_and_native_same_request": true,
+      "hicache_external_namespace": true,
+      "shared_storage_lifecycle": true,
+      "hicache_metrics": null,
+      "patched_layers": 28
+    }
+  }
+}

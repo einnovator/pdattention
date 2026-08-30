@@ -27,6 +27,11 @@ A matched four-regime E0/E2 benchmark preserves all 840 outputs and removes
 E2/E0 cost ratios are 1.130, 1.155, 1.148, and 1.132, exposing the remaining
 unfused native-decode cost despite cheaper native ingestion.
 
+The shared lifecycle manager now uses independently checksummed, mmap-readable
+K/V segments per layer. Three QASPER selections remain 3/3 exact after lossless
+WARM promotion and recover after manager restart. Explicit int8 COLD changes
+all three generated sequences and remains outside the default profile.
+
 The bounded-residency extension covers 1,020 natural-QA requests over five
 seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable
 across budgets. Budgets below the eight-resource working set reload every
@@ -41,4 +46,11 @@ for dataset in qasper hotpotqa 2wikimultihopqa; do
     --dataset "$dataset" --examples-per-seed 4 --route-top-k 4 \
     --output "docs/papers/shared/results/paper6_2_mlx/routed_answer_quality_${dataset}.json"
 done
+```
+
+Run the live lifecycle probe with:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper6_2_mlx.run_live_storage_lifecycle
+PYTHONPATH=src:. python -m experiments.engine_serving.summarize_live_storage_lifecycle
 ```

@@ -54,6 +54,10 @@ The implementation adds:
   strict fingerprints, lossless WARM/COLD stores, independent compression and
   int8 policy, deterministic weighted eviction, typed-record priors, task and
   dependency retention, delayed closure compaction, and session cleanup.
+- live manager bridges for vLLM pages, SGLang HiCache-backed arrays, MLX arrays,
+  segmented mmap WARM storage, durable restart recovery, and persistent
+  lifecycle metrics. The lossless WARM probe is exact on 9/9 engine-example
+  pairs; int8 COLD remains opt-in after changing all nine generated sequences.
 
 Reproduce the measured portable profile:
 
@@ -64,6 +68,10 @@ python -m experiments.paper4_5_runtime.run_execution_policy_profile
 python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
 python -m experiments.paper4_5_runtime.run_gateway_session_profile
 python -m experiments.paper4_5_runtime.run_storage_lifecycle
+python -m experiments.paper6_vllm.run_live_storage_lifecycle
+python -m experiments.paper6_1_sglang.run_live_storage_lifecycle
+python -m experiments.paper6_2_mlx.run_live_storage_lifecycle
+python -m experiments.engine_serving.summarize_live_storage_lifecycle
 python -m experiments.paper4_5_runtime.run_cross_model_validation --model all --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwen --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda

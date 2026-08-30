@@ -16,11 +16,19 @@ removes 91--93% of visible tokens and reaches 840/840 exact output parity after
 matching E0 APC and E2 query-prefill geometry. Online token latency, connectors,
 cross-model replication, and CUDA remain open.
 
+The shared storage manager is also connected to live reserved pages. Three
+QASPER selections remain 3/3 exact after lossless WARM promotion and recover
+after manager restart. Explicit int8 COLD changes all three sequences and is
+not a default profile. This is a lifecycle mechanism probe, not a tail-latency
+or LMCache result.
+
 Rebuild the generated artifacts and paper from the repository root:
 
 ```bash
 python -m experiments.engine_serving.summarize
 PYTHONPATH=src:. python -m experiments.paper4_5_runtime.run_storage_lifecycle
+PYTHONPATH=src:. python -m experiments.paper6_vllm.run_live_storage_lifecycle
+PYTHONPATH=src:. python -m experiments.engine_serving.summarize_live_storage_lifecycle
 cd docs/papers/paper6_vllm
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```

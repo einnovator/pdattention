@@ -51,7 +51,9 @@ source through APC and capturing E2 pages from vLLM's own source prefill holds
 that geometry fixed. Cold, warm, multi-query, and concurrency cost ratios are
 0.985, 1.004, 0.993, and 0.981, respectively, where lower is better. Exact
 matched-quality promotion is therefore closed for this model and backend;
-connectors, CUDA, and broader model replication remain open.
+connectors, CUDA, and broader model replication remain open. A three-example
+live storage probe then obtains 3/3 lossless WARM parity and restart recovery;
+int8 COLD changes all three sequences and is not promoted as a default.
 \end{abstract}
 
 \section{Introduction}
@@ -413,6 +415,32 @@ physical and semantic evidence for this engine. LMCache or a connector can
 replace the WARM byte backend only after identity, request isolation,
 one-copy attachment, and fingerprint rejection pass unchanged.
 
+We then connect the shared manager directly to
+\texttt{VLLMPageHotBridge}. Three QASPER selections traverse native HOT pages,
+a layer-segmented mmap WARM store, int8 COLD, and manager restart. Request IDs
+pin pages across complete generation and cleanup returns them only to the PRA
+reserve, never APC. Lossless WARM reproduces 3/3 HOT outputs and restart
+promotion succeeds. Median request latency is 356 ms HOT and 699 ms after a
+WARM hit (1.96$\times$); the 362 ms median background demotion is excluded.
+COLD promotion plus generation is 712 ms, while background quantization and
+persistence costs 1,016 ms median.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Shared three-example live storage probe. WARM is lossless; COLD uses
+explicit per-array int8 and is not the default product profile.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/live_storage_lifecycle/generated_live_storage_lifecycle_table.tex}}
+\label{tab:vllm-live-storage}
+\end{table}
+
+Int8 COLD changes all 3/3 vLLM sequences, preserves the first token in 2/3,
+and has a four-token mean common prefix. The mean answer-F1 change is $-0.005$
+on this small, low-accuracy cohort, which is insufficient to certify quality.
+The vLLM product path therefore keeps COLD quantization opt-in even though its
+byte reduction is useful.
+
 \subsection{Capture/replay and position audit}
 We then copy ordinary source-prefill pages from vLLM's own paged cache and
 replay them through the scheduler-invisible PRA tail. Every native request uses
@@ -483,6 +511,7 @@ live V1 generation & controlled closed & positive, disabled, wrong-memory, and c
 concurrent isolation & controlled closed & 20/20 selected recoveries and 0/20 adjacent ordinary recoveries \\
 native APC identity & controlled closed & selection-derived salt; 75/75 selected and 0/40 disabled recoveries \\
 matched natural QA & controlled closed & 840/840 exact outputs; zero pairwise F1 change; 91--93\% fewer visible tokens \\
+shared storage lifecycle & controlled closed & live pages; WARM 3/3 exact; restart recovery; int8 COLD remains open \\
 engine-native serving & partial & native APC and concurrency measured; connectors, online tails, and CUDA remain open \\
 robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule

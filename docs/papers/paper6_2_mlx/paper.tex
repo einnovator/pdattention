@@ -57,7 +57,10 @@ selected-cache path yields macro E2/E0 cost ratios of 1.130, 1.155, 1.148, and
 1.132 across those schedules. A 1,020-request pressure sweep then holds QA quality constant while
 varying an eight-resource session's compact-K/V budget. Budgets below eight
 reload every repeated access; fitting all eight resources eliminates reloads
-and halves mean resolution time at a 151--168 MiB residency cost.
+and halves mean resolution time at a 151--168 MiB residency cost. A final live
+lifecycle probe adds layer-segmented mmap WARM storage: WARM is 3/3 exact and
+restart recovery succeeds, while int8 COLD changes 3/3 sequences and remains
+an explicit, unpromoted option.
 \end{abstract}
 
 \section{Introduction}
@@ -534,6 +537,33 @@ roughly twofold compact-residency reduction because its metadata and scale
 layout differ. COLD still dequantizes before attention, so compact persistence
 does not reduce active attention bytes.
 
+The live storage probe now replaces opaque WARM blobs with independently
+checksummed, mmap-readable K and V segments per layer. Three QASPER selections
+generate from MLX HOT arrays, lossless WARM reload, int8 COLD reload, and a
+fresh manager after restart. WARM reproduces all 3/3 HOT outputs and restart
+recovery succeeds. Median promotion-plus-generation latency is 327 ms HOT and
+644 ms WARM (1.97$\times$); the excluded background WARM transition costs
+348 ms. COLD promotion plus generation is 600 ms and its background conversion
+costs 940 ms.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Shared three-example live storage probe. Prefix is mean HOT/int8
+common output prefix; ratios use lifecycle-inclusive request latency.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/live_storage_lifecycle/generated_live_storage_lifecycle_table.tex}}
+\label{tab:mlx-live-storage}
+\end{table}
+
+Per-array int8 COLD changes all three 24-token sequences and preserves the
+first token in two. Its positive mean F1 change ($+0.068$) is an unstable
+three-example accident rather than evidence of improved quality: exact parity
+is zero and the mean common prefix is 1.3 tokens. Lossless persistence is the
+default; quantized COLD requires a larger model- and workload-specific quality
+gate. The separate per-head compact-residency experiment remains relevant but
+does not override this autoregressive sequence diagnostic.
+
 \FloatBarrier
 \section{Promotion Gates}
 \begin{center}
@@ -549,6 +579,7 @@ rotating plus native & controlled closed & 5/5 with 64-token local cache \\
 lazy native region & prototype closed & selected resources encode on first selection \\
 consumer profile & controlled candidate & last 14/28 layers retain 5/5 at half K/V bytes \\
 persistence & controlled closed & strict fingerprint; zero-error reload in 7.2 ms mean \\
+shared storage lifecycle & controlled closed & segmented WARM 3/3 exact; restart recovery; int8 COLD open \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided at eight \\
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\

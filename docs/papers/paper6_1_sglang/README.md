@@ -23,3 +23,15 @@ remain open. A caller-owned prefetch hook is implemented, but its five-seed
 Python-thread sweep is a negative latency result: all 20 tensors restore
 exactly, while requested 10--50 ms leads delay the caller by 193--235 ms.
 Engine-native asynchronous transfer is therefore the next prefetch gate.
+
+The shared lifecycle manager now owns the local built-in HiCache file backend
+end to end. Three QASPER selections remain 3/3 exact after WARM promotion and
+recover after manager restart. Explicit int8 COLD changes all three sequences;
+distributed off-node HiCache and concurrent cold/warm tails remain open.
+
+Run the live lifecycle probe with:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper6_1_sglang.run_live_storage_lifecycle
+PYTHONPATH=src:. python -m experiments.engine_serving.summarize_live_storage_lifecycle
+```

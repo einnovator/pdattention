@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "registry_version": "2026-08-paper6-engine-native-v6",
+  "registry_version": "2026-08-paper6-engine-native-v7",
   "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
   "environment": {
     "vllm": {
@@ -166,6 +166,179 @@
     ]
   },
   "native_results": {
+    "live_storage_lifecycle": {
+      "mlx": {
+        "experiment": "paper6_2_mlx_live_storage_lifecycle_v1",
+        "model_id": "mlx-community/Qwen3-0.6B-4bit",
+        "summary": {
+          "examples": 3,
+          "hot_warm_exact": 3,
+          "hot_cold_int8_exact": 0,
+          "hot_cold_first_token_equal": 2,
+          "mean_hot_cold_common_prefix_tokens": 1.3333333333333333,
+          "mean_cold_int8_f1_delta": 0.06787878787878789,
+          "restart_recovered": true,
+          "request_lifetime_pinning": true,
+          "metrics": {
+            "hits": {
+              "cold": 3,
+              "hot": 0,
+              "source": 0,
+              "warm": 4
+            },
+            "misses": {
+              "cold": 0,
+              "hot": 0,
+              "source": 0,
+              "warm": 0
+            },
+            "promotions": 7,
+            "demotions": 9,
+            "evictions": 0,
+            "reloads": 7,
+            "bytes_read": 352830741,
+            "bytes_written": 553885593,
+            "persistence_writes": 11,
+            "wasted_persistence_writes": 0,
+            "task_aware_retention_hits": 0,
+            "task_close_bytes_freed": 0,
+            "session_close_bytes_freed": 0,
+            "promotion_latency_ns": 2064229625,
+            "persistence_latency_ns": 2295016751,
+            "decompression_latency_ns": 0,
+            "dequantization_latency_ns": 459653292
+          },
+          "usage": {
+            "hot_bytes": 33718272,
+            "warm_bytes": 67448143,
+            "cold_bytes": 40239078,
+            "total_native_bytes": 141405493,
+            "source_only_objects": 0
+          }
+        }
+      },
+      "sglang": {
+        "experiment": "paper6_1_sglang_live_storage_lifecycle_v1",
+        "model_id": "mlx-community/Qwen3-0.6B-4bit",
+        "summary": {
+          "examples": 3,
+          "hot_warm_exact": 3,
+          "hot_cold_int8_exact": 0,
+          "hot_cold_first_token_equal": 2,
+          "mean_hot_cold_common_prefix_tokens": 0.6666666666666666,
+          "mean_cold_int8_f1_delta": 0.05666666666666668,
+          "restart_recovered": true,
+          "request_lifetime_pinning": true,
+          "warm_backend": "sglang_builtin_hicache_file",
+          "metrics": {
+            "hits": {
+              "cold": 3,
+              "hot": 3,
+              "source": 0,
+              "warm": 4
+            },
+            "misses": {
+              "cold": 0,
+              "hot": 0,
+              "source": 0,
+              "warm": 0
+            },
+            "promotions": 7,
+            "demotions": 9,
+            "evictions": 0,
+            "reloads": 7,
+            "bytes_read": 352866573,
+            "bytes_written": 553939362,
+            "persistence_writes": 11,
+            "wasted_persistence_writes": 0,
+            "task_aware_retention_hits": 0,
+            "task_close_bytes_freed": 0,
+            "session_close_bytes_freed": 0,
+            "promotion_latency_ns": 1486870626,
+            "persistence_latency_ns": 1022090126,
+            "decompression_latency_ns": 0,
+            "dequantization_latency_ns": 409607457
+          },
+          "usage": {
+            "hot_bytes": 33718272,
+            "warm_bytes": 228290791,
+            "cold_bytes": 40239078,
+            "total_native_bytes": 302248141,
+            "source_only_objects": 0
+          },
+          "capabilities": {
+            "integration_level": "E1",
+            "native_kv": true,
+            "radix_prefix_identity_separate": true,
+            "radix_prefix_and_native_same_request": true,
+            "hicache_external_namespace": true,
+            "shared_storage_lifecycle": true,
+            "hicache_metrics": null,
+            "patched_layers": 28
+          }
+        }
+      },
+      "vllm": {
+        "experiment": "paper6_vllm_live_storage_lifecycle_v1",
+        "model_id": "mlx-community/Qwen3-0.6B-4bit",
+        "summary": {
+          "examples": 3,
+          "hot_warm_exact": 3,
+          "hot_cold_int8_exact": 0,
+          "hot_cold_first_token_equal": 2,
+          "mean_hot_cold_common_prefix_tokens": 4.0,
+          "mean_cold_int8_f1_delta": -0.0053846153846153905,
+          "restart_recovered": true,
+          "request_lifetime_pinning": true,
+          "metrics": {
+            "hits": {
+              "cold": 3,
+              "hot": 0,
+              "source": 0,
+              "warm": 4
+            },
+            "misses": {
+              "cold": 0,
+              "hot": 0,
+              "source": 0,
+              "warm": 0
+            },
+            "promotions": 7,
+            "demotions": 9,
+            "evictions": 0,
+            "reloads": 7,
+            "bytes_read": 358851861,
+            "bytes_written": 560766876,
+            "persistence_writes": 11,
+            "wasted_persistence_writes": 0,
+            "task_aware_retention_hits": 0,
+            "task_close_bytes_freed": 0,
+            "session_close_bytes_freed": 0,
+            "promotion_latency_ns": 2384480540,
+            "persistence_latency_ns": 2400300165,
+            "decompression_latency_ns": 0,
+            "dequantization_latency_ns": 597316500
+          },
+          "usage": {
+            "hot_bytes": 34865152,
+            "warm_bytes": 69741903,
+            "cold_bytes": 40411113,
+            "total_native_bytes": 145018168,
+            "source_only_objects": 0
+          },
+          "capabilities": {
+            "integration_level": "E2",
+            "native_kv_generation": true,
+            "scheduler_invisible_tail_pages": 64,
+            "ordinary_prefix_namespace_used": false,
+            "page_aligned_selection_required": true,
+            "consumer_layers": "all",
+            "scheduler_prefix_observability": true,
+            "native_apc_identity_required": true
+          }
+        }
+      }
+    },
     "mlx": {
       "status": "MEASURED",
       "evidence_tier": "CONTROLLED",
@@ -1242,7 +1415,7 @@
       "profile": "all-layer native K/V + APC, concurrency 1--8",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
-      "status": "593/840 exact; four-regime cost near parity; promotion pending"
+      "status": "840/840 exact; lossless WARM 3/3; restart recovered; int8 COLD open"
     },
     {
       "engine": "SGLang MLX",
@@ -1250,7 +1423,7 @@
       "profile": "Radix + selected K/V + built-in HiCache file storage",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
-      "status": "840/840 exact; reused/concurrent cost optimization open"
+      "status": "840/840 exact; lossless WARM 3/3; restart recovered; distributed HiCache open"
     },
     {
       "engine": "MLX-LM",
@@ -1258,7 +1431,7 @@
       "profile": "all-layer selected K/V, four matched regimes",
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
-      "status": "840/840 exact; unfused native path slower in all regimes"
+      "status": "840/840 exact; lossless WARM 3/3; restart recovered; int8 COLD open"
     },
     {
       "engine": "MLX-LM",

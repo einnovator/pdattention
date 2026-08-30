@@ -55,7 +55,9 @@ concurrency-eight schedules while E2 removes 90.6--93.0\% of visible prompt
 tokens. Cold end-to-end cost is slightly lower for E2, but warm, multi-query,
 and concurrent cost ratios are 1.136, 1.140, and 1.122. Semantic transport is
 closed; the unfused selected-cache path remains an economic optimization
-target.
+target. A final three-example lifecycle probe routes logical keys through the
+shared manager and built-in HiCache storage. WARM is 3/3 exact and restart
+recovery succeeds; int8 COLD changes 3/3 sequences and remains opt-in.
 \end{abstract}
 
 \section{Introduction}
@@ -336,6 +338,33 @@ transient closure trace. Those are policy and byte-transport checks, not SGLang
 generation or distributed-HiCache measurements. The live runner, combined
 Radix/HiCache lifecycle, and matched E0/E2 rows below remain the engine evidence.
 
+A new live bridge makes that ownership executable end to end. The shared
+manager uses an attention-ready \texttt{SGLangPRAHiCache} object for HOT and
+SGLang's built-in \texttt{HiCacheStorage} file API for WARM. Request
+registration supplies only logical keys; the bridge promotes, pins, attaches
+exactly once, unwraps PRA detail before returning local caches to the ordinary
+pool, and unpins on cleanup. Three natural QASPER selections reproduce HOT
+output exactly after WARM promotion, and a fresh manager recovers all persisted
+objects after restart.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Shared three-example live storage probe. Ratios include promotion and
+generation but exclude background tier transitions.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/live_storage_lifecycle/generated_live_storage_lifecycle_table.tex}}
+\label{tab:sglang-live-storage}
+\end{table}
+
+For SGLang, median lifecycle latency is 279 ms HOT and 529 ms WARM
+(1.90$\times$); background WARM placement costs 158 ms median. Int8 COLD
+promotion plus generation is 527 ms, while background conversion costs 701 ms.
+Int8 changes all three sequences and preserves the first token in two, so it
+remains an explicit diagnostic rather than a default HiCache policy. This
+closes lifecycle-manager control over the local built-in backend, not
+distributed off-node HiCache or concurrent tail curves.
+
 \subsection{External HiCache placement}
 \begin{table}[!htbp]
 \centering
@@ -469,6 +498,7 @@ radix baseline & smoke closed & exact scheduler cache-token trace \\
 selected-text parity & smoke closed & selected and full are 5/5 \\
 HiCache non-prefix object & controlled closed & five-seed L1/L2/L3 promotion and forced demotion \\
 built-in HiCache storage & controlled closed & file backend, fresh adapter 5/5, restored generation 5/5 \\
+shared storage lifecycle & controlled closed & logical-key promotion; WARM 3/3 exact; restart recovery; int8 COLD open \\
 prefetch overlap & negative/open & exact 20/20; 10--50 ms requests became 193--235 ms caller delays \\
 selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
 radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\

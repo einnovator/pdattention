@@ -85,7 +85,11 @@ tokens, and all three engines preserve all 840 paired outputs. The corrected
 vLLM run first restores E0 source pages through APC and captures E2 source
 pages from vLLM's own prefill, preventing fused-kernel geometry from being
 confounded with representation. Four-regime cost ratios still show that
-semantic transport does not by itself imply a large economic win.
+semantic transport does not by itself imply a large economic win. A separate
+live storage probe connects the same lifecycle manager to vLLM pages, SGLang
+HiCache-backed arrays, and MLX arrays. Lossless WARM preserves 9/9 outputs and
+all three managers recover after restart; int8 COLD changes 9/9 sequences and
+therefore remains opt-in.
 \end{abstract}
 
 \section{Introduction}
@@ -1315,8 +1319,50 @@ bytes with 0.0103 RMSE, 0.28 ms median quantization, and 0.07 ms median
 dequantization on this host. This does not supersede the MLX model-specific
 int8 quality result, nor show that WARM and COLD improve generation latency.
 It establishes policy parity, exact lossless recovery, and a measurable reason
-to defer transient writes; natural lifecycle distributions and engine-native
-promotion tails remain open.
+to defer transient writes; natural lifecycle distributions remain open, while
+the following small probe begins engine-native promotion measurement.
+
+The next probe replaces the in-memory HOT bridge with live attention objects:
+reserved vLLM-Metal pages, SGLang MLX arrays backed by the built-in HiCache
+file API, and MLX arrays. Each of three natural QASPER selections is generated
+from HOT, demoted to lossless WARM, promoted and generated again, moved through
+int8 COLD, and finally recovered by a newly constructed lifecycle manager.
+MLX-format WARM storage is layer segmented: each K and V array has an atomic
+manifest entry and checksum, and a consumer profile can mmap only requested
+layers. HOT promotion retains the lower durable copy, so a process failure
+during an active request does not erase the recoverable representation.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Three-example live-engine storage mechanism probe. Ratios include
+request-time promotion and generation but exclude background demotion and COLD
+conversion. Prefix is the mean common HOT/int8 output prefix in tokens.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/live_storage_lifecycle/generated_live_storage_lifecycle_table.tex}}
+\label{tab:live-storage-lifecycle}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\linewidth]{../shared/results/live_storage_lifecycle/live_storage_lifecycle.pdf}
+\caption{Lossless WARM preserves all three outputs per engine, whereas int8
+COLD changes every 24-token sequence. The latency panel measures a tier hit at
+request time; background WARM and COLD transitions are reported separately.}
+\label{fig:live-storage-lifecycle}
+\end{figure}
+
+WARM output is exact in 9/9 engine--example pairs, and restart promotion
+succeeds for every engine. Median WARM/HOT request ratios are 1.97 for MLX,
+1.90 for SGLang, and 1.96 for vLLM; the corresponding COLD/HOT ratios are
+1.84, 1.89, and 2.00. Median background WARM transitions cost 348, 158, and
+362 ms, while COLD conversion costs 940, 701, and 1,016 ms. These are small
+mechanism cohorts, not tail-latency estimates. Int8 COLD is 0/9 sequence-exact,
+with first-token parity in 6/9 and short mean common prefixes. The signed F1
+changes are noisy on three low-accuracy examples and do not rescue sequence
+equivalence. Named product profiles therefore keep lossless COLD as the
+default; int8 remains explicit, model-calibrated, and disabled unless its own
+quality gate closes.
 
 \section{Compatibility and Product Boundary}
 
