@@ -203,7 +203,7 @@ def main() -> None:
     parser.add_argument("--max-tokens", type=int, default=24)
     parser.add_argument("--max-num-seqs", type=int, default=8)
     parser.add_argument("--max-num-batched-tokens", type=int, default=2048)
-    parser.add_argument("--cache-size-gb", type=float, default=1.0)
+    parser.add_argument("--cache-size-gb", type=int, default=1)
     parser.add_argument("--num-kv-blocks", type=int)
     parser.add_argument("--prefix-caching", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--dynamic-split-fuse", action=argparse.BooleanOptionalAction, default=True)
