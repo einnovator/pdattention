@@ -41,6 +41,11 @@ def _artifact_row(payload: dict[str, object]) -> dict[str, object]:
         "examples": len(rows),
         "warm_exact_rate": sum(bool(row["hot_warm_exact"]) for row in rows)
         / len(rows),
+        "warm_payload_exact_rate": (
+            sum(bool(row["hot_warm_payload_exact"]) for row in rows) / len(rows)
+            if all("hot_warm_payload_exact" in row for row in rows)
+            else None
+        ),
         "int8_exact_rate": sum(bool(row["hot_cold_int8_exact"]) for row in rows)
         / len(rows),
         "int8_first_token_rate": sum(

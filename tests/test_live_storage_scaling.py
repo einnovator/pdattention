@@ -17,6 +17,7 @@ def test_artifact_row_keeps_quality_and_latency_disjoint() -> None:
                 "dataset": "qasper",
                 "native_bytes": 100 + index,
                 "hot_warm_exact": warm_exact,
+                "hot_warm_payload_exact": True,
                 "hot_cold_int8_exact": False,
                 "hot_cold_first_token_equal": index == 0,
                 "hot_cold_common_prefix_tokens": index + 1,
@@ -44,6 +45,7 @@ def test_artifact_row_keeps_quality_and_latency_disjoint() -> None:
 
     assert result["examples"] == 2
     assert result["warm_exact_rate"] == 0.5
+    assert result["warm_payload_exact_rate"] == 1.0
     assert result["int8_exact_rate"] == 0.0
     assert result["int8_first_token_rate"] == 0.5
     assert result["request_warm_p50_ms"] == 20.5

@@ -21,6 +21,26 @@ def _common_prefix(left: list[int], right: list[int]) -> int:
     )
 
 
+def _memory_equal(left, right) -> bool:
+    """Compare native arrays after a tier round trip without relying on ZIP bytes."""
+
+    import mlx.core as mx
+    import numpy as np
+
+    if left.source_tokens != right.source_tokens or len(left.layers) != len(right.layers):
+        return False
+    for left_layer, right_layer in zip(left.layers, right.layers):
+        for left_value, right_value in (
+            (left_layer.keys, right_layer.keys),
+            (left_layer.values, right_layer.values),
+        ):
+            left_host = np.asarray(left_value.astype(mx.float32))
+            right_host = np.asarray(right_value.astype(mx.float32))
+            if not np.array_equal(left_host, right_host):
+                return False
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="qasper")
@@ -145,6 +165,7 @@ def main() -> None:
                 output_tokens: dict[str, list[int]] = {}
                 latencies: dict[str, float] = {}
                 transition_latencies: dict[str, float] = {}
+                payload_exact: dict[str, bool] = {}
                 for tier in ("hot", "warm", "cold"):
                     transition_started = time.perf_counter()
                     if tier != "hot":
@@ -163,7 +184,13 @@ def main() -> None:
                         query,
                         key=key,
                         source_tokens=len(source),
+                        cache_salt=(
+                            f"lifecycle-query-{example.selection.selection_id}-{tier}"
+                        ),
                         storage=manager,
+                    )
+                    payload_exact[tier] = _memory_equal(
+                        memory, manager.hot.get_hot(key)
                     )
                     outputs[tier] = str(output.outputs[0].text).strip()
                     output_tokens[tier] = list(map(int, output.outputs[0].token_ids))
@@ -177,6 +204,7 @@ def main() -> None:
                         "source_tokens": len(source),
                         "native_bytes": memory.nbytes,
                         "hot_warm_exact": outputs["hot"] == outputs["warm"],
+                        "hot_warm_payload_exact": payload_exact["warm"],
                         "hot_cold_int8_exact": outputs["hot"] == outputs["cold"],
                         "hot_cold_first_token_equal": (
                             output_tokens["hot"][:1] == output_tokens["cold"][:1]
@@ -224,6 +252,9 @@ def main() -> None:
         "summary": {
             "examples": len(rows),
             "hot_warm_exact": sum(bool(row["hot_warm_exact"]) for row in rows),
+            "hot_warm_payload_exact": sum(
+                bool(row["hot_warm_payload_exact"]) for row in rows
+            ),
             "hot_cold_int8_exact": sum(
                 bool(row["hot_cold_int8_exact"]) for row in rows
             ),
