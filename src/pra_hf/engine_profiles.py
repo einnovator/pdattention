@@ -20,6 +20,7 @@ class EngineType(str, Enum):
     HUGGINGFACE = "huggingface"
     LLAMA_CPP = "llama_cpp"
     MLX = "mlx"
+    TENSORRT_LLM = "tensorrt_llm"
     CUSTOM = "custom"
 
 

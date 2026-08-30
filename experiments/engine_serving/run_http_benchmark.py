@@ -25,7 +25,11 @@ def _load_benchmark():
 def main() -> None:
     run_serving_benchmark = _load_benchmark()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--engine", choices=("vllm", "sglang", "mlx"), required=True)
+    parser.add_argument(
+        "--engine",
+        choices=("vllm", "sglang", "mlx", "tensorrt_llm", "openvino"),
+        required=True,
+    )
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -38,7 +42,7 @@ def main() -> None:
         engine=args.engine,
         repeats=args.repeats,
         timeout_seconds=args.timeout_seconds,
-        use_cache_salt=args.engine == "vllm",
+        use_cache_salt=args.engine in {"vllm", "tensorrt_llm"},
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

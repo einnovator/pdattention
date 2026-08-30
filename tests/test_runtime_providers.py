@@ -8,6 +8,7 @@ from pra_hf.runtime_providers import (
     RuntimeConfig,
     RuntimeProviderRegistry,
     SGLangRuntimeProvider,
+    TensorRTLLMRuntimeProvider,
     VLLMRuntimeProvider,
     parse_engine_arguments,
 )
@@ -15,7 +16,9 @@ from pra_hf.runtime_providers import (
 
 def test_builtin_provider_registry_and_unknown_engine() -> None:
     registry = RuntimeProviderRegistry.default()
-    assert registry.names() == ("hf", "mlx", "openai", "sglang", "vllm")
+    assert registry.names() == (
+        "hf", "mlx", "openai", "sglang", "tensorrt_llm", "vllm"
+    )
     with pytest.raises(KeyError, match="Unknown runtime engine"):
         registry.resolve("missing")
 
@@ -31,6 +34,11 @@ def test_engine_capabilities_do_not_overclaim_vllm_scheduler_support() -> None:
     assert not vllm.pra_scheduler
     assert sglang.native_kv and sglang.integration_level.value == "E1"
     assert mlx.native_kv and mlx.integration_level.value == "E1"
+    tensorrt = TensorRTLLMRuntimeProvider().capabilities(
+        RuntimeConfig(engine="tensorrt_llm")
+    )
+    assert tensorrt.integration_level.value == "E0"
+    assert not tensorrt.native_kv
 
 
 def test_provider_build_command_preserves_upstream_escape_hatch() -> None:

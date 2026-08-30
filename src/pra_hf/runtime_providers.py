@@ -365,6 +365,54 @@ class MLXRuntimeProvider(CommandRuntimeProvider):
     prefix_cache_mode = PrefixCacheMode.SESSION_STATE
 
 
+class TensorRTLLMRuntimeProvider(RuntimeProvider):
+    """Launch or connect to the supported ``trtllm-serve`` E0 facade."""
+
+    engine_type = "tensorrt_llm"
+    package_name = "tensorrt_llm"
+    launch_mode = "both"
+
+    def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
+        return PRAEngineCapabilities(
+            adapter="tensorrt_llm_http",
+            engine_type=EngineType.TENSORRT_LLM,
+            integration_level="E0",
+            prefix_cache_mode=PrefixCacheMode.AUTOMATIC_PREFIX_CACHE,
+            automatic_prefix_cache=True,
+            text_fallback=True,
+            streaming=True,
+            tenant_isolation=bool(config.engine_options.get("cache_salt_secret")),
+        )
+
+    def build_command(self, config: RuntimeConfig) -> list[str]:
+        if not config.model:
+            raise ValueError("A model is required for managed TensorRT-LLM serving.")
+        executable = Path(sys.executable).with_name("trtllm-serve")
+        if os.name == "nt":
+            executable = executable.with_suffix(".exe")
+        command = [
+            str(executable),
+            "serve",
+            config.model,
+            "--host",
+            config.host,
+            "--port",
+            str(config.port),
+        ]
+        if config.revision:
+            command += ["--revision", config.revision]
+        for key, value in config.engine_options.items():
+            if key == "cache_salt_secret":
+                continue
+            option = "--" + str(key).replace("_", "-")
+            if isinstance(value, bool):
+                if value:
+                    command.append(option)
+            else:
+                command += [option, str(value)]
+        return command
+
+
 class RuntimeProviderRegistry:
     """Mutable provider registry with optional package entry-point discovery."""
 
@@ -380,6 +428,7 @@ class RuntimeProviderRegistry:
             VLLMRuntimeProvider(),
             SGLangRuntimeProvider(),
             MLXRuntimeProvider(),
+            TensorRTLLMRuntimeProvider(),
         ):
             registry.register(provider)
         registry.discover()
