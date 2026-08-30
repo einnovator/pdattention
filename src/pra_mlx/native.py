@@ -365,9 +365,12 @@ def serialize_native_memory(
             logical_dtype = str(value.dtype)
             try:
                 host = np.asarray(value).copy()
-            except TypeError:
+            except (TypeError, RuntimeError):
                 import mlx.core as mx
 
+                # MLX bfloat16 does not expose a NumPy-compatible PEP 3118
+                # buffer. Float32 is an exact value-preserving carrier for
+                # bfloat16 and is cast back to the logical dtype on restore.
                 host = np.asarray(value.astype(mx.float32)).copy()
             if quantization == "int8":
                 floating = host.astype(np.float32)
