@@ -2,91 +2,257 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs,graphicx,amsmath,hyperref}
 \title{Progressive Retrieval Attention on NVIDIA TensorRT-LLM:\\
-Query-Addressed Non-Prefix KV Memory for Paged and Disaggregated Serving}
+Semantic Memory Contracts, E0 Serving Evidence, and the Native Attachment Boundary}
 \author{Jorge Sim\~ao}
-\date{\today}
-\begin{document}\maketitle
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
 \begin{abstract}
-TensorRT-LLM provides paged KV caching, prefix reuse, in-flight batching, prioritized eviction, external KV connectors, and disaggregated prefill/decode serving. Progressive Retrieval Attention (PRA) introduces a different abstraction: immutable semantic resources selected by the current query and attached to attention without becoming ordinary sequential prefix state. This paper integrates the shared PRA runtime with TensorRT-LLM, preserving PRA's logical record, policy, authorization, and HOT/WARM/COLD/SOURCE contracts while delegating physical KV management to TensorRT-LLM. We evaluate geometry-matched E0 selected-text and E2 native-memory semantics, connector-backed persistence, online serving tails, HBM and transfer economics, shared-resource concurrency, and disaggregated KV transfer.
+TensorRT-LLM already provides paged K/V caching, prefix reuse, in-flight
+batching, priority-aware retention, and external K/V connectors. Progressive
+Retrieval Attention (PRA) adds a different abstraction: immutable semantic
+resources selected by the current query rather than by prefix identity. We
+implement a TensorRT-LLM provider, an OpenAI-compatible selected-text path, and
+request-safe contracts for topology-bound native blocks, authorization,
+pinning, exactly-once attachment, cleanup, and prefix-pool exclusion. A live
+TensorRT-LLM 1.2.1 audit finds the official connector and paged-cache APIs but
+no public operation that attaches arbitrary selected non-prefix blocks to
+attention. Native E2 execution is therefore an explicit open gate, not a text
+fallback reported as native memory. On an RTX 5060 Laptop GPU with
+TinyLlama-1.1B, selected-text E0 and bounded full context both recover the
+controlled answer in every measured request. At eight concurrent shared
+requests, selected text uses 67 visible prompt tokens rather than 1,040,
+reaches 41.7 rather than 27.2 requests/s, and reduces TTFT p99 from 155.5 to
+57.9 ms. These results establish the transport baseline and integration
+boundary needed for a later source-level E2 patch; they do not establish the
+economics or parity of native TensorRT-LLM PRA.
 \end{abstract}
 
 \section{Introduction}
-Prefix caching answers whether the same preceding tokens were seen before. PRA answers which independently retained resource is relevant now. TensorRT-LLM is therefore a strong test of whether semantic non-prefix identity can compose with an already sophisticated physical KV subsystem rather than replace it.
-
-\paragraph{Contributions.}
-We target: (1) a PRA mapping onto TensorRT-LLM's paged KV manager and cache groups; (2) integration with the official KV Cache Connector; (3) scheduler-safe native non-prefix attachment; (4) online in-flight-batching measurements; (5) HBM/transfer and shared-resource economics; and (6) disaggregated prefill/decode evaluation.
-
-\section{Background}
-\subsection{PRA}
-The shared runtime owns typed resource identity, selection, authorization, task/session policy, storage lifecycle, and OpenAI-compatible logical transport. Native K/V is derived state.
-
-\subsection{TensorRT-LLM}
-TensorRT-LLM manages paged KV blocks, request scheduling, prefix reuse, priority eviction, cache groups, external KV connectors, and optional disaggregated serving. These are physical execution mechanisms.
-
-\section{Design}
-\subsection{Three identities}
-We require
+Prefix caching asks whether a request begins with tokens that an engine has
+already processed. PRA asks which independently retained resource is relevant
+to the current query. The two mechanisms can cooperate, but only if three
+identities remain distinct:
 \[
-I_{\rm prefix}\neq I_{\rm PRA}\neq I_{\rm block}.
+I_{\mathrm{prefix}} \ne I_{\mathrm{PRA}} \ne I_{\mathrm{physical\ block}}.
 \]
-PRA blocks must not enter prefix reuse under an identity that ignores the selected semantic resource.
+Conflating them creates two failure modes. A selected resource can leak into a
+later request through ordinary prefix reuse, or the same K/V can be included
+twice through both sequential and PRA paths. TensorRT-LLM is a demanding target
+because it already owns an optimized physical K/V system. A useful integration
+must add semantic identity without replacing that system.
 
-\subsection{Connector-backed lifecycle}
-PRA WARM/COLD persistence is mapped to the TensorRT-LLM KV Cache Connector where appropriate. PRA remains responsible for retention and authorization; the connector performs physical movement.
+This paper contributes three bounded results. First, it implements the shared
+runtime and safety contracts needed by a TensorRT-LLM adapter. Second, it audits
+the installed 1.2.1 runtime down to request, paged-cache-manager, and connector
+interfaces. Third, it measures a reproducible E0 selected-text baseline under
+prefix reuse and in-flight batching. The native result is a precise negative
+API finding: the installed public surface can load sequential request pages,
+but cannot expose an arbitrary set of selected non-prefix pages to attention.
 
-\subsection{Native attachment}
-Selected blocks are attached request-locally, pinned for generation, and released without polluting ordinary prefix state. Source K/V is generated by the same TensorRT-LLM model path used by the matched E0 reference.
+\section{Execution Levels and Claim Boundary}
+We use the shared PRA execution-level vocabulary.
+\begin{description}
+\item[E0:] Selected source text is rendered into the visible prompt. Retrieval
+  and semantic resource identity exist, but the engine performs ordinary
+  sequential prefill.
+\item[E1:] The runtime retains engine-native derived state, but model attention
+  does not yet consume arbitrary selected non-prefix K/V.
+\item[E2:] Attention consumes selected native K/V without rendering the source
+  text into the prompt, with matched geometry and one joint normalization.
+\end{description}
+The live measurements in this paper are E0. The native classes are executable
+contracts and tested lifecycle machinery, not evidence that TensorRT-LLM 1.2.1
+performs E2 attachment.
+
+\section{TensorRT-LLM Mapping}
+\subsection{What the engine already owns}
+TensorRT-LLM owns model execution, paged K/V allocation, prefix lookup,
+retention, in-flight batching, and connector transfer. PRA owns logical
+records, routing, authorization, selected intervals, session/task policy, and
+HOT/WARM/COLD/SOURCE retention decisions. Physical block identifiers are
+derived state and are never stable resource identifiers.
+
+\subsection{Implemented adapter surface}
+\texttt{src/pra\_tensorrt\_llm/adapter.py} provides
+\texttt{TensorRTLLMEngineAdapter}. Without a native executor, it reports E0 and
+uses the supported \texttt{trtllm-serve} HTTP facade. With an explicitly
+installed executor it can report E2, making capability elevation a dependency
+injection decision rather than an inference from package availability.
+
+\texttt{src/pra\_tensorrt\_llm/native.py} defines four pieces needed by a
+future engine seam:
+\begin{enumerate}
+\item a topology fingerprint over model revision, tensor/pipeline parallelism,
+  K/V precision, and block size;
+\item immutable logical-to-physical block handles;
+\item a connector-facing store protocol with pin and unpin operations; and
+\item a request attachment manager enforcing authorization, tenant isolation,
+  exactly-once exposure, cleanup, and exclusion from ordinary prefix pools.
+\end{enumerate}
+Tests exercise cross-tenant rejection, topology mismatch, duplicate
+attachment, pinned-resource removal, and cleanup after request completion.
+
+\subsection{Public API audit}
+The live package audit records \texttt{Request.cache\_salt\_id} and
+\texttt{kv\_cache\_retention\_config}; paged manager operations including
+\texttt{get\_cache\_block\_ids}, \texttt{pin\_blocks}, and
+\texttt{unpin\_blocks\_by\_id}; and the official worker/scheduler connector
+interfaces. These are sufficient for sequential cache reuse, retention, and
+external page movement. They are not sufficient for E2. Neither the request
+nor cache manager exposes a field or operation such as selected non-prefix
+block IDs or \texttt{attach\_nonprefix\_blocks}.
+
+The official connector can load pages associated with request-token ranges.
+Treating those pages as arbitrary semantic memory would silently turn PRA into
+prefix restoration. A minimal E2 extension must instead carry an authorized
+selected-block set into request attention metadata and combine local and
+memory scores in one softmax. That source-level seam is future work.
 
 \section{Experimental Method}
-\subsection{Geometry-matched E0/E2}
-Selection, source K/V generation, suffix-prefill shape, positions, model, and decoding are frozen. Only ownership/attachment differs between ordinary prefix reuse and PRA-native memory.
+\subsection{Environment}
+The live system uses TensorRT-LLM 1.2.1, TensorRT 10.14.1.48, PyTorch 2.9.1,
+and the PyTorch backend on an NVIDIA GeForce RTX 5060 Laptop GPU (compute
+capability 12.0, 8,151 MiB). The model is
+\texttt{TinyLlama/TinyLlama-1.1B-Chat-v1.0}. The server uses a 2,048-token
+maximum sequence, 2,048 scheduled tokens, batch size eight, 32-token K/V
+blocks, and a 0.30 free-memory fraction. Reported device use is 4,914 MiB
+during the warm E0 sweep.
 
-\subsection{Online serving}
-We run sustained arrivals through \texttt{trtllm-serve}, reporting TTFT/TPOT/completion p50/p95/p99, requests/s, output tokens/s, queue time, batch occupancy, preemption, cancellation, block occupancy, hits, eviction, and reload.
+\subsection{Frozen conditions}
+The controlled resource states that the answer is
+\texttt{PRA\_EVIDENCE\_4821}. Conditions are no evidence, prefix only,
+selected text, prefix plus selected text, and bounded full context. The full
+context contains the same evidence plus six distractor resources and remains
+within TinyLlama's context limit. Greedy decoding emits at most 24 tokens.
+Each one-shot condition has five repetitions. The concurrency experiment
+uses five waves at concurrency 1, 2, 4, and 8 for shared and independent
+resources. Every logical resource is explicitly primed outside the timed
+window, so the concurrency table is warm steady-state. E0 and full-context
+conditions use the same evidence; no independent retrieval decision is made.
 
-\subsection{Memory and transfer}
-We report HBM, host/WARM bytes, H2D/D2H, PCIe/NVLink traffic, promotion latency, overlap, shared bytes avoided, and reload amplification.
-
-\subsection{Disaggregated serving}
-Where hardware permits, context and decode workers exchange KV using the supported TensorRT-LLM transfer path. We compare SOURCE, WARM, and already-resident PRA resource conditions.
+\subsection{Metrics and scope}
+We report visible and cached tokens, controlled answer success, TTFT,
+completion latency, requests/s, output tokens/s, and HBM snapshots. Five waves
+support smoke-level tails, not production percentile claims. Because E2 is
+blocked, native K/V bytes, connector transfer, E0/E2 parity, and disaggregated
+PRA transfer are intentionally absent.
 
 \section{Results}
-\begin{table}[h]\centering
-\caption{TensorRT-LLM PRA capability status.}
-\begin{tabular}{lll}\toprule
-Capability & Status & Evidence\\\midrule
-OpenAI E0 baseline & TBD & TBD\\
-KV Cache Connector & TBD & TBD\\
-Native E2 attachment & TBD & TBD\\
-Geometry parity & TBD & TBD\\
-In-flight batching & TBD & TBD\\
-Disaggregated serving & TBD & TBD\\
-\bottomrule\end{tabular}
+\subsection{Capability gates}
+\begin{table}[ht]
+\centering
+\caption{Implemented capability and evidence status. Contract means the
+PRA-side lifecycle is executable and tested but not attached by the live
+TensorRT-LLM scheduler.}
+\begin{tabular}{lll}
+\toprule
+Capability & Status & Evidence \\
+\midrule
+OpenAI selected-text E0 & Ready & 25 live generations \\
+Prefix reuse and cache salt & Ready & request fields and token counters \\
+Paged manager and connector & Available & live package introspection \\
+PRA lifecycle/isolation & Contract ready & focused unit tests \\
+Native selected non-prefix E2 & Blocked & no public attachment hook \\
+Disaggregated PRA E2 & Not run & depends on native attachment \\
+\bottomrule
+\end{tabular}
 \end{table}
 
-\begin{table}[h]\centering
-\caption{Matched E0/E2 serving economics.}
-\begin{tabular}{lrrrrrr}\toprule
-Regime & Exact & TTFT p99 & TPOT p99 & req/s & HBM & Transfer\\\midrule
-Cold & TBD & TBD & TBD & TBD & TBD & TBD\\
-Warm & TBD & TBD & TBD & TBD & TBD & TBD\\
-Shared concurrent & TBD & TBD & TBD & TBD & TBD & TBD\\
-\bottomrule\end{tabular}
+\subsection{One-shot E0 behavior}
+\begin{table}[ht]
+\centering
+\caption{Controlled E0 serving smoke. Visible is mean prompt tokens; times are
+milliseconds. Cold is the first request and warm is the mean of repetitions
+2--5.}
+\input{../shared/results/paper6_4_tensorrt_llm/generated_e0_table.tex}
 \end{table}
 
-\section{Priority and Quantized KV}
-TensorRT-LLM's physical priority hints can be informed by PRA semantic retention without moving semantic policy into the engine. Native INT8/FP8 KV modes are evaluated separately from persistent PRA quantization; support does not imply sequence parity.
+The controls never emit the target code, while all evidence-bearing conditions
+do. Selected text reduces visible input by 93.6\% relative to bounded full
+context (67 versus 1,040 tokens). Once both prompts are cached, the small smoke
+does not establish a TTFT advantage: warm means are 26.8 and 21.8 ms. The main
+benefit appears when multiple requests compete for prefill and decode capacity.
 
-\section{Related Work}
-We compare with PagedAttention-style KV virtualization, TensorRT-LLM prefix reuse, LMCache/external KV systems, disaggregated serving, cache eviction/compression, and RAG/context compression.
+\subsection{Warm in-flight batching}
+\begin{table}[ht]
+\centering
+\caption{Warm E0 concurrency endpoints. Every row has controlled answer
+success 1.00. Cached is the engine-reported mean cached-token count.}
+\input{../shared/results/paper6_4_tensorrt_llm/generated_concurrency_table.tex}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_4_tensorrt_llm/e0_concurrency.png}
+\caption{Warm E0 throughput and TTFT tail across in-flight load. These curves
+compare selected text with bounded full context; they are not native E2
+results.}
+\label{fig:concurrency}
+\end{figure}
+
+At concurrency eight with a shared resource, selected text reaches 41.7
+requests/s versus 27.2 for full context, a 1.53$\times$ ratio. TTFT p99 falls
+from 155.5 to 57.9 ms, and completion p99 from 302.8 to 194.9 ms. The
+independent-resource comparison is similar: 43.9 versus 29.0 requests/s and
+42.9 versus 139.7 ms TTFT p99. Engine-reported cached input is about 64--66
+tokens for selected text and 1,039 for full context. Device memory remains
+4,914 MiB before and after each group, so this bounded E0 test shows scheduling
+and token-work differences, not a measurable HBM residency reduction.
+
+\section{What Is Established}
+The experiment establishes that the shared PRA runtime can drive a
+TensorRT-LLM E0 endpoint without confusing semantic and prefix identity, and
+that smaller frozen selected-text inputs improve warm loaded serving on this
+hardware/model pair. It also establishes the exact point where a native
+integration must enter the engine. The connector is useful for storage and
+movement but is not itself the attention attachment mechanism.
+
+The experiment does not establish native K/V parity, native memory savings,
+connector hit economics, disaggregated transfer, quantized PRA K/V, TP=2, or
+natural QA quality. Those claims require the missing non-prefix attention seam.
+
+\section{Next Native Experiment}
+The next implementation should add one narrow request field containing
+authorized external block handles and source positions. During attention
+metadata construction, those blocks must remain outside prefix lookup, be
+pinned for the request lifetime, and participate with local K/V in one
+normalization. The parity ladder should then compare: ordinary full prefix,
+geometry-matched cached source, full native source, sparse multi-resource
+source, and cached decode. Only after exact/logit parity is acceptable should
+connector transfer, eviction hints, disaggregation, and quantized K/V be
+benchmarked.
 
 \section{Limitations}
-Hardware topology may bound TP/disaggregation experiments. Results are reported per TensorRT-LLM/CUDA/model version and are not extrapolated across GPUs without measurement.
+The quality task is synthetic and intentionally easy; it verifies evidence
+transport rather than natural QA. Tail estimates use five waves. Only one
+model, one GPU, one TensorRT-LLM version, and one topology are measured. The
+full context is bounded to the model's 2,048-token limit. Most importantly,
+all generation evidence is E0.
 
 \section{Conclusion}
-The goal is not another cache manager. PRA contributes semantic resource identity and lifecycle while TensorRT-LLM supplies optimized physical paging, batching, connectors, eviction, and transfer. The decisive question is whether that composition improves serving economics at unchanged model semantics.
+TensorRT-LLM supplies the physical K/V machinery PRA should reuse. The current
+integration supplies semantic identity, safe lifecycle contracts, and a
+measured selected-text baseline. On the tested warm workload, smaller selected
+inputs improve throughput and TTFT under load. The installed public API does
+not yet expose arbitrary non-prefix K/V attachment, so native PRA remains a
+well-specified source-level integration task rather than a completed result.
 
 \section*{Reproducibility}
-Record all versions, engine build/configuration, model revision, precision, cache block size, parallelism, hardware, manifests, raw metrics, and generated plots/tables.
+Raw JSON, generated tables and plots, environment audit, launch configuration,
+and experiment scripts are under
+\texttt{docs/papers/shared/results/paper6\_4\_tensorrt\_llm} and
+\texttt{experiments/paper6\_4\_tensorrt\_llm}.
+
+\begin{thebibliography}{9}
+\bibitem{trtllm}
+NVIDIA. \emph{TensorRT-LLM Documentation}.\\
+\url{https://nvidia.github.io/TensorRT-LLM/}
+\bibitem{pagedattention}
+W. Kwon et al. Efficient Memory Management for Large Language Model Serving
+with PagedAttention. SOSP, 2023.
+\end{thebibliography}
 
 \end{document}
