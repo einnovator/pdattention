@@ -27,15 +27,15 @@ def _load_harness():
 
 
 def _gpu_memory() -> Mapping[str, object]:
-    command = [
+    device_command = [
         "nvidia-smi",
-        "--query-compute-apps=used_memory",
+        "--query-gpu=memory.used,memory.total",
         "--format=csv,noheader,nounits",
     ]
     try:
-        rows = subprocess.check_output(command, text=True, timeout=15).splitlines()
-        values = [int(row.strip()) for row in rows if row.strip()]
-        return {"available": True, "process_used_mib": sum(values), "process_count": len(values)}
+        line = subprocess.check_output(device_command, text=True, timeout=15).splitlines()[0]
+        used, total = (int(value.strip()) for value in line.split(","))
+        return {"available": True, "device_used_mib": used, "device_total_mib": total}
     except (OSError, subprocess.SubprocessError, ValueError) as error:
         return {"available": False, "error": str(error)}
 
