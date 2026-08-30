@@ -17,6 +17,12 @@ def _engine_row(payload: dict[str, object]) -> dict[str, object]:
     hot = [float(row["lifecycle_request_latency_ms"]["hot"]) for row in rows]
     warm = [float(row["lifecycle_request_latency_ms"]["warm"]) for row in rows]
     cold = [float(row["lifecycle_request_latency_ms"]["cold"]) for row in rows]
+    warm_transition = [
+        float(row["background_transition_latency_ms"]["warm"]) for row in rows
+    ]
+    cold_transition = [
+        float(row["background_transition_latency_ms"]["cold"]) for row in rows
+    ]
     return {
         "engine": payload["engine"],
         "model_id": payload["model_id"],
@@ -32,6 +38,8 @@ def _engine_row(payload: dict[str, object]) -> dict[str, object]:
         "hot_lifecycle_median_ms": statistics.median(hot),
         "warm_lifecycle_median_ms": statistics.median(warm),
         "cold_lifecycle_median_ms": statistics.median(cold),
+        "warm_transition_median_ms": statistics.median(warm_transition),
+        "cold_transition_median_ms": statistics.median(cold_transition),
         "warm_over_hot_latency": statistics.median(warm)
         / max(statistics.median(hot), 1e-9),
         "cold_over_hot_latency": statistics.median(cold)

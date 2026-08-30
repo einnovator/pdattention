@@ -144,13 +144,18 @@ def main() -> None:
                 outputs: dict[str, str] = {}
                 output_tokens: dict[str, list[int]] = {}
                 latencies: dict[str, float] = {}
+                transition_latencies: dict[str, float] = {}
                 for tier in ("hot", "warm", "cold"):
+                    transition_started = time.perf_counter()
                     if tier != "hot":
                         manager.demote_hot(key, payload=payload)
                     if tier == "cold":
                         manager.run_maintenance(
                             now_ns=time.time_ns() + 8 * 86400 * 1_000_000_000
                         )
+                    transition_latencies[tier] = (
+                        time.perf_counter() - transition_started
+                    ) * 1000.0
                     _request_id, output, timing = _run(
                         llm,
                         bridge,
@@ -185,6 +190,7 @@ def main() -> None:
                         "outputs": outputs,
                         "completion_latency_ms": latencies,
                         "lifecycle_request_latency_ms": dict(latencies),
+                        "background_transition_latency_ms": transition_latencies,
                     }
                 )
                 manager.demote_hot(key, payload=payload)
