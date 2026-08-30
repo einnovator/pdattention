@@ -40,7 +40,11 @@ outcome, wrong memory redirects 30/40 outputs, and throughput reaches 34.41
 requests/s at concurrency eight. A selection-derived APC salt prevents the
 same visible query from reusing state created under different hidden memory;
 after the first selected request, APC supplies 128--144 prompt tokens.
-Connectors, online server tails, and CUDA integration remain open. A final matched-selection study
+Connectors and native CUDA E2 remain open. A CUDA E0 reproduction on an RTX
+5060 Laptop GPU adds a 360-request natural-QA cohort and a 1,240-request warm
+load sweep. Selected text reaches 92.7 requests/s at concurrency 16; the
+independent full-context workload saturates at 12.0 requests/s and 1.15 s TTFT
+p99. A final matched-selection study
 uses the same routed QASPER, HotpotQA, and 2WikiMultiHopQA evidence for visible
 E0 and native E2 execution. E2 removes 90.6--93.0\% of visible prompt tokens,
 and all 840 paired outputs are exact. A geometry audit explains an earlier
@@ -342,6 +346,64 @@ offline V1 batching on one Apple M5, not an HTTP arrival-process or tail-latency
 benchmark. Wrong memory redirects 30/40 outputs to its counterfactual code;
 the imperfect rate limits the strength of that prompt-level causal control,
 while the earlier short-prefix experiment supplies the cleaner 5/5 result.
+
+\subsection{CUDA E0 reproduction and saturation boundary}
+We separately run vLLM 0.28.0 with TinyLlama-1.1B-Chat on an NVIDIA RTX 5060
+Laptop GPU. The installed V2 runner requires unified virtual addressing, which
+this WSL configuration does not expose; setting
+\texttt{VLLM\_USE\_V2\_MODEL\_RUNNER=0} selects the supported V1 runner. This
+is an E0 selected-text reproduction, not the Metal native-page E2 path above.
+The server enables APC, reserves 70\% of device memory, and reports a 149,424
+token KV-cache capacity.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{CUDA natural-QA E0 cohort: 20 examples per dataset and two repeats.
+Times are milliseconds. Retrieval is frozen before the three execution
+conditions.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_vllm/generated_portable_natural_table.tex}}
+\label{tab:vllm-cuda-natural}
+\end{table}
+
+Selected context improves token F1 over no context on all three datasets while
+using 402--437 visible prompt tokens. Full context uses 939--1,568 tokens and
+is better on HotpotQA and QASPER, exposing the selector's remaining evidence
+gap. TinyLlama's absolute QA quality is low, so this cohort is most useful as a
+natural-input transport and latency control. Selected median TTFT is
+23.5--28.7 ms, compared with 37.2--63.3 ms for full context. One no-context
+QASPER request incurred a 19.3 s first-token outlier; the warm load experiment
+below separates this cold disturbance from steady load.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Warm CUDA E0 load endpoints. Each row has ten waves; selected and
+full context use the same answer-bearing record.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_vllm/generated_portable_load_table.tex}}
+\label{tab:vllm-cuda-load}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_vllm/portable_e0_load.png}
+\caption{CUDA E0 throughput and TTFT tail under shared and independent
+resources. The independent full-context curve crosses the tested saturation
+boundary at concurrency 16.}
+\label{fig:vllm-cuda-load}
+\end{figure}
+
+At concurrency 16, selected text reaches 92.7 and 93.5 requests/s for shared
+and independent resources, respectively, with 42--43 ms TTFT p99. Shared full
+context reaches 72.8 requests/s and 68.3 ms p99. Independent full context
+instead falls from 42.1 requests/s at concurrency eight to 12.0 at 16, while
+TTFT p99 rises from 45.8 ms to 1.15 s and ITL p99 from 8.0 to 64.4 ms. The
+distinction is important: repeated prefixes remain manageable under APC, but
+many independently primed long prefixes exhaust the tested scheduling/cache
+frontier. Selected E0 avoids that collapse in this bounded campaign. It does
+not establish a native-E2 speedup, which still requires CUDA page attachment.
 
 \subsection{Matched selected text versus native K/V}
 The final experiment freezes 20 routed examples from each of QASPER, HotpotQA,
