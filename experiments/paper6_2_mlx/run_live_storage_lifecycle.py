@@ -39,15 +39,17 @@ def main() -> None:
 
     from mlx_lm import load
     from pra_hf.storage_lifecycle import (
-        InMemoryHotBridge,
+        DecodingHotBridge,
         PRARetentionClass,
         PRAStorageEntry,
         PRAStorageManager,
         PRAStoragePolicy,
         PRAStorageTierConfig,
     )
+    from pra_mlx import MLXNativeSegmentStore
     from pra_mlx.native import (
         MLXNativeColdCodec,
+        deserialize_native_memory,
         encode_native_memory,
         make_native_prompt_cache,
         serialize_native_memory,
@@ -79,7 +81,8 @@ def main() -> None:
         )
         manager = PRAStorageManager(
             policy,
-            hot=InMemoryHotBridge(),
+            hot=DecodingHotBridge(deserialize_native_memory),
+            warm=MLXNativeSegmentStore(root / "warm"),
             cold_codec=MLXNativeColdCodec(),
         )
         last_key = None
@@ -163,7 +166,8 @@ def main() -> None:
             manager.close()
             recovered = PRAStorageManager(
                 policy,
-                hot=InMemoryHotBridge(),
+                hot=DecodingHotBridge(deserialize_native_memory),
+                warm=MLXNativeSegmentStore(root / "warm"),
                 cold_codec=MLXNativeColdCodec(),
             )
             restart_ok = False

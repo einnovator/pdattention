@@ -666,6 +666,19 @@ class InMemoryHotBridge:
         return self.sizes.get(logical_key, 0)
 
 
+class DecodingHotBridge(InMemoryHotBridge):
+    """Restore opaque persisted bytes to an engine-native in-process object."""
+
+    def __init__(self, decode: Callable[[bytes], object]) -> None:
+        super().__init__()
+        self.decode = decode
+
+    def load_hot(self, logical_key: str, payload: bytes) -> int:
+        value = self.decode(payload)
+        byte_count = int(getattr(value, "nbytes", len(payload)))
+        return self.load_hot_value(logical_key, value, byte_count)
+
+
 class ResidencyManagerHotBridge:
     """Adapt :class:`EnginePRAResidencyManager` to semantic HOT operations.
 

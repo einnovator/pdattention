@@ -14,6 +14,7 @@ from pra_mlx.native import (
     deserialize_native_memory,
     serialize_native_memory,
 )
+from pra_mlx.native_storage import MLXNativeSegmentStore
 
 
 @dataclass(frozen=True)
@@ -96,3 +97,27 @@ def test_native_memory_wire_format_round_trips_and_quantizes() -> None:
     decoded = deserialize_native_memory(codec.decode(quantized, metadata))
     assert len(quantized) < len(lossless)
     assert np.max(np.abs(decoded.layers[0].keys - keys)) < 0.02
+
+
+def test_segment_store_round_trips_full_memory_and_reads_selected_layer(tmp_path) -> None:
+    import numpy as np
+
+    layers = tuple(
+        MLXNativeLayerKV(
+            np.full((1, 2, 4, 8), index, dtype=np.float32),
+            np.full((1, 2, 4, 8), index + 10, dtype=np.float32),
+        )
+        for index in range(3)
+    )
+    memory = MLXNativeMemory(layers, source_tokens=4)
+    payload = serialize_native_memory(memory)
+    store = MLXNativeSegmentStore(tmp_path / "segmented")
+    metadata = {"fingerprint": "model-v1"}
+
+    store.put("memory", payload, metadata)
+    restored = deserialize_native_memory(store.get("memory", metadata))
+    selected = store.get_layer_arrays("memory", (1,), metadata)
+
+    assert np.array_equal(restored.layers[2].values, layers[2].values)
+    assert set(selected) == {"layer_0001_k", "layer_0001_v"}
+    assert np.array_equal(selected["layer_0001_v"], layers[1].values)

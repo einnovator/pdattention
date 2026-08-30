@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from pra_hf.cli import cli
 from pra_hf.storage_lifecycle import (
+    DecodingHotBridge,
     FileKVStore,
     Float32Int8ColdCodec,
     InMemoryHotBridge,
@@ -320,6 +321,19 @@ def test_hot_promotion_retains_durable_warm_copy_and_avoids_rewrite(tmp_path):
     manager.close()
     recovered = PRAStorageManager(policy)
     assert recovered.promote("crash-safe") == b"native"
+
+
+def test_decoding_hot_bridge_restores_engine_object_on_promotion(tmp_path):
+    bridge = DecodingHotBridge(lambda payload: {"decoded": payload.decode()})
+    manager = PRAStorageManager(_policy(tmp_path), hot=bridge)
+    manager.register(
+        _entry("decoded", task_status=None),
+        b"native",
+        hot_value={"decoded": "native"},
+    )
+    manager.demote_hot("decoded", payload=b"native")
+
+    assert manager.promote("decoded") == {"decoded": "native"}
 
 
 def test_mmap_store_reads_named_segments_without_loading_neighbor(tmp_path):

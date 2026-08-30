@@ -21,6 +21,7 @@ from .native import (
     save_native_memory,
     serialize_native_memory,
 )
+from .native_storage import MLXNativeSegmentStore
 
 __all__ = [
     "MLXEngineAdapter",
@@ -28,6 +29,7 @@ __all__ = [
     "MLXNativeExecutor",
     "MLXNativeLayerKV",
     "MLXNativeMemory",
+    "MLXNativeSegmentStore",
     "MLXNativeColdCodec",
     "MLXNativeFingerprint",
     "MLXPositionedKVCache",

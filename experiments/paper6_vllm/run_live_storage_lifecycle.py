@@ -46,6 +46,7 @@ def main() -> None:
         PRAStoragePolicy,
         PRAStorageTierConfig,
     )
+    from pra_mlx import MLXNativeSegmentStore
     from pra_mlx.native import MLXNativeColdCodec, serialize_native_memory
     from pra_vllm import (
         VLLMMetalV1NativeBridge,
@@ -92,6 +93,7 @@ def main() -> None:
         manager = PRAStorageManager(
             policy,
             hot=VLLMPageHotBridge(bridge),
+            warm=MLXNativeSegmentStore(root / "warm"),
             cold_codec=MLXNativeColdCodec(),
         )
         last_key = None
@@ -190,6 +192,7 @@ def main() -> None:
             recovered = PRAStorageManager(
                 policy,
                 hot=VLLMPageHotBridge(bridge),
+                warm=MLXNativeSegmentStore(root / "warm"),
                 cold_codec=MLXNativeColdCodec(),
             )
             restart_ok = False
