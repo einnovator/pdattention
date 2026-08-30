@@ -174,6 +174,30 @@ prompt volume, although their memory and construction time are still counted.
 
 \subsection{Backing identity and transport}
 
+The semantic record is not itself a network packet. A long-running agent keeps
+the current conversational trajectory as ordinary system, user, assistant,
+and provider-required tool messages, while large observations, documents,
+skills, tool catalogs, and older results remain detached
+\texttt{ContextRecord} objects. A provider-neutral turn therefore has two
+parts:
+\[
+\text{model input intent}=\text{conversational spine}+\text{selected typed records}.
+\]
+Transport projects each selected record to a tensor-free logical descriptor
+containing its stable ID, type, URI, version, source fingerprint, named views,
+provenance, authorization scope, and tenant/session binding. Physical pages,
+native K/V, and storage handles remain engine-side. This distinction prevents
+an agent from erasing record identity merely because generation is remote.
+
+An OpenAI-compatible endpoint can negotiate one of three realizations. TEXT
+inserts the canonical delimited record rendering into ordinary messages.
+PRA-FULL sends the message spine plus complete logical resource descriptors.
+PRA-DELTA sends append-only messages and ADD, UPDATE, REMOVE, or body-free
+UNCHANGED resource operations. In particular, a gateway in text-fallback mode
+still accepts typed records from the agent and owns the downgrade to its
+ordinary downstream engine. This preserves record identity, view choice, and
+authorization until compatibility actually requires text.
+
 The local backing store writes a content-addressed descriptor and verifies the
 payload hash on read. A record scope combines tenant and session identity.
 TTL, persistence, and total store bytes are policy-controlled. The transport
@@ -1167,6 +1191,13 @@ latency, multi-GB streams, concurrent mutation, index updates, remote
 authorization propagation, encrypted stores, and durable audit delivery are
 not measured. Resident index/detail-KV bytes remain distinct from active
 context and need deployment-specific capacity planning.
+
+The negotiated wire contract is an implementation boundary rather than a new
+record-recovery result. Logical projection and delta transfer preserve identity
+and avoid unchanged-body retransmission, but they do not by themselves improve
+routing, answer quality, or native materialization speed. Remote gateways and
+engines must separately enforce their advertised capability and authorization
+contracts; TEXT remains a compatibility baseline, not native PRA.
 
 The Headroom cross-evaluation is also bounded. Its Paper 7 direction has 18
 held-out identities; its reverse direction has eight cases per source and only
