@@ -150,7 +150,6 @@ def main() -> None:
             if last_key is not None:
                 recovered.promote(last_key)
                 restart_ok = recovered.entries[last_key].current_tier.value == "hot"
-                recovered.demote_hot(last_key)
             metrics = recovered.metrics.to_dict()
             usage = recovered.usage()
             recovered.close()

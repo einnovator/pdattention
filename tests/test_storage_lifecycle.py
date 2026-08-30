@@ -1,6 +1,7 @@
 """Shared PRA HOT/WARM/COLD/SOURCE lifecycle and policy contracts."""
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -286,6 +287,21 @@ def test_file_source_checksum_rejects_changed_authoritative_content(tmp_path):
     recovered = PRAStorageManager(policy, state_path=tmp_path / "state.json")
     with pytest.raises(ValueError, match="checksum"):
         recovered.promote("checked")
+
+
+def test_concurrent_promotions_share_one_hot_value_without_state_race(tmp_path):
+    manager = PRAStorageManager(_policy(tmp_path))
+    manager.register(_entry("shared-promotion", task_status=None), b"native-kv")
+    manager.demote_hot("shared-promotion")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        values = tuple(
+            pool.map(lambda _index: manager.promote("shared-promotion"), range(32))
+        )
+
+    assert values == (b"native-kv",) * 32
+    assert manager.entries["shared-promotion"].current_tier == PRAStorageTier.HOT
+    assert manager.metrics.reloads == 1
 
 
 def test_mmap_store_reads_named_segments_without_loading_neighbor(tmp_path):

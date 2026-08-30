@@ -785,6 +785,18 @@ class PRAStorageMetrics:
         return asdict(self)
 
 
+def _storage_locked(method):
+    """Serialize lifecycle mutations while allowing reentrant tier changes."""
+
+    def synchronized(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    synchronized.__name__ = method.__name__
+    synchronized.__doc__ = method.__doc__
+    return synchronized
+
+
 class PRAStorageManager:
     """Apply record/task-aware lifecycle policy to opaque native K/V bytes."""
 
@@ -876,6 +888,7 @@ class PRAStorageManager:
         )
         os.replace(temporary, self.state_path)
 
+    @_storage_locked
     def recover(self) -> int:
         """Rehydrate durable semantic metadata after a runtime restart."""
 
@@ -924,6 +937,7 @@ class PRAStorageManager:
             recovered += 1
         return recovered
 
+    @_storage_locked
     def attach_source_loader(self, key: str, loader: Callable[[], bytes]) -> None:
         """Reconnect an authoritative SOURCE provider after restart."""
 
@@ -985,6 +999,7 @@ class PRAStorageManager:
         with self._lock:
             self._persist_state()
 
+    @_storage_locked
     def register(
         self,
         entry: PRAStorageEntry,
@@ -1015,6 +1030,7 @@ class PRAStorageManager:
         self._persist_state()
         return self.entries[entry.logical_key]
 
+    @_storage_locked
     def register_source(
         self,
         entry: PRAStorageEntry,
@@ -1072,12 +1088,14 @@ class PRAStorageManager:
             )
             self.demote_hot(victim.logical_key, now_ns=now_ns)
 
+    @_storage_locked
     def record_access(self, key: str, *, selected: bool = False, consumed: bool = False, now_ns: int | None = None) -> None:
         now_ns = time.time_ns() if now_ns is None else now_ns
         entry = self.entries[key]
         self.entries[key] = replace(entry, last_access_ns=now_ns, last_selected_ns=now_ns if selected else entry.last_selected_ns, selection_count=entry.selection_count + int(selected), last_consumed_ns=now_ns if consumed else entry.last_consumed_ns, consumption_count=entry.consumption_count + int(consumed), reuse_count=entry.reuse_count + int(entry.selection_count > 0 and selected))
         self._persist_state()
 
+    @_storage_locked
     def update_dependencies(self, task_id: str, dependent_count: int) -> None:
         """Synchronize open downstream task references with retention metadata."""
 
@@ -1090,6 +1108,7 @@ class PRAStorageManager:
                 )
         self._persist_state()
 
+    @_storage_locked
     def demote_hot(self, key: str, *, payload: bytes | None = None, now_ns: int | None = None) -> PRAStorageEntry:
         """Release HOT and retain lossless WARM when policy permits."""
 
@@ -1118,6 +1137,7 @@ class PRAStorageManager:
         self._persist_state()
         return self.entries[key]
 
+    @_storage_locked
     def promote(self, key: str, *, request_id: str | None = None, tenant_id: str | None = None, authorization_scopes: Iterable[str] = (), now_ns: int | None = None) -> object:
         """Promote exact WARM/COLD bytes, or reconstruct from SOURCE."""
 
@@ -1184,6 +1204,7 @@ class PRAStorageManager:
         self._persist_state()
         return self.hot.get_hot(key)
 
+    @_storage_locked
     def unpin(self, key: str, request_id: str) -> None:
         entry = self.entries[key]
         self.hot.unpin_hot(key, request_id)
@@ -1212,6 +1233,7 @@ class PRAStorageManager:
                 if key in self.entries and self.entries[key].request_pin_count:
                     self.unpin(key, request_id)
 
+    @_storage_locked
     def update_task_status(self, task_id: str, status: TaskStatus | str, *, now_ns: int | None = None) -> None:
         now_ns = time.time_ns() if now_ns is None else now_ns
         status_value = status.value if isinstance(status, TaskStatus) else str(status).lower()
@@ -1223,6 +1245,7 @@ class PRAStorageManager:
                 self.entries[key] = replace(entry, task_status=status_value, compaction_due_ns=due)
         self._persist_state()
 
+    @_storage_locked
     def close_session(self, session_id: str, *, now_ns: int | None = None) -> int:
         """Compact session-only native detail while preserving shared resources."""
 
@@ -1273,6 +1296,7 @@ class PRAStorageManager:
         byte_cost = math.log1p(max(entry.detail_bytes, 1)) / 20.0 if persistent else entry.detail_bytes / max(self.policy.hot.max_bytes or 1, 1)
         return (recency + frequency + reload_cost + record.priority + shared + dependency - reconstructable_discount - byte_cost) * task_multiplier
 
+    @_storage_locked
     def run_maintenance(self, *, now_ns: int | None = None) -> None:
         """Apply delayed task compaction, WARM-to-COLD aging, and quotas."""
 
