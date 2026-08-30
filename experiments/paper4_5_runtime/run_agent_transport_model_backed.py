@@ -38,10 +38,19 @@ class _FullResourceGateway(PRAGateway):
 class MLXTextModelAdapter:
     """Ordinary E0 adapter that records model-side timing and parity evidence."""
 
-    def __init__(self, model: Any, tokenizer: Any, *, model_id: str) -> None:
+    def __init__(
+        self,
+        model: Any,
+        tokenizer: Any,
+        *,
+        model_id: str,
+        gold_answers: Mapping[str, str],
+    ) -> None:
         self.model = model
         self.tokenizer = tokenizer
         self.model_id = model_id
+        # Gold answers stay in the evaluator and never enter the wire request.
+        self.gold_answers = dict(gold_answers)
         self.rows: list[dict[str, Any]] = []
         self._lock = threading.RLock()
 
@@ -113,13 +122,14 @@ class MLXTextModelAdapter:
                 generation_tokens = int(response.generation_tokens)
             completion_ms = (time.perf_counter() - started) * 1000.0
             intervals = [right - left for left, right in zip(arrivals, arrivals[1:])]
+            example_id = str(request.task_id or request.metadata.get("example_id", ""))
             gold_log_probability, scoring_ms = self._gold_log_probability(
-                prompt_ids, str(request.metadata.get("gold_answer", ""))
+                prompt_ids, self.gold_answers.get(example_id, "")
             )
             output = "".join(pieces)
             row = {
                 "condition": request.metadata.get("condition"),
-                "example_id": request.metadata.get("example_id"),
+                "example_id": example_id,
                 "messages_sha256": hashlib.sha256(
                     json.dumps(list(request.messages), sort_keys=True).encode("utf-8")
                 ).hexdigest(),
@@ -204,7 +214,6 @@ def _turn(example, *, condition: str, tokenizer: Any, max_source_tokens: int) ->
         metadata={
             "condition": condition,
             "example_id": example.example_id,
-            "gold_answer": example.answer,
         },
     )
 
@@ -224,7 +233,12 @@ def run(args) -> dict[str, Any]:
     )
     examples = examples[: args.max_examples]
     model, tokenizer = load(args.model, revision=args.revision)
-    adapter = MLXTextModelAdapter(model, tokenizer, model_id=args.model)
+    adapter = MLXTextModelAdapter(
+        model,
+        tokenizer,
+        model_id=args.model,
+        gold_answers={example.example_id: example.answer for example in examples},
+    )
     delta_server, delta_thread, delta_endpoint = _serve(PRAGateway(adapter, mode="G10"))
     full_server, full_thread, full_endpoint = _serve(_FullResourceGateway(adapter, mode="G10"))
     rows: list[dict[str, Any]] = []
