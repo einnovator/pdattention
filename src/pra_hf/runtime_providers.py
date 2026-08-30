@@ -404,7 +404,9 @@ class TensorRTLLMRuntimeProvider(RuntimeProvider):
         for key, value in config.engine_options.items():
             if key == "cache_salt_secret":
                 continue
-            option = "--" + str(key).replace("_", "-")
+            # TensorRT-LLM 1.2's Click surface retains underscores (for
+            # example, ``--max_batch_size``), unlike vLLM/SGLang CLIs.
+            option = "--" + str(key)
             if isinstance(value, bool):
                 if value:
                     command.append(option)

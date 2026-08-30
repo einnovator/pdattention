@@ -24,6 +24,14 @@ def test_percentile_interpolates_and_handles_empty_input() -> None:
     assert percentile([1, 2, 3, 4], 0.5) == 2.5
 
 
+def test_benchmark_distractor_dimensions_are_explicit_and_bounded() -> None:
+    small = benchmark_messages(distractor_count=2, distractor_repeat=3)
+    default = benchmark_messages()
+    assert len(str(small["full_context"])) < len(str(default["full_context"]))
+    with pytest.raises(ValueError, match="dimensions"):
+        benchmark_messages(distractor_count=0)
+
+
 def test_serving_benchmark_rejects_single_repeat() -> None:
     with pytest.raises(ValueError, match="At least two"):
         run_serving_benchmark(

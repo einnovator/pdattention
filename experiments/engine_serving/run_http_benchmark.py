@@ -35,6 +35,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
+    parser.add_argument("--distractor-count", type=int, default=12)
+    parser.add_argument("--distractor-repeat", type=int, default=28)
     args = parser.parse_args()
     payload = run_serving_benchmark(
         args.base_url,
@@ -43,6 +45,8 @@ def main() -> None:
         repeats=args.repeats,
         timeout_seconds=args.timeout_seconds,
         use_cache_salt=args.engine in {"vllm", "tensorrt_llm"},
+        distractor_count=args.distractor_count,
+        distractor_repeat=args.distractor_repeat,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

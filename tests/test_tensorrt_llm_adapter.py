@@ -108,7 +108,7 @@ def test_runtime_provider_uses_trtllm_serve_and_does_not_claim_e2() -> None:
     command = provider.build_command(config)
     assert command[1:3] == ["serve", "org/model"]
     assert command[command.index("--backend") + 1] == "pytorch"
-    assert command[command.index("--max-batch-size") + 1] == "4"
+    assert command[command.index("--max_batch_size") + 1] == "4"
     assert provider.capabilities(config).integration_level.value == "E0"
 
 

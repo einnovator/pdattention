@@ -7,6 +7,7 @@ import json
 import math
 import statistics
 import time
+import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable, Mapping
@@ -47,8 +48,13 @@ def percentile(values: Iterable[float], fraction: float) -> float | None:
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
 
-def benchmark_messages() -> dict[str, list[dict[str, str]]]:
+def benchmark_messages(
+    *, distractor_count: int = 12, distractor_repeat: int = 28
+) -> dict[str, list[dict[str, str]]]:
     """Build fixed conditions that separate exact-prefix and selected memory."""
+
+    if distractor_count <= 0 or distractor_repeat <= 0:
+        raise ValueError("Serving benchmark distractor dimensions must be positive.")
 
     stable_prefix = (
         "You are a deterministic evidence reader. Preserve this stable session "
@@ -60,8 +66,8 @@ def benchmark_messages() -> dict[str, list[dict[str, str]]]:
     )
     distractors = [
         f"Resource distractor {index}: code DECOY_{index:04d}. "
-        + "irrelevant-record-token " * 28
-        for index in range(12)
+        + "irrelevant-record-token " * distractor_repeat
+        for index in range(distractor_count)
     ]
     question = "What is the requested verification code? Return only the code."
     selected = f"Selected PRA text memory:\n{target}"
@@ -132,29 +138,35 @@ def stream_chat_completion(
     content_times: list[float] = []
     pieces: list[str] = []
     usage: Mapping[str, Any] = {}
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-        for raw_line in response:
-            line = raw_line.decode("utf-8").strip()
-            if not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if not data or data == "[DONE]":
-                continue
-            event = json.loads(data)
-            if event.get("usage"):
-                usage = event["usage"]
-            choices = event.get("choices") or ()
-            if not choices:
-                continue
-            delta = choices[0].get("delta") or {}
-            content = delta.get("content")
-            if not content:
-                continue
-            observed = time.perf_counter()
-            if first_content is None:
-                first_content = observed
-            content_times.append(observed)
-            pieces.append(str(content))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            for raw_line in response:
+                line = raw_line.decode("utf-8").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                event = json.loads(data)
+                if event.get("usage"):
+                    usage = event["usage"]
+                choices = event.get("choices") or ()
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                content = delta.get("content")
+                if not content:
+                    continue
+                observed = time.perf_counter()
+                if first_content is None:
+                    first_content = observed
+                content_times.append(observed)
+                pieces.append(str(content))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Serving benchmark request failed with HTTP {error.code}: {detail}"
+        ) from error
     ended = time.perf_counter()
     intervals = [
         (right - left) * 1000.0
@@ -180,6 +192,8 @@ def run_serving_benchmark(
     repeats: int,
     timeout_seconds: float = 180.0,
     use_cache_salt: bool = False,
+    distractor_count: int = 12,
+    distractor_repeat: int = 28,
 ) -> dict[str, Any]:
     """Run fixed conditions and aggregate only statistically defensible fields."""
 
@@ -189,7 +203,11 @@ def run_serving_benchmark(
     if use_cache_salt:
         cache_salt = hashlib.sha256(b"paper6-serving:tenant-a").hexdigest()
     samples: list[ServingSample] = []
-    for condition, messages in benchmark_messages().items():
+    messages_by_condition = benchmark_messages(
+        distractor_count=distractor_count,
+        distractor_repeat=distractor_repeat,
+    )
+    for condition, messages in messages_by_condition.items():
         for repeat in range(repeats):
             values = stream_chat_completion(
                 base_url,
@@ -207,7 +225,7 @@ def run_serving_benchmark(
                 )
             )
     aggregates = []
-    for condition in benchmark_messages():
+    for condition in messages_by_condition:
         rows = [sample for sample in samples if sample.condition == condition]
         ttft = [row.ttft_ms for row in rows if row.ttft_ms is not None]
         latency = [row.completion_latency_ms for row in rows]
@@ -255,7 +273,11 @@ def run_serving_benchmark(
         "evidence_tier": "SMOKE",
         "measurement_status": "MEASURED",
         "cache_salt_enabled": use_cache_salt,
-        "conditions": list(benchmark_messages()),
+        "benchmark_config": {
+            "distractor_count": distractor_count,
+            "distractor_repeat": distractor_repeat,
+        },
+        "conditions": list(messages_by_condition),
         "samples": [sample.to_dict() for sample in samples],
         "aggregates": aggregates,
     }
