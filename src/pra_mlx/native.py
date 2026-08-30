@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -656,6 +657,10 @@ class MLXInProcessNativeExecutor:
         self.storage.start_maintenance()
         self._session_keys: dict[str, set[str]] = {}
         self.isolation = EnginePRAIsolationGuard()
+        # MLX-LM model objects are not reentrant. The HTTP gateway accepts
+        # concurrent arrivals, but source encoding and decode must enter one
+        # engine-owned queue or requests can observe another request's state.
+        self._model_runner_lock = threading.RLock()
 
     @classmethod
     def from_pretrained(
@@ -797,7 +802,8 @@ class MLXInProcessNativeExecutor:
         memories = []
         for key, (resource, tokens) in zip(keys, tokenized):
             def encode(tokens=tokens):
-                memory = encode_native_memory(self.model, tokens)
+                with self._model_runner_lock:
+                    memory = encode_native_memory(self.model, tokens)
                 return memory, serialize_native_memory(memory)
 
             if key not in self.storage.entries:
@@ -853,26 +859,27 @@ class MLXInProcessNativeExecutor:
             prompt = self._prompt(request)
             started = time.perf_counter()
             with self.storage.pin_request(request.request_id, keys):
-                for response in stream_generate(
-                    self.model,
-                    self.tokenizer,
-                    prompt,
-                    max_tokens=request.resolved_max_new_tokens,
-                    prompt_cache=cache,
-                    sampler=make_sampler(
-                        temp=float(request.engine_hints.get("temperature", 0))
-                    ),
-                ):
-                    yield {
-                        "text": response.text,
-                        "finish_reason": getattr(response, "finish_reason", None),
-                        "prompt_tokens": int(response.prompt_tokens),
-                        "generation_tokens": int(response.generation_tokens),
-                        "selected_native_tokens": selected_tokens,
-                        "active_native_kv_bytes": memory.selected_nbytes(detail_layers),
-                        "elapsed_ms": (time.perf_counter() - started) * 1000.0,
-                        "native_kv_used": True,
-                    }
+                with self._model_runner_lock:
+                    for response in stream_generate(
+                        self.model,
+                        self.tokenizer,
+                        prompt,
+                        max_tokens=request.resolved_max_new_tokens,
+                        prompt_cache=cache,
+                        sampler=make_sampler(
+                            temp=float(request.engine_hints.get("temperature", 0))
+                        ),
+                    ):
+                        yield {
+                            "text": response.text,
+                            "finish_reason": getattr(response, "finish_reason", None),
+                            "prompt_tokens": int(response.prompt_tokens),
+                            "generation_tokens": int(response.generation_tokens),
+                            "selected_native_tokens": selected_tokens,
+                            "active_native_kv_bytes": memory.selected_nbytes(detail_layers),
+                            "elapsed_ms": (time.perf_counter() - started) * 1000.0,
+                            "native_kv_used": True,
+                        }
         finally:
             self.isolation.close_request(request.request_id, require_attached=False)
 

@@ -1,4 +1,5 @@
 from experiments.paper6_2_mlx.run_online_native_gateway import _payload
+from pra_hf.deployment import PRAWireRequest
 
 
 def test_online_payload_keeps_native_resource_in_pra_envelope() -> None:
@@ -17,3 +18,8 @@ def test_online_payload_keeps_native_resource_in_pra_envelope() -> None:
     assert payload["pra"]["pra_policy"]["selected_resource_ids"] == ["resource"]
     assert payload["pra"]["resources"][0]["metadata"]["shareable"] is True
     assert "evidence" not in payload["messages"][0]["content"]
+
+    request = PRAWireRequest.from_openai(payload)
+    assert request.request_id == "request"
+    assert request.tenant_id == "benchmark"
+    assert request.pra_policy["selected_resource_ids"] == ["resource"]

@@ -10,6 +10,7 @@ from pathlib import Path
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -25,7 +26,14 @@ def _post(base: str, payload: dict[str, object], *, stream: bool) -> dict[str, o
         headers={"Content-Type": "application/json"},
     )
     started = time.perf_counter()
-    with urllib.request.urlopen(request, timeout=300) as response:
+    try:
+        response_context = urllib.request.urlopen(request, timeout=300)
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"PRA gateway returned HTTP {error.code}: {body}"
+        ) from error
+    with response_context as response:
         headers_ms = (time.perf_counter() - started) * 1000.0
         if not stream:
             result = json.loads(response.read())
