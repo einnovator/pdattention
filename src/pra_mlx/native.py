@@ -317,8 +317,19 @@ def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMe
     for state in states:
         if not isinstance(state, tuple) or len(state) < 2:
             raise RuntimeError("The MLX model exposed a non-attention cache layer.")
-        layers.append(MLXNativeLayerKV(state[0], state[1]))
-    return MLXNativeMemory(tuple(layers), source_tokens=len(token_ids))
+        # Cache states may be views into reusable model-runner buffers. Force
+        # an owned result so encoding the next resource cannot mutate a HOT
+        # logical memory that the lifecycle manager already retained.
+        zero_k = mx.array(0, dtype=state[0].dtype)
+        zero_v = mx.array(0, dtype=state[1].dtype)
+        layers.append(
+            MLXNativeLayerKV(state[0] + zero_k, state[1] + zero_v)
+        )
+    result = MLXNativeMemory(tuple(layers), source_tokens=len(token_ids))
+    mx.eval(
+        *(array for layer in result.layers for array in (layer.keys, layer.values))
+    )
+    return result
 
 
 def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMemory:
