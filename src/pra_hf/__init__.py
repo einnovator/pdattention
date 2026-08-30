@@ -126,7 +126,9 @@ from .agent_transport import (
     context_record_to_wire_resource,
     render_text_messages,
     render_text_prompt,
+    render_wire_resources_as_text,
     resolve_wire_mode,
+    wire_resource_identity,
 )
 from .agent_profiles import (
     AgentLaunch,
@@ -502,7 +504,9 @@ __all__ += [
     "context_record_to_wire_resource",
     "render_text_messages",
     "render_text_prompt",
+    "render_wire_resources_as_text",
     "resolve_wire_mode",
+    "wire_resource_identity",
     "AgentLaunch",
     "AgentLauncher",
     "AgentProfile",

@@ -228,22 +228,73 @@ def context_record_to_wire_resource(
     )
 
 
+def wire_resource_identity(resource: PRAWireResource) -> str:
+    """Hash every semantic field that requires an ADD or UPDATE body."""
+
+    identity = {
+        "resource_id": resource.resource_id,
+        "uri": resource.uri,
+        "record_type": resource.record_type,
+        "version": resource.version,
+        "source_fingerprint": resource.source_fingerprint,
+        "authorization_scope": resource.authorization_scope,
+        "task_id": resource.task_id,
+        "task_status": resource.task_status,
+        "available_views": resource.available_views,
+        "initial_view": resource.initial_view,
+        "selected_view": resource.selected_view,
+        "shareable": resource.shareable,
+        "session_bound": resource.session_bound,
+        "metadata": resource.metadata,
+        "text": resource.text,
+    }
+    encoded = json.dumps(
+        identity, sort_keys=True, separators=(",", ":"), default=str
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def render_wire_resources_as_text(
+    messages: Sequence[Mapping[str, Any]],
+    resources: Sequence[PRAWireResource],
+) -> tuple[Mapping[str, Any], ...]:
+    """Apply the canonical G10-compatible text projection to chat messages."""
+
+    blocks = [
+        f"[PRA resource {resource.uri}]\n{resource.text}"
+        for resource in resources
+        if resource.text
+    ]
+    if not blocks:
+        return tuple(dict(message) for message in messages)
+    context = "PRA text fallback context (not native K/V):\n\n" + "\n\n".join(blocks)
+    values = [dict(message) for message in messages]
+    user_index = next(
+        (
+            index
+            for index in range(len(values) - 1, -1, -1)
+            if values[index].get("role") == "user"
+        ),
+        len(values),
+    )
+    if user_index < len(values):
+        original = str(values[user_index].get("content", ""))
+        values[user_index]["content"] = f"{context}\n\n{original}"
+    else:
+        values.append({"role": "user", "content": context})
+    return tuple(values)
+
+
 def render_text_messages(turn: AgentTurnContext) -> tuple[Mapping[str, Any], ...]:
     """Render detached records once while preserving the chat message spine."""
 
-    records = turn.detached_records
-    if not records:
+    if not turn.detached_records:
         return turn.messages
-    context = "Detached PRA context (text compatibility rendering):\n\n" + "\n\n".join(
-        serialize_record(record, view=record.policy.selected_view) for record in records
+    resources = tuple(
+        context_record_to_wire_resource(record)
+        for record in turn.detached_records
     )
-    messages = [dict(row) for row in turn.messages]
-    user_index = next(
-        (index for index in range(len(messages) - 1, -1, -1) if messages[index].get("role") == "user"),
-        len(messages),
-    )
-    messages.insert(user_index, {"role": "system", "content": context})
-    return tuple(messages)
+    return render_wire_resources_as_text(turn.messages, resources)
 
 
 def render_text_prompt(turn: AgentTurnContext) -> str:
@@ -369,27 +420,7 @@ class NegotiatedRemoteBackend:
 
     @staticmethod
     def _resource_identity(resource: PRAWireResource) -> str:
-        identity = {
-            "resource_id": resource.resource_id,
-            "uri": resource.uri,
-            "record_type": resource.record_type,
-            "version": resource.version,
-            "source_fingerprint": resource.source_fingerprint,
-            "authorization_scope": resource.authorization_scope,
-            "task_id": resource.task_id,
-            "task_status": resource.task_status,
-            "available_views": resource.available_views,
-            "initial_view": resource.initial_view,
-            "selected_view": resource.selected_view,
-            "shareable": resource.shareable,
-            "session_bound": resource.session_bound,
-            "metadata": resource.metadata,
-            "text": resource.text,
-        }
-        encoded = json.dumps(
-            identity, sort_keys=True, separators=(",", ":"), default=str
-        ).encode("utf-8")
-        return hashlib.sha256(encoded).hexdigest()
+        return wire_resource_identity(resource)
 
     def _delta_resources(
         self, session_key: str, resources: Sequence[PRAWireResource]
@@ -466,6 +497,7 @@ class NegotiatedRemoteBackend:
         request = PRAWireRequest(
             model=self.model or "provider-default",
             messages=tuple(messages),
+            tools=turn.tools,
             tenant_id=tenant_id,
             session_id=session_id,
             task_id=turn.task_id,
@@ -486,8 +518,6 @@ class NegotiatedRemoteBackend:
         payload = request.to_openai(stream=False)
         if wire_mode == AgentWireMode.TEXT:
             payload.pop("pra", None)
-        if turn.tools:
-            payload["tools"] = list(turn.tools)
         encoded = json.dumps(payload).encode("utf-8")
         http_request = urllib.request.Request(
             self.endpoint + "/v1/chat/completions",
@@ -518,6 +548,24 @@ class NegotiatedRemoteBackend:
             "integration_level": capabilities.integration_level,
             "full_text_bytes": len(json.dumps(render_text_messages(turn)).encode("utf-8")),
             "wire_bytes": len(encoded),
+            "message_bytes": len(
+                json.dumps(payload.get("messages", ()), default=str).encode("utf-8")
+            ),
+            "resource_body_bytes": sum(
+                len((resource.text or "").encode("utf-8")) for resource in resources
+            ),
+            "resource_delta_bytes": len(
+                json.dumps(
+                    [operation.to_dict(include_resource=False) for operation in resource_ops],
+                    default=str,
+                ).encode("utf-8")
+            ),
+            "resource_bodies_sent": sum(resource.text is not None for resource in resources),
+            "resource_resynchronization": (
+                wire_mode == AgentWireMode.PRA_DELTA
+                and history_mode == HistoryMode.FULL
+                and bool(resource_ops)
+            ),
         }
         return output_text
 

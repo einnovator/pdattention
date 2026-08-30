@@ -13,6 +13,7 @@ from pra_hf.agent_transport import (
     AgentTurnContext,
     context_record_to_wire_resource,
     render_text_messages,
+    wire_resource_identity,
 )
 from pra_hf.context_records import (
     ContextRecord,
@@ -158,12 +159,7 @@ def _bytes(value: object) -> int:
 
 
 def _identity(resource: PRAWireResource) -> str:
-    return ":".join((
-        resource.version,
-        resource.source_fingerprint,
-        str(resource.authorization_scope),
-        str(resource.shareable),
-    ))
+    return wire_resource_identity(resource)
 
 
 def run_protocol_benchmark() -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -186,6 +182,7 @@ def run_protocol_benchmark() -> tuple[list[dict[str, object]], dict[str, object]
         full_request = PRAWireRequest(
             "fixture",
             turn.context.messages,
+            tools=turn.context.tools,
             tenant_id="tenant-a",
             session_id="session-a",
             task_id="task-1",
@@ -224,6 +221,7 @@ def run_protocol_benchmark() -> tuple[list[dict[str, object]], dict[str, object]
         delta_request = PRAWireRequest(
             "fixture",
             tuple(message_delta),
+            tools=turn.context.tools,
             tenant_id="tenant-a",
             session_id="session-a",
             task_id="task-1",

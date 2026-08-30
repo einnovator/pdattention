@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Iterator, Mapping
 from urllib.parse import parse_qs, urlparse
 
+from .agent_transport import render_wire_resources_as_text
 from .deployment import (
     PRAEngineAdapter,
     PRAEngineResult,
@@ -122,19 +123,32 @@ class PRAGateway:
     def _text_fallback(self, request: PRAWireRequest) -> tuple[PRAWireRequest, list[str]]:
         remaining = request.budget.max_selected_tokens
         selected = []
-        blocks = []
+        rendered_resources = []
         for resource in request.resources[: request.budget.max_resources]:
             if not resource.text or remaining <= 0:
                 continue
             tokens = resource.text.split()
-            materialized = " ".join(tokens[:remaining])
-            remaining -= len(tokens[:remaining])
+            selected_tokens = tokens[:remaining]
+            materialized = (
+                resource.text
+                if len(selected_tokens) == len(tokens)
+                else " ".join(selected_tokens)
+            )
+            remaining -= len(selected_tokens)
             selected.append(resource.resource_id)
-            blocks.append(f"[PRA resource {resource.uri}]\n{materialized}")
+            rendered_resources.append(replace(resource, text=materialized))
         messages = list(request.messages)
-        if blocks:
-            context = "PRA text fallback context (not native K/V):\n\n" + "\n\n".join(blocks)
-            messages = self._inject_fallback(messages, context)
+        if rendered_resources:
+            if self.fallback_injection == FallbackInjectionPolicy.BEFORE_CURRENT_USER:
+                messages = list(
+                    render_wire_resources_as_text(messages, rendered_resources)
+                )
+            else:
+                context = "PRA text fallback context (not native K/V):\n\n" + "\n\n".join(
+                    f"[PRA resource {resource.uri}]\n{resource.text}"
+                    for resource in rendered_resources
+                )
+                messages = self._inject_fallback(messages, context)
         return replace(request, messages=tuple(messages), resources=()), selected
 
     def _inject_fallback(
