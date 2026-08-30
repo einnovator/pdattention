@@ -87,6 +87,20 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                         ).hexdigest()
                         specs.append((wave, slot, resource_number, messages, expected, salt))
 
+                # Prime every distinct logical resource outside the timed
+                # window so all concurrency rows represent warm execution.
+                unique_specs = {
+                    spec[2]: spec for spec in specs
+                }
+                for _, _, _, messages, _, salt in unique_specs.values():
+                    harness.stream_chat_completion(
+                        args.base_url,
+                        model=args.model,
+                        messages=messages,
+                        timeout_seconds=args.timeout_seconds,
+                        cache_salt=salt,
+                        max_tokens=args.max_tokens,
+                    )
                 before_gpu = _gpu_memory()
                 group_started = time.perf_counter()
                 group_rows = []
@@ -125,6 +139,7 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                         "workload": workload,
                         "concurrency": concurrency,
                         "waves": args.waves,
+                        "warmup_requests": len(unique_specs),
                         "wall_seconds": elapsed,
                         "gpu_before": before_gpu,
                         "gpu_after": _gpu_memory(),
@@ -141,6 +156,7 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
         "base_url": args.base_url,
         "concurrency": args.concurrency,
         "waves": args.waves,
+        "cache_state": "WARM_EXPLICITLY_PRIMED",
         "max_tokens": args.max_tokens,
         "samples": samples,
         "aggregates": aggregates,
