@@ -260,9 +260,11 @@ def render_wire_resources_as_text(
 ) -> tuple[Mapping[str, Any], ...]:
     """Apply the canonical G10-compatible text projection to chat messages."""
 
+    # Resource order is not semantic. Canonicalize it so full and delta
+    # reconstruction produce byte-identical model input.
     blocks = [
         f"[PRA resource {resource.uri}]\n{resource.text}"
-        for resource in resources
+        for resource in sorted(resources, key=lambda item: item.resource_id)
         if resource.text
     ]
     if not blocks:

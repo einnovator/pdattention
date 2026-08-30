@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -15,6 +16,7 @@ from pra_hf.agent_transport import (
     PRAProtocolRequiredError,
     context_record_to_wire_resource,
     render_text_messages,
+    render_wire_resources_as_text,
     resolve_wire_mode,
     wire_resource_identity,
 )
@@ -295,6 +297,17 @@ def test_direct_text_and_g10_use_identical_execution_messages() -> None:
     PRAGateway(adapter, mode="G10").generate(request)
 
     assert adapter.requests[0].messages == render_text_messages(turn)
+
+
+def test_text_projection_canonicalizes_resource_order() -> None:
+    turn = _turn()
+    first = context_record_to_wire_resource(turn.records[0])
+    second = replace(first, resource_id="z-resource", uri="memory://z")
+
+    forward = render_wire_resources_as_text(turn.messages, (first, second))
+    reverse = render_wire_resources_as_text(turn.messages, (second, first))
+
+    assert forward == reverse
 
 
 def test_gateway_preserves_provider_native_tool_schema() -> None:

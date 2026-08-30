@@ -45,12 +45,14 @@ class MLXTextModelAdapter:
         *,
         model_id: str,
         gold_answers: Mapping[str, str],
+        example_ids: Mapping[str, str],
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
         self.model_id = model_id
         # Gold answers stay in the evaluator and never enter the wire request.
         self.gold_answers = dict(gold_answers)
+        self.example_ids = dict(example_ids)
         self.rows: list[dict[str, Any]] = []
         self._lock = threading.RLock()
 
@@ -122,9 +124,31 @@ class MLXTextModelAdapter:
                 generation_tokens = int(response.generation_tokens)
             completion_ms = (time.perf_counter() - started) * 1000.0
             intervals = [right - left for left, right in zip(arrivals, arrivals[1:])]
-            example_id = str(request.task_id or request.metadata.get("example_id", ""))
+            question = next(
+                (
+                    str(message.get("content", ""))
+                    for message in reversed(request.messages)
+                    if message.get("role") == "user"
+                    and dict(message.get("metadata", {})).get("record_type") != "pra_context"
+                ),
+                "",
+            )
+            question_example_id = next(
+                (
+                    candidate_id
+                    for candidate_question, candidate_id in self.example_ids.items()
+                    if question.endswith(candidate_question)
+                ),
+                "",
+            )
+            example_id = str(
+                request.task_id
+                or request.metadata.get("example_id", "")
+                or question_example_id
+            )
+            gold_answer = self.gold_answers.get(example_id, "")
             gold_log_probability, scoring_ms = self._gold_log_probability(
-                prompt_ids, self.gold_answers.get(example_id, "")
+                prompt_ids, gold_answer
             )
             output = "".join(pieces)
             row = {
@@ -139,8 +163,13 @@ class MLXTextModelAdapter:
                 "itl_ms": mean(intervals) if intervals else None,
                 "completion_ms": completion_ms,
                 "gold_log_probability": gold_log_probability,
+                "gold_answer_found": bool(gold_answer),
+                "gold_token_count": len(
+                    self.tokenizer.encode(gold_answer, add_special_tokens=False)
+                ),
                 "scoring_ms_excluded_from_serving": scoring_ms,
                 "task_status": dict(request.metadata.get("task_metadata", {})).get("status"),
+                "task_status_visible": '"status":"active"' in prompt.replace(" ", ""),
                 "tool_schema_preserved": bool(request.tools),
                 "output": output,
             }
@@ -238,6 +267,7 @@ def run(args) -> dict[str, Any]:
         tokenizer,
         model_id=args.model,
         gold_answers={example.example_id: example.answer for example in examples},
+        example_ids={example.question: example.example_id for example in examples},
     )
     delta_server, delta_thread, delta_endpoint = _serve(PRAGateway(adapter, mode="G10"))
     full_server, full_thread, full_endpoint = _serve(_FullResourceGateway(adapter, mode="G10"))
@@ -293,6 +323,14 @@ def run(args) -> dict[str, Any]:
         )
         for example_id, example_rows in by_example.items()
     }
+    def optional_mean(condition: str, field: str) -> float | None:
+        values = [
+            float(row[field])
+            for row in rows
+            if row["condition"] == condition and row[field] is not None
+        ]
+        return mean(values) if values else None
+
     summary = {
         "schema_version": "1.0",
         "experiment": "paper4_5_model_backed_agent_transport_v1",
@@ -304,14 +342,10 @@ def run(args) -> dict[str, Any]:
         "conditions": ["TEXT", "PRA_FULL", "PRA_DELTA"],
         "exact_output_and_execution_message_parity": sum(parity.values()),
         "parity_pairs": len(parity),
-        "task_status_preserved": all(row["task_status"] == "active" for row in rows),
+        "task_status_preserved": all(row["task_status_visible"] for row in rows),
         "tool_schema_preserved": all(row["tool_schema_preserved"] for row in rows),
         "mean_gold_log_probability": {
-            condition: mean(
-                float(row["gold_log_probability"])
-                for row in rows
-                if row["condition"] == condition and row["gold_log_probability"] is not None
-            )
+            condition: optional_mean(condition, "gold_log_probability")
             for condition in ("TEXT", "PRA_FULL", "PRA_DELTA")
         },
         "mean_wire_bytes": {
@@ -319,7 +353,7 @@ def run(args) -> dict[str, Any]:
             for condition in ("TEXT", "PRA_FULL", "PRA_DELTA")
         },
         "mean_ttft_ms": {
-            condition: mean(float(row["ttft_ms"]) for row in rows if row["condition"] == condition and row["ttft_ms"] is not None)
+            condition: optional_mean(condition, "ttft_ms")
             for condition in ("TEXT", "PRA_FULL", "PRA_DELTA")
         },
         "rows": rows,
