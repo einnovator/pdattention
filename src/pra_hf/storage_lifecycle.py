@@ -1125,15 +1125,29 @@ class PRAStorageManager:
         stored = 0
         target = PRAStorageTier.SOURCE
         if self.warm is not None and self.policy.warm.enabled:
-            started = time.monotonic_ns()
-            stored = self.warm.put(key, payload, self._metadata(key))
-            self.metrics.persistence_latency_ns += time.monotonic_ns() - started
-            self.metrics.bytes_written += stored
-            self.metrics.persistence_writes += 1
+            if self.warm.contains(key):
+                stored = int(
+                    self.warm.metadata(key).get("stored_bytes", entry.warm_bytes)
+                )
+            else:
+                started = time.monotonic_ns()
+                stored = self.warm.put(key, payload, self._metadata(key))
+                self.metrics.persistence_latency_ns += time.monotonic_ns() - started
+                self.metrics.bytes_written += stored
+                self.metrics.persistence_writes += 1
             target = PRAStorageTier.WARM
+            if self.cold is not None and self.cold.contains(key):
+                self.cold.remove(key)
         self.hot.release_hot(key)
         self.metrics.demotions += 1
-        self.entries[key] = replace(entry, current_tier=target, hot_bytes=0, warm_bytes=stored, last_access_ns=now_ns)
+        self.entries[key] = replace(
+            entry,
+            current_tier=target,
+            hot_bytes=0,
+            warm_bytes=stored,
+            cold_bytes=0 if target == PRAStorageTier.WARM else entry.cold_bytes,
+            last_access_ns=now_ns,
+        )
         self._persist_state()
         return self.entries[key]
 
@@ -1188,14 +1202,11 @@ class PRAStorageManager:
             payload = self._load_source(key)
             self.metrics.reloads += 1
         hot_bytes = self.hot.load_hot(key, payload)
+        # HOT is an attention-ready copy above the durable tier, not a move
+        # out of it. Keeping WARM/COLD intact makes promotion crash-recoverable
+        # and avoids rewriting the same immutable payload after every request.
         warm_bytes = entry.warm_bytes
         cold_bytes = entry.cold_bytes
-        if promoted_from == PRAStorageTier.WARM and self.warm is not None:
-            self.warm.remove(key)
-            warm_bytes = 0
-        elif promoted_from == PRAStorageTier.COLD and self.cold is not None:
-            self.cold.remove(key)
-            cold_bytes = 0
         if request_id is not None:
             self.hot.pin_hot(key, request_id)
         self.metrics.promotion_latency_ns += time.monotonic_ns() - started
@@ -1357,12 +1368,36 @@ class PRAStorageManager:
         if backend is None or limit is None:
             return
         while backend.bytes_used() > limit:
-            candidates = [entry for entry in self.entries.values() if entry.current_tier == tier and not entry.request_pin_count]
+            candidates = [
+                entry
+                for entry in self.entries.values()
+                if (
+                    entry.warm_bytes > 0
+                    if tier == PRAStorageTier.WARM
+                    else entry.cold_bytes > 0
+                )
+            ]
             if not candidates:
-                raise MemoryError(f"Pinned PRA entries exceed the {tier.value} quota.")
+                raise MemoryError(f"PRA entries exceed the {tier.value} quota.")
             victim = min(candidates, key=lambda entry: (self.retention_score(entry, now_ns=now_ns), entry.logical_key))
             backend.remove(victim.logical_key)
-            self.entries[victim.logical_key] = replace(victim, current_tier=PRAStorageTier.SOURCE, warm_bytes=0 if tier == PRAStorageTier.WARM else victim.warm_bytes, cold_bytes=0 if tier == PRAStorageTier.COLD else victim.cold_bytes)
+            warm_bytes = 0 if tier == PRAStorageTier.WARM else victim.warm_bytes
+            cold_bytes = 0 if tier == PRAStorageTier.COLD else victim.cold_bytes
+            current = (
+                PRAStorageTier.HOT
+                if victim.hot_bytes
+                else PRAStorageTier.WARM
+                if warm_bytes
+                else PRAStorageTier.COLD
+                if cold_bytes
+                else PRAStorageTier.SOURCE
+            )
+            self.entries[victim.logical_key] = replace(
+                victim,
+                current_tier=current,
+                warm_bytes=warm_bytes,
+                cold_bytes=cold_bytes,
+            )
             self.metrics.evictions += 1
 
     def _enforce_tenant_quotas(
@@ -1383,7 +1418,7 @@ class PRAStorageManager:
                 return sum(
                     entry.warm_bytes if tier == PRAStorageTier.WARM else entry.cold_bytes
                     for entry in self.entries.values()
-                    if entry.tenant_id == tenant_id and entry.current_tier == tier
+                    if entry.tenant_id == tenant_id
                 )
 
             while tenant_bytes() > limit:
@@ -1391,12 +1426,15 @@ class PRAStorageManager:
                     entry
                     for entry in self.entries.values()
                     if entry.tenant_id == tenant_id
-                    and entry.current_tier == tier
-                    and not entry.request_pin_count
+                    and (
+                        entry.warm_bytes > 0
+                        if tier == PRAStorageTier.WARM
+                        else entry.cold_bytes > 0
+                    )
                 ]
                 if not candidates:
                     raise MemoryError(
-                        f"Pinned PRA entries exceed tenant {tenant_id!r} {tier.value} quota."
+                        f"PRA entries exceed tenant {tenant_id!r} {tier.value} quota."
                     )
                 victim = min(
                     candidates,
@@ -1406,11 +1444,22 @@ class PRAStorageManager:
                     ),
                 )
                 backend.remove(victim.logical_key)
+                warm_bytes = 0 if tier == PRAStorageTier.WARM else victim.warm_bytes
+                cold_bytes = 0 if tier == PRAStorageTier.COLD else victim.cold_bytes
+                current = (
+                    PRAStorageTier.HOT
+                    if victim.hot_bytes
+                    else PRAStorageTier.WARM
+                    if warm_bytes
+                    else PRAStorageTier.COLD
+                    if cold_bytes
+                    else PRAStorageTier.SOURCE
+                )
                 self.entries[victim.logical_key] = replace(
                     victim,
-                    current_tier=PRAStorageTier.SOURCE,
-                    warm_bytes=0 if tier == PRAStorageTier.WARM else victim.warm_bytes,
-                    cold_bytes=0 if tier == PRAStorageTier.COLD else victim.cold_bytes,
+                    current_tier=current,
+                    warm_bytes=warm_bytes,
+                    cold_bytes=cold_bytes,
                 )
                 self.metrics.evictions += 1
 

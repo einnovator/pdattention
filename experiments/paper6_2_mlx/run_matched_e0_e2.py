@@ -79,6 +79,7 @@ def _generate_timed(model, tokenizer, query, cache, max_tokens: int):
     )
     return {
         "output": tokenizer.decode(generated).strip(),
+        "output_token_ids": generated,
         "generated_tokens": len(generated),
         "ttft_ms": arrivals[0] if arrivals else completion_ms,
         "itl_ms": itl_ms,

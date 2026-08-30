@@ -304,6 +304,24 @@ def test_concurrent_promotions_share_one_hot_value_without_state_race(tmp_path):
     assert manager.metrics.reloads == 1
 
 
+def test_hot_promotion_retains_durable_warm_copy_and_avoids_rewrite(tmp_path):
+    policy = _policy(tmp_path)
+    manager = PRAStorageManager(policy)
+    manager.register(_entry("crash-safe", task_status=None), b"native")
+    manager.demote_hot("crash-safe")
+    writes = manager.metrics.persistence_writes
+
+    assert manager.promote("crash-safe") == b"native"
+    assert manager.warm.contains("crash-safe")
+    assert manager.entries["crash-safe"].warm_bytes > 0
+    manager.demote_hot("crash-safe")
+
+    assert manager.metrics.persistence_writes == writes
+    manager.close()
+    recovered = PRAStorageManager(policy)
+    assert recovered.promote("crash-safe") == b"native"
+
+
 def test_mmap_store_reads_named_segments_without_loading_neighbor(tmp_path):
     store = MemoryMappedKVStore(tmp_path / "segments")
     store.put_segments(

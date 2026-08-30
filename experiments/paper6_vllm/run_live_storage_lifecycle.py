@@ -10,8 +10,15 @@ import time
 from pathlib import Path
 
 from experiments.engine_serving.matched_qa import load_matched_examples
-from experiments.paper6_2_mlx.run_answer_quality_pressure import _bounded_source
+from experiments.paper6_2_mlx.run_answer_quality_pressure import _bounded_source, _metrics
 from experiments.paper6_vllm.run_matched_e0_e2 import _aligned, _run
+
+
+def _common_prefix(left: list[int], right: list[int]) -> int:
+    return next(
+        (index for index, pair in enumerate(zip(left, right)) if pair[0] != pair[1]),
+        min(len(left), len(right)),
+    )
 
 
 def main() -> None:
@@ -133,6 +140,7 @@ def main() -> None:
                 )
 
                 outputs: dict[str, str] = {}
+                output_tokens: dict[str, list[int]] = {}
                 latencies: dict[str, float] = {}
                 for tier in ("hot", "warm", "cold"):
                     if tier != "hot":
@@ -151,7 +159,10 @@ def main() -> None:
                         storage=manager,
                     )
                     outputs[tier] = str(output.outputs[0].text).strip()
+                    output_tokens[tier] = list(map(int, output.outputs[0].token_ids))
                     latencies[tier] = float(timing["completion_latency_ms"])
+                hot_f1 = _metrics(outputs["hot"], example.answer)[1]
+                cold_f1 = _metrics(outputs["cold"], example.answer)[1]
                 rows.append(
                     {
                         "dataset": example.dataset,
@@ -160,6 +171,15 @@ def main() -> None:
                         "native_bytes": memory.nbytes,
                         "hot_warm_exact": outputs["hot"] == outputs["warm"],
                         "hot_cold_int8_exact": outputs["hot"] == outputs["cold"],
+                        "hot_cold_first_token_equal": (
+                            output_tokens["hot"][:1] == output_tokens["cold"][:1]
+                        ),
+                        "hot_cold_common_prefix_tokens": _common_prefix(
+                            output_tokens["hot"], output_tokens["cold"]
+                        ),
+                        "hot_answer_f1": hot_f1,
+                        "cold_int8_answer_f1": cold_f1,
+                        "cold_int8_f1_delta": cold_f1 - hot_f1,
                         "outputs": outputs,
                         "completion_latency_ms": latencies,
                     }
@@ -196,6 +216,17 @@ def main() -> None:
             "hot_warm_exact": sum(bool(row["hot_warm_exact"]) for row in rows),
             "hot_cold_int8_exact": sum(
                 bool(row["hot_cold_int8_exact"]) for row in rows
+            ),
+            "hot_cold_first_token_equal": sum(
+                bool(row["hot_cold_first_token_equal"]) for row in rows
+            ),
+            "mean_hot_cold_common_prefix_tokens": (
+                sum(int(row["hot_cold_common_prefix_tokens"]) for row in rows)
+                / max(len(rows), 1)
+            ),
+            "mean_cold_int8_f1_delta": (
+                sum(float(row["cold_int8_f1_delta"]) for row in rows)
+                / max(len(rows), 1)
             ),
             "restart_recovered": restart_ok,
             "request_lifetime_pinning": True,
