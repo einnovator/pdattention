@@ -194,11 +194,14 @@ def run_serving_benchmark(
     use_cache_salt: bool = False,
     distractor_count: int = 12,
     distractor_repeat: int = 28,
+    max_tokens: int = 16,
 ) -> dict[str, Any]:
     """Run fixed conditions and aggregate only statistically defensible fields."""
 
     if repeats < 2:
         raise ValueError("At least two repeats are required to separate cold and warm requests.")
+    if max_tokens <= 0:
+        raise ValueError("Serving benchmark max_tokens must be positive.")
     cache_salt = None
     if use_cache_salt:
         cache_salt = hashlib.sha256(b"paper6-serving:tenant-a").hexdigest()
@@ -215,6 +218,7 @@ def run_serving_benchmark(
                 messages=messages,
                 timeout_seconds=timeout_seconds,
                 cache_salt=cache_salt,
+                max_tokens=max_tokens,
             )
             samples.append(
                 ServingSample(
@@ -276,6 +280,7 @@ def run_serving_benchmark(
         "benchmark_config": {
             "distractor_count": distractor_count,
             "distractor_repeat": distractor_repeat,
+            "max_tokens": max_tokens,
         },
         "conditions": list(messages_by_condition),
         "samples": [sample.to_dict() for sample in samples],

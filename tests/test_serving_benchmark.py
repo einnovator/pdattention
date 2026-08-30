@@ -38,3 +38,10 @@ def test_serving_benchmark_rejects_single_repeat() -> None:
             "http://engine", model="model", engine="mlx", repeats=1
         )
 
+
+def test_serving_benchmark_rejects_nonpositive_decode_budget() -> None:
+    with pytest.raises(ValueError, match="max_tokens"):
+        run_serving_benchmark(
+            "http://engine", model="model", engine="mlx", repeats=2, max_tokens=0
+        )
+
