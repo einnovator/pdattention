@@ -14,10 +14,12 @@ from pra_hf.agent_transport import (
     NegotiatedRemoteBackend,
     PRAProtocolRequiredError,
     context_record_to_wire_resource,
+    render_text_messages,
     resolve_wire_mode,
+    wire_resource_identity,
 )
 from pra_hf.context_records import ContextRecord, RecordType, RecordView, RecordViewName
-from pra_hf.deployment import PRAEngineCapabilities, PRAEngineResult
+from pra_hf.deployment import PRAEngineCapabilities, PRAEngineResult, PRAWireRequest
 from pra_hf.gateway import PRAGateway, create_gateway_server
 from pra_hf.gateway_session import HistoryMode, ResourceOperation
 
@@ -112,6 +114,17 @@ def test_context_record_projection_preserves_portable_semantics() -> None:
     assert not hasattr(resource, "native_kv")
 
 
+def test_wire_resource_identity_changes_with_selected_view() -> None:
+    compact = context_record_to_wire_resource(
+        _record(), selected_view=RecordViewName.COMPACT
+    )
+    full = context_record_to_wire_resource(
+        _record(), selected_view=RecordViewName.FULL
+    )
+
+    assert wire_resource_identity(compact) != wire_resource_identity(full)
+
+
 def test_feature_based_transport_resolution() -> None:
     plain = AgentTransportCapabilities.ordinary_openai()
     typed = AgentTransportCapabilities(
@@ -195,7 +208,7 @@ def test_forced_text_to_pra_endpoint_is_a_deterministic_baseline() -> None:
         backend.generate_turn(_turn(), tenant_id="tenant-a", session_id="session-a")
 
         assert adapter.requests[0].resources == ()
-        assert "Detached PRA context" in adapter.requests[0].messages[0]["content"]
+        assert "PRA text fallback context" in adapter.requests[0].messages[0]["content"]
         assert backend.inspect()["transport"]["negotiated_transport"] == "TEXT"
     finally:
         server.shutdown()
@@ -260,12 +273,42 @@ def test_auto_uses_text_for_reachable_ordinary_openai_server() -> None:
         backend = NegotiatedRemoteBackend(endpoint, "model", transport="auto")
         assert backend.generate_turn(_turn(), session_id="session-a") == "plain"
         assert "pra" not in captured[0]
-        assert "Detached PRA context" in captured[0]["messages"][0]["content"]
+        assert "PRA text fallback context" in captured[0]["messages"][0]["content"]
         assert backend.inspect()["transport"]["fallback"] is True
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_direct_text_and_g10_use_identical_execution_messages() -> None:
+    adapter = _Adapter(pra=False)
+    turn = _turn()
+    resource = context_record_to_wire_resource(turn.records[0])
+    request = PRAWireRequest(
+        "model",
+        turn.messages,
+        resources=(resource,),
+        allow_text_fallback=True,
+    )
+
+    PRAGateway(adapter, mode="G10").generate(request)
+
+    assert adapter.requests[0].messages == render_text_messages(turn)
+
+
+def test_gateway_preserves_provider_native_tool_schema() -> None:
+    adapter = _Adapter(pra=False)
+    tool = {"type": "function", "function": {"name": "lookup"}}
+    request = PRAWireRequest(
+        "model",
+        ({"role": "user", "content": "question"},),
+        tools=(tool,),
+    )
+
+    PRAGateway(adapter, mode="G10").generate(request)
+
+    assert adapter.requests[0].tools == (tool,)
 
 
 def test_wire_envelope_never_contains_credentials() -> None:

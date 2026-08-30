@@ -151,6 +151,7 @@ class PRAWireRequest:
 
     model: str
     messages: tuple[Mapping[str, Any], ...]
+    tools: tuple[Mapping[str, Any], ...] = ()
     protocol_version: str = "1"
     request_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     correlation_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -184,6 +185,7 @@ class PRAWireRequest:
                     f"Resource {resource.resource_id!r} belongs to another tenant."
                 )
         object.__setattr__(self, "history_mode", HistoryMode(self.history_mode))
+        object.__setattr__(self, "tools", tuple(dict(tool) for tool in self.tools))
         if self.protocol_version.split(".", 1)[0] != "1":
             raise ValueError(
                 f"Unsupported PRA protocol major version: {self.protocol_version}"
@@ -203,6 +205,7 @@ class PRAWireRequest:
     def from_dict(cls, value: Mapping[str, Any]) -> "PRAWireRequest":
         data = dict(value)
         data["messages"] = tuple(dict(row) for row in data.get("messages", ()))
+        data["tools"] = tuple(dict(row) for row in data.get("tools", ()))
         data["resources"] = tuple(
             item if isinstance(item, PRAWireResource) else PRAWireResource.from_dict(item)
             for item in data.get("resources", ())
@@ -232,7 +235,11 @@ class PRAWireRequest:
 
         envelope = dict(value.get("pra", {}))
         envelope.update(
-            {"model": value.get("model"), "messages": value.get("messages", ())}
+            {
+                "model": value.get("model"),
+                "messages": value.get("messages", ()),
+                "tools": value.get("tools", ()),
+            }
         )
         if "max_new_tokens" not in envelope and value.get("max_tokens") is not None:
             envelope["max_new_tokens"] = int(value["max_tokens"])
@@ -246,13 +253,17 @@ class PRAWireRequest:
         envelope = self.to_dict()
         envelope.pop("model", None)
         envelope.pop("messages", None)
-        return {
+        tools = envelope.pop("tools", None)
+        payload = {
             "model": self.model,
             "messages": list(self.messages),
             "stream": bool(stream),
             "max_tokens": self.resolved_max_new_tokens,
             "pra": envelope,
         }
+        if tools:
+            payload["tools"] = list(tools)
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         values = asdict(self)
@@ -370,10 +381,13 @@ class OpenAICompatibleEngineAdapter:
             "stream": False,
             "max_tokens": request.resolved_max_new_tokens,
         }
+        if request.tools:
+            payload["tools"] = list(request.tools)
         if self.capabilities().logical_refs:
             envelope = request.to_dict()
             envelope.pop("model", None)
             envelope.pop("messages", None)
+            envelope.pop("tools", None)
             payload["pra"] = envelope
         return payload
 
