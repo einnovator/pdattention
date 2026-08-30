@@ -102,9 +102,28 @@ class PRAWireResource:
     uri: str
     record_type: str = "document"
     text: str | None = None
+    version: str = "v1"
+    source_fingerprint: str = ""
     provenance: Mapping[str, Any] = field(default_factory=dict)
     authorization_scope: str | None = None
+    task_id: str | None = None
+    task_status: str | None = None
+    available_views: tuple[str, ...] = ()
+    initial_view: str | None = None
+    selected_view: str | None = None
+    shareable: bool = False
+    session_bound: bool = True
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "provenance", dict(self.provenance))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(self, "available_views", tuple(dict.fromkeys(self.available_views)))
+        if not self.resource_id or not self.uri:
+            raise ValueError("PRA wire resources require resource_id and uri.")
+        forbidden = {"api_key", "password", "token", "secret", "credential"}
+        if any(str(key).lower() in forbidden for key in (*self.metadata, *self.provenance)):
+            raise ValueError("Credentials must not be stored in PRA resource metadata.")
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "PRAWireResource":
@@ -132,6 +151,7 @@ class PRAWireRequest:
 
     model: str
     messages: tuple[Mapping[str, Any], ...]
+    protocol_version: str = "1"
     request_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     correlation_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     tenant_id: str = "default"
@@ -164,6 +184,10 @@ class PRAWireRequest:
                     f"Resource {resource.resource_id!r} belongs to another tenant."
                 )
         object.__setattr__(self, "history_mode", HistoryMode(self.history_mode))
+        if self.protocol_version.split(".", 1)[0] != "1":
+            raise ValueError(
+                f"Unsupported PRA protocol major version: {self.protocol_version}"
+            )
         if self.max_new_tokens is not None and self.max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive.")
 
@@ -183,10 +207,17 @@ class PRAWireRequest:
             item if isinstance(item, PRAWireResource) else PRAWireResource.from_dict(item)
             for item in data.get("resources", ())
         )
-        data["resource_ops"] = tuple(
-            item if isinstance(item, ResourceDelta) else ResourceDelta(**dict(item))
-            for item in data.get("resource_ops", ())
-        )
+        operations = []
+        for item in data.get("resource_ops", ()):
+            if isinstance(item, ResourceDelta):
+                operations.append(item)
+                continue
+            operation = dict(item)
+            resource = operation.get("resource")
+            if resource is not None and not isinstance(resource, PRAWireResource):
+                operation["resource"] = PRAWireResource.from_dict(resource)
+            operations.append(ResourceDelta(**operation))
+        data["resource_ops"] = tuple(operations)
         budget = data.get("budget")
         if budget is not None and not isinstance(budget, PRAWireBudget):
             data["budget"] = PRAWireBudget(**dict(budget))
@@ -208,6 +239,20 @@ class PRAWireRequest:
         if "request_id" not in envelope and value.get("id"):
             envelope["request_id"] = str(value["id"])
         return cls.from_dict(envelope)
+
+    def to_openai(self, *, stream: bool = False) -> dict[str, Any]:
+        """Return an OpenAI-compatible request with one versioned PRA extension."""
+
+        envelope = self.to_dict()
+        envelope.pop("model", None)
+        envelope.pop("messages", None)
+        return {
+            "model": self.model,
+            "messages": list(self.messages),
+            "stream": bool(stream),
+            "max_tokens": self.resolved_max_new_tokens,
+            "pra": envelope,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         values = asdict(self)

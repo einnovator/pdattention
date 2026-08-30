@@ -26,6 +26,8 @@ class SessionCreate(BaseModel):
     user_id: str = "local-user"
     session_id: str | None = None
     task: str | None = None
+    context_transport: str | None = Field(default=None, pattern="^(auto|pra|text)$")
+    allow_text_fallback: bool | None = None
 
 
 class MessageCreate(BaseModel):
@@ -87,6 +89,13 @@ class AgentWebService:
         profile, _ = self.registry.resolve(profile_name=selected_profile, config_path=self.config_path)
         if self.pra_override:
             profile = replace(profile, pra=self.pra_override)
+        transport_overrides: dict[str, Any] = {}
+        if request.context_transport is not None:
+            transport_overrides["context_transport"] = request.context_transport
+        if request.allow_text_fallback is not None:
+            transport_overrides["allow_text_fallback"] = request.allow_text_fallback
+        if transport_overrides:
+            profile = replace(profile, **transport_overrides)
         launch = self.launcher.launch(profile)
         launch.agent.config = replace(launch.agent.config, user_id=request.user_id)
         state = launch.agent.start_session(request.session_id, task_description=request.task)
@@ -141,10 +150,19 @@ class AgentWebService:
         except KeyError as error:
             raise KeyError(session_id) from error
         state = agent.state
+        runtime = getattr(agent, "runtime", None)
+        backend = getattr(runtime, "backend", None)
+        transport = (
+            dict(backend.inspect().get("transport", {}))
+            if backend is not None and hasattr(backend, "inspect")
+            else {}
+        )
         return {
             "session_id": state.session_id,
             "user_id": state.user_id,
             "profile": self.profile_names[session_id],
+            "runtime": dict(getattr(agent, "product_summary", {})),
+            "transport": transport,
             "version": state.version,
             "active_task_id": state.active_task_id,
             "tasks": state.tasks.to_dict(),

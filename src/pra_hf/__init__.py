@@ -113,6 +113,21 @@ from .agent_resources import (
 from .tool_records import ToolRecord, ToolSchema, tool_record_from_callable
 from .toolsets import Tool, Toolset, default_toolset
 from .agent import AgentTurn, PRAAgent, PRAAgentConfig
+from .agent_transport import (
+    AgentTransportCapabilities,
+    AgentTransportError,
+    AgentTurnContext,
+    AgentWireMode,
+    CapabilityNegotiator,
+    ContextTransportMode,
+    EndpointUnavailableError,
+    NegotiatedRemoteBackend,
+    PRAProtocolRequiredError,
+    context_record_to_wire_resource,
+    render_text_messages,
+    render_text_prompt,
+    resolve_wire_mode,
+)
 from .agent_profiles import (
     AgentLaunch,
     AgentLauncher,
@@ -475,6 +490,19 @@ __all__ += [
 ]
 
 __all__ += [
+    "AgentTransportCapabilities",
+    "AgentTransportError",
+    "AgentTurnContext",
+    "AgentWireMode",
+    "CapabilityNegotiator",
+    "ContextTransportMode",
+    "EndpointUnavailableError",
+    "NegotiatedRemoteBackend",
+    "PRAProtocolRequiredError",
+    "context_record_to_wire_resource",
+    "render_text_messages",
+    "render_text_prompt",
+    "resolve_wire_mode",
     "AgentLaunch",
     "AgentLauncher",
     "AgentProfile",

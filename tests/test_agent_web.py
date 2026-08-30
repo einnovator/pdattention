@@ -109,6 +109,25 @@ def test_web_applies_user_and_server_pra_override() -> None:
     assert launcher.last_profile.pra == "ECONOMY"
 
 
+def test_web_applies_session_transport_override() -> None:
+    launcher = FakeLauncher()
+    service = AgentWebService(registry=FakeRegistry(), launcher=launcher)
+    client = TestClient(create_app(service=service))
+
+    response = client.post(
+        "/api/sessions",
+        json={
+            "session_id": "native-required",
+            "context_transport": "pra",
+            "allow_text_fallback": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert launcher.last_profile.context_transport.value == "pra"
+    assert launcher.last_profile.allow_text_fallback is False
+
+
 def test_web_lifecycle_command_preserves_profile_and_pra_override(tmp_path) -> None:
     command = AgentWebLifecycle(tmp_path).command(
         host="127.0.0.1",

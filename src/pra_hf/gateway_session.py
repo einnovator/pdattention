@@ -114,6 +114,7 @@ class GatewaySessionState:
     prefix_cache_handle: str | None = None
     known_resources: Mapping[str, str] = field(default_factory=dict)
     known_resource_metadata: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    known_resource_bodies: Mapping[str, Any] = field(default_factory=dict, repr=False)
     last_profile: str | None = None
     last_policy_digest: str | None = None
     model_revision: str | None = None
@@ -132,6 +133,7 @@ class GatewaySessionState:
             "known_resource_metadata",
             {key: dict(value) for key, value in self.known_resource_metadata.items()},
         )
+        object.__setattr__(self, "known_resource_bodies", dict(self.known_resource_bodies))
         if not self.cache_affinity_key:
             object.__setattr__(
                 self,
@@ -176,6 +178,7 @@ class ResolvedSessionTurn:
     outbound_messages: tuple[Mapping[str, Any], ...]
     outbound_history_mode: HistoryMode
     resource_deltas: tuple[ResourceDelta, ...]
+    active_resources: tuple[Any, ...]
     gateway_prefix_stable: bool
     prefix_changed_reason: str | None
     message_bytes_sent: int
@@ -212,6 +215,7 @@ class GatewaySessionRegistry:
                 messages,
                 HistoryMode.FULL,
                 (),
+                tuple(request.resources),
                 False,
                 "no_session_id",
                 _bytes(messages),
@@ -248,11 +252,17 @@ class GatewaySessionRegistry:
                     else HistoryMode.FULL
                 )
             outbound = new_messages if requested_outbound == HistoryMode.DELTA else canonical
-            deltas = self._resource_deltas(previous, request.resources)
+            if request.resource_ops:
+                active_resources, deltas = self._apply_resource_ops(
+                    previous, request.resource_ops, request.resources
+                )
+            else:
+                active_resources = tuple(request.resources)
+                deltas = self._resource_deltas(previous, active_resources)
             outbound_deltas = deltas if resource_delta else ()
             resource_payload = [delta.to_dict() for delta in outbound_deltas]
             if not resource_delta:
-                resource_payload = [resource.to_dict() for resource in request.resources]
+                resource_payload = [resource.to_dict() for resource in active_resources]
             message_bytes = _bytes(outbound)
             resource_bytes = _bytes(resource_payload)
             delta_bytes = message_bytes + resource_bytes if requested_outbound == HistoryMode.DELTA else 0
@@ -262,6 +272,7 @@ class GatewaySessionRegistry:
                 tuple(outbound),
                 requested_outbound,
                 tuple(outbound_deltas),
+                tuple(active_resources),
                 stable,
                 reason,
                 message_bytes,
@@ -285,10 +296,20 @@ class GatewaySessionRegistry:
             return turn.state
         resources = dict(turn.state.known_resources)
         metadata = dict(turn.state.known_resource_metadata)
-        for delta in self._resource_deltas(turn.state, request.resources):
+        bodies = dict(turn.state.known_resource_bodies)
+        active_by_id = {
+            resource.resource_id: resource for resource in turn.active_resources
+        }
+        committed_deltas = (
+            list(request.resource_ops)
+            if request.resource_ops
+            else self._resource_deltas(turn.state, turn.active_resources)
+        )
+        for delta in committed_deltas:
             if delta.operation == ResourceOperation.REMOVE:
                 resources.pop(delta.resource_id, None)
                 metadata.pop(delta.resource_id, None)
+                bodies.pop(delta.resource_id, None)
             else:
                 resources[delta.resource_id] = delta.version
                 metadata[delta.resource_id] = {
@@ -296,6 +317,9 @@ class GatewaySessionRegistry:
                     "record_type": delta.record_type,
                     "authorization_scope": delta.authorization_scope,
                 }
+                body = delta.resource or active_by_id.get(delta.resource_id)
+                if body is not None:
+                    bodies[delta.resource_id] = body
         policy_digest = canonical_digest(dict(request.pra_policy))
         profile = request.pra_policy.get("profile") if request.pra_policy else None
         updated = replace(
@@ -318,6 +342,7 @@ class GatewaySessionRegistry:
             prefix_cache_handle=prefix_cache_handle or turn.state.prefix_cache_handle,
             known_resources=resources,
             known_resource_metadata=metadata,
+            known_resource_bodies=bodies,
             last_profile=(
                 turn.state.last_profile if profile is None else str(profile)
             ),
@@ -405,6 +430,37 @@ class GatewaySessionRegistry:
                 info.get("authorization_scope"),
             ))
         return deltas
+
+    @staticmethod
+    def _apply_resource_ops(
+        previous: GatewaySessionState,
+        operations: Sequence[ResourceDelta],
+        supplied_resources: Sequence[Any] = (),
+    ) -> tuple[tuple[Any, ...], list[ResourceDelta]]:
+        """Apply client deltas to the gateway inventory without leaking bodies."""
+
+        active = dict(previous.known_resource_bodies)
+        supplied = {resource.resource_id: resource for resource in supplied_resources}
+        normalized: list[ResourceDelta] = []
+        for delta in operations:
+            if delta.operation in {ResourceOperation.ADD, ResourceOperation.UPDATE}:
+                body = delta.resource or supplied.get(delta.resource_id)
+                if body is None:
+                    raise ValueError(
+                        f"{delta.operation.value} requires a resource body for {delta.resource_id}."
+                    )
+                if body.resource_id != delta.resource_id:
+                    raise ValueError("Resource operation identity does not match its body.")
+                active[delta.resource_id] = body
+            elif delta.operation == ResourceOperation.REMOVE:
+                active.pop(delta.resource_id, None)
+            elif delta.operation == ResourceOperation.UNCHANGED:
+                if delta.resource_id not in active:
+                    raise ValueError(
+                        f"Unknown unchanged resource {delta.resource_id}; full resync required."
+                    )
+            normalized.append(delta)
+        return tuple(active[key] for key in sorted(active)), normalized
 
     def _ensure_durable(self, request: Any) -> None:
         if self.session_service is None:

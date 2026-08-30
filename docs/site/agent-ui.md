@@ -36,6 +36,9 @@ profiles:
       scope_policy: task_adaptive
     context:
       records: 16
+      transport: auto
+      allow_text_fallback: true
+      require: [logical_refs, typed_records]
     generation:
       max_new_tokens: 2048
 ```
@@ -49,7 +52,15 @@ PRA runtime profile, bundle, or configuration.
 pra agent chat -p work
 pra agent run -p work "Review the failing tests."
 pra agent inspect -p work --yaml
+pra agent chat -p work --context-transport auto
+pra agent run -p work --context-transport text "Run the compatibility baseline."
 ```
+
+The startup summary and `/runtime` command show the resolved context transport,
+capability source, gateway mode, engine integration level, and native-K/V
+support. AUTO negotiates once at launch/session reconnect. A PRA-capable gateway
+receives typed records even when it later performs a G10 text downgrade for its
+ordinary downstream engine. See [Agent/Gateway Protocol](protocol.md).
 
 Credential files remain server-side references. Their values are not placed in
 session state, profile output, benchmark registries, or model cards.
@@ -72,6 +83,19 @@ jQuery, Bootstrap, Dockview, and Lucide frontend is a presentation layer, not a
 second agent implementation. Dangerous tool calls emit a typed one-shot
 approval request and remain denied unless the backend receives that approval.
 
+`POST /api/sessions` may override only the safe transport controls for that
+session. For example, the following request requires the typed PRA protocol and
+disallows silent text fallback while leaving endpoint credentials and claimed
+capabilities under the selected server-side profile:
+
+```json
+{
+  "profile": "work",
+  "session_id": "native-required",
+  "context_transport": "pra",
+  "allow_text_fallback": false
+}
+```
+
 The default host is `127.0.0.1`. Binding to a public interface emits a warning;
 the experimental UI does not claim production authentication or hardening.
-

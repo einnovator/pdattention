@@ -59,11 +59,43 @@ class PRAGateway:
         self.fallback_injection = FallbackInjectionPolicy(fallback_injection)
 
     def capabilities(self) -> dict[str, Any]:
+        engine = self.adapter.capabilities()
+        accepts_typed = self.mode in {
+            PRAGatewayMode.G10_TEXT_FALLBACK,
+            PRAGatewayMode.G11_MEDIATION,
+        } or engine.logical_refs
+        effective = {
+            "logical_refs": accepts_typed,
+            "typed_records": accepts_typed,
+            "task_metadata": accepts_typed,
+            "resource_delta": accepts_typed,
+            "session_state": True,
+            "incremental_messages": True,
+            "cache_affinity": engine.cache_affinity,
+            "native_kv": bool(
+                engine.native_kv and self.mode != PRAGatewayMode.G10_TEXT_FALLBACK
+            ),
+            "streaming": engine.streaming,
+        }
         return {
+            "protocol": "pra",
+            "protocol_version": "1",
+            "endpoint_type": "gateway",
+            "gateway": {
+                "mode": self.mode.value,
+                "typed_records": accepts_typed,
+                "resource_delta": accepts_typed,
+                "session_state": True,
+                "incremental_messages": True,
+            },
+            "effective_capabilities": effective,
             "gateway_mode": self.mode.value,
-            "engine": self.adapter.capabilities().to_dict(),
+            "engine": {
+                **engine.to_dict(),
+                "type": engine.engine_type.value,
+            },
             "fallback_injection": self.fallback_injection.value,
-            "streaming_implemented": self.adapter.capabilities().streaming,
+            "streaming_implemented": engine.streaming,
         }
 
     def _negotiate(self, request: PRAWireRequest) -> tuple[list[str], list[str]]:
@@ -179,6 +211,7 @@ class PRAGateway:
         base = replace(
             request,
             messages=turn.outbound_messages,
+            resources=turn.active_resources,
             history_mode=turn.outbound_history_mode,
             engine_session_id=engine_session_id,
             prefix_cache_handle=request.prefix_cache_handle or turn.state.prefix_cache_handle,
@@ -193,7 +226,9 @@ class PRAGateway:
             }
             base = replace(
                 base,
-                resources=tuple(row for row in request.resources if row.resource_id in changed),
+                resources=tuple(
+                    row for row in turn.active_resources if row.resource_id in changed
+                ),
             )
         if session_needs_prepare:
             engine_session_id = self.adapter.prepare_session(base)
@@ -215,14 +250,14 @@ class PRAGateway:
                     messages=(*turn.state.serialized_messages, *new_messages),
                 )
             transformed, selected_ids = self._text_fallback(
-                replace(fallback_base, resources=request.resources)
+                replace(fallback_base, resources=turn.active_resources)
             )
         elif self.mode == PRAGatewayMode.G01_UPGRADE:
             transformed = self._upgrade(base)
             if transformed.resources and not capabilities.logical_refs:
                 raise PRACapabilityError("G01 upgrade requires an engine with logical_refs.")
         elif self.mode == PRAGatewayMode.G11_MEDIATION:
-            if request.resources and not capabilities.logical_refs:
+            if turn.active_resources and not capabilities.logical_refs:
                 raise PRACapabilityError(
                     "G11 mediation requires logical_refs; choose explicit G10 text fallback."
                 )
@@ -477,7 +512,35 @@ def _handler(gateway: PRAGateway):
             iterator = iter(rows)
             try:
                 for row in iterator:
-                    payload = json.dumps(row, default=str)
+                    if row.get("type") == "delta":
+                        value = {
+                            "id": row.get("request_id"),
+                            "object": "chat.completion.chunk",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": row.get("text", "")},
+                                "finish_reason": None,
+                            }],
+                        }
+                    elif row.get("type") == "done":
+                        value = {
+                            "id": row.get("request_id"),
+                            "object": "chat.completion.chunk",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop",
+                            }],
+                            "pra": row.get("trace", {}),
+                        }
+                    else:
+                        value = {
+                            "id": row.get("request_id"),
+                            "object": "chat.completion.chunk",
+                            "choices": [],
+                            "pra": row.get("trace", {}),
+                        }
+                    payload = json.dumps(value, default=str)
                     self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
                     self.wfile.flush()
                 self.wfile.write(b"data: [DONE]\n\n")
@@ -527,6 +590,13 @@ def _handler(gateway: PRAGateway):
                         self._sse(gateway.stream(request))
                     else:
                         result = gateway.generate(request)
+                        protocol_trace = next(
+                            (
+                                row for row in result.trace
+                                if row.get("stage") == "protocol_translation"
+                            ),
+                            {},
+                        )
                         self._json(
                             200,
                             {
@@ -535,6 +605,16 @@ def _handler(gateway: PRAGateway):
                                 "choices": [
                                     {"index": 0, "message": {"role": "assistant", "content": result.text}}
                                 ],
+                                "pra": {
+                                    "selected_resource_ids": protocol_trace.get(
+                                        "selected_resource_ids", []
+                                    ),
+                                    "materialized_tokens": result.raw.get(
+                                        "materialized_tokens", 0
+                                    ),
+                                    "native_kv": protocol_trace.get("native_kv", False),
+                                    "trace_id": request.correlation_id,
+                                },
                                 "pra_trace": list(result.trace),
                             },
                         )

@@ -13,6 +13,7 @@
 \input{../shared/results/paper4_5_runtime/generated_runtime_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_agent_plugin_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_cross_model_results.tex}
+\input{../shared/results/paper4_5_runtime/agent_transport_protocol/generated_agent_transport_results.tex}
 
 \title{From Sparse Selection to Physical Savings:\\
 A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
@@ -39,7 +40,10 @@ accounting, a versioned cross-model product-profile registry, bounded caching,
 profiling, and a scheduler-unaware serving
 handoff. A standalone gateway now separates agent semantics, PRA mediation,
 and engine-native state through a JSON logical-reference contract and explicit
-capability negotiation and streams HF-backed responses with request-owned
+capability negotiation. The agent now constructs an OpenAI-style conversational
+spine plus detached typed records; AUTO negotiation preserves those records for
+PRA-aware gateways and engines and renders text only at a compatibility
+boundary. It streams HF-backed responses with request-owned
 cleanup. The gateway now resolves engine-specific cache/session profiles,
 exercises prepare/close lifecycles, preserves append-only G10 prefixes, and
 transports message and resource deltas without conflating conventional prefix
@@ -811,9 +815,49 @@ engine owns tensor layout, physical K/V blocks, device placement, attention,
 and scheduling. The normal wire carries JSON logical identities rather than
 raw K/V tensors.
 
+The agent boundary is now explicit in code. \texttt{AgentTurnContext} contains
+the conventional chat trajectory and separate context, tool, skill, and task
+records. \texttt{PRAAgent} performs semantic selection but does not choose a
+wire representation. \texttt{NegotiatedRemoteBackend} probes
+\path{/v1/pra/capabilities} once at launch or reconnect and resolves TEXT,
+PRA-FULL, or PRA-DELTA from advertised features. A reachable endpoint without
+the capability route is ordinary OpenAI; an unreachable endpoint is an error,
+not a reason to silently downgrade.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.88\linewidth}\centering\small
+\texttt{AgentTurnContext}\par
+$\swarrow$\hspace{7em}$\searrow$\par
+OpenAI message spine\hspace{3em}typed \texttt{ContextRecord}s\par
+$\searrow$\hspace{7em}$\swarrow$\par
+\texttt{AUTO} capability negotiation\par
+$\swarrow$\hspace{7em}$\searrow$\par
+TEXT compatibility\hspace{3em}PRA logical wire\par
+\hspace{12em}$\swarrow$\hspace{5em}$\searrow$\par
+\hspace{9em}Gateway G10/G11\hspace{2em}direct PRA engine\par
+\hspace{12em}$\downarrow$\hspace{7em}$\downarrow$\par
+\hspace{9em}E0 or PRA engine\hspace{2em}logical/native resolution
+\end{minipage}}
+\caption{The agent preserves the pretrained conversational spine separately
+from detached typed context. Compatibility loss occurs only at an explicit
+TEXT or G10 downgrade; native K/V remains engine-side.}
+\label{fig:agent-transport}
+\end{figure}
+
+The canonical record projection preserves ID, type, URI, version, source
+fingerprint, provenance, authorization scope, task ownership/status, available
+views, selected view, and sharing scope. It never exports Python policy objects,
+native tensors, or physical page IDs. G10 advertises that its immediate gateway
+accepts typed records even when its downstream engine is E0; consequently AUTO
+sends logical records to the gateway and the gateway owns deterministic text
+injection. G11 forwards record, task, and session semantics. An ordinary server
+receives no \texttt{pra} field.
+
 The implemented \texttt{PRAWireRequest} preserves messages, tenant/session/task
 IDs, resources, facets, budgets, execution-policy hints, provenance, and
-required capabilities. \texttt{PRAEngineAdapter} reports static capabilities,
+required capabilities in a version-1 extension of the OpenAI request.
+\texttt{PRAEngineAdapter} reports static capabilities,
 prepares and closes sessions, and offers generation plus streaming. Four deterministic gateway modes cover both sides of the migration:
 G00 passes ordinary traffic to an ordinary engine; G10 converts explicitly
 selected resources to labeled text for a PRA-unaware engine; G01 infers typed
@@ -862,6 +906,14 @@ PRA does not replace ordinary prefix caching. A session may simultaneously
 retain a conventional sequential-prefix K/V cache and separately address PRA
 records or native detail. The gateway preserves append-only prefixes for
 ordinary engines and can send logical deltas to PRA-aware remote engines.
+The first PRA-DELTA turn sends a full inventory. Later unchanged resources emit
+body-free UNCHANGED operations; changed identity, content fingerprint,
+authorization, task ownership, or shareability emits ADD or UPDATE, while
+retirement emits REMOVE. The gateway retains bodies outside its public trace so
+G10 can render unchanged resources without requiring retransmission. Endpoint
+restart, reconnect, protocol mismatch, or explicit refresh clears the agent's
+acknowledged inventory and forces a full resynchronization before delta mode
+resumes.
 Figure~\ref{fig:gateway-two-cache} makes these state classes explicit. The
 inference engine physically owns the ordinary prefix cache. PRA logically owns
 resource identities, versions, addresses, and selection; the physical owner of
@@ -1010,6 +1062,19 @@ semantics can be isolated from model quality and network variance. Byte counts
 refer to the fixture's JSON envelopes, not tokenizer output or K/V allocation.
 Physical cache hits remain unknown unless adapter telemetry supplies them.
 
+\subsection{Negotiated agent-transport protocol}
+
+A second deterministic fixture follows one task through open, tool-result,
+waiting, resume, and complete turns. Its detached stream contains a long
+document, an atomic tool schema, a skill record, versioned task state, and a
+large tool result. The conversational spine grows normally. We freeze the same
+selected record identities and compare complete TEXT rendering, PRA-FULL, and
+PRA-DELTA JSON requests. Reported bytes include OpenAI fields and PRA metadata;
+visible-token estimates count message text only. Selection parity, task-status
+projection, and provider-native tool-schema preservation are hard assertions.
+The fixture does not call a language model, so it measures protocol semantics
+and retransmission rather than answer quality or TTFT.
+
 \subsection{Portable primitive protocol}
 
 The new benchmark uses PyTorch 2.12.1 with CUDA 12.6 on Windows 10, Python
@@ -1095,6 +1160,43 @@ explicit. This is a semantic and accounting result, not evidence that PRA
 transport is always smaller. All four conditions report physical prefix-cache
 hits as unknown. No vLLM/SGLang affinity, TTFT, throughput, or scheduler result
 is inferred from logical prefix stability.
+
+\subsection{Typed transport avoids repeated record bodies}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{agent_transport_protocol/agent_transport_wire_bytes.pdf}
+\caption{Per-turn JSON bytes for the five-turn task/tool workflow. PRA-FULL
+preserves explicit metadata but repeats all resource bodies; PRA-DELTA sends a
+body only for ADD or UPDATE and keeps unchanged resources logical.}
+\label{fig:agent-transport-bytes}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Negotiated transport contract over one deterministic long-running
+task. Byte totals are wire serialization, not model tokens or latency.}
+\begin{tabular}{lrr}
+\toprule
+Mode & Total bytes & Resource bodies sent\\
+\midrule
+TEXT & \AgentTransportTextBytes{} & 24 rendered copies\\
+PRA-FULL & \AgentTransportFullBytes{} & \AgentTransportFullBodies{}\\
+PRA-DELTA & \AgentTransportDeltaBytes{} & \AgentTransportDeltaBodies{}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+PRA-FULL is larger than TEXT in this fixture because it carries explicit
+identity, views, provenance, task state, and authorization metadata in addition
+to complete bodies. PRA-DELTA reduces total wire bytes by
+\AgentTransportDeltaTextReduction{} relative to TEXT and
+\AgentTransportDeltaFullReduction{} relative to PRA-FULL, while reducing body
+transmissions from \AgentTransportFullBodies{} to
+\AgentTransportDeltaBodies{}. All five turns preserve selected identity, task
+status, and the provider-native tool schema. These are transport invariants,
+not evidence that logical PRA improves model quality. A matched model benchmark
+must hold selection, model, positions, profile, and generation fixed.
 
 \subsection{Selection sharing removes repeated routing work}
 
@@ -1712,6 +1814,16 @@ profile, project config, user config, then package defaults. The short option
 Credential files remain server-side references and are redacted from session,
 inspection, benchmark, and model-card output.
 
+Agent profiles now independently select
+\path{context.transport=auto|pra|text}, text-fallback permission, and required
+features. The CLI exposes \path{--context-transport} and
+\path{--allow-text-fallback/--no-text-fallback}; \path{-P/--pra} continues to
+select the model/runtime PRA profile and is not overloaded with wire semantics.
+The launch summary, TUI \path{/runtime} command, and web session diagnostics
+report requested and resolved transport, capability source, gateway mode,
+integration level, resource-delta support, and native-K/V status without
+including record bodies.
+
 \texttt{pra agent chat} is the stable TUI reference and can resolve a default
 profile without model flags. \texttt{pra agent run} provides a noninteractive
 form. The optional FastAPI/WebSocket UI is another presentation layer over the
@@ -1748,8 +1860,9 @@ open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
-The Paper 4.5 gateway profile is a deterministic transport experiment. It does
-not use a real serving engine or distributed scheduler, and therefore
+The Paper 4.5 gateway and agent-transport profiles are deterministic transport
+experiments. They do not use a real serving engine or distributed scheduler,
+and therefore
 does not measure physical prefix-cache hits, worker affinity, warm-prefix TTFT,
 continuous batching, index residency, or network cost. The reported reuse
 fraction counts exact serialized messages, not tokenizer tokens. Engine
@@ -1792,8 +1905,10 @@ a cache-correct prefill handoff before it enters that comparison.
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
 have established SGLang and MLX native mechanism baselines and controlled
 vLLM-Metal V1 generation. A shared matched benchmark now closes E0/E2 semantic
-parity for SGLang and MLX but exposes a vLLM-Metal quality gap and decode
-overhead in both exact paths. Those results remain environment-specific and do not
+parity for all three engines. The corrected vLLM-Metal geometry reaches
+3,360/3,360 exact cross-family pairs, while expanded Qwen confirmations preserve
+2,086/2,086 per engine. SGLang and MLX still expose unfused decode overhead on
+reused paths. Those results remain environment-specific and do not
 turn the generic provider into an unconditional E2 claim. Native APC and
 offline concurrency now pass on the pinned Metal path when cache identity
 includes native selection and geometry; CUDA replication,
@@ -1815,6 +1930,13 @@ recovery interfaces and promote selected regions lazily. Its policy lattice
 makes routing frequency and physical lifetime
 inspectable, while the gateway permits ordinary and PRA-aware agents and
 engines to coexist without sending native tensors over the logical wire.
+The agent no longer flattens selected records before remote execution: AUTO
+preserves typed context through G10, G11, and direct PRA endpoints, while an
+ordinary endpoint receives one deterministic text rendering. In the five-turn
+task/tool fixture, PRA-DELTA cuts wire bytes by
+\AgentTransportDeltaTextReduction{} relative to TEXT and sends
+\AgentTransportDeltaBodies{} rather than \AgentTransportFullBodies{} resource
+bodies, without changing selected identity or task metadata.
 Conventional sequential-prefix K/V and detached PRA resource/native state are
 now separate capability and lifecycle axes. The tested gateway preserves every
 eligible prior prefix in its five-turn fixture and sends typed message/resource
@@ -1868,6 +1990,34 @@ configuration. The public sequence is \texttt{route}, \texttt{freeze\_native\_se
 \texttt{generate\_with\_native\_plan}. Task operations follow the analogous
 control boundary: parse untrusted proposals, validate them against a copy of
 the task graph, and only then replay accepted events through the session service.
+
+\subsection{Agent transport implementation map}
+
+The semantic/wire split is implemented in
+\path{src/pra_hf/agent_transport.py}. \texttt{AgentTurnContext} keeps messages,
+context records, tool records, skill records, provider-native tool schemas, and
+task metadata independent of transport. \texttt{context\_record\_to\_wire\_resource}
+is the only logical projection; \texttt{render\_text\_messages} is the only text
+compatibility renderer. \texttt{CapabilityNegotiator} distinguishes a reachable
+ordinary server from an unavailable endpoint and caches the version-1 feature
+handshake. \texttt{NegotiatedRemoteBackend} resolves the mode, computes message
+and resource deltas, sends the OpenAI-compatible envelope, and clears its
+acknowledged inventory on refresh.
+
+The call site is \path{src/pra_hf/agent.py}. \texttt{\_turn\_context} separates
+conversation records from detached records and projects active task state;
+\texttt{\_generate\_turn} delegates either to the negotiated backend or the
+canonical embedded text renderer. Thus selection and tool authorization remain
+agent responsibilities, while rendering and network serialization remain
+transport responsibilities.
+
+The public wire dataclasses and protocol-version check are in
+\path{src/pra_hf/deployment.py}. Gateway capability composition and G10/G11
+mediation are in \path{src/pra_hf/gateway.py}; acknowledged message/resource
+inventory, body-free unchanged operations, and resynchronization state are in
+\path{src/pra_hf/gateway_session.py}. The compatibility matrix is executable in
+\path{tests/test_agent_transport.py}; the five-turn byte fixture is
+\path{experiments/paper4_5_runtime/run_agent_transport_protocol.py}.
 
 \subsection{HF native-reference implementation map}
 

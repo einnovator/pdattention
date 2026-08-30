@@ -215,6 +215,8 @@ def test_openai_envelope_and_http_health_boundary():
         with urllib.request.urlopen(request, timeout=5) as response:
             completion = json.loads(response.read())
         assert completion["choices"][0]["message"]["content"] == "answer"
+        assert completion["pra"]["native_kv"] is False
+        assert completion["pra"]["trace_id"]
         assert completion["pra_trace"][0]["correlation_id"]
     finally:
         server.shutdown()
@@ -262,8 +264,9 @@ def test_openai_http_stream_uses_sse_and_terminates() -> None:
         with urllib.request.urlopen(request, timeout=5) as response:
             body = response.read().decode("utf-8")
             assert response.headers["Content-Type"] == "text/event-stream"
-        assert '"text": "ans"' in body
-        assert '"text": "wer"' in body
+        assert '"content": "ans"' in body
+        assert '"content": "wer"' in body
+        assert '"object": "chat.completion.chunk"' in body
         assert "data: [DONE]" in body
     finally:
         server.shutdown()

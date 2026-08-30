@@ -54,6 +54,12 @@ Raw K/V does not cross the normal harness/gateway wire boundary. `PRAWireRequest
 contains JSON-serializable messages, stable resource IDs, budgets, query facets,
 policy hints, and requested capabilities.
 
+The agent first creates an `AgentTurnContext`: OpenAI-style conversational
+messages remain the pretrained chat spine, while documents, task results, tools,
+and skills remain detached `ContextRecord` objects. AUTO transport projects them
+to `PRAWireResource` when the immediate endpoint advertises typed records. Only
+an ordinary endpoint receives the canonical text rendering.
+
 ## Runtime providers
 
 `pra runtime serve MODEL -e ENGINE` is the canonical engine launch path. Click
@@ -104,9 +110,10 @@ pra gateway serve \
 
 The gateway exposes `GET /health`, `GET /v1/pra/capabilities`,
 `POST /v1/pra/generate`, and `POST /v1/chat/completions`. It is currently
-non-streaming. The adapter protocol reserves `stream()` so SSE, tool-call streaming,
-cancellation, timeout propagation, and backpressure can be added without changing the
-logical request.
+streaming when its engine adapter supports streaming. HTTP content events use
+OpenAI `chat.completion.chunk` deltas; additive PRA-only chunks carry trace
+metadata with an empty `choices` list. Capability responses distinguish gateway,
+engine, and effective end-to-end features. See [Agent/Gateway Protocol](protocol.md).
 
 ## Engine levels
 

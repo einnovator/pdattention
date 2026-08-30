@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -21,8 +21,9 @@ from .agent_execution import (
     resource_tool_schema,
 )
 from .agent_resources import AgentResource, DiscoveryRequest, SideEffectClass
+from .agent_transport import AgentTurnContext, render_text_prompt
 from .capability_sdk import AgentConfig, CapabilitySDK
-from .context_records import ContextRecord, RecordType, RecordViewName, serialize_record
+from .context_records import ContextRecord, RecordType
 from .model import GenerationResult
 from .runtime import PRARuntime, PRARuntimeConfig, RuntimeToolExecution
 from .session_service import AgentSessionState, LocalSessionService, SessionService
@@ -64,6 +65,7 @@ class AgentTurn:
     disclosed_tool_uris: tuple[str, ...] = ()
     disclosed_skill_uris: tuple[str, ...] = ()
     tool_executions: tuple[RuntimeToolExecution, ...] = ()
+    transport: Mapping[str, object] = field(default_factory=dict)
 
 
 def _generated_text(value: str | GenerationResult) -> str:
@@ -263,17 +265,52 @@ class PRAAgent:
             tuple(uri for uri in uris if uri not in tool_ids),
         )
 
-    def _prompt(
+    @staticmethod
+    def _is_conversational_record(record: ContextRecord) -> bool:
+        """Keep the pretrained chat trajectory separate from detached context."""
+
+        return (
+            record.record_type == RecordType.GENERIC_TEXT
+            and isinstance(record.payload, Mapping)
+            and record.payload.get("role") in {"system", "user", "assistant", "tool"}
+            and "text" in record.payload
+        )
+
+    def _turn_context(
         self,
         query: str,
         scope: ScopeSelection | None,
         tool_uris: Sequence[str],
         skill_uris: Sequence[str],
-    ) -> str:
-        records = scope.selected_records if scope is not None else self.state.records[-self.config.context_records :]
-        context = "\n".join(
-            serialize_record(record, view=RecordViewName.FULL) for record in records
+        *,
+        extra_messages: Sequence[Mapping[str, object]] = (),
+    ) -> AgentTurnContext:
+        """Build semantic turn state without choosing its wire representation."""
+
+        selected = (
+            scope.selected_records
+            if scope is not None
+            else self.state.records[-self.config.context_records :]
         )
+        records = tuple(
+            record for record in selected if not self._is_conversational_record(record)
+        )
+        conversation = tuple(
+            {
+                "role": str(record.payload["role"]),
+                "content": str(record.payload["text"]),
+            }
+            for record in self.state.records
+            if self._is_conversational_record(record)
+        )
+        system = {
+            "role": "system",
+            "content": (
+                "You are a task-aware PRA agent. Use only disclosed tools. "
+                "Emit a tool request as <tool_call>{\"name\":...,\"arguments\":{...}}</tool_call>. "
+                f"Active task: {self.state.active_task_id or 'none'}."
+            ),
+        }
         by_uri = {
             resource.uri: resource
             for resource in (
@@ -283,22 +320,57 @@ class PRAAgent:
             )
         }
         schemas = [resource_tool_schema(by_uri[uri]) for uri in tool_uris if uri in by_uri]
-        skills = {
-            resource.uri: resource.content
-            for resource in (
-                (skill.to_agent_resource() for skill in self.runtime.capabilities.skills)
-                if self.runtime.capabilities
-                else ()
+        capability_records = {
+            record.record_id: record
+            for record in (
+                self.runtime.capabilities.records if self.runtime.capabilities else ()
             )
         }
-        return (
-            "You are a task-aware PRA agent. Use only disclosed tools. "
-            "Emit a tool request as <tool_call>{\"name\":...,\"arguments\":{...}}</tool_call>.\n"
-            f"Active task: {self.state.active_task_id or 'none'}\n"
-            f"Context:\n{context or '(empty)'}\n"
-            f"Disclosed tools:\n{json.dumps(schemas, sort_keys=True)}\n"
-            f"Selected skills:\n{json.dumps([skills[uri] for uri in skill_uris if uri in skills])}\n"
-            f"User: {query}\nAssistant:"
+        task = next(
+            (
+                row for row in self.state.tasks.tasks
+                if row.task_id == self.state.active_task_id
+            ),
+            None,
+        )
+        return AgentTurnContext(
+            messages=(system, *conversation, *tuple(dict(row) for row in extra_messages)),
+            records=records,
+            tool_records=tuple(
+                capability_records[uri] for uri in tool_uris if uri in capability_records
+            ),
+            skill_records=tuple(
+                capability_records[uri] for uri in skill_uris if uri in capability_records
+            ),
+            tools=tuple(schemas),
+            task_id=self.state.active_task_id,
+            task_metadata={} if task is None else task.to_dict(),
+            selected_record_ids=(
+                scope.selected_record_ids if scope is not None
+                else tuple(record.record_id for record in records)
+            ),
+            metadata={
+                "user_id": self.config.user_id,
+                "tenant_id": self.config.tenant_id,
+                "query": query,
+            },
+        )
+
+    def _generate_turn(self, turn: AgentTurnContext) -> str:
+        """Delegate rendering/transport to the configured model backend."""
+
+        operation = getattr(self.runtime.backend, "generate_turn", None)
+        if operation is not None:
+            return _generated_text(operation(
+                turn,
+                tenant_id=self.config.tenant_id,
+                session_id=self.state.session_id,
+                max_new_tokens=self.config.max_new_tokens,
+            ))
+        return _generated_text(
+            self.runtime.generate(
+                render_text_prompt(turn), max_new_tokens=self.config.max_new_tokens
+            )
         )
 
     def run_turn(self, query: str) -> AgentTurn:
@@ -309,10 +381,8 @@ class PRAAgent:
         self._append_message("user", query)
         scope = self._context(query)
         tool_uris, skill_uris = self._disclosed_capabilities(query)
-        prompt = self._prompt(query, scope, tool_uris, skill_uris)
-        text = _generated_text(
-            self.runtime.generate(prompt, max_new_tokens=self.config.max_new_tokens)
-        )
+        turn_context = self._turn_context(query, scope, tool_uris, skill_uris)
+        text = self._generate_turn(turn_context)
         executions = []
         for _ in range(self.config.max_tool_rounds):
             call = parse_tool_call(text)
@@ -347,13 +417,22 @@ class PRAAgent:
             if not execution.execution.executed:
                 text = f"Tool call rejected: {execution.execution.reason}"
                 break
-            prompt += (
-                f"\nTool result: {json.dumps(execution.record.compact_view(), default=str)}"
-                "\nAnswer the user using the result.\nAssistant:"
+            tool_message = {
+                "role": "tool",
+                "tool_call_id": execution.execution.resource_uri or "pra-tool-result",
+                "content": json.dumps(execution.record.compact_view(), default=str),
+            }
+            follow_up = self._turn_context(
+                query,
+                self._context(query),
+                tool_uris,
+                skill_uris,
+                extra_messages=(
+                    {"role": "assistant", "content": text},
+                    tool_message,
+                ),
             )
-            text = _generated_text(
-                self.runtime.generate(prompt, max_new_tokens=self.config.max_new_tokens)
-            )
+            text = self._generate_turn(follow_up)
         self._append_message("assistant", text)
         return AgentTurn(
             text=text,
@@ -362,6 +441,7 @@ class PRAAgent:
             disclosed_tool_uris=tool_uris,
             disclosed_skill_uris=skill_uris,
             tool_executions=tuple(executions),
+            transport=dict(self.runtime.backend.inspect().get("transport", {})),
         )
 
     def close(self) -> None:

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import urllib.request
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -12,7 +10,11 @@ from typing import Any, Mapping, Sequence
 import yaml
 
 from .agent import PRAAgent, PRAAgentConfig
-from .model import ReferenceHandle
+from .agent_transport import (
+    ContextTransportMode,
+    NegotiatedRemoteBackend,
+    resolve_wire_mode,
+)
 from .product_config import deep_merge, pra_home, read_yaml
 from .runtime import PRARuntime, PRARuntimeConfig
 from .runtime_providers import RuntimeConfig
@@ -56,6 +58,9 @@ class AgentProfile:
     mcp: Mapping[str, Any] = field(default_factory=dict)
     tasks: Mapping[str, Any] = field(default_factory=dict)
     context_records: int = 12
+    context_transport: ContextTransportMode | str = ContextTransportMode.AUTO
+    allow_text_fallback: bool = True
+    required_context_capabilities: tuple[str, ...] = ()
     max_new_tokens: int = 1024
     reserved: Mapping[str, Any] = field(default_factory=dict)
 
@@ -63,6 +68,10 @@ class AgentProfile:
         if self.context_records <= 0 or self.max_new_tokens <= 0:
             raise ValueError("Agent context and generation budgets must be positive.")
         object.__setattr__(self, "skill_directories", tuple(self.skill_directories))
+        object.__setattr__(self, "context_transport", ContextTransportMode(self.context_transport))
+        object.__setattr__(
+            self, "required_context_capabilities", tuple(self.required_context_capabilities)
+        )
         object.__setattr__(self, "mcp", dict(self.mcp))
         object.__setattr__(self, "tasks", dict(self.tasks))
         object.__setattr__(self, "reserved", dict(self.reserved))
@@ -128,6 +137,9 @@ class AgentProfile:
             mcp=dict(value.get("mcp", {})),
             tasks=dict(value.get("tasks", {})),
             context_records=int(context.get("records", 12)),
+            context_transport=str(context.get("transport", "auto")),
+            allow_text_fallback=bool(context.get("allow_text_fallback", True)),
+            required_context_capabilities=tuple(context.get("require", ())),
             max_new_tokens=int(generation.get("max_new_tokens", 1024)),
             reserved={key: value[key] for key in ("subagents", "memory", "connectors") if key in value},
         )
@@ -242,43 +254,36 @@ def _profile_to_input(value: Mapping[str, Any]) -> dict[str, Any]:
         "skills": {"directories": value.get("skill_directories", ())},
         "mcp": value.get("mcp", {}),
         "tasks": value.get("tasks", {}),
-        "context": {"records": value.get("context_records")},
+        "context": {
+            "records": value.get("context_records"),
+            "transport": (
+                value.get("context_transport", ContextTransportMode.AUTO).value
+                if isinstance(value.get("context_transport", ContextTransportMode.AUTO), ContextTransportMode)
+                else value.get("context_transport", "auto")
+            ),
+            "allow_text_fallback": value.get("allow_text_fallback", True),
+            "require": value.get("required_context_capabilities", ()),
+        },
         "generation": {"max_new_tokens": value.get("max_new_tokens")},
     }
 
 
-class RemoteOpenAIBackend:
-    """Minimal remote generation backend for gateway/OpenAI agent profiles."""
+class RemoteOpenAIBackend(NegotiatedRemoteBackend):
+    """Compatibility name for the negotiated OpenAI/PRA remote transport."""
 
-    name = "remote-openai"
-
-    def __init__(self, endpoint: str, model: str | None, credentials_file: str | None = None) -> None:
-        self.endpoint = endpoint.rstrip("/")
-        self.model = model
-        self.credentials_file = credentials_file
-
-    def add_reference(self, reference: str, *, text: str | None = None, uri: str | None = None) -> ReferenceHandle:
-        raise RuntimeError("Remote references are mediated by the gateway or prompt context.")
-
-    def generate(self, prompt: str, **kwargs: Any) -> str:
-        payload = json.dumps({
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": int(kwargs.get("max_new_tokens", 1024)),
-        }).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        token = os.environ.get("PRA_API_KEY") or os.environ.get("OPENAI_API_KEY")
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        request = urllib.request.Request(
-            self.endpoint + "/v1/chat/completions", data=payload, headers=headers
+    def __init__(
+        self,
+        endpoint: str,
+        model: str | None,
+        credentials_file: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            endpoint,
+            model,
+            credentials_file=credentials_file,
+            **kwargs,
         )
-        with urllib.request.urlopen(request, timeout=300) as response:
-            value = json.loads(response.read())
-        return str(value["choices"][0]["message"]["content"])
-
-    def inspect(self) -> Mapping[str, Any]:
-        return {"backend": self.name, "endpoint": self.endpoint, "model": self.model}
 
 
 @dataclass(frozen=True)
@@ -325,13 +330,49 @@ class AgentLauncher:
         else:
             if not profile.runtime.endpoint:
                 raise ValueError(f"Runtime mode '{mode}' requires an endpoint.")
+            backend = NegotiatedRemoteBackend(
+                profile.runtime.endpoint,
+                profile.model,
+                transport=profile.context_transport,
+                allow_text_fallback=profile.allow_text_fallback,
+                required_capabilities=profile.required_context_capabilities,
+                credentials_file=profile.credentials_file,
+            )
+            capabilities = backend.capabilities()
+            resolved_transport = resolve_wire_mode(
+                profile.context_transport,
+                capabilities,
+                required=profile.required_context_capabilities,
+                allow_text_fallback=profile.allow_text_fallback,
+            )
             runtime = PRARuntime(
                 config=PRARuntimeConfig(profile=profile.pra),
-                backend=RemoteOpenAIBackend(profile.runtime.endpoint, profile.model, profile.credentials_file),
+                backend=backend,
                 native_result_routing=False,
                 session_service=LocalSessionService(sessions),
             )
             agent = PRAAgent(runtime, config=agent_config)
+        transport_summary = (
+            {
+                "requested": profile.context_transport.value,
+                "resolved": "EMBEDDED_TEXT",
+                "capability_source": "python_inspection",
+                "typed_records": False,
+                "resource_delta": False,
+                "native_kv": False,
+            }
+            if mode == "embedded"
+            else {
+                "requested": profile.context_transport.value,
+                "resolved": resolved_transport.value,
+                "capability_source": capabilities.capability_source,
+                "typed_records": capabilities.typed_records,
+                "resource_delta": capabilities.resource_delta,
+                "native_kv": capabilities.native_kv,
+                "gateway_mode": capabilities.gateway_mode,
+                "integration_level": capabilities.integration_level,
+            }
+        )
         summary = {
             "agent_profile": profile.name,
             "model": profile.model or "provider-default",
@@ -344,6 +385,7 @@ class AgentLauncher:
             "sessions": str(sessions),
             "tools": profile.tools.approval,
             "skills": len(skill_values),
+            "context_transport": transport_summary,
         }
         agent.product_summary = summary
         return AgentLaunch(agent, profile, summary)

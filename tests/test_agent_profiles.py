@@ -26,6 +26,11 @@ profiles:
       candidates: 12
     generation:
       max_new_tokens: 2048
+    context:
+      records: 24
+      transport: pra
+      allow_text_fallback: false
+      require: [logical_refs, typed_records]
 """,
         encoding="utf-8",
     )
@@ -42,6 +47,10 @@ profiles:
     assert profile.pra == "ECONOMY"
     assert profile.tools.candidates == 12
     assert profile.max_new_tokens == 2048
+    assert profile.context_records == 24
+    assert profile.context_transport.value == "pra"
+    assert profile.allow_text_fallback is False
+    assert profile.required_context_capabilities == ("logical_refs", "typed_records")
     assert str(config.resolve()) in sources
 
 
@@ -90,4 +99,3 @@ def test_unknown_agent_config_major_version_fails(tmp_path) -> None:
     config.write_text("version: 2\nprofiles: {}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="Unsupported agent configuration version"):
         AgentProfileRegistry().load(config_path=config)
-

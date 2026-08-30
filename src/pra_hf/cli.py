@@ -472,7 +472,10 @@ def agent_cli() -> None:
     """Chat, run tasks, and launch the optional web UI."""
 
 
-def _resolve_agent_profile(profile, config, model, pra, engine, endpoint, workspace, skills):
+def _resolve_agent_profile(
+    profile, config, model, pra, engine, endpoint, workspace, skills,
+    context_transport=None, allow_text_fallback=None,
+):
     overrides = {}
     if model:
         overrides["model"] = model
@@ -489,6 +492,13 @@ def _resolve_agent_profile(profile, config, model, pra, engine, endpoint, worksp
         overrides["workspace"] = str(workspace)
     if skills:
         overrides["skills"] = {"directories": [str(path) for path in skills]}
+    if context_transport is not None or allow_text_fallback is not None:
+        context = {}
+        if context_transport is not None:
+            context["transport"] = context_transport
+        if allow_text_fallback is not None:
+            context["allow_text_fallback"] = allow_text_fallback
+        overrides["context"] = context
     return AgentProfileRegistry().resolve(profile_name=profile, config_path=config, overrides=overrides)
 
 
@@ -499,6 +509,8 @@ def _agent_options(function):
         click.option("-c", "--config", type=click.Path(exists=True, dir_okay=False, path_type=Path)),
         click.option("-w", "--workspace", type=click.Path(path_type=Path)),
         click.option("-s", "--skills", multiple=True, type=click.Path(exists=True, file_okay=False, path_type=Path)),
+        click.option("--context-transport", type=click.Choice(["auto", "pra", "text"])),
+        click.option("--allow-text-fallback/--no-text-fallback", default=None),
         click.option("--session"), click.option("-r", "--resume", is_flag=True), click.option("-t", "--task"),
         click.option("-v", "--verbose", is_flag=True),
     )
@@ -510,9 +522,9 @@ def _agent_options(function):
 @agent_cli.command("chat")
 @click.argument("legacy_model", required=False)
 @_agent_options
-def agent_chat(legacy_model, profile, pra, model, engine, endpoint, config, workspace, skills, session, resume, task, verbose) -> None:
+def agent_chat(legacy_model, profile, pra, model, engine, endpoint, config, workspace, skills, context_transport, allow_text_fallback, session, resume, task, verbose) -> None:
     """Open the persistent TUI; no flags uses the default profile."""
-    selected, trace = _resolve_agent_profile(profile, config, model or legacy_model, pra, engine, endpoint, workspace, skills)
+    selected, trace = _resolve_agent_profile(profile, config, model or legacy_model, pra, engine, endpoint, workspace, skills, context_transport, allow_text_fallback)
     launch = AgentLauncher().launch(selected)
     if verbose:
         _emit({"resolution": trace, "profile": selected.redacted_dict(), "mcp": load_mcp_config(selected)})
@@ -528,12 +540,12 @@ def agent_chat(legacy_model, profile, pra, model, engine, endpoint, config, work
 @click.argument("prompt", required=False)
 @_agent_options
 @click.option("--json", "json_output", is_flag=True)
-def agent_run(prompt, profile, pra, model, engine, endpoint, config, workspace, skills, session, resume, task, verbose, json_output) -> None:
+def agent_run(prompt, profile, pra, model, engine, endpoint, config, workspace, skills, context_transport, allow_text_fallback, session, resume, task, verbose, json_output) -> None:
     """Run one noninteractive turn from an argument or stdin."""
     query = prompt if prompt is not None else sys.stdin.read()
     if not query.strip():
         raise click.UsageError("Provide PROMPT or pipe input on stdin.")
-    selected, trace = _resolve_agent_profile(profile, config, model, pra, engine, endpoint, workspace, skills)
+    selected, trace = _resolve_agent_profile(profile, config, model, pra, engine, endpoint, workspace, skills, context_transport, allow_text_fallback)
     launch = AgentLauncher().launch(selected)
     try:
         launch.agent.start_session(session, resume=resume or selected.resume_last, task_description=task)

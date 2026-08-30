@@ -61,9 +61,12 @@ class AgentShell:
             elif key == "model":
                 self.output(f"model={summary.get('model', '-')} revision={summary.get('revision', '-')}")
             else:
+                transport = summary.get("context_transport", {})
                 self.output(
                     f"mode={summary.get('runtime_mode', '-')} engine={summary.get('engine', '-')} "
-                    f"endpoint={summary.get('endpoint', '-')}"
+                    f"endpoint={summary.get('endpoint', '-')} "
+                    f"context_transport={transport.get('resolved', '-')} "
+                    f"native_kv={transport.get('native_kv', False)}"
                 )
         elif command == "/session":
             self.output(self.status())
