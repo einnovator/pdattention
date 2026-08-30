@@ -1,6 +1,7 @@
 """SGLang transport and hierarchical logical-memory bridges for PRA."""
 
 from .adapter import SGLangEngineAdapter, SGLangNativeExecutor
+from .native_executor import SGLangInProcessNativeExecutor
 from .hicache import (
     PRAHiCacheMetrics,
     PRAHiCacheTier,
@@ -17,6 +18,7 @@ from .mlx_native import (
 
 __all__ = [
     "SGLangEngineAdapter",
+    "SGLangInProcessNativeExecutor",
     "PRAHiCacheMetrics",
     "PRAHiCacheTier",
     "SGLangMLXNativeBridge",
