@@ -365,7 +365,7 @@ def serialize_native_memory(
             logical_dtype = str(value.dtype)
             try:
                 host = np.asarray(value).copy()
-            except (TypeError, RuntimeError):
+            except (TypeError, ValueError, RuntimeError):
                 import mlx.core as mx
 
                 # MLX bfloat16 does not expose a NumPy-compatible PEP 3118

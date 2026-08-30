@@ -21,6 +21,13 @@ from pra_hf import (
     PRAWireRequest,
     PRAWireResource,
 )
+from pra_hf.hf_storage import HFReferenceHotBridge
+from pra_hf.storage_lifecycle import (
+    PRAStorageManager,
+    PRAStoragePolicy,
+    PRAStorageTier,
+    PRAStorageTierConfig,
+)
 
 
 class TinyTokenizer:
@@ -251,6 +258,49 @@ def test_hf_engine_stream_owns_references_until_decode_finishes() -> None:
     assert rows[-1]["request_id"] == request.request_id
     assert adapter.capabilities().streaming is True
     assert pra.stats()["references"] == []
+
+
+def test_hf_engine_routes_repeated_request_through_durable_storage(tmp_path) -> None:
+    torch.manual_seed(3063)
+    pra = PRAForCausalLM.from_model(_model(), TinyTokenizer(), pra_config=_config())
+    policy = PRAStoragePolicy(
+        profile="test-hf-serving",
+        hot=PRAStorageTierConfig(max_bytes="64MiB"),
+        warm=PRAStorageTierConfig(
+            path=str(tmp_path / "warm"), max_bytes="64MiB"
+        ),
+        cold=PRAStorageTierConfig(enabled=False),
+    )
+    manager = PRAStorageManager(policy, hot=HFReferenceHotBridge(pra))
+    adapter = HuggingFaceEngineAdapter(pra, storage_manager=manager)
+    resource = PRAWireResource(
+        "facts",
+        "pra://tenant-a/facts",
+        text="abcdefgh",
+        metadata={"tenant_id": "tenant-a", "version": "v1"},
+    )
+
+    def request():
+        return PRAWireRequest(
+            model="offline/tiny",
+            messages=({"role": "user", "content": "question"},),
+            tenant_id="tenant-a",
+            session_id="session-a",
+            resources=(resource,),
+            engine_hints={"max_new_tokens": 2},
+        )
+
+    first = list(adapter.stream(request()))
+    key = next(iter(manager.entries))
+    assert manager.entries[key].current_tier == PRAStorageTier.WARM
+    assert pra.stats()["references"] == []
+
+    second = list(adapter.stream(request()))
+    assert [row.get("text") for row in first if row["type"] == "delta"] == [
+        row.get("text") for row in second if row["type"] == "delta"
+    ]
+    assert manager.metrics.hits["warm"] == 1
+    assert manager.entries[key].current_tier == PRAStorageTier.WARM
 
 
 def test_request_per_layer_routes_each_layer_once_and_reports_policy():
