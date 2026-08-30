@@ -131,10 +131,19 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                         config.do_sample = False
                         configs.append(config)
                     results = pipe.generate(histories, configs)
+                    batch_size = len(results)
                     for spec, result in zip(wave_specs, results):
                         _, slot, number, _, expected = spec
                         perf = result.perf_metrics
                         output = _decode(tokenizer, result)
+                        input_tokens = _metric(perf, "get_num_input_tokens")
+                        output_tokens = _metric(perf, "get_num_generated_tokens")
+                        # ContinuousBatchingPipeline reports these counters for
+                        # the whole batch on each GenerationResult instance.
+                        if input_tokens is not None:
+                            input_tokens /= batch_size
+                        if output_tokens is not None:
+                            output_tokens /= batch_size
                         row = {
                             "representation": representation,
                             "workload": workload,
@@ -147,8 +156,8 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                             "ttft_ms": _metric(perf, "get_ttft"),
                             "tpot_ms": _metric(perf, "get_tpot"),
                             "generation_ms": _metric(perf, "get_generate_duration"),
-                            "input_tokens": _metric(perf, "get_num_input_tokens"),
-                            "output_tokens": _metric(perf, "get_num_generated_tokens"),
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
                         }
                         group_rows.append(row)
                         samples.append(row)
