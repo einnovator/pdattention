@@ -99,6 +99,33 @@ def test_native_memory_wire_format_round_trips_and_quantizes() -> None:
     assert np.max(np.abs(decoded.layers[0].keys - keys)) < 0.02
 
 
+def test_native_cold_codec_can_quantize_values_in_selected_layers_only() -> None:
+    import numpy as np
+
+    layers = tuple(
+        MLXNativeLayerKV(
+            np.linspace(-2, 2, 64, dtype=np.float32).reshape(1, 2, 4, 8) + index,
+            np.linspace(-1, 1, 64, dtype=np.float32).reshape(1, 2, 4, 8) - index,
+        )
+        for index in range(2)
+    )
+    memory = MLXNativeMemory(layers, source_tokens=4)
+    lossless = serialize_native_memory(memory)
+    codec = MLXNativeColdCodec(
+        quantized_layers=(1,), quantize_keys=False, quantize_values=True
+    )
+
+    quantized, metadata = codec.encode(lossless, "int8")
+    decoded = deserialize_native_memory(codec.decode(quantized, metadata))
+
+    assert metadata["quantized_layers"] == [1]
+    assert metadata["quantize_keys"] is False
+    assert np.array_equal(decoded.layers[0].keys, layers[0].keys)
+    assert np.array_equal(decoded.layers[0].values, layers[0].values)
+    assert np.array_equal(decoded.layers[1].keys, layers[1].keys)
+    assert np.max(np.abs(decoded.layers[1].values - layers[1].values)) < 0.02
+
+
 def test_segment_store_round_trips_full_memory_and_reads_selected_layer(tmp_path) -> None:
     import numpy as np
 

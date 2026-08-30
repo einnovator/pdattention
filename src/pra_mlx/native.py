@@ -349,14 +349,26 @@ def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMem
 
 
 def serialize_native_memory(
-    memory: MLXNativeMemory, *, quantization: str = "none"
+    memory: MLXNativeMemory,
+    *,
+    quantization: str = "none",
+    quantized_layers: Iterable[int] | None = None,
+    quantize_keys: bool = True,
+    quantize_values: bool = True,
 ) -> bytes:
-    """Serialize complete native K/V with independent per-array quantization."""
+    """Serialize native K/V with independently selectable int8 arrays.
+
+    The default remains all-layer K/V quantization.  Calibration experiments
+    can retain exact keys, values, or layer bands to localize quality loss.
+    """
 
     import numpy as np
 
     if quantization not in {"none", "int8"}:
         raise ValueError("MLX native serialization supports none or int8 quantization.")
+    layer_filter = (
+        None if quantized_layers is None else frozenset(map(int, quantized_layers))
+    )
     arrays: dict[str, object] = {}
     descriptors: dict[str, dict[str, object]] = {}
     for index, layer in enumerate(memory.layers):
@@ -372,7 +384,13 @@ def serialize_native_memory(
                 # buffer. Float32 is an exact value-preserving carrier for
                 # bfloat16 and is cast back to the logical dtype on restore.
                 host = np.asarray(value.astype(mx.float32)).copy()
-            if quantization == "int8":
+            component_enabled = quantize_keys if suffix == "k" else quantize_values
+            selected_for_quantization = (
+                quantization == "int8"
+                and component_enabled
+                and (layer_filter is None or index in layer_filter)
+            )
+            if selected_for_quantization:
                 floating = host.astype(np.float32)
                 maximum = float(np.max(np.abs(floating))) if floating.size else 0.0
                 scale = maximum / 127.0 if maximum else 1.0
@@ -394,6 +412,11 @@ def serialize_native_memory(
             "source_tokens": memory.source_tokens,
             "layer_count": len(memory.layers),
             "quantization": quantization,
+            "quantized_layers": (
+                "all" if layer_filter is None else sorted(layer_filter)
+            ),
+            "quantize_keys": bool(quantize_keys),
+            "quantize_values": bool(quantize_values),
             "arrays": descriptors,
         },
         sort_keys=True,
@@ -454,14 +477,40 @@ def deserialize_native_memory(payload: bytes) -> MLXNativeMemory:
 class MLXNativeColdCodec:
     """Transform lossless native-memory blobs to and from quantized COLD blobs."""
 
+    def __init__(
+        self,
+        *,
+        quantized_layers: Iterable[int] | None = None,
+        quantize_keys: bool = True,
+        quantize_values: bool = True,
+    ) -> None:
+        self.quantized_layers = (
+            None
+            if quantized_layers is None
+            else tuple(sorted(set(map(int, quantized_layers))))
+        )
+        self.quantize_keys = bool(quantize_keys)
+        self.quantize_values = bool(quantize_values)
+
     def encode(
         self, payload: bytes, quantization: str
     ) -> tuple[bytes, Mapping[str, object]]:
         memory = deserialize_native_memory(payload)
-        encoded = serialize_native_memory(memory, quantization=quantization)
+        encoded = serialize_native_memory(
+            memory,
+            quantization=quantization,
+            quantized_layers=self.quantized_layers,
+            quantize_keys=self.quantize_keys,
+            quantize_values=self.quantize_values,
+        )
         return encoded, {
             "schema": "pra-mlx-cold-codec-v1",
             "quantization": quantization,
+            "quantized_layers": (
+                "all" if self.quantized_layers is None else list(self.quantized_layers)
+            ),
+            "quantize_keys": self.quantize_keys,
+            "quantize_values": self.quantize_values,
             "lossless_bytes": len(payload),
             "encoded_bytes": len(encoded),
         }
