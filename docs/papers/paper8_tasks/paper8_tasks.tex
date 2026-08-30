@@ -95,6 +95,32 @@ R_8=(R_7,\Pi_T),
 \]
 where $\Pi_T$ records ownership, optional producer and consumers, relation type, and event sequence. Completed tasks are demoted from hot execution state to compact/index state; their exact backing remains addressable.
 
+\subsection{Negotiated task and record transport}
+
+Remote execution must not turn the harness projection back into one opaque user
+prompt. The agent retains an OpenAI-style conversational spine and supplies
+selected task, result, document, tool, and skill records as a separate logical
+resource stream. A canonical wire projection carries stable record identity,
+type, version, source fingerprint, task ownership/status, dependency
+provenance, named views, authorization scope, and tenant/session binding. It
+does not carry native K/V or physical cache identifiers.
+
+The immediate endpoint advertises whether it accepts typed records, task
+metadata, session state, incremental messages, and resource deltas. With those
+features, the first task turn sends a full logical inventory; later turns send
+append-only messages and record operations. A transition from active to
+blocked, resumed, and completed changes the task-record version and emits an
+UPDATE even when its backing document is unchanged. Downstream storage can
+therefore preserve open-task dependencies and apply completion compaction
+without reconstructing task meaning from prose.
+
+An ordinary endpoint receives a deterministic text rendering. A gateway backed
+by an ordinary engine can still accept typed records and own this downgrade;
+the agent should not discard task identity prematurely. On reconnect or engine
+restart, the agent repeats capability negotiation and resends the full resource
+inventory before returning to delta mode. Storage deduplication remains
+subordinate to authorization and never grants cross-session access.
+
 \section{Experimental Protocol}
 We order experiments by causal dependence.
 
@@ -242,6 +268,13 @@ Structural scope cannot materialize evidence that exceeds the physical budget. L
 Corrected full all-layer native consumption reaches 60.0\%, 13.3 points below visible task scope, while late sparse consumption remains zero. This establishes a working full native path in the bounded diagnostic, not a production-quality sparse integration. The Paper-3 transfer is deliberately unretuned and should not be read as a cross-paper leaderboard comparison.
 
 Finally, measurements come from one CUDA workstation and exhaustive Python orchestration. Token, byte, and lifecycle counters are real, but the study makes no serving-throughput, asymptotic scaling, or distributed-runtime claim. Authorization, privacy boundaries, adversarial task metadata, and multi-user isolation are outside the experiment.
+
+The negotiated task transport is a product contract, not an additional
+task-scope accuracy result. Preserving typed metadata across the wire prevents
+a representational loss and supports lifecycle policy, but it does not show
+that a remote model plans better or that delta transport lowers TTFT. Those
+claims require matched TEXT/PRA execution and serving measurements with the
+same selected task records.
 
 \section{Conclusion}
 In an interleaved agent session, the physically available history is a poor default retrieval scope. Explicit typed task state and workflow relations give PRA a sharper first-stage signal: structural scope makes complete evidence available in 93.3\% rather than 33.3\% of production cases, removes measured cross-task contamination, and requests 93.5 rather than 234.3 native tokens. The same scope improves frozen-model behavior when selected exact evidence is consumable. Hard local filtering fails on dependencies; adaptive widening recovers from damaged metadata at the cost of isolation; and joins remain bounded by materialization and composition capacity. These results support task structure as a practical context-allocation primitive, with authority retained by the harness and latent planning left to future work.
