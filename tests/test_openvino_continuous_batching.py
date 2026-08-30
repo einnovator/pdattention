@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from experiments.paper6_3_openvino.run_continuous_batching import _aggregate
+from experiments.paper6_3_openvino.run_continuous_batching import _aggregate, _decode
 from pra_hf import serving_benchmark
 
 
@@ -19,3 +19,8 @@ def test_continuous_batching_aggregate_reports_tails_and_throughput() -> None:
     assert result["output_throughput_tokens_s"] == 25.0
     assert result["quality_success_rate"] == 1.0
     assert result["ttft_ms_p99"] > result["ttft_ms_p95"]
+
+
+def test_decode_accepts_current_decoded_generation_field() -> None:
+    result = type("Result", (), {"m_generation_ids": ["answer"]})()
+    assert _decode(object(), result) == "answer"

@@ -51,7 +51,10 @@ def _decode(tokenizer: object, result: object) -> str:
     generations = getattr(result, "m_generation_ids", ())
     if not generations:
         return ""
-    return str(tokenizer.decode(generations[0]))
+    first = generations[0]
+    # OpenVINO GenAI 2026.3 exposes decoded strings here, while older
+    # releases expose token-id sequences under the same field.
+    return first if isinstance(first, str) else str(tokenizer.decode(first))
 
 
 def _aggregate(harness: object, rows: list[Mapping[str, object]], wall_seconds: float) -> Mapping[str, object]:
