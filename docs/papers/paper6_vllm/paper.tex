@@ -44,12 +44,14 @@ Connectors, online server tails, cross-model
 replication, and CUDA integration remain open. A final matched-selection study
 uses the same routed QASPER, HotpotQA, and 2WikiMultiHopQA evidence for visible
 E0 and native E2 execution. E2 removes 90.6--93.0\% of visible prompt tokens,
-and 593 of 840 paired outputs are exact. Aggregate E2-minus-E0 F1 is
-$+0.0002$, but mean absolute pairwise F1 change is 0.0098. Cold, warm,
-multi-query, and concurrency cost ratios are 1.030, 1.001, 0.988, and 1.002,
-respectively, where lower is better. This substantially narrows but does not
-close the native transport gap, so exact matched-quality promotion remains
-open.
+and all 840 paired outputs are exact. A geometry audit explains an earlier
+593/840 result: it compared full-prefix E0 prefill with query-only E2 prefill,
+so the two conditions traversed different fused-kernel shapes. Priming E0's
+source through APC and capturing E2 pages from vLLM's own source prefill holds
+that geometry fixed. Cold, warm, multi-query, and concurrency cost ratios are
+0.985, 1.004, 0.993, and 0.981, respectively, where lower is better. Exact
+matched-quality promotion is therefore closed for this model and backend;
+connectors, CUDA, and broader model replication remain open.
 \end{abstract}
 
 \section{Introduction}
@@ -339,8 +341,11 @@ while the earlier short-prefix experiment supplies the cleaner 5/5 result.
 The final experiment freezes 20 routed examples from each of QASPER, HotpotQA,
 and 2WikiMultiHopQA across five seeds. Within an example, E0 and E2 receive the
 same source-token sequence, question, greedy decoder, and 24-token output
-budget. E0 exposes the selected source as ordinary prompt text; E2 page-aligns
-that source, encodes it once, and attaches its native pages outside APC. Each
+budget. vLLM first encodes the selected source alone for both conditions. E0
+retains those ordinary pages through APC and exposes the source as prompt text;
+E2 captures the corresponding vLLM-native source pages and attaches an
+immutable copy outside APC. Both conditions consequently prefill only the
+question suffix during the measured request. Each
 condition follows four schedules: cold one-shot, two warm repeats, three query
 formulations over the same resource, and an eight-request continuous-batching
 wave. The selector runs only once, so any output difference occurs after
@@ -378,19 +383,16 @@ across all four schedules.}
 \end{figure}
 
 E2 reduces mean visible tokens by 90.6--93.0\%. Across all schedules, exact
-output parity is 71.1\% on 2Wiki, 70.0\% on HotpotQA, and 70.7\% on QASPER.
-The aggregate signed F1 delta is nearly zero ($+0.0002$), but the mean absolute
-pairwise change is 0.0098; cancellation therefore cannot be read as exact
-equivalence. The neighboring MLX-LM and SGLang-MLX paths obtain 840/840 exact
-pairs on the same selections, which rules out cohort construction as the
-explanation. Paged-cache precision, alignment padding, and position metadata
-remain candidates at the vLLM-Metal boundary.
+output parity is 100\% on 2Wiki, HotpotQA, and QASPER: 840/840 paired requests,
+with zero signed or absolute pairwise F1 change. MLX-LM and SGLang-MLX obtain
+the same 840/840 result. This is transport equivalence at a frozen selector,
+not evidence that the model answers every question correctly.
 
-The macro cold end-to-end cost ratio is 1.030 after 67.8 ms mean E2 time to
-usable context. Warm is 1.001, multi-query is 0.988, and the concurrency-eight
-inverse-throughput ratio is 1.002. Thus vLLM-Metal is economically near parity
-in this small offline workload, while exact semantic parity remains the
-promotion gate.
+The macro cold end-to-end cost ratio is 0.985 after 86.0 ms mean E2 time to
+usable context. Warm is 1.004, multi-query is 0.993, and the concurrency-eight
+inverse-throughput ratio is 0.981. Thus vLLM-Metal is economically near parity
+in this small offline workload and slightly favors E2 in three of four macro
+regimes. The differences are too small for a broad speed claim.
 The offline V1 API emits the 24-token completion as one engine result, so TTFT
 and ITL are reported as unavailable rather than inferred from completion time.
 
@@ -432,20 +434,21 @@ captured vLLM pages, base zero & 0/5 & 0/5 & 0.0 \\
 captured vLLM pages, nominal $-1$ & 1/5 & 4/5 & 9.0 \\
 captured vLLM pages, nominal base & 3/5 & 5/5 & 17.8 \\
 captured vLLM pages, nominal $+1$ & 2/5 & 4/5 & 13.0 \\
+captured pages, APC-matched E0 geometry & 5/5 & 5/5 & 24.0 \\
 \bottomrule
 \end{tabular}
 \label{tab:vllm-capture-replay}
 \end{table}
 
 The nominal base is decisively better than zero and preserves the first token
-in 5/5 cases. Captured pages improve the mean common prefix over separately
-encoded K/V, but do not make every generated sequence bit-identical. A second
-audit varies captured source length: exact sequence parity is 3/5, 1/5, 2/5,
-5/5, 4/5, and 3/3 at 16, 32, 64, 128, 256, and 384 tokens. The non-monotonic
-pattern argues against page count as the primary defect. The remaining gap is
-consistent with representation and kernel numerical differences that can
-cascade autoregressively, but this is a diagnosis rather than proof. Logit-level
-capture at the fused kernel boundary remains the next correctness test.
+in 5/5 cases. The apparent residual gap was not a page-count or position-base
+defect. Full-prefix E0 and query-only E2 invoked different prefill shapes; even
+full-prefix E0 and an APC-restored E0 diverged in 2/5 sequences while preserving
+the first token in 5/5. Once E0 uses the same APC-restored query-only geometry,
+captured E2 pages match all 24 output tokens in 5/5 cases. The full 60-example,
+840-pair rerun then reproduces exact parity in every regime. This audit is a
+warning for engine benchmarking: numerical drift from different kernel
+geometry must not be attributed to a hidden-memory representation.
 
 \subsection{Controlled residency pressure}
 The engine-neutral residency manager was also exercised on five deterministic
@@ -479,7 +482,7 @@ V1 metadata contract & controlled closed & selected block tables and positions r
 live V1 generation & controlled closed & positive, disabled, wrong-memory, and cleanup controls over five seeds \\
 concurrent isolation & controlled closed & 20/20 selected recoveries and 0/20 adjacent ordinary recoveries \\
 native APC identity & controlled closed & selection-derived salt; 75/75 selected and 0/40 disabled recoveries \\
-matched natural QA & partial & 593/840 exact outputs; aggregate signed F1 $+0.0002$; 91--93\% fewer visible tokens \\
+matched natural QA & controlled closed & 840/840 exact outputs; zero pairwise F1 change; 91--93\% fewer visible tokens \\
 engine-native serving & partial & native APC and concurrency measured; connectors, online tails, and CUDA remain open \\
 robustness & open & one model family, one kernel backend, controlled tensors \\
 \bottomrule

@@ -22,6 +22,8 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Protocol, Sequence
+from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 from .context_records import RecordType
 from .product_config import pra_home, read_yaml
@@ -352,6 +354,8 @@ class PRAStorageEntry:
     detail_bytes: int
     security_scope: str | None = None
     source_reconstructable: bool = True
+    source_uri: str | None = None
+    source_sha256: str | None = None
     reconstruction_cost_ms: float = 0.0
     created_ns: int = field(default_factory=time.time_ns)
     last_access_ns: int = field(default_factory=time.time_ns)
@@ -855,6 +859,7 @@ class PRAStorageManager:
         payload = {
             "schema": self.state_schema,
             "profile": self.policy.profile,
+            "metrics": self.metrics.to_dict(),
             "entries": [
                 {
                     "entry": self._entry_dict(entry),
@@ -879,6 +884,9 @@ class PRAStorageManager:
         payload = json.loads(self.state_path.read_text(encoding="utf-8"))
         if payload.get("schema") != self.state_schema:
             raise ValueError("Unsupported PRA storage lifecycle state schema.")
+        stored_metrics = payload.get("metrics")
+        if stored_metrics is not None:
+            self.metrics = PRAStorageMetrics(**dict(stored_metrics))
         recovered = 0
         for row in payload.get("entries", ()):
             entry = PRAStorageEntry(**dict(row["entry"]))
@@ -926,12 +934,28 @@ class PRAStorageManager:
     def _load_source(self, key: str) -> bytes:
         loader = self._source_loaders.get(key)
         if loader is not None:
-            return bytes(loader())
-        if self.source_resolver is not None:
-            return bytes(self.source_resolver(self.entries[key]))
-        raise FileNotFoundError(
-            f"PRA SOURCE for {key!r} is unavailable after durable-cache eviction."
-        )
+            payload = bytes(loader())
+        elif self.source_resolver is not None:
+            payload = bytes(self.source_resolver(self.entries[key]))
+        else:
+            entry = self.entries[key]
+            source_uri = entry.source_uri
+            if source_uri is None:
+                raise FileNotFoundError(
+                    f"PRA SOURCE for {key!r} is unavailable after durable-cache eviction."
+                )
+            if source_uri.startswith("file://"):
+                parsed = urlparse(source_uri)
+                source_uri = url2pathname(unquote(parsed.path))
+                if parsed.netloc:
+                    source_uri = f"//{parsed.netloc}{source_uri}"
+                elif os.name == "nt" and source_uri[:1] in {"/", "\\"} and source_uri[2:3] == ":":
+                    source_uri = source_uri[1:]
+            payload = Path(source_uri).expanduser().read_bytes()
+        expected = self.entries[key].source_sha256
+        if expected is not None and hashlib.sha256(payload).hexdigest() != expected:
+            raise ValueError(f"PRA SOURCE checksum failed for {key!r}.")
+        return payload
 
     def start_maintenance(self) -> None:
         """Start one idempotent background policy-maintenance worker."""

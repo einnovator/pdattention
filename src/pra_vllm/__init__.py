@@ -11,6 +11,7 @@ from .v1_native import (
     VLLMMetalV1NativeBridge,
     VLLMPageHotBridge,
     augment_paged_context,
+    capture_paged_memory,
     native_request_cache_salt,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "VLLMNativeStep",
     "VLLMNativeStepRegistry",
     "augment_paged_context",
+    "capture_paged_memory",
     "native_request_cache_salt",
 ]

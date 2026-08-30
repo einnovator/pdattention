@@ -1,5 +1,6 @@
 """Shared PRA HOT/WARM/COLD/SOURCE lifecycle and policy contracts."""
 
+import hashlib
 from dataclasses import replace
 from pathlib import Path
 
@@ -230,6 +231,61 @@ def test_source_resolver_reconstructs_source_only_entry_after_restart(tmp_path):
     )
 
     assert recovered.promote("source-only") == b"rebuilt:source-only"
+
+
+def test_restart_restores_metrics_task_dependency_session_and_file_source(tmp_path):
+    source = tmp_path / "authoritative.kv"
+    source.write_bytes(b"reconstructed-native")
+    policy = _policy(
+        tmp_path,
+        warm=PRAStorageTierConfig(enabled=False),
+        cold=PRAStorageTierConfig(enabled=False),
+    )
+    state_path = tmp_path / "lifecycle.json"
+    first = PRAStorageManager(policy, state_path=state_path)
+    entry = _entry(
+        "durable-source",
+        source_uri=source.as_uri(),
+        source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        dependent_record_count=3,
+    )
+    first.register_source(entry, source.read_bytes)
+    first.metrics.bytes_read = 17
+    first.close()
+
+    recovered = PRAStorageManager(policy, state_path=state_path)
+
+    restored = recovered.entries["durable-source"]
+    assert restored.session_id == "session-a"
+    assert restored.task_id == "task-a"
+    assert restored.dependent_record_count == 3
+    assert recovered.metrics.bytes_read == 17
+    assert recovered.promote("durable-source") == b"reconstructed-native"
+
+
+def test_file_source_checksum_rejects_changed_authoritative_content(tmp_path):
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"original")
+    policy = _policy(
+        tmp_path,
+        warm=PRAStorageTierConfig(enabled=False),
+        cold=PRAStorageTierConfig(enabled=False),
+    )
+    manager = PRAStorageManager(policy, state_path=tmp_path / "state.json")
+    manager.register_source(
+        _entry(
+            "checked",
+            source_uri=str(source),
+            source_sha256=hashlib.sha256(b"original").hexdigest(),
+        ),
+        source.read_bytes,
+    )
+    manager.close()
+    source.write_bytes(b"changed")
+
+    recovered = PRAStorageManager(policy, state_path=tmp_path / "state.json")
+    with pytest.raises(ValueError, match="checksum"):
+        recovered.promote("checked")
 
 
 def test_mmap_store_reads_named_segments_without_loading_neighbor(tmp_path):

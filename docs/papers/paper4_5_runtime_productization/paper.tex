@@ -81,9 +81,11 @@ is therefore a tested portable eager baseline and reproducible measurement
 contract, not a fused-kernel or serving-engine speed claim. Companion Apple-M5
 runs apply that contract to one frozen 60-example selection cohort in MLX-LM,
 SGLang-MLX, and vLLM-Metal. Native E2 removes 90.6--93.0\% of visible prompt
-tokens. MLX and SGLang preserve all 840 paired outputs; vLLM preserves 593/840
-with near-zero signed aggregate F1 change. Four-regime cost ratios show that
-semantic transport does not yet imply an economic win.
+tokens, and all three engines preserve all 840 paired outputs. The corrected
+vLLM run first restores E0 source pages through APC and captures E2 source
+pages from vLLM's own prefill, preventing fused-kernel geometry from being
+confounded with representation. Four-regime cost ratios still show that
+semantic transport does not by itself imply a large economic win.
 \end{abstract}
 
 \section{Introduction}
@@ -1415,12 +1417,13 @@ not portable claims that the default SDK provider may advertise unconditionally.
 The shared matched benchmark makes the product boundary sharper. MLX-LM and
 SGLang-MLX preserve all 840 E0 outputs while moving 90.6--93.0\% of visible
 prompt tokens into native K/V. Their current selected-cache wrappers remain
-11--16\% more expensive in reused or concurrent regimes. vLLM-Metal obtains
-the same visible-token reduction and near-zero aggregate signed F1 change, but
-only 593/840 exact outputs; mean absolute pairwise F1 change is 0.0098. Its
-four macro cost ratios lie between 0.988 and 1.030. The SDK therefore treats
-the pinned MLX and SGLang paths as semantic mechanism passes, keeps their
-economic status experimental, and keeps vLLM exact-parity promotion pending.
+12--16\% more expensive in reused or concurrent regimes. vLLM-Metal also
+preserves 840/840 outputs with zero pairwise F1 change. Its four macro cost
+ratios lie between 0.981 and 1.004. An earlier 593/840 result compared
+full-prefix E0 prefill against query-only E2 prefill; a five-example audit shows
+that APC-restored E0 and native E2 match 5/5 while full-prefix and APC-restored
+E0 themselves differ in 2/5. The SDK therefore treats all three pinned paths
+as semantic mechanism passes while keeping their economic status experimental.
 Engine labels alone never select these capabilities.
 
 The vLLM audit also establishes a product invariant that is easy to miss at an
@@ -1431,9 +1434,10 @@ position policy, and consumer layers. Stable selections retain warm reuse;
 changed selections cannot inherit query K/V produced under another memory.
 The SDK exposes this derivation as an engine helper and tests equal-selection
 reuse, changed-selection isolation, geometry sensitivity, and identifier
-non-disclosure. A five-example capture/replay audit then preserves E0's first
-token in 5/5 cases at the nominal position base, although only 3/5 complete
-24-token outputs are exact. This narrows, but does not close, vLLM promotion.
+non-disclosure. A five-example capture/replay audit preserves E0's first token
+in 5/5 cases at the nominal position base. Holding source-ingestion and
+query-prefill geometry fixed raises complete 24-token parity from 3/5 to 5/5;
+the full corrected cohort then reaches 840/840.
 
 The product surface includes installable package metadata, Hugging Face loading,
 runtime config serialization, direct and external reference registration,
