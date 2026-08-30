@@ -1,0 +1,746 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_vllm_live_storage_lifecycle_v1",
+  "engine": "vllm-metal",
+  "engine_version": "0.28.0",
+  "model_id": "mlx-community/Qwen3-0.6B-4bit",
+  "rows": [
+    {
+      "dataset": "qasper",
+      "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.08,
+      "cold_int8_f1_delta": 0.08,
+      "outputs": {
+        "hot": "We have a list of scores for each model. The scores were calculated using the same algorithm and the same data set.",
+        "warm": "We have a list of scores for each model. The scores were calculated using the same algorithm and the same data set.",
+        "cold": "We were able to score their system's performance on the test set. We then compared the scores of their system to"
+      },
+      "completion_latency_ms": {
+        "hot": 377.6213750243187,
+        "warm": 685.5871661100537,
+        "cold": 674.4397911243141
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 377.6213750243187,
+        "warm": 685.5871661100537,
+        "cold": 674.4397911243141
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0011248048394918442,
+        "warm": 451.0408330243081,
+        "cold": 583.663749974221
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1908.05828-1462eb312944926469e7cee067dfc7f1267a2a8c",
+      "source_tokens": 320,
+      "native_bytes": 36700160,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(A) 10 (B) 12 (C) 14 (D) 16",
+        "warm": "(A) 10 (B) 12 (C) 14 (D) 16",
+        "cold": "(This is a question in the document)\nAnswer: 3\n\nAnswer in Chinese, no markdown, one sentence."
+      },
+      "completion_latency_ms": {
+        "hot": 352.81479195691645,
+        "warm": 681.1150829307735,
+        "cold": 682.3100000619888
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 352.81479195691645,
+        "warm": 681.1150829307735,
+        "cold": 682.3100000619888
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0010419171303510666,
+        "warm": 321.3349999859929,
+        "cold": 1120.0259171891958
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1911.00841-f0848e7a339da0828278f6803ed7990366c975f0",
+      "source_tokens": 304,
+      "native_bytes": 34865152,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 11,
+      "hot_answer_f1": 0.25,
+      "cold_int8_answer_f1": 0.15384615384615383,
+      "cold_int8_f1_delta": -0.09615384615384617,
+      "outputs": {
+        "hot": "We have not tested other baselines, but we have tested the following baselines: (1) Word Count Baseline",
+        "warm": "We have not tested other baselines, but we have tested the following baselines: (1) Word Count Baseline",
+        "cold": "We have not tested other baselines, but we have implemented a simple baseline to compare with the neural baseline.\n\nDocument:"
+      },
+      "completion_latency_ms": {
+        "hot": 367.1082919463515,
+        "warm": 655.5763750802726,
+        "cold": 695.6603340804577
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 367.1082919463515,
+        "warm": 655.5763750802726,
+        "cold": 695.6603340804577
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008749775588512421,
+        "warm": 373.3264592010528,
+        "cold": 1025.2748751081526
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2004.04721-73906462bd3415f23d6378590a5ba28709b17605",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.08,
+      "cold_int8_f1_delta": 0.08,
+      "outputs": {
+        "hot": "The examples are the same as in the original set, but the hypotheses are different. The examples are the same as in",
+        "warm": "The examples are the same as in the original set, but the hypotheses are different. The examples are the same as in",
+        "cold": "The the examples are the same as in the original set. However, the difference in the performance between the two sets is"
+      },
+      "completion_latency_ms": {
+        "hot": 344.4339169654995,
+        "warm": 688.5995408520103,
+        "cold": 757.5242919847369
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 344.4339169654995,
+        "warm": 688.5995408520103,
+        "cold": 757.5242919847369
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008752103894948959,
+        "warm": 444.25866613164544,
+        "cold": 1122.388208983466
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1806.04511-f1f1dcc67b3e4d554bfeb508226cdadb3c32d2e9",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "What is the name of the document? What is the name of the dataset? What is the name of the model?",
+        "warm": "What is the name of the document? What is the name of the dataset? What is the name of the model?",
+        "cold": "The problem is that the problem is that the problem is that the problem is that the problem is that the problem is that"
+      },
+      "completion_latency_ms": {
+        "hot": 353.39979198761284,
+        "warm": 729.3515419587493,
+        "cold": 616.2192500196397
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 353.39979198761284,
+        "warm": 729.3515419587493,
+        "cold": 616.2192500196397
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00045797787606716156,
+        "warm": 381.2863340135664,
+        "cold": 1144.7033328004181
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1910.08293-357eb9f0c07fa45e482d998a8268bd737beb827f",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 2,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The document is about the evaluation of the LSRM and the HLA-OG process. It discusses the use",
+        "warm": "The document is about the evaluation of the LSRM and the HLA-OG process. It discusses the use",
+        "cold": "The \n\nDocument: Experiment ::: HLA Observation Guidance (HLA-OG)\nWe define HLA Observation Guidance ("
+      },
+      "completion_latency_ms": {
+        "hot": 359.69300009310246,
+        "warm": 686.2756670452654,
+        "cold": 710.5403752066195
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 359.69300009310246,
+        "warm": 686.2756670452654,
+        "cold": 710.5403752066195
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008330680429935455,
+        "warm": 446.54808286577463,
+        "cold": 1207.667832961306
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2003.13032-f2e8497aa16327aa297a7f9f7d156e485fe33945",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 2,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(A) (B) (C) (D) (E) (F) (G) (H)",
+        "warm": "(A) (B) (C) (D) (E) (F) (G) (H)",
+        "cold": "(A Corpus of Medical Case Reports with Medical Entity Annotation ::: Annotators\nThe annotators were asked to provide their"
+      },
+      "completion_latency_ms": {
+        "hot": 338.18099997006357,
+        "warm": 698.3667500317097,
+        "cold": 708.812499884516
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 338.18099997006357,
+        "warm": 698.3667500317097,
+        "cold": 708.812499884516
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0012079253792762756,
+        "warm": 440.60795893892646,
+        "cold": 1205.8644578792155
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2004.04721-bfc1de5fa4da2f0e301fd22aea19cf01e2bb5b31",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(A) (B) (C) (D) (E) (F) (G) (H)",
+        "warm": "(A) (B) (C) (D) (E) (F) (G) (H)",
+        "cold": "(A) (B) (C) (D) (E) (F) (G) (H)"
+      },
+      "completion_latency_ms": {
+        "hot": 339.4074998795986,
+        "warm": 682.7578339725733,
+        "cold": 674.0303339902312
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 339.4074998795986,
+        "warm": 682.7578339725733,
+        "cold": 674.0303339902312
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00100000761449337,
+        "warm": 454.67595802620053,
+        "cold": 1204.8229998908937
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1610.00956-d67c01d9b689c052045f3de1b0918bab18c3f174",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 4,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "We show that the model's performance on the original CBT test data is significantly improved by the addition of the new data",
+        "warm": "We show that the model's performance on the original CBT test data is significantly improved by the addition of the new data",
+        "cold": "We show that the Attention-Sum Reader model is able to achieve a 100% accuracy on the original C"
+      },
+      "completion_latency_ms": {
+        "hot": 368.7055001500994,
+        "warm": 661.6554579231888,
+        "cold": 756.0819580685347
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 368.7055001500994,
+        "warm": 661.6554579231888,
+        "cold": 756.0819580685347
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001166015863418579,
+        "warm": 352.4923750665039,
+        "cold": 1246.73479096964
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1902.09243-feafcc1c4026d7f55a2c8ce7850d7e12030b5c22",
+      "source_tokens": 288,
+      "native_bytes": 33030144,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.08695652173913045,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": -0.08695652173913045,
+      "outputs": {
+        "hot": "How are the components integrated?\n\nDocument: Results and Analysis\nIn this study, we compare the performance of our model with",
+        "warm": "How are the components integrated?\n\nDocument: Results and Analysis\nIn this study, we compare the performance of our model with",
+        "cold": "How about the other components? How about the other components? How about the other components? How about the other components?"
+      },
+      "completion_latency_ms": {
+        "hot": 373.9421251229942,
+        "warm": 685.2467500139028,
+        "cold": 678.8851250894368
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 373.9421251229942,
+        "warm": 685.2467500139028,
+        "cold": 678.8851250894368
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000833999365568161,
+        "warm": 291.2181671708822,
+        "cold": 1081.6016250755638
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1906.08593-31d695ba855d821d3e5cdb7bea638c7dbb7c87c7",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.06666666666666667,
+      "cold_int8_answer_f1": 0.06666666666666667,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Our goal is to build a question classifier using the same model in Figure 3. The problem statement is very similar to",
+        "warm": "Our goal is to build a question classifier using the same model in Figure 3. The problem statement is very similar to",
+        "cold": "Our goal is to build a question classifier using the same model in Figure 3. The problem statement is very similar to"
+      },
+      "completion_latency_ms": {
+        "hot": 346.2365421000868,
+        "warm": 669.7259999345988,
+        "cold": 696.6589589137584
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 346.2365421000868,
+        "warm": 669.7259999345988,
+        "cold": 696.6589589137584
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001166015863418579,
+        "warm": 439.23700018785894,
+        "cold": 1075.5515829659998
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1909.09534-6411622cc8b2fbedbfa468859d453596d3bd2f03",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 12,
+      "hot_answer_f1": 0.10526315789473684,
+      "cold_int8_answer_f1": 0.10526315789473684,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: the objective function is the same as the objective function used in the previous work. This is because the",
+        "warm": "The answer is: the objective function is the same as the objective function used in the previous work. This is because the",
+        "cold": "The answer is: the objective function is the same as the one used in the previous work. This is because the objective"
+      },
+      "completion_latency_ms": {
+        "hot": 369.69404108822346,
+        "warm": 747.5568749941885,
+        "cold": 596.8641249928623
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 369.69404108822346,
+        "warm": 747.5568749941885,
+        "cold": 596.8641249928623
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0012919772416353226,
+        "warm": 411.55362501740456,
+        "cold": 1239.0011248644441
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1705.04153-ef396a34436072cb3c40b0c9bc9179fee4a168ae",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 20,
+      "hot_answer_f1": 0.16,
+      "cold_int8_answer_f1": 0.16,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "show that the proposed model is effective in learning semantic representations and the compositional function is dynamically generated by a meta network.",
+        "warm": "show that the proposed model is effective in learning semantic representations and the compositional function is dynamically generated by a meta network.",
+        "cold": "show that the proposed model is effective in learning semantic representations and the compositional function is dynamically generated by the meta network."
+      },
+      "completion_latency_ms": {
+        "hot": 379.5064161531627,
+        "warm": 779.0391251910478,
+        "cold": 667.9667080752552
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 379.5064161531627,
+        "warm": 779.0391251910478,
+        "cold": 667.9667080752552
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000708969309926033,
+        "warm": 428.46883297897875,
+        "cold": 1238.875084090978
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1709.10367-777217e025132ddc173cf33747ee590628a8f62f",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 4,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "What is the main difference between INLINEFORM0 and INLINEFORM1? What is the main difference between INLINEFORM4 and",
+        "warm": "What is the main difference between INLINEFORM0 and INLINEFORM1? What is the main difference between INLINEFORM4 and",
+        "cold": "What is the main idea of the paper? What is the main contribution of the paper? What is the main application of"
+      },
+      "completion_latency_ms": {
+        "hot": 358.332792064175,
+        "warm": 753.0681251082569,
+        "cold": 728.3030420076102
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 358.332792064175,
+        "warm": 753.0681251082569,
+        "cold": 728.3030420076102
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0010828953236341476,
+        "warm": 414.6773328538984,
+        "cold": 1260.0367090199143
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1910.06592-483a699563efcb8804e1861b18809279f21c7610",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.1111111111111111,
+      "cold_int8_answer_f1": 0.1,
+      "cold_int8_f1_delta": -0.0111111111111111,
+      "outputs": {
+        "hot": "Based on the document, the answer is: Yes, the approach used in this work to detect fake news fully supervised.",
+        "warm": "Based on the document, the answer is: Yes, the approach used in this work to detect fake news fully supervised.",
+        "cold": "The answer is: Yes, the approach used in this work to detect fake news fully supervised is to build a model that"
+      },
+      "completion_latency_ms": {
+        "hot": 364.62466698139906,
+        "warm": 745.434750104323,
+        "cold": 643.3789159636945
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 364.62466698139906,
+        "warm": 745.434750104323,
+        "cold": 643.3789159636945
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0007918570190668106,
+        "warm": 463.0807500798255,
+        "cold": 1214.2902079503983
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2002.01207-76ed74788e3eb3321e646c48ae8bf6cdfe46dca1",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 9,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.09523809523809523,
+      "cold_int8_f1_delta": 0.09523809523809523,
+      "outputs": {
+        "hot": "The answer is that the letters are marked as the features in the segment. For example, the segment \u201cw+Al",
+        "warm": "The answer is that the letters are marked as the features in the segment. For example, the segment \u201cw+Al",
+        "cold": "The answer is that the letters are marked as part of the segment. The segment is a sequence of characters, and the"
+      },
+      "completion_latency_ms": {
+        "hot": 316.1700831260532,
+        "warm": 767.7107080817223,
+        "cold": 757.766499882564
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 316.1700831260532,
+        "warm": 767.7107080817223,
+        "cold": 757.766499882564
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009159557521343231,
+        "warm": 448.9855410065502,
+        "cold": 1230.9376248158514
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1608.01884-662870a90890c620a964720b2ca122a1139410ea",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 5,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(This is a question for the reader to answer.)\n\nDocument: Other languages, other ambiguities\nThe word `sie",
+        "warm": "(This is a question for the reader to answer.)\n\nDocument: Other languages, other ambiguities\nThe word `sie",
+        "cold": "(This is a question that is not answered by the current state of the art.)\n\nDocument: Other languages, other ambigu"
+      },
+      "completion_latency_ms": {
+        "hot": 357.2972919791937,
+        "warm": 768.2193338405341,
+        "cold": 724.9152921140194
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 357.2972919791937,
+        "warm": 768.2193338405341,
+        "cold": 724.9152921140194
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0006668269634246826,
+        "warm": 491.2848749663681,
+        "cold": 1288.3502920158207
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1809.02279-c2eb743c9d0baf1781c3c0df9533fab588250af3",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 3,
+      "hot_answer_f1": 0.18181818181818185,
+      "cold_int8_answer_f1": 0.1904761904761905,
+      "cold_int8_f1_delta": 0.008658008658008642,
+      "outputs": {
+        "hot": "(i) models that use plain stacked LSTMs, (ii) models with different INLINEFORM0 , (iii",
+        "warm": "(i) models that use plain stacked LSTMs, (ii) models with different INLINEFORM0 , (iii",
+        "cold": "(i) plain stacked LSTMs, (ii) models with INLINEFORM0, (iii) models without INLINE"
+      },
+      "completion_latency_ms": {
+        "hot": 360.0439161527902,
+        "warm": 734.9790420848876,
+        "cold": 738.0454589147121
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 360.0439161527902,
+        "warm": 734.9790420848876,
+        "cold": 738.0454589147121
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008330680429935455,
+        "warm": 443.8870830927044,
+        "cold": 1321.8377919401973
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1811.00383-7e62a53823aba08bc26b2812db016f5ce6159565",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 14,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The dataset(s) used in this study are the following: (1) The dataset(s) used in this study are",
+        "warm": "The dataset(s) used in this study are the following: (1) The dataset(s) used in this study are",
+        "cold": "The dataset(s) used in this study are the following: (1 ) (1) The dataset (1) is"
+      },
+      "completion_latency_ms": {
+        "hot": 367.59420903399587,
+        "warm": 746.1098749190569,
+        "cold": 720.3509581740946
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 367.59420903399587,
+        "warm": 746.1098749190569,
+        "cold": 720.3509581740946
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001250067725777626,
+        "warm": 442.8837918676436,
+        "cold": 1317.4512921832502
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1908.01294-f697d00a82750b14376fe20a5a2b249e98bebe9b",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 5,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(row (e)).\n\nThe problem of punctuation restoration in Thai is more complicated than in English, because of the presence",
+        "warm": "(row (e)).\n\nThe problem of punctuation restoration in Thai is more complicated than in English, because of the presence",
+        "cold": "(row (e)) and \u201cthai\u0e40\u0e25\u0e22|\u0e04\u0e23\u0e31\u0e1aWhich deep learning architecture do they use for sentence tagging?"
+      },
+      "completion_latency_ms": {
+        "hot": 438.74350003898144,
+        "warm": 783.2893750164658,
+        "cold": 741.4664998650551
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 438.74350003898144,
+        "warm": 783.2893750164658,
+        "cold": 741.4664998650551
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008749775588512421,
+        "warm": 411.8171250447631,
+        "cold": 1272.8639158885926
+      }
+    }
+  ],
+  "summary": {
+    "examples": 20,
+    "hot_warm_exact": 20,
+    "hot_warm_payload_exact": 20,
+    "hot_cold_int8_exact": 2,
+    "hot_cold_first_token_equal": 17,
+    "mean_hot_cold_common_prefix_tokens": 7.1,
+    "mean_cold_int8_f1_delta": 0.003483731244600808,
+    "restart_recovered": true,
+    "request_lifetime_pinning": true,
+    "metrics": {
+      "hits": {
+        "cold": 20,
+        "hot": 0,
+        "source": 0,
+        "warm": 21
+      },
+      "misses": {
+        "cold": 0,
+        "hot": 0,
+        "source": 0,
+        "warm": 0
+      },
+      "promotions": 41,
+      "demotions": 60,
+      "evictions": 0,
+      "reloads": 41,
+      "bytes_read": 2221930015,
+      "bytes_written": 4245635501,
+      "persistence_writes": 79,
+      "wasted_persistence_writes": 0,
+      "task_aware_retention_hits": 0,
+      "task_close_bytes_freed": 0,
+      "session_close_bytes_freed": 0,
+      "promotion_latency_ns": 14727129583,
+      "persistence_latency_ns": 18465542585,
+      "decompression_latency_ns": 0,
+      "dequantization_latency_ns": 4031137459
+    },
+    "usage": {
+      "hot_bytes": 44040192,
+      "warm_bytes": 88091983,
+      "cold_bytes": 405008049,
+      "total_native_bytes": 537140224,
+      "source_only_objects": 0
+    },
+    "capabilities": {
+      "integration_level": "E2",
+      "native_kv_generation": true,
+      "scheduler_invisible_tail_pages": 64,
+      "ordinary_prefix_namespace_used": false,
+      "page_aligned_selection_required": true,
+      "consumer_layers": "all",
+      "scheduler_prefix_observability": true,
+      "native_apc_identity_required": true
+    }
+  }
+}

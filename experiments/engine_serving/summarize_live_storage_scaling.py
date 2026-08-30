@@ -73,6 +73,30 @@ def _artifact_row(payload: dict[str, object]) -> dict[str, object]:
     return result
 
 
+def _write_table(path: Path, rows: list[dict[str, object]]) -> None:
+    """Write one compact table for either the full matrix or one engine."""
+
+    table = [
+        r"\begin{tabular}{lllrrrrrr}",
+        r"\toprule",
+        r"Engine & Model & Data & $n$ & WARM exact & int8 exact & HOT p50 & WARM p50 & WARM p95 \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        model = str(row["model_id"]).split("/")[-1].replace("_", r"\_")
+        dataset = str(row["dataset"]).replace("_", r"\_")
+        table.append(
+            f"{row['engine']} & {model} & {dataset} & {row['examples']} & "
+            f"{100 * float(row['warm_exact_rate']):.1f}\\% & "
+            f"{100 * float(row['int8_exact_rate']):.1f}\\% & "
+            f"{float(row['request_hot_p50_ms']):.0f} & "
+            f"{float(row['request_warm_p50_ms']):.0f} & "
+            f"{float(row['request_warm_p95_ms']):.0f} \\\\"
+        )
+    table.extend((r"\bottomrule", r"\end{tabular}"))
+    path.write_text("\n".join(table) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("inputs", nargs="+", type=Path)
@@ -105,27 +129,14 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-    table = [
-        r"\begin{tabular}{lllrrrrrr}",
-        r"\toprule",
-        r"Engine & Model & Data & $n$ & WARM exact & int8 exact & HOT p50 & WARM p50 & WARM p95 \\",
-        r"\midrule",
-    ]
-    for row in rows:
-        model = str(row["model_id"]).split("/")[-1].replace("_", r"\_")
-        dataset = str(row["dataset"]).replace("_", r"\_")
-        table.append(
-            f"{row['engine']} & {model} & {dataset} & {row['examples']} & "
-            f"{100 * float(row['warm_exact_rate']):.1f}\\% & "
-            f"{100 * float(row['int8_exact_rate']):.1f}\\% & "
-            f"{float(row['request_hot_p50_ms']):.0f} & "
-            f"{float(row['request_warm_p50_ms']):.0f} & "
-            f"{float(row['request_warm_p95_ms']):.0f} \\\\"
+    _write_table(args.output_dir / "generated_live_storage_scaling_table.tex", rows)
+    for engine in sorted({str(row["engine"]) for row in rows}):
+        engine_rows = [row for row in rows if row["engine"] == engine]
+        _write_table(
+            args.output_dir
+            / f"generated_live_storage_scaling_{engine.replace('-', '_')}.tex",
+            engine_rows,
         )
-    table.extend((r"\bottomrule", r"\end{tabular}"))
-    (args.output_dir / "generated_live_storage_scaling_table.tex").write_text(
-        "\n".join(table) + "\n", encoding="utf-8"
-    )
 
     labels = [
         f"{row['engine']}\n{str(row['model_id']).split('/')[-1]}\n{row['dataset']}"

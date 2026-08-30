@@ -2,9 +2,9 @@
 \toprule
 Engine/model & Hardware & Profile & Evidence tier & Status \\
 \midrule
-vLLM-Metal V1 / Qwen3-0.6B-4bit & Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4 & all-layer native K/V + APC, concurrency 1--8 & natural qa matched selection & 840/840 exact; lossless WARM 3/3; restart recovered; int8 COLD open \\
-SGLang MLX / Qwen3-0.6B & Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4 & Radix + selected K/V + built-in HiCache file storage & natural qa matched selection & 840/840 exact; lossless WARM 3/3; restart recovered; distributed HiCache open \\
-MLX-LM / Qwen3-0.6B-4bit & Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4 & all-layer selected K/V, four matched regimes & natural qa matched selection & 840/840 exact; lossless WARM 3/3; restart recovered; int8 COLD open \\
+vLLM-Metal V1 / Qwen3-0.6B-4bit & Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4 & all-layer native K/V + APC, concurrency 1--8 & natural qa matched selection & 840/840 exact at 0.6B/1.7B; lossless WARM 80/80; int8 COLD open \\
+SGLang MLX / Qwen3-0.6B & Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4 & Radix + selected K/V + built-in HiCache file storage & natural qa matched selection & 840/840 exact; lossless WARM 80/80; distributed HiCache open \\
+MLX-LM / Qwen3-0.6B-4bit & Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4 & all-layer selected K/V, four matched regimes & natural qa matched selection & 840/840 exact; lossless WARM 80/80; int8 COLD open \\
 MLX-LM / Qwen3-1.7B-4bit & Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4 & FP/int8 all-layer selected K/V & natural qa routed evidence materialization & routed natural QA; bounded residency curve; oracle gap remains \\
 \bottomrule
 \end{tabularx}

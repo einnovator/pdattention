@@ -28,9 +28,10 @@ E2/E0 cost ratios are 1.130, 1.155, 1.148, and 1.132, exposing the remaining
 unfused native-decode cost despite cheaper native ingestion.
 
 The shared lifecycle manager now uses independently checksummed, mmap-readable
-K/V segments per layer. Three QASPER selections remain 3/3 exact after lossless
-WARM promotion and recover after manager restart. Explicit int8 COLD changes
-all three generated sequences and remains outside the default profile.
+K/V segments per layer. Across 80 examples spanning three datasets at 0.6B and
+QASPER at 1.7B, lossless WARM remains 80/80 exact and recovers after manager
+restart. Explicit int8 COLD is exact in only 13/80 generated sequences and
+remains outside the default profile.
 
 The bounded-residency extension covers 1,020 natural-QA requests over five
 seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable

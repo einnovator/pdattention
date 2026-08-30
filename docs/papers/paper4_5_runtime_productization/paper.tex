@@ -86,10 +86,10 @@ vLLM run first restores E0 source pages through APC and captures E2 source
 pages from vLLM's own prefill, preventing fused-kernel geometry from being
 confounded with representation. Four-regime cost ratios still show that
 semantic transport does not by itself imply a large economic win. A separate
-live storage probe connects the same lifecycle manager to vLLM pages, SGLang
-HiCache-backed arrays, and MLX arrays. Lossless WARM preserves 9/9 outputs and
-all three managers recover after restart; int8 COLD changes 9/9 sequences and
-therefore remains opt-in.
+live storage study connects the same lifecycle manager to vLLM pages, SGLang
+HiCache-backed arrays, and MLX arrays. Across 12 model/dataset cohorts,
+lossless WARM preserves 240/240 outputs and every manager recovers after
+restart; int8 COLD is exact in only 44/240 sequences and remains opt-in.
 \end{abstract}
 
 \section{Introduction}
@@ -1363,6 +1363,38 @@ changes are noisy on three low-accuracy examples and do not rescue sequence
 equivalence. Named product profiles therefore keep lossless COLD as the
 default; int8 remains explicit, model-calibrated, and disabled unless its own
 quality gate closes.
+
+We then scale the same live protocol to 20 examples per cohort: QASPER,
+HotpotQA, and 2WikiMultiHopQA at Qwen3-0.6B, plus QASPER at Qwen3-1.7B, for
+each engine. Lossless WARM reproduces HOT generation in 240/240 pairs and all
+12 managers recover after restart. Diagnostic int8 COLD is exact in only
+44/240 pairs. Table~\ref{tab:live-storage-scaling} keeps model and dataset
+identities separate; its percentiles describe these finite cohorts rather than
+an online arrival distribution.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Expanded live lifecycle matrix. Latencies include request-time
+promotion and generation; background demotion/conversion remains separate.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/live_storage_scaling/generated_live_storage_scaling_table.tex}}
+\label{tab:live-storage-scaling}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/live_storage_scaling/live_storage_scaling.pdf}
+\caption{HOT, WARM, and COLD request p50 with p95--p50 upper whiskers. WARM
+recovery is reliable, but synchronous promotion remains visibly expensive.}
+\label{fig:live-storage-scaling}
+\end{figure}
+
+Across cohorts, WARM/HOT p50 ratios range from 1.64 to 2.15. This changes the
+product interpretation: persistent native K/V is now a correctness-qualified
+backing representation, but request-path promotion is not yet economically
+qualified. Prefetch, overlap, and hot-set admission must remove that stall;
+quantized COLD additionally requires a model-and-workload quality gate.
 
 \section{Compatibility and Product Boundary}
 

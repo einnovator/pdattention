@@ -15,6 +15,18 @@ from experiments.paper6_1_sglang.run_matched_e0_e2 import _generate_timed
 from experiments.paper6_2_mlx.run_answer_quality_pressure import _bounded_source, _metrics
 
 
+DEFAULT_MODEL = "mlx-community/Qwen3-0.6B-4bit"
+DEFAULT_REVISION = "73e3e38d981303bc594367cd910ea6eb48349da8"
+
+
+def _resolve_revision(model: str, revision: str | None) -> str:
+    """Keep the default checkpoint pinned without applying its hash to other models."""
+
+    if revision:
+        return revision
+    return DEFAULT_REVISION if model == DEFAULT_MODEL else "main"
+
+
 def _common_prefix(left: list[int], right: list[int]) -> int:
     return next(
         (index for index, pair in enumerate(zip(left, right)) if pair[0] != pair[1]),
@@ -31,15 +43,18 @@ def main() -> None:
         default=Path("docs/papers/shared/results/matched_e0_e2_qa_manifest.json"),
     )
     parser.add_argument("--cache-dir", type=Path, default=Path.home() / ".cache" / "pra")
-    parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
+    parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
-        "--revision", default="73e3e38d981303bc594367cd910ea6eb48349da8"
+        "--revision",
+        default=None,
+        help="Model revision; defaults to the pinned 0.6B revision or main otherwise.",
     )
     parser.add_argument("--max-examples", type=int, default=3)
     parser.add_argument("--max-source-tokens", type=int, default=384)
     parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    revision = _resolve_revision(args.model, args.revision)
 
     import sglang
     from pra_hf.storage_lifecycle import (
@@ -70,14 +85,14 @@ def main() -> None:
     examples = examples[: args.max_examples]
     runner = MlxModelRunner(
         args.model,
-        revision=args.revision,
+        revision=revision,
         disable_radix_cache=False,
         pool_size=4096,
         mem_fraction_static=0.3,
         enable_sampling=False,
     )
     runner.init_cache_pools(req_to_token_pool=None)
-    tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, revision=revision)
     rows: list[dict[str, object]] = []
 
     with tempfile.TemporaryDirectory(prefix="pra-sglang-lifecycle-") as directory:
@@ -232,6 +247,7 @@ def main() -> None:
         "engine": "sglang-mlx",
         "engine_version": getattr(sglang, "__version__", "unknown"),
         "model_id": args.model,
+        "model_revision": revision,
         "rows": rows,
         "summary": {
             "examples": len(rows),

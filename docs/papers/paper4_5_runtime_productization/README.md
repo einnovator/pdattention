@@ -56,8 +56,9 @@ The implementation adds:
   dependency retention, delayed closure compaction, and session cleanup.
 - live manager bridges for vLLM pages, SGLang HiCache-backed arrays, MLX arrays,
   segmented mmap WARM storage, durable restart recovery, and persistent
-  lifecycle metrics. The lossless WARM probe is exact on 9/9 engine-example
-  pairs; int8 COLD remains opt-in after changing all nine generated sequences.
+  lifecycle metrics. The expanded lossless WARM study is exact on 240/240
+  engine/model/dataset pairs; int8 COLD is exact on only 44/240 and remains
+  opt-in.
 
 Reproduce the measured portable profile:
 

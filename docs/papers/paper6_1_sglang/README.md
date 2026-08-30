@@ -25,9 +25,10 @@ exactly, while requested 10--50 ms leads delay the caller by 193--235 ms.
 Engine-native asynchronous transfer is therefore the next prefetch gate.
 
 The shared lifecycle manager now owns the local built-in HiCache file backend
-end to end. Three QASPER selections remain 3/3 exact after WARM promotion and
-recover after manager restart. Explicit int8 COLD changes all three sequences;
-distributed off-node HiCache and concurrent cold/warm tails remain open.
+end to end. Across 80 examples spanning three datasets at 0.6B and QASPER at
+1.7B, lossless WARM remains 80/80 exact and recovers after manager restart.
+Explicit int8 COLD is exact in only 14/80 sequences; distributed off-node
+HiCache and online concurrent cold/warm tails remain open.
 
 Run the live lifecycle probe with:
 

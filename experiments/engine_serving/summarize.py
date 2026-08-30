@@ -158,7 +158,7 @@ def build_registry() -> dict:
             "profile": "all-layer native K/V + APC, concurrency 1--8",
             "hardware": metadata["vllm"]["hardware"],
             "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
-            "status": "840/840 exact; lossless WARM 3/3; restart recovered; int8 COLD open",
+            "status": "840/840 exact at 0.6B/1.7B; lossless WARM 80/80; int8 COLD open",
         },
         {
             "engine": "SGLang MLX",
@@ -166,7 +166,7 @@ def build_registry() -> dict:
             "profile": "Radix + selected K/V + built-in HiCache file storage",
             "hardware": metadata["sglang"]["hardware"],
             "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
-            "status": "840/840 exact; lossless WARM 3/3; restart recovered; distributed HiCache open",
+            "status": "840/840 exact; lossless WARM 80/80; distributed HiCache open",
         },
         {
             "engine": "MLX-LM",
@@ -174,7 +174,7 @@ def build_registry() -> dict:
             "profile": "all-layer selected K/V, four matched regimes",
             "hardware": metadata["mlx"]["hardware"],
             "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
-            "status": "840/840 exact; lossless WARM 3/3; restart recovered; int8 COLD open",
+            "status": "840/840 exact; lossless WARM 80/80; int8 COLD open",
         },
         {
             "engine": "MLX-LM",
@@ -187,7 +187,7 @@ def build_registry() -> dict:
     ]
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-native-v7",
+        "registry_version": "2026-08-paper6-engine-native-v8",
         "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
@@ -213,6 +213,12 @@ def _native_results() -> dict:
         "sglang": _load(ENGINE_DIRS["sglang"] / "live_storage_lifecycle.json"),
         "vllm": _load(ENGINE_DIRS["vllm"] / "live_storage_lifecycle.json"),
     }
+    live_storage_scaling_path = (
+        RESULTS / "live_storage_scaling" / "live_storage_scaling_summary.json"
+    )
+    live_storage_scaling = (
+        _load(live_storage_scaling_path) if live_storage_scaling_path.exists() else None
+    )
     mlx_model_artifacts = [mlx]
     for name in ("native_kv_llama32_1b.json", "native_kv_gemma3_1b.json"):
         path = ENGINE_DIRS["mlx"] / name
@@ -642,6 +648,7 @@ def _native_results() -> dict:
             }
             for engine, artifact in live_storage.items()
         },
+        "live_storage_scaling": live_storage_scaling,
         "mlx": {
             "status": mlx["native_pra_status"],
             "evidence_tier": mlx["evidence_tier"],

@@ -1,0 +1,746 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_vllm_live_storage_lifecycle_v1",
+  "engine": "vllm-metal",
+  "engine_version": "0.28.0",
+  "model_id": "mlx-community/Qwen3-1.7B-4bit",
+  "rows": [
+    {
+      "dataset": "qasper",
+      "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 2,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The system that was used for the task, which is the one that was used for the evaluation, is a combination of",
+        "warm": "The system that was used for the task, which is the one that was used for the evaluation, is a combination of",
+        "cold": "The system was trained on the same data as the shared task, but the final model was trained on the same data as"
+      },
+      "completion_latency_ms": {
+        "hot": 370.5990840680897,
+        "warm": 770.257042022422,
+        "cold": 708.4405419882387
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 370.5990840680897,
+        "warm": 770.257042022422,
+        "cold": 708.4405419882387
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008749775588512421,
+        "warm": 436.752500012517,
+        "cold": 592.2246249392629
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1908.05828-1462eb312944926469e7cee067dfc7f1267a2a8c",
+      "source_tokens": 320,
+      "native_bytes": 36700160,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 3,
+      "hot_answer_f1": 0.125,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": -0.125,
+      "outputs": {
+        "hot": "The dataset contains three major classes: Person (PER), Location (LOC) and Organization (ORG). The dataset is in",
+        "warm": "The dataset contains three major classes: Person (PER), Location (LOC) and Organization (ORG). The dataset is in",
+        "cold": "The dataset contains 3 different types of entities: Person, Location, and Organization.\n\nDocument: Dataset Statistics ::: OurN"
+      },
+      "completion_latency_ms": {
+        "hot": 352.9492919333279,
+        "warm": 697.3170840647072,
+        "cold": 751.8581249751151
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 352.9492919333279,
+        "warm": 697.3170840647072,
+        "cold": 751.8581249751151
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008752103894948959,
+        "warm": 331.1911670025438,
+        "cold": 1127.383999992162
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1911.00841-f0848e7a339da0828278f6803ed7990366c975f0",
+      "source_tokens": 304,
+      "native_bytes": 34865152,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.1739130434782609,
+      "cold_int8_answer_f1": 0.36363636363636365,
+      "cold_int8_f1_delta": 0.18972332015810275,
+      "outputs": {
+        "hot": "The answer is no. The only baseline is the neural baseline.\n\nDocument: Experimental Setup ::: Privacy Question Answering ::: Bas",
+        "warm": "The answer is no. The only baseline is the neural baseline.\n\nDocument: Experimental Setup ::: Privacy Question Answering ::: Bas",
+        "cold": "Yes, the No-Answer Baseline (NA) is tested against the neural baseline, and the results are shown in"
+      },
+      "completion_latency_ms": {
+        "hot": 407.6870421413332,
+        "warm": 716.1127908620983,
+        "cold": 679.5223748777062
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 407.6870421413332,
+        "warm": 716.1127908620983,
+        "cold": 679.5223748777062
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009580980986356735,
+        "warm": 300.69254199042916,
+        "cold": 936.6158749908209
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2004.04721-73906462bd3415f23d6378590a5ba28709b17605",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.16,
+      "cold_int8_f1_delta": 0.16,
+      "outputs": {
+        "hot": "1. A 1990s-era, 100% pure, 100%",
+        "warm": "1. A 1990s-era, 100% pure, 100%",
+        "cold": "are taken from a filtered version of CommonCrawl BIBREF42, which is a collection of web pages that"
+      },
+      "completion_latency_ms": {
+        "hot": 377.9487500432879,
+        "warm": 670.3018748667091,
+        "cold": 737.6658339053392
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 377.9487500432879,
+        "warm": 670.3018748667091,
+        "cold": 737.6658339053392
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00100000761449337,
+        "warm": 339.7952918894589,
+        "cold": 1047.1814998891205
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1806.04511-f1f1dcc67b3e4d554bfeb508226cdadb3c32d2e9",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.625,
+      "cold_int8_answer_f1": 0.3157894736842105,
+      "cold_int8_f1_delta": -0.3092105263157895,
+      "outputs": {
+        "hot": "The evaluation was done on the SemEval-2016 Challenge Task 5 BIBREF27, B",
+        "warm": "The evaluation was done on the SemEval-2016 Challenge Task 5 BIBREF27, B",
+        "cold": "The answer is that the datasets used in evaluation are the ones from the SemEval-2016 Challenge Task"
+      },
+      "completion_latency_ms": {
+        "hot": 390.3136248700321,
+        "warm": 756.9116668310016,
+        "cold": 757.7747080940753
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 390.3136248700321,
+        "warm": 756.9116668310016,
+        "cold": 757.7747080940753
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008752103894948959,
+        "warm": 405.1030408591032,
+        "cold": 1148.5730840358883
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1910.08293-357eb9f0c07fa45e482d998a8268bd737beb827f",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.625,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": -0.625,
+      "outputs": {
+        "hot": "The four baselines are: Kvmemnn, Feed Yourself, Poly-encoder, and a BERT bi-r",
+        "warm": "The four baselines are: Kvmemnn, Feed Yourself, Poly-encoder, and a BERT bi-r",
+        "cold": "The question is about the baselines used in the evaluation, and the answer is that the four baselines are Kvm"
+      },
+      "completion_latency_ms": {
+        "hot": 372.12066585198045,
+        "warm": 683.769625145942,
+        "cold": 755.9605001006275
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 372.12066585198045,
+        "warm": 683.769625145942,
+        "cold": 755.9605001006275
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000791158527135849,
+        "warm": 400.48483293503523,
+        "cold": 1202.5197078473866
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2003.13032-f2e8497aa16327aa297a7f9f7d156e485fe33945",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.15384615384615385,
+      "cold_int8_f1_delta": 0.15384615384615385,
+      "outputs": {
+        "hot": "(Answer the question in the context of the provided text.)\nThe question is about the annotation process for the corpus of medical",
+        "warm": "(Answer the question in the context of the provided text.)\nThe question is about the annotation process for the corpus of medical",
+        "cold": "(1) The annotation was performed using WebAnno BIBREF7, a web-based tool for linguistic annotation."
+      },
+      "completion_latency_ms": {
+        "hot": 346.54158377088606,
+        "warm": 740.2539998292923,
+        "cold": 681.6058750264347
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 346.54158377088606,
+        "warm": 740.2539998292923,
+        "cold": 681.6058750264347
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008330680429935455,
+        "warm": 386.291665956378,
+        "cold": 1195.4087091144174
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2004.04721-bfc1de5fa4da2f0e301fd22aea19cf01e2bb5b31",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 23,
+      "hot_answer_f1": 0.26666666666666666,
+      "cold_int8_answer_f1": 0.26666666666666666,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "1. English 2. French 3. Spanish 4. All of the above\n\nThe question is a",
+        "warm": "1. English 2. French 3. Spanish 4. All of the above\n\nThe question is a",
+        "cold": "1. English 2. French 3. Spanish 4. All of the above\n\nThe question is:"
+      },
+      "completion_latency_ms": {
+        "hot": 373.40233381837606,
+        "warm": 733.832374913618,
+        "cold": 728.985375026241
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 373.40233381837606,
+        "warm": 733.832374913618,
+        "cold": 728.985375026241
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000500120222568512,
+        "warm": 446.2465001270175,
+        "cold": 1195.908125024289
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1610.00956-d67c01d9b689c052045f3de1b0918bab18c3f174",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "We show that training on the BookTest dataset improves the accuracy of our model on the original CBT test data by a",
+        "warm": "We show that training on the BookTest dataset improves the accuracy of our model on the original CBT test data by a",
+        "cold": "The model's performance is significantly better than the original CBT test data, and it is also better than the original C"
+      },
+      "completion_latency_ms": {
+        "hot": 394.3956249859184,
+        "warm": 823.1837910134345,
+        "cold": 742.9947089403868
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 394.3956249859184,
+        "warm": 823.1837910134345,
+        "cold": 742.9947089403868
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0003748573362827301,
+        "warm": 442.14333314448595,
+        "cold": 1261.8181661237031
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1902.09243-feafcc1c4026d7f55a2c8ce7850d7e12030b5c22",
+      "source_tokens": 288,
+      "native_bytes": 33030144,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.2857142857142857,
+      "cold_int8_answer_f1": 0.3157894736842105,
+      "cold_int8_f1_delta": 0.03007518796992481,
+      "outputs": {
+        "hot": "Yes, it is trained end-to-end, and the model is trained with a large amount of data.\n\nDocument: Results",
+        "warm": "Yes, it is trained end-to-end, and the model is trained with a large amount of data.\n\nDocument: Results",
+        "cold": "The model is trained end-to-end, and the two-stage decoding is a part of the training process.\n\nDocument: Results"
+      },
+      "completion_latency_ms": {
+        "hot": 405.8058748487383,
+        "warm": 680.3676672279835,
+        "cold": 759.9673748482019
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 405.8058748487383,
+        "warm": 680.3676672279835,
+        "cold": 759.9673748482019
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000959029421210289,
+        "warm": 326.9981669727713,
+        "cold": 1065.0204999838024
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1906.08593-31d695ba855d821d3e5cdb7bea638c7dbb7c87c7",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 15,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is the multi-head attention as per the document.  The document also states that the multi-head attention is",
+        "warm": "The answer is the multi-head attention as per the document.  The document also states that the multi-head attention is",
+        "cold": "The answer is the multi-head attention as per the document.  The question is, why is the multi-head attention"
+      },
+      "completion_latency_ms": {
+        "hot": 360.5527088511735,
+        "warm": 791.5101249236614,
+        "cold": 729.1336669586599
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 360.5527088511735,
+        "warm": 791.5101249236614,
+        "cold": 729.1336669586599
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001375097781419754,
+        "warm": 449.2325000464916,
+        "cold": 1104.240084066987
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1909.09534-6411622cc8b2fbedbfa468859d453596d3bd2f03",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 3,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "1. 2. 3. 4. 5. 6. 7. 8.",
+        "warm": "1. 2. 3. 4. 5. 6. 7. 8.",
+        "cold": "1. Length 2. Diversity 3. Creativity 4. All of the above\n\nThe question is"
+      },
+      "completion_latency_ms": {
+        "hot": 400.7955000270158,
+        "warm": 838.9982089865953,
+        "cold": 756.8317078985274
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 400.7955000270158,
+        "warm": 838.9982089865953,
+        "cold": 756.8317078985274
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00100000761449337,
+        "warm": 461.8613750208169,
+        "cold": 1288.3584580849856
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1705.04153-ef396a34436072cb3c40b0c9bc9179fee4a168ae",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.2727272727272727,
+      "cold_int8_answer_f1": 0.2727272727272727,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The two tasks are the NLP tasks and the semantic matching task. The NLP tasks are the ones that are mentioned",
+        "warm": "The two tasks are the NLP tasks and the semantic matching task. The NLP tasks are the ones that are mentioned",
+        "cold": "The two tasks are the NLP tasks and the semantic matching task. The NLP tasks are the ones that are mentioned"
+      },
+      "completion_latency_ms": {
+        "hot": 372.5990841630846,
+        "warm": 765.3802910353988,
+        "cold": 753.3684589434415
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 372.5990841630846,
+        "warm": 765.3802910353988,
+        "cold": 753.3684589434415
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001250067725777626,
+        "warm": 428.82025009021163,
+        "cold": 1237.6299158204347
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1709.10367-777217e025132ddc173cf33747ee590628a8f62f",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 4,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is that they are not experiments, but rather empirical studies of speeches, abstracts, and shopping baskets. The",
+        "warm": "The answer is that they are not experiments, but rather empirical studies of speeches, abstracts, and shopping baskets. The",
+        "cold": "The answer is that the experiments are the empirical studies of speeches, abstracts, and shopping baskets. The experiments are conducted"
+      },
+      "completion_latency_ms": {
+        "hot": 376.59320794045925,
+        "warm": 774.8213328886777,
+        "cold": 760.7221670914441
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 376.59320794045925,
+        "warm": 774.8213328886777,
+        "cold": 760.7221670914441
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0005830079317092896,
+        "warm": 431.3652920536697,
+        "cold": 1316.1868329625577
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1910.06592-483a699563efcb8804e1861b18809279f21c7610",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.11764705882352941,
+      "cold_int8_answer_f1": 0.11764705882352941,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Yes or No? The answer is in the document provided.\nThe answer is in the document provided.\nThe answer is in",
+        "warm": "Yes or No? The answer is in the document provided.\nThe answer is in the document provided.\nThe answer is in",
+        "cold": "Yes or No? The answer is in the document provided.\nThe answer is in the document provided.\nThe answer is in"
+      },
+      "completion_latency_ms": {
+        "hot": 388.02199997007847,
+        "warm": 816.5165828540921,
+        "cold": 763.5755001101643
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 388.02199997007847,
+        "warm": 816.5165828540921,
+        "cold": 763.5755001101643
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001125037670135498,
+        "warm": 434.52695896849036,
+        "cold": 1109.5204579178244
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "2002.01207-76ed74788e3eb3321e646c48ae8bf6cdfe46dca1",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.10526315789473682,
+      "cold_int8_f1_delta": 0.10526315789473682,
+      "outputs": {
+        "hot": "The features are: 1. Position within the word segment (SEG), 2. Position within the character (CHAR",
+        "warm": "The features are: 1. Position within the word segment (SEG), 2. Position within the character (CHAR",
+        "cold": "The question is about the features used in the diacritization process, and the answer is that the features are the"
+      },
+      "completion_latency_ms": {
+        "hot": 379.0873328689486,
+        "warm": 767.4149579834193,
+        "cold": 714.6568750031292
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 379.0873328689486,
+        "warm": 767.4149579834193,
+        "cold": 714.6568750031292
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00100000761449337,
+        "warm": 455.0070830155164,
+        "cold": 1305.7004169095308
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1608.01884-662870a90890c620a964720b2ca122a1139410ea",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 16,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "are the same, and the gender of the pronoun is not the same in each language.) This is a case of",
+        "warm": "are the same, and the gender of the pronoun is not the same in each language.) This is a case of",
+        "cold": "are the same, and the gender of the pronoun is not the same in different languages.) This is a case of"
+      },
+      "completion_latency_ms": {
+        "hot": 390.82095795311034,
+        "warm": 810.2393329609185,
+        "cold": 758.7724169716239
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 390.82095795311034,
+        "warm": 810.2393329609185,
+        "cold": 758.7724169716239
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001416075974702835,
+        "warm": 419.21304096467793,
+        "cold": 1279.4753750786185
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1809.02279-c2eb743c9d0baf1781c3c0df9533fab588250af3",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 3,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "BIBREF40 .\n\nThe question is: Which models did they experiment with? According to the provided text, the",
+        "warm": "BIBREF40 .\n\nThe question is: Which models did they experiment with? According to the provided text, the",
+        "cold": "BIBREF39 and BIBREF40.\n\nThe question is: Which models did they experiment with?\n\nA"
+      },
+      "completion_latency_ms": {
+        "hot": 390.7157089561224,
+        "warm": 820.7837089430541,
+        "cold": 684.3433750327677
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 390.7157089561224,
+        "warm": 820.7837089430541,
+        "cold": 684.3433750327677
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008328352123498917,
+        "warm": 436.65058305487037,
+        "cold": 1316.532792057842
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1811.00383-7e62a53823aba08bc26b2812db016f5ce6159565",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 4,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The dataset used in BIBREF13 is the 2017 WMT (Workshop on Machine Translation",
+        "warm": "The dataset used in BIBREF13 is the 2017 WMT (Workshop on Machine Translation",
+        "cold": "The dataset used in the BIBREF13 is the 2017 WMT (Workshop on Machine"
+      },
+      "completion_latency_ms": {
+        "hot": 386.3125001080334,
+        "warm": 773.2770000584424,
+        "cold": 714.2280840780586
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 386.3125001080334,
+        "warm": 773.2770000584424,
+        "cold": 714.2280840780586
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008330680429935455,
+        "warm": 396.4032919611782,
+        "cold": 1332.1724999696016
+      }
+    },
+    {
+      "dataset": "qasper",
+      "example_id": "1908.01294-f697d00a82750b14376fe20a5a2b249e98bebe9b",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.14285714285714288,
+      "cold_int8_f1_delta": 0.14285714285714288,
+      "outputs": {
+        "hot": "1. 2. 3. 4. 5. 6. 7. 8.",
+        "warm": "1. 2. 3. 4. 5. 6. 7. 8.",
+        "cold": "The answer is that they use the Bi-LSTM-CRF model, which is currently the deep learning state-of-the-art"
+      },
+      "completion_latency_ms": {
+        "hot": 390.433665830642,
+        "warm": 810.2699159644544,
+        "cold": 776.3624170329422
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 390.433665830642,
+        "warm": 810.2699159644544,
+        "cold": 776.3624170329422
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0013331882655620575,
+        "warm": 401.749457931146,
+        "cold": 1315.505790989846
+      }
+    }
+  ],
+  "summary": {
+    "examples": 20,
+    "hot_warm_exact": 20,
+    "hot_warm_payload_exact": 20,
+    "hot_cold_int8_exact": 2,
+    "hot_cold_first_token_equal": 15,
+    "mean_hot_cold_common_prefix_tokens": 6.25,
+    "mean_cold_int8_f1_delta": -0.013872278179486419,
+    "restart_recovered": true,
+    "request_lifetime_pinning": true,
+    "metrics": {
+      "hits": {
+        "cold": 20,
+        "hot": 0,
+        "source": 0,
+        "warm": 21
+      },
+      "misses": {
+        "cold": 0,
+        "hot": 0,
+        "source": 0,
+        "warm": 0
+      },
+      "promotions": 41,
+      "demotions": 60,
+      "evictions": 0,
+      "reloads": 41,
+      "bytes_read": 2221929808,
+      "bytes_written": 4245635105,
+      "persistence_writes": 79,
+      "wasted_persistence_writes": 0,
+      "task_aware_retention_hits": 0,
+      "task_close_bytes_freed": 0,
+      "session_close_bytes_freed": 0,
+      "promotion_latency_ns": 14867231501,
+      "persistence_latency_ns": 17627044040,
+      "decompression_latency_ns": 0,
+      "dequantization_latency_ns": 4006895169
+    },
+    "usage": {
+      "hot_bytes": 44040192,
+      "warm_bytes": 88091983,
+      "cold_bytes": 405007860,
+      "total_native_bytes": 537140035,
+      "source_only_objects": 0
+    },
+    "capabilities": {
+      "integration_level": "E2",
+      "native_kv_generation": true,
+      "scheduler_invisible_tail_pages": 64,
+      "ordinary_prefix_namespace_used": false,
+      "page_aligned_selection_required": true,
+      "consumer_layers": "all",
+      "scheduler_prefix_observability": true,
+      "native_apc_identity_required": true
+    }
+  }
+}

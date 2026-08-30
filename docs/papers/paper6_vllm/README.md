@@ -13,14 +13,17 @@ preventing reuse across different native memories while retaining reuse within
 one selection. A matched 60-example routed-QA cohort now covers 840 paired
 requests across cold, warm, multi-query, and concurrency-eight schedules. It
 removes 91--93% of visible tokens and reaches 840/840 exact output parity after
-matching E0 APC and E2 query-prefill geometry. Online token latency, connectors,
-cross-model replication, and CUDA remain open.
+matching E0 APC and E2 query-prefill geometry. Qwen3-1.7B independently reaches
+840/840 with macro E2/E0 ratios of 1.007 cold, 0.992 warm, 0.994 multi-query,
+and 0.987 concurrent. Online token latency, connectors, cross-family
+replication, and CUDA remain open.
 
-The shared storage manager is also connected to live reserved pages. Three
-QASPER selections remain 3/3 exact after lossless WARM promotion and recover
-after manager restart. Explicit int8 COLD changes all three sequences and is
-not a default profile. This is a lifecycle mechanism probe, not a tail-latency
-or LMCache result.
+The shared storage manager is also connected to live reserved pages. Across
+80 examples spanning three datasets at 0.6B and QASPER at 1.7B, lossless WARM
+output and native arrays are 80/80 exact and recover after manager restart.
+Explicit int8 COLD is exact in only 17/80 sequences and is not a default
+profile. This is a finite lifecycle cohort, not online tail-latency or LMCache
+evidence.
 
 Rebuild the generated artifacts and paper from the repository root:
 
@@ -29,6 +32,10 @@ python -m experiments.engine_serving.summarize
 PYTHONPATH=src:. python -m experiments.paper4_5_runtime.run_storage_lifecycle
 PYTHONPATH=src:. python -m experiments.paper6_vllm.run_live_storage_lifecycle
 PYTHONPATH=src:. python -m experiments.engine_serving.summarize_live_storage_lifecycle
+PYTHONPATH=src:. python -m experiments.paper6_vllm.summarize_cross_model \
+  --cohort mlx-community/Qwen3-0.6B-4bit docs/papers/shared/results/matched_e0_e2/matched_e0_e2_summary.json \
+  --cohort mlx-community/Qwen3-1.7B-4bit docs/papers/shared/results/paper6_vllm/matched_e0_e2_qwen3_1_7b/matched_e0_e2_summary.json \
+  --output-dir docs/papers/shared/results/paper6_vllm/cross_model_matched
 cd docs/papers/paper6_vllm
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
 ```

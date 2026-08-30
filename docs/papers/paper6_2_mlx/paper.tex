@@ -57,10 +57,10 @@ selected-cache path yields macro E2/E0 cost ratios of 1.130, 1.155, 1.148, and
 1.132 across those schedules. A 1,020-request pressure sweep then holds QA quality constant while
 varying an eight-resource session's compact-K/V budget. Budgets below eight
 reload every repeated access; fitting all eight resources eliminates reloads
-and halves mean resolution time at a 151--168 MiB residency cost. A final live
-lifecycle probe adds layer-segmented mmap WARM storage: WARM is 3/3 exact and
-restart recovery succeeds, while int8 COLD changes 3/3 sequences and remains
-an explicit, unpromoted option.
+and halves mean resolution time at a 151--168 MiB residency cost. An expanded
+live lifecycle study adds layer-segmented mmap WARM storage: WARM is 80/80
+exact and restart recovery succeeds, while int8 COLD is exact in only 13/80
+sequences and remains an explicit, unpromoted option.
 \end{abstract}
 
 \section{Introduction}
@@ -564,6 +564,23 @@ default; quantized COLD requires a larger model- and workload-specific quality
 gate. The separate per-head compact-residency experiment remains relevant but
 does not override this autoregressive sequence diagnostic.
 
+We expand the protocol to 80 examples: all three datasets at Qwen3-0.6B and
+QASPER at Qwen3-1.7B. Lossless WARM remains 80/80 exact and all four managers
+recover after restart; int8 COLD is exact in 13/80 sequences. WARM/HOT p50
+ratios are 2.01--2.15, with WARM p95 between 710 and 817 ms. The larger cohort
+therefore strengthens persistence correctness while making request-time
+promotion, rather than array storage, the immediate systems bottleneck.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Expanded MLX lifecycle cohorts. Latencies include synchronous
+promotion and generation; int8 remains diagnostic.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/live_storage_scaling/generated_live_storage_scaling_mlx_lm.tex}}
+\label{tab:mlx-storage-scaling}
+\end{table}
+
 \FloatBarrier
 \section{Promotion Gates}
 \begin{center}
@@ -579,7 +596,7 @@ rotating plus native & controlled closed & 5/5 with 64-token local cache \\
 lazy native region & prototype closed & selected resources encode on first selection \\
 consumer profile & controlled candidate & last 14/28 layers retain 5/5 at half K/V bytes \\
 persistence & controlled closed & strict fingerprint; zero-error reload in 7.2 ms mean \\
-shared storage lifecycle & controlled closed & segmented WARM 3/3 exact; restart recovery; int8 COLD open \\
+shared storage lifecycle & controlled closed & segmented WARM 80/80 exact; restart recovery; int8 COLD 13/80 \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided at eight \\
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\

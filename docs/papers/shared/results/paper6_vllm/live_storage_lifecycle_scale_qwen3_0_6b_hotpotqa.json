@@ -1,0 +1,746 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_vllm_live_storage_lifecycle_v1",
+  "engine": "vllm-metal",
+  "engine_version": "0.28.0",
+  "model_id": "mlx-community/Qwen3-0.6B-4bit",
+  "rows": [
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5a8367c1554299334474600e",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 23,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: Lars Lunde played for the team that won the 1987 European Cup Final.",
+        "warm": "The answer is: Lars Lunde played for the team that won the 1987 European Cup Final.",
+        "cold": "The answer is: Lars Lunde played for the team that won the 1987 European Cup Final."
+      },
+      "completion_latency_ms": {
+        "hot": 371.9914162065834,
+        "warm": 733.3935829810798,
+        "cold": 825.9353749454021
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 371.9914162065834,
+        "warm": 733.3935829810798,
+        "cold": 825.9353749454021
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009578652679920197,
+        "warm": 440.55075012147427,
+        "cold": 602.8153749648482
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ab2a54b554299295394678e",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "A) 1820 km\u00b2 B) 1820 km\u00b2 C) 182",
+        "warm": "A) 1820 km\u00b2 B) 1820 km\u00b2 C) 182",
+        "cold": "A. 1820 km\u00b2B. 1820 km\u00b2C. 182"
+      },
+      "completion_latency_ms": {
+        "hot": 359.86774996854365,
+        "warm": 735.3599590715021,
+        "cold": 757.7426659408957
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 359.86774996854365,
+        "warm": 735.3599590715021,
+        "cold": 757.7426659408957
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0013748649507761002,
+        "warm": 423.7194159068167,
+        "cold": 1193.1553750764579
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ab2da13554299194fa93542",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "and \"The Fosters\" and \"The Fosters\" and \"The Fosters\" and \"The",
+        "warm": "and \"The Fosters\" and \"The Fosters\" and \"The Fosters\" and \"The",
+        "cold": "and \"The Fosters\" and \"The Fosters\" and \"The Fosters\" and \"The"
+      },
+      "completion_latency_ms": {
+        "hot": 379.145166836679,
+        "warm": 650.2008750103414,
+        "cold": 711.500208126381
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 379.145166836679,
+        "warm": 650.2008750103414,
+        "cold": 711.500208126381
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0012919772416353226,
+        "warm": 426.68695794418454,
+        "cold": 1139.8020829074085
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ae48aff5542996836b02cce",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: 1988.\n\nAnswer in a sentence.\n\n**A.** 1988",
+        "warm": "The answer is: 1988.\n\nAnswer in a sentence.\n\n**A.** 1988",
+        "cold": "The document is about the song \"When We Was Fab\" and its release date and the context in which it was released"
+      },
+      "completion_latency_ms": {
+        "hot": 378.59258288517594,
+        "warm": 738.8834170997143,
+        "cold": 716.3605419918895
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 378.59258288517594,
+        "warm": 738.8834170997143,
+        "cold": 716.3605419918895
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0016670674085617065,
+        "warm": 390.6475829426199,
+        "cold": 1176.6206671018153
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5a81549055429938b6142338",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.16666666666666669,
+      "cold_int8_answer_f1": 0.16666666666666669,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "A) Public House\n\nB) Private House\n\nC) Private\n\nD) Public\n\nAnswer: A\nAnswer",
+        "warm": "A) Public House\n\nB) Private House\n\nC) Private\n\nD) Public\n\nAnswer: A\nAnswer",
+        "cold": "A) Public House\n\nB) Private House\n\nC) Private\n\nD) Public\n\nAnswer: A\nAnswer"
+      },
+      "completion_latency_ms": {
+        "hot": 369.40570804290473,
+        "warm": 702.4096250534058,
+        "cold": 655.0972079858184
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 369.40570804290473,
+        "warm": 702.4096250534058,
+        "cold": 655.0972079858184
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00100000761449337,
+        "warm": 409.8651250824332,
+        "cold": 1264.2942920792848
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5a8c5794554299240d9c2131",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "If the answer is no, then the correct answer is: \"Willard Mack\" and \"Subhash Ghai\"",
+        "warm": "If the answer is no, then the correct answer is: \"Willard Mack\" and \"Subhash Ghai\"",
+        "cold": "If the answer is no, then the correct answer is: \"Willard Mack\" and \"Subhash Ghai\""
+      },
+      "completion_latency_ms": {
+        "hot": 329.26349993795156,
+        "warm": 663.1045839749277,
+        "cold": 722.4404579028487
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 329.26349993795156,
+        "warm": 663.1045839749277,
+        "cold": 722.4404579028487
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001459149643778801,
+        "warm": 300.5216249730438,
+        "cold": 1157.0017919875681
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ab3b50055429969a97a818c",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 16,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "\" ) is a naval shipyard in Turkey, established in 1945 by Andrew Sprowle, a",
+        "warm": "\" ) is a naval shipyard in Turkey, established in 1945 by Andrew Sprowle, a",
+        "cold": "\" ) is a naval shipyard in Turkey, established in 1940 by Andrew Sprowle, a"
+      },
+      "completion_latency_ms": {
+        "hot": 361.0673751682043,
+        "warm": 698.3164169359952,
+        "cold": 725.4749999847263
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 361.0673751682043,
+        "warm": 698.3164169359952,
+        "cold": 725.4749999847263
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00041583552956581116,
+        "warm": 405.5636250413954,
+        "cold": 1200.233332812786
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5abb17e75542996cc5e49fa2",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.14285714285714285,
+      "cold_int8_answer_f1": 0.15384615384615385,
+      "cold_int8_f1_delta": 0.010989010989011005,
+      "outputs": {
+        "hot": "A) Tehran\nB) London\nC) New York\nD) London\nAnswer:\nTo determine the city",
+        "warm": "A) Tehran\nB) London\nC) New York\nD) London\nAnswer:\nTo determine the city",
+        "cold": "The document is about the 1993 Tehran mid-air collision.  The document is about the 1"
+      },
+      "completion_latency_ms": {
+        "hot": 382.89787503890693,
+        "warm": 679.8512500245124,
+        "cold": 701.4302499592304
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 382.89787503890693,
+        "warm": 679.8512500245124,
+        "cold": 701.4302499592304
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0010828953236341476,
+        "warm": 278.1635408755392,
+        "cold": 1211.4435841795057
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5a7b3b4f5542992d025e67ac",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 2,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.1111111111111111,
+      "cold_int8_f1_delta": 0.1111111111111111,
+      "outputs": {
+        "hot": "The answer is: 1. 2. 3. 4. 5. 6.",
+        "warm": "The answer is: 1. 2. 3. 4. 5. 6.",
+        "cold": "The film is set in the fictional world of the Henriad.  The film is set in the fictional world of"
+      },
+      "completion_latency_ms": {
+        "hot": 375.79100020229816,
+        "warm": 675.4075419157743,
+        "cold": 696.1041670292616
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 375.79100020229816,
+        "warm": 675.4075419157743,
+        "cold": 696.1041670292616
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0007920898497104645,
+        "warm": 405.2343328949064,
+        "cold": 1203.2668329775333
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5a7c80ab55429907fabeefa3",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: the answer is: the answer is: the answer is: the answer is: the answer is",
+        "warm": "The answer is: the answer is: the answer is: the answer is: the answer is: the answer is",
+        "cold": "The answer is: the answer is: the answer is: the answer is: the answer is: the answer is"
+      },
+      "completion_latency_ms": {
+        "hot": 331.589916953817,
+        "warm": 708.7911670096219,
+        "cold": 657.1346251294017
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 331.589916953817,
+        "warm": 708.7911670096219,
+        "cold": 657.1346251294017
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00100000761449337,
+        "warm": 431.9154170807451,
+        "cold": 1245.2479579951614
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ab262a4554299340b5254ac",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The story is inspired by the big-game hunting safaris in Africa and South America that were particularly fashionable among wealthy Americans",
+        "warm": "The story is inspired by the big-game hunting safaris in Africa and South America that were particularly fashionable among wealthy Americans",
+        "cold": "Thrill of a Romance.  Thrill of a Romance is a short story by Richard Connell, first published"
+      },
+      "completion_latency_ms": {
+        "hot": 342.27641695179045,
+        "warm": 756.7277499474585,
+        "cold": 697.062750114128
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 342.27641695179045,
+        "warm": 756.7277499474585,
+        "cold": 697.062750114128
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0012088567018508911,
+        "warm": 376.3926250394434,
+        "cold": 1257.305207895115
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ab701395542991d3222373a",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 2,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The Amargosa River is a major river in the area and is a tributary of the Amargosa",
+        "warm": "The Amargosa River is a major river in the area and is a tributary of the Amargosa",
+        "cold": "The town is located on the southern side of the Amargosa River and is adjacent to the Sarcobatus"
+      },
+      "completion_latency_ms": {
+        "hot": 375.5515420343727,
+        "warm": 758.358082966879,
+        "cold": 715.4087917879224
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 375.5515420343727,
+        "warm": 758.358082966879,
+        "cold": 715.4087917879224
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008749775588512421,
+        "warm": 393.7511248514056,
+        "cold": 1301.4146669302136
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5a7bf0d75542996dd594b85c",
+      "source_tokens": 368,
+      "native_bytes": 42205184,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.28571428571428575,
+      "cold_int8_answer_f1": 0.28571428571428575,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Options:\nA. Joe Estevez\nB. Charlie Sheen\nC. Martin Sheen\nD. None",
+        "warm": "Options:\nA. Joe Estevez\nB. Charlie Sheen\nC. Martin Sheen\nD. None",
+        "cold": "A. Joe Estevez\nB. Charlie Sheen\nC. Martin Sheen\nD. Ramon Este"
+      },
+      "completion_latency_ms": {
+        "hot": 302.6739170309156,
+        "warm": 785.2364589925855,
+        "cold": 791.4771249052137
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 302.6739170309156,
+        "warm": 785.2364589925855,
+        "cold": 791.4771249052137
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009587965905666351,
+        "warm": 407.13741700164974,
+        "cold": 1230.3769590798765
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ab42a2b5542996a3a969f5a",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.2857142857142857,
+      "cold_int8_answer_f1": 0.2857142857142857,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "A) Benjamin Banneker\nB) Henry Ford\nC) Henry Clay\nD) William Henry\nAnswer",
+        "warm": "A) Benjamin Banneker\nB) Henry Ford\nC) Henry Clay\nD) William Henry\nAnswer",
+        "cold": "A) Benjamin Banneker\nB) Henry Ford\nC) Henry Clay\nD) William Henry\nAnswer"
+      },
+      "completion_latency_ms": {
+        "hot": 364.43395796231925,
+        "warm": 782.6436250470579,
+        "cold": 690.2388329617679
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 364.43395796231925,
+        "warm": 782.6436250470579,
+        "cold": 690.2388329617679
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009171199053525925,
+        "warm": 439.27370896562934,
+        "cold": 1277.5087498594075
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5add889b5542997545bbbd68",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The song was composed by Jawad Ahmad and sung by Rahat Fateh Ali Khan.\n\nDocument: Kandu",
+        "warm": "The song was composed by Jawad Ahmad and sung by Rahat Fateh Ali Khan.\n\nDocument: Kandu",
+        "cold": "the lyrics are by the author of the song.  The song is a romantic song and is popular in India."
+      },
+      "completion_latency_ms": {
+        "hot": 368.6316250823438,
+        "warm": 732.395957922563,
+        "cold": 731.860457919538
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 368.6316250823438,
+        "warm": 732.395957922563,
+        "cold": 731.860457919538
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0007909256964921951,
+        "warm": 453.8217082154006,
+        "cold": 1298.2994578778744
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ae471fa55429970de88d965",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 4,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: The answer is: The answer is: The answer is: The answer is: The answer is:",
+        "warm": "The answer is: The answer is: The answer is: The answer is: The answer is: The answer is:",
+        "cold": "The answer is: the answer is: the answer is: the answer is: the answer is: the answer is:"
+      },
+      "completion_latency_ms": {
+        "hot": 356.1152499169111,
+        "warm": 772.1345000900328,
+        "cold": 763.3567079901695
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 356.1152499169111,
+        "warm": 772.1345000900328,
+        "cold": 763.3567079901695
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0010419171303510666,
+        "warm": 477.5874998886138,
+        "cold": 1443.1720420252532
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ab6973f554299110f219a25",
+      "source_tokens": 368,
+      "native_bytes": 42205184,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 11,
+      "hot_answer_f1": 0.4166666666666667,
+      "cold_int8_answer_f1": 0.43478260869565216,
+      "cold_int8_f1_delta": 0.018115942028985477,
+      "outputs": {
+        "hot": "Which of the following statements is correct?\n\nA. The magazine is called \"Security Management\" and is published in Alexandria",
+        "warm": "Which of the following statements is correct?\n\nA. The magazine is called \"Security Management\" and is published in Alexandria",
+        "cold": "Which of the following statements is correct?\n\nA. Security Management magazine\nB. Proceedings magazine\nC. IX magazine"
+      },
+      "completion_latency_ms": {
+        "hot": 380.1025408320129,
+        "warm": 831.7992500960827,
+        "cold": 787.6523749437183
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 380.1025408320129,
+        "warm": 831.7992500960827,
+        "cold": 787.6523749437183
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0008749775588512421,
+        "warm": 395.89666691608727,
+        "cold": 1256.5792498644441
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ac35003554299741d48a24b",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "its  nuclear reserve.  The Act of 1958 was signed by the President of the United States and",
+        "warm": "its  nuclear reserve.  The Act of 1958 was signed by the President of the United States and",
+        "cold": "the  program.  The Act of 1958 was signed by the President of the United States and the"
+      },
+      "completion_latency_ms": {
+        "hot": 358.89154206961393,
+        "warm": 779.3123750016093,
+        "cold": 798.8731670193374
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 358.89154206961393,
+        "warm": 779.3123750016093,
+        "cold": 798.8731670193374
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0011248048394918442,
+        "warm": 374.5256669353694,
+        "cold": 1365.0490830186754
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ae127c9554299422ee99612",
+      "source_tokens": 352,
+      "native_bytes": 40370176,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Document: Fighting Cock (disambiguation)\nA fighting cock is a rooster used in the blood sport of",
+        "warm": "Document: Fighting Cock (disambiguation)\nA fighting cock is a rooster used in the blood sport of",
+        "cold": "The answer is: Bardstown.\n\nDocument: Fighting Cock (disambiguation)\nA fighting cock is a ro"
+      },
+      "completion_latency_ms": {
+        "hot": 366.97587510570884,
+        "warm": 838.0580830853432,
+        "cold": 800.062415888533
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 366.97587510570884,
+        "warm": 838.0580830853432,
+        "cold": 800.062415888533
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009580980986356735,
+        "warm": 377.98487511463463,
+        "cold": 1261.8096671067178
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "example_id": "5ae75eb45542991bbc976201",
+      "source_tokens": 320,
+      "native_bytes": 36700160,
+      "hot_warm_exact": true,
+      "hot_warm_payload_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.14285714285714288,
+      "cold_int8_answer_f1": 0.14285714285714288,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The family drama is called \"The Fosters\" and is currently in production.\n\nDocument: Freeform Family",
+        "warm": "The family drama is called \"The Fosters\" and is currently in production.\n\nDocument: Freeform Family",
+        "cold": "The family drama is called \"The Fosters\" and is currently in production.\n\nDocument: Freeform Family"
+      },
+      "completion_latency_ms": {
+        "hot": 362.7462089061737,
+        "warm": 751.5231671277434,
+        "cold": 366.7237078770995
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 362.7462089061737,
+        "warm": 751.5231671277434,
+        "cold": 366.7237078770995
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00100000761449337,
+        "warm": 359.4448340591043,
+        "cold": 1146.647916873917
+      }
+    }
+  ],
+  "summary": {
+    "examples": 20,
+    "hot_warm_exact": 20,
+    "hot_warm_payload_exact": 20,
+    "hot_cold_int8_exact": 7,
+    "hot_cold_first_token_equal": 18,
+    "mean_hot_cold_common_prefix_tokens": 10.4,
+    "mean_cold_int8_f1_delta": 0.007010803206455379,
+    "restart_recovered": true,
+    "request_lifetime_pinning": true,
+    "metrics": {
+      "hits": {
+        "cold": 20,
+        "hot": 0,
+        "source": 0,
+        "warm": 21
+      },
+      "misses": {
+        "cold": 0,
+        "hot": 0,
+        "source": 0,
+        "warm": 0
+      },
+      "promotions": 41,
+      "demotions": 60,
+      "evictions": 0,
+      "reloads": 41,
+      "bytes_read": 2239362567,
+      "bytes_written": 4313530767,
+      "persistence_writes": 79,
+      "wasted_persistence_writes": 0,
+      "task_aware_retention_hits": 0,
+      "task_close_bytes_freed": 0,
+      "session_close_bytes_freed": 0,
+      "promotion_latency_ns": 14811630915,
+      "persistence_latency_ns": 17793848545,
+      "decompression_latency_ns": 0,
+      "dequantization_latency_ns": 4182028583
+    },
+    "usage": {
+      "hot_bytes": 36700160,
+      "warm_bytes": 73411919,
+      "cold_bytes": 415100587,
+      "total_native_bytes": 525212666,
+      "source_only_objects": 0
+    },
+    "capabilities": {
+      "integration_level": "E2",
+      "native_kv_generation": true,
+      "scheduler_invisible_tail_pages": 64,
+      "ordinary_prefix_namespace_used": false,
+      "page_aligned_selection_required": true,
+      "consumer_layers": "all",
+      "scheduler_prefix_observability": true,
+      "native_apc_identity_required": true
+    }
+  }
+}

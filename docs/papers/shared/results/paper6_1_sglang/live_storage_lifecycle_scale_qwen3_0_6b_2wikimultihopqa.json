@@ -1,0 +1,726 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_1_sglang_live_storage_lifecycle_v1",
+  "engine": "sglang-mlx",
+  "engine_version": "0.0.0.dev1+gef20fab38.d20260828",
+  "model_id": "mlx-community/Qwen3-0.6B-4bit",
+  "rows": [
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "322178260bde11eba7f7acde48001122",
+      "source_tokens": 381,
+      "native_bytes": 43696128,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 3,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(a) Nuremberg (b) Germany (c) France (d) England\n\nThe question is:",
+        "warm": "(a) Nuremberg (b) Germany (c) France (d) England\n\nThe question is:",
+        "cold": "(a) [1297] (b) [1300] (c) [13"
+      },
+      "completion_latency_ms": {
+        "hot": 340.0594580452889,
+        "warm": 306.2207920011133,
+        "cold": 303.6263750400394
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 342.3367920331657,
+        "warm": 492.6275000907481,
+        "cold": 549.0477080456913
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0012498348951339722,
+        "warm": 231.11445782706141,
+        "cold": 454.57529183477163
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+      "source_tokens": 346,
+      "native_bytes": 39682048,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.35294117647058826,
+      "cold_int8_answer_f1": 0.3157894736842105,
+      "cold_int8_f1_delta": -0.03715170278637775,
+      "outputs": {
+        "hot": "Document: Father's Doing Fine\nFather's Doing Fine is a 1952 British comedy film directed by",
+        "warm": "Document: Father's Doing Fine\nFather's Doing Fine is a 1952 British comedy film directed by",
+        "cold": "Which film has the director born earlier, Father's Doing Fine or Undercover Brother?\n\nDocument: Father's Doing Fine"
+      },
+      "completion_latency_ms": {
+        "hot": 292.9959169123322,
+        "warm": 302.1200420334935,
+        "cold": 330.2554578986019
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 294.2912499420345,
+        "warm": 505.6634999345988,
+        "cold": 571.4636670891196
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001084059476852417,
+        "warm": 158.4619579371065,
+        "cold": 820.2738338150084
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "656b25bc0baf11ebab90acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Chlothar III's paternal grandfather is Clovis II, King of Neustria and Burgundy.\nAnswer:\n\nThe paternal",
+        "warm": "Chlothar III's paternal grandfather is Clovis II, King of Neustria and Burgundy.\nAnswer:\n\nThe paternal",
+        "cold": "The The answer is: Chlothar III's paternal grandfather is Clovis II. The answer is: Chlothar"
+      },
+      "completion_latency_ms": {
+        "hot": 302.805959014222,
+        "warm": 301.5274170320481,
+        "cold": 304.078791057691
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 305.2022089250386,
+        "warm": 546.8094581738114,
+        "cold": 546.3124169036746
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001500127837061882,
+        "warm": 252.38487496972084,
+        "cold": 882.0828329771757
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Are the movies Carry On Cleo and Carry On Jack from the same country? Are the movies Carry On Cleo and",
+        "warm": "Are the movies Carry On Cleo and Carry On Jack from the same country? Are the movies Carry On Cleo and",
+        "cold": "Are the movies Carry On Cleo and Carry On Jack from the same country? Are the movies Carry On Cleo and"
+      },
+      "completion_latency_ms": {
+        "hot": 307.196042034775,
+        "warm": 322.62766594067216,
+        "cold": 315.97387488000095
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 309.76512492634356,
+        "warm": 533.6741670034826,
+        "cold": 593.7609160318971
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0012081582099199295,
+        "warm": 187.52620904706419,
+        "cold": 970.547208096832
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "08fe2b440bdc11eba7f7acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ...",
+        "warm": "... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ...",
+        "cold": "... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ..."
+      },
+      "completion_latency_ms": {
+        "hot": 308.1473328638822,
+        "warm": 286.05604195035994,
+        "cold": 306.97016697376966
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 310.84441603161395,
+        "warm": 514.5477498881519,
+        "cold": 524.4516250677407
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000833999365568161,
+        "warm": 190.58687495999038,
+        "cold": 897.8929577860981
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "11007dea0bde11eba7f7acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The three huastecos are three people who live in a small town in the country of Mexico. They are",
+        "warm": "The three huastecos are three people who live in a small town in the country of Mexico. They are",
+        "cold": "A) 1949\nB) 1948\nC) 1947"
+      },
+      "completion_latency_ms": {
+        "hot": 311.8544581811875,
+        "warm": 332.6750418636948,
+        "cold": 296.2622919585556
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 314.7240839898586,
+        "warm": 553.1225830782205,
+        "cold": 552.9477500822395
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001084059476852417,
+        "warm": 195.45149989426136,
+        "cold": 915.5576250050217
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "1b10e97e0bdd11eba7f7acde48001122",
+      "source_tokens": 348,
+      "native_bytes": 39911424,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: 1992.\n\nDocument: A Man Escaped\nA Man Escaped is a film",
+        "warm": "The answer is: 1992.\n\nDocument: A Man Escaped\nA Man Escaped is a film",
+        "cold": "Document: A Man Escaped\nA Man Escaped is a film directed by Robert Bresson. The film"
+      },
+      "completion_latency_ms": {
+        "hot": 305.56408409029245,
+        "warm": 301.5207920689136,
+        "cold": 303.7922920193523
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 307.58983292616904,
+        "warm": 514.2380830366164,
+        "cold": 541.0582921467721
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009168870747089386,
+        "warm": 183.62104194238782,
+        "cold": 855.6827921420336
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "c9c9b1b208b311ebbd86ac1f6bf848b6",
+      "source_tokens": 350,
+      "native_bytes": 40140800,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.2857142857142857,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": -0.2857142857142857,
+      "outputs": {
+        "hot": "The answer is: Motel Hell.\n\nAnswer:\nThe answer is: Motel Hell.\nThe answer is: The S",
+        "warm": "The answer is: Motel Hell.\n\nAnswer:\nThe answer is: Motel Hell.\nThe answer is: The S",
+        "cold": "Document: The Saxon Charm\nThe Saxon Charm is a 1948 film noir drama film written"
+      },
+      "completion_latency_ms": {
+        "hot": 321.63033285178244,
+        "warm": 317.6115839742124,
+        "cold": 281.3332499936223
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 330.08258417248726,
+        "warm": 537.1961249038577,
+        "cold": 507.0908749476075
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009580980986356735,
+        "warm": 154.0152500383556,
+        "cold": 897.6073751691729
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "26d641160bdb11eba7f7acde48001122",
+      "source_tokens": 282,
+      "native_bytes": 32342016,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 4,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Document: The Great Gatsby\nThe Great Gatsby is a 1950s American film directed by",
+        "warm": "Document: The Great Gatsby\nThe Great Gatsby is a 1950s American film directed by",
+        "cold": "Document: The film \"Tea and Sympathy\" (1956) directed by Vincente Min"
+      },
+      "completion_latency_ms": {
+        "hot": 295.7222079858184,
+        "warm": 285.1658328436315,
+        "cold": 313.5840829927474
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 300.68550002761185,
+        "warm": 431.7346669267863,
+        "cold": 546.7107079457492
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000959029421210289,
+        "warm": 120.72054203599691,
+        "cold": 639.7340830881149
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "7fcdac2e0bda11eba7f7acde48001122",
+      "source_tokens": 147,
+      "native_bytes": 16859136,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 4,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(This is a question in a test question)\n\nDocument: The Street of Illusion\nThe Street of Illusion is",
+        "warm": "(This is a question in a test question)\n\nDocument: The Street of Illusion\nThe Street of Illusion is",
+        "cold": "(This is a multiple-choice question)\n\nThe Street of Illusion is a 1928 American silent drama film"
+      },
+      "completion_latency_ms": {
+        "hot": 280.0392920617014,
+        "warm": 316.92316685803235,
+        "cold": 307.539917062968
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 283.78583304584026,
+        "warm": 411.22229187749326,
+        "cold": 474.0641249809414
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.00045890919864177704,
+        "warm": 108.55058301240206,
+        "cold": 589.2787501215935
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "92ad0f080bdd11eba7f7acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": true,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 24,
+      "hot_answer_f1": 0.13333333333333333,
+      "cold_int8_answer_f1": 0.13333333333333333,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "Document: Red Riding Hood (2003 Film)\nRed Riding Hood (2003 Film) is",
+        "warm": "Document: Red Riding Hood (2003 Film)\nRed Riding Hood (2003 Film) is",
+        "cold": "Document: Red Riding Hood (2003 Film)\nRed Riding Hood (2003 Film) is"
+      },
+      "completion_latency_ms": {
+        "hot": 295.9159160964191,
+        "warm": 306.1813749372959,
+        "cold": 288.546834141016
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 298.6822088714689,
+        "warm": 561.1630000639707,
+        "cold": 590.2166250161827
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0007080379873514175,
+        "warm": 284.9455839022994,
+        "cold": 723.781333072111
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "b1a6ac340bdd11eba7f7acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: Stan Rice.\n\nAnswer in a sentence.\n\nThe answer is: Stan Rice.\nAnswer:\n\nThe answer is",
+        "warm": "The answer is: Stan Rice.\n\nAnswer in a sentence.\n\nThe answer is: Stan Rice.\nAnswer:\n\nThe answer is",
+        "cold": "(from the document)\n\nAnswer in a sentence.\n\nAnswer: The husband of Marcia Lucas born is Stan Rice.\nAnswer"
+      },
+      "completion_latency_ms": {
+        "hot": 321.7340421397239,
+        "warm": 315.5312091112137,
+        "cold": 291.4498751051724
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 325.8544581476599,
+        "warm": 567.9528750479221,
+        "cold": 549.1657080128789
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001334119588136673,
+        "warm": 218.79370789974928,
+        "cold": 955.0989998970181
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "52d807db08c611ebbd90ac1f6bf848b6",
+      "source_tokens": 179,
+      "native_bytes": 20529152,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 15,
+      "hot_answer_f1": 0.42857142857142855,
+      "cold_int8_answer_f1": 0.4,
+      "cold_int8_f1_delta": -0.028571428571428525,
+      "outputs": {
+        "hot": "(Answer: A Matter Of Earnestness)\n\nDocument: A Matter of Earnestness\nA Matter of Earnest",
+        "warm": "(Answer: A Matter Of Earnestness)\n\nDocument: A Matter of Earnestness\nA Matter of Earnest",
+        "cold": "(Answer: A Matter Of Earnestness)\n\nDocument: A Matter of Time\nA Matter of Time is a"
+      },
+      "completion_latency_ms": {
+        "hot": 295.1084999367595,
+        "warm": 302.31599998660386,
+        "cold": 299.9933341052383
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 299.31033309549093,
+        "warm": 424.09212491475046,
+        "cold": 446.83804200030863
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0010419171303510666,
+        "warm": 139.7204170934856,
+        "cold": 632.0110419765115
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "a4c46e840bdd11eba7f7acde48001122",
+      "source_tokens": 220,
+      "native_bytes": 25231360,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The documents provided are all about Thomas Mason, but the question is about the place of burial of his father. The",
+        "warm": "The documents provided are all about Thomas Mason, but the question is about the place of burial of his father. The",
+        "cold": "Document: Thomas Mason ( the 19th century)\nThomas Mason (1770\u2013180"
+      },
+      "completion_latency_ms": {
+        "hot": 329.806457972154,
+        "warm": 306.59033288247883,
+        "cold": 309.90595812909305
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 339.49974994175136,
+        "warm": 475.2100829500705,
+        "cold": 502.89949984289706
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0009580980986356735,
+        "warm": 215.47491708770394,
+        "cold": 561.9891670066863
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "ab7b2e080baf11ebab90acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 16,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "The answer is: Anne Murray, Duchess of Atholl.\n\nAnswer:\nA. 1437 B.",
+        "warm": "The answer is: Anne Murray, Duchess of Atholl.\n\nAnswer:\nA. 1437 B.",
+        "cold": "The answer is: Anne Murray, Duchess of Atholl.\n\nAnswer:\nA. Anne Murray, Duchess of Atholl"
+      },
+      "completion_latency_ms": {
+        "hot": 317.7855000831187,
+        "warm": 294.32283295318484,
+        "cold": 328.30012519843876
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 324.7720410581678,
+        "warm": 531.4096671063453,
+        "cold": 633.1163749564439
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001125037670135498,
+        "warm": 230.34425009973347,
+        "cold": 849.9100829940289
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "cc6187a60bdd11eba7f7acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "A. Malaysia B. Singapore C. China D. Taiwan\nA. Malaysia B. Singapore C. China D.",
+        "warm": "A. Malaysia B. Singapore C. China D. Taiwan\nA. Malaysia B. Singapore C. China D.",
+        "cold": "Let's see the document.\n\nDocument: Ice Kacang Puppy Love\nIce Kacang Puppy Love (Chinese:"
+      },
+      "completion_latency_ms": {
+        "hot": 296.1780419573188,
+        "warm": 315.260540926829,
+        "cold": 293.6763749457896
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 300.3437500447035,
+        "warm": 565.3442500624806,
+        "cold": 563.1868750788271
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000959029421210289,
+        "warm": 195.69895789027214,
+        "cold": 965.9252499695867
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "9bf83bb2085011ebbd57ac1f6bf848b6",
+      "source_tokens": 358,
+      "native_bytes": 41058304,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 8,
+      "hot_answer_f1": 0.23529411764705882,
+      "cold_int8_answer_f1": 0.3076923076923077,
+      "cold_int8_f1_delta": 0.07239819004524889,
+      "outputs": {
+        "hot": "The answer is: Straight A's.\n\nAnswer:\nOkay, let's tackle this question. The user is asking which film",
+        "warm": "The answer is: Straight A's.\n\nAnswer:\nOkay, let's tackle this question. The user is asking which film",
+        "cold": "The answer is: Straight A's.\n\nDocument: The Violent Years\nThe Violent Years is a 19"
+      },
+      "completion_latency_ms": {
+        "hot": 306.2172089703381,
+        "warm": 306.83204205706716,
+        "cold": 318.7669168692082
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 313.53362486697733,
+        "warm": 497.4235000554472,
+        "cold": 626.2199580669403
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.000833999365568161,
+        "warm": 274.7045001015067,
+        "cold": 971.6792919207364
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "af92715e0bdc11eba7f7acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": false,
+      "hot_cold_common_prefix_tokens": 0,
+      "hot_answer_f1": 0.0,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": 0.0,
+      "outputs": {
+        "hot": "(This is a question in the context of the document)\n\nA) France\nB) India\nC) United States",
+        "warm": "(This is a question in the context of the document)\n\nA) France\nB) India\nC) United States",
+        "cold": "The answer is: Majestic Hotel Cellars is a film directed by Richard Pottier and starring Albert Pr\u00e9jean"
+      },
+      "completion_latency_ms": {
+        "hot": 329.1933329310268,
+        "warm": 307.02041694894433,
+        "cold": 306.829874869436
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 338.79804192110896,
+        "warm": 562.9435828886926,
+        "cold": 623.5647078137845
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0010828953236341476,
+        "warm": 216.41437499783933,
+        "cold": 986.1421671230346
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "c7f1fe360baf11ebab90acde48001122",
+      "source_tokens": 384,
+      "native_bytes": 44040192,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.11764705882352941,
+      "cold_int8_answer_f1": 0.16666666666666669,
+      "cold_int8_f1_delta": 0.049019607843137275,
+      "outputs": {
+        "hot": "A. Rupert Murdoch B. Rupert Murdoch's father C. Rupert Murdoch's mother D. Rupert Murdoch's father's brother",
+        "warm": "A. Rupert Murdoch B. Rupert Murdoch's father C. Rupert Murdoch's mother D. Rupert Murdoch's father's brother",
+        "cold": "A: A: Rupert Murdoch A: Rupert Murdoch A: Rupert Murdoch A: Rupert Murdoch\nThe Answer:\nThe answer"
+      },
+      "completion_latency_ms": {
+        "hot": 323.00616591237485,
+        "warm": 308.5277078207582,
+        "cold": 306.65408400818706
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 332.14104105718434,
+        "warm": 517.7598751615733,
+        "cold": 563.7226249091327
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.001416075974702835,
+        "warm": 197.17237493023276,
+        "cold": 1112.0117499958724
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "example_id": "e13cf677089d11ebbd78ac1f6bf848b6",
+      "source_tokens": 379,
+      "native_bytes": 43466752,
+      "hot_warm_exact": true,
+      "hot_cold_int8_exact": false,
+      "hot_cold_first_token_equal": true,
+      "hot_cold_common_prefix_tokens": 1,
+      "hot_answer_f1": 0.15384615384615385,
+      "cold_int8_answer_f1": 0.0,
+      "cold_int8_f1_delta": -0.15384615384615385,
+      "outputs": {
+        "hot": "A) Yes\nB) No\nC) Not sure\nD) Not Given\n\nAnswer: B\n\nReason",
+        "warm": "A) Yes\nB) No\nC) Not sure\nD) Not Given\n\nAnswer: B\n\nReason",
+        "cold": "Document: Nelson Cragg\nNelson Cragg is an American cinematographer. He is known for his"
+      },
+      "completion_latency_ms": {
+        "hot": 286.822458030656,
+        "warm": 311.82166701182723,
+        "cold": 313.3296249434352
+      },
+      "lifecycle_request_latency_ms": {
+        "hot": 291.63987492211163,
+        "warm": 565.1549999602139,
+        "cold": 549.2232909891754
+      },
+      "background_transition_latency_ms": {
+        "hot": 0.0003341119736433029,
+        "warm": 220.76020808890462,
+        "cold": 904.1493341792375
+      }
+    }
+  ],
+  "summary": {
+    "examples": 20,
+    "hot_warm_exact": 20,
+    "hot_cold_int8_exact": 3,
+    "hot_cold_first_token_equal": 14,
+    "mean_hot_cold_common_prefix_tokens": 6.35,
+    "mean_cold_int8_f1_delta": -0.019193288651492984,
+    "restart_recovered": true,
+    "request_lifetime_pinning": true,
+    "warm_backend": "sglang_builtin_hicache_file",
+    "metrics": {
+      "hits": {
+        "cold": 20,
+        "hot": 20,
+        "source": 0,
+        "warm": 21
+      },
+      "misses": {
+        "cold": 0,
+        "hot": 0,
+        "source": 0,
+        "warm": 0
+      },
+      "promotions": 41,
+      "demotions": 60,
+      "evictions": 0,
+      "reloads": 41,
+      "bytes_read": 2046071700,
+      "bytes_written": 3896481591,
+      "persistence_writes": 79,
+      "wasted_persistence_writes": 0,
+      "task_aware_retention_hits": 0,
+      "task_close_bytes_freed": 0,
+      "session_close_bytes_freed": 0,
+      "promotion_latency_ns": 9021459497,
+      "persistence_latency_ns": 8245120166,
+      "decompression_latency_ns": 0,
+      "dequantization_latency_ns": 2975263625
+    },
+    "usage": {
+      "hot_bytes": 43466752,
+      "warm_bytes": 1567049020,
+      "cold_bytes": 370314783,
+      "total_native_bytes": 1980830555,
+      "source_only_objects": 0
+    },
+    "capabilities": {
+      "integration_level": "E1",
+      "native_kv": true,
+      "radix_prefix_identity_separate": true,
+      "radix_prefix_and_native_same_request": true,
+      "hicache_external_namespace": true,
+      "shared_storage_lifecycle": true,
+      "hicache_metrics": null,
+      "patched_layers": 28
+    }
+  }
+}
