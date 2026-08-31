@@ -36,6 +36,50 @@ boundary needed for a later source-level E2 patch; they do not establish the
 economics or parity of native TensorRT-LLM PRA.
 \end{abstract}
 
+\section{Qualification Snapshot}
+\textbf{Engine question.} Once TensorRT-LLM already supplies paged K/V,
+prefix caching, and in-flight batching, does PRA provide value beyond a strong
+selected-text baseline? Table~\ref{tab:qualification-snapshot} separates the
+answer supported by this paper from the native experiment that remains
+blocked.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Standard PRA engine result block. \textsc{Not measured} is an
+explicit evidence status, not an assumed zero.}
+\label{tab:qualification-snapshot}
+\begin{tabular}{p{0.28\linewidth}p{0.63\linewidth}}
+\toprule
+Field & Result \\
+\midrule
+Validated / observed level & E0 validated; E2 and E3 not observed \\
+Model / hardware & TinyLlama-1.1B; RTX 5060 Laptop GPU, 8,151 MiB \\
+Quality & Controlled success 1.00; natural token F1 0.069--0.105 for E0 selected evidence \\
+Visible context & 67 selected tokens versus 1,040--1,276 full-context tokens \\
+Loaded serving & 78.0--81.9 selected requests/s at concurrency 16; 50.5--86.0 ms TTFT p99 \\
+Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
+Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
+Evidence tier & Controlled transport plus a 360-request natural-QA cohort \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Recommendation.}
+Use E0 selected text on the tested stack when frozen retrieval can remove
+substantial distractor context. Do not configure or describe this adapter as
+native PRA. Promotion to E2 requires an official non-prefix attention seam and
+a selector-frozen E0/E2 parity experiment; E3 additionally requires
+scheduler-owned placement, sharing, eviction, and accounting.
+
+\paragraph{Primer.}
+E0 changes which source tokens enter an otherwise ordinary prompt. E1 carries
+PRA identities, records, and fallback policy through the runtime but does not
+attach selected K/V. E2 removes selected source text from the visible prompt
+and exposes its detached native K/V directly to attention. E3 gives the engine
+scheduler physical ownership of those selected K/V pages. This paper measures
+the first step and specifies the boundary to the latter two.
+
 \section{Introduction}
 Prefix caching asks whether a request begins with tokens that an engine has
 already processed. PRA asks which independently retained resource is relevant
@@ -64,10 +108,12 @@ We use the shared PRA execution-level vocabulary.
 \item[E0:] Selected source text is rendered into the visible prompt. Retrieval
   and semantic resource identity exist, but the engine performs ordinary
   sequential prefill.
-\item[E1:] The runtime retains engine-native derived state, but model attention
-  does not yet consume arbitrary selected non-prefix K/V.
+\item[E1:] The runtime carries PRA logical identities, typed records, routing
+  decisions, and explicit fallback policy, but attention remains ordinary.
 \item[E2:] Attention consumes selected native K/V without rendering the source
   text into the prompt, with matched geometry and one joint normalization.
+\item[E3:] The engine scheduler owns physical placement, sharing, promotion,
+  eviction, and accounting for the selected native K/V.
 \end{description}
 The live measurements in this paper are E0. The native classes are executable
 contracts and tested lifecycle machinery, not evidence that TensorRT-LLM 1.2.1
