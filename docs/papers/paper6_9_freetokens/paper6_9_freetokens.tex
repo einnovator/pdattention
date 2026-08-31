@@ -1,39 +1,230 @@
 \documentclass[10pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{booktabs,amsmath,hyperref}
-\title{Progressive Retrieval Attention with FreeToken:\\Semantic Memory under Bandwidth-Adaptive MoE Serving}
-\author{Jorge Sim\~ao}\date{\today}
-\begin{document}\maketitle
+\usepackage[margin=0.82in]{geometry}
+\usepackage{booktabs,amsmath,graphicx,hyperref,xcolor}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
+\title{Progressive Retrieval Attention with FreeToken:\\
+Semantic Memory under Bandwidth-Adaptive MoE Serving}
+\author{Jorge Sim\~ao}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
 \begin{abstract}
-Bandwidth-adaptive mixture-of-experts serving reduces inference cost by controlling which model or expert state is resident or transferred for a request. Progressive Retrieval Attention (PRA) controls a different resource: which semantic context is materialized for model attention. This paper studies whether these two independent selection problems can be physically coordinated without conflating their semantics. We integrate PRA with FreeToken, establish selected-text and native-memory baselines, decompose model/expert and PRA traffic, sweep memory and bandwidth constraints, and evaluate coordinated prefetch and scheduler-owned lifecycle. The central objective is a quality--memory--bandwidth frontier for edge-native MoE inference.
+FreeToken adapts mixture-of-experts (MoE) inference to constrained machines by
+managing model/expert residency and movement. Progressive Retrieval Attention
+(PRA) manages a different sparse resource: semantic context selected for a
+query. We pin FreeToken commit
+\texttt{3a20a79038338c33bd051c52152e6d1faa4d9791}, audit its scheduler and cache
+architecture, implement a capability-honest adapter, and introduce a
+dependency-light transfer coordinator that keeps expert and semantic identities
+separate. A five-seed controlled sweep crosses four prefetch policies with
+0.5--16 GiB/s host-device bandwidth. At 4 GiB/s, earliest-deadline coordination
+reduced mean exposed transfer latency to 22.3 ms, versus 27.1 ms for expert-only
+and 53.8 ms for independent fair sharing. At 16 GiB/s it hid both transfers in
+all seeds. At 1 GiB/s, however, PRA-only scheduling was better (162.8 versus
+258.4 ms), falsifying any claim that simple coordination is universally best.
+The available RTX 5060 host lacks the CUDA 13 toolchain and sufficient host
+memory for the documented model set, so live E0/E2/E3 model qualification is
+precisely blocked. The reported result is a scheduler design and controlled
+frontier, not native FreeToken PRA execution.
 \end{abstract}
+
 \section{Introduction}
-Both sparse model execution and PRA are selective, but they select different objects. Expert routing determines model computation; PRA routing determines semantic evidence. A robust integration should preserve this distinction while coordinating physical movement of both resource classes.
+FreeToken and PRA are both selective, but they answer different questions.
+FreeToken asks which expert or model-state bytes must be resident to execute the
+model. PRA asks which evidence records and intervals should be visible to the
+query. Expert identity is a property of computation; semantic resource identity
+is a property of application state and authorization. Merging them because both
+use top-$k$ decisions would make failures difficult to diagnose and could cross
+security boundaries.
+
+The systems opportunity is physical coordination. Expert weights and selected
+PRA K/V may compete for the same PCIe link, host memory, device capacity, and
+prefetch window. A scheduler may improve utilization by considering both demand
+streams while preserving their separate policies.
+
+This paper contributes a pinned architecture audit, separate SDK namespaces for
+semantic blocks and expert state, an optional native executor/E3 boundary, and
+a controlled bandwidth sweep that exposes both the promise and failure modes of
+simple coordination.
+
 \section{PRA and Integration Levels}
-E0 supplies selected text; E1 preserves logical resources; E2 consumes detached native semantic memory; E3 lets the scheduler manage PRA placement/prefetch/sharing alongside model state.
-\section{FreeToken Architecture}
-We pin and audit the current FreeToken implementation, including model families, expert routing, placement, scheduler, cache hierarchy, bandwidth-adaptive mechanisms, attention/KV interfaces and inherited components.
-\section{Design}
-PRA semantic resource identity remains separate from expert/model-state identity. Native E2 attaches selected PRA K/V through the smallest engine seam. E3 is claimed only when the real scheduler coordinates PRA lifecycle with model-state movement.
-\section{Bandwidth-Adaptive Evaluation}
-We sweep available host-device, disk and off-node bandwidth where applicable. Conditions cross FULL/E0/E2 PRA representations with fixed model/expert policies before any joint learned controller is considered.
-\section{Coordinated Prefetch}
-We compare model/expert prefetch only, PRA prefetch only, independent concurrent prefetch and coordinated prefetch. Metrics include ready-before-demand, wasted work, transfer contention, queue delay and accelerator idle time.
-\section{Quality and Memory}
-We report task success/F1/EM, evidence recall, frozen-selection E0/E2 parity, model/expert bytes moved, PRA bytes moved, local and PRA KV, peak memory, TTFT/ITL, throughput and successful requests per second.
-\section{Results}
-\begin{table}[h]\centering\caption{FreeTokens PRA qualification.}
-\begin{tabular}{llll}\toprule Level&Status&Quality&Main gate\\\midrule E0&TBD&TBD&TBD\\E1&TBD&TBD&TBD\\E2&TBD&TBD&TBD\\E3&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
-\begin{table}[h]\centering\caption{Traffic decomposition.}
-\begin{tabular}{lrrrr}\toprule Condition&Model/expert bytes&PRA bytes&Peak memory&TTFT p99\\\midrule FULL&TBD&TBD&TBD&TBD\\E0 selected&TBD&TBD&TBD&TBD\\E2 HOT&TBD&TBD&TBD&TBD\\E3 prefetched&TBD&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
-\section{Profiles}
-REFERENCE, QUALITY\_MAX, BALANCED and ECONOMY are evaluated as quality--memory--bandwidth tradeoffs, while expert/model-state and PRA settings remain separately visible for causal interpretation.
-\section{Related Work}
-We compare edge/MoE serving, expert offload and prefetch, KV-cache systems, SGLang/vLLM-derived serving mechanisms where actually present, RAG/context compression, and companion PRA integrations.
-\section{Limitations}
-The study does not assume that two selectors should become one learned controller. A native PRA path is rejected if it worsens the optimized E0 quality--memory--bandwidth frontier.
+E0 supplies selected evidence as visible text. E1 carries resource identity and
+lifecycle metadata. E2 consumes detached selected native K/V. E3 additionally
+requires the real FreeToken scheduler to own PRA placement, prefetch, sharing,
+and eviction. Only E3 permits claims about joint runtime scheduling.
+
+Native PRA attention joins direct and memory keys before one softmax,
+\begin{equation}
+ \operatorname{softmax}\!\left(
+ [qK_D^\top;qK_M^\top]/\sqrt d + M
+ \right)[V_D;V_M].
+\end{equation}
+An expert cache hit cannot substitute for this contract: it makes model weights
+available, not evidence available.
+
+\section{Pinned FreeToken Audit}
+At the pinned revision, FreeToken is an independent Python/CUDA serving stack
+with OpenAI and Anthropic APIs. Its CPU expert pool is a source of truth and a
+shared LRU cache holds selected expert state on the GPU. Prefill uses full-layer
+double buffering. During decode, bandwidth-adaptive logic divides expert misses
+between device transfer and CPU execution. The stack also contains paged/native
+KV pools, radix prefix reuse, recurrent-state checkpoints for applicable model
+families, and CUDA-graph-aware cache controls.
+
+These mechanisms supply plausible extension seams but not native PRA by
+themselves. A semantic block needs a stable tenant/resource/version/model
+fingerprint, selected intervals, per-layer geometry, and request-scoped
+authorization. The expert cache uses different keys and retention semantics.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.92\linewidth}\small
+Query $\rightarrow$ PRA router $\rightarrow$ semantic resource IDs and selected
+intervals $\rightarrow$ PRA text (E0) or native K/V (future E2).\\[2pt]
+Model token states $\rightarrow$ MoE router $\rightarrow$ expert IDs
+$\rightarrow$ CPU execution or expert transfer/cache.\\[2pt]
+The identities and selection losses remain independent. A physical coordinator
+receives only transfer size, deadline, residency, and predicted-use metadata,
+then arbitrates shared bandwidth. E3 begins only when FreeToken's real scheduler
+owns that arbitration and lifecycle.
+\end{minipage}}
+\caption{Two selectors, one possible physical coordinator.}
+\label{fig:architecture}
+\end{figure}
+
+\section{Implementation}
+\texttt{FreeTokenEngineAdapter} uses the server's OpenAI-compatible endpoint at
+E0. An explicit \texttt{FreeTokenNativeExecutor} may advertise E2 or E3; without
+it, the provider remains E0. Native semantic blocks live in
+\texttt{LogicalPRABlockStore}, never in an expert-ID namespace. Tests enforce
+this capability boundary.
+
+The dependency-light coordinator represents each miss as
+\begin{equation}
+ d_i=(c_i,b_i,t_i,h_i,u_i),
+\end{equation}
+where $c_i\in\{\text{expert},\text{PRA}\}$, $b_i$ is bytes, $t_i$ is first-use
+time, $h_i$ is cache residency, and $u_i$ records eventual use. We compare:
+expert-only prefetch, PRA-only prefetch, independent simultaneous prefetch with
+fair link sharing, and coordinated earliest-deadline transfer. Non-prefetched
+objects start at demand time and all policies share one physical link.
+
+For completion time $f_i$, exposed transfer latency is
+\begin{equation}
+ L=\sum_i\max(0,f_i-t_i),
+\end{equation}
+and accelerator idle proxy is $\max_i\max(0,f_i-t_i)$. The model also reports
+expert/PRA bytes separately, ready-before-demand fraction, and wasted prefetch.
+It is deliberately algebraic: it can validate scheduling logic on a host where
+the full CUDA stack is unavailable, but cannot establish E3 throughput.
+
+\section{Experimental Method}
+Five deterministic seeds vary expert traffic from 96--192 MiB, PRA traffic from
+12--48 MiB, expert first-use from 12--25 ms, and PRA first-use from 25--60 ms.
+Bandwidth is swept over 0.5, 1, 2, 4, 8, and 16 GiB/s. Each seed uses identical
+demands under every policy. The run was executed on Windows with an RTX 5060
+Laptop GPU (8,151 MiB) and driver 592.19; the calculation itself is CPU-side.
+
+The host has 12 GiB system memory, no CUDA 13 \texttt{nvcc}, and cannot satisfy
+the documented practical model configurations, which begin with models such as
+20B/30B-class MoE systems. Installing a partial stack would not make a valid
+live-engine result. We therefore mark live E0, E2, and E3 as blocked on this
+host rather than using a mock model under the FreeToken name.
+
+\section{Controlled Results}
+\begin{table}[t]
+\centering\small
+\caption{Mean exposed transfer latency (ms), five seeds. Bold is best at each
+bandwidth among the four fixed policies.}
+\begin{tabular}{lrrrr}
+\toprule Bandwidth & Expert only & PRA only & Independent & Coordinated\\
+\midrule
+1 GiB/s & 258.4 & \textbf{162.8} & 296.1 & 258.4\\
+4 GiB/s & 27.1 & 37.3 & 53.8 & \textbf{22.3}\\
+16 GiB/s & 1.79 & 9.33 & 0.68 & \textbf{0.00}\\
+\bottomrule
+\end{tabular}
+\label{tab:bandwidth}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.82\linewidth]{figures/bandwidth_coordination.png}
+\caption{Controlled transfer frontier. Coordination becomes effective once the
+link can satisfy the early expert deadline and still stage PRA before use.}
+\label{fig:bandwidth}
+\end{figure}
+
+The mean workload moves 152.9 MiB of expert state and 29.4 MiB of PRA state.
+At 4 GiB/s, coordinated scheduling improves over the best single-class policy
+by 17.7\% and over independent fair sharing by 58.6\%. At 16 GiB/s all demands
+are ready before use under coordination. At 1 GiB/s the large early expert
+transfer monopolizes the link; prefetching the smaller later PRA object and
+executing the expert on demand minimizes the sum of lateness. An
+earliest-deadline policy is therefore not enough for low-bandwidth operation.
+The future scheduler needs a cost objective that considers bytes, slack, CPU
+fallback, and critical-path impact.
+
+\section{Capability Matrix and Falsification}
+\begin{table}[h]
+\centering\small
+\caption{Evidence available in this iteration.}
+\begin{tabular}{lll}
+\toprule Item & Status & Evidence\\
+\midrule
+Architecture and extension seam & complete & pinned source audit\\
+E0 adapter & implemented/tested & SDK unit tests\\
+Bandwidth coordination & measured & controlled five-seed model\\
+Live FreeToken E0 & blocked & host/toolchain/model gate\\
+Native E2 & not implemented & no claim\\
+Scheduler E3 & not implemented & no claim\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The central hypothesis remains falsifiable. Native PRA is not justified if an
+optimized selected-text path reaches the same quality-memory-bandwidth frontier,
+if semantic K/V traffic erases FreeToken's expert-offload benefit, or if a joint
+scheduler cannot outperform independent policies under realistic deadlines.
+The 1 GiB/s result already rejects the naive stronger claim that coordination is
+always beneficial.
+
+\section{Limitations and Next Work}
+No model generation, quality metric, physical PCIe trace, expert hit trace, or
+native attention path is measured here. The synthetic demand distribution is a
+controlled instrument, not a workload proxy. The next iteration requires a
+CUDA-13-capable host with sufficient RAM for one documented model. It should
+first run FULL and frozen-selection E0, then add E2 with geometry and isolation
+controls, and finally inject the coordinator into the real scheduler. Fixed and
+oracle policies should precede any learned joint controller.
+
+The live sweep must report task F1/EM, exact E0/E2 parity, selected tokens,
+expert and PRA bytes, link utilization, queue delay, ready-before-demand,
+wasted transfer, accelerator idle time, TTFT/ITL tails, throughput, and peak
+host/device memory. E3 is earned only when scheduler traces show ownership of
+PRA placement and cleanup.
+
 \section{Conclusion}
-FreeTokens and PRA virtualize different resources. The useful systems question is whether their physical movement can be coordinated while preserving independent semantic and model-computation decisions.
-\section*{Reproducibility}
-Record FreeTokens commit, dependencies, model revision, hardware, bandwidth controls, scheduler configuration, PRA version/profile, manifests and raw metrics.
+FreeToken and PRA virtualize different resources. Their control policies should
+remain separate, but their transfers can sometimes be coordinated profitably.
+The controlled results locate a threshold: coordination helps at moderate and
+high bandwidth, while a simple deadline rule can lose under severe scarcity.
+The adapter and experiment make that hypothesis executable; the unavailable
+live engine configuration keeps E2/E3 claims open.
+
+\section*{Artifact Availability}
+Branch \texttt{research/paper6-9-freetokens} contains the adapter, dependency-light
+coordinator, unit tests, pinned audit, raw five-seed JSON, plotting script,
+README, and manuscript.
+
+\begin{thebibliography}{9}
+\bibitem{freetoken} FlashML. \emph{FreeToken: Affordable LLM Inference on
+Constrained Machines}. 2026. \url{https://github.com/FlashML-org/FreeToken}
+\bibitem{freetokenpaper} FreeToken authors. \emph{FreeToken}. arXiv:2608.16157,
+2026. \url{https://arxiv.org/abs/2608.16157}
+\bibitem{moe} W. Fedus, B. Zoph, and N. Shazeer. \emph{Switch Transformers}.
+JMLR, 2022.
+\end{thebibliography}
 \end{document}

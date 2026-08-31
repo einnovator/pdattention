@@ -1,13 +1,21 @@
-"""PRA integration contracts for bandwidth-adaptive FreeToken serving."""
+"""PRA integration contracts for bandwidth-adaptive FreeToken serving.
 
-from .adapter import FreeTokenEngineAdapter, FreeTokenNativeExecutor
+The scheduler model is dependency-light. Runtime adapter imports stay lazy so
+FreeToken hosts can run coordination diagnostics before installing the full SDK.
+"""
+
+from typing import TYPE_CHECKING
+
 from .coordinator import (
     PrefetchDemand,
     PrefetchOutcome,
     PrefetchStrategy,
     coordinate_prefetch,
 )
-from .runtime_provider import FreeTokenRuntimeProvider
+
+if TYPE_CHECKING:
+    from .adapter import FreeTokenEngineAdapter, FreeTokenNativeExecutor
+    from .runtime_provider import FreeTokenRuntimeProvider
 
 __all__ = [
     "FreeTokenEngineAdapter",
@@ -18,3 +26,18 @@ __all__ = [
     "PrefetchStrategy",
     "coordinate_prefetch",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"FreeTokenEngineAdapter", "FreeTokenNativeExecutor"}:
+        from .adapter import FreeTokenEngineAdapter, FreeTokenNativeExecutor
+
+        return {
+            "FreeTokenEngineAdapter": FreeTokenEngineAdapter,
+            "FreeTokenNativeExecutor": FreeTokenNativeExecutor,
+        }[name]
+    if name == "FreeTokenRuntimeProvider":
+        from .runtime_provider import FreeTokenRuntimeProvider
+
+        return FreeTokenRuntimeProvider
+    raise AttributeError(name)
