@@ -1702,6 +1702,36 @@ that native E2 must beat, but do not promote any CUDA or OpenVINO row to E2.
 \begin{table}[H]
 \centering
 \scriptsize
+\caption{Cross-engine context pressure at concurrency 16 and the largest
+tested prompt. Ratios are normalized within engine; values above one favor
+selected text.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/cross_engine_context_pressure/generated_table.tex}}
+\label{tab:cross-engine-context-pressure}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/cross_engine_context_pressure/normalized_pressure.png}
+\caption{Within-engine throughput and TTFT-tail ratios over three context
+pressure points. Absolute rates are not compared across dissimilar hardware.}
+\label{fig:cross-engine-context-pressure}
+\end{figure}
+
+At the largest point, selected text improves shared-resource throughput by
+1.23--1.42$\times$ across all three engines and reduces TTFT p99 by
+1.46--2.57$\times$. Independent resources expose the largest difference on
+vLLM CUDA: selected/full throughput is 9.19$\times$ and the TTFT-tail ratio is
+29.8$\times$ after the long-prefix scheduling boundary is crossed. TensorRT-LLM
+shows a steadier 1.53$\times$ throughput and 2.98$\times$ tail advantage.
+OpenVINO's independent full condition recovers only 0.82 of targets at the
+largest point, so its 1.06$\times$ throughput ratio must be read with the
+reported quality difference. The comparison therefore establishes a portable
+pressure-test method and a strong E0 baseline, not a hardware ranking.
+
+\begin{table}[H]
+\centering
+\scriptsize
 \caption{Frozen matched E0 selected-text versus E2 native-K/V quality. Each
 dataset contains 20 routed examples; selection is fixed before cold, warm,
 multi-query, and concurrency-eight engine consumption.}
