@@ -536,8 +536,10 @@ def _airllm_natural_rows() -> list[ProductMatrixRow]:
                     workload=f"selector_frozen_natural/{comparison['regime']}",
                     dataset=str(comparison["dataset"]),
                     quality_metric="token_f1",
-                    integration_level=integration_level,
-                    representation="E2_HOT" if native else "E0_SELECTED",
+                    integration_level="E1" if native else integration_level,
+                    representation=(
+                        "E2_CANDIDATE_NATIVE" if native else "E0_SELECTED"
+                    ),
                     quantization="float16",
                     accelerator=str(payload["device"]),
                     quality_score=float(comparison[f"{prefix}_token_f1"]),
@@ -572,7 +574,8 @@ def _airllm_natural_rows() -> list[ProductMatrixRow]:
                     notes=(
                         f"visible_reduction={comparison['visible_token_reduction']:.6f}; "
                         f"e2_over_e0_completion={comparison['e2_over_e0_completion']:.6f}; "
-                        "three-example transport cohort; semantic parity open"
+                        f"{payload['example_count']}-example transport cohort; "
+                        f"native_e2_candidate={str(native).lower()}; semantic parity open"
                     ),
                 )
             )

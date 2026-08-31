@@ -28,12 +28,17 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
     } == {"vllm", "sglang", "mlx"}
     airllm = [row for row in matrix.rows if row.engine == "airllm"]
     assert len(airllm) == 12
-    assert {row.integration_level for row in airllm} == {"E0", "E2"}
+    assert {row.integration_level for row in airllm} == {"E0", "E1"}
     assert all(row.exact_pair_parity == 0.0 for row in airllm)
     assert all(
         row.profile_status == "RESEARCH_ONLY"
         for row in airllm
-        if row.integration_level == "E2"
+        if row.integration_level == "E1"
+    )
+    assert all(
+        row.representation == "E2_CANDIDATE_NATIVE"
+        for row in airllm
+        if row.integration_level == "E1"
     )
     openvino = [row for row in matrix.rows if row.engine == "openvino_genai"]
     assert len(openvino) == 45
