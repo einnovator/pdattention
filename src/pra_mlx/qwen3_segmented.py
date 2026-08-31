@@ -21,9 +21,10 @@ def install_qwen3_segmented_attention(model: object) -> int:
     import mlx.nn as nn
 
     model_type = str(getattr(getattr(model, "args", None), "model_type", ""))
-    if model_type != "qwen3":
+    if model_type not in {"qwen3", "qwen3_moe"}:
         raise ValueError(
-            f"Live segmented attention currently supports qwen3, not {model_type!r}."
+            "Live segmented attention currently supports qwen3 and qwen3_moe, "
+            f"not {model_type!r}."
         )
     if getattr(model, "_pra_segmented_attention_installed", False):
         return 0
