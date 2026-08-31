@@ -9,6 +9,7 @@ from experiments.paper6_6_airllm.run_cuda_natural import (
     select_entries,
 )
 from experiments.paper6_6_airllm.summarize_cuda_natural import render_table, summarize
+from experiments.paper6_6_airllm.summarize_results import cuda_product_row
 
 
 def test_airllm_natural_quality_is_bounded_and_token_aware() -> None:
@@ -72,6 +73,25 @@ def test_airllm_summary_keeps_optional_token_timing_explicit() -> None:
     assert measured["mean_itl_ms"] == 25.0
     assert legacy["mean_ttft_ms"] is None
     assert legacy["mean_itl_ms"] is None
+
+
+def test_airllm_cuda_smoke_cannot_promote_product_row_to_e2() -> None:
+    row = cuda_product_row(
+        {
+            "device": "CUDA",
+            "model_id": "tiny",
+            "evidence_tier": "LIVE_ENGINE_MECHANISM_SMOKE",
+            "status": "COMPLETE",
+            "disabled_exact_sequence": True,
+        },
+        "fallback",
+    )
+
+    assert row["pra_level"] == "E1"
+    assert row["status"] == "RESEARCH_ONLY"
+    assert row["run_status"] == "COMPLETE"
+    assert row["native_e2_candidate"] is True
+    assert row["semantic_parity_gate"] == "OPEN"
 
 
 def test_airllm_natural_summary_compares_matched_e0_e2() -> None:

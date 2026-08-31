@@ -7,6 +7,26 @@ import json
 from pathlib import Path
 
 
+def cuda_product_row(cuda: dict, fallback_model: str) -> dict:
+    """Represent CUDA native transport without promoting an unclosed E2 gate."""
+
+    return {
+        "engine": "airllm",
+        "backend": "hf_cuda",
+        "hardware": cuda.get("device"),
+        "model": cuda.get("model_id") or fallback_model,
+        "pra_level": "E1",
+        "profile": "REFERENCE_CORRECTNESS",
+        "evidence_tier": cuda.get("evidence_tier"),
+        "status": "RESEARCH_ONLY",
+        "run_status": cuda.get("status"),
+        "native_e2_candidate": True,
+        "disabled_exact_sequence": cuda.get("disabled_exact_sequence"),
+        "semantic_parity_gate": "OPEN",
+        "error": cuda.get("error"),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mlx", type=Path, required=True)
@@ -60,20 +80,7 @@ def main() -> None:
         },
     ]
     if cuda is not None:
-        product_rows.append(
-            {
-                "engine": "airllm",
-                "backend": "hf_cuda",
-                "hardware": cuda.get("device"),
-                "model": cuda.get("model_id") or mlx["model"],
-                "pra_level": "E2",
-                "profile": "REFERENCE_CORRECTNESS",
-                "evidence_tier": cuda.get("evidence_tier"),
-                "status": cuda.get("status"),
-                "disabled_exact_sequence": cuda.get("disabled_exact_sequence"),
-                "error": cuda.get("error"),
-            }
-        )
+        product_rows.append(cuda_product_row(cuda, mlx["model"]))
     output = {
         "schema_version": "paper4.5-product-row-v1",
         "paper": "6.6",
