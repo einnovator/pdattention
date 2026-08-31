@@ -27,7 +27,10 @@ requests, selected text uses 67 visible prompt tokens rather than 1,040,
 reaches 41.7 rather than 27.2 requests/s, and reduces TTFT p99 from 155.5 to
 57.9 ms. An expanded 1,240-request sweep through concurrency 16 reaches 81.9
 requests/s for independent selected inputs versus 53.6 for full context, with
-50.5 versus 157.8 ms TTFT p99. A separate 360-request natural cohort covers
+50.5 versus 157.8 ms TTFT p99. A three-point pressure curve extends full
+context to 1,276 tokens: selected throughput remains 78.0--81.9 requests/s,
+whereas full context reaches 52.6--56.9 requests/s at the largest point. A
+separate 360-request natural cohort covers
 QASPER, HotpotQA, and 2WikiMultiHopQA. These results establish the transport baseline and integration
 boundary needed for a later source-level E2 patch; they do not establish the
 economics or parity of native TensorRT-LLM PRA.
@@ -237,6 +240,37 @@ selected tokens and 1,039 cached full-context tokens. One independent
 full-context concurrency-eight group has a 511 ms TTFT p99 that does not
 persist at concurrency 16; we report it rather than smoothing a likely
 scheduler/cache disturbance out of the curve.
+
+\subsection{Context-pressure curve}
+We hold selected evidence at 67 prompt tokens and grow the full visible prompt
+from 648 to 1,040 and 1,276 tokens. Each point uses concurrency 16, 20 measured
+waves after explicit warmup, and identical answer-bearing evidence.
+
+\begin{table}[ht]
+\centering
+\scriptsize
+\caption{TensorRT-LLM context pressure at concurrency 16. All controlled
+outputs recover the target exactly.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_4_tensorrt_llm/generated_context_pressure_table.tex}}
+\label{tab:trt-context-pressure}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_4_tensorrt_llm/context_pressure.png}
+\caption{TensorRT-LLM peak-load throughput and TTFT tail as full-context
+pressure grows. Selection remains fixed at 67 prompt tokens.}
+\label{fig:trt-context-pressure}
+\end{figure}
+
+Selected throughput remains 78.0--81.9 requests/s and TTFT p99 remains
+50.5--86.0 ms across all pressure points. Full-context throughput falls from
+61.8--65.7 requests/s at 648 tokens to 52.6--56.9 at 1,276 tokens; TTFT p99 at
+the largest point is 149--173 ms. Unlike the vLLM independent-resource curve,
+TensorRT-LLM does not collapse at the tested boundary. It instead shows a
+steadier quality-preserving cost increase. This remains selected-text E0 and
+does not establish native non-prefix K/V attachment or HBM savings.
 
 \begin{table}[ht]
 \centering
