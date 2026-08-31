@@ -33,7 +33,12 @@ layer-streaming reduced balanced-profile PRA peak residency from 0.50 to
 weight executor. On a 4-GiB GTX 950M, injected-but-disabled PRA preserved the
 exact AirLLM output, and native PRA encoded and consumed a 15-token reference
 through four layers. Native decode was 10.6\% slower than selected-text E0, so
-this establishes mechanism correctness rather than a speed advantage. The
+this establishes mechanism correctness rather than a speed advantage. A
+selector-frozen three-example natural-QA follow-up materialized 384 native
+tokens while removing 92.9--95.8\% of E0's visible selected-text prompt. Its
+cold and warm E2/E0 completion ratios were 0.969--1.016, but both paths scored
+zero task F1 and none of nine paired completions matched exactly. The run is
+therefore transport and memory evidence, not semantic parity. The
 evidence supports independent policy and exposes
 the central systems tradeoff: eliminating context residency is valuable only
 when its transfers do not deepen the weight-I/O bottleneck.
@@ -57,12 +62,12 @@ Field & Result \\
 \midrule
 Validated / observed level & E0 validated on AirLLM/MLX; E2 mechanism observed on AirLLM/HF; E3 not observed \\
 Model / hardware & TinyLlama-1.1B; Apple M5 16 GB and GTX 950M 4 GiB \\
-Quality & Four-token/prefix agreement on one synthetic case; natural task quality \textsc{not measured} \\
-Visible / native context & E0: 38 versus 377 tokens; E2: 19 visible plus 15 native tokens \\
+Quality & Synthetic prefix agreement; natural E0/E2 F1 both 0.000 and 0/9 exact output pairs \\
+Visible / native context & Smoke: 19 visible plus 15 native; natural: 17--30 visible plus 384 native \\
 Cold native execution & 32.03 s, 10.6\% slower than selected-text E0; reference encoding 7.12 s \\
-Peak allocation / residency & 135.63 MiB live E2 peak; 4$\times$ controlled PRA-residency reduction from layer streaming \\
-TTFT / ITL / warm reuse & \textsc{Not measured} for native E2 \\
-Evidence tier & Live mechanism smoke plus a 119-condition controlled lifecycle study \\
+Peak allocation / residency & Natural E2 peak 136--137 MiB versus E0 171--175 MiB; 4$\times$ controlled PRA-residency reduction \\
+TTFT / ITL / warm reuse & TTFT/ITL \textsc{not measured}; warm E2/E0 completion ratio 0.969--1.013 \\
+Evidence tier & Live mechanism smoke, three-example natural cohort, and 119-condition controlled study \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -339,6 +344,36 @@ cost and 0.3\% peak-allocation increase in a cold one-query smoke. Persistent
 reuse is therefore the economic gate: the one-time 7.12-s encoding cost must be
 amortized across repeated queries before native PRA can improve this frontier.
 
+\subsection{Selector-Frozen Natural Follow-Up}
+
+We next froze one routed selection from each of QASPER, HotpotQA, and
+2WikiMultiHopQA. Selected-text E0 and native E2 received the same evidence;
+E2 consumed 384 selected native tokens through the final four layers. Each
+condition used one cold generation and two warm repetitions. Table
+\ref{tab:cuda-natural} is generated from the raw JSON artifact.
+
+\begin{table}[t]
+\centering
+\caption{Natural AirLLM/HF follow-up on the GTX 950M. Time is completion time;
+lower E2/E0 is better. Pair exact compares complete E0 and E2 output strings.}
+\label{tab:cuda-natural}
+\small
+\input{../shared/results/paper6_6_airllm/generated_cuda_natural_table.tex}
+\end{table}
+
+Native execution removed 92.9--95.8\% of the visible selected-text prompt and
+reduced peak allocated CUDA memory from 171--175 MiB to 136--137 MiB. Its
+completion time stayed close to E0: the six cold/warm ratios span
+0.969--1.016. Reference encoding, however, averaged 19.26 s and must be
+amortized separately. These are positive bounded-context and residency results.
+
+They are not a quality result. TinyLlama scored zero token F1 in both
+representations on all three examples, and E2 matched none of nine E0 output
+strings. The partial four-layer native consumer is not execution-equivalent to
+placing the same evidence in every ordinary decoder layer. A larger cohort with
+a capable model and a full-consumer reference is required before promoting
+native E2 beyond research-only status.
+
 \subsection{Residency Frontier}
 
 \begin{figure}[t]
@@ -392,8 +427,9 @@ AirLLM/MLX runs layer-streamed TinyLlama & Established & Live M5 E0 run \\
 Selected text preserves tested answer prefix & Established & Four live conditions, one example \\
 PRA K/V can follow a layer-local lifecycle & Established & Tests plus 119-row controlled sweep \\
 Native HF parameter placement bridge & Established & Unit tests and live disabled parity \\
-Native AirLLM/PRA mechanism & Established & Live CUDA smoke; one synthetic case \\
-Large-model-beyond-VRAM advantage & Open & Requires CUDA host and natural tasks \\
+Native AirLLM/PRA mechanism & Established & Live CUDA smoke plus three natural examples \\
+Natural E0/E2 semantic parity & Open & 0/9 exact pairs; task F1 uninformative at zero \\
+Large-model-beyond-VRAM advantage & Open & Requires a model larger than accelerator memory \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -406,8 +442,10 @@ context's K/V growth in the accounting model. They also show that AirLLM's
 weight-streaming cost can dominate short-prompt E0 inference, and that using one
 executor for two I/O streams may be inferior to bounded independent prefetch.
 
-They do not yet establish that native PRA improves answer quality, TTFT, or peak
-VRAM for a model that cannot fit on the test accelerator. The small CUDA smoke
+They do not establish that native PRA improves answer quality or TTFT for a
+model that cannot fit on the test accelerator. The natural follow-up does show
+lower allocated CUDA peak and near-parity completion time, but the three-example
+cohort has zero task F1 and divergent E0/E2 sequences. The small CUDA smoke
 closes AirLLM disabled, injected-but-disabled, reference encoding, and native
 consumption. A scale claim still requires a conventional HF baseline, repeated
 decode, HOT versus layer-streamed native PRA, matched source/query geometry, and
@@ -423,7 +461,7 @@ The current product row is deliberately conservative:
 Engine & Platform & Default & Native candidate & Evidence tier \\
 \midrule
 AirLLM & macOS/MLX & E0 selected text & unavailable & live smoke \\
-AirLLM & CUDA/HF & E0 selected text & opt-in E2 & live mechanism smoke \\
+AirLLM & CUDA/HF & E0 selected text & opt-in E2 & natural transport candidate \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -439,9 +477,10 @@ uses explicit bandwidth and compute parameters and cannot estimate kernel-level
 attention cost or language quality. The host was under unrelated memory load,
 so available-memory deltas are supporting diagnostics only.
 
-The next decisive experiment is not another hook microbenchmark. On a newer CUDA host,
-freeze selected intervals once and compare E0 selected text with E2 native K/V
-for cold one-shot, warm repeat, multi-query same resource, and shared-resource
+The next decisive experiment is not another hook microbenchmark. On a newer
+CUDA host, repeat the frozen-selection comparison with a capable model, at
+least 50 examples per dataset, and both full-consumer and economical
+late-consumer E2. Extend it to multi-query same-resource and shared-resource
 reuse. Report answer F1/EM, gold log probability, visible and native tokens,
 weight and PRA bytes, TTFT, inter-token latency, peak memory decomposition, and
 cache hits. Then repeat on a model materially larger than VRAM. A sparse-MoE run
@@ -474,8 +513,10 @@ also expose weight streaming as the dominant latency floor. Controlled results
 show a 4$\times$ PRA peak-residency reduction from layer-local streaming and a
 prefetch tradeoff between independent overlap and shared-queue discipline. A
 live CUDA smoke closes parameter-placement, disabled-parity, reference-encoding,
-and native-consumption gates, while showing a 10.6\% cold native latency cost.
-The remaining scientific gate is natural quality and memory validation at a
+and native-consumption gates. The natural follow-up removes 92.9--95.8\% of
+visible selected-text tokens at near-parity completion time and lower allocated
+CUDA peak, but its zero task F1 and 0/9 exact output pairs leave semantic parity
+open. The remaining scientific gate is adequately powered natural quality at a
 scale where both weight and context virtualization are necessary.
 
 \section*{Reproducibility}
