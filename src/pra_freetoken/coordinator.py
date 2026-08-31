@@ -77,17 +77,20 @@ def coordinate_prefetch(
     on_demand = tuple(d for d in misses if d.resource_class not in prefetch_classes)
     completion: dict[int, float] = {}
 
+    link_free = 0.0
     if strategy == PrefetchStrategy.INDEPENDENT and prefetched:
         share = bandwidth_bytes_per_s / len(prefetched)
         for demand in prefetched:
             completion[id(demand)] = demand.bytes / share
+        link_free = max(completion.values(), default=0.0)
     else:
         cursor = 0.0
         for demand in sorted(prefetched, key=lambda row: (row.need_time_s, row.resource_class)):
             cursor += demand.bytes / bandwidth_bytes_per_s
             completion[id(demand)] = cursor
+        link_free = cursor
 
-    on_demand_cursor = 0.0
+    on_demand_cursor = link_free
     for demand in sorted(on_demand, key=lambda row: row.need_time_s):
         start = max(demand.need_time_s, on_demand_cursor)
         finish = start + demand.bytes / bandwidth_bytes_per_s
