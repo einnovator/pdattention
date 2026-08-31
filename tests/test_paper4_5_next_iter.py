@@ -35,6 +35,11 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
         for row in airllm
         if row.integration_level == "E2"
     )
+    openvino = [row for row in matrix.rows if row.engine == "openvino_genai"]
+    assert len(openvino) == 27
+    assert {row.integration_level for row in openvino} == {"E0"}
+    assert all(row.gold_answer_log_probability is None for row in openvino)
+    assert all("selector_frozen" in row.verified_invariants for row in openvino)
 
 
 def test_long_transport_delta_survives_resync_and_updates() -> None:

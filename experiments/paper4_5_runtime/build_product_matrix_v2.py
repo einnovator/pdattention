@@ -579,6 +579,77 @@ def _airllm_natural_rows() -> list[ProductMatrixRow]:
     return rows
 
 
+def _openvino_distractor_rows() -> list[ProductMatrixRow]:
+    """Import the frozen-evidence OpenVINO natural distractor ablation."""
+
+    path = RESULTS / "paper6_3_openvino/distractor_ablation_summary.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    provenance = str(path.relative_to(ROOT)).replace("\\", "/")
+    rows: list[ProductMatrixRow] = []
+    for source in payload["rows"]:
+        mode = str(source["mode"])
+        distractors = int(source["distractor_count"])
+        condition = "evidence" if mode == "evidence_only" else f"{mode}_{distractors}"
+        rows.append(
+            ProductMatrixRow(
+                row_id=f"openvino-distractor-{source['dataset']}-{condition}",
+                model_family="qwen",
+                model_id="OpenVINO/Qwen2-0.5B-Instruct-int4-ov",
+                model_revision=None,
+                model_size=500_000_000,
+                model_variant=condition,
+                engine="openvino_genai",
+                engine_version=str(payload["engine_version"]),
+                hardware="Intel Iris Xe integrated GPU",
+                profile="REFERENCE_CORRECTNESS",
+                profile_status="CALIBRATION_PENDING",
+                workload="frozen_evidence_distractor_ablation",
+                dataset=str(source["dataset"]),
+                quality_metric="token_f1",
+                integration_level="E0",
+                representation="E0_SELECTED",
+                quantization="int4",
+                cpu="Intel Core i7-1355U",
+                accelerator="Intel Iris Xe",
+                os="Windows",
+                quality_score=float(source["token_f1"]),
+                task_success=float(source["answer_containment"]),
+                em=float(source["exact_match"]),
+                f1=float(source["token_f1"]),
+                evidence_recall=float(source["evidence_recall_at_4"]),
+                source_tokens=float(source["mean_source_tokens"]),
+                visible_tokens=float(source["mean_source_tokens"]),
+                ttft_ms=float(source["ttft_p50_ms"]),
+                ttft_p50_ms=float(source["ttft_p50_ms"]),
+                ttft_p95_ms=float(source["ttft_p95_ms"]),
+                completion_ms=float(source["completion_p50_ms"]),
+                completion_p50_ms=float(source["completion_p50_ms"]),
+                requests_per_second=float(source["successful_requests_per_second"]),
+                successful_requests_per_second=float(
+                    source["successful_requests_per_second"]
+                ),
+                sample_count=int(source["sample_count"]),
+                seed_count=1,
+                evidence_tier=str(payload["evidence_tier"]),
+                evidence_provenance=provenance,
+                experiment_status="NATURAL_WORKLOAD",
+                verified_invariants=(
+                    "selector_frozen",
+                    "answer_evidence_preserved",
+                    "ordinary_selected_text",
+                ),
+                notes=(
+                    f"mode={mode}; distractor_count={distractors}; "
+                    f"mean_distractor_tokens={source['mean_distractor_tokens']:.3f}; "
+                    "gold answer log-probability not measured"
+                ),
+            )
+        )
+    return rows
+
+
 def build_matrix() -> ProductMatrix:
     profile_path = RESULTS / "paper4_5_runtime/pra_profile_benchmarks.json"
     engine_path = RESULTS / "pra_engine_benchmarks.json"
@@ -589,6 +660,7 @@ def build_matrix() -> ProductMatrix:
     rows.extend(_matched_rows())
     rows.extend(_warm_lifecycle_rows())
     rows.extend(_airllm_natural_rows())
+    rows.extend(_openvino_distractor_rows())
     return ProductMatrix("2026-08-engine-qualification-v3", tuple(rows))
 
 
