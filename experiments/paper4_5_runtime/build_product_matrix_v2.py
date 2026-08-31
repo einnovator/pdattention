@@ -613,7 +613,7 @@ def _mlx_m4_cross_model_rows() -> list[ProductMatrixRow]:
         (
             "native_int8_resident",
             "E2",
-            "E2_HOT_INT8_RESIDENT",
+            "E2_COLD_INT8_RESIDENT",
             "int8_resident_float16_active",
             "RESEARCH_ONLY",
         ),
@@ -649,7 +649,12 @@ def _mlx_m4_cross_model_rows() -> list[ProductMatrixRow]:
                     quality_score=float(source["token_f1"]),
                     f1=float(source["token_f1"]),
                     gold_answer_log_probability=float(source["gold_answer_logprob"]),
-                    hot_bytes=resident if level == "E2" else None,
+                    hot_bytes=(
+                        resident if condition == "native_fp" else None
+                    ),
+                    cold_bytes=(
+                        resident if condition == "native_int8_resident" else None
+                    ),
                     completion_ms=float(source["completion_latency_ms"]),
                     sample_count=int(source["sample_count"]),
                     seed_count=int(source["seed_count"]),
@@ -724,6 +729,68 @@ def _vllm_cuda_concurrency_rows() -> list[ProductMatrixRow]:
                 notes=(
                     f"leakage_rate={float(source['leakage_rate']):.6f}; "
                     "source slots remain scheduler-visible; offline V1 batch"
+                ),
+            )
+        )
+    return rows
+
+
+def _mlx_m4_pressure_rows() -> list[ProductMatrixRow]:
+    """Import the Qwen3-4B eight-resource compact-residency frontier."""
+
+    path = RESULTS / "paper6_2_mlx/m4_pressure_summary.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    provenance = str(path.relative_to(ROOT)).replace("\\", "/")
+    rows: list[ProductMatrixRow] = []
+    for source in payload["rows"]:
+        budget = int(source["resident_resource_budget"])
+        rows.append(
+            ProductMatrixRow(
+                row_id=f"mlx-m4-pressure-{source['dataset']}-k{budget}",
+                model_family="qwen",
+                model_id=str(source["model_id"]),
+                model_revision="main",
+                model_size=4_000_000_000,
+                model_variant=f"int8_resident_k{budget}",
+                engine="mlx-lm",
+                engine_version="0.31.3",
+                hardware="Apple M4 Pro, 20-core GPU, 48 GiB",
+                profile="ECONOMY_CANDIDATE",
+                profile_status="RESEARCH_ONLY",
+                workload="bounded_residency_three_round_session",
+                dataset=str(source["dataset"]),
+                quality_metric="token_f1",
+                integration_level="E2",
+                representation="E2_COLD_INT8_RESIDENT",
+                quantization="int8_resident_float16_active",
+                accelerator="Apple M4 Pro 20-core GPU",
+                ram_bytes=48 * 1024**3,
+                quality_score=float(source["token_f1"]),
+                f1=float(source["token_f1"]),
+                gold_answer_log_probability=float(source["gold_answer_logprob"]),
+                cold_bytes=float(source["resident_mib_mean"]) * 1048576,
+                completion_ms=float(source["completion_ms_mean"]),
+                completion_p95_ms=float(source["completion_ms_p95"]),
+                reloads=float(source["reloads_mean"]),
+                evictions=float(source["evictions_mean"]),
+                reload_amplification=float(source["reload_fraction"]),
+                queries_per_resource=25.0 / 8.0,
+                sample_count=int(source["sample_count"]),
+                seed_count=int(source["seed_count"]),
+                evidence_tier=str(payload["evidence_tier"]),
+                evidence_provenance=provenance,
+                experiment_status="RESEARCH_ONLY",
+                verified_invariants=(
+                    "quality_invariant_across_budget",
+                    "request_lifetime_pinning",
+                    "working_set_threshold",
+                ),
+                notes=(
+                    f"resident_resources={budget}/8; "
+                    f"resolve_ms_mean={float(source['resolve_ms_mean']):.3f}; "
+                    f"resolve_ms_p95={float(source['resolve_ms_p95']):.3f}"
                 ),
             )
         )
@@ -894,6 +961,7 @@ def build_matrix() -> ProductMatrix:
     rows.extend(_warm_lifecycle_rows())
     rows.extend(_airllm_natural_rows())
     rows.extend(_mlx_m4_cross_model_rows())
+    rows.extend(_mlx_m4_pressure_rows())
     rows.extend(_vllm_cuda_concurrency_rows())
     rows.extend(_openvino_distractor_rows())
     rows.extend(_openvino_cross_model_rows())

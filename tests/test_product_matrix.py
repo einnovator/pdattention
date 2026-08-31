@@ -4,6 +4,11 @@ import json
 
 import pytest
 
+from experiments.paper4_5_runtime.build_product_matrix_v2 import (
+    _mlx_m4_cross_model_rows,
+    _mlx_m4_pressure_rows,
+    _vllm_cuda_concurrency_rows,
+)
 from pra_hf.product_matrix import ProductMatrix, ProductMatrixRow, optional_number
 
 
@@ -79,3 +84,21 @@ def test_quality_adjusted_throughput_and_cost_are_derived_from_measured_inputs()
 def test_throughput_without_quality_is_rejected() -> None:
     with pytest.raises(ValueError, match="Throughput rows"):
         _row(quality_score=None, task_success=None, requests_per_second=2.0)
+
+
+def test_engine_evidence_rows_preserve_candidate_boundaries() -> None:
+    mlx_rows = _mlx_m4_cross_model_rows()
+    pressure_rows = _mlx_m4_pressure_rows()
+    cuda_rows = _vllm_cuda_concurrency_rows()
+
+    assert len(mlx_rows) == 18
+    assert len(pressure_rows) == 12
+    assert len(cuda_rows) == 12
+    compact = next(row for row in mlx_rows if row.model_variant == "native_int8_resident")
+    assert compact.representation == "E2_COLD_INT8_RESIDENT"
+    assert compact.cold_bytes is not None
+    assert compact.hot_bytes is None
+    assert all(row.profile_status == "RESEARCH_ONLY" for row in pressure_rows)
+    assert all(row.integration_level == "E2" for row in pressure_rows)
+    assert all(row.integration_level == "E1" for row in cuda_rows)
+    assert all(row.profile_status == "RESEARCH_ONLY" for row in cuda_rows)

@@ -72,6 +72,9 @@ promotion hides the WARM stall with sufficient lead, and the native streaming
 gateway measures queueing through concurrency eight with cancellation-safe
 cleanup. A 1,125-request long-session extension confirms an eight-resource
 working-set threshold, while selective int8 remains below the lossless gate.
+An additional 1,500-request Qwen3-4B M4 Pro sweep reproduces that threshold:
+quality is budget-invariant, fitting all eight resources eliminates reloads,
+and mean resolution time falls by about 68\%.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -674,6 +677,46 @@ not evidence that more residency generally improves answer quality or complete
 request latency. No pinned block is evicted and compact detail never enters an
 ordinary prompt or rotating cache.
 
+\subsection{Larger-model sustained pressure on M4 Pro}
+
+We repeat the bounded-residency experiment with Qwen3-4B on the M4 Pro. Each
+seed owns eight resources, visits the complete set three times, and revisits
+the first resource. Four resident budgets produce 25 requests per seed, or 125
+requests per table row and 1,500 requests overall.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Qwen3-4B sustained compact-K/V pressure on the M4 Pro. Budget is
+resident/logical resources. Resolve includes compact-detail load and
+dequantization; p95 retains unavoidable first-ingestion requests.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_2_mlx/generated_m4_pressure_table.tex}}
+\label{tab:mlx-m4-pressure}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper6_2_mlx/m4_pressure_reload_latency.png}
+\caption{The eight-resource working-set threshold at Qwen3-4B. Fitting the
+complete set removes repeat reloads and lowers mean resolution; it does not
+remove each resource's first cold ingestion.}
+\label{fig:mlx-m4-pressure}
+\end{figure}
+
+For budgets 1, 2, and 4, 68.0\% of all requests reload compact detail. At
+budget 8, reloads fall to zero. Mean resolution falls from 417.1 to 134.3 ms on
+QASPER, 457.2 to 146.5 ms on HotpotQA, and 458.8 to 147.1 ms on 2Wiki, a
+67.8--68.0\% reduction. Mean compact residency rises to 167.4 MiB on QASPER
+and 185.8 MiB on HotpotQA and 2Wiki. Token F1 and gold-answer log-probability
+are identical across all four budgets within each dataset.
+
+The p95 resolve time remains 460--466 ms at budget 8 because eight of each
+25-request sequence are compulsory first loads. Residency removes 17 repeat
+loads, not those cold ingestions. This result therefore supports working-set
+admission and reuse policy; it does not support a claim that larger budgets
+improve answer quality or cold-start tails.
+
 \subsection{Shared storage lifecycle and MLX realization}
 The product runtime now defines engine-neutral HOT/WARM/COLD/SOURCE semantics.
 MLX attention-ready arrays are HOT. Lossless retained arrays or strict
@@ -996,7 +1039,9 @@ causally. Per-head int8 halves retained detail without measured degradation in
 the small cohort. The M4 Pro replication extends this result to Qwen3-4B:
 ordinary and native aggregate F1 remain equal in all six cohorts, shuffled
 memory degrades sharply, and native completion uses 44.5--54.5\% of ordinary
-split-cache time in this in-process runner. Across a 1,020-request hard-budget sweep, sub-working-set
+split-cache time in this in-process runner. Its 1,500-request pressure
+extension reproduces the eight-resource residency threshold and separates
+repeat-load savings from cold p95. Across a 1,020-request hard-budget sweep, sub-working-set
 budgets cap compact residency but reload every repeated access; fitting all
 eight resources removes reloads and halves resolution time without changing
 F1. With SDK routing, native and ordinary paths remain identical on 60/60
