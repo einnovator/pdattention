@@ -357,8 +357,11 @@ def segmented_selected_attention(
         expanded = mx.expand_dims(keys, axis=2)
         return (grouped_queries @ mx.swapaxes(expanded, -1, -2)) * scale
 
-    memory_scores = scores(memory_keys)
-    local_scores = scores(local_keys)
+    # Accumulate the split normalization in fp32. MLX's fused SDPA also uses
+    # higher-precision reduction internally; retaining fp16 exponentials here
+    # creates a small per-layer error that compounds through deep decoders.
+    memory_scores = scores(memory_keys).astype(mx.float32)
+    local_scores = scores(local_keys).astype(mx.float32)
     if mask is not None:
         memory_tokens = int(memory_keys.shape[2])
         local_tokens = int(local_keys.shape[2])
@@ -386,15 +389,15 @@ def segmented_selected_attention(
     denominator = mx.sum(memory_weights, axis=-1, keepdims=True) + mx.sum(
         local_weights, axis=-1, keepdims=True
     )
-    expanded_memory_values = mx.expand_dims(memory_values, axis=2)
-    expanded_local_values = mx.expand_dims(local_values, axis=2)
+    expanded_memory_values = mx.expand_dims(memory_values, axis=2).astype(mx.float32)
+    expanded_local_values = mx.expand_dims(local_values, axis=2).astype(mx.float32)
     numerator = (
         memory_weights @ expanded_memory_values
         + local_weights @ expanded_local_values
     )
     return (numerator / denominator).reshape(
         batch, query_heads, query_tokens, head_dim
-    )
+    ).astype(queries.dtype)
 
 
 def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMemory:
