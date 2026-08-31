@@ -39,6 +39,50 @@ baseline and a precise extension boundary; it does not establish native
 OpenVINO PRA parity or memory savings.
 \end{abstract}
 
+\section{Qualification Snapshot}
+\textbf{Engine question.} Does PRA selection improve quality-adjusted Intel
+serving beyond OpenVINO's prefix cache, and is detached native K/V available?
+The first answer is positive for the measured E0 workloads; the second remains
+blocked by the public attachment surface.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Standard PRA engine result block. \textsc{Not measured} denotes a
+missing measurement, not zero cost or zero benefit.}
+\label{tab:openvino-qualification}
+\begin{tabular}{p{0.28\linewidth}p{0.63\linewidth}}
+\toprule
+Field & Result \\
+\midrule
+Validated / observed level & E0 validated on CPU and GPU; E2 and E3 not observed \\
+Model / hardware & Qwen2-0.5B-Instruct INT4; i7-1355U and Iris Xe \\
+Quality & Controlled success 1.00; E0 selected natural token F1 0.078--0.310 \\
+Visible context & 63 selected tokens versus 417--1,573 full-context tokens \\
+Loaded serving & 11.1--14.2 selected requests/s and 233--330 ms TTFT p99 at concurrency 16 \\
+Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
+Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
+Evidence tier & Controlled CPU/GPU transport plus a 360-request natural-QA cohort \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Recommendation.}
+Use E0 selected text when frozen retrieval materially removes distractors,
+and evaluate successful tasks or output-token throughput beside raw
+requests/s. On this small natural cohort, selected evidence improves HotpotQA
+F1 and latency, but full context remains stronger on some datasets. Do not
+claim E2 until OpenVINO exposes selected non-prefix K/V to attention and a
+selector-frozen E0/E2 comparison establishes parity and reuse economics.
+
+\paragraph{Primer.}
+E0 renders the selected evidence as ordinary prompt text. E1 preserves PRA
+resource identities, typed records, routing, and fallback policy through the
+runtime while attention remains ordinary. E2 exposes detached selected native
+K/V directly to attention. E3 additionally makes their physical placement,
+sharing, promotion, and eviction scheduler-owned. This paper validates E0 and
+specifies, but does not measure, the native levels.
+
 \section{Introduction}
 An inference engine's prefix cache identifies previously computed sequential
 token histories. PRA identifies immutable logical resources selected by a
@@ -59,12 +103,15 @@ request attention metadata cannot currently receive an arbitrary selected
 non-prefix K/V set through the public Python API.
 
 \section{Claim Boundary}
-E0 renders selected source text into the visible prompt. E1 may retain derived
-engine state without exposing arbitrary selected K/V to attention. E2 consumes
-that K/V natively, preserving source geometry and combining local and memory
-scores in one softmax. All model measurements in this paper are E0. The native
-classes described below are executable lifecycle contracts, not evidence that
-OpenVINO already performs E2.
+E0 renders selected source text into the visible prompt. E1 carries PRA
+logical identities, typed records, routing decisions, and explicit fallback
+policy while model attention remains ordinary. E2 consumes selected detached
+K/V natively, preserving source geometry and combining local and memory scores
+in one softmax. E3 gives the engine scheduler physical ownership of native PRA
+placement, sharing, promotion, eviction, and accounting. All model
+measurements in this paper are E0. The native classes described below are
+executable lifecycle contracts, not evidence that OpenVINO already performs
+E2 or E3.
 
 \section{OpenVINO Mapping}
 \subsection{Responsibility split}
