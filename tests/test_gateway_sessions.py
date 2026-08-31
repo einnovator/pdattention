@@ -36,7 +36,7 @@ class SessionAdapter:
             resource_delta=pra,
             cache_affinity=True,
             logical_refs=pra,
-            native_kv=pra,
+            native_kv=False,
             text_fallback=True,
             streaming=streaming,
         )

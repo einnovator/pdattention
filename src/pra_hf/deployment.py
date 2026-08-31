@@ -20,10 +20,16 @@ from .gateway_session import HistoryMode, ResourceDelta
 class PRAEngineIntegrationLevel(str, Enum):
     """Depth at which an inference engine implements PRA."""
 
+    E0_SELECTED_TEXT = "E0"
+    E1_LOGICAL_PRA = "E1"
+    E2_NATIVE_ATTENTION = "E2"
+    E3_SCHEDULER = "E3"
+
+    # Source-compatible aliases retained for callers written against the first
+    # naming pass. Their canonical meanings are the definitions above.
     E0_FACADE = "E0"
     E1_NATIVE_EXECUTION = "E1"
     E2_MEMORY_RUNTIME = "E2"
-    E3_SCHEDULER = "E3"
 
 
 class PRAGatewayMode(str, Enum):
@@ -77,8 +83,11 @@ class PRAEngineCapabilities:
         )
         object.__setattr__(self, "engine_type", EngineType(self.engine_type))
         object.__setattr__(self, "prefix_cache_mode", PrefixCacheMode(self.prefix_cache_mode))
-        if self.native_kv and self.integration_level == PRAEngineIntegrationLevel.E0_FACADE:
-            raise ValueError("Native K/V requires at least E1 engine integration.")
+        if self.native_kv and self.integration_level not in {
+            PRAEngineIntegrationLevel.E2_NATIVE_ATTENTION,
+            PRAEngineIntegrationLevel.E3_SCHEDULER,
+        }:
+            raise ValueError("Native K/V requires E2 or E3 engine integration.")
 
     def supports(self, capability: str) -> bool:
         if not hasattr(self, capability) or capability in {"adapter", "integration_level"}:
@@ -331,7 +340,11 @@ class OpenAICompatibleEngineAdapter:
 
     def capabilities(self) -> PRAEngineCapabilities:
         level = PRAEngineIntegrationLevel(self.pra_level)
-        native = level != PRAEngineIntegrationLevel.E0_FACADE
+        logical = level != PRAEngineIntegrationLevel.E0_SELECTED_TEXT
+        native = level in {
+            PRAEngineIntegrationLevel.E2_NATIVE_ATTENTION,
+            PRAEngineIntegrationLevel.E3_SCHEDULER,
+        }
         return PRAEngineCapabilities(
             adapter=self.name,
             engine_type=self.engine_type,
@@ -344,8 +357,8 @@ class OpenAICompatibleEngineAdapter:
             resource_delta=self.resource_delta,
             cache_affinity=self.cache_affinity,
             prefix_cache_handle=self.prefix_cache_mode == PrefixCacheMode.EXPLICIT_PREFIX_HANDLE,
-            logical_refs=native,
-            typed_records=native,
+            logical_refs=logical,
+            typed_records=logical,
             text_fallback=True,
             native_kv=native,
             streaming=False,
@@ -536,7 +549,7 @@ class HuggingFaceEngineAdapter:
         return PRAEngineCapabilities(
             adapter="huggingface_eager",
             engine_type=EngineType.HUGGINGFACE,
-            integration_level="E1",
+            integration_level="E2",
             prefix_cache_mode=PrefixCacheMode.STATELESS,
             logical_refs=True,
             typed_records=True,

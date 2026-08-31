@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from experiments.paper4_5_runtime.build_product_matrix_v1 import build_matrix
+from experiments.paper4_5_runtime.build_product_matrix_v2 import build_matrix
 from experiments.paper4_5_runtime.run_agent_transport_scaling import (
     run_scaling_workload,
 )
@@ -13,6 +13,8 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
     assert len(matrix.rows) >= 20
     assert {row.model_family.lower() for row in matrix.rows} >= {"qwen", "llama", "gemma"}
     assert all(not isinstance(row.ttft_ms, str) for row in matrix.rows)
+    assert matrix.schema_version == "2.0"
+    assert all(row.metric_statuses for row in matrix.rows)
 
 
 def test_long_transport_delta_survives_resync_and_updates() -> None:

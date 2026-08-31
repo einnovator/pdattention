@@ -186,7 +186,7 @@ class AirLLMPRAAdapter:
 
     def capabilities(self) -> PRAEngineCapabilities:
         native = self.native_enabled
-        level = "E2" if native and self.storage_managed else ("E1" if native else "E0")
+        level = "E2" if native else "E0"
         return PRAEngineCapabilities(
             adapter="airllm-hf" if native else "airllm-e0",
             engine_type=EngineType.AIRLLM,

@@ -30,15 +30,15 @@ def test_engine_capabilities_do_not_overclaim_vllm_scheduler_support() -> None:
     assert vllm.integration_level.value == "E0"
     assert not vllm.native_kv
     assert not vllm.pra_scheduler
-    assert sglang.native_kv and sglang.integration_level.value == "E1"
-    assert mlx.native_kv and mlx.integration_level.value == "E1"
+    assert sglang.native_kv and sglang.integration_level.value == "E2"
+    assert mlx.native_kv and mlx.integration_level.value == "E2"
 
     airllm = AirLLMRuntimeProvider().capabilities(RuntimeConfig(engine="airllm"))
     assert not airllm.native_kv and airllm.integration_level.value == "E0"
     native_airllm = AirLLMRuntimeProvider().capabilities(
         RuntimeConfig(engine="airllm", engine_options={"native_hf_pra": True})
     )
-    assert native_airllm.native_kv and native_airllm.integration_level.value == "E1"
+    assert native_airllm.native_kv and native_airllm.integration_level.value == "E2"
 
 
 def test_provider_build_command_preserves_upstream_escape_hatch() -> None:

@@ -85,8 +85,8 @@ agent -> gateway -> runtime -> engine
 `runtime inspect` reports static provider declarations, while `runtime doctor`
 checks installed dependencies and remote readiness. The vLLM provider remains
 E0 because its safe V1 metadata boundary is not yet wired through generation.
-The SGLang and MLX providers expose the companion papers' measured E1 native
-mechanism integrations without claiming E2 memory scheduling.
+The SGLang and MLX providers expose the companion papers' measured E2 native
+mechanism integrations without claiming E3 scheduler participation.
 
 AirLLM is embedded-only. It defaults to selected-text E0 on every platform.
 Its HF-backed CUDA path may opt into `native_hf_pra=true` after the adapter is
@@ -124,13 +124,13 @@ engine, and effective end-to-end features. See [Agent/Gateway Protocol](protocol
 
 | Level | Meaning | Current status |
 | --- | --- | --- |
-| E0 | protocol facade or text fallback | implemented for OpenAI-compatible HTTP |
-| E1 | native PRA attention execution | HF reference; companion SGLang/MLX mechanisms; AirLLM/HF candidate |
-| E2 | PRA-aware memory residency/runtime | not implemented |
-| E3 | PRA-aware scheduler and batching | not implemented |
+| E0 | selected-text compatibility through an ordinary model path | implemented for OpenAI-compatible HTTP |
+| E1 | logical PRA identity, metadata, deltas, authorization, and fallback | supported by the typed gateway contract |
+| E2 | detached/native non-prefix PRA attention | HF reference; companion vLLM/SGLang/MLX mechanisms; AirLLM/HF mechanism smoke |
+| E3 | scheduler-owned placement, prefetch, eviction, sharing, and batching | candidates only; not generally qualified |
 
 SGLang documents an OpenAI-compatible server and a model gateway. The companion
-Paper 6.1 integration exercises its MLX runner at E1, while the generic remote
+Paper 6.1 integration exercises its MLX runner at E2, while the generic remote
 provider remains usable at E0
 ([SGLang quickstart](https://github.com/sgl-project/sglang/blob/main/docs/docs/get-started/quickstart.mdx),
 [attention backends](https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/attention_backend.md)).

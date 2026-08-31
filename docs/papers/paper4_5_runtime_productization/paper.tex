@@ -678,11 +678,14 @@ later request asks for missing detail.
 \subsection{Product profile and benchmark matrix}
 
 The registry also emits a strict machine-readable product row rather than
-mixing numbers and labels such as ``not measured.'' Numeric fields are numbers
-or null; status and provenance are separate required fields. Unknown columns,
-duplicate row identities, and invalid status values fail validation. The
-current 27-row registry contains 23 measured rows, while candidate and blocked
-cells remain explicit. Table~\ref{tab:product-matrix-v1} is generated from the
+mixing numbers and labels such as ``not measured.'' Schema 2.0 keeps numeric
+values, measurement status, and provenance in separate fields for every
+quality, latency, memory, transfer, scheduler, and reuse metric. Missing values
+are null with explicit \texttt{NOT\_MEASURED} or \texttt{NOT\_APPLICABLE}
+status; they are never encoded as zero. Unknown columns, duplicate row
+identities, unsupported integration levels, throughput without a paired
+quality measure, and invalid status values fail validation.
+Table~\ref{tab:product-matrix-v2} is generated from the
 same JSON artifact used by the SDK.
 
 \begin{table}[H]
@@ -690,8 +693,8 @@ same JSON artifact used by the SDK.
 \scriptsize
 \caption{Compact product matrix. Sparse quality-max settings remain candidates
 until held-out workload calibration closes their evidence tier.}
-\resizebox{\linewidth}{!}{\input{../shared/results/generated_pra_product_matrix_v1.tex}}
-\label{tab:product-matrix-v1}
+\resizebox{\linewidth}{!}{\input{../shared/results/generated_pra_product_matrix_v2.tex}}
+\label{tab:product-matrix-v2}
 \end{table}
 
 The calibrated layer candidates become useful to an SDK only after their
@@ -894,17 +897,22 @@ G01 promotes only explicit record boundaries---system records, tool results,
 attachments, and already typed messages. It does not infer semantic records
 from arbitrary unstructured user traffic.
 
-We distinguish E0 protocol integration, E1 native PRA attention, E2 a PRA-aware
-memory runtime, and E3 scheduler-aware batching. The local HF adapter is the E1
-semantic reference. The OpenAI-compatible HTTP adapter and standalone
+We freeze four integration levels. E0 receives ordinary selected text. E1
+understands logical PRA identity, versions, intervals, authorization, session
+deltas, and fallback semantics, but still realizes context through an ordinary
+model path. E2 consumes selected resources directly as detached native K/V or
+an equivalent non-prefix representation with matched geometry, one attention
+normalization, request-local lifetime, and isolation. E3 adds scheduler-owned
+placement, prefetch, promotion, eviction, affinity, batching, and distributed
+movement on top of E2. The local HF adapter is the E2 semantic reference. The OpenAI-compatible HTTP adapter and standalone
 \texttt{pra gateway serve} process implement E0. FreeToken remains reachable
 through that E0 surface~\cite{freetokenDocs2026}. Companion Papers 6.1 and 6.2
-exercise native SGLang-MLX and MLX-LM E1 mechanisms; their provider declarations
+exercise native SGLang-MLX and MLX-LM E2 mechanisms; their provider declarations
 are available here, but their engine measurements do not promote Paper 4.5 to
-E2. Paper 6 now exercises native vLLM-Metal V1 generation and
+E3. Paper 6 now exercises native vLLM-Metal V1 generation and
 scheduler-disjoint pages under a pinned provider, while its generic provider
 remains E0 unless that bridge is explicitly installed. The portable
-HF adapter implements E1 native execution and streaming but remains stateless
+HF adapter implements E2 native execution and streaming but remains stateless
 between gateway calls. The configurable remote E1 envelope carries incremental
 messages and resource operations when the selected engine advertises those
 capabilities. The HTTP gateway emits OpenAI-compatible server-sent events.
@@ -915,7 +923,7 @@ The capability object names native K/V, logical references, streaming,
 selected-interval materialization, request lifetime, host/device residency,
 tenant isolation, phase selection, and scheduler hints independently. The HF
 reference advertises the first seven supported properties and explicitly
-rejects phase selection and scheduler hints. This prevents an E1 adapter from
+rejects phase selection and scheduler hints. This prevents an E2 adapter from
 being mistaken for an E3 scheduler merely because both accept the same logical
 wire request.
 
@@ -936,7 +944,7 @@ resumes.
 Figure~\ref{fig:gateway-two-cache} makes these state classes explicit. The
 inference engine physically owns the ordinary prefix cache. PRA logically owns
 resource identities, versions, addresses, and selection; the physical owner of
-their indexes or selected native K/V depends on E1--E3 integration. A hit or
+their indexes or selected native K/V depends on E2--E3 integration. A hit or
 invalidation on one axis therefore says nothing by itself about the other.
 
 \begin{figure}[H]
@@ -945,7 +953,7 @@ invalidation on one axis therefore says nothing by itself about the other.
 \caption{The session-aware gateway maintains two independent state axes.
 Sequential prompt K/V follows the engine's ordinary prefix-cache policy;
 detached PRA resources follow the PRA lifecycle and may be text-materialized
-at E0 or retained natively at E1+.}
+at E0 or retained natively at E2+.}
 \label{fig:gateway-two-cache}
 \end{figure}
 
@@ -962,9 +970,9 @@ A versioned engine registry resolves OpenAI-generic, vLLM, SGLang, FreeToken,
 Ollama, Hugging Face, llama.cpp, MLX, and custom profiles. Unknown compatible
 servers safely remain E0, full-history, and cache-telemetry-unknown. vLLM and
 SGLang profiles represent automatic prefix-cache capability but do not infer
-native PRA from an engine label. Companion E1 mechanism results are registered
+native PRA from an engine label. Companion E2 mechanism results are registered
 through explicit providers and remain separate from Paper 4.5 evidence. The
-local HF reference remains E1-native but
+local HF reference remains E2-native but
 stateless across calls; the session/resource-delta row is exercised by a
 deterministic remote-engine contract fixture. Explicit configuration may
 override registry defaults; resolved capabilities, rather than labels, control
@@ -1639,6 +1647,53 @@ quality effect: once all eight resources fit, reloads disappear.}
 
 \section{Compatibility and Product Boundary}
 
+\subsection{Common Qualification Contract}
+
+All engine rows now answer one question: at fixed or acceptably changed
+quality, when does PRA reduce total serving cost? The benchmark computes each
+query, candidate set, selected IDs, and selected intervals once. A cryptographic
+selection digest is then reused by \texttt{FULL}, \texttt{E0\_SELECTED},
+\texttt{E2\_HOT}, and \texttt{E2\_WARM}; optional E3 conditions add prefetch,
+remote WARM, COLD, or SOURCE restoration without rerunning retrieval. Context
+size, shared versus independent resources, and concurrency 1, 4, 8, and 16 are
+manifest dimensions. This separates retrieval quality from representation and
+transport.
+
+Every row pairs task quality with serving measurements. Binary workloads derive
+successful requests per second as request rate times task success and report
+successful tasks per accelerator-hour. Monetary cost remains null unless an
+auditable hourly-cost source is supplied. Visible-token reduction and active-K/V
+reduction remain separate. Tail percentiles, physical memory components,
+transfer bytes and time, cache events, reuse, hardware metadata, status, and
+provenance are first-class fields. The current legacy registry has no row with
+both request rate and task success, so its quality-adjusted-throughput field is
+honestly \texttt{NOT\_MEASURED} rather than reconstructed after the fact.
+
+Figure~\ref{fig:engine-maturity} distinguishes a validated level from a deeper
+observed mechanism. In particular, AirLLM has a live E2 mechanism smoke but
+remains E0-qualified until natural quality and larger-than-VRAM evidence close
+the gate; SGLang has local E3-like HiCache controls but lacks distributed,
+scheduler-owned E3 validation. Raw throughput is deliberately absent from this
+maturity axis.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.60\linewidth]{../shared/results/engine_qualification/engine_maturity.pdf}
+\caption{Cross-engine evidence maturity. Darker cells indicate stronger
+evidence; candidate mechanisms do not automatically promote validated level.}
+\label{fig:engine-maturity}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Evidence-driven engine frontier. ``Observed'' may exceed ``validated''
+when a mechanism exists but the corresponding quality, pressure, or scheduler
+gate remains open. Status words describe evidence, not numeric values.}
+\resizebox{\linewidth}{!}{\input{../shared/results/engine_qualification/generated_engine_maturity.tex}}
+\label{tab:engine-maturity}
+\end{table}
+
 \begin{table}[H]
 \centering
 \caption{Implementation status on the measured branch and host.}
@@ -1656,9 +1711,9 @@ DeepSeek/Pi agent bridges & contract tested & Typed event/RPC capture and explic
 Triton/custom CUDA & not run & Requires supported GPU and profiling evidence\\
 vLLM & provider E0; companion E2 & Default provider remains conservative;
 Paper 6 measures native APC and request isolation through concurrency eight\\
-SGLang & provider E1 & Companion Paper 6.1 measures native runner integration;
+SGLang & provider E2 & Companion Paper 6.1 measures native runner integration;
 local Radix-prefix and external-HiCache composition is controlled\\
-MLX & provider E1 & Companion Paper 6.2 measures native layer profiles,
+MLX & provider E2 & Companion Paper 6.2 measures native layer profiles,
 persistence, and concurrency; Paper 4.5 remains HF-centered\\
 TensorRT-LLM & provider E0; native architectural & Companion Paper 6.4 measures
 CUDA selected-text load through concurrency 16; native attachment remains open\\
@@ -2317,9 +2372,12 @@ resynchronization and body-transmission accounting\\
 \path{experiments/paper4_5_runtime/run_agent_transport_model_backed.py} &
 Held-out model-backed G10 transport parity, task/tool visibility, gold-answer
 log-probability, TTFT, and execution-message checks\\
-\path{experiments/paper4_5_runtime/build_product_matrix_v1.py} &
+\path{experiments/paper4_5_runtime/build_product_matrix_v2.py} &
 Strict engine--model--profile--hardware product matrix with explicit evidence
-tier, status, and missingness fields\\
+tier, per-metric status/provenance, qualification level, and missingness fields\\
+\path{experiments/paper4_5_runtime/build_engine_qualification.py} &
+Selector-frozen E0/E2/E3 manifest, evidence-driven maturity registry, table,
+and cross-engine figure\\
 \path{experiments/paper4_5_runtime/run_storage_policy_trace.py} &
 Weighted-versus-LRU retention trace with task/shared reuse, reconstruction, and
 estimated context-cost accounting\\
