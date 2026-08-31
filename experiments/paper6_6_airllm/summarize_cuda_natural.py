@@ -42,6 +42,10 @@ def summarize(payload: Mapping[str, Any]) -> dict[str, Any]:
                 continue
             e0_seconds = float(e0["mean_completion_seconds"])
             e2_seconds = float(e2["mean_completion_seconds"])
+            e0_ttft = e0.get("mean_ttft_ms")
+            e2_ttft = e2.get("mean_ttft_ms")
+            e0_itl = e0.get("mean_itl_ms")
+            e2_itl = e2.get("mean_itl_ms")
             selected_tokens = float(e0["mean_visible_prompt_tokens"])
             visible_tokens = float(e2["mean_visible_prompt_tokens"])
             repeat_is_warm = regime == "warm_repeated"
@@ -77,6 +81,15 @@ def summarize(payload: Mapping[str, Any]) -> dict[str, Any]:
                     "e0_completion_seconds": e0_seconds,
                     "e2_completion_seconds": e2_seconds,
                     "e2_over_e0_completion": e2_seconds / max(e0_seconds, 1e-12),
+                    "e0_ttft_ms": None if e0_ttft is None else float(e0_ttft),
+                    "e2_ttft_ms": None if e2_ttft is None else float(e2_ttft),
+                    "e2_over_e0_ttft": (
+                        None
+                        if e0_ttft is None or e2_ttft is None
+                        else float(e2_ttft) / max(float(e0_ttft), 1e-12)
+                    ),
+                    "e0_itl_ms": None if e0_itl is None else float(e0_itl),
+                    "e2_itl_ms": None if e2_itl is None else float(e2_itl),
                     "e0_visible_tokens": selected_tokens,
                     "e2_visible_tokens": visible_tokens,
                     "e2_native_tokens": float(e2["mean_native_kv_tokens"]),
@@ -123,18 +136,20 @@ def render_table(summary: Mapping[str, Any]) -> str:
     }
     regimes = {"cold_one_shot": "cold", "warm_repeated": "warm"}
     lines = [
-        r"\begin{tabular}{llrrrrr}",
+        r"\begin{tabular}{llrrrrrr}",
         r"\toprule",
-        r"Dataset & State & E0 F1 & E2 F1 & Pair exact & E2/E0 time & Visible $\downarrow$ \\",
+        r"Dataset & State & E0 F1 & E2 F1 & Pair exact & Completion & TTFT & Visible $\downarrow$ \\",
         r"\midrule",
     ]
     for row in summary["comparisons"]:
+        ttft = row.get("e2_over_e0_ttft")
+        ttft_text = "--" if ttft is None else f"{ttft:.3f}"
         lines.append(
             f"{names.get(row['dataset'], row['dataset'])} & "
             f"{regimes[row['regime']]} & "
             f"{row['e0_token_f1']:.3f} & {row['e2_token_f1']:.3f} & "
             f"{row['exact_output_pair_parity']:.3f} & "
-            f"{row['e2_over_e0_completion']:.3f} & "
+            f"{row['e2_over_e0_completion']:.3f} & {ttft_text} & "
             f"{100.0 * row['visible_token_reduction']:.1f}\\% \\\\"
         )
     lines.extend((r"\bottomrule", r"\end{tabular}"))

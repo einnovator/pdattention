@@ -149,4 +149,40 @@ def test_airllm_natural_summary_compares_matched_e0_e2() -> None:
     assert comparison["visible_token_reduction"] == 0.9
     assert comparison["token_f1_delta"] == pytest.approx(-0.05)
     assert comparison["exact_output_pair_parity"] == 0.0
+    assert comparison["e2_over_e0_ttft"] is None
     assert "QASPER" in render_table(result)
+
+
+def test_airllm_natural_summary_preserves_token_latency_axes() -> None:
+    aggregate = {
+        "dataset": "qasper",
+        "regime": "cold_one_shot",
+        "samples": 1,
+        "mean_token_f1": 0.25,
+        "mean_answer_containment": 0.5,
+        "mean_completion_seconds": 1.0,
+        "mean_visible_prompt_tokens": 20.0,
+        "mean_native_kv_tokens": 0.0,
+        "peak_cuda_bytes": 100,
+        "mean_ttft_ms": 100.0,
+        "mean_itl_ms": 20.0,
+    }
+    payload = {
+        "status": "COMPLETE",
+        "aggregates": [
+            {**aggregate, "condition": "selected_text_e0"},
+            {
+                **aggregate,
+                "condition": "native_pra_e2",
+                "mean_ttft_ms": 120.0,
+                "mean_itl_ms": 25.0,
+            },
+        ],
+        "rows": [],
+    }
+
+    [comparison] = summarize(payload)["comparisons"]
+
+    assert comparison["e2_over_e0_ttft"] == 1.2
+    assert comparison["e0_itl_ms"] == 20.0
+    assert comparison["e2_itl_ms"] == 25.0
