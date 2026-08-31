@@ -507,7 +507,13 @@ def _warm_lifecycle_rows() -> list[ProductMatrixRow]:
 def _airllm_natural_rows() -> list[ProductMatrixRow]:
     """Import the bounded AirLLM/HF natural E0/E2 CUDA follow-up."""
 
-    path = RESULTS / "paper6_6_airllm/tinyllama_cuda_natural_summary.json"
+    result_dir = RESULTS / "paper6_6_airllm"
+    expanded = result_dir / "tinyllama_rtx5060_natural_60_summary.json"
+    path = (
+        expanded
+        if expanded.exists()
+        else result_dir / "tinyllama_cuda_natural_summary.json"
+    )
     if not path.exists():
         return []
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -530,7 +536,11 @@ def _airllm_natural_rows() -> list[ProductMatrixRow]:
                     model_variant="airllm_hf_layer_streamed",
                     engine="airllm",
                     engine_version="3.3.0",
-                    hardware=f"{payload['device']} 4 GiB",
+                    hardware=(
+                        f"{payload['device']} 8 GiB"
+                        if "5060" in str(payload["device"])
+                        else f"{payload['device']} 4 GiB"
+                    ),
                     profile="REFERENCE_CORRECTNESS",
                     profile_status="RESEARCH_ONLY" if native else "CALIBRATION_PENDING",
                     workload=f"selector_frozen_natural/{comparison['regime']}",
@@ -575,6 +585,8 @@ def _airllm_natural_rows() -> list[ProductMatrixRow]:
                         f"visible_reduction={comparison['visible_token_reduction']:.6f}; "
                         f"e2_over_e0_completion={comparison['e2_over_e0_completion']:.6f}; "
                         f"{payload['example_count']}-example transport cohort; "
+                        f"mean_reference_encode_seconds="
+                        f"{payload.get('mean_reference_encode_seconds', 'NOT_MEASURED')}; "
                         f"native_e2_candidate={str(native).lower()}; semantic parity open"
                     ),
                 )
