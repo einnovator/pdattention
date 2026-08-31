@@ -66,7 +66,7 @@ def main() -> None:
                 "backend": "hf_cuda",
                 "hardware": cuda.get("device"),
                 "model": cuda.get("model_id") or mlx["model"],
-                "pra_level": "E1",
+                "pra_level": "E2",
                 "profile": "REFERENCE_CORRECTNESS",
                 "evidence_tier": cuda.get("evidence_tier"),
                 "status": cuda.get("status"),
