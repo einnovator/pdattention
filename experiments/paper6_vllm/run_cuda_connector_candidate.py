@@ -95,7 +95,7 @@ def main() -> None:
         },
     )
     tokenizer = llm.get_tokenizer()
-    block_size = int(llm.vllm_config.cache_config.block_size)
+    block_size = int(llm.llm_engine.vllm_config.cache_config.block_size)
     padding = tokenizer.encode(" archive", add_special_tokens=False)
     if not padding:
         raise RuntimeError("Tokenizer did not produce a page-alignment token.")
