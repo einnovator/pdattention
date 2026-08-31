@@ -374,12 +374,15 @@ class RuntimeProviderRegistry:
     @classmethod
     def default(cls) -> "RuntimeProviderRegistry":
         registry = cls()
+        from pra_ollama.runtime_provider import OllamaRuntimeProvider
+
         for provider in (
             HFRuntimeProvider(),
             GenericOpenAIRuntimeProvider(),
             VLLMRuntimeProvider(),
             SGLangRuntimeProvider(),
             MLXRuntimeProvider(),
+            OllamaRuntimeProvider(),
         ):
             registry.register(provider)
         registry.discover()

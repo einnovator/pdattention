@@ -1,0 +1,37 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,amsmath,hyperref}
+\title{Progressive Retrieval Attention with Ollama:\\Transparent Context Optimization for Local-Model Applications}
+\author{Jorge Sim\~ao}\date{\today}
+\begin{document}\maketitle
+\begin{abstract}
+Ollama provides a widely used local-model application and distribution layer. Progressive Retrieval Attention (PRA) can already optimize ordinary OpenAI-compatible traffic through selected-text E0 execution, while deeper native support may be supplied by the model backend beneath Ollama. This paper studies a capability-negotiated integration in which existing Ollama applications remain unchanged, PRA begins as a gateway, and native E2 is inherited from a PRA-aware backend when available rather than reimplemented in Ollama. We evaluate quality, context pressure, session and model lifecycle, transparent fallback, resource reuse, and developer onboarding.
+\end{abstract}
+\section{Introduction}
+For Ollama users the primary requirement is not a new attention API but a low-friction path from existing local-model applications to context optimization. We therefore ask whether one application can transparently use E0 on ordinary backends and deeper PRA execution when the underlying runtime supports it.
+\section{PRA Integration Levels}
+E0 supplies selected text; E1 preserves logical resources; E2 consumes detached native memory; E3 adds scheduler-owned lifecycle. AUTO negotiation selects the deepest validated mode that is useful and available.
+\section{Ollama Architecture}
+We pin and audit the current Ollama API, runner/backend architecture, model keep-alive, scheduling, cache ownership and backend relationship rather than relying on historical assumptions.
+\section{Gateway-First Design}
+Ordinary Ollama or OpenAI-compatible clients communicate through the PRA Gateway. Typed records, deltas and native execution are progressive enhancements. Unsupported native capability falls back to E0.
+\section{Native Backend Reuse}
+Where Ollama's active backend has native PRA support, Ollama propagates the required logical resource identity and lifecycle without duplicating the attention implementation.
+\section{Model and Session Lifecycle}
+We test keep-alive, unload/reload, model switching, quantized variants, multiple conversations, shared resources, reconnect and restart. Model/topology changes invalidate incompatible native state.
+\section{Evaluation}
+The common PRA qualification compares FULL, E0_SELECTED and E2 where available, with quality, visible tokens, TTFT/ITL, throughput, memory and reuse. We additionally measure setup complexity and time to first successful PRA request.
+\section{Results}
+\begin{table}[h]\centering\caption{Ollama deployment qualification.}
+\begin{tabular}{llll}\toprule Mode&Availability&Quality&Status\\\midrule E0 gateway&TBD&TBD&TBD\\E1 logical&TBD&TBD&TBD\\E2 backend-native&TBD&TBD&TBD\\E3 scheduler&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering\caption{Local-model systems frontier.}
+\begin{tabular}{lrrrr}\toprule Condition&Quality&Visible tokens&TTFT p99&Req/s\\\midrule FULL&TBD&TBD&TBD&TBD\\E0 selected&TBD&TBD&TBD&TBD\\E2 native&TBD&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
+\section{Related Work}
+We compare local-model runtimes, OpenAI-compatible gateways, llama.cpp/native backend caching, prompt caching, RAG/context compression and other PRA engine integrations.
+\section{Limitations}
+Native depth depends on the pinned Ollama backend architecture and must not be inferred from historical implementation details.
+\section{Conclusion}
+PRA should preserve Ollama's simple local-model UX while allowing transparent progression from gateway-selected context to native semantic memory when the backend can support it.
+\section*{Reproducibility}
+Record Ollama/PRA versions, backend identity/version, model revision, hardware, API mode, lifecycle settings, commands, manifests and raw metrics.
+\end{document}
