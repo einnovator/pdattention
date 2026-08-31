@@ -21,11 +21,18 @@ def _payload(model: str, selected_f1: float, full_f1: float) -> dict:
                     "condition": condition,
                     "sample_count": 20,
                     "token_f1": f1,
-                    "ttft_ms": {"p50": ttft},
+                    "answer_containment": f1,
+                    "ttft_ms": {"p50": ttft, "p95": ttft * 2},
                     "mean_prompt_tokens": tokens,
                 }
             )
-    return {"model_id": model, "aggregates": rows}
+    return {
+        "model_id": model,
+        "engine_version": "2026.3.1.0",
+        "device": "GPU",
+        "evidence_tier": "CONTROLLED_NATURAL_QA",
+        "aggregates": rows,
+    }
 
 
 def test_cross_model_summary_pairs_quality_and_ttft() -> None:
@@ -37,4 +44,6 @@ def test_cross_model_summary_pairs_quality_and_ttft() -> None:
     first = result["rows"][0]
     assert first["selected_minus_full_f1"] == pytest.approx(-0.1)
     assert first["full_over_selected_ttft"] == 2.5
+    assert first["selected_ttft_p95_ms"] == 200.0
+    assert result["engine_version"] == "2026.3.1.0"
     assert "1.5B" in render_table(result)

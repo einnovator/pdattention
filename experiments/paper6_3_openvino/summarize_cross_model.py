@@ -44,10 +44,16 @@ def summarize(payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                     ),
                     "selected_f1": float(selected["token_f1"]),
                     "full_f1": float(full["token_f1"]),
+                    "selected_answer_containment": float(
+                        selected["answer_containment"]
+                    ),
+                    "full_answer_containment": float(full["answer_containment"]),
                     "selected_minus_full_f1": float(selected["token_f1"])
                     - float(full["token_f1"]),
                     "selected_ttft_p50_ms": selected_ttft,
                     "full_ttft_p50_ms": full_ttft,
+                    "selected_ttft_p95_ms": float(selected["ttft_ms"]["p95"]),
+                    "full_ttft_p95_ms": float(full["ttft_ms"]["p95"]),
                     "full_over_selected_ttft": full_ttft
                     / max(selected_ttft, 1e-12),
                     "selected_prompt_tokens": float(selected["mean_prompt_tokens"]),
@@ -58,6 +64,10 @@ def summarize(payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "schema_version": "paper6.3-openvino-cross-model-v1",
         "integration_level": "E0_SELECTED_TEXT",
         "selector_frozen": True,
+        "engine": "openvino_genai",
+        "engine_version": payloads[0].get("engine_version"),
+        "device": payloads[0].get("device"),
+        "evidence_tier": payloads[0].get("evidence_tier"),
         "models": [str(payload["model_id"]) for payload in payloads],
         "rows": rows,
     }
