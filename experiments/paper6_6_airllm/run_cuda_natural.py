@@ -12,12 +12,60 @@ import time
 import traceback
 from collections import Counter
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import torch
 
 from pra_hf.airllm_adapter import wrap_airllm_hf_model
 from pra_hf.config import PRAConfig
+
+
+class TokenTimingStreamer:
+    """Capture first-token and inter-token timing from HF ``generate``.
+
+    Transformers sends the complete prompt through ``put`` before generated
+    tokens.  The first callback is therefore excluded; every later callback is
+    one or more newly decoded tokens.  A caller-provided clock keeps the small
+    timing state machine directly testable.
+    """
+
+    def __init__(
+        self,
+        *,
+        started_at: float,
+        clock: Callable[[], float] = time.perf_counter,
+    ) -> None:
+        self.started_at = float(started_at)
+        self.clock = clock
+        self._saw_prompt = False
+        self.token_times: list[float] = []
+
+    def put(self, value: Any) -> None:
+        if not self._saw_prompt:
+            self._saw_prompt = True
+            return
+        now = float(self.clock())
+        token_count = int(value.numel()) if hasattr(value, "numel") else 1
+        self.token_times.extend([now] * max(token_count, 1))
+
+    def end(self) -> None:
+        """Satisfy the HF streamer protocol; all metrics are already captured."""
+
+    def metrics(self) -> dict[str, float | int | None]:
+        ttft = (
+            (self.token_times[0] - self.started_at) * 1000.0
+            if self.token_times
+            else None
+        )
+        intervals = [
+            (right - left) * 1000.0
+            for left, right in zip(self.token_times, self.token_times[1:])
+        ]
+        return {
+            "ttft_ms": ttft,
+            "itl_ms": statistics.fmean(intervals) if intervals else None,
+            "timed_output_tokens": len(self.token_times),
+        }
 
 
 def _tokens(text: str) -> list[str]:
@@ -82,6 +130,7 @@ def _measure_e0(
     prompt: str,
     max_new_tokens: int,
 ) -> dict[str, Any]:
+    request_started = time.perf_counter()
     encoded = tokenizer(prompt, return_tensors="pt", add_special_tokens=True)
     input_ids = encoded.input_ids.to("cuda")
     attention_mask = encoded.get("attention_mask")
@@ -89,6 +138,7 @@ def _measure_e0(
         attention_mask = attention_mask.to("cuda")
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.synchronize()
+    timing = TokenTimingStreamer(started_at=request_started)
     started = time.perf_counter()
     generated = model.generate(
         input_ids=input_ids,
@@ -97,6 +147,7 @@ def _measure_e0(
         do_sample=False,
         use_cache=True,
         disable_compile=True,
+        streamer=timing,
     )
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - started
@@ -110,20 +161,22 @@ def _measure_e0(
         "completion_seconds": elapsed,
         "tokens_per_second": int(output_ids.shape[1]) / max(elapsed, 1e-9),
         "peak_cuda_bytes": int(torch.cuda.max_memory_allocated()),
-        "ttft_ms": None,
-        "itl_ms": None,
+        **timing.metrics(),
     }
 
 
 def _measure_e2(pra: Any, question: str, max_new_tokens: int) -> dict[str, Any]:
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.synchronize()
+    request_started = time.perf_counter()
+    timing = TokenTimingStreamer(started_at=request_started)
     result = pra.generate(
         _prompt(question),
         max_new_tokens=max_new_tokens,
         return_details=True,
         do_sample=False,
         use_cache=True,
+        streamer=timing,
     )
     torch.cuda.synchronize()
     return {
@@ -138,8 +191,7 @@ def _measure_e2(pra: Any, question: str, max_new_tokens: int) -> dict[str, Any]:
         "tokens_per_second": int(result.generated_tokens)
         / max(float(result.latency_seconds), 1e-9),
         "peak_cuda_bytes": int(torch.cuda.max_memory_allocated()),
-        "ttft_ms": None,
-        "itl_ms": None,
+        **timing.metrics(),
     }
 
 

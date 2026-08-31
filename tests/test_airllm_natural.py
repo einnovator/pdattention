@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from experiments.paper6_6_airllm.run_cuda_natural import quality, select_entries
+from experiments.paper6_6_airllm.run_cuda_natural import (
+    TokenTimingStreamer,
+    quality,
+    select_entries,
+)
 from experiments.paper6_6_airllm.summarize_cuda_natural import render_table, summarize
 
 
@@ -26,6 +30,22 @@ def test_airllm_natural_cohort_is_bounded_per_dataset() -> None:
     selected = select_entries(manifest, ("qasper", "hotpotqa"), 1)
 
     assert [entry["example_id"] for entry in selected] == ["q1", "h1"]
+
+
+def test_token_timing_streamer_excludes_prompt_and_measures_decode() -> None:
+    times = iter((1.125, 1.145, 1.185))
+    streamer = TokenTimingStreamer(started_at=1.0, clock=lambda: next(times))
+
+    streamer.put([11, 12, 13])
+    streamer.put(14)
+    streamer.put(15)
+    streamer.put(16)
+
+    assert streamer.metrics() == {
+        "ttft_ms": pytest.approx(125.0),
+        "itl_ms": pytest.approx(30.0),
+        "timed_output_tokens": 3,
+    }
 
 
 def test_airllm_natural_summary_compares_matched_e0_e2() -> None:
