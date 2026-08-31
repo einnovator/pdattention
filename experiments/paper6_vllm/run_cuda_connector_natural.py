@@ -67,7 +67,7 @@ def main() -> None:
         max_model_len=512,
         max_num_seqs=1,
         gpu_memory_utilization=0.72,
-        enable_prefix_caching=False,
+        enable_prefix_caching=True,
         enforce_eager=True,
         disable_hybrid_kv_cache_manager=True,
         kv_transfer_config={
@@ -101,6 +101,13 @@ def main() -> None:
         source = source[: max(1, max_source)]
         source = _aligned(source, block_size, placeholder)
         key = f"natural-{run_id}-{index:03d}"
+        e0_salt = f"e0-source-{example['selection_id']}"
+        _, e0_ingestion = _generate(
+            llm,
+            store_sampling,
+            source + [placeholder],
+            cache_salt=e0_salt,
+        )
         command = CudaConnectorCommand("store", key, len(source))
         _, ingestion = _generate(
             llm,
@@ -108,7 +115,9 @@ def main() -> None:
             source + [placeholder],
             cache_salt=command.cache_salt(),
         )
-        full, full_metrics = _generate(llm, sampling, source + question)
+        full, full_metrics = _generate(
+            llm, sampling, source + question, cache_salt=e0_salt
+        )
         native, native_metrics = _generate(
             llm,
             sampling,
@@ -145,6 +154,7 @@ def main() -> None:
                 "native_em": native_em,
                 "native_f1": native_f1,
                 "ingestion": ingestion,
+                "e0_ingestion": e0_ingestion,
                 "full": full_metrics,
                 "native": native_metrics,
             }
@@ -183,7 +193,7 @@ def main() -> None:
         "device": torch.cuda.get_device_name(0),
         "manifest": str(args.manifest),
         "selector_frozen": True,
-        "apc_enabled": False,
+        "apc_enabled": True,
         "source_content_visible": False,
         "source_slots_scheduler_visible": True,
         "gold_answer_log_probability": None,
@@ -196,4 +206,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

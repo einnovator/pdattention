@@ -40,7 +40,7 @@ outcome, wrong memory redirects 30/40 outputs, and throughput reaches 34.41
 requests/s at concurrency eight. A selection-derived APC salt prevents the
 same visible query from reusing state created under different hidden memory;
 after the first selected request, APC supplies 128--144 prompt tokens.
-Connectors and native CUDA E2 remain open. A CUDA E0 reproduction on an RTX
+An official detached CUDA E2 path remains open. A CUDA E0 reproduction on an RTX
 5060 Laptop GPU adds a 360-request natural-QA cohort and a 1,240-request warm
 load sweep. Selected text reaches 92.7 requests/s at concurrency 16; the
 independent full-context workload saturates at 12.0 requests/s and 1.15 s TTFT
@@ -64,7 +64,16 @@ four execution-cost ratios remain within 3.1\% of parity. An expanded
 Qwen3-1.7B confirmation uses 149 unique examples and preserves 2,086/2,086
 pairs; its four macro cost ratios remain within 0.991--1.009. An expanded live storage study then obtains 80/80
 lossless WARM output and array parity with restart recovery; int8 COLD is exact
-in only 17/80 sequences and is not promoted as a default.
+in only 17/80 sequences and is not promoted as a default. Finally, a vLLM
+0.28 CUDA connector candidate stores source K/V by semantic identity and loads
+it into request-owned pages without recomputing the source content. A
+five-seed causal control obtains 5/5 exact E0/native pairs, 5/5 wrong-memory
+redirections, and zero disabled or cleanup leaks. With source-only geometry
+matched through APC, a 60-example natural cohort obtains 60/60 exact pairs and
+identical F1. Median candidate/E0 completion ratios are 0.964 on QASPER, 1.005
+on HotpotQA, and 1.073 on 2Wiki. Because vLLM still reserves source-length
+placeholder slots, this closes native transfer and APC coexistence on CUDA,
+not scheduler-invisible detached E2 or its memory economics.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -76,23 +85,26 @@ paged attention while keeping those pages scheduler-disjoint. Across 149
 questions and four execution schedules, it preserves 2,086/2,086 E0 output
 pairs while removing 90.5--93.0\% of visible prompt tokens. Its macro E2/E0
 cost ratios are 1.009 cold, 0.997 warm, 1.003 multi-query, and 0.991 concurrent.
-This is near economic parity, not a general speedup. The CUDA serving path is
-still E0 because native page attachment and LMCache integration remain open.
+This is near economic parity, not a general speedup. CUDA has a validated E0
+path and a research-only native-transfer candidate. The candidate consumes
+semantic-keyed source K/V and preserves 60/60 matched outputs, but the
+scheduler still accounts for source-length placeholder slots. Detached page
+attachment, LMCache integration, and production CUDA E2 therefore remain open.
 
 \begin{center}
 \small
 \begin{tabularx}{0.96\linewidth}{lX}
 \toprule
-Integration level & E2 validated on vLLM-Metal; generic CUDA provider E0\\
-Model/hardware & Four pinned checkpoints on Apple M5; CUDA E0 pressure on RTX 5060 Laptop GPU\\
+Integration level & E2 validated on vLLM-Metal; CUDA E0 plus prefix-shaped native-transfer candidate\\
+Model/hardware & Four pinned checkpoints on Apple M5; TinyLlama-1.1B and CUDA E0 pressure on RTX 5060 Laptop GPU\\
 Workload & QASPER, HotpotQA, and 2WikiMultiHopQA; frozen selections\\
-Quality & 2,086/2,086 exact E0/E2 pairs; unchanged paired F1\\
-Context reduction & 90.5--93.0\% fewer visible prompt tokens\\
+Quality & Metal: 2,086/2,086 exact E0/E2 pairs; CUDA candidate: 60/60 exact, unchanged F1\\
+Context reduction & Metal: 90.5--93.0\% fewer visible tokens; CUDA candidate hides source content but retains placeholder slots\\
 TTFT/ITL tails & \texttt{NOT\_MEASURED} in the common matched cohort\\
 Throughput & Concurrent E2/E0 inverse-cost ratio 0.991 on Metal\\
 Peak memory & \texttt{NOT\_MEASURED} end to end; native page residency controlled\\
 Reuse & APC-matched E0 and native HOT pages; LMCache \texttt{NOT\_MEASURED}\\
-Main limitation & CUDA-native E2, connectors, HBM telemetry, and continuous batching\\
+Main limitation & Detached CUDA E2, LMCache, HBM/transfer telemetry, and online continuous batching\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -114,6 +126,11 @@ serving; pinned E2 on Metal when native non-disclosure or reuse is required.
 queries. \textbf{Do not use when:} a cold one-shot request gains no reuse or a
 deployment assumes generic vLLM labels imply native PRA. \textbf{Main remaining
 gate:} official CUDA page/connector integration under scheduler pressure.
+
+The CUDA connector candidate is useful for integration research and semantic
+non-disclosure, but not yet a product default: its source K/V is native while
+its placeholder slots remain scheduler-visible, and its measured completion
+time does not consistently beat APC-backed E0.
 
 \section{Introduction}
 Long-running LLM services face two related but distinct memory problems.
@@ -257,6 +274,32 @@ ordinary prefix identities remain unchanged. Query positions advance by the
 source-position base. This first E2 path requires page-aligned selections, one
 cache group, all attention layers, and non-TurboQuant K/V.
 
+\subsection{CUDA connector candidate}
+The CUDA path uses vLLM's V1 KV-connector seam rather than the Metal
+model-runner hook. \path{src/pra_vllm/cuda_protocol.py} encodes a
+request-scoped \texttt{store} or \texttt{load} command containing a URL-safe
+logical resource key and block-aligned source-token count.
+\path{src/pra_vllm/cuda_connector.py} keeps that logical identity outside
+token hashing. During a store request it extracts each attention layer's
+source slots from vLLM's paged CUDA cache and persists the contiguous K/V
+tensor plus a completion manifest. During a load, the scheduler allocates
+isolated request pages, the connector copies the selected tensors into those
+pages before attention, and vLLM evaluates only the query suffix. Ordinary
+request cleanup releases the destination pages; the semantic object remains
+separately addressable.
+
+This path preserves native attention, K/V positions, and one ordinary
+self-attention normalization. It also supports causal substitution: the same
+query can load a different logical resource without changing source-token
+content, because placeholder IDs occupy those positions but are never
+evaluated. It is nevertheless weaker than detached PRA. vLLM's connector
+contract loads external K/V as a computed prompt prefix, so the scheduler
+allocates and counts one placeholder slot per source token. Selection-specific
+salts prevent accidental APC reuse for native-load requests, while the E0
+reference primes the same source-only geometry in its ordinary APC namespace.
+We therefore label this path \emph{E2 candidate, prefix-shaped}, rather than
+promoting generic CUDA to detached E2.
+
 \section{Environment and Method}
 The remote host was an Apple M5 MacBook Pro with 16 GB unified memory, macOS
 26.4.1, and Metal 4. The environment used Python 3.12.7, vLLM
@@ -280,6 +323,18 @@ reported as cold within the running server; the remaining four form the warm
 mean. Streaming Server-Sent Events determine TTFT. Twenty-five requests are
 enough for compatibility and mechanism smoke evidence, not tail percentiles or
 serving claims.
+
+The CUDA connector experiments run vLLM 0.28.0 with FlashAttention 2 and
+TinyLlama-1.1B-Chat-v1.0 in BF16 on an NVIDIA RTX 5060 Laptop GPU with 8 GB
+VRAM under WSL. Eager V1 execution uses 16-token cache blocks and disables the
+hybrid cache manager. The controlled cohort has five seeds. The natural cohort
+uses the frozen portable manifest's 20 QASPER, 20 HotpotQA, and 20
+2WikiMultiHopQA examples. Selected sources are capped at 384 tokens and padded
+to whole blocks. E0 and native conditions share source-only encoding geometry;
+E0 recovers it through APC, while the connector reloads it by semantic key.
+Greedy decoding is capped at 24 tokens. Offline completion time, exact output
+pairing, EM, F1, APC tokens, and persisted K/V bytes are measured; TTFT, ITL,
+PCIe traffic, and K/V-only HBM are \textsc{not measured}.
 
 \section{Results}
 \begin{table}[t]
@@ -696,6 +751,53 @@ relative reduction. Reuse-count and reload-cost policies reach 0.445 and 0.437.
 The result confirms that selected-memory lifecycle policy can matter even
 before learned eviction, while leaving its effect on real TTFT open.
 
+\subsection{CUDA semantic K/V connector}
+The controlled CUDA gate first uses 32 source tokens and five independently
+named resources. Full E0 and semantic-keyed native loading produce identical
+token sequences in 5/5 cases and recover the target in 5/5. Disabled and
+post-cleanup requests leak the target in 0/5. Replacing the logical key with a
+same-shaped wrong resource redirects the answer to that resource's code in
+5/5. This closes native consumption, causal influence, and request isolation
+for the connector candidate.
+
+The initial natural comparison preserved 56/60 exact sequences. Its four
+differences were punctuation, stopping, or continuation-boundary changes, not
+cross-request leakage. As in the earlier Metal audit, source-only native
+encoding and full source-plus-query E0 prefill used different FlashAttention
+shapes. We therefore prime the E0 source through APC and rerun the frozen
+selection with identical source-only geometry. Table~\ref{tab:vllm-cuda-connector}
+reports the corrected result.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{RTX 5060 CUDA connector candidate against geometry-matched APC E0.
+The native column loads semantic-keyed K/V into request-owned pages. Ratio is
+native/E0 median completion; lower is better.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_vllm/generated_cuda_connector_table.tex}}
+\label{tab:vllm-cuda-connector}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper6_vllm/cuda_connector_summary.png}
+\caption{The CUDA candidate preserves matched F1 exactly. Completion time is
+near APC E0 but has no consistent advantage across the three datasets.}
+\label{fig:vllm-cuda-connector}
+\end{figure}
+
+All 60 corrected natural pairs are token-exact, so EM and F1 are unchanged.
+The completion ratios are 0.964, 1.005, and 1.073: one small win, one tie, and
+one regression. Native source objects occupy 7.62--8.22 MiB for mean selections
+of 354--382 tokens. Median native ingestion is 55.5--58.2 ms, versus
+32.3--32.6 ms for the APC source prime. These values include synchronous
+host-file serialization or loading and do not isolate PCIe transfer. The
+candidate therefore proves portable CUDA-native K/V substitution and APC
+coexistence, but not lower HBM, faster warm reuse, or scheduler-native E3.
+Because its placeholder prefix preserves source-length scheduler occupancy,
+it also does not yet realize PRA's detached-page scaling objective.
+
 \section{Promotion Gates}
 \begin{center}
 \begin{tabularx}{0.96\linewidth}{l l Y}
@@ -713,8 +815,9 @@ concurrent isolation & controlled closed & 20/20 selected recoveries and 0/20 ad
 native APC identity & controlled closed & selection-derived salt; 75/75 selected and 0/40 disabled recoveries \\
 matched natural QA & controlled closed & 3,360/3,360 exact outputs across Qwen, Llama, and Gemma; zero pairwise F1 change \\
 shared storage lifecycle & controlled closed & live pages; WARM 80/80 exact; restart recovery; int8 COLD 17/80 \\
-engine-native serving & partial & native APC and concurrency measured; connectors, online tails, and CUDA remain open \\
-robustness & partial & four checkpoints and three tokenizer families; one Metal backend \\
+CUDA connector candidate & research closed & 5/5 causal controls and 60/60 natural pairs; prefix-shaped slots remain \\
+engine-native serving & partial & Metal native APC plus CUDA native transfer; detached CUDA, LMCache, and online tails remain open \\
+robustness & partial & four Metal checkpoints plus TinyLlama CUDA; two backend families \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -722,8 +825,9 @@ robustness & partial & four checkpoints and three tokenizer families; one Metal 
 The Metal backend now accepts selected non-prefix K/V at its native
 paged-attention boundary and carries scheduler-invisible pages through V1
 generation. Native pages now coexist with scheduler-owned APC state through
-eight-request V1 batches. Remaining boundaries are an online arrival process,
-LMCache/connectors and CUDA. The shared residency manager
+eight-request V1 batches. CUDA now has a native-transfer connector candidate,
+but its source-length slots remain scheduler-visible. Remaining boundaries are
+an online arrival process, detached CUDA pages, and LMCache. The shared residency manager
 implements deterministic prefetch, pinning, sharing, and four eviction
 policies, but its pressure sweep is controlled simulation rather than vLLM
 scheduler telemetry.
@@ -733,9 +837,10 @@ status. vLLM-Metal 0.28.0 is available on the M5 and the native/APC path above
 is measured there. CUDA E0 is now measured on an RTX 5060 Laptop GPU; vLLM
 0.28.0 requires its V1-runner fallback on the tested WSL configuration because
 the V2 runner's UVA allocation fails at startup. CUDA-native PRA page
-attachment and LMCache remain unimplemented, so HBM decomposition,
-PCIe/NVLink transfer, connector promotion, and native-E2 CUDA tails remain
-explicitly unmeasured rather than inferred from Metal or E0 runs.
+substitution is now measured through the prefix-shaped connector candidate,
+but detached attachment and LMCache remain unimplemented. HBM decomposition,
+PCIe/NVLink transfer, asynchronous promotion, and native CUDA tails remain
+explicitly unmeasured rather than inferred from Metal, E0, or completion time.
 
 \section{Falsification and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
@@ -759,6 +864,11 @@ correctly. Offline V1 also withholds per-token arrivals, so its
 TTFT and ITL columns remain unavailable. Selection-specific APC salts also
 mean that a changed PRA selection cannot reuse an APC namespace populated by a
 different selection, even when their visible conversation prefix is equal.
+The CUDA candidate adds one BF16 TinyLlama checkpoint and 60 natural examples,
+but runs one request at a time, serializes each source to host files, and does
+not report TTFT, ITL, transfer bytes, or K/V-only HBM. Its placeholders hide
+source content from model evaluation but retain source-length scheduler
+occupancy. It is therefore neither a detached-page result nor LMCache evidence.
 
 \section{Related Work}
 vLLM introduced PagedAttention and continuous batching to reduce KV
@@ -781,10 +891,13 @@ Native pages also coexist with APC and preserve request isolation through
 concurrency eight when APC identity includes the hidden selection. PRA-vLLM is
 therefore an engine-native controlled prototype on Metal with matched E0/E2
 quality across Qwen, Llama, and Gemma checkpoints. CUDA E0 is reproduced on
-current NVIDIA hardware, including a vLLM 0.28 compatibility rerun, but
-CUDA-native E2 is still open. The next decisive step is native page attachment
-or an official connector on CUDA, followed by matched online tail, HBM,
-transfer, and continuous-batching measurements before broader economic claims.
+current NVIDIA hardware, and the semantic connector candidate preserves 60/60
+natural outputs plus all causal controls. Its source-length placeholder slots
+and inconsistent completion advantage prevent promotion to detached CUDA E2.
+The next decisive step is scheduler-invisible page attachment or an official
+connector mode that decouples external K/V from prompt-prefix accounting,
+followed by LMCache, matched online tails, HBM, transfer, and
+continuous-batching measurements before broader economic claims.
 
 \begin{thebibliography}{9}
 \bibitem{kwon2023vllm}
