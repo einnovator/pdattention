@@ -71,3 +71,14 @@ def test_aggregate_reports_token_and_tpot_metrics() -> None:
     assert result["mean_input_tokens"] == 150.0
     assert result["mean_output_tokens"] == 5.0
     assert result["output_throughput_tokens_s"] == 5.0
+
+
+def test_openvino_counter_contract_is_documented_as_asymmetric() -> None:
+    source = (
+        ROOT
+        / "experiments"
+        / "paper6_3_openvino"
+        / "run_continuous_batching.py"
+    ).read_text(encoding="utf-8")
+    assert "input_tokens /= batch_size" not in source
+    assert "output_tokens /= batch_size" in source

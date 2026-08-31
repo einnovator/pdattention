@@ -170,10 +170,9 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                         output = _decode(tokenizer, result)
                         input_tokens = _metric(perf, "get_num_input_tokens")
                         output_tokens = _metric(perf, "get_num_generated_tokens")
-                        # ContinuousBatchingPipeline reports these counters for
-                        # the whole batch on each GenerationResult instance.
-                        if input_tokens is not None:
-                            input_tokens /= batch_size
+                        # OpenVINO GenAI 2026.3 reports input tokens per
+                        # GenerationResult, but generated tokens as the batch
+                        # total on every result. Normalize only the latter.
                         if output_tokens is not None:
                             output_tokens /= batch_size
                         row = {

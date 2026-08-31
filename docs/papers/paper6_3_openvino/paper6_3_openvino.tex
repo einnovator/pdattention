@@ -26,7 +26,12 @@ evidence-bearing request on an Intel i7-1355U CPU and Iris Xe GPU. Selected
 text uses 63 input tokens instead of 1,573. On GPU it reduces cold TTFT from
 1,129.6 to 102.9 ms. Under explicitly warmed continuous batching at eight
 shared requests, it reaches 8.48 requests/s rather than 7.39 and reduces TTFT
-p99 from 297.7 to 148.9 ms. The result establishes a reproducible transport
+p99 from 297.7 to 148.9 ms. An expanded ten-wave sweep reaches concurrency 16:
+selected context retains 100\% controlled recovery and 188.9 output tokens/s,
+whereas shared full context follows a decoy in every request and reaches 141.1
+output tokens/s. A separate 360-request natural cohort covers QASPER, HotpotQA,
+and 2WikiMultiHopQA; on Hotpot, selected context raises token F1 from 0.080 to
+0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. The result establishes a reproducible transport
 baseline and a precise extension boundary; it does not establish native
 OpenVINO PRA parity or memory savings.
 \end{abstract}
@@ -112,6 +117,9 @@ and full context under shared-resource and independent-resource workloads.
 Concurrency is 1, 2, 4, and 8 with five measured waves. Every distinct resource
 is primed outside the timed interval. Reported p95/p99 values are smoke
 descriptors over small cohorts, not production service-level estimates.
+The expanded campaign uses ten waves at concurrency 1, 2, 4, 8, and 16, a
+4,096-token batch budget, and six repeated distractors. It records success,
+requests/s, output tokens/s, TTFT, TPOT, generation time, input tokens, and RSS.
 
 \section{Results}
 \subsection{Capability status}
@@ -190,6 +198,56 @@ RSS spans roughly 1.95--2.19 GiB across endpoint rows and is not monotonic with
 transport or concurrency. The current experiment therefore supports a token
 and latency claim, not an engine-memory saving claim.
 
+\subsection{Natural QA and expanded continuous batching}
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Natural-QA E0 cohort: 20 examples per dataset and two repeats. Times
+are milliseconds; retrieval is frozen across the execution conditions.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_portable_natural_table.tex}}
+\label{tab:openvino-natural}
+\end{table}
+
+The Qwen2-0.5B INT4 checkpoint shows useful but incomplete QA competence.
+Selected context improves token F1 over no context on all datasets: 0.121
+versus 0.078 on 2Wiki, 0.310 versus 0.080 on HotpotQA, and 0.124 versus 0.066
+on QASPER. Full context is stronger in this bounded cohort, with F1 0.137,
+0.412, and 0.219, exposing a retrieval/evidence-coverage gap rather than a
+transport failure. Selected median TTFT is 235--278 ms, compared with
+268--705 ms for full context. The tail difference is larger: selected p95 is
+379--390 ms, whereas full-context p95 is 1.89--2.74 s.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Expanded GPU batching endpoints. Each row has ten waves. Success and
+output-token throughput are shown because wrong short answers can inflate raw
+requests/s.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_portable_load_table.tex}}
+\label{tab:openvino-expanded-load}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_3_openvino/portable_e0_load.png}
+\caption{Expanded OpenVINO E0 throughput and TTFT tails through concurrency
+16. The full-context request/s lines include wrong, shorter completions and
+must be read with Table~\ref{tab:openvino-expanded-load}.}
+\label{fig:openvino-expanded-load}
+\end{figure}
+
+Selected context recovers the target in every expanded request. At shared
+concurrency 16 it reaches 11.1 requests/s and 188.9 output tokens/s, compared
+with 14.1 requests/s and 141.1 output tokens/s for full context. The latter
+follows a distractor in all 160 requests and terminates after ten tokens rather
+than 17. Under independent resources, selected remains exact while full
+context success ranges from 0.30 to 0.51. At concurrency 16, selected reaches
+8.36 requests/s, 124.9 output tokens/s, and 440 ms TTFT p99; full reaches 12.2,
+129.3, and 375 ms but only 0.45 success. This campaign therefore establishes a
+quality-adjusted selected-context advantage, not a blanket latency win.
+
 \section{Interpretation}
 OpenVINO prefix caching and PRA selection address different reuse axes. When
 the same full context is repeatedly visible, prefix caching can make its warm
@@ -210,17 +268,18 @@ geometry-matched cached source, full native source, sparse multi-record source,
 and cached decode before any economics claim.
 
 \section{Limitations}
-The controlled task verifies evidence transport, not natural QA. Only one
-small INT4 model, one CPU, one integrated GPU, and five waves are measured.
+The controlled task verifies evidence transport; the natural cohort adds only
+20 examples per dataset. Only one small INT4 model, one CPU, one integrated
+GPU, and at most ten waves per endpoint are measured.
 There is no OVMS process, NPU, native K/V parity, device-memory telemetry,
-long-session pressure, eviction sweep, or natural QASPER/Hotpot/2Wiki cohort.
+long-session pressure, eviction sweep, or larger natural QA cohort.
 All serving results are E0.
 
 \section{Conclusion}
 PRA can coexist with OpenVINO's public serving abstractions at E0 while
 preserving semantic identity and explicit capability reporting. Selected text
-substantially reduces cold ingestion and improves the shared-resource
-continuous-batching frontier on the tested GPU. OpenVINO GenAI exposes the
+substantially reduces cold ingestion and natural-input TTFT, and it avoids the
+decoy failures seen in the expanded full-context control. OpenVINO GenAI exposes the
 physical scheduling controls needed around a future integration but not the
 public arbitrary non-prefix K/V attachment needed for E2. That boundary is now
 implemented as a safe contract and measured as an open gate.
