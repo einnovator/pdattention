@@ -1,37 +1,217 @@
 \documentclass[10pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{booktabs,amsmath,hyperref}
-\title{Progressive Retrieval Attention with Ollama:\\Transparent Context Optimization for Local-Model Applications}
-\author{Jorge Sim\~ao}\date{\today}
-\begin{document}\maketitle
+\usepackage[margin=0.82in]{geometry}
+\usepackage{booktabs,amsmath,graphicx,hyperref,xcolor}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
+\title{Progressive Retrieval Attention with Ollama:\\
+Transparent Context Optimization for Local-Model Applications}
+\author{Jorge Sim\~ao}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
 \begin{abstract}
-Ollama provides a widely used local-model application and distribution layer. Progressive Retrieval Attention (PRA) can already optimize ordinary OpenAI-compatible traffic through selected-text E0 execution, while deeper native support may be supplied by the model backend beneath Ollama. This paper studies a capability-negotiated integration in which existing Ollama applications remain unchanged, PRA begins as a gateway, and native E2 is inherited from a PRA-aware backend when available rather than reimplemented in Ollama. We evaluate quality, context pressure, session and model lifecycle, transparent fallback, resource reuse, and developer onboarding.
+Ollama combines local-model packaging, lifecycle management, and a stable
+application API. Progressive Retrieval Attention (PRA) should preserve that
+product surface: ordinary installations receive selected-text E0, while a
+PRA-aware model backend may negotiate native E2 without requiring a second
+attention implementation in Ollama. We implement this capability-negotiated
+adapter, pin a current source audit, and test an Ollama 0.6.8 daemon on Windows.
+Across 15 natural-QA examples, selected prompts used 37.5--51.7\% of full-context
+tokens. On HotpotQA and QASPER, median time to first token decreased from 602.8
+to 348.6 ms and from 732.7 to 300.0 ms, respectively; 2Wiki reversed direction.
+Keeping Qwen2.5-0.5B alive reduced mean request latency from a 2300.5 ms cold
+load to 506.5 ms across five warm requests (4.54$\times$). No native backend
+handshake was available, so AUTO correctly remained E0. The result is a usable
+gateway integration and a precise delegation boundary, not an Ollama-native E2
+claim.
 \end{abstract}
+
 \section{Introduction}
-For Ollama users the primary requirement is not a new attention API but a low-friction path from existing local-model applications to context optimization. We therefore ask whether one application can transparently use E0 on ordinary backends and deeper PRA execution when the underlying runtime supports it.
-\section{PRA Integration Levels}
-E0 supplies selected text; E1 preserves logical resources; E2 consumes detached native memory; E3 adds scheduler-owned lifecycle. AUTO negotiation selects the deepest validated mode that is useful and available.
-\section{Ollama Architecture}
-We pin and audit the current Ollama API, runner/backend architecture, model keep-alive, scheduling, cache ownership and backend relationship rather than relying on historical assumptions.
-\section{Gateway-First Design}
-Ordinary Ollama or OpenAI-compatible clients communicate through the PRA Gateway. Typed records, deltas and native execution are progressive enhancements. Unsupported native capability falls back to E0.
-\section{Native Backend Reuse}
-Where Ollama's active backend has native PRA support, Ollama propagates the required logical resource identity and lifecycle without duplicating the attention implementation.
-\section{Model and Session Lifecycle}
-We test keep-alive, unload/reload, model switching, quantized variants, multiple conversations, shared resources, reconnect and restart. Model/topology changes invalidate incompatible native state.
-\section{Evaluation}
-The common PRA qualification compares FULL, E0_SELECTED and E2 where available, with quality, visible tokens, TTFT/ITL, throughput, memory and reuse. We additionally measure setup complexity and time to first successful PRA request.
+Ollama's value is operational simplicity: a model name, one daemon, and a
+familiar API. A PRA integration that requires every application to understand
+engine-specific K/V state would undermine that value. We instead treat Ollama
+as the product and model-lifecycle layer. PRA owns typed records,
+authorization, selection, sessions, and storage policy. The active model runner
+owns attention and physical cache state.
+
+This division creates one hard rule: deeper support is negotiated, never
+inferred from a version string or from Ollama's historical relation to a
+particular backend. Current Ollama may select different runners for different
+models and platforms. An application-facing adapter must therefore be able to
+downgrade safely.
+
+Our contributions are an Ollama-native HTTP adapter, a model-fingerprint
+invalidation rule, optional backend delegation, live selected-text and lifecycle
+measurements, and tests that keep the advertised integration level honest.
+
+\section{PRA Levels and Ownership}
+E0 serializes selected evidence into visible messages. E1 transports logical
+resource identities without changing attention. E2 consumes detached selected
+native K/V. E3 additionally requires scheduler-owned placement, sharing,
+prefetch, and eviction. The adapter reports the deepest implemented level, not
+the deepest level described by the protocol.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.92\linewidth}\small
+Existing Ollama client $\rightarrow$ PRA gateway/SDK $\rightarrow$ capability
+probe.\\[2pt]
+No native handshake $\rightarrow$ selected records become an ordinary system
+message $\rightarrow$ \texttt{/api/chat} (E0).\\[2pt]
+Validated backend handshake $\rightarrow$ resource/version/model fingerprint
+$\rightarrow$ backend-native PRA executor (E2/E3).\\[2pt]
+Unload or model switch $\rightarrow$ invalidate incompatible native state;
+Ollama continues to own runner load, keep-alive, and scheduling.
+\end{minipage}}
+\caption{Gateway-first integration. Native support is inherited from the active
+backend rather than reimplemented in Ollama.}
+\label{fig:architecture}
+\end{figure}
+
+\section{Pinned Architecture Audit}
+The source audit pins Ollama commit
+\texttt{e37a00a8fa94fca07cefd544bffc9d8997ebcd44}. The measured daemon is version
+0.6.8; these are recorded separately because behavior observed in one must not
+be projected onto the other. The audited code exposes chat/generate, model
+inspection, installed/running model lists, keep-alive, and runner scheduling.
+Backend choice is an implementation decision, so the PRA capability cannot be
+deduced from the model package alone.
+
+The public API exposes useful timing counters: load, prompt evaluation, token
+evaluation, and total duration. It does not expose a detached semantic K/V
+contract. Thus the stock daemon qualifies at E0. A future Ollama integration can
+reach E2 by delegating to a backend adapter with model/resource identity and
+native attention support; it should not duplicate backend kernels in the
+product layer.
+
+\section{Implementation}
+\texttt{OllamaEngineAdapter} calls \texttt{/api/show} before execution and hashes
+the model name, modification metadata, details, and model information. A model
+change invalidates state held by an optional native backend executor. In E0,
+selected resources are inserted as an ordinary system message with explicit
+resource IDs and URIs, then sent to \texttt{/api/chat}. Tool schemas and the
+request's generation bound are preserved.
+
+\texttt{inspect\_endpoint()} queries \texttt{/api/version}, \texttt{/api/tags},
+and \texttt{/api/ps}. The runtime provider's doctor reports the endpoint and
+models but labels native PRA as fallback unless a backend handshake is supplied.
+\texttt{unload()} uses Ollama's zero keep-alive request and invalidates delegated
+state. Unit tests cover E0 injection, endpoint inspection, metrics preservation,
+and the rule that only explicit backend delegation upgrades to E2.
+
+\section{Experimental Method}
+We ran Ollama 0.6.8 on Windows 10 with Qwen2.5-0.5B. The natural cohort freezes
+the evidence selection and compares no context, selected text up to 384 source
+tokens, and full text up to 1024 source tokens. It contains five examples each
+from HotpotQA, QASPER, and 2WikiMultiHopQA, with two repeats and 16 generated
+tokens. Streaming HTTP measurements provide TTFT and inter-token latency.
+
+The lifecycle experiment unloads Qwen, runs one cold and five keep-alive
+requests, switches to SmolLM2-135M, unloads it, and returns to Qwen. The selected
+record and query remain fixed. This isolates model lifecycle from retrieval.
+The cohort is a smoke calibration and does not support production tail-latency
+or model-quality claims.
+
 \section{Results}
-\begin{table}[h]\centering\caption{Ollama deployment qualification.}
-\begin{tabular}{llll}\toprule Mode&Availability&Quality&Status\\\midrule E0 gateway&TBD&TBD&TBD\\E1 logical&TBD&TBD&TBD\\E2 backend-native&TBD&TBD&TBD\\E3 scheduler&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
-\begin{table}[h]\centering\caption{Local-model systems frontier.}
-\begin{tabular}{lrrrr}\toprule Condition&Quality&Visible tokens&TTFT p99&Req/s\\\midrule FULL&TBD&TBD&TBD&TBD\\E0 selected&TBD&TBD&TBD&TBD\\E2 native&TBD&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
-\section{Related Work}
-We compare local-model runtimes, OpenAI-compatible gateways, llama.cpp/native backend caching, prompt caching, RAG/context compression and other PRA engine integrations.
-\section{Limitations}
-Native depth depends on the pinned Ollama backend architecture and must not be inferred from historical implementation details.
+\begin{table}[t]
+\centering\small
+\caption{Natural E0 qualification on Ollama. Prompt ratio is selected/full;
+TTFT is median ms; F1 is selected/full.}
+\begin{tabular}{lrrr}
+\toprule Dataset & Prompt ratio & TTFT selected/full & F1 selected/full\\
+\midrule
+HotpotQA & 0.410 & 348.6 / 602.8 & 0.404 / 0.314\\
+QASPER & 0.375 & 300.0 / 732.7 & 0.217 / 0.099\\
+2Wiki & 0.517 & 309.2 / 263.3 & 0.036 / 0.136\\
+\bottomrule
+\end{tabular}
+\label{tab:e0}
+\end{table}
+
+Selected text substantially reduces visible context. It also improves TTFT and
+token F1 on HotpotQA and QASPER in this run. The 2Wiki reversal is equally
+important: the frozen selector's evidence and a small-model generation cap are
+not uniformly sufficient. E0 input compression is measured; universal quality
+preservation is not.
+
+\begin{table}[t]
+\centering\small
+\caption{Lifecycle measurements. Warm is the mean of five keep-alive requests.}
+\begin{tabular}{lrrr}
+\toprule Event & Total ms & Load ms & Prompt-eval ms\\
+\midrule
+Qwen cold after unload & 2300.5 & 1500.6 & 329.9\\
+Qwen warm mean & 506.5 & 30.4 & 5.9\\
+Switch to SmolLM2 & 5248.7 & 4465.3 & 248.3\\
+Return to Qwen & 503.2 & 36.1 & 5.7\\
+\bottomrule
+\end{tabular}
+\label{tab:lifecycle}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.97\linewidth]{figures/ollama_qualification.png}
+\caption{Selected/full context pressure (left) and model lifecycle (right).
+Ollama's keep-alive benefit is large enough that lifecycle state must be
+reported separately from PRA selection.}
+\label{fig:results}
+\end{figure}
+
+The warm mean is 4.54$\times$ faster than the initial cold request. Most of the
+difference is model load and prompt evaluation, not PRA logic. The switch test
+also shows why the adapter binds native state to a model fingerprint. Returning
+to Qwen was warm in this daemon configuration, but an adapter cannot assume
+that a runner survives every memory-pressure or scheduling event.
+
+\section{Deployment Matrix}
+\begin{table}[h]
+\centering\small
+\caption{Current product status.}
+\begin{tabular}{llll}
+\toprule Mode & Transport & Status & Claim\\
+\midrule
+E0 selected & Ollama/OpenAI HTTP & measured & supported default\\
+E1 logical & optional envelope & interface only & no native effect\\
+E2 native & delegated backend & not negotiated & AUTO falls back\\
+E3 scheduler & Ollama runner & not implemented & no claim\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This design keeps ordinary clients compatible. An application can point the PRA
+gateway at Ollama today. If a future active backend reports E2, the same wire
+request can carry stable identities while the backend performs native
+materialization. If the handshake disappears after an upgrade or model switch,
+AUTO returns to E0.
+
+\section{Limitations and Next Work}
+The local runtime is old relative to the pinned source audit; the paper does not
+merge those observations. Only one main model, one host, and a small cohort were
+measured. Memory use, concurrent requests, cancellation, reconnects, daemon
+restart, quantized variants, and native E0/E2 parity remain open. The next step
+is to expose the same capability handshake through a PRA-aware llama.cpp or
+other active backend, then rerun frozen-selection quality and lifecycle tests
+without changing the client.
+
 \section{Conclusion}
-PRA should preserve Ollama's simple local-model UX while allowing transparent progression from gateway-selected context to native semantic memory when the backend can support it.
-\section*{Reproducibility}
-Record Ollama/PRA versions, backend identity/version, model revision, hardware, API mode, lifecycle settings, commands, manifests and raw metrics.
+Ollama can provide a low-friction PRA entry point without becoming a second PRA
+runtime. The measured E0 path reduces visible context and benefits two of three
+small natural-QA slices; keep-alive dominates cold latency. Native support must
+be delegated and negotiated. On the tested daemon it was absent, and the safe
+fallback worked as designed.
+
+\section*{Artifact Availability}
+Branch \texttt{research/paper6-8-ollama} contains the adapter, tests, raw JSON,
+lifecycle benchmark, plot generator, README, and manuscript.
+
+\begin{thebibliography}{9}
+\bibitem{ollama} Ollama contributors. \emph{Ollama}.
+\url{https://github.com/ollama/ollama}
+\bibitem{openai} OpenAI. \emph{Chat Completions API}.
+\url{https://platform.openai.com/docs/api-reference/chat}
+\bibitem{qwen25} Qwen Team. \emph{Qwen2.5 Technical Report}. 2024.
+\url{https://arxiv.org/abs/2412.15115}
+\end{thebibliography}
 \end{document}
