@@ -650,6 +650,82 @@ def _openvino_distractor_rows() -> list[ProductMatrixRow]:
     return rows
 
 
+def _openvino_cross_model_rows() -> list[ProductMatrixRow]:
+    """Import matched selected/full OpenVINO rows for both Qwen sizes."""
+
+    path = RESULTS / "paper6_3_openvino/cross_model_summary.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    provenance = str(path.relative_to(ROOT)).replace("\\", "/")
+    rows: list[ProductMatrixRow] = []
+    for source in payload["rows"]:
+        raw_model = str(source["model_id"]).replace("\\", "/")
+        model_id = raw_model.rsplit("/", 1)[-1]
+        model_size = 1_500_000_000 if "1.5B" in model_id else 500_000_000
+        for condition in ("selected", "full"):
+            selected = condition == "selected"
+            visible = float(
+                source["selected_prompt_tokens"]
+                if selected
+                else source["full_prompt_tokens"]
+            )
+            score = float(source[f"{condition}_f1"])
+            containment = float(source[f"{condition}_answer_containment"])
+            rows.append(
+                ProductMatrixRow(
+                    row_id=(
+                        f"openvino-cross-model-{model_size}-{source['dataset']}-{condition}"
+                    ),
+                    model_family="qwen",
+                    model_id=model_id,
+                    model_revision=None,
+                    model_size=model_size,
+                    model_variant=f"int4_{condition}",
+                    engine="openvino_genai",
+                    engine_version=str(payload["engine_version"]),
+                    hardware="Intel Iris Xe integrated GPU",
+                    profile=("REFERENCE_CORRECTNESS" if selected else "FULL_CONTEXT"),
+                    profile_status="CALIBRATION_PENDING",
+                    workload="matched_natural_e0_cross_model",
+                    dataset=str(source["dataset"]),
+                    quality_metric="token_f1",
+                    integration_level="E0",
+                    representation="E0_SELECTED" if selected else "FULL_CONTEXT",
+                    quantization="int4",
+                    cpu="Intel Core i7-1355U",
+                    accelerator="Intel Iris Xe",
+                    os="Windows",
+                    quality_score=score,
+                    quality_reference=float(source["full_f1"]),
+                    quality_delta=score - float(source["full_f1"]),
+                    task_success=containment,
+                    f1=score,
+                    full_visible_tokens=float(source["full_prompt_tokens"]),
+                    visible_tokens=visible,
+                    ttft_ms=float(source[f"{condition}_ttft_p50_ms"]),
+                    ttft_p50_ms=float(source[f"{condition}_ttft_p50_ms"]),
+                    ttft_p95_ms=float(source[f"{condition}_ttft_p95_ms"]),
+                    sample_count=int(source["samples_per_condition"]),
+                    seed_count=1,
+                    evidence_tier=str(payload["evidence_tier"]),
+                    evidence_provenance=provenance,
+                    experiment_status="NATURAL_WORKLOAD",
+                    verified_invariants=(
+                        "selector_frozen",
+                        "matched_selection",
+                        "ordinary_selected_text",
+                    ),
+                    notes=(
+                        f"condition={condition}; full_over_selected_ttft="
+                        f"{source['full_over_selected_ttft']:.6f}; "
+                        "native K/V not available"
+                    ),
+                )
+            )
+    return rows
+
+
 def build_matrix() -> ProductMatrix:
     profile_path = RESULTS / "paper4_5_runtime/pra_profile_benchmarks.json"
     engine_path = RESULTS / "pra_engine_benchmarks.json"
@@ -661,6 +737,7 @@ def build_matrix() -> ProductMatrix:
     rows.extend(_warm_lifecycle_rows())
     rows.extend(_airllm_natural_rows())
     rows.extend(_openvino_distractor_rows())
+    rows.extend(_openvino_cross_model_rows())
     return ProductMatrix("2026-08-engine-qualification-v3", tuple(rows))
 
 

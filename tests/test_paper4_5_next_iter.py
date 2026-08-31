@@ -36,8 +36,9 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
         if row.integration_level == "E2"
     )
     openvino = [row for row in matrix.rows if row.engine == "openvino_genai"]
-    assert len(openvino) == 27
+    assert len(openvino) == 39
     assert {row.integration_level for row in openvino} == {"E0"}
+    assert {row.model_size for row in openvino} >= {500_000_000, 1_500_000_000}
     assert all(row.gold_answer_log_probability is None for row in openvino)
     assert all("selector_frozen" in row.verified_invariants for row in openvino)
 
