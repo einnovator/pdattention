@@ -15,6 +15,17 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
     assert all(not isinstance(row.ttft_ms, str) for row in matrix.rows)
     assert matrix.schema_version == "2.0"
     assert all(row.metric_statuses for row in matrix.rows)
+    assert {row.integration_level for row in matrix.rows} >= {"E0", "E2"}
+    assert {row.representation for row in matrix.rows} >= {
+        "E0_SELECTED",
+        "E2_HOT",
+        "E2_WARM",
+    }
+    assert {
+        row.engine
+        for row in matrix.rows
+        if row.workload.startswith("matched_e0_e2/")
+    } == {"vllm", "sglang", "mlx"}
 
 
 def test_long_transport_delta_survives_resync_and_updates() -> None:
