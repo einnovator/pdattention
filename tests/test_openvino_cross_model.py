@@ -37,13 +37,19 @@ def _payload(model: str, selected_f1: float, full_f1: float) -> dict:
 
 def test_cross_model_summary_pairs_quality_and_ttft() -> None:
     result = summarize(
-        [_payload("small", 0.2, 0.3), _payload("large", 0.4, 0.45)]
+        [
+            _payload("Qwen2-0.5B-Instruct-int4-ov", 0.2, 0.3),
+            _payload("Qwen2.5-1.5B-Instruct-int4-ov", 0.4, 0.45),
+            _payload("TinyLlama-1.1B-Chat-v1.0-int4-ov", 0.35, 0.4),
+        ]
     )
 
-    assert len(result["rows"]) == 6
+    assert len(result["rows"]) == 9
     first = result["rows"][0]
     assert first["selected_minus_full_f1"] == pytest.approx(-0.1)
     assert first["full_over_selected_ttft"] == 2.5
     assert first["selected_ttft_p95_ms"] == 200.0
     assert result["engine_version"] == "2026.3.1.0"
-    assert "1.5B" in render_table(result)
+    table = render_table(result)
+    assert "Qwen2.5 1.5B" in table
+    assert "TinyLlama 1.1B" in table

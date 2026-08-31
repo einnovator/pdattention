@@ -15,6 +15,20 @@ _DATASET_NAMES = {
 }
 
 
+def _model_label(model_id: str) -> str:
+    """Return a compact, stable label without relying on input ordering."""
+
+    name = model_id.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    lowered = name.lower()
+    if "tinyllama" in lowered:
+        return "TinyLlama 1.1B"
+    if "qwen2.5-1.5b" in lowered:
+        return "Qwen2.5 1.5B"
+    if "qwen2-0.5b" in lowered:
+        return "Qwen2 0.5B"
+    return name.replace("-Instruct", "").replace("-int4-ov", "")
+
+
 def _p50(value: Any) -> float:
     return float(value["p50"] if isinstance(value, Mapping) else value)
 
@@ -80,8 +94,8 @@ def render_table(summary: Mapping[str, Any]) -> str:
         r"Model & Dataset & Sel. F1 & Full F1 & Sel. TTFT & Full TTFT & TTFT ratio \\",
         r"\midrule",
     ]
-    for model_index, model_id in enumerate(summary["models"]):
-        label = "0.5B" if model_index == 0 else "1.5B"
+    for model_id in summary["models"]:
+        label = _model_label(str(model_id))
         for row in summary["rows"]:
             if row["model_id"] != model_id:
                 continue
@@ -106,27 +120,28 @@ def render_plot(summary: Mapping[str, Any], path: Path) -> None:
         for row in summary["rows"]
     }
     x = np.arange(len(datasets), dtype=float)
-    width = 0.18
-    colors = ("#0072B2", "#E69F00", "#009E73", "#CC79A7")
+    bar_count = max(1, len(models) * 2)
+    width = min(0.18, 0.82 / bar_count)
+    colors = plt.get_cmap("tab10").colors
     fig, axes = plt.subplots(1, 2, figsize=(9.4, 3.7))
     for model_index, model in enumerate(models):
-        model_label = "0.5B" if model_index == 0 else "1.5B"
+        model_label = _model_label(str(model))
         for condition_index, condition in enumerate(("selected", "full")):
             offset_index = model_index * 2 + condition_index
-            offset = (offset_index - 1.5) * width
+            offset = (offset_index - (bar_count - 1) / 2) * width
             rows = [indexed[(model, dataset)] for dataset in datasets]
             axes[0].bar(
                 x + offset,
                 [row[f"{condition}_f1"] for row in rows],
                 width,
-                color=colors[offset_index],
+                color=colors[offset_index % len(colors)],
                 label=f"{model_label} {condition}",
             )
             axes[1].bar(
                 x + offset,
                 [row[f"{condition}_ttft_p50_ms"] for row in rows],
                 width,
-                color=colors[offset_index],
+                color=colors[offset_index % len(colors)],
             )
     axes[0].set_ylabel("Token F1")
     axes[1].set_ylabel("Median TTFT (ms)")
