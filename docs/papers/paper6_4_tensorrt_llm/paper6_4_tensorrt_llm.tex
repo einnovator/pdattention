@@ -25,7 +25,10 @@ TinyLlama-1.1B, selected-text E0 and bounded full context both recover the
 controlled answer in every measured request. At eight concurrent shared
 requests, selected text uses 67 visible prompt tokens rather than 1,040,
 reaches 41.7 rather than 27.2 requests/s, and reduces TTFT p99 from 155.5 to
-57.9 ms. These results establish the transport baseline and integration
+57.9 ms. An expanded 1,240-request sweep through concurrency 16 reaches 81.9
+requests/s for independent selected inputs versus 53.6 for full context, with
+50.5 versus 157.8 ms TTFT p99. A separate 360-request natural cohort covers
+QASPER, HotpotQA, and 2WikiMultiHopQA. These results establish the transport baseline and integration
 boundary needed for a later source-level E2 patch; they do not establish the
 economics or parity of native TensorRT-LLM PRA.
 \end{abstract}
@@ -132,6 +135,9 @@ uses five waves at concurrency 1, 2, 4, and 8 for shared and independent
 resources. Every logical resource is explicitly primed outside the timed
 window, so the concurrency table is warm steady-state. E0 and full-context
 conditions use the same evidence; no independent retrieval decision is made.
+The expanded sweep raises batch size to 16, scheduled tokens to 4,096, and the
+free-memory fraction to 0.50; it uses ten waves at concurrency 1, 2, 4, 8, and
+16 for each context and resource-sharing condition.
 
 \subsection{Metrics and scope}
 We report visible and cached tokens, controlled answer success, TTFT,
@@ -202,6 +208,56 @@ tokens for selected text and 1,039 for full context. Device memory remains
 4,914 MiB before and after each group, so this bounded E0 test shows scheduling
 and token-work differences, not a measurable HBM residency reduction.
 
+\subsection{Expanded load and natural-input validation}
+\begin{table}[ht]
+\centering
+\scriptsize
+\caption{Expanded warm E0 endpoints. Each row contains ten measured waves;
+the same target record appears in selected and full context.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_4_tensorrt_llm/generated_portable_load_table.tex}}
+\label{tab:trt-expanded-load}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_4_tensorrt_llm/portable_e0_load.png}
+\caption{Expanded TensorRT-LLM E0 throughput and TTFT tails. Selected text
+retains its advantage through concurrency 16 for shared and independent
+resources.}
+\label{fig:trt-expanded-load}
+\end{figure}
+
+The expanded sweep comprises 1,240 measured requests after explicit warmup.
+At concurrency 16, selected text reaches 79.6 requests/s with shared resources
+and 81.9 with independent resources. Full context reaches 54.8 and 53.6
+requests/s, respectively. Selected TTFT p99 remains 50.5--58.4 ms, compared
+with 157.8--181.8 ms for full context. TensorRT-LLM reports 64--66 cached
+selected tokens and 1,039 cached full-context tokens. One independent
+full-context concurrency-eight group has a 511 ms TTFT p99 that does not
+persist at concurrency 16; we report it rather than smoothing a likely
+scheduler/cache disturbance out of the curve.
+
+\begin{table}[ht]
+\centering
+\scriptsize
+\caption{Natural-QA E0 cohort: 20 examples per dataset and two repeats. Times
+are milliseconds; retrieval is frozen across execution conditions.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_4_tensorrt_llm/generated_portable_natural_table.tex}}
+\label{tab:trt-natural}
+\end{table}
+
+On 2Wiki and HotpotQA, selected evidence improves token F1 over no context and
+answer containment reaches 0.25 and 0.20. Full context is strongest on Hotpot
+(F1 0.132), while selected is slightly stronger on 2Wiki (0.105 versus
+0.095). QASPER remains difficult for this checkpoint: selected and full F1
+are 0.069 and 0.087. Selected median TTFT is 23.5--28.7 ms, versus
+37.2--63.3 ms for full context. These are natural input and answer metrics,
+but TinyLlama's low absolute competence prevents a broad QA claim.
+
+\clearpage
+
 \section{What Is Established}
 The experiment establishes that the shared PRA runtime can drive a
 TensorRT-LLM E0 endpoint without confusing semantic and prefix identity, and
@@ -212,7 +268,7 @@ movement but is not itself the attention attachment mechanism.
 
 The experiment does not establish native K/V parity, native memory savings,
 connector hit economics, disaggregated transfer, quantized PRA K/V, TP=2, or
-natural QA quality. Those claims require the missing non-prefix attention seam.
+native-E2 QA quality. Those claims require the missing non-prefix attention seam.
 
 \section{Next Native Experiment}
 The next implementation should add one narrow request field containing
@@ -226,8 +282,9 @@ connector transfer, eviction hints, disaggregation, and quantized K/V be
 benchmarked.
 
 \section{Limitations}
-The quality task is synthetic and intentionally easy; it verifies evidence
-transport rather than natural QA. Tail estimates use five waves. Only one
+The controlled code task is synthetic; the additional natural cohort is small
+and uses a weak QA checkpoint. The original tail estimates use five waves and
+the expanded endpoints use ten. Only one
 model, one GPU, one TensorRT-LLM version, and one topology are measured. The
 full context is bounded to the model's 2,048-token limit. Most importantly,
 all generation evidence is E0.
