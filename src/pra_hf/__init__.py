@@ -149,6 +149,7 @@ from .onboarding import (
     StructuralAdapterSpec,
 )
 from .runtime_providers import (
+    AirLLMRuntimeProvider,
     GenericOpenAIRuntimeProvider,
     HFRuntimeProvider,
     MLXRuntimeProvider,
@@ -161,6 +162,15 @@ from .runtime_providers import (
     RuntimeProviderRegistry,
     SGLangRuntimeProvider,
     VLLMRuntimeProvider,
+)
+from .airllm_adapter import (
+    AirLLMLayerEvent,
+    AirLLMPRAAdapter,
+    AirLLMPrefetchMode,
+    AirLLMResidencyMode,
+    AirLLMTransfer,
+    InMemoryAirLLMPRAStore,
+    wrap_airllm_hf_model,
 )
 from .agent_plugins import (
     AgentFamily,
@@ -512,6 +522,12 @@ __all__ += [
     "AgentProfile",
     "AgentProfileDocument",
     "AgentProfileRegistry",
+    "AirLLMLayerEvent",
+    "AirLLMPRAAdapter",
+    "AirLLMPrefetchMode",
+    "AirLLMResidencyMode",
+    "AirLLMRuntimeProvider",
+    "AirLLMTransfer",
     "BundleBuilder",
     "DoctorService",
     "GenericOpenAIRuntimeProvider",
@@ -535,6 +551,8 @@ __all__ += [
     "StructuralAdapterSpec",
     "ToolPolicy",
     "VLLMRuntimeProvider",
+    "InMemoryAirLLMPRAStore",
+    "wrap_airllm_hf_model",
 ]
 
 __all__ += [

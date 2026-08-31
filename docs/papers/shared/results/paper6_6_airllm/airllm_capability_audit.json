@@ -1,0 +1,99 @@
+{
+  "schema_version": "paper6.6-airllm-audit-v1",
+  "evidence_tier": "SOURCE_AUDIT_AND_RUNTIME_IMPORT",
+  "runtime_status": "imported-and-mlx-available",
+  "airllm_source": "/Users/jorge.simao/git/rd/airllm",
+  "airllm_commit": "309999931a3cc5572d8880e7e0f18d408f3a067b",
+  "airllm_commit_date": "2026-08-31T06:29:40Z",
+  "airllm_version": "3.3.0",
+  "host_platform": "macOS-26.4.1-arm64-arm-64bit",
+  "hardware": "Apple M5 16GB",
+  "hf_attention_path": "transformers_model_forward_and_generate",
+  "hf_cache_type": "transformers_cache_passthrough",
+  "position_api": "transformers_model_owned",
+  "weight_streaming_mode": "module_pre_hook_load_post_hook_release",
+  "prefetching": "single_worker_executor",
+  "compression": "on_disk_weight_compression_optional",
+  "expert_streaming": true,
+  "device": "mlx",
+  "resident_modules": "one_or_few_streamed_modules_plus_runtime_state",
+  "supported_model_family": [
+    "baichuan",
+    "base",
+    "chatglm",
+    "internlm",
+    "kimi_k3",
+    "llama_mlx",
+    "mistral",
+    "mixtral",
+    "qwen",
+    "qwen2",
+    "qwen3_5",
+    "qwen4_exp"
+  ],
+  "pra_integration_level": "E0",
+  "native_hf_pra_available": false,
+  "mlx_path_is_separate": true,
+  "evidence": {
+    "hf_forward": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 907,
+      "text": "return self.model(*args, **kwargs)"
+    },
+    "hf_generate": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 904,
+      "text": "return self.model.generate(*args, **kwargs)"
+    },
+    "meta_skeleton": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 12,
+      "text": "from accelerate import init_empty_weights"
+    },
+    "pre_hook": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 763,
+      "text": "module.register_forward_pre_hook(self._pre_hook)"
+    },
+    "post_hook": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 764,
+      "text": "module.register_forward_hook(self._post_hook)"
+    },
+    "prefetch_executor": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 6,
+      "text": "from concurrent.futures import ThreadPoolExecutor"
+    },
+    "pinned_memory": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 73,
+      "text": "# Upper bound on how much pinned (page-locked) host memory a single prefetched layer may use."
+    },
+    "compression": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 85,
+      "text": "layer_shards_saving_path=None, profiling_mode=False, compression=None,"
+    },
+    "expert_streaming": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 834,
+      "text": "expert_module = experts_container[expert_idx]"
+    },
+    "dynamic_cache": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_base.py",
+      "line": 147,
+      "text": "# DeepSeek-V2's modeling_deepseek.py calls the long-removed DynamicCache.seen_tokens)."
+    },
+    "mlx_dispatch": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/auto_model.py",
+      "line": 7,
+      "text": "if platform == \"darwin\":"
+    },
+    "mlx_model": {
+      "file": "/Users/jorge.simao/git/rd/airllm/air_llm/airllm/airllm_llama_mlx.py",
+      "line": 185,
+      "text": "class AirLLMLlamaMlx:"
+    }
+  }
+}

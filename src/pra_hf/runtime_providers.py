@@ -365,6 +365,54 @@ class MLXRuntimeProvider(CommandRuntimeProvider):
     prefix_cache_mode = PrefixCacheMode.SESSION_STATE
 
 
+class AirLLMRuntimeProvider(RuntimeProvider):
+    """Inspect an embedded AirLLM runtime without overstating native support.
+
+    AirLLM is a Python model wrapper rather than an HTTP serving engine. The
+    provider therefore exposes doctor/inspection and capability negotiation;
+    applications instantiate the model through :mod:`pra_hf.airllm_adapter`.
+    Native capability is opt-in because it requires the HF-backed AirLLM path,
+    not AirLLM's separate MLX implementation.
+    """
+
+    engine_type = "airllm"
+    package_name = "airllm"
+    launch_mode = "embedded_only"
+
+    def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
+        native = bool(config.engine_options.get("native_hf_pra", False))
+        storage_managed = native and bool(
+            config.engine_options.get("storage_managed", False)
+        )
+        return PRAEngineCapabilities(
+            adapter="airllm-hf" if native else "airllm-e0",
+            engine_type=EngineType.AIRLLM,
+            integration_level="E2" if storage_managed else ("E1" if native else "E0"),
+            prefix_cache_mode=PrefixCacheMode.SESSION_STATE,
+            session_state=True,
+            logical_refs=native,
+            typed_records=native,
+            task_metadata=native,
+            text_fallback=True,
+            native_kv=native,
+            external_kv_residency=native,
+            cpu_kv=native,
+            pinned_kv=native,
+            gpu_kv=native,
+            streaming=True,
+            selected_interval_materialization=native,
+            request_lifetime=native,
+            phase_selection=native,
+            host_device_residency=native,
+            tenant_isolation=native,
+        )
+
+    def build_command(self, config: RuntimeConfig) -> list[str]:
+        raise RuntimeError(
+            "AirLLM is embedded-only; instantiate it through AirLLMPRAAdapter."
+        )
+
+
 class RuntimeProviderRegistry:
     """Mutable provider registry with optional package entry-point discovery."""
 
@@ -380,6 +428,7 @@ class RuntimeProviderRegistry:
             VLLMRuntimeProvider(),
             SGLangRuntimeProvider(),
             MLXRuntimeProvider(),
+            AirLLMRuntimeProvider(),
         ):
             registry.register(provider)
         registry.discover()

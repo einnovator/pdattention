@@ -65,6 +65,7 @@ class PRAHFModel:
         self.memory_gate = memory_gate
         self.residual_adapter = residual_adapter
         self.late_band_lora = late_band_lora
+        self._device_override: torch.device | None = None
         self.address_layers = tuple(hf_config.address_layer_ids or hf_config.layer_ids)
         self.detail_kv_layers = tuple(hf_config.detail_kv_layer_ids or hf_config.layer_ids)
         self.routing_layers = tuple(hf_config.routing_layer_ids or hf_config.layer_ids[-1:])
@@ -78,7 +79,19 @@ class PRAHFModel:
     @property
     def device(self) -> torch.device:
         """Return the device of the pretrained embedding table."""
+        if self._device_override is not None:
+            return self._device_override
         return self.model.get_input_embeddings().weight.device
+
+    def set_execution_device(self, device: torch.device | str | None) -> None:
+        """Override device discovery for loaders with meta-resident embeddings.
+
+        Ordinary HF models derive request placement from their input embedding.
+        Layer-streaming loaders may intentionally keep that tensor on ``meta``
+        between calls, so their runtime adapter must supply the physical device.
+        """
+
+        self._device_override = None if device is None else torch.device(device)
 
     def set_memory_enabled(self, enabled: bool) -> None:
         """Toggle PRA across every selected layer."""

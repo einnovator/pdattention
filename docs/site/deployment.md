@@ -72,8 +72,8 @@ remain an escape hatch rather than cloning every upstream CLI.
 pra runtime serve
         |
  RuntimeProvider
-   /    |     |    \
- HF   vLLM  SGLang  MLX
+   /    |     |     |       \
+ HF   vLLM  SGLang  MLX   AirLLM
 ```
 
 The gateway remains optional and separate:
@@ -87,6 +87,11 @@ checks installed dependencies and remote readiness. The vLLM provider remains
 E0 because its safe V1 metadata boundary is not yet wired through generation.
 The SGLang and MLX providers expose the companion papers' measured E1 native
 mechanism integrations without claiming E2 memory scheduling.
+
+AirLLM is embedded-only. It defaults to selected-text E0 on every platform.
+Its HF-backed CUDA path may opt into `native_hf_pra=true` after the adapter is
+attached; AirLLM's separate macOS/MLX implementation remains E0. This platform
+check prevents an installed package from being mistaken for native support.
 
 ## Gateway modes
 
@@ -120,7 +125,7 @@ engine, and effective end-to-end features. See [Agent/Gateway Protocol](protocol
 | Level | Meaning | Current status |
 | --- | --- | --- |
 | E0 | protocol facade or text fallback | implemented for OpenAI-compatible HTTP |
-| E1 | native PRA attention execution | HF reference; companion SGLang/MLX mechanism integrations |
+| E1 | native PRA attention execution | HF reference; companion SGLang/MLX mechanisms; AirLLM/HF candidate |
 | E2 | PRA-aware memory residency/runtime | not implemented |
 | E3 | PRA-aware scheduler and batching | not implemented |
 
