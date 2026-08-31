@@ -582,6 +582,142 @@ def _airllm_natural_rows() -> list[ProductMatrixRow]:
     return rows
 
 
+def _mlx_m4_cross_model_rows() -> list[ProductMatrixRow]:
+    """Import the M4 Pro Qwen3-1.7B/4B oracle-evidence replication."""
+
+    path = RESULTS / "paper6_2_mlx/m4_cross_model_summary.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    provenance = str(path.relative_to(ROOT)).replace("\\", "/")
+    conditions = {
+        (str(row["model_id"]), str(row["dataset"]), str(row["condition"])): row
+        for row in payload["conditions"]
+    }
+    rows: list[ProductMatrixRow] = []
+    variants = (
+        ("ordinary_split", "E0", "E0_SELECTED", "float16", "CALIBRATION_PENDING"),
+        ("native_fp", "E2", "E2_HOT", "float16", "CALIBRATION_PENDING"),
+        (
+            "native_int8_resident",
+            "E2",
+            "E2_HOT_INT8_RESIDENT",
+            "int8_resident_float16_active",
+            "RESEARCH_ONLY",
+        ),
+    )
+    for comparison in payload["comparisons"]:
+        model_id = str(comparison["model_id"])
+        dataset = str(comparison["dataset"])
+        model_size = 4_000_000_000 if "4B" in model_id else 1_700_000_000
+        for condition, level, representation, quantization, status in variants:
+            source = conditions[(model_id, dataset, condition)]
+            resident = float(source["resident_selected_kv_bytes"])
+            rows.append(
+                ProductMatrixRow(
+                    row_id=f"mlx-m4-{_slug(model_id)}-{dataset}-{condition}",
+                    model_family="qwen",
+                    model_id=model_id,
+                    model_revision="main",
+                    model_size=model_size,
+                    model_variant=condition,
+                    engine="mlx-lm",
+                    engine_version="0.31.3",
+                    hardware="Apple M4 Pro, 20-core GPU, 48 GiB",
+                    profile="REFERENCE_CORRECTNESS",
+                    profile_status=status,
+                    workload="oracle_evidence_original_answer_qa",
+                    dataset=dataset,
+                    quality_metric="token_f1",
+                    integration_level=level,
+                    representation=representation,
+                    quantization=quantization,
+                    accelerator="Apple M4 Pro 20-core GPU",
+                    ram_bytes=48 * 1024**3,
+                    quality_score=float(source["token_f1"]),
+                    f1=float(source["token_f1"]),
+                    gold_answer_log_probability=float(source["gold_answer_logprob"]),
+                    hot_bytes=resident if level == "E2" else None,
+                    completion_ms=float(source["completion_latency_ms"]),
+                    sample_count=int(source["sample_count"]),
+                    seed_count=int(source["seed_count"]),
+                    evidence_tier=str(payload["evidence_tier"]),
+                    evidence_provenance=provenance,
+                    experiment_status="NATURAL_WORKLOAD",
+                    verified_invariants=(
+                        "selector_frozen",
+                        "oracle_evidence",
+                        "ordinary_native_aggregate_f1_parity",
+                    ),
+                    notes=(
+                        "request-local dequantization before attention"
+                        if condition == "native_int8_resident"
+                        else "in-process MLX runner; online queueing not measured"
+                    ),
+                )
+            )
+    return rows
+
+
+def _vllm_cuda_concurrency_rows() -> list[ProductMatrixRow]:
+    """Import request-scope controls for the prefix-shaped CUDA connector."""
+
+    path = RESULTS / "paper6_vllm/cuda_connector_concurrency_rtx5060_summary.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    provenance = str(path.relative_to(ROOT)).replace("\\", "/")
+    rows: list[ProductMatrixRow] = []
+    for source in payload["rows"]:
+        concurrency = int(source["concurrency"])
+        condition = str(source["condition"])
+        rows.append(
+            ProductMatrixRow(
+                row_id=f"vllm-cuda-connector-{condition}-c{concurrency}",
+                model_family="llama",
+                model_id=str(payload["model_id"]),
+                model_revision="main",
+                model_size=1_100_000_000,
+                model_variant=condition,
+                engine="vllm",
+                engine_version=str(payload["engine_version"]),
+                hardware=str(payload["device"]),
+                profile="REFERENCE_CORRECTNESS",
+                profile_status="RESEARCH_ONLY",
+                workload=f"offline_connector_concurrency_c{concurrency}",
+                dataset="synthetic_code_recovery",
+                quality_metric="expected_resource_recovery",
+                integration_level="E1",
+                representation="E2_CANDIDATE_PREFIX_SHAPED",
+                quantization="bfloat16",
+                accelerator=str(payload["device"]),
+                quality_score=float(source["recovery_rate"]),
+                task_success=float(source["recovery_rate"]),
+                completion_ms=float(source["completion_ms"]),
+                requests_per_second=float(source["requests_per_second"]),
+                output_tokens_per_second=float(source["output_tokens_per_second"]),
+                peak_device_memory_bytes=float(source["peak_allocated_mib"])
+                * 1048576,
+                batch_occupancy=float(concurrency),
+                sample_count=int(source["requests"]),
+                seed_count=1,
+                evidence_tier=str(payload["evidence_tier"]),
+                evidence_provenance=provenance,
+                experiment_status="RESEARCH_ONLY",
+                verified_invariants=(
+                    "request_scope_isolation",
+                    "zero_forbidden_leakage",
+                    "wrong_memory_causal_control",
+                ),
+                notes=(
+                    f"leakage_rate={float(source['leakage_rate']):.6f}; "
+                    "source slots remain scheduler-visible; offline V1 batch"
+                ),
+            )
+        )
+    return rows
+
+
 def _openvino_distractor_rows() -> list[ProductMatrixRow]:
     """Import the frozen-evidence OpenVINO natural distractor ablation."""
 
@@ -745,6 +881,8 @@ def build_matrix() -> ProductMatrix:
     rows.extend(_matched_rows())
     rows.extend(_warm_lifecycle_rows())
     rows.extend(_airllm_natural_rows())
+    rows.extend(_mlx_m4_cross_model_rows())
+    rows.extend(_vllm_cuda_concurrency_rows())
     rows.extend(_openvino_distractor_rows())
     rows.extend(_openvino_cross_model_rows())
     return ProductMatrix("2026-08-engine-qualification-v3", tuple(rows))
