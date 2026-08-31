@@ -36,7 +36,11 @@ Qwen2.5-1.5B INT4 replication adds another 360 requests. Selected/full F1 is
 0.260/0.282 on QASPER and 0.332/0.346 on HotpotQA, while median full/selected
 TTFT ratios are 3.29 and 1.91. On 2Wiki the quality gap remains larger
 (0.157/0.259), localizing a context-coverage limitation rather than an engine
-transport failure. A second
+transport failure. A cross-family TinyLlama-1.1B replication adds 360 more
+requests. Its selected/full F1 is 0.080/0.049 on QASPER, 0.090/0.110 on
+HotpotQA, and 0.083/0.080 on 2Wiki, while full context costs 1.71--4.18 times
+the selected median TTFT. The low absolute scores preclude a capability claim,
+but show that the transport advantage is not Qwen-tokenizer-specific. A second
 149-example, 1,341-request natural-QA ablation holds the evidence fixed while
 adding one to eight relevant or irrelevant documents. QASPER F1 peaks at
 0.265 with four relevant additions, versus 0.166 with evidence alone, but
@@ -67,13 +71,13 @@ missing measurement, not zero cost or zero benefit.}
 Field & Result \\
 \midrule
 Validated / observed level & E0 validated on CPU and GPU; E2 and E3 not observed \\
-Model / hardware & Qwen2-0.5B and Qwen2.5-1.5B INT4; i7-1355U and Iris Xe \\
-Quality & Controlled success 1.00; paired natural selected F1 0.121--0.332; full F1 0.137--0.412 \\
+Model / hardware & Qwen2-0.5B, Qwen2.5-1.5B, and TinyLlama-1.1B INT4; i7-1355U and Iris Xe \\
+Quality & Controlled success 1.00; paired natural selected F1 0.080--0.332; full F1 0.049--0.412 \\
 Visible context & 63 selected tokens versus 417--1,573 full-context tokens \\
 Loaded serving & 11.1--14.2 selected requests/s and 233--330 ms TTFT p99 at concurrency 16 \\
 Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
 Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
-Evidence tier & Controlled CPU/GPU transport, two 360-request paired cohorts, and a 1,341-request distractor cohort \\
+Evidence tier & Controlled CPU/GPU transport, three 360-request paired cohorts, and a 1,341-request distractor cohort \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -163,7 +167,8 @@ The remote Windows host runs Python 3.10.0, OpenVINO 2026.3.1, OpenVINO GenAI
 2026.3.1.0, and OpenVINO Tokenizers 2026.3.1.0. Available devices are a 13th
 Gen Intel Core i7-1355U CPU and Intel Iris Xe integrated GPU; no NPU is
 available. The first model is OpenVINO Qwen2-0.5B-Instruct INT4. Cross-model
-replication uses Qwen2.5-1.5B-Instruct, exported with Optimum-Intel 2.1.0 and
+replication uses Qwen2.5-1.5B-Instruct and TinyLlama-1.1B-Chat-v1.0, exported
+with Optimum-Intel 2.1.0 and
 OpenVINO 2026.3.1 using \texttt{optimum-cli export openvino --weight-format
 int4 --group-size 128}. Scheduler settings use a 1 GiB cache, eight sequences,
 2,048 batched tokens, prefix caching, and dynamic split/fuse. Both paired
@@ -296,7 +301,8 @@ transport failure. Selected median TTFT is 235--278 ms, compared with
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Matched natural E0 results across two Qwen sizes. Each cell aggregates
+\caption{Matched natural E0 results across two Qwen sizes and a Llama-family
+checkpoint. Each cell aggregates
 20 unique examples and two repeats. TTFT is median milliseconds; the ratio is
 full divided by selected, so larger favors selected transport.}
 \resizebox{\linewidth}{!}{%
@@ -307,9 +313,9 @@ full divided by selected, so larger favors selected transport.}
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.98\linewidth]{../shared/results/paper6_3_openvino/cross_model_natural.png}
-\caption{Cross-model quality and TTFT with frozen evidence selection. Scaling
-the model improves selected-context quality, but does not remove the
-dataset-specific value of additional context.}
+\caption{Cross-model quality and TTFT with frozen evidence selection. Model
+capacity and family change the quality response, while selected transport is
+faster in all nine matched dataset/model comparisons.}
 \label{fig:openvino-cross-model}
 \end{figure}
 
@@ -328,6 +334,15 @@ is 3.29 on QASPER, 1.91 on HotpotQA, and 1.31 on 2Wiki. Full-context p95 TTFT
 reaches 3.71--6.30 s, versus 1.21--1.29 s selected. Thus model scaling preserves
 the input-latency advantage while making retrieval coverage, rather than
 decoder capacity alone, the remaining quality variable.
+
+TinyLlama provides a deliberately different family and tokenizer. Its low
+absolute F1 (0.049--0.110 across selected and full conditions) does not support
+an answer-quality claim. It does provide a useful transport replication:
+selected median TTFT is 269--391 ms, full is 459--1,367 ms, and selected is
+faster in every dataset. Selected slightly exceeds full F1 on QASPER and
+2Wiki, but trails by 0.021 on HotpotQA. Together, the three models show that
+additional visible context is not uniformly beneficial and that the latency
+cost of presenting it survives a change in model family.
 
 \subsection{Natural distractor sensitivity}
 \begin{table}[H]
@@ -460,12 +475,13 @@ and cached decode before any economics claim.
 \section{Limitations}
 The controlled task verifies evidence transport; each paired natural cohort
 has only 20 unique examples per dataset and the distractor ablation has 49--50
-per dataset with one generation per condition. Two small INT4 models from one
-Qwen family, one CPU, one integrated GPU, and at most ten waves per load
-endpoint are measured.
+per dataset with one generation per condition. Three small INT4 models from
+two families, one CPU, one integrated GPU, and at most ten waves per load
+endpoint are measured. TinyLlama's weak task scores make it a transport check
+rather than a strong quality replication.
 There is no OVMS process, NPU, native K/V parity, device-memory telemetry,
 gold answer log-probability, long-session pressure, eviction sweep, or
-cross-family replication.
+larger capable cross-family replication.
 All serving results are E0.
 
 \section{Conclusion}
@@ -479,6 +495,8 @@ implemented as a safe contract and measured as an open gate. The 1.5B
 replication shows that selected context approaches full-context quality on
 QASPER and HotpotQA while retaining lower TTFT, but 2Wiki keeps a meaningful
 coverage gap; better routing remains part of the product requirement.
+TinyLlama confirms the selected-input latency advantage across a second family
+without being capable enough to settle answer quality.
 
 \section*{Reproducibility}
 Raw JSON, generated tables and plots, environment audit, and runners are under
