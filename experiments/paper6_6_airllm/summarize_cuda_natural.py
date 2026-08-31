@@ -96,6 +96,11 @@ def summarize(payload: Mapping[str, Any]) -> dict[str, Any]:
                     ),
                     "e0_itl_ms": None if e0_itl is None else float(e0_itl),
                     "e2_itl_ms": None if e2_itl is None else float(e2_itl),
+                    "e2_over_e0_itl": (
+                        None
+                        if e0_itl is None or e2_itl is None
+                        else float(e2_itl) / max(float(e0_itl), 1e-12)
+                    ),
                     "e0_completion_p95_seconds": (
                         None
                         if e0.get("completion_seconds") is None
@@ -172,6 +177,45 @@ def render_table(summary: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_timing_table(summary: Mapping[str, Any]) -> str:
+    """Render directly instrumented TTFT and ITL without quality columns."""
+
+    names = {
+        "qasper": "QASPER",
+        "hotpotqa": "HotpotQA",
+        "2wikimultihopqa": "2Wiki",
+    }
+    regimes = {"cold_one_shot": "cold", "warm_repeated": "warm"}
+    lines = [
+        r"\begin{tabular}{llrrrrrrr}",
+        r"\toprule",
+        r"Dataset & State & E0 TTFT & E2 TTFT & Ratio & E0 ITL & E2 ITL & Ratio & Completion \\",
+        r"\midrule",
+    ]
+    for row in summary["comparisons"]:
+        values = (
+            row.get("e0_ttft_ms"),
+            row.get("e2_ttft_ms"),
+            row.get("e2_over_e0_ttft"),
+            row.get("e0_itl_ms"),
+            row.get("e2_itl_ms"),
+            row.get("e2_over_e0_itl"),
+            row.get("e2_over_e0_completion"),
+        )
+        formatted = ["--" if value is None else f"{float(value):.1f}" for value in values]
+        formatted[2] = "--" if values[2] is None else f"{float(values[2]):.3f}"
+        formatted[5] = "--" if values[5] is None else f"{float(values[5]):.3f}"
+        formatted[6] = f"{float(values[6]):.3f}"
+        lines.append(
+            f"{names.get(str(row['dataset']), row['dataset'])} & "
+            f"{regimes[str(row['regime'])]} & "
+            + " & ".join(formatted)
+            + r" \\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    return "\n".join(lines) + "\n"
+
+
 def render_plot(summary: Mapping[str, Any], path: Path) -> None:
     """Plot cold quality and cold/warm transport ratios without conflating them."""
 
@@ -240,6 +284,7 @@ def main() -> None:
     parser.add_argument("input", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--table", required=True, type=Path)
+    parser.add_argument("--timing-table", type=Path)
     parser.add_argument("--plot", type=Path)
     args = parser.parse_args()
     payload = json.loads(args.input.read_text(encoding="utf-8"))
@@ -248,6 +293,9 @@ def main() -> None:
     args.output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     args.table.parent.mkdir(parents=True, exist_ok=True)
     args.table.write_text(render_table(summary), encoding="utf-8")
+    if args.timing_table is not None:
+        args.timing_table.parent.mkdir(parents=True, exist_ok=True)
+        args.timing_table.write_text(render_timing_table(summary), encoding="utf-8")
     if args.plot is not None:
         render_plot(summary, args.plot)
 

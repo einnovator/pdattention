@@ -40,7 +40,9 @@ prompt. Native/selected F1 is 0.112/0.099 on 2Wiki, 0.101/0.215 on HotpotQA,
 and 0.082/0.136 on QASPER; exact output parity is 0--10\%. Completion is 10.3\%
 faster on 2Wiki, statistically indistinguishable in this descriptive cohort on
 HotpotQA, and 26.1\% slower on QASPER. The run is therefore transport and memory
-evidence, not semantic parity. The
+evidence, not semantic parity. A separate 15-example, four-token diagnostic
+measures native/selected TTFT ratios of 2.186--2.351 and ITL ratios of
+1.109--1.173; warm reuse does not remove this request-path penalty. The
 evidence supports independent policy and exposes
 the central systems tradeoff: eliminating context residency is valuable only
 when its transfers do not deepen the weight-I/O bottleneck.
@@ -68,8 +70,8 @@ Quality & Natural native/selected F1: 0.112/0.099 (2Wiki), 0.101/0.215 (Hotpot),
 Visible / native context & Smoke: 19 visible plus 15 native; natural: 20--32 visible plus 353--382 native \\
 Cold native execution & 32.03 s, 10.6\% slower than selected-text E0; reference encoding 7.12 s \\
 Peak allocation / residency & RTX natural E2 peak 161--162 MiB versus E0 169 MiB; 4$\times$ controlled PRA-residency reduction \\
-TTFT / ITL / warm reuse & Legacy runner omitted TTFT/ITL; warm E2/E0 completion ratio 0.894--1.238 \\
-Evidence tier & Live mechanism smoke, 60-example natural cohort, and 119-condition controlled study \\
+TTFT / ITL / warm reuse & 15-example diagnostic: E2/E0 TTFT 2.186--2.351; ITL 1.109--1.173 \\
+Evidence tier & Live mechanism smoke, 60-example natural cohort, 15-example timing diagnostic, and 119-condition controlled study \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -391,6 +393,38 @@ also prevents interpreting divergence alone as uniform damage or benefit.
 Native execution remains research-only until a capable larger model and a
 geometry-matched full-consumer condition close this semantic gap.
 
+\subsection{Direct Token-Timing Diagnostic}
+
+The preceding 60-example runner predates token callbacks and therefore cannot
+support a TTFT or ITL claim.  We separately reran the first five examples from
+each dataset with four generated tokens and an HF streamer timestamp on every
+decoded token.  This 15-example diagnostic freezes the same selected evidence
+across E0 and E2, excludes one-time reference encoding from request latency,
+and is used only for transport timing; its short outputs do not replace the
+larger cohort's quality measurements.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Directly measured AirLLM/HF timing on the RTX 5060. Times are
+milliseconds; each cell averages five requests. Ratios are E2 divided by E0,
+so values above one favor selected-text E0. Completion is the complete
+four-token request ratio.}
+\label{tab:cuda-natural-timing}
+\input{../shared/results/paper6_6_airllm/generated_rtx5060_timed_15_timing_table.tex}
+\end{table}
+
+Native E2 more than doubled mean TTFT in every dataset: the E2/E0 ratio ranged
+from 2.186 to 2.351.  ITL rose by 10.9--17.3\%, and complete four-token requests
+rose by 10.3--16.9\%.  Warm repeats were nearly identical to cold requests even
+though the reference had already been encoded.  The persistent TTFT gap is
+therefore on the native request/consumer path rather than in the separately
+measured 10.88-s one-time reference encoding.  The present trace does not
+attribute that gap to a single operation; layer streaming, selected-K/V
+materialization, and the four direct-plus-memory attention consumers remain
+combined.  Profiling and overlap are required before claiming that native PRA
+amortizes well under AirLLM.
+
 \subsection{Residency Frontier}
 
 \begin{figure}[t]
@@ -464,7 +498,9 @@ model that cannot fit on the test accelerator. The 60-example follow-up shows
 lower allocated CUDA peak and workload-dependent completion time, but the
 HotpotQA and QASPER F1 losses keep semantic parity open. The CUDA smoke closes
 AirLLM disabled, injected-but-disabled, reference encoding, and native
-consumption. A scale claim still requires a conventional HF baseline, HOT
+consumption. Direct four-token timing additionally finds a 2.186--2.351$\times$
+TTFT penalty and a 1.109--1.173$\times$ ITL penalty for native E2. A scale claim
+still requires a conventional HF baseline, HOT
 versus layer-streamed native PRA, matched source/query geometry, and a model
 whose weights actually exceed accelerator memory.
 
@@ -499,7 +535,9 @@ cohort should be repeated with a capable model and both a geometry-matched
 full-consumer and an economical late-consumer E2. It should then extend to
 multi-query same-resource and shared-resource reuse while reporting gold answer
 log probability, TTFT, inter-token latency, memory decomposition, and cache
-hits. A model materially larger than VRAM is required to test the claimed
+hits. The timing trace should split layer loading, selected-K/V transfer,
+materialization, direct attention, and memory attention to localize the
+first-token penalty. A model materially larger than VRAM is required to test the claimed
 weight-streaming regime. A sparse-MoE run is useful only after dense-model
 correctness; expert selection and PRA routing must remain separately
 attributed.
@@ -533,7 +571,9 @@ live CUDA smoke closes parameter-placement, disabled-parity, reference-encoding,
 and native-consumption gates. The 60-example natural follow-up removes
 92.4--95.1\% of visible selected-text tokens and lowers allocated CUDA peak,
 but completion cost depends on the workload and HotpotQA/QASPER lose substantial
-F1. Semantic parity therefore remains open. The remaining scientific gate is a
+F1. Direct timing also finds a persistent 2.19--2.35$\times$ TTFT ratio under
+the current four-consumer path. Semantic parity and an execution advantage
+therefore remain open. The remaining scientific gate is a
 geometry-matched full-consumer evaluation with a capable model at a scale where
 both weight and context virtualization are necessary.
 

@@ -8,7 +8,11 @@ from experiments.paper6_6_airllm.run_cuda_natural import (
     quality,
     select_entries,
 )
-from experiments.paper6_6_airllm.summarize_cuda_natural import render_table, summarize
+from experiments.paper6_6_airllm.summarize_cuda_natural import (
+    render_table,
+    render_timing_table,
+    summarize,
+)
 from experiments.paper6_6_airllm.summarize_results import cuda_product_row
 
 
@@ -188,8 +192,13 @@ def test_airllm_natural_summary_preserves_token_latency_axes() -> None:
         "rows": [],
     }
 
-    [comparison] = summarize(payload)["comparisons"]
+    result = summarize(payload)
+    [comparison] = result["comparisons"]
 
     assert comparison["e2_over_e0_ttft"] == 1.2
     assert comparison["e0_itl_ms"] == 20.0
     assert comparison["e2_itl_ms"] == 25.0
+    assert comparison["e2_over_e0_itl"] == 1.25
+    timing = render_timing_table(result)
+    assert "E0 TTFT" in timing
+    assert "100.0 & 120.0 & 1.200 & 20.0 & 25.0 & 1.250" in timing
