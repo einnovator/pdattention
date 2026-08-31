@@ -1,0 +1,35 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,amsmath,hyperref}
+\title{Progressive Retrieval Attention for llama.cpp:\\Portable Semantic Non-Prefix Memory in the GGUF Ecosystem}
+\author{Jorge Sim\~ao}\date{\today}
+\begin{document}\maketitle
+\begin{abstract}
+llama.cpp provides portable GGUF inference across CPUs and multiple accelerator backends. Progressive Retrieval Attention (PRA) supplies independently addressable semantic context as selected text or detached native key/value memory. We study whether PRA can use public llama.cpp cache/state interfaces where possible and a minimal native memory extension where necessary. The evaluation compares E0 selected text with native E2, persistent HOT/WARM/SOURCE state, session isolation, and CPU/accelerator quality--memory--latency frontiers. The objective is to add reusable semantic non-prefix memory without sacrificing llama.cpp's hardware portability.
+\end{abstract}
+\section{Introduction}
+PRA reduces active context while llama.cpp makes open models portable across constrained hardware. The central systems issue is separating semantic resource identity from conversational sequence, server slot and physical cache identity.
+\section{Integration Levels}
+E0 supplies selected text; E1 preserves logical PRA identity; E2 consumes detached native PRA memory; E3 additionally requires scheduler-owned placement, prefetch, sharing and eviction. Levels are evidence-driven.
+\section{llama.cpp Architecture}
+We audit GGUF execution, sequence/slot state, native KV representation, cache save/restore, server scheduling and backend-specific execution.
+\section{Design}
+We first attempt public state/KV APIs. If these only reconstruct sequential prefix state, a narrow llama/ggml extension accepts selected per-layer K/V and performs one joint attention normalization. PRA policy and storage remain outside llama.cpp.
+\section{Correctness}
+The ladder includes no-PRA reference, full visible context, geometry-matched cached source, E2 selected memory, multiple resources, persistent decode, wrong-memory and absent-memory controls. RoPE/source/query geometry is explicit.
+\section{Experimental Method}
+The common PRA manifest varies context pressure, shared versus independent resources and FULL/E0/E2 representations. CPU, CUDA, Metal and Vulkan are qualified independently where available.
+\section{Results}
+\begin{table}[h]\centering\caption{Backend qualification.}
+\begin{tabular}{llll}\toprule Backend&E0&E2&E3\\\midrule CPU&TBD&TBD&TBD\\CUDA&TBD&TBD&TBD\\Metal&TBD&TBD&TBD\\Vulkan&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering\caption{Quality and systems frontier.}
+\begin{tabular}{lrrrr}\toprule Condition&Quality&Visible tokens&TTFT p99&Peak memory\\\midrule FULL&TBD&TBD&TBD&TBD\\E0 selected&TBD&TBD&TBD&TBD\\E2 HOT&TBD&TBD&TBD&TBD\\E2 WARM&TBD&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
+\section{Related Work}
+We compare prompt/state caching, KV offload/compression, local inference, RAG/context compression and companion PRA engine integrations.
+\section{Limitations}
+A native result on one llama.cpp backend does not imply parity on another. Integration level is reported separately per backend.
+\section{Conclusion}
+The preferred deployment is the shallowest PRA level that produces a measured quality-adjusted benefit while preserving llama.cpp portability.
+\section*{Reproducibility}
+Record llama.cpp commit/build flags, backend versions, GGUF revision/quantization, model topology, hardware, PRA version/profile, manifests and raw metrics.
+\end{document}

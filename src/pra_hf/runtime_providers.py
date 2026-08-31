@@ -374,12 +374,15 @@ class RuntimeProviderRegistry:
     @classmethod
     def default(cls) -> "RuntimeProviderRegistry":
         registry = cls()
+        from pra_llamacpp.runtime_provider import LlamaCppRuntimeProvider
+
         for provider in (
             HFRuntimeProvider(),
             GenericOpenAIRuntimeProvider(),
             VLLMRuntimeProvider(),
             SGLangRuntimeProvider(),
             MLXRuntimeProvider(),
+            LlamaCppRuntimeProvider(),
         ):
             registry.register(provider)
         registry.discover()

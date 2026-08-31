@@ -15,7 +15,14 @@ from pra_hf.runtime_providers import (
 
 def test_builtin_provider_registry_and_unknown_engine() -> None:
     registry = RuntimeProviderRegistry.default()
-    assert registry.names() == ("hf", "mlx", "openai", "sglang", "vllm")
+    assert registry.names() == (
+        "hf",
+        "llama_cpp",
+        "mlx",
+        "openai",
+        "sglang",
+        "vllm",
+    )
     with pytest.raises(KeyError, match="Unknown runtime engine"):
         registry.resolve("missing")
 
