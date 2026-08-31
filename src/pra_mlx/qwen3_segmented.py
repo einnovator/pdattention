@@ -53,12 +53,14 @@ def install_qwen3_segmented_attention(model: object) -> int:
             ).transpose(0, 2, 1, 3)
             queries = attention.rope(queries, offset=cache.offset)
             keys = attention.rope(keys, offset=cache.offset)
+            # Build the mask before update_and_fetch_segments advances the
+            # local cache offset. Otherwise the current query is counted twice.
+            layer_mask = cache.make_mask(length, return_array=True)
             memory_k, memory_v, local_k, local_v = (
                 cache.update_and_fetch_segments(keys, values)
             )
             # Qwen3 builds one mask from cache[0]. Consumer profiles may start
             # later in the stack, so every selected layer derives its own mask.
-            layer_mask = cache.make_mask(length, return_array=True)
             output = segmented_selected_attention(
                 queries,
                 memory_k,
