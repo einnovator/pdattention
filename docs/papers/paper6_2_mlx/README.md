@@ -61,6 +61,34 @@ log-probability. Selective int8 on 20 QASPER examples improves exact generation
 from 4/20 for all K/V to 14/20 for the late quarter, still below the lossless
 product gate.
 
+An independent Apple M4 Pro replication adds Qwen3-4B. Across 20 examples per
+dataset and five seeds, ordinary split-cache and full-precision native K/V have
+identical aggregate F1 on QASPER, HotpotQA, and 2Wiki at both 1.7B and 4B.
+Shuffled memory degrades F1 and answer likelihood. In this in-process runner,
+native completion takes 44.5--54.5% of ordinary split-cache time. A separate
+1,500-request 4B session sweep visits eight resources three times. Budget 8
+eliminates repeat reloads and lowers mean resolution by about 68% while leaving
+the cold-load p95 and QA quality unchanged.
+
+The M4 Pro cohorts can be regenerated with:
+
+```bash
+for dataset in qasper hotpotqa 2wikimultihopqa; do
+  PYTHONPATH=src python -m experiments.paper6_2_mlx.run_answer_quality_pressure \
+    --dataset "$dataset" --model mlx-community/Qwen3-4B-4bit \
+    --output "docs/papers/shared/results/paper6_2_mlx/answer_quality_${dataset}_qwen3_4b_m4pro.json"
+  PYTHONPATH=src python -m experiments.paper6_2_mlx.run_bounded_residency \
+    --dataset "$dataset" --model mlx-community/Qwen3-4B-4bit \
+    --resources-per-seed 8 --resident-resource-budgets 1 2 4 8 \
+    --session-rounds 3 --max-new-tokens 12 \
+    --output "docs/papers/shared/results/paper6_2_mlx/bounded_residency_${dataset}_qwen3_4b_m4pro.json"
+done
+```
+
+Use `summarize_m4_scaling` and `summarize_m4_pressure` under
+`experiments.paper6_2_mlx` to regenerate the manuscript tables, plots, and
+machine-readable summaries.
+
 A final 1,000-request QASPER matrix crosses HOT/WARM resource budgets 2 and 8
 with local rotating windows 64 and 256. Tight WARM capacity produces SOURCE
 reconstruction as intended; F1 is identical in all cells, and retaining every
