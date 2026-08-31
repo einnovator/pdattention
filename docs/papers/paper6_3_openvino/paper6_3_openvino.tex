@@ -31,7 +31,13 @@ selected context retains 100\% controlled recovery and 188.9 output tokens/s,
 whereas shared full context follows a decoy in every request and reaches 141.1
 output tokens/s. A separate 360-request natural cohort covers QASPER, HotpotQA,
 and 2WikiMultiHopQA; on Hotpot, selected context raises token F1 from 0.080 to
-0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. A
+0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. A second
+149-example, 1,341-request natural-QA ablation holds the evidence fixed while
+adding one to eight relevant or irrelevant documents. QASPER F1 peaks at
+0.265 with four relevant additions, versus 0.166 with evidence alone, but
+irrelevant additions reduce it to 0.140 at eight. HotpotQA and 2Wiki do not
+show the same benefit, making bounded, query-specific selection preferable to
+unconditional context expansion. A
 three-point pressure curve keeps selection at 63 tokens while full context
 grows from 417 to 831 tokens; selected recovery remains exact throughout. The
 result establishes a reproducible transport
@@ -57,12 +63,12 @@ Field & Result \\
 \midrule
 Validated / observed level & E0 validated on CPU and GPU; E2 and E3 not observed \\
 Model / hardware & Qwen2-0.5B-Instruct INT4; i7-1355U and Iris Xe \\
-Quality & Controlled success 1.00; E0 selected natural token F1 0.078--0.310 \\
+Quality & Controlled success 1.00; natural E0 token F1 0.107--0.297 across the expanded ablation \\
 Visible context & 63 selected tokens versus 417--1,573 full-context tokens \\
 Loaded serving & 11.1--14.2 selected requests/s and 233--330 ms TTFT p99 at concurrency 16 \\
 Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
 Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
-Evidence tier & Controlled CPU/GPU transport plus a 360-request natural-QA cohort \\
+Evidence tier & Controlled CPU/GPU transport plus 360-request paired and 1,341-request distractor natural-QA cohorts \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -171,6 +177,15 @@ The expanded campaign uses ten waves at concurrency 1, 2, 4, 8, and 16, a
 4,096-token batch budget, and six repeated distractors. It records success,
 requests/s, output tokens/s, TTFT, TPOT, generation time, input tokens, and RSS.
 
+The distractor ablation uses 149 examples: 49 QASPER, 50 HotpotQA, and 50
+2WikiMultiHopQA. The evidence-only prompt and eight additions are constructed
+once per example. Relevant additions come from the example's candidate set;
+irrelevant additions come from other examples. Conditions add 1, 2, 4, or 8
+documents while preserving the same answer-bearing evidence. One greedy GPU
+request per condition yields 1,341 requests. We report token F1, exact match,
+answer containment, source-token count, and TTFT. Gold answer log-probability
+is 	extsc{not measured} by the public pipeline.
+
 \section{Results}
 \subsection{Capability status}
 \begin{table}[H]
@@ -268,6 +283,47 @@ transport failure. Selected median TTFT is 235--278 ms, compared with
 268--705 ms for full context. The tail difference is larger: selected p95 is
 379--390 ms, whereas full-context p95 is 1.89--2.74 s.
 
+\subsection{Natural distractor sensitivity}
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Natural-QA token F1 after adding relevant (Rel.) or irrelevant
+(Irr.) documents to fixed answer-bearing evidence. Each cell aggregates 49
+QASPER or 50 HotpotQA/2Wiki examples.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_distractor_ablation_table.tex}}
+\label{tab:openvino-distractors}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper6_3_openvino/distractor_ablation.png}
+\caption{Quality and TTFT under context dilution. The point at zero is the
+same evidence-only condition for both curves. The selector is frozen; only
+the added documents differ.}
+\label{fig:openvino-distractors}
+\end{figure}
+
+The response is dataset dependent. On QASPER, four relevant additions raise
+F1 from 0.166 to 0.265, a 59.8\% relative gain, before falling to 0.205 at
+eight. Eight irrelevant additions instead reduce F1 to 0.140. This is a
+bounded coverage benefit: some related context helps, but adding everything
+does not. HotpotQA starts strongest with evidence alone (0.297). Four relevant
+additions nearly recover that level (0.289), while eight irrelevant additions
+fall to 0.201. On 2Wiki, relevant additions decline from 0.155 to 0.107; the
+irrelevant curve is non-monotonic and ends at 0.158. Given the small model and
+50-example cells, the 2Wiki reversal is noise-compatible and is not evidence
+that irrelevant context helps.
+
+Latency generally increases at the largest context. At eight relevant
+documents, median TTFT is 686 ms on QASPER, 745 ms on HotpotQA, and 369 ms on
+2Wiki, compared with evidence-only medians of 307, 337, and 354 ms. Smaller
+conditions fluctuate because compilation is already warm, sequence lengths
+and generated lengths differ, and the integrated GPU shares host resources.
+The robust conclusion is therefore about the joint frontier: evidence
+coverage and dilution must be calibrated per workload, while unbounded
+visible context consumes more input work without a reliable quality gain.
+
 \begin{table}[H]
 \centering
 \scriptsize
@@ -356,11 +412,13 @@ geometry-matched cached source, full native source, sparse multi-record source,
 and cached decode before any economics claim.
 
 \section{Limitations}
-The controlled task verifies evidence transport; the natural cohort adds only
-20 examples per dataset. Only one small INT4 model, one CPU, one integrated
-GPU, and at most ten waves per endpoint are measured.
+The controlled task verifies evidence transport; the paired natural cohort
+has only 20 examples per dataset and the distractor ablation has 49--50 per
+dataset with one generation per condition. Only one small INT4 model, one CPU,
+one integrated GPU, and at most ten waves per load endpoint are measured.
 There is no OVMS process, NPU, native K/V parity, device-memory telemetry,
-long-session pressure, eviction sweep, or larger natural QA cohort.
+gold answer log-probability, long-session pressure, eviction sweep, or
+cross-model replication.
 All serving results are E0.
 
 \section{Conclusion}
