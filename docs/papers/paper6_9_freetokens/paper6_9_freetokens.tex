@@ -1,0 +1,39 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,amsmath,hyperref}
+\title{Progressive Retrieval Attention with FreeToken:\\Semantic Memory under Bandwidth-Adaptive MoE Serving}
+\author{Jorge Sim\~ao}\date{\today}
+\begin{document}\maketitle
+\begin{abstract}
+Bandwidth-adaptive mixture-of-experts serving reduces inference cost by controlling which model or expert state is resident or transferred for a request. Progressive Retrieval Attention (PRA) controls a different resource: which semantic context is materialized for model attention. This paper studies whether these two independent selection problems can be physically coordinated without conflating their semantics. We integrate PRA with FreeToken, establish selected-text and native-memory baselines, decompose model/expert and PRA traffic, sweep memory and bandwidth constraints, and evaluate coordinated prefetch and scheduler-owned lifecycle. The central objective is a quality--memory--bandwidth frontier for edge-native MoE inference.
+\end{abstract}
+\section{Introduction}
+Both sparse model execution and PRA are selective, but they select different objects. Expert routing determines model computation; PRA routing determines semantic evidence. A robust integration should preserve this distinction while coordinating physical movement of both resource classes.
+\section{PRA and Integration Levels}
+E0 supplies selected text; E1 preserves logical resources; E2 consumes detached native semantic memory; E3 lets the scheduler manage PRA placement/prefetch/sharing alongside model state.
+\section{FreeToken Architecture}
+We pin and audit the current FreeToken implementation, including model families, expert routing, placement, scheduler, cache hierarchy, bandwidth-adaptive mechanisms, attention/KV interfaces and inherited components.
+\section{Design}
+PRA semantic resource identity remains separate from expert/model-state identity. Native E2 attaches selected PRA K/V through the smallest engine seam. E3 is claimed only when the real scheduler coordinates PRA lifecycle with model-state movement.
+\section{Bandwidth-Adaptive Evaluation}
+We sweep available host-device, disk and off-node bandwidth where applicable. Conditions cross FULL/E0/E2 PRA representations with fixed model/expert policies before any joint learned controller is considered.
+\section{Coordinated Prefetch}
+We compare model/expert prefetch only, PRA prefetch only, independent concurrent prefetch and coordinated prefetch. Metrics include ready-before-demand, wasted work, transfer contention, queue delay and accelerator idle time.
+\section{Quality and Memory}
+We report task success/F1/EM, evidence recall, frozen-selection E0/E2 parity, model/expert bytes moved, PRA bytes moved, local and PRA KV, peak memory, TTFT/ITL, throughput and successful requests per second.
+\section{Results}
+\begin{table}[h]\centering\caption{FreeTokens PRA qualification.}
+\begin{tabular}{llll}\toprule Level&Status&Quality&Main gate\\\midrule E0&TBD&TBD&TBD\\E1&TBD&TBD&TBD\\E2&TBD&TBD&TBD\\E3&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering\caption{Traffic decomposition.}
+\begin{tabular}{lrrrr}\toprule Condition&Model/expert bytes&PRA bytes&Peak memory&TTFT p99\\\midrule FULL&TBD&TBD&TBD&TBD\\E0 selected&TBD&TBD&TBD&TBD\\E2 HOT&TBD&TBD&TBD&TBD\\E3 prefetched&TBD&TBD&TBD&TBD\\\bottomrule\end{tabular}\end{table}
+\section{Profiles}
+REFERENCE, QUALITY\_MAX, BALANCED and ECONOMY are evaluated as quality--memory--bandwidth tradeoffs, while expert/model-state and PRA settings remain separately visible for causal interpretation.
+\section{Related Work}
+We compare edge/MoE serving, expert offload and prefetch, KV-cache systems, SGLang/vLLM-derived serving mechanisms where actually present, RAG/context compression, and companion PRA integrations.
+\section{Limitations}
+The study does not assume that two selectors should become one learned controller. A native PRA path is rejected if it worsens the optimized E0 quality--memory--bandwidth frontier.
+\section{Conclusion}
+FreeTokens and PRA virtualize different resources. The useful systems question is whether their physical movement can be coordinated while preserving independent semantic and model-computation decisions.
+\section*{Reproducibility}
+Record FreeTokens commit, dependencies, model revision, hardware, bandwidth controls, scheduler configuration, PRA version/profile, manifests and raw metrics.
+\end{document}

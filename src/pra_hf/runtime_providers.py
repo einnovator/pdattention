@@ -374,12 +374,15 @@ class RuntimeProviderRegistry:
     @classmethod
     def default(cls) -> "RuntimeProviderRegistry":
         registry = cls()
+        from pra_freetoken.runtime_provider import FreeTokenRuntimeProvider
+
         for provider in (
             HFRuntimeProvider(),
             GenericOpenAIRuntimeProvider(),
             VLLMRuntimeProvider(),
             SGLangRuntimeProvider(),
             MLXRuntimeProvider(),
+            FreeTokenRuntimeProvider(),
         ):
             registry.register(provider)
         registry.discover()
