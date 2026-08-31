@@ -31,7 +31,12 @@ selected context retains 100\% controlled recovery and 188.9 output tokens/s,
 whereas shared full context follows a decoy in every request and reaches 141.1
 output tokens/s. A separate 360-request natural cohort covers QASPER, HotpotQA,
 and 2WikiMultiHopQA; on Hotpot, selected context raises token F1 from 0.080 to
-0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. A second
+0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. A matched
+Qwen2.5-1.5B INT4 replication adds another 360 requests. Selected/full F1 is
+0.260/0.282 on QASPER and 0.332/0.346 on HotpotQA, while median full/selected
+TTFT ratios are 3.29 and 1.91. On 2Wiki the quality gap remains larger
+(0.157/0.259), localizing a context-coverage limitation rather than an engine
+transport failure. A second
 149-example, 1,341-request natural-QA ablation holds the evidence fixed while
 adding one to eight relevant or irrelevant documents. QASPER F1 peaks at
 0.265 with four relevant additions, versus 0.166 with evidence alone, but
@@ -62,13 +67,13 @@ missing measurement, not zero cost or zero benefit.}
 Field & Result \\
 \midrule
 Validated / observed level & E0 validated on CPU and GPU; E2 and E3 not observed \\
-Model / hardware & Qwen2-0.5B-Instruct INT4; i7-1355U and Iris Xe \\
-Quality & Controlled success 1.00; natural E0 token F1 0.107--0.297 across the expanded ablation \\
+Model / hardware & Qwen2-0.5B and Qwen2.5-1.5B INT4; i7-1355U and Iris Xe \\
+Quality & Controlled success 1.00; paired natural selected F1 0.121--0.332; full F1 0.137--0.412 \\
 Visible context & 63 selected tokens versus 417--1,573 full-context tokens \\
 Loaded serving & 11.1--14.2 selected requests/s and 233--330 ms TTFT p99 at concurrency 16 \\
 Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
 Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
-Evidence tier & Controlled CPU/GPU transport plus 360-request paired and 1,341-request distractor natural-QA cohorts \\
+Evidence tier & Controlled CPU/GPU transport, two 360-request paired cohorts, and a 1,341-request distractor cohort \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -157,9 +162,13 @@ accelerates repeated visible histories but does not implement PRA E2.
 The remote Windows host runs Python 3.10.0, OpenVINO 2026.3.1, OpenVINO GenAI
 2026.3.1.0, and OpenVINO Tokenizers 2026.3.1.0. Available devices are a 13th
 Gen Intel Core i7-1355U CPU and Intel Iris Xe integrated GPU; no NPU is
-available. The model is OpenVINO Qwen2-0.5B-Instruct INT4. Scheduler settings
-use a 1 GiB cache, eight sequences, 2,048 batched tokens, prefix caching, and
-dynamic split/fuse. Greedy decoding is capped at 24 new tokens.
+available. The first model is OpenVINO Qwen2-0.5B-Instruct INT4. Cross-model
+replication uses Qwen2.5-1.5B-Instruct, exported with Optimum-Intel 2.1.0 and
+OpenVINO 2026.3.1 using \texttt{optimum-cli export openvino --weight-format
+int4 --group-size 128}. Scheduler settings use a 1 GiB cache, eight sequences,
+2,048 batched tokens, prefix caching, and dynamic split/fuse. Both paired
+natural cohorts use 20 examples per dataset, two repeats, a 384-token selected
+cap, a 1,536-token full cap, and at most 24 greedy output tokens.
 
 \subsection{Conditions}
 The target resource contains \texttt{PRA\_EVIDENCE\_4821}; distractors contain
@@ -282,6 +291,43 @@ on QASPER. Full context is stronger in this bounded cohort, with F1 0.137,
 transport failure. Selected median TTFT is 235--278 ms, compared with
 268--705 ms for full context. The tail difference is larger: selected p95 is
 379--390 ms, whereas full-context p95 is 1.89--2.74 s.
+
+\subsection{Cross-model natural replication}
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Matched natural E0 results across two Qwen sizes. Each cell aggregates
+20 unique examples and two repeats. TTFT is median milliseconds; the ratio is
+full divided by selected, so larger favors selected transport.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_cross_model_table.tex}}
+\label{tab:openvino-cross-model}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper6_3_openvino/cross_model_natural.png}
+\caption{Cross-model quality and TTFT with frozen evidence selection. Scaling
+the model improves selected-context quality, but does not remove the
+dataset-specific value of additional context.}
+\label{fig:openvino-cross-model}
+\end{figure}
+
+The 1.5B checkpoint raises selected F1 from 0.124 to 0.260 on QASPER, from
+0.310 to 0.332 on HotpotQA, and from 0.121 to 0.157 on 2Wiki. More importantly,
+the selected/full gap narrows from 0.095 to 0.022 on QASPER and from 0.102 to
+0.014 on HotpotQA. This is positive cross-model evidence for bounded selected
+context: a more capable model uses the frozen selection nearly as well as the
+larger visible prompt on two datasets.
+
+The exception is informative. On 2Wiki the 1.5B selected/full gap is 0.102,
+versus 0.016 at 0.5B, while full-context F1 rises to 0.259. The result is
+consistent with missing multi-hop coverage in the fixed selection; it is not
+evidence against E0 transport. Across the 1.5B rows, full/selected median TTFT
+is 3.29 on QASPER, 1.91 on HotpotQA, and 1.31 on 2Wiki. Full-context p95 TTFT
+reaches 3.71--6.30 s, versus 1.21--1.29 s selected. Thus model scaling preserves
+the input-latency advantage while making retrieval coverage, rather than
+decoder capacity alone, the remaining quality variable.
 
 \subsection{Natural distractor sensitivity}
 \begin{table}[H]
@@ -412,13 +458,14 @@ geometry-matched cached source, full native source, sparse multi-record source,
 and cached decode before any economics claim.
 
 \section{Limitations}
-The controlled task verifies evidence transport; the paired natural cohort
-has only 20 examples per dataset and the distractor ablation has 49--50 per
-dataset with one generation per condition. Only one small INT4 model, one CPU,
-one integrated GPU, and at most ten waves per load endpoint are measured.
+The controlled task verifies evidence transport; each paired natural cohort
+has only 20 unique examples per dataset and the distractor ablation has 49--50
+per dataset with one generation per condition. Two small INT4 models from one
+Qwen family, one CPU, one integrated GPU, and at most ten waves per load
+endpoint are measured.
 There is no OVMS process, NPU, native K/V parity, device-memory telemetry,
 gold answer log-probability, long-session pressure, eviction sweep, or
-cross-model replication.
+cross-family replication.
 All serving results are E0.
 
 \section{Conclusion}
@@ -428,7 +475,10 @@ substantially reduces cold ingestion and natural-input TTFT, and it avoids the
 decoy failures seen in the expanded full-context control. OpenVINO GenAI exposes the
 physical scheduling controls needed around a future integration but not the
 public arbitrary non-prefix K/V attachment needed for E2. That boundary is now
-implemented as a safe contract and measured as an open gate.
+implemented as a safe contract and measured as an open gate. The 1.5B
+replication shows that selected context approaches full-context quality on
+QASPER and HotpotQA while retaining lower TTFT, but 2Wiki keeps a meaningful
+coverage gap; better routing remains part of the product requirement.
 
 \section*{Reproducibility}
 Raw JSON, generated tables and plots, environment audit, and runners are under

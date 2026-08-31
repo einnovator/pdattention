@@ -139,7 +139,7 @@ def main() -> None:
     parser.add_argument("--plot", required=True, type=Path)
     args = parser.parse_args()
     summary = summarize(
-        [json.loads(path.read_text(encoding="utf-8")) for path in args.inputs]
+        [json.loads(path.read_text(encoding="utf-8-sig")) for path in args.inputs]
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
