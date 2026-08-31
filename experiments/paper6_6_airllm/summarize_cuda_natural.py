@@ -172,11 +172,75 @@ def render_table(summary: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_plot(summary: Mapping[str, Any], path: Path) -> None:
+    """Plot cold quality and cold/warm transport ratios without conflating them."""
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    names = {
+        "qasper": "QASPER",
+        "hotpotqa": "HotpotQA",
+        "2wikimultihopqa": "2Wiki",
+    }
+    datasets = sorted(
+        {str(row["dataset"]) for row in summary["comparisons"]},
+        key=lambda name: ("qasper", "hotpotqa", "2wikimultihopqa").index(name),
+    )
+    indexed = {
+        (str(row["dataset"]), str(row["regime"])): row
+        for row in summary["comparisons"]
+    }
+    x = np.arange(len(datasets), dtype=float)
+    fig, axes = plt.subplots(1, 2, figsize=(9.4, 3.7))
+    cold = [indexed[(dataset, "cold_one_shot")] for dataset in datasets]
+    axes[0].bar(
+        x - 0.18,
+        [row["e0_token_f1"] for row in cold],
+        0.36,
+        color="#0072B2",
+        label="selected text E0",
+    )
+    axes[0].bar(
+        x + 0.18,
+        [row["e2_token_f1"] for row in cold],
+        0.36,
+        color="#E69F00",
+        label="native candidate",
+    )
+    for regime, color, marker in (
+        ("cold_one_shot", "#009E73", "o"),
+        ("warm_repeated", "#CC79A7", "s"),
+    ):
+        rows = [indexed[(dataset, regime)] for dataset in datasets]
+        axes[1].plot(
+            x,
+            [row["e2_over_e0_completion"] for row in rows],
+            color=color,
+            marker=marker,
+            linewidth=2,
+            label=regime.replace("_", " "),
+        )
+    axes[0].set_ylabel("Token F1")
+    axes[1].set_ylabel("E2 / E0 completion time")
+    axes[1].axhline(1.0, color="#555555", linewidth=1, linestyle="--")
+    for axis in axes:
+        axis.set_xticks(x, [names.get(name, name) for name in datasets])
+        axis.grid(axis="y", alpha=0.25)
+        axis.set_axisbelow(True)
+        axis.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--table", required=True, type=Path)
+    parser.add_argument("--plot", type=Path)
     args = parser.parse_args()
     payload = json.loads(args.input.read_text(encoding="utf-8"))
     summary = summarize(payload)
@@ -184,6 +248,8 @@ def main() -> None:
     args.output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     args.table.parent.mkdir(parents=True, exist_ok=True)
     args.table.write_text(render_table(summary), encoding="utf-8")
+    if args.plot is not None:
+        render_plot(summary, args.plot)
 
 
 if __name__ == "__main__":
