@@ -42,7 +42,10 @@ def test_product_matrix_round_trip_uses_null_for_unknown_metrics(tmp_path) -> No
     restored = ProductMatrix.read(path)
 
     assert restored == matrix
-    assert json.loads(path.read_text())["rows"][0]["ttft_ms"] is None
+    payload = json.loads(path.read_text())["rows"][0]
+    assert payload["ttft_ms"] is None
+    assert payload["metric_statuses"]["ttft_ms"] == "NOT_MEASURED"
+    assert payload["metric_provenance"]["quality_score"] == "results/qasper.json"
 
 
 def test_product_matrix_rejects_unknown_fields_and_duplicate_ids() -> None:
@@ -58,3 +61,21 @@ def test_optional_number_does_not_turn_unknown_markers_into_zero() -> None:
     assert optional_number("NOT_MEASURED") is None
     assert optional_number(None) is None
     assert optional_number("12.5") == 12.5
+
+
+def test_quality_adjusted_throughput_and_cost_are_derived_from_measured_inputs() -> None:
+    row = _row(
+        task_success=0.75,
+        requests_per_second=4.0,
+        accelerator_cost_per_hour=2.0,
+        hourly_cost_source="internal hardware accounting",
+    )
+
+    assert row.successful_requests_per_second == 3.0
+    assert row.successful_tasks_per_accelerator_hour == 10_800.0
+    assert row.cost_per_successful_task == pytest.approx(2.0 / 10_800.0)
+
+
+def test_throughput_without_quality_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Throughput rows"):
+        _row(quality_score=None, task_success=None, requests_per_second=2.0)

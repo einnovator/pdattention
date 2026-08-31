@@ -30,3 +30,34 @@ def test_serving_benchmark_rejects_single_repeat() -> None:
             "http://engine", model="model", engine="mlx", repeats=1
         )
 
+
+def test_serving_benchmark_pairs_tail_and_quality_adjusted_rates(monkeypatch) -> None:
+    def fake_request(*args, **kwargs):
+        return {
+            "ttft_ms": 10.0,
+            "completion_latency_ms": 100.0,
+            "mean_itl_ms": 5.0,
+            "output_events": 2,
+            "output_text": "PRA_EVIDENCE_4821",
+            "prompt_tokens": 32,
+            "completion_tokens": 4,
+            "cached_tokens": None,
+        }
+
+    monkeypatch.setattr("pra_hf.serving_benchmark.stream_chat_completion", fake_request)
+    result = run_serving_benchmark(
+        "http://engine",
+        model="model",
+        engine="mlx",
+        repeats=2,
+        hardware_metadata={"accelerator": "test"},
+    )
+    row = result["aggregates"][0]
+
+    assert row["ttft_ms_p99"] == 10.0
+    assert row["itl_ms_p95"] == 5.0
+    assert row["requests_per_second"] == pytest.approx(10.0)
+    assert row["successful_requests_per_second"] == pytest.approx(10.0)
+    assert row["successful_tasks_per_accelerator_hour"] == pytest.approx(36_000.0)
+    assert row["cache_metric_status"] == "NOT_MEASURED"
+    assert result["hardware"]["accelerator"] == "test"

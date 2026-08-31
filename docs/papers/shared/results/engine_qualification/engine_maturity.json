@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "evidence_vocabulary": [
+    "MEASURED",
+    "CONTROLLED",
+    "MODEL_BACKED",
+    "NATURAL_WORKLOAD",
+    "CANDIDATE",
+    "BLOCKED",
+    "NOT_MEASURED",
+    "NOT_APPLICABLE"
+  ],
+  "rows": [
+    {
+      "engine": "vLLM",
+      "highest_validated_level": "E2",
+      "highest_observed_level": "E2",
+      "level_status": "NATURAL_WORKLOAD",
+      "quality_frontier": "NATURAL_WORKLOAD",
+      "memory_telemetry": "CONTROLLED",
+      "tail_telemetry": "MEASURED",
+      "distributed_storage": "NOT_MEASURED",
+      "main_gate": "CUDA-native page attachment and LMCache under continuous batching",
+      "provenance": "docs/papers/paper6_vllm/paper.pdf"
+    },
+    {
+      "engine": "SGLang",
+      "highest_validated_level": "E2",
+      "highest_observed_level": "E3",
+      "level_status": "NATURAL_WORKLOAD",
+      "quality_frontier": "NATURAL_WORKLOAD",
+      "memory_telemetry": "CONTROLLED",
+      "tail_telemetry": "MODEL_BACKED",
+      "distributed_storage": "CANDIDATE",
+      "main_gate": "Scheduler-owned distributed HiCache and off-node tier curves",
+      "provenance": "docs/papers/paper6_1_sglang/paper.pdf"
+    },
+    {
+      "engine": "MLX",
+      "highest_validated_level": "E2",
+      "highest_observed_level": "E2",
+      "level_status": "NATURAL_WORKLOAD",
+      "quality_frontier": "NATURAL_WORKLOAD",
+      "memory_telemetry": "MODEL_BACKED",
+      "tail_telemetry": "MODEL_BACKED",
+      "distributed_storage": "NOT_APPLICABLE",
+      "main_gate": "Live fused one-softmax attention and memory-pressure frontier",
+      "provenance": "docs/papers/paper6_2_mlx/paper.pdf"
+    },
+    {
+      "engine": "OpenVINO",
+      "highest_validated_level": "E0",
+      "highest_observed_level": "E0",
+      "level_status": "NATURAL_WORKLOAD",
+      "quality_frontier": "NATURAL_WORKLOAD",
+      "memory_telemetry": "NOT_MEASURED",
+      "tail_telemetry": "MEASURED",
+      "distributed_storage": "NOT_APPLICABLE",
+      "main_gate": "Larger distractor cohort, then a feasible native-attention seam",
+      "provenance": "research/paper6-3-openvino"
+    },
+    {
+      "engine": "TensorRT-LLM",
+      "highest_validated_level": "E0",
+      "highest_observed_level": "E1",
+      "level_status": "MEASURED",
+      "quality_frontier": "CONTROLLED",
+      "memory_telemetry": "MEASURED",
+      "tail_telemetry": "MEASURED",
+      "distributed_storage": "CANDIDATE",
+      "main_gate": "Official KV connector plus native selected K/V",
+      "provenance": "research/paper6-4-tensorrt-llm"
+    },
+    {
+      "engine": "AirLLM",
+      "highest_validated_level": "E0",
+      "highest_observed_level": "E2",
+      "level_status": "CONTROLLED",
+      "quality_frontier": "CONTROLLED",
+      "memory_telemetry": "CONTROLLED",
+      "tail_telemetry": "NOT_MEASURED",
+      "distributed_storage": "NOT_APPLICABLE",
+      "main_gate": "Natural QA on a model materially larger than accelerator VRAM",
+      "provenance": "research/paper6-6-airllm@67549ed"
+    }
+  ]
+}
