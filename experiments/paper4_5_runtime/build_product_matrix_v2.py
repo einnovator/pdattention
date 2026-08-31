@@ -651,7 +651,7 @@ def _openvino_distractor_rows() -> list[ProductMatrixRow]:
 
 
 def _openvino_cross_model_rows() -> list[ProductMatrixRow]:
-    """Import matched selected/full OpenVINO rows for both Qwen sizes."""
+    """Import matched selected/full OpenVINO rows across model families."""
 
     path = RESULTS / "paper6_3_openvino/cross_model_summary.json"
     if not path.exists():
@@ -662,7 +662,13 @@ def _openvino_cross_model_rows() -> list[ProductMatrixRow]:
     for source in payload["rows"]:
         raw_model = str(source["model_id"]).replace("\\", "/")
         model_id = raw_model.rsplit("/", 1)[-1]
-        model_size = 1_500_000_000 if "1.5B" in model_id else 500_000_000
+        lowered = model_id.lower()
+        if "tinyllama" in lowered:
+            model_family, model_size = "tinyllama", 1_100_000_000
+        elif "1.5b" in lowered:
+            model_family, model_size = "qwen", 1_500_000_000
+        else:
+            model_family, model_size = "qwen", 500_000_000
         for condition in ("selected", "full"):
             selected = condition == "selected"
             visible = float(
@@ -677,7 +683,7 @@ def _openvino_cross_model_rows() -> list[ProductMatrixRow]:
                     row_id=(
                         f"openvino-cross-model-{model_size}-{source['dataset']}-{condition}"
                     ),
-                    model_family="qwen",
+                    model_family=model_family,
                     model_id=model_id,
                     model_revision=None,
                     model_size=model_size,
