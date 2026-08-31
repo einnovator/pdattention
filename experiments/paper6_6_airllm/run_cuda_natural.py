@@ -232,6 +232,23 @@ def _write(path: Path, report: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
+def _percentiles(values: Iterable[float]) -> dict[str, float] | None:
+    """Return interpolated latency percentiles, or ``None`` when unmeasured."""
+
+    ordered = sorted(float(value) for value in values)
+    if not ordered:
+        return None
+
+    def at(quantile: float) -> float:
+        position = (len(ordered) - 1) * quantile
+        lower = int(position)
+        upper = min(lower + 1, len(ordered) - 1)
+        fraction = position - lower
+        return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
+
+    return {"p50": at(0.50), "p95": at(0.95), "p99": at(0.99)}
+
+
 def _summary(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     def optional_mean(selected: list[Mapping[str, Any]], key: str) -> float | None:
         values = [float(row[key]) for row in selected if row.get(key) is not None]
@@ -259,6 +276,19 @@ def _summary(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 "mean_completion_seconds": statistics.fmean(float(row["completion_seconds"]) for row in selected),
                 "mean_ttft_ms": optional_mean(selected, "ttft_ms"),
                 "mean_itl_ms": optional_mean(selected, "itl_ms"),
+                "completion_seconds": _percentiles(
+                    float(row["completion_seconds"]) for row in selected
+                ),
+                "ttft_ms": _percentiles(
+                    float(row["ttft_ms"])
+                    for row in selected
+                    if row.get("ttft_ms") is not None
+                ),
+                "itl_ms": _percentiles(
+                    float(row["itl_ms"])
+                    for row in selected
+                    if row.get("itl_ms") is not None
+                ),
                 "mean_visible_prompt_tokens": statistics.fmean(float(row["visible_prompt_tokens"]) for row in selected),
                 "mean_native_kv_tokens": statistics.fmean(float(row["selected_native_kv_tokens"]) for row in selected),
                 "peak_cuda_bytes": max(int(row["peak_cuda_bytes"]) for row in selected),

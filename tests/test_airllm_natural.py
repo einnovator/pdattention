@@ -71,8 +71,15 @@ def test_airllm_summary_keeps_optional_token_timing_explicit() -> None:
 
     assert measured["mean_ttft_ms"] == 110.0
     assert measured["mean_itl_ms"] == 25.0
+    assert measured["ttft_ms"] == {
+        "p50": 110.0,
+        "p95": pytest.approx(119.0),
+        "p99": pytest.approx(119.8),
+    }
+    assert measured["completion_seconds"]["p95"] == 1.0
     assert legacy["mean_ttft_ms"] is None
     assert legacy["mean_itl_ms"] is None
+    assert legacy["ttft_ms"] is None
 
 
 def test_airllm_cuda_smoke_cannot_promote_product_row_to_e2() -> None:

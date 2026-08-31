@@ -83,6 +83,12 @@ def summarize(payload: Mapping[str, Any]) -> dict[str, Any]:
                     "e2_over_e0_completion": e2_seconds / max(e0_seconds, 1e-12),
                     "e0_ttft_ms": None if e0_ttft is None else float(e0_ttft),
                     "e2_ttft_ms": None if e2_ttft is None else float(e2_ttft),
+                    "e0_ttft_p95_ms": (
+                        None if e0.get("ttft_ms") is None else float(e0["ttft_ms"]["p95"])
+                    ),
+                    "e2_ttft_p95_ms": (
+                        None if e2.get("ttft_ms") is None else float(e2["ttft_ms"]["p95"])
+                    ),
                     "e2_over_e0_ttft": (
                         None
                         if e0_ttft is None or e2_ttft is None
@@ -90,6 +96,16 @@ def summarize(payload: Mapping[str, Any]) -> dict[str, Any]:
                     ),
                     "e0_itl_ms": None if e0_itl is None else float(e0_itl),
                     "e2_itl_ms": None if e2_itl is None else float(e2_itl),
+                    "e0_completion_p95_seconds": (
+                        None
+                        if e0.get("completion_seconds") is None
+                        else float(e0["completion_seconds"]["p95"])
+                    ),
+                    "e2_completion_p95_seconds": (
+                        None
+                        if e2.get("completion_seconds") is None
+                        else float(e2["completion_seconds"]["p95"])
+                    ),
                     "e0_visible_tokens": selected_tokens,
                     "e2_visible_tokens": visible_tokens,
                     "e2_native_tokens": float(e2["mean_native_kv_tokens"]),
