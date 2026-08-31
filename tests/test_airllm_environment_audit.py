@@ -26,6 +26,6 @@ def test_airllm_source_audit_distinguishes_mlx_from_hf_native(tmp_path: Path) ->
     assert mlx["airllm_version"] == "3.3.0"
     assert mlx["pra_integration_level"] == "E0"
     assert not mlx["native_hf_pra_available"]
-    assert cuda["pra_integration_level"] == "E1_CANDIDATE"
+    assert cuda["pra_integration_level"] == "E2_CANDIDATE"
     assert cuda["native_hf_pra_available"]
     assert cuda["weight_streaming_mode"] == "module_pre_hook_load_post_hook_release"

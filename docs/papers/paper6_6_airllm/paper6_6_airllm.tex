@@ -39,6 +39,49 @@ the central systems tradeoff: eliminating context residency is valuable only
 when its transfers do not deepen the weight-I/O bottleneck.
 \end{abstract}
 
+\section{Qualification Snapshot}
+\textbf{Engine question.} Can AirLLM virtualize model weights while PRA
+independently virtualizes selected semantic context, and does native transport
+already beat selected text? The mechanism composes, but the measured cold
+native path does not yet improve latency.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Standard PRA engine result block. Controlled accounting and live
+measurements are kept distinct; \textsc{not measured} is explicit.}
+\label{tab:airllm-qualification}
+\begin{tabular}{p{0.28\linewidth}p{0.63\linewidth}}
+\toprule
+Field & Result \\
+\midrule
+Validated / observed level & E0 validated on AirLLM/MLX; E2 mechanism observed on AirLLM/HF; E3 not observed \\
+Model / hardware & TinyLlama-1.1B; Apple M5 16 GB and GTX 950M 4 GiB \\
+Quality & Four-token/prefix agreement on one synthetic case; natural task quality \textsc{not measured} \\
+Visible / native context & E0: 38 versus 377 tokens; E2: 19 visible plus 15 native tokens \\
+Cold native execution & 32.03 s, 10.6\% slower than selected-text E0; reference encoding 7.12 s \\
+Peak allocation / residency & 135.63 MiB live E2 peak; 4$\times$ controlled PRA-residency reduction from layer streaming \\
+TTFT / ITL / warm reuse & \textsc{Not measured} for native E2 \\
+Evidence tier & Live mechanism smoke plus a 119-condition controlled lifecycle study \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Recommendation.}
+Keep selected-text E0 as the deployment default. Treat native AirLLM/HF E2 as
+research-only until selector-frozen natural QA demonstrates parity and repeated
+resource reuse amortizes encoding and transfer. Do not infer E3 from
+\texttt{storage\_managed}: AirLLM does not yet schedule PRA placement, sharing,
+eviction, and accounting as first-class physical state.
+
+\paragraph{Primer.}
+E0 renders selected evidence as ordinary prompt text. E1 carries logical PRA
+identity, typed records, routing, and fallback policy without native attention.
+E2 consumes detached selected native K/V directly at designated layers. E3
+requires scheduler-owned physical lifecycle. AirLLM's weight streaming is
+orthogonal to this ladder: it can coexist with E0 or E2 without changing their
+meaning.
+
 \section{Introduction}
 
 Inference memory is not one pool. Model parameters, sequential K/V, selected
@@ -64,7 +107,7 @@ controlled independently while still composing at an attention layer?
 
 The paper makes four scoped contributions. First, it records a source-grounded
 AirLLM capability audit. Second, it adds a conservative AirLLM provider to the
-shared PRA runtime: selected-text E0 is the default, while native E1/E2 must be
+shared PRA runtime: selected-text E0 is the default, while native E2 must be
 requested explicitly. Third, it implements the parameter-name and device bridge
 needed to reuse the HF-native PRA path, plus a layer-local K/V lifecycle adapter.
 Fourth, it reports live Apple/MLX selected-text evidence and controlled residency,
@@ -135,11 +178,13 @@ not native PRA.
 \subsection{Capability-Gated Provider}
 
 The shared provider registry now includes \texttt{airllm}. It advertises E0 by
-default. Setting \texttt{native\_hf\_pra=true} enables E1 only on the
-HF-backed path; adding \texttt{storage\_managed=true} advertises E2. The
-provider is embedded-only because AirLLM is a Python model wrapper rather than
-an HTTP scheduler. This prevents the CLI and product matrix from presenting
-the MLX path as native merely because the package imports.
+default. Setting \texttt{native\_hf\_pra=true} enables E2 only on the
+HF-backed path. The \texttt{storage\_managed} option changes how E2 tensors are
+retained; it does not promote the path to E3 because AirLLM does not own their
+complete scheduler lifecycle. The provider is embedded-only because AirLLM is
+a Python model wrapper rather than an HTTP scheduler. This prevents the CLI and
+product matrix from presenting the MLX path as native merely because the
+package imports.
 
 \subsection{Reusing HF Attention}
 
@@ -378,7 +423,7 @@ The current product row is deliberately conservative:
 Engine & Platform & Default & Native candidate & Evidence tier \\
 \midrule
 AirLLM & macOS/MLX & E0 selected text & unavailable & live smoke \\
-AirLLM & CUDA/HF & E0 selected text & opt-in E1 & live mechanism smoke \\
+AirLLM & CUDA/HF & E0 selected text & opt-in E2 & live mechanism smoke \\
 \bottomrule
 \end{tabular}
 \end{center}

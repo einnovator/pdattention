@@ -95,7 +95,7 @@ def audit_source(
     }
     hf_path = bool(evidence["hf_forward"] and evidence["hf_generate"])
     is_mlx = device.lower() in {"mlx", "metal", "mps"}
-    native_level = "E0" if is_mlx else ("E1_CANDIDATE" if hf_path else "E0")
+    native_level = "E0" if is_mlx else ("E2_CANDIDATE" if hf_path else "E0")
     return {
         "schema_version": "paper6.6-airllm-audit-v1",
         "evidence_tier": "SOURCE_AUDIT_AND_RUNTIME_IMPORT",
