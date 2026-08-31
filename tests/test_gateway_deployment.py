@@ -25,7 +25,7 @@ class RecordingAdapter:
         self.closed = []
         self._capabilities = PRAEngineCapabilities(
             adapter="recording",
-            integration_level="E1" if native_kv else "E0",
+            integration_level="E2" if native_kv else "E0",
             logical_refs=logical_refs,
             typed_records=logical_refs,
             text_fallback=True,
@@ -108,7 +108,7 @@ def test_g00_pass_through_preserves_structured_messages():
 def test_hf_capability_contract_names_supported_runtime_boundaries():
     capabilities = PRAEngineCapabilities(
         adapter="hf",
-        integration_level="E1",
+        integration_level="E2",
         native_kv=True,
         selected_interval_materialization=True,
         request_lifetime=True,

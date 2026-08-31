@@ -32,8 +32,8 @@ def test_engine_capabilities_do_not_overclaim_vllm_scheduler_support() -> None:
     assert vllm.integration_level.value == "E0"
     assert not vllm.native_kv
     assert not vllm.pra_scheduler
-    assert sglang.native_kv and sglang.integration_level.value == "E1"
-    assert mlx.native_kv and mlx.integration_level.value == "E1"
+    assert sglang.native_kv and sglang.integration_level.value == "E2"
+    assert mlx.native_kv and mlx.integration_level.value == "E2"
     tensorrt = TensorRTLLMRuntimeProvider().capabilities(
         RuntimeConfig(engine="tensorrt_llm")
     )

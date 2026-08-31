@@ -208,7 +208,7 @@ class SGLangMLXNativeBridge:
     PRA namespace remains an explicit later integration level.
     """
 
-    integration_level = "E1"
+    integration_level = "E2"
 
     def __init__(
         self,

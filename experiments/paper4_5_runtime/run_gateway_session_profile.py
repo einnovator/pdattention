@@ -54,7 +54,7 @@ class FixtureAdapter:
             resource_delta=self.pra,
             cache_affinity=self.session_state,
             logical_refs=self.pra,
-            native_kv=self.pra,
+            native_kv=False,
             text_fallback=True,
         )
 

@@ -69,6 +69,52 @@ cancellation, and request-owned cleanup; TTFT tails expose the serialized
 model-runner queue rather than hidden parallel execution.
 \end{abstract}
 
+\section{Qualification Snapshot}
+
+The engine-specific question is whether semantic-resource identity remains
+useful beside SGLang's prefix-addressed Radix cache and hierarchical HiCache.
+The native runner is validated at E2: it consumes frozen selected K/V outside
+Radix ownership and preserves all 2,086/2,086 matched E0 outputs. Visible prompt
+tokens fall by 90.4--93.0\%. Macro E2/E0 cost ratios are 0.980 cold, 1.074 warm,
+1.071 multi-query, and 1.054 concurrent. Local HiCache placement demonstrates
+an E3 mechanism candidate, but scheduler-owned distributed/off-node E3 remains
+unvalidated.
+
+\begin{center}
+\small
+\begin{tabularx}{0.96\linewidth}{lX}
+\toprule
+Integration level & E2 validated; local E3 mechanism observed, not promoted\\
+Model/hardware & Pinned Qwen-family MLX runner on Apple M5\\
+Workload & QASPER, HotpotQA, and 2WikiMultiHopQA; frozen selections\\
+Quality & 2,086/2,086 exact E0/E2 pairs; unchanged paired F1\\
+Context reduction & 90.4--93.0\% fewer visible prompt tokens\\
+TTFT/ITL tails & Online gateway measured separately; common matched tails \texttt{NOT\_MEASURED}\\
+Throughput & Concurrent E2 inverse-cost ratio 1.054, or 94.9\% of E0 rate\\
+Peak memory & Native objects measured; complete engine decomposition \texttt{NOT\_MEASURED}\\
+Reuse & Radix and PRA identities remain separate; local HiCache cold/warm measured\\
+Main limitation & Distributed HiCache, scheduler prefetch, affinity, and tail curves\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{PRA primer.}
+A PRA resource is a stable, authorized semantic object with selectable token
+intervals. E0 presents a frozen selection as ordinary visible text. E1 carries
+logical identity and deltas but still uses ordinary model execution. E2 feeds
+the same selection to native non-prefix attention with matched geometry,
+single normalization, request-local cleanup, and isolation. E3 adds scheduler
+ownership of physical tiers, prefetch, eviction, sharing, and batching. SGLang's
+Radix prefix and PRA resource namespaces therefore coexist rather than alias.
+
+\paragraph{Deployment recommendation.}
+\textbf{Best validated deployment:} E0 selected text for ordinary repeated and
+concurrent serving; E2 when hidden native context or independent resource
+identity is required. \textbf{Use when:} semantic resources outlive or cut
+across sequential prefixes. \textbf{Do not use when:} the local file backend is
+being treated as distributed HiCache evidence. \textbf{Main remaining gate:}
+scheduler-owned off-node HiCache with cold/warm concurrency tails.
+
 \section{Introduction}
 A prefix cache and a retrieval memory answer different questions. A radix tree
 asks whether token histories share an exact path. PRA asks which retained
