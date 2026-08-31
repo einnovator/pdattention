@@ -73,7 +73,10 @@ matched through APC, a 60-example natural cohort obtains 60/60 exact pairs and
 identical F1. Median candidate/E0 completion ratios are 0.964 on QASPER, 1.005
 on HotpotQA, and 1.073 on 2Wiki. Because vLLM still reserves source-length
 placeholder slots, this closes native transfer and APC coexistence on CUDA,
-not scheduler-invisible detached E2 or its memory economics.
+not scheduler-invisible detached E2 or its memory economics. A follow-up
+45-request CUDA batch sweep covers concurrency 1--8: every expected selected
+resource is recovered, no ordinary request receives forbidden selected detail,
+and shared-native throughput reaches 48.9 requests/s at concurrency eight.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -101,8 +104,8 @@ Workload & QASPER, HotpotQA, and 2WikiMultiHopQA; frozen selections\\
 Quality & Metal: 2,086/2,086 exact E0/E2 pairs; CUDA candidate: 60/60 exact, unchanged F1\\
 Context reduction & Metal: 90.5--93.0\% fewer visible tokens; CUDA candidate hides source content but retains placeholder slots\\
 TTFT/ITL tails & \texttt{NOT\_MEASURED} in the common matched cohort\\
-Throughput & Concurrent E2/E0 inverse-cost ratio 0.991 on Metal\\
-Peak memory & \texttt{NOT\_MEASURED} end to end; native page residency controlled\\
+Throughput & Metal E2/E0 inverse-cost ratio 0.991; CUDA candidate shared-native reaches 48.9 requests/s at $C=8$\\
+Peak memory & CUDA candidate 5.59 GiB allocated at $C=8$; detached-page savings remain \texttt{NOT\_MEASURED}\\
 Reuse & APC-matched E0 and native HOT pages; LMCache \texttt{NOT\_MEASURED}\\
 Main limitation & Detached CUDA E2, LMCache, HBM/transfer telemetry, and online continuous batching\\
 \bottomrule
@@ -798,6 +801,44 @@ coexistence, but not lower HBM, faster warm reuse, or scheduler-native E3.
 Because its placeholder prefix preserves source-length scheduler occupancy,
 it also does not yet realize PRA's detached-page scaling objective.
 
+\subsection{CUDA connector concurrency and isolation}
+
+We next batch the same semantic-keyed source objects at concurrency 1, 2, 4,
+and 8. Three conditions distinguish immutable sharing, alternating native and
+ordinary requests, and a wrong-memory control whose expected answer belongs to
+the intentionally substituted resource. Table~\ref{tab:vllm-cuda-concurrency}
+and Figure~\ref{fig:vllm-cuda-concurrency} summarize 45 requests.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Offline vLLM V1 CUDA connector batches. Recovery is relative to each
+condition's intended resource; leakage means that an ordinary request received
+selected native detail. Peak is PyTorch CUDA allocation for the engine.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_vllm/generated_cuda_connector_concurrency_table.tex}}
+\label{tab:vllm-cuda-concurrency}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper6_vllm/cuda_connector_concurrency_rtx5060.png}
+\caption{CUDA connector throughput and request-isolation controls. These are
+finite offline batches, not online arrival-process tail measurements.}
+\label{fig:vllm-cuda-concurrency}
+\end{figure}
+
+All 38 requests expected to recover a selected resource do so, including the
+wrong-memory causal condition, and all seven adjacent ordinary requests avoid
+the selected code. Thus 45/45 requests have the expected memory scope and
+forbidden leakage is zero. Shared-native throughput rises from 2.8 requests/s
+at concurrency one to 48.9 at eight; mixed native/ordinary reaches 44.2
+requests/s at eight. Peak allocated memory changes only from 5,591.7 to
+5,598.2 MiB across the sweep because the engine's preallocated cache dominates
+these small request batches. This closes controlled concurrent isolation for
+the prefix-shaped CUDA candidate. It does not establish scheduler-invisible
+native pages, LMCache reuse, online p95/p99, or an HBM saving over E0.
+
 \section{Promotion Gates}
 \begin{center}
 \begin{tabularx}{0.96\linewidth}{l l Y}
@@ -816,6 +857,7 @@ native APC identity & controlled closed & selection-derived salt; 75/75 selected
 matched natural QA & controlled closed & 3,360/3,360 exact outputs across Qwen, Llama, and Gemma; zero pairwise F1 change \\
 shared storage lifecycle & controlled closed & live pages; WARM 80/80 exact; restart recovery; int8 COLD 17/80 \\
 CUDA connector candidate & research closed & 5/5 causal controls and 60/60 natural pairs; prefix-shaped slots remain \\
+CUDA connector concurrency & research closed & 45/45 scoped outcomes through $C=8$; zero forbidden leaks \\
 engine-native serving & partial & Metal native APC plus CUDA native transfer; detached CUDA, LMCache, and online tails remain open \\
 robustness & partial & four Metal checkpoints plus TinyLlama CUDA; two backend families \\
 \bottomrule
@@ -892,7 +934,9 @@ concurrency eight when APC identity includes the hidden selection. PRA-vLLM is
 therefore an engine-native controlled prototype on Metal with matched E0/E2
 quality across Qwen, Llama, and Gemma checkpoints. CUDA E0 is reproduced on
 current NVIDIA hardware, and the semantic connector candidate preserves 60/60
-natural outputs plus all causal controls. Its source-length placeholder slots
+natural outputs plus all causal controls. Its CUDA concurrency sweep preserves
+45/45 request-scoped outcomes through concurrency eight with zero forbidden
+leaks and reaches 48.9 shared-native requests/s. Its source-length placeholder slots
 and inconsistent completion advantage prevent promotion to detached CUDA E2.
 The next decisive step is scheduler-invisible page attachment or an official
 connector mode that decouples external K/V from prompt-prefix accounting,

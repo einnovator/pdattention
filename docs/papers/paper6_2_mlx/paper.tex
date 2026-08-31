@@ -42,7 +42,11 @@ HotpotQA, and 2WikiMultiHopQA. Shuffled and absent memory degrade both metrics
 on QASPER and HotpotQA; on 2Wiki the gold-answer log-probability degrades while
 free-generation F1 is noisy. Per-head int8
 residency halves selected-K/V bytes and preserves this small cohort's quality,
-with request-local dequantization before attention. Finally, an SDK hybrid
+with request-local dequantization before attention. An independent M4 Pro
+replication adds Qwen3-4B and preserves ordinary/native aggregate F1 exactly in
+all six model--dataset cohorts. At 4B, native completion takes 44.5--47.6\% of
+ordinary split-cache time; shuffled-memory F1 falls to 0.011--0.028. Finally,
+an SDK hybrid
 router selects four documents or paper paragraphs before native
 materialization. Native and ordinary consumption agree exactly on all 60
 paired generations. Gold evidence recall at four is 0.348 on QASPER, 0.725 on
@@ -86,9 +90,9 @@ whose memory and non-disclosure properties require workload-specific valuation.
 \begin{tabularx}{0.96\linewidth}{lX}
 \toprule
 Integration level & E2 validated in-process; no E3 scheduler claim\\
-Model/hardware & Qwen, Llama, and Gemma-family checks on Apple M5 unified memory\\
+Model/hardware & Qwen, Llama, and Gemma-family checks on Apple M5; Qwen3-1.7B/4B replication on M4 Pro\\
 Workload & QASPER, HotpotQA, and 2WikiMultiHopQA; frozen selections\\
-Quality & 2,086/2,086 exact E0/E2 pairs; unchanged paired F1\\
+Quality & 2,086/2,086 matched E0/E2 pairs; six additional oracle-transport cohorts preserve aggregate F1 exactly\\
 Context reduction & 90.4--93.0\% fewer visible prompt tokens\\
 TTFT/ITL tails & Online gateway measured separately; common matched tails \texttt{NOT\_MEASURED}\\
 Throughput & Concurrent E2 inverse-cost ratio 1.072, or 93.3\% of E0 rate\\
@@ -211,6 +215,10 @@ The end-task study uses \texttt{mlx-community/Qwen3-1.7B-4bit}, MLX-LM 0.31.3,
 five seeds, and four held-out examples per seed and dataset. Evidence is
 oracle-scoped from dataset annotations and truncated to 384 tokens; routing
 quality is deliberately outside the first engine-transport experiment. A
+replication uses an M4 Pro with 20 GPU cores and 48 GiB unified memory, MLX
+0.32.0, and MLX-LM 0.31.3. It repeats the same five seeds for Qwen3-1.7B and
+Qwen3-4B. Thus hardware and model scale change while dataset selection and
+execution conditions remain fixed. A
 second matched-budget cohort retains every HotpotQA and 2Wiki candidate
 document and every QASPER paper paragraph, then routes four candidates before
 native materialization.
@@ -429,6 +437,50 @@ evidence that quantization improves quality: generation is discrete and the
 sample is small. The supported conclusion is non-degradation here plus a
 near-exact $2\times$ residency reduction. Dequantization restores model-native
 K/V before attention, so active materialization bytes are not reduced.
+
+\subsection{M4 Pro cross-model replication}
+
+The M4 Pro replication repeats all five execution conditions for 20 examples
+per dataset and model. It is independent of the earlier M5 run and adds
+Qwen3-4B. Table~\ref{tab:mlx-m4-cross-model} reports the selector-frozen
+oracle-evidence comparison; Figure~\ref{fig:mlx-m4-cross-model} keeps transport
+quality separate from execution cost.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Cross-model original-answer QA on the M4 Pro. E0 is ordinary
+split-cache execution; E2 is the same selected evidence as native K/V. E2/E0
+is completion latency, so lower is faster. FP/int8 is retained selected-K/V
+residency; int8 is dequantized before attention.}
+\input{../shared/results/paper6_2_mlx/generated_m4_cross_model_table.tex}
+\label{tab:mlx-m4-cross-model}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_2_mlx/m4_cross_model_quality_latency.png}
+\caption{Cross-model transport and causal controls. Full-precision native E2
+matches ordinary split-cache aggregate F1 in every cohort, while shuffled
+memory degrades quality. The latency panel measures the current MLX runner,
+not HTTP queueing or continuous batching.}
+\label{fig:mlx-m4-cross-model}
+\end{figure}
+
+At 1.7B, native E2 takes 52.9--54.5\% of ordinary split-cache completion time;
+at 4B it takes 44.5--47.6\%. Aggregate E0/E2 F1 is identical in all six
+cohorts. The 4B model improves E0/E2 F1 from 0.070 to 0.097 on 2Wiki, 0.143 to
+0.212 on HotpotQA, and 0.153 to 0.249 on QASPER. Shuffled 4B memory falls to
+0.011, 0.028, and 0.019, respectively, while its gold-answer log-probability
+drops by 6.81--38.58 nats relative to native E2. These interventions support a
+source-dependent native computation rather than query-only answer bias.
+
+Full-precision residency is 37.6--42.0 MiB at 1.7B and 48.3--54.0 MiB at 4B;
+compact int8 residency halves each value. This is a retained-storage result:
+request-local dequantization still restores full-precision active K/V. The
+speed advantage over ordinary split-cache is specific to this in-process
+oracle-evidence runner and does not supersede the selector-frozen online E0/E2
+benchmark, whose unfused native path remains slower under gateway schedules.
 
 \subsection{Routed evidence rather than oracle evidence}
 We next remove the oracle ordering. Each HotpotQA and 2Wiki article, or each
@@ -904,6 +956,9 @@ p95/p99 are not reported; the later gateway load curve reports finite-wave
 tails but serializes one model runner. The natural controls contain real
 dataset text but an inserted fixed answer-code mechanism.
 The first end-task study uses original answers but oracle-scoped evidence. The
+richer M4 replication still uses only two Qwen sizes and 20 examples per
+dataset/model; it establishes cross-scale transport and causal sensitivity,
+not broad model-family generalization. The
 routed extension now has 50 sampled examples per condition and dataset (49
 unique on QASPER), a parameter-free lexical/hash index, and four selected
 candidates. Strict EM
@@ -938,7 +993,10 @@ preserves 5/5 recovery with a rotating local cache. PRA-MLX is therefore a
 working native prototype. Full-precision native transport also matches ordinary
 split-cache quality on original-answer QA, while wrong and absent memory fail
 causally. Per-head int8 halves retained detail without measured degradation in
-the small cohort. Across a 1,020-request hard-budget sweep, sub-working-set
+the small cohort. The M4 Pro replication extends this result to Qwen3-4B:
+ordinary and native aggregate F1 remain equal in all six cohorts, shuffled
+memory degrades sharply, and native completion uses 44.5--54.5\% of ordinary
+split-cache time in this in-process runner. Across a 1,020-request hard-budget sweep, sub-working-set
 budgets cap compact residency but reload every repeated access; fitting all
 eight resources removes reloads and halves resolution time without changing
 F1. With SDK routing, native and ordinary paths remain identical on 60/60
