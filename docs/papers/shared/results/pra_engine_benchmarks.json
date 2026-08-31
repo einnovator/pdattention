@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "registry_version": "2026-08-paper6-engine-native-v9",
+  "registry_version": "2026-08-paper6-engine-native-v10",
   "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
   "environment": {
     "vllm": {
@@ -7301,6 +7301,30 @@
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "NATURAL_QA_LIFECYCLE_SMOKE",
       "status": "lossless WARM 5/5; int8 COLD 5/5 (smoke; gated)"
+    },
+    {
+      "engine": "vLLM CUDA V1",
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "profile": "selected-text E0 + APC, concurrency 1--16",
+      "hardware": "NVIDIA RTX 5060 Laptop / 8 GB / WSL2",
+      "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
+      "status": "all controlled outputs exact; selected C16 91.9--93.5 req/s; native E2 open"
+    },
+    {
+      "engine": "TensorRT-LLM 1.2.1",
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "profile": "selected-text E0, concurrency 1--16",
+      "hardware": "NVIDIA RTX 5060 Laptop / 8 GB / WSL2",
+      "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
+      "status": "all controlled outputs exact; selected C16 79.6--81.9 req/s; native E2 open"
+    },
+    {
+      "engine": "OpenVINO GenAI 2026.3.1",
+      "model": "Qwen/Qwen2-0.5B-Instruct-int4-ov",
+      "profile": "selected-text E0, continuous batching 1--16",
+      "hardware": "Intel i7-1355U / Iris Xe",
+      "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
+      "status": "selected controlled recovery exact; C16 8.4--14.2 req/s; native E2 blocked"
     }
   ],
   "rows": [

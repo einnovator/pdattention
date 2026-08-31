@@ -266,10 +266,34 @@ def build_registry() -> dict:
             "evidence_tier": "NATURAL_QA_LIFECYCLE_SMOKE",
             "status": lifecycle_status("mlx-lm", "gemma-3-1b-it-4bit"),
         },
+        {
+            "engine": "vLLM CUDA V1",
+            "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "profile": "selected-text E0 + APC, concurrency 1--16",
+            "hardware": "NVIDIA RTX 5060 Laptop / 8 GB / WSL2",
+            "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
+            "status": "all controlled outputs exact; selected C16 91.9--93.5 req/s; native E2 open",
+        },
+        {
+            "engine": "TensorRT-LLM 1.2.1",
+            "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "profile": "selected-text E0, concurrency 1--16",
+            "hardware": "NVIDIA RTX 5060 Laptop / 8 GB / WSL2",
+            "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
+            "status": "all controlled outputs exact; selected C16 79.6--81.9 req/s; native E2 open",
+        },
+        {
+            "engine": "OpenVINO GenAI 2026.3.1",
+            "model": "Qwen/Qwen2-0.5B-Instruct-int4-ov",
+            "profile": "selected-text E0, continuous batching 1--16",
+            "hardware": "Intel i7-1355U / Iris Xe",
+            "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
+            "status": "selected controlled recovery exact; C16 8.4--14.2 req/s; native E2 blocked",
+        },
     ]
     return {
         "schema_version": "1.0",
-        "registry_version": "2026-08-paper6-engine-native-v9",
+        "registry_version": "2026-08-paper6-engine-native-v10",
         "description": "Cross-engine E0/G10 smoke plus separately tiered native execution evidence.",
         "environment": metadata,
         "vllm_global_prefix_cache_hit_rates_percent": vllm_rates,
@@ -1528,34 +1552,50 @@ def write_latest_engine_tables(registry: dict) -> None:
         "\n".join(curve_lines) + "\n", encoding="utf-8"
     )
 
-    product_lines = [
-        r"\begin{tabularx}{\linewidth}{lYYYY}",
-        r"\toprule",
-        r"Engine/model & Hardware & Profile & Evidence tier & Status \\",
-        r"\midrule",
+    def product_table(rows: list[dict]) -> str:
+        lines = [
+            r"\begin{tabularx}{\linewidth}{lYYYY}",
+            r"\toprule",
+            r"Engine/model & Hardware & Profile & Evidence tier & Status \\",
+            r"\midrule",
+        ]
+        for row in rows:
+            model_name = row["model"].split("/")[-1]
+            model = {
+                "Qwen3-0.6B-4bit": "Qwen3-0.6B",
+                "Qwen3-0.6B": "Qwen3-0.6B",
+                "Qwen3-1.7B-4bit": "Qwen3-1.7B",
+                "Llama-3.2-1B-Instruct-4bit": "Llama-3.2-1B",
+                "gemma-3-1b-it-4bit": "Gemma-3-1B",
+            }.get(model_name, model_name)
+            hardware = str(row["hardware"])
+            if hardware.startswith("Apple M5 MacBook Pro"):
+                hardware = "Apple M5 / 16 GB / Metal 4"
+            evidence = row["evidence_tier"].replace("_", " ").lower()
+            lines.append(
+                f"{_tex_escape(row['engine'])} / {_tex_escape(model)} & "
+                f"{_tex_escape(hardware)} & {_tex_escape(row['profile'])} & "
+                f"{_tex_escape(evidence)} & "
+                f"{_tex_escape(row['status'])} \\\\"
+            )
+        lines.extend([r"\bottomrule", r"\end{tabularx}"])
+        return "\n".join(lines) + "\n"
+
+    native_rows = [
+        row
+        for row in registry["product_matrix"]
+        if row["evidence_tier"] != "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE"
     ]
-    for row in registry["product_matrix"]:
-        model_name = row["model"].split("/")[-1]
-        model = {
-            "Qwen3-0.6B-4bit": "Qwen3-0.6B",
-            "Qwen3-0.6B": "Qwen3-0.6B",
-            "Qwen3-1.7B-4bit": "Qwen3-1.7B",
-            "Llama-3.2-1B-Instruct-4bit": "Llama-3.2-1B",
-            "gemma-3-1b-it-4bit": "Gemma-3-1B",
-        }.get(model_name, model_name)
-        hardware = str(row["hardware"])
-        if hardware.startswith("Apple M5 MacBook Pro"):
-            hardware = "Apple M5 / 16 GB / Metal 4"
-        evidence = row["evidence_tier"].replace("_", " ").lower()
-        product_lines.append(
-            f"{_tex_escape(row['engine'])} / {_tex_escape(model)} & "
-            f"{_tex_escape(hardware)} & {_tex_escape(row['profile'])} & "
-            f"{_tex_escape(evidence)} & "
-            f"{_tex_escape(row['status'])} \\\\"
-        )
-    product_lines.extend([r"\bottomrule", r"\end{tabularx}"])
+    bounded_e0_rows = [
+        row
+        for row in registry["product_matrix"]
+        if row["evidence_tier"] == "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE"
+    ]
     (RESULTS / "generated_engine_product_matrix.tex").write_text(
-        "\n".join(product_lines) + "\n", encoding="utf-8"
+        product_table(native_rows), encoding="utf-8"
+    )
+    (RESULTS / "generated_engine_e0_product_matrix.tex").write_text(
+        product_table(bounded_e0_rows), encoding="utf-8"
     )
 
 

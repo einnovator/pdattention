@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_engine_registry_separates_smoke_from_native_evidence() -> None:
     registry = build_registry()
-    assert registry["registry_version"] == "2026-08-paper6-engine-native-v9"
+    assert registry["registry_version"] == "2026-08-paper6-engine-native-v10"
     assert len(registry["rows"]) == 15
     assert {row["engine"] for row in registry["rows"]} == {"vllm", "sglang", "mlx"}
     assert all(row["evidence_tier"] == "SMOKE" for row in registry["rows"])
@@ -64,13 +64,24 @@ def test_engine_registry_separates_smoke_from_native_evidence() -> None:
         row["exact_output_parity"] == 1.0
         for row in expanded_matched["parity"]
     )
-    assert len(registry["product_matrix"]) == 10
+    assert len(registry["product_matrix"]) == 13
     assert any(
         row["model"].endswith("gemma-3-1b-it-4bit")
         and row["engine"] == "SGLang MLX"
         and "blocked before PRA" in row["status"]
         for row in registry["product_matrix"]
     )
+    bounded_e0 = [
+        row
+        for row in registry["product_matrix"]
+        if row["evidence_tier"] == "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE"
+    ]
+    assert {row["engine"] for row in bounded_e0} == {
+        "vLLM CUDA V1",
+        "TensorRT-LLM 1.2.1",
+        "OpenVINO GenAI 2026.3.1",
+    }
+    assert all("E0" in row["profile"] for row in bounded_e0)
 
 
 def test_selected_text_recovers_codeword_with_fewer_tokens_than_full_context() -> None:

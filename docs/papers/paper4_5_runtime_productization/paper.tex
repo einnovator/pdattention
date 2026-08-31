@@ -1660,8 +1660,12 @@ SGLang & provider E1 & Companion Paper 6.1 measures native runner integration;
 local Radix-prefix and external-HiCache composition is controlled\\
 MLX & provider E1 & Companion Paper 6.2 measures native layer profiles,
 persistence, and concurrency; Paper 4.5 remains HF-centered\\
-FreeToken/TensorRT-LLM & E0/architectural & Remote fallback or planned provider;
-no native Paper 4.5 result\\
+TensorRT-LLM & provider E0; native architectural & Companion Paper 6.4 measures
+CUDA selected-text load through concurrency 16; native attachment remains open\\
+OpenVINO GenAI & provider E0 & Companion Paper 6.3 measures CPU/GPU generation
+and continuous batching; the public native non-prefix attachment seam is blocked\\
+FreeToken & E0/architectural & Remote fallback or planned provider; no native
+Paper 4.5 result\\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1669,11 +1673,31 @@ no native Paper 4.5 result\\
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Measured companion engine matrix. These rows calibrate engine
-realizations; they do not promote Paper 4.5's HF-centered profile evidence.}
+\caption{Measured companion native-mechanism matrix. These rows calibrate
+engine realizations; they do not promote Paper 4.5's HF-centered profile evidence.}
 \input{../shared/results/generated_engine_product_matrix.tex}
 \label{tab:engine-product-matrix}
 \end{table}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Bounded E0 serving matrix. These selected-text baselines do not imply
+native non-prefix K/V support.}
+\input{../shared/results/generated_engine_e0_product_matrix.tex}
+\label{tab:engine-e0-product-matrix}
+\end{table}
+
+The engine registry now includes bounded-load E0 rows for vLLM CUDA,
+TensorRT-LLM, and OpenVINO GenAI. On the shared RTX 5060 Laptop GPU, 66-token
+vLLM selection sustains 91.9--93.5 requests/s at concurrency 16 as the matched
+full prompt grows to 1,274 tokens; independent full-context throughput falls
+to 10.0 requests/s with 1.41 s TTFT p99. TensorRT-LLM reaches 79.6--81.9
+requests/s for its 66-token selected condition at the medium pressure point.
+OpenVINO selection remains exact through concurrency 16 on Iris Xe, while
+full-context correctness varies with distractor pressure. These are engine
+realization measurements at E0. They strengthen the selected-text baseline
+that native E2 must beat, but do not promote any CUDA or OpenVINO row to E2.
 
 \begin{table}[H]
 \centering
