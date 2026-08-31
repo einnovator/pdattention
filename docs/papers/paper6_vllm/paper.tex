@@ -67,6 +67,54 @@ lossless WARM output and array parity with restart recovery; int8 COLD is exact
 in only 17/80 sequences and is not promoted as a default.
 \end{abstract}
 
+\section{Qualification Snapshot}
+
+The engine-specific question is whether query-addressed native pages add value
+beyond vLLM's strong selected-text E0 path and automatic prefix caching. The
+validated Metal path is E2: it consumes selected non-prefix K/V through native
+paged attention while keeping those pages scheduler-disjoint. Across 149
+questions and four execution schedules, it preserves 2,086/2,086 E0 output
+pairs while removing 90.5--93.0\% of visible prompt tokens. Its macro E2/E0
+cost ratios are 1.009 cold, 0.997 warm, 1.003 multi-query, and 0.991 concurrent.
+This is near economic parity, not a general speedup. The CUDA serving path is
+still E0 because native page attachment and LMCache integration remain open.
+
+\begin{center}
+\small
+\begin{tabularx}{0.96\linewidth}{lX}
+\toprule
+Integration level & E2 validated on vLLM-Metal; generic CUDA provider E0\\
+Model/hardware & Four pinned checkpoints on Apple M5; CUDA E0 pressure on RTX 5060 Laptop GPU\\
+Workload & QASPER, HotpotQA, and 2WikiMultiHopQA; frozen selections\\
+Quality & 2,086/2,086 exact E0/E2 pairs; unchanged paired F1\\
+Context reduction & 90.5--93.0\% fewer visible prompt tokens\\
+TTFT/ITL tails & \texttt{NOT\_MEASURED} in the common matched cohort\\
+Throughput & Concurrent E2/E0 inverse-cost ratio 0.991 on Metal\\
+Peak memory & \texttt{NOT\_MEASURED} end to end; native page residency controlled\\
+Reuse & APC-matched E0 and native HOT pages; LMCache \texttt{NOT\_MEASURED}\\
+Main limitation & CUDA-native E2, connectors, HBM telemetry, and continuous batching\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{PRA primer.}
+A PRA semantic resource has stable identity, version, authorization scope, and
+selectable token intervals. E0 freezes retrieval and renders the selected
+evidence as ordinary visible text. E1 transports logical resource metadata but
+still uses an ordinary model path. E2 consumes the same frozen selection as
+detached native K/V with correct positions, masks, cache topology, one
+normalization, and request-local cleanup. E3 additionally gives the engine
+scheduler ownership of placement, promotion, eviction, sharing, affinity, and
+batching. Prefix K/V and PRA K/V remain separate state classes.
+
+\paragraph{Deployment recommendation.}
+\textbf{Best validated deployment:} selected-text E0 on CUDA for general
+serving; pinned E2 on Metal when native non-disclosure or reuse is required.
+\textbf{Use when:} selection is stable and selected resources repeat across
+queries. \textbf{Do not use when:} a cold one-shot request gains no reuse or a
+deployment assumes generic vLLM labels imply native PRA. \textbf{Main remaining
+gate:} official CUDA page/connector integration under scheduler pressure.
+
 \section{Introduction}
 Long-running LLM services face two related but distinct memory problems.
 Sequential request KV must be allocated, paged, reused, and evicted. Separately,

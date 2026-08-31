@@ -70,6 +70,53 @@ cleanup. A 1,125-request long-session extension confirms an eight-resource
 working-set threshold, while selective int8 remains below the lossless gate.
 \end{abstract}
 
+\section{Qualification Snapshot}
+
+The engine-specific question is whether selected native K/V can improve the
+quality--memory--latency frontier in Apple unified memory beyond selected-text
+E0. The live native executor is validated at E2 and preserves 2,086/2,086
+matched E0 outputs while removing 90.4--93.0\% of visible prompt tokens. The
+current unfused path remains slower: macro E2/E0 cost ratios are 1.043 cold,
+1.139 warm, 1.133 multi-query, and 1.072 concurrent. E0 is therefore the default
+when visible selected text is acceptable; E2 is a functional native mechanism
+whose memory and non-disclosure properties require workload-specific valuation.
+
+\begin{center}
+\small
+\begin{tabularx}{0.96\linewidth}{lX}
+\toprule
+Integration level & E2 validated in-process; no E3 scheduler claim\\
+Model/hardware & Qwen, Llama, and Gemma-family checks on Apple M5 unified memory\\
+Workload & QASPER, HotpotQA, and 2WikiMultiHopQA; frozen selections\\
+Quality & 2,086/2,086 exact E0/E2 pairs; unchanged paired F1\\
+Context reduction & 90.4--93.0\% fewer visible prompt tokens\\
+TTFT/ITL tails & Online gateway measured separately; common matched tails \texttt{NOT\_MEASURED}\\
+Throughput & Concurrent E2 inverse-cost ratio 1.072, or 93.3\% of E0 rate\\
+Peak memory & Unified-memory components and controlled pressure measured; full live frontier open\\
+Reuse & HOT/WARM lifecycle and restart recovery measured\\
+Main limitation & Install segmented one-softmax attention in live decode and rerun pressure\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{PRA primer.}
+PRA gives each durable semantic resource stable identity, version, authorization,
+and selectable intervals. E0 renders one frozen selection as visible text. E1
+preserves logical identity while executing an ordinary model path. E2 consumes
+the identical selection as detached native K/V with correct positions, masks,
+cache topology, one normalization, cleanup, and isolation. E3 adds a scheduler
+that owns placement, promotion, eviction, sharing, and batching. MLX prompt or
+rotating caches retain sequential local state; PRA holds independently selected
+archive state.
+
+\paragraph{Deployment recommendation.}
+\textbf{Best validated deployment:} E0 selected text for latency-sensitive
+serving; E2 for bounded native residency, non-disclosure, or persistent resource
+reuse after profiling. \textbf{Use when:} a selected archive should remain
+outside the visible prompt. \textbf{Do not use when:} a cold one-shot request is
+expected to outperform E0 without reuse. \textbf{Main remaining gate:} live
+fused attention plus a joint local-window/PRA-budget/consumer-layer frontier.
+
 \section{Introduction}
 MLX provides an efficient array framework and model runtime for Apple
 Silicon~\cite{hannun2023mlx}. MLX-LM adds explicit prompt caches, rotating K/V,

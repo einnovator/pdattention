@@ -23,7 +23,7 @@ The implementation adds:
 - byte-bounded LRU accounting and request-stage profiling;
 - eager and `torch.compile` gather gates;
 - a scheduler-unaware vLLM handoff contract;
-- a standalone G00/G10/G01/G11 gateway and E0/E1 capability adapters;
+- a standalone G00/G10/G01/G11 gateway and E0/E1/E2 capability adapters;
 - engine-type-aware cache/session profiles independent of PRA integration depth;
 - prepared gateway sessions, explicit FULL/DELTA/AUTO history, resource
   ADD/UPDATE/REMOVE/UNCHANGED operations, stable cache-affinity hints, and
@@ -87,6 +87,8 @@ python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwe
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model gemma --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --finalize-only
+python -m experiments.paper4_5_runtime.build_product_matrix_v2
+python -m experiments.paper4_5_runtime.build_engine_qualification
 python -m experiments.paper4_5_runtime.summarize_runtime
 ```
 
@@ -114,11 +116,11 @@ OpenAI-compatible streaming; request-owned references remain active until decode
 or cancellation cleanup completes. G10 is an
 explicit text-materialization fallback; it is not native-K/V PRA. FreeToken is
 an E0 protocol target in this artifact. Companion Papers 6.1 and 6.2 measure
-SGLang-MLX and MLX-LM E1 mechanisms separately; those runs do not change Paper
+SGLang-MLX and MLX-LM E2 mechanisms separately; those runs do not change Paper
 4.5's HF-centered evidence tier. The gateway experiment measures
 exact logical-prefix stability and transport bytes with a simulated
 adapter. It does not report a physical engine cache hit, scheduler affinity,
 or remote-engine speedup. `pra runtime serve MODEL -e ENGINE` is now the common
 launch path. vLLM remains conservatively E0; companion SGLang and MLX providers
-advertise measured E1 mechanism support without importing those papers' metrics
+advertise measured E2 mechanism support without importing those papers' metrics
 into Paper 4.5.

@@ -228,7 +228,7 @@ class HFRuntimeProvider(RuntimeProvider):
         return PRAEngineCapabilities(
             adapter="hf",
             engine_type=EngineType.HUGGINGFACE,
-            integration_level="E1",
+            integration_level="E2",
             prefix_cache_mode=PrefixCacheMode.SESSION_STATE,
             session_state=True,
             logical_refs=True,
@@ -349,7 +349,7 @@ class SGLangRuntimeProvider(CommandRuntimeProvider):
     base_arguments = ()
     engine_enum = EngineType.SGLANG
     native_kv = True
-    integration_level = "E1"
+    integration_level = "E2"
     prefix_cache_mode = PrefixCacheMode.STATELESS
 
 
@@ -361,7 +361,7 @@ class MLXRuntimeProvider(CommandRuntimeProvider):
     base_arguments = ()
     engine_enum = EngineType.MLX
     native_kv = True
-    integration_level = "E1"
+    integration_level = "E2"
     prefix_cache_mode = PrefixCacheMode.SESSION_STATE
 
 

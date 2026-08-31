@@ -192,6 +192,7 @@ def run_serving_benchmark(
     repeats: int,
     timeout_seconds: float = 180.0,
     use_cache_salt: bool = False,
+    hardware_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run fixed conditions and aggregate only statistically defensible fields."""
 
@@ -222,14 +223,28 @@ def run_serving_benchmark(
     for condition in benchmark_messages():
         rows = [sample for sample in samples if sample.condition == condition]
         ttft = [row.ttft_ms for row in rows if row.ttft_ms is not None]
+        itl = [row.mean_itl_ms for row in rows if row.mean_itl_ms is not None]
         latency = [row.completion_latency_ms for row in rows]
+        elapsed_seconds = sum(latency) / 1000.0
+        request_rate = len(rows) / elapsed_seconds if elapsed_seconds > 0 else None
+        task_success = statistics.fmean(
+            float(row.expected_answer_present) for row in rows
+        )
+        completion_tokens = [
+            row.completion_tokens for row in rows if row.completion_tokens is not None
+        ]
+        output_rate = (
+            sum(completion_tokens) / elapsed_seconds
+            if elapsed_seconds > 0 and len(completion_tokens) == len(rows)
+            else None
+        )
+        cached_tokens_measured = any(row.cached_tokens is not None for row in rows)
         aggregates.append(
             {
                 "condition": condition,
                 "sample_count": len(rows),
-                "quality_success_rate": statistics.fmean(
-                    float(row.expected_answer_present) for row in rows
-                ),
+                "task_success": task_success,
+                "quality_success_rate": task_success,
                 "cold_ttft_ms": rows[0].ttft_ms,
                 "warm_ttft_ms_mean": (
                     statistics.fmean(
@@ -239,7 +254,22 @@ def run_serving_benchmark(
                     else None
                 ),
                 "ttft_ms_p50": percentile(ttft, 0.5),
+                "ttft_ms_p95": percentile(ttft, 0.95),
+                "ttft_ms_p99": percentile(ttft, 0.99),
+                "itl_ms_p50": percentile(itl, 0.5),
+                "itl_ms_p95": percentile(itl, 0.95),
+                "itl_ms_p99": percentile(itl, 0.99),
                 "completion_latency_ms_p50": percentile(latency, 0.5),
+                "completion_latency_ms_p95": percentile(latency, 0.95),
+                "completion_latency_ms_p99": percentile(latency, 0.99),
+                "requests_per_second": request_rate,
+                "successful_requests_per_second": (
+                    None if request_rate is None else request_rate * task_success
+                ),
+                "successful_tasks_per_accelerator_hour": (
+                    None if request_rate is None else 3600.0 * request_rate * task_success
+                ),
+                "output_tokens_per_second": output_rate,
                 "mean_prompt_tokens": (
                     statistics.fmean(
                         row.prompt_tokens for row in rows if row.prompt_tokens is not None
@@ -254,7 +284,12 @@ def run_serving_benchmark(
                     if any(row.cached_tokens is not None for row in rows)
                     else None
                 ),
-                "tail_latency_status": "NOT_REPORTED_SAMPLE_TOO_SMALL",
+                "cache_metric_status": (
+                    "MEASURED" if cached_tokens_measured else "NOT_MEASURED"
+                ),
+                "tail_latency_status": (
+                    "MEASURED" if len(rows) >= 20 else "CONTROLLED_SAMPLE_TOO_SMALL"
+                ),
             }
         )
     return {
@@ -266,6 +301,7 @@ def run_serving_benchmark(
         "repeats": repeats,
         "evidence_tier": "SMOKE",
         "measurement_status": "MEASURED",
+        "hardware": dict(hardware_metadata or {}),
         "cache_salt_enabled": use_cache_salt,
         "conditions": list(benchmark_messages()),
         "samples": [sample.to_dict() for sample in samples],
