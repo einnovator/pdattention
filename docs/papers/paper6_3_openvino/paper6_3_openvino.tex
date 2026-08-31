@@ -31,7 +31,10 @@ selected context retains 100\% controlled recovery and 188.9 output tokens/s,
 whereas shared full context follows a decoy in every request and reaches 141.1
 output tokens/s. A separate 360-request natural cohort covers QASPER, HotpotQA,
 and 2WikiMultiHopQA; on Hotpot, selected context raises token F1 from 0.080 to
-0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. The result establishes a reproducible transport
+0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. A
+three-point pressure curve keeps selection at 63 tokens while full context
+grows from 417 to 831 tokens; selected recovery remains exact throughout. The
+result establishes a reproducible transport
 baseline and a precise extension boundary; it does not establish native
 OpenVINO PRA parity or memory savings.
 \end{abstract}
@@ -247,6 +250,44 @@ context success ranges from 0.30 to 0.51. At concurrency 16, selected reaches
 8.36 requests/s, 124.9 output tokens/s, and 440 ms TTFT p99; full reaches 12.2,
 129.3, and 375 ms but only 0.45 success. This campaign therefore establishes a
 quality-adjusted selected-context advantage, not a blanket latency win.
+
+\subsection{Context-pressure curve}
+To separate concurrency from retained-context size, we repeat the peak-load
+endpoint at three frozen prompt constructions. The selected condition is
+unchanged at 63 input tokens; the full condition grows from 417 to 677 and
+831 tokens. Each point uses concurrency 16 and ten measured waves after
+explicit warmup.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{OpenVINO context pressure at concurrency 16. Success is reported
+beside throughput because the model sometimes follows a distractor and emits
+a shorter answer.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_context_pressure_table.tex}}
+\label{tab:openvino-context-pressure}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_3_openvino/context_pressure.png}
+\caption{Peak-load throughput and TTFT tail as full visible context grows.
+Selected context remains fixed; solid lines share one resource and dashed
+lines use independent resource identities.}
+\label{fig:openvino-context-pressure}
+\end{figure}
+
+Selected evidence remains exact at all three pressure points. Its shared
+throughput ranges from 11.1 to 14.2 requests/s and TTFT p99 from 233 to
+330 ms without increasing visible input. Full-context TTFT p99 grows from
+169 ms at 417 tokens to 483 ms at 831 tokens for a shared resource, and from
+247 to 530 ms for independent resources. Full-context correctness is not
+monotonic: it is exact at the smallest and largest shared points but follows a
+decoy throughout the middle shared point. This is a prompt-order/model effect,
+not evidence loss, and prevents interpreting raw throughput as a monotonic
+quality curve. The stable result is narrower: selection bounds input work and
+preserves the controlled target as retained context grows.
 
 \section{Interpretation}
 OpenVINO prefix caching and PRA selection address different reuse axes. When
