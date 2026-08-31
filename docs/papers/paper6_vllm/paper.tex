@@ -730,12 +730,12 @@ scheduler telemetry.
 
 A reproducible platform audit separates those boundaries from implementation
 status. vLLM-Metal 0.28.0 is available on the M5 and the native/APC path above
-is measured there. LMCache is not installed, the host has no CUDA device, and
-the Windows CUDA host is a compute-capability 5.0 GTX 950M. The production gate
-therefore remains
-\texttt{BLOCKED\_REQUIRES\_CUDA\_COMPUTE\_CAPABILITY\_8\_OR\_NEWER}; HBM,
-PCIe/NVLink, LMCache, tensor-parallel, and CUDA tail-latency columns remain null
-rather than being estimated from unified-memory Metal runs.
+is measured there. CUDA E0 is now measured on an RTX 5060 Laptop GPU; vLLM
+0.28.0 requires its V1-runner fallback on the tested WSL configuration because
+the V2 runner's UVA allocation fails at startup. CUDA-native PRA page
+attachment and LMCache remain unimplemented, so HBM decomposition,
+PCIe/NVLink transfer, connector promotion, and native-E2 CUDA tails remain
+explicitly unmeasured rather than inferred from Metal or E0 runs.
 
 \section{Falsification and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
@@ -780,9 +780,11 @@ live V1 generation, including wrong-memory causality and post-request isolation.
 Native pages also coexist with APC and preserve request isolation through
 concurrency eight when APC identity includes the hidden selection. PRA-vLLM is
 therefore an engine-native controlled prototype on Metal with matched E0/E2
-quality over two Qwen3 sizes. The next decisive replication is a different
-tokenizer/model family and CUDA, followed by online tail latency and connector
-measurements before broader economic claims.
+quality across Qwen, Llama, and Gemma checkpoints. CUDA E0 is reproduced on
+current NVIDIA hardware, including a vLLM 0.28 compatibility rerun, but
+CUDA-native E2 is still open. The next decisive step is native page attachment
+or an official connector on CUDA, followed by matched online tail, HBM,
+transfer, and continuous-batching measurements before broader economic claims.
 
 \begin{thebibliography}{9}
 \bibitem{kwon2023vllm}
