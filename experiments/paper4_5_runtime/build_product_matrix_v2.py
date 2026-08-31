@@ -504,6 +504,81 @@ def _warm_lifecycle_rows() -> list[ProductMatrixRow]:
     return rows
 
 
+def _airllm_natural_rows() -> list[ProductMatrixRow]:
+    """Import the bounded AirLLM/HF natural E0/E2 CUDA follow-up."""
+
+    path = RESULTS / "paper6_6_airllm/tinyllama_cuda_natural_summary.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    provenance = str(path.relative_to(ROOT)).replace("\\", "/")
+    rows: list[ProductMatrixRow] = []
+    for comparison in payload["comparisons"]:
+        for integration_level in ("E0", "E2"):
+            native = integration_level == "E2"
+            prefix = "e2" if native else "e0"
+            rows.append(
+                ProductMatrixRow(
+                    row_id=(
+                        "airllm-natural-"
+                        f"{comparison['dataset']}-{comparison['regime']}-{integration_level.lower()}"
+                    ),
+                    model_family="llama",
+                    model_id=str(payload["model_id"]),
+                    model_revision=None,
+                    model_size=1_100_000_000,
+                    model_variant="airllm_hf_layer_streamed",
+                    engine="airllm",
+                    engine_version="3.3.0",
+                    hardware=f"{payload['device']} 4 GiB",
+                    profile="REFERENCE_CORRECTNESS",
+                    profile_status="RESEARCH_ONLY" if native else "CALIBRATION_PENDING",
+                    workload=f"selector_frozen_natural/{comparison['regime']}",
+                    dataset=str(comparison["dataset"]),
+                    quality_metric="token_f1",
+                    integration_level=integration_level,
+                    representation="E2_HOT" if native else "E0_SELECTED",
+                    quantization="float16",
+                    accelerator=str(payload["device"]),
+                    quality_score=float(comparison[f"{prefix}_token_f1"]),
+                    f1=float(comparison[f"{prefix}_token_f1"]),
+                    task_success=float(comparison[f"{prefix}_answer_containment"]),
+                    exact_pair_parity=float(comparison["exact_output_pair_parity"]),
+                    visible_tokens=float(
+                        comparison["e2_visible_tokens"]
+                        if native
+                        else comparison["e0_visible_tokens"]
+                    ),
+                    active_kv_tokens=(
+                        float(comparison["e2_native_tokens"]) if native else None
+                    ),
+                    peak_device_memory_bytes=float(
+                        comparison[f"{prefix}_peak_cuda_bytes"]
+                    ),
+                    completion_ms=1000.0
+                    * float(comparison[f"{prefix}_completion_seconds"]),
+                    completion_p50_ms=1000.0
+                    * float(comparison[f"{prefix}_completion_seconds"]),
+                    sample_count=int(comparison["samples_per_condition"]),
+                    seed_count=1,
+                    evidence_tier=str(payload["evidence_tier"]),
+                    evidence_provenance=provenance,
+                    experiment_status="NATURAL_WORKLOAD",
+                    verified_invariants=(
+                        "selector_frozen",
+                        "matched_selection",
+                        "native_kv_consumed" if native else "ordinary_selected_text",
+                    ),
+                    notes=(
+                        f"visible_reduction={comparison['visible_token_reduction']:.6f}; "
+                        f"e2_over_e0_completion={comparison['e2_over_e0_completion']:.6f}; "
+                        "three-example transport cohort; semantic parity open"
+                    ),
+                )
+            )
+    return rows
+
+
 def build_matrix() -> ProductMatrix:
     profile_path = RESULTS / "paper4_5_runtime/pra_profile_benchmarks.json"
     engine_path = RESULTS / "pra_engine_benchmarks.json"
@@ -513,6 +588,7 @@ def build_matrix() -> ProductMatrix:
     rows.extend(_engine_row(row, i) for i, row in enumerate(engines, 1))
     rows.extend(_matched_rows())
     rows.extend(_warm_lifecycle_rows())
+    rows.extend(_airllm_natural_rows())
     return ProductMatrix("2026-08-engine-qualification-v3", tuple(rows))
 
 

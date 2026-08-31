@@ -26,6 +26,15 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
         for row in matrix.rows
         if row.workload.startswith("matched_e0_e2/")
     } == {"vllm", "sglang", "mlx"}
+    airllm = [row for row in matrix.rows if row.engine == "airllm"]
+    assert len(airllm) == 12
+    assert {row.integration_level for row in airllm} == {"E0", "E2"}
+    assert all(row.exact_pair_parity == 0.0 for row in airllm)
+    assert all(
+        row.profile_status == "RESEARCH_ONLY"
+        for row in airllm
+        if row.integration_level == "E2"
+    )
 
 
 def test_long_transport_delta_survives_resync_and_updates() -> None:
