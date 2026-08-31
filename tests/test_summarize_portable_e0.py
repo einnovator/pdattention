@@ -35,7 +35,9 @@ def test_load_table_selects_policy_endpoints() -> None:
     template = {
         "representation": "pra_only",
         "workload": "shared_resource",
+        "quality_success_rate": 1,
         "request_throughput_s": 10,
+        "output_throughput_tokens_s": 40,
         "ttft_ms": {"p50": 20, "p99": 40},
         "itl_ms": {"p99": 5},
     }
@@ -50,3 +52,22 @@ def test_load_table_selects_policy_endpoints() -> None:
     assert "Shared & Selected & 1" in table
     assert "Shared & Selected & 16" in table
     assert "Shared & Selected & 2" not in table
+
+
+def test_load_table_accepts_openvino_flat_tails() -> None:
+    payload = {
+        "aggregates": [
+            {
+                "representation": "pra_only",
+                "workload": "shared_resource",
+                "concurrency": 1,
+                "quality_success_rate": 0.5,
+                "request_throughput_s": 2,
+                "output_throughput_tokens_s": 8,
+                "ttft_ms_p50": 10,
+                "ttft_ms_p99": 30,
+                "tpot_ms_p99": 4,
+            }
+        ]
+    }
+    assert "0.50 & 2.00 & 8.0 & 10.0 & 30.0 & 4.0" in summary._load_table(payload)

@@ -24,8 +24,22 @@ def _load(path: Path) -> Mapping[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _tail(row: Mapping[str, object], metric: str, percentile: str) -> float:
+    nested = row.get(metric)
+    if isinstance(nested, Mapping):
+        return float(nested[percentile])
+    flat_name = f"{metric}_{percentile}"
+    if flat_name in row:
+        return float(row[flat_name])
+    if metric == "itl_ms" and f"tpot_ms_{percentile}" in row:
+        return float(row[f"tpot_ms_{percentile}"])
+    raise KeyError(f"Missing {metric} {percentile} in aggregate row")
+
+
 def _natural_table(payload: Mapping[str, object]) -> str:
     rows = [
+        r"\begin{tabular}{llrrrrr}",
+        r"\toprule",
         r"Dataset & Context & F1 & Contain. & Prompt tok. & TTFT p50 & TTFT p95 \\",
         r"\midrule",
     ]
@@ -41,12 +55,15 @@ def _natural_table(payload: Mapping[str, object]) -> str:
                 float(row["ttft_ms"]["p95"]),
             )
         )
+    rows.extend([r"\bottomrule", r"\end{tabular}"])
     return "\n".join(rows) + "\n"
 
 
 def _load_table(payload: Mapping[str, object]) -> str:
     rows = [
-        r"Workload & Context & $C$ & Req/s & TTFT p50 & TTFT p99 & ITL p99 \\",
+        r"\begin{tabular}{llrrrrrrr}",
+        r"\toprule",
+        r"Workload & Context & $C$ & Succ. & Req/s & Out tok/s & TTFT p50 & TTFT p99 & ITL p99 \\",
         r"\midrule",
     ]
     wanted = {1, 8, 16}
@@ -54,16 +71,19 @@ def _load_table(payload: Mapping[str, object]) -> str:
         if int(row["concurrency"]) not in wanted:
             continue
         rows.append(
-            "{} & {} & {} & {:.2f} & {:.1f} & {:.1f} & {:.1f} \\\\".format(
+            "{} & {} & {} & {:.2f} & {:.2f} & {:.1f} & {:.1f} & {:.1f} & {:.1f} \\\\".format(
                 WORKLOAD_LABELS[str(row["workload"])],
                 REPRESENTATION_LABELS[str(row["representation"])],
                 int(row["concurrency"]),
+                float(row["quality_success_rate"]),
                 float(row["request_throughput_s"]),
-                float(row["ttft_ms"]["p50"]),
-                float(row["ttft_ms"]["p99"]),
-                float(row["itl_ms"]["p99"]),
+                float(row["output_throughput_tokens_s"]),
+                _tail(row, "ttft_ms", "p50"),
+                _tail(row, "ttft_ms", "p99"),
+                _tail(row, "itl_ms", "p99"),
             )
         )
+    rows.extend([r"\bottomrule", r"\end{tabular}"])
     return "\n".join(rows) + "\n"
 
 
@@ -97,7 +117,7 @@ def _plot_load(payload: Mapping[str, object], output: Path) -> None:
             )
             axes[1].plot(
                 x,
-                [float(row["ttft_ms"]["p99"]) for row in rows],
+                [_tail(row, "ttft_ms", "p99") for row in rows],
                 color=colors[representation],
                 linestyle=styles[workload],
                 marker="o",
