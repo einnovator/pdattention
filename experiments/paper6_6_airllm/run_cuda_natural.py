@@ -233,6 +233,10 @@ def _write(path: Path, report: Mapping[str, Any]) -> None:
 
 
 def _summary(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    def optional_mean(selected: list[Mapping[str, Any]], key: str) -> float | None:
+        values = [float(row[key]) for row in selected if row.get(key) is not None]
+        return statistics.fmean(values) if values else None
+
     summaries: list[dict[str, Any]] = []
     keys = sorted({(str(row["dataset"]), str(row["condition"]), str(row["regime"])) for row in rows})
     for dataset, condition, regime in keys:
@@ -253,6 +257,8 @@ def _summary(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 "mean_token_f1": statistics.fmean(float(row["token_f1"]) for row in selected),
                 "mean_answer_containment": statistics.fmean(float(row["answer_containment"]) for row in selected),
                 "mean_completion_seconds": statistics.fmean(float(row["completion_seconds"]) for row in selected),
+                "mean_ttft_ms": optional_mean(selected, "ttft_ms"),
+                "mean_itl_ms": optional_mean(selected, "itl_ms"),
                 "mean_visible_prompt_tokens": statistics.fmean(float(row["visible_prompt_tokens"]) for row in selected),
                 "mean_native_kv_tokens": statistics.fmean(float(row["selected_native_kv_tokens"]) for row in selected),
                 "peak_cuda_bytes": max(int(row["peak_cuda_bytes"]) for row in selected),

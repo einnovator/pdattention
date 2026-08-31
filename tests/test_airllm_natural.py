@@ -4,6 +4,7 @@ import pytest
 
 from experiments.paper6_6_airllm.run_cuda_natural import (
     TokenTimingStreamer,
+    _summary,
     quality,
     select_entries,
 )
@@ -46,6 +47,31 @@ def test_token_timing_streamer_excludes_prompt_and_measures_decode() -> None:
         "itl_ms": pytest.approx(30.0),
         "timed_output_tokens": 3,
     }
+
+
+def test_airllm_summary_keeps_optional_token_timing_explicit() -> None:
+    base = {
+        "dataset": "qasper",
+        "condition": "selected_text_e0",
+        "regime": "cold_one_shot",
+        "exact_match": 0.0,
+        "token_f1": 0.25,
+        "answer_containment": 0.0,
+        "completion_seconds": 1.0,
+        "visible_prompt_tokens": 20,
+        "selected_native_kv_tokens": 0,
+        "peak_cuda_bytes": 100,
+    }
+
+    [measured] = _summary(
+        [{**base, "ttft_ms": 100.0, "itl_ms": 20.0}, {**base, "ttft_ms": 120.0, "itl_ms": 30.0}]
+    )
+    [legacy] = _summary([base])
+
+    assert measured["mean_ttft_ms"] == 110.0
+    assert measured["mean_itl_ms"] == 25.0
+    assert legacy["mean_ttft_ms"] is None
+    assert legacy["mean_itl_ms"] is None
 
 
 def test_airllm_natural_summary_compares_matched_e0_e2() -> None:
