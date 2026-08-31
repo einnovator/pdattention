@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "hardware_class": "apple_m4_pro_48gb",
+  "primary_models": [
+    {
+      "key": "qwen3_8b_q4",
+      "model_id": "mlx-community/Qwen3-8B-4bit",
+      "revision": "545dc4251c05440727734bcd94334791f6ab0192",
+      "parameters_billion": 8.2,
+      "download_gib": 4.306
+    },
+    {
+      "key": "qwen3_14b_q4",
+      "model_id": "mlx-community/Qwen3-14B-4bit",
+      "revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+      "parameters_billion": 14.8,
+      "download_gib": 7.752
+    },
+    {
+      "key": "qwen3_32b_q4",
+      "model_id": "mlx-community/Qwen3-32B-4bit",
+      "revision": "bcaaf7f538adf166c1080a2befdb4f6019f66639",
+      "parameters_billion": 32.8,
+      "download_gib": 17.179
+    },
+    {
+      "key": "qwen3_30b_a3b_q4",
+      "model_id": "mlx-community/Qwen3-30B-A3B-4bit",
+      "revision": "d388dead1515f5e085ef7a0431dd8fadf0886c57",
+      "parameters_billion": 30.5,
+      "active_parameters_billion": 3.3,
+      "download_gib": 16.01
+    }
+  ],
+  "datasets": ["qasper", "hotpotqa", "2wikimultihopqa"],
+  "seeds": [11, 23, 37, 53, 71],
+  "consumer_profiles": [
+    "all_layers",
+    "last_3_4",
+    "last_2_3",
+    "last_1_2",
+    "last_1_3",
+    "last_1_4"
+  ],
+  "selection": "annotated evidence documents, frozen within every E0/E2 comparison",
+  "evidence_tiers": {
+    "calibration": "MODEL_BACKED_NATURAL_QA_CALIBRATION",
+    "promotion": "NATURAL_WORKLOAD_CONFIRMATION_REQUIRED"
+  }
+}

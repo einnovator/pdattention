@@ -301,6 +301,27 @@ class MLXSelectedKVCache:
         return mx.concatenate((memory, local), axis=1)
 
 
+class MLXSegmentedSelectedKVCache(MLXSelectedKVCache):
+    """Selected-memory cache that keeps memory and local K/V physically separate.
+
+    Qwen3's ordinary MLX-LM attention asks a cache for one K/V pair.  The
+    segmented attention patch instead calls :meth:`update_and_fetch_segments`
+    and combines the two attention numerators and denominators without first
+    allocating ``concat(memory, local)``.
+    """
+
+    def update_and_fetch(self, keys, values):
+        raise RuntimeError(
+            "Segmented PRA cache requires an installed segmented attention patch."
+        )
+
+    def update_and_fetch_segments(self, keys, values):
+        """Return immutable selected K/V and updated local K/V as two segments."""
+
+        local_keys, local_values = self.local_cache.update_and_fetch(keys, values)
+        return self.memory.keys, self.memory.values, local_keys, local_values
+
+
 def segmented_selected_attention(
     queries: object,
     memory_keys: object,
@@ -309,6 +330,7 @@ def segmented_selected_attention(
     local_values: object,
     *,
     scale: float,
+    mask: object | None = None,
 ) -> object:
     """Attend over selected and local K/V with one exact normalization.
 
@@ -321,8 +343,40 @@ def segmented_selected_attention(
 
     import mlx.core as mx
 
-    memory_scores = (queries @ mx.swapaxes(memory_keys, -1, -2)) * scale
-    local_scores = (queries @ mx.swapaxes(local_keys, -1, -2)) * scale
+    query_heads = int(queries.shape[1])
+    kv_heads = int(memory_keys.shape[1])
+    if int(local_keys.shape[1]) != kv_heads:
+        raise ValueError("Selected and local K/V must use the same head count.")
+    if query_heads % kv_heads:
+        raise ValueError("Query head count must be divisible by K/V head count.")
+    groups = query_heads // kv_heads
+    batch, _, query_tokens, head_dim = queries.shape
+    grouped_queries = queries.reshape(batch, kv_heads, groups, query_tokens, head_dim)
+
+    def scores(keys):
+        expanded = mx.expand_dims(keys, axis=2)
+        return (grouped_queries @ mx.swapaxes(expanded, -1, -2)) * scale
+
+    memory_scores = scores(memory_keys)
+    local_scores = scores(local_keys)
+    if mask is not None:
+        memory_tokens = int(memory_keys.shape[2])
+        local_tokens = int(local_keys.shape[2])
+        if int(mask.shape[-1]) != memory_tokens + local_tokens:
+            raise ValueError("Segmented attention mask does not match K/V width.")
+        memory_mask = mask[..., :memory_tokens]
+        local_mask = mask[..., memory_tokens:]
+
+        def apply_mask(values, segment_mask):
+            segment_mask = segment_mask.reshape(
+                (1,) * (values.ndim - segment_mask.ndim) + segment_mask.shape
+            )
+            if segment_mask.dtype == mx.bool_:
+                return mx.where(segment_mask, values, mx.array(-1e9, values.dtype))
+            return values + segment_mask
+
+        memory_scores = apply_mask(memory_scores, memory_mask)
+        local_scores = apply_mask(local_scores, local_mask)
     maximum = mx.maximum(
         mx.max(memory_scores, axis=-1, keepdims=True),
         mx.max(local_scores, axis=-1, keepdims=True),
@@ -332,8 +386,15 @@ def segmented_selected_attention(
     denominator = mx.sum(memory_weights, axis=-1, keepdims=True) + mx.sum(
         local_weights, axis=-1, keepdims=True
     )
-    numerator = memory_weights @ memory_values + local_weights @ local_values
-    return numerator / denominator
+    expanded_memory_values = mx.expand_dims(memory_values, axis=2)
+    expanded_local_values = mx.expand_dims(local_values, axis=2)
+    numerator = (
+        memory_weights @ expanded_memory_values
+        + local_weights @ expanded_local_values
+    )
+    return (numerator / denominator).reshape(
+        batch, query_heads, query_tokens, head_dim
+    )
 
 
 def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMemory:
@@ -575,6 +636,7 @@ def make_native_prompt_cache(
     *,
     max_kv_size: int | None = None,
     selected_layers: Iterable[int] | None = None,
+    segmented: bool = False,
 ):
     """Create request-local sequential caches backed by immutable selected K/V."""
 
@@ -591,9 +653,12 @@ def make_native_prompt_cache(
     invalid = selected - set(range(len(memory.layers)))
     if invalid:
         raise ValueError(f"MLX consumer layers are out of range: {sorted(invalid)}")
+    selected_cache_type = (
+        MLXSegmentedSelectedKVCache if segmented else MLXSelectedKVCache
+    )
     return [
         (
-            MLXSelectedKVCache(cache, layer, memory.source_tokens)
+            selected_cache_type(cache, layer, memory.source_tokens)
             if index in selected
             else MLXPositionedKVCache(cache, memory.source_tokens)
         )

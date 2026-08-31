@@ -10,6 +10,7 @@ from .native import (
     MLXPositionedKVCache,
     MLXQuantizedLayerKV,
     MLXQuantizedMemory,
+    MLXSegmentedSelectedKVCache,
     MLXSelectedKVCache,
     combine_native_memories,
     dequantize_native_memory,
@@ -22,6 +23,7 @@ from .native import (
     segmented_selected_attention,
     serialize_native_memory,
 )
+from .qwen3_segmented import install_qwen3_segmented_attention
 from .native_storage import MLXNativeSegmentStore
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
     "MLXPositionedKVCache",
     "MLXQuantizedLayerKV",
     "MLXQuantizedMemory",
+    "MLXSegmentedSelectedKVCache",
     "MLXSelectedKVCache",
     "combine_native_memories",
     "dequantize_native_memory",
@@ -46,5 +49,6 @@ __all__ = [
     "quantize_native_memory",
     "save_native_memory",
     "segmented_selected_attention",
+    "install_qwen3_segmented_attention",
     "serialize_native_memory",
 ]
