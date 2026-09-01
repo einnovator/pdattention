@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 from pathlib import Path
+import platform
+import subprocess
 import tempfile
 import threading
 import time
@@ -33,6 +35,30 @@ def _event_text(row: dict[str, object]) -> str:
     if not isinstance(delta, dict):
         return ""
     return str(delta.get("content") or "")
+
+
+def _command_value(command: list[str]) -> str | None:
+    try:
+        return subprocess.run(
+            command, check=True, capture_output=True, text=True
+        ).stdout.strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+
+def _runtime_metadata() -> dict[str, object]:
+    """Bind the online receipt to its Apple host and repository revision."""
+
+    return {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "hardware_model": _command_value(["sysctl", "-n", "hw.model"]),
+        "cpu_brand": _command_value(["sysctl", "-n", "machdep.cpu.brand_string"]),
+        "physical_memory_bytes": int(
+            _command_value(["sysctl", "-n", "hw.memsize"]) or 0
+        ),
+        "git_commit": _command_value(["git", "rev-parse", "HEAD"]),
+    }
 
 
 def _post(base: str, payload: dict[str, object], *, stream: bool) -> dict[str, object]:
@@ -335,6 +361,7 @@ def main() -> None:
         "model_id": args.model,
         "model_revision": args.revision,
         "dataset": args.dataset,
+        "runtime": _runtime_metadata(),
         "health_ms": health_ms,
         "capabilities": health,
         "prime": prime,
