@@ -105,6 +105,62 @@ def _request_times(output: Any) -> dict[str, float | None]:
     }
 
 
+def _generate_stepwise(
+    llm: Any,
+    prompts: list[dict[str, object]],
+    sampling: Any,
+) -> tuple[list[Any], dict[str, dict[str, float | None]]]:
+    """Run one concurrent V1 wave while observing token arrival times."""
+
+    started = time.perf_counter()
+    request_ids: list[str] = []
+    arrivals: dict[str, list[float]] = {}
+    observed: dict[str, int] = {}
+    outputs: dict[str, Any] = {}
+    completed: dict[str, float] = {}
+    for prompt in prompts:
+        [request_id] = llm.enqueue(prompt, sampling, use_tqdm=False)
+        identifier = str(request_id)
+        request_ids.append(identifier)
+        arrivals[identifier] = []
+        observed[identifier] = 0
+    while llm.llm_engine.has_unfinished_requests():
+        step_outputs = llm.llm_engine.step()
+        timestamp = (time.perf_counter() - started) * 1000.0
+        for output in step_outputs:
+            identifier = str(output.request_id)
+            outputs[identifier] = output
+            token_count = len(output.outputs[0].token_ids)
+            new_tokens = token_count - observed.get(identifier, 0)
+            if new_tokens > 0:
+                arrivals.setdefault(identifier, []).extend([timestamp] * new_tokens)
+                observed[identifier] = token_count
+            if output.finished:
+                completed[identifier] = timestamp
+
+    ordered: list[Any] = []
+    timings: dict[str, dict[str, float | None]] = {}
+    for request_id in request_ids:
+        lookup = request_id if request_id in outputs else request_id.split("-", 1)[0]
+        output = outputs[lookup]
+        ordered.append(output)
+        token_times = arrivals.get(lookup, arrivals.get(request_id, []))
+        timings[str(output.request_id)] = {
+            "ttft_ms": token_times[0] if token_times else None,
+            "mean_itl_ms": (
+                (token_times[-1] - token_times[0]) / (len(token_times) - 1)
+                if len(token_times) > 1
+                else None
+            ),
+            "completion_latency_ms": completed.get(lookup),
+            # All requests are admitted before the first engine step. Queue
+            # time needs online scheduler timestamps and remains unreported.
+            "queue_ms": None,
+            "preemptions": None,
+        }
+    return ordered, timings
+
+
 def _read_events(path: Path, offset: int) -> tuple[list[dict[str, Any]], int]:
     if not path.exists():
         return [], offset
@@ -442,7 +498,7 @@ def main() -> None:
             torch.cuda.synchronize()
             torch.cuda.reset_peak_memory_stats()
             started = time.perf_counter()
-            outputs = llm.generate(prompts, sampling, use_tqdm=False)
+            outputs, observed_times = _generate_stepwise(llm, prompts, sampling)
             torch.cuda.synchronize()
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             batches.append(
@@ -463,7 +519,9 @@ def main() -> None:
                         "output_token_ids": list(map(int, output.outputs[0].token_ids)),
                         "expected_recovery": EXPECTED in text,
                         "cached_prompt_tokens": int(output.num_cached_tokens),
-                        **_request_times(output),
+                        **observed_times.get(
+                            str(output.request_id), _request_times(output)
+                        ),
                     }
                 )
             events, event_offset = _read_events(telemetry, event_offset)
