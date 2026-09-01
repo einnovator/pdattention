@@ -59,6 +59,19 @@ def test_hf_provider_requires_model_before_managed_launch() -> None:
         HFRuntimeProvider().build_command(RuntimeConfig())
 
 
+def test_hf_provider_forwards_device_and_bundle() -> None:
+    command = HFRuntimeProvider().build_command(
+        RuntimeConfig(
+            engine="hf", model="org/model", device="cuda",
+            pra_bundle="C:/bundle", profile="balanced",
+        )
+    )
+
+    assert command[command.index("--device") + 1] == "cuda"
+    assert command[command.index("--pra-bundle") + 1] == "C:/bundle"
+    assert command[command.index("--profile") + 1] == "balanced"
+
+
 def test_runtime_doctor_distinguishes_missing_dependency(monkeypatch) -> None:
     monkeypatch.setattr("pra_hf.runtime_providers.importlib.util.find_spec", lambda _: None)
 

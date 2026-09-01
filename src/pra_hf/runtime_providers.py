@@ -274,6 +274,7 @@ class HFRuntimeProvider(RuntimeProvider):
         ]
         if config.revision:
             command += ["--revision", config.revision]
+        command += ["--device", config.device]
         if config.pra_bundle:
             command += ["--pra-bundle", config.pra_bundle]
         if config.profile:

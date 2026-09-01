@@ -33,7 +33,7 @@ PRA provides portable Selected Context, model-specific structural mapping, optio
 ## Installation
 
 ```bash
-pip install 'pra-hf[hf-hub]'
+pip install 'pra-hf[hf-hub,hf-runtime]'
 pra doctor
 ```
 

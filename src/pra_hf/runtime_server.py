@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+import torch
+
 from .deployment import HuggingFaceEngineAdapter
 from .bundle import PRAModelBundle
 from .gateway import PRAGateway, serve_gateway
@@ -17,6 +19,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--revision")
+    parser.add_argument("--device", default="auto")
     parser.add_argument("--pra-bundle")
     parser.add_argument("--profile")
     parser.add_argument("--host", default="127.0.0.1")
@@ -30,7 +33,18 @@ def main() -> None:
     parser.add_argument("--prometheus-port", type=int)
     args = parser.parse_args()
     storage = PRAStoragePolicy.from_yaml(args.storage_config) if args.storage_config else PRAStoragePolicy.named(args.storage)
+    device = args.device
+    if device == "auto":
+        device = (
+            "cuda"
+            if torch.cuda.is_available()
+            else "mps"
+            if torch.backends.mps.is_available()
+            else "cpu"
+        )
     model_kwargs = {"revision": args.revision}
+    if device == "cuda":
+        model_kwargs.update(torch_dtype=torch.float16, device_map="cuda")
     if args.pra_bundle and args.pra_bundle.lower() != "none":
         bundle = PRAModelBundle.from_pretrained(args.pra_bundle)
         if bundle.base_model.get("id") != args.model:
@@ -44,6 +58,8 @@ def main() -> None:
             elif adapter_type in {"memory", "memory_adapter", "consumer"}:
                 model_kwargs["memory_adapter"] = path
     model = PRAForCausalLM.from_pretrained(args.model, **model_kwargs)
+    if device != "cuda":
+        model.model.to(device)
     overrides = {}
     if args.otel or args.otel_endpoint or args.prometheus or args.prometheus_port:
         overrides["enabled"] = True

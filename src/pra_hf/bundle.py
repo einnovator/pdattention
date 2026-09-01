@@ -404,7 +404,7 @@ class BundleBuilder:
             f"- Tokenizer revision: `{tokenizer_revision}`", "",
             "## What PRA provides", "",
             "PRA provides portable Selected Context, model-specific structural mapping, optional learned routing, and measured profiles. Native Memory and Native Serving are enabled only on engine/model combinations marked as qualified below.", "",
-            "## Installation", "", "```bash", "pip install 'pra-hf[hf-hub]'", "pra doctor", "```", "",
+            "## Installation", "", "```bash", "pip install 'pra-hf[hf-hub,hf-runtime]'", "pra doctor", "```", "",
             "## Quickstart", "", "```bash", f"pra inspect {model} -e hf -a {repo}",
             f"pra evaluate {model} -e hf -D qasper -a {repo}", "pra recommend .pra/runs/latest",
             f"pra serve {model} -e hf -a {repo} -p balanced", "```", "",
