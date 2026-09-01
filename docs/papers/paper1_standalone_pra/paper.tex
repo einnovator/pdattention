@@ -61,6 +61,10 @@ limit, PRA addresses a 184-token displaced prompt head inside 192 logical tokens
 loss 1.0567 versus 1.2287 for truncation and no operation-limit violations. Exact
 256-way routing takes 5.5--11.6 ms after index construction in this prototype.
 
+In a separate pretrained Qwen3 8B--32B MLX calibration, selected native K/V
+matches all selected-text sequences at 8B/14B and 13/15 at 32B while the full-versus-selected answer-quality
+sign changes across model size. At 8B, selected detail remains about 39.6 MiB
+as full native K/V grows from 1,152 MiB at 8K to 4,608 MiB at 32K.
 These results establish sparse transport of selected native K/V and bounded execution
 over larger logical memory. They do not establish unrestricted question answering,
 arbitrary positional extrapolation, or production serving efficiency.
@@ -348,6 +352,58 @@ context relative to the tail-only baseline. It is not a general correctness scor
 slightly exceed one under finite-sample noise. We separately report annotated target
 coverage, active K/V fraction, physical K/V tokens, and operation length. This separation
 prevents a successful transport path from being mistaken for a successful learned router.
+
+\section{Pretrained Scale and Context Dilution}
+\label{sec:pretrained-dilution}
+
+The controlled models above isolate mechanism, but they cannot answer whether a
+larger pretrained decoder simply becomes insensitive to irrelevant context. A
+separate MLX calibration therefore uses pinned 4-bit Qwen3-8B, 14B, and 32B
+checkpoints on a 48~GiB M4 Pro. Five unique examples from each of QASPER,
+HotpotQA, and 2Wiki provide frozen annotated evidence. The same selection is
+rendered as at most 384 visible tokens for E0 and as native K/V for E2, while
+deterministic same-dataset distractors extend the dense condition to 8K source
+tokens. An 8B boundary sample extends three examples to 32K. The requested 64K
+condition is recorded as \texttt{NOT\_RUN\_MODEL\_CONTEXT\_LIMIT}, because the
+pinned checkpoints advertise 40,960 positions; no row is silently truncated.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{\textbf{Larger pretrained models do not make context dilution
+monotonic.} $\Delta$ is full minus selected, so positive log-probability favors
+the full prompt. E2 agreement compares frozen selected native K/V with selected
+text. Full MiB is the all-layer native-K/V representation of the dense source,
+included to expose physical scaling rather than as a deployment
+recommendation.}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper1_standalone_pra/mac_context_dilution/generated_context_dilution_table.tex}}
+\label{tab:pretrained-dilution}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper1_standalone_pra/mac_context_dilution/mlx_context_dilution.pdf}
+\caption{Full-minus-selected answer log-probability changes sign across model
+size and context. Selection bounds active evidence; it does not guarantee a
+quality advantage on every question.}
+\label{fig:pretrained-dilution}
+\end{figure}
+
+At 8K, full context improves mean gold-answer log probability by 1.192 nats at
+8B but lowers it by 1.485 nats at 14B and 0.999 nats at 32B. F1 moves in the
+same direction only for the 14B and 32B cohorts; the three-example 8B 32K boundary has selected-context
+likelihood but full-context F1 moving in opposite directions. The defensible
+result is therefore non-monotonicity, not a universal selected-context quality
+gain. Larger models still require an explicit dilution measurement.
+
+The physical result is clearer. At 8B, selected all-layer native K/V remains
+about 39.6 MiB while full native K/V grows from 1,152 MiB at 8K to 4,608 MiB at
+32K. At 14B the corresponding 8K values are 43.9 and 1,280 MiB; at 32B they are
+70.3 and 2,048 MiB. Selected E2 preserves all sequences at 8B/14B and 13/15 at
+32B, where its mean likelihood shift is only $+0.030$ nats. Thus the bounded-working-set claim survives
+pretrained scale in this calibration even though the quality sign depends on
+model and example. It does not establish benchmark QA accuracy or a learned
+router at 8B--32B.
 
 \section{Does Selected Native K/V Carry the Needed Detail?}
 \label{sec:transport}
@@ -746,6 +802,12 @@ The evidence is controlled. Models are small, targets are synthetic or answer-co
 the natural-text probes are not unrestricted HotpotQA or QASPER evaluation. Five paired
 seeds establish directional consistency but offer limited statistical resolution. At five
 pairs, the smallest attainable exact two-sided sign-flip result is $p=0.0625$.
+
+The pretrained dilution calibration narrows one scale limitation but does not
+remove it. It has 15 independent examples per 8K model point, only three at
+32K, one Qwen family, one quantization, and no 64K execution. Repeated
+generation is not counted as additional quality evidence, and its annotated
+selector does not validate learned large-model routing.
 
 Routing quality remains the main unresolved issue. Stable fixed-fraction target coverage
 through 256 units is encouraging, but coverage near 0.76--0.80 leaves substantial room for
