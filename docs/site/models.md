@@ -22,11 +22,13 @@ and therefore requires a known structural mapping plus model-specific validation
 
 The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter when the deployment needs a pinned, reviewable artifact.
 
-**Known examples**
+**Known examples and published bundles**
 
-- `Qwen/Qwen3-0.6B`
-- `Qwen/Qwen3-1.7B`
-- `mlx-community/Qwen3-4B-4bit`
+| Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
+| --- | --- | --- | --- | --- | --- |
+| `Qwen/Qwen3-0.6B` | [jsimao71/pra-qwen3-0.6b](https://huggingface.co/jsimao71/pra-qwen3-0.6b) | Controlled | HF Native Memory; portable Selected Context | Selected Context; qualify Native Memory locally | 2026-09-01 |
+| `Qwen/Qwen3-1.7B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
+| `mlx-community/Qwen3-4B-4bit` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 
 **Inspect and launch**
 
@@ -51,10 +53,12 @@ Qwen/Qwen3-0.6B has checked-in model-backed profile rows; larger Qwen configurat
 
 The SDK includes the conventional Llama decoder mapping. A declarative adapter is optional for discovery and recommended for pinned releases.
 
-**Known examples**
+**Known examples and published bundles**
 
-- `unsloth/Llama-3.2-1B`
-- `meta-llama/Llama-3.2-1B-Instruct`
+| Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
+| --- | --- | --- | --- | --- | --- |
+| `unsloth/Llama-3.2-1B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
+| `meta-llama/Llama-3.2-1B-Instruct` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 
 **Inspect and launch**
 
@@ -79,10 +83,12 @@ unsloth/Llama-3.2-1B has checked-in model-backed profile rows.
 
 A built-in mapping discovers Gemma 3 text attention, but its heterogeneous topology must be exported, reviewed, and validated for the exact revision before Native Memory is promoted.
 
-**Known examples**
+**Known examples and published bundles**
 
-- `google/gemma-3-1b-it`
-- `mlx-community/gemma-3-1b-it-4bit`
+| Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
+| --- | --- | --- | --- | --- | --- |
+| `google/gemma-3-1b-it` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
+| `mlx-community/gemma-3-1b-it-4bit` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 
 **Inspect and launch**
 
@@ -107,9 +113,11 @@ google/gemma-3-1b-it has checked-in model-backed profile rows; native deployment
 
 Selected Context needs no attention adapter. Native Memory requires a generated declarative mapping or reviewed Python plugin plus the complete validation ladder.
 
-**Known examples**
+**Known examples and published bundles**
 
-- `Any AutoConfig-compatible causal decoder`
+| Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
+| --- | --- | --- | --- | --- | --- |
+| `Any AutoConfig-compatible causal decoder` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 
 **Inspect and launch**
 
@@ -134,9 +142,11 @@ No family-wide native claim is made for unregistered architectures.
 
 The gateway can select and render context for an ordinary endpoint without modifying the model. Native modes require an explicit backend capability handshake and model qualification.
 
-**Known examples**
+**Known examples and published bundles**
 
-- `vLLM, SGLang, Ollama, llama.cpp, OpenVINO or custom OpenAI-compatible endpoints`
+| Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
+| --- | --- | --- | --- | --- | --- |
+| `vLLM, SGLang, Ollama, llama.cpp, OpenVINO or custom OpenAI-compatible endpoints` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 
 **Inspect and launch**
 

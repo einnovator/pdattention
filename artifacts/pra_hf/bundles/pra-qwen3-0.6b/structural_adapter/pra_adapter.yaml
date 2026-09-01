@@ -1,0 +1,26 @@
+schema_version: 1
+base_model:
+  id: Qwen/Qwen3-0.6B
+  revision: c1899de289a04d12100db370d81485cdf75e47ca
+architecture:
+  model_type: qwen
+  architecture: Qwen3ForCausalLM
+  layers: 28
+  hidden_size: 1024
+mapping:
+  layers: model.layers
+  attention: self_attn
+  q_proj: q_proj
+  k_proj: k_proj
+  v_proj: v_proj
+  o_proj: o_proj
+heads:
+  query: 16
+  kv: 8
+  head_dim: 128
+position:
+  type: rope
+  implementation: native
+topology:
+  type: homogeneous_global
+  gqa: true

@@ -38,3 +38,14 @@ resolution always uses a direct repository ID plus immutable commit.
 Automatic selection uses only entries in the checked-in trusted registry.
 Explicit local and community sources remain loadable, but they are never
 silently promoted to project-qualified status.
+
+## Published collection
+
+The first project-qualified release is the
+[`jsimao71/pra-qwen3-0.6b` model card](https://huggingface.co/jsimao71/pra-qwen3-0.6b),
+pinned by the registry to Hub commit `ffa081ab17e083282c2fd2ec07402570e72719e7`.
+Related releases are grouped in the
+[PRA Bundles Collection](https://huggingface.co/collections/jsimao71/pra-bundles-6a97089699497483e5a81c06).
+The maintainer token cannot publish under the `einnovator` Hub namespace, so
+the repository is hosted under the authenticated maintainer account while its
+qualification scope remains controlled by the project registry.

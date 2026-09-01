@@ -164,6 +164,7 @@ pra inspect [OPTIONS] MODEL
 | --- | --- | --- | --- | --- |
 | `-e`, `--engine` | TEXT | `hf` | no | Select the runtime or evidence-registry engine. |
 | `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
+| `-a`, `--pra-bundle` | TEXT | `auto` | no | Load a PRA bundle or configuration override. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -171,7 +172,7 @@ pra inspect [OPTIONS] MODEL
 **Common use**
 
 ```bash
-pra inspect Qwen/Qwen3-1.7B --engine hf
+pra inspect Qwen/Qwen3-1.7B --engine hf --pra-bundle auto
 ```
 
 **Example output**
@@ -210,6 +211,7 @@ pra evaluate [OPTIONS] MODEL
 | `--include-native-serving` | flag | `off` | no | Include Native Serving in the evaluation candidate set. |
 | `--quality-threshold` | FLOAT >= 0.0 <= 1.0 | `0.95` | no | Minimum retained-quality ratio required by the gate. |
 | `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
+| `-a`, `--pra-bundle` | TEXT | `auto` | no | Load a PRA bundle or configuration override. |
 | `-p`, `--profile` | TEXT | `recommended` | no | Select a named PRA or agent profile. |
 | `-o`, `--output` | PATH | `-` | no | Write artifacts to this file or directory. |
 | `--json` | flag | `off` | no | Emit JSON. |
@@ -219,7 +221,7 @@ pra evaluate [OPTIONS] MODEL
 **Common use**
 
 ```bash
-pra evaluate Qwen/Qwen3-1.7B --engine hf --dataset qasper --measurements results.json -o .pra/runs/qasper
+pra evaluate Qwen/Qwen3-1.7B --engine hf --dataset qasper --pra-bundle auto --measurements results.json -o .pra/runs/qasper
 ```
 
 **Example output**

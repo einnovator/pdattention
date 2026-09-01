@@ -1,0 +1,26 @@
+name: PRA bundle validation
+
+on:
+  pull_request:
+    paths:
+      - "artifacts/pra_hf/bundles/**"
+      - "releases/pra_bundles.yaml"
+      - "src/pra_hf/bundle.py"
+      - "tests/test_model_bundles.py"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - run: pip install -e ".[hf-hub]" pytest
+      - run: pytest -q tests/test_model_bundles.py
+      - run: pra hf publish-manifest releases/pra_bundles.yaml --dry-run --json
+
+  # Publishing is intentionally absent. A maintainer performs an authenticated,
+  # manually reviewed release after this workflow validates the exact payload.

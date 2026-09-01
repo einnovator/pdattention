@@ -89,6 +89,12 @@ def load_model_registry(path: Path = MODEL_REGISTRY) -> dict:
         for key in ("name", "adapter_requirement", "adapter_detail", "evidence"):
             if not family.get(key):
                 raise ValueError(f"Missing model documentation field {family['slug']}.{key}")
+        examples = set(family.get("examples", ()))
+        for model, bundle in family.get("bundle_links", {}).items():
+            if model not in examples:
+                raise ValueError(f"Bundle link targets an unlisted model: {model}")
+            if not bundle.get("url", "").startswith("https://huggingface.co/"):
+                raise ValueError(f"Invalid Hugging Face bundle URL for {model}")
     return payload
 
 
@@ -355,10 +361,28 @@ def render_models(registry: dict) -> str:
             "",
             family["adapter_detail"],
             "",
-            "**Known examples**",
+            "**Known examples and published bundles**",
             "",
         ])
-        lines.extend(f"- `{model}`" for model in family["examples"])
+        lines.extend([
+            "| Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ])
+        bundle_links = family.get("bundle_links", {})
+        for model in family["examples"]:
+            bundle = bundle_links.get(model)
+            if bundle:
+                card = f"[{_escape(bundle['repo'])}]({_escape(bundle['url'])})"
+                lines.append(
+                    f"| `{_escape(model)}` | {card} | {_escape(bundle['status'])} | "
+                    f"{_escape(bundle['engines'])} | {_escape(bundle['recommended_mode'])} | "
+                    f"{_escape(bundle['qualified_at'])} |"
+                )
+            else:
+                lines.append(
+                    f"| `{_escape(model)}` | Not published | NOT_MEASURED | NOT_MEASURED | "
+                    "Inspect and qualify locally | NOT_MEASURED |"
+                )
         lines.extend(["", "**Inspect and launch**", "", "```bash"])
         lines.extend(family["commands"])
         lines.extend(["```", "", "**Evidence boundary**", "", family["evidence"], "", "**Limitations**", ""])

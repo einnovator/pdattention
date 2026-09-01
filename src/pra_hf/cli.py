@@ -217,12 +217,19 @@ def engines(details, json_output, yaml_output) -> None:
 @click.argument("model")
 @click.option("-e", "--engine", default="hf", show_default=True)
 @click.option("-r", "--revision")
+@click.option("-a", "--pra-bundle", default="auto", show_default=True)
 @_output_options
-def product_inspect(model, engine, revision, json_output, yaml_output) -> None:
+def product_inspect(model, engine, revision, pra_bundle, json_output, yaml_output) -> None:
     """Inspect one MODEL and ENGINE as a deployable combination."""
     try:
         metadata = ModelInspector().inspect(model, revision=revision)
         value = QualificationService().inspect(model, engine, metadata)
+        value["bundle_resolution"] = BundleResolver().resolve(
+            pra_bundle,
+            model=model,
+            model_revision=revision,
+            engine=engine,
+        ).to_dict()
     except (KeyError, ValueError) as error:
         raise click.ClickException(str(error)) from error
     _emit(value, json_output=json_output, yaml_output=yaml_output)
@@ -237,10 +244,11 @@ def product_inspect(model, engine, revision, json_output, yaml_output) -> None:
 @click.option("--include-native-serving", is_flag=True)
 @click.option("--quality-threshold", type=click.FloatRange(min=0.0, max=1.0), default=0.95, show_default=True)
 @click.option("-r", "--revision")
+@click.option("-a", "--pra-bundle", default="auto", show_default=True)
 @click.option("-p", "--profile", default="recommended", show_default=True)
 @click.option("-o", "--output", type=click.Path(path_type=Path))
 @_output_options
-def evaluate(model, engine, dataset, measurements, include_native_memory, include_native_serving, quality_threshold, revision, profile, output, json_output, yaml_output) -> None:
+def evaluate(model, engine, dataset, measurements, include_native_memory, include_native_serving, quality_threshold, revision, pra_bundle, profile, output, json_output, yaml_output) -> None:
     """Compare execution modes using one frozen selection and explicit gates."""
     destination = output or (
         Path(".pra/runs") / f"{model.replace('/', '--')}--{engine}--{int(__import__('time').time())}"
@@ -258,6 +266,12 @@ def evaluate(model, engine, dataset, measurements, include_native_memory, includ
             revision=revision,
             profile=profile,
         )
+        value["bundle_resolution"] = BundleResolver().resolve(
+            pra_bundle,
+            model=model,
+            model_revision=revision,
+            engine=engine,
+        ).to_dict()
     except (KeyError, ValueError) as error:
         raise click.ClickException(str(error)) from error
     value["run_directory"] = str(destination)
