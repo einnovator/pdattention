@@ -1780,6 +1780,37 @@ test suite. The thin Llama adapter resolves installed rotary and eager-attention
 the shared core retains publication, routing, budgeting, and replay. Full code-level guidance
 appears in Appendix~\ref{app:adapter-guide}.
 
+\section{Larger-Model Frozen-Consumption Replication}
+\label{sec:large-frozen-consumption}
+
+A companion MLX campaign isolates the Paper-2 consumption boundary at a more
+realistic scale. It uses pinned 4-bit Qwen3-8B, 14B, and 32B checkpoints plus
+Qwen3-30B-A3B on a 48~GiB M4 Pro. For each model, five unique examples from
+QASPER, HotpotQA, and 2Wiki contribute 15 frozen selected-evidence identities.
+Retrieval is not rerun: selected token IDs and source-relative positions are
+identical across selected-text E0 and native E2. The experiment therefore asks
+whether the consumer receives the same evidence, not whether a larger model
+routes it better.
+
+Concatenated native K/V preserves all 60 selected-text greedy sequences. The
+live segmented one-softmax implementation preserves 57/60; mean absolute
+gold-answer log-probability drift is 0.189, 0.027, 0.039, and 0.146 nats for
+8B, 14B, dense 32B, and 30B-A3B, respectively. The three changed sequences are
+confined to dense 32B and MoE and arise on the unfused segmented path; the
+concatenated numerical reference remains exact. This closes a scale gap for
+representation and consumption while leaving Paper~2's learned-router,
+multi-hop, and generation conclusions unchanged. In particular, exact
+transport cannot convert a missed identity into recovered evidence.
+
+Consumer-depth calibration is less decisive. The dense ladder's
+last-three-quarter mean absolute likelihood loss falls from 2.545 to 1.665 to
+0.356 nats as size rises from 8B to 32B, but sequence agreement is only 0.267,
+0.467, and 0.133. The MoE checkpoint loses 2.662 nats in the same reduced
+profile. Thus larger dense models may be less likelihood-sensitive to omitted
+early consumers, but neither scale nor parameter sparsity justifies promoting
+a sparse consumer default. The raw versioned summary is shipped with this
+branch; the engine and product consequences belong to Papers~6.2 and~4.5.
+
 \section{Extended Limitations and Experimental Receipts}
 \label{app:extended-limitations}
 
@@ -1838,10 +1869,12 @@ checkpoint, but its five-seed test has only 16 identities per dataset, its syste
 four examples, and its causal probe has eight. Those results validate the integration boundary and
 causal activation, not benchmark QA quality or calibrated memory use.
 
-The tested checkpoints establish portability through approximately one-billion-parameter scale
-across multiple decoder families. They do not establish 7B--70B scaling, production throughput,
-or the economics of a serving-optimized implementation; those require larger hardware, matched
-dense baselines, and fused transfer/attention measurements.
+The family-specific learned-router and adaptation studies establish portability only through
+approximately one-billion-parameter scale. The frozen-consumption replication extends
+representation and layer-profile evidence through dense 32B and a 30B-A3B MoE checkpoint, but
+does not retrain or validate those routers at scale. It also does not establish production
+throughput or the economics of a serving-optimized implementation; those require matched dense
+baselines and fused transfer/attention measurements.
 
 Paper~2 stops at a successful measured one-shot QASPER boundary. HotpotQA outputs are often
 semantically near the relevant relation but fail to reach the endpoint entity, consistent with a
@@ -2050,8 +2083,8 @@ semantic state, and activate selected host-native K/V while retaining an exact n
 Ordinary RAG provides a more familiar text interface; dense or sparse context keeps evidence in
 the sequence; KV compression and offload reduce physical storage or transfer; iterative agents
 can discover follow-up sources. The SDK is usable at the tested boundary. General production
-superiority, optimized serving economics, broader task coverage, and larger-model scaling are
-not established.
+superiority, optimized serving economics, broader task coverage, and larger-model
+\emph{routing/adaptation} scaling are not established.
 
 \section{Extended Scientific Synthesis}
 
