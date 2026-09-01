@@ -65,6 +65,7 @@ def test_e0_chat_injects_selected_resources_and_preserves_ollama_metrics() -> No
     assert adapter.capabilities().integration_level.value == "E0"
     assert "Selected evidence" in payload["messages"][0]["content"]
     assert payload["options"]["num_predict"] == 12
+    assert payload["think"] is False
     assert result.text == "answer"
     assert result.trace[0]["prompt_eval_ns"] == 5
 

@@ -48,11 +48,13 @@ class OllamaEngineAdapter:
         backend_executor: OllamaBackendExecutor | None = None,
         timeout_seconds: float = 300.0,
         keep_alive: str | int = "5m",
+        thinking: bool | None = False,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.backend_executor = backend_executor
         self.timeout_seconds = float(timeout_seconds)
         self.keep_alive = keep_alive
+        self.thinking = thinking
         self._model_fingerprint: str | None = None
 
     def _request_json(
@@ -160,6 +162,8 @@ class OllamaEngineAdapter:
             "keep_alive": self.keep_alive,
             "options": {"num_predict": request.resolved_max_new_tokens},
         }
+        if self.thinking is not None:
+            payload["think"] = self.thinking
         if request.tools:
             payload["tools"] = list(request.tools)
         started = time.perf_counter()
