@@ -2,6 +2,7 @@
 
 from .adapter import SGLangEngineAdapter, SGLangNativeExecutor
 from .native_executor import SGLangInProcessNativeExecutor
+from .remote_warm import HTTPHiCacheStorageClient, RemoteWarmClientMetrics
 from .hicache import (
     PRAHiCacheMetrics,
     PRAHiCacheTier,
@@ -19,6 +20,7 @@ from .mlx_native import (
 __all__ = [
     "SGLangEngineAdapter",
     "SGLangInProcessNativeExecutor",
+    "HTTPHiCacheStorageClient",
     "PRAHiCacheMetrics",
     "PRAHiCacheTier",
     "SGLangMLXNativeBridge",
@@ -29,5 +31,6 @@ __all__ = [
     "SGLangHiCacheByteBackend",
     "SGLangHiCacheHotBridge",
     "SGLangSelectedKVCache",
+    "RemoteWarmClientMetrics",
     "install_selected_kv_attention",
 ]
