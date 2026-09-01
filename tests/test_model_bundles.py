@@ -31,6 +31,11 @@ def _run(tmp_path: Path) -> Path:
     (structural / "pra_adapter.yaml").write_text("schema_version: 1\n", encoding="utf-8")
     (learned / "config.json").write_text(json.dumps({"type": "routing"}), encoding="utf-8")
     (learned / "adapter_model.pt").write_bytes(b"weights")
+    qualification = run / "qualification"
+    qualification.mkdir()
+    (qualification / "profile_evidence.json").write_text(
+        json.dumps({"evidence_tier": "SMOKE"}), encoding="utf-8"
+    )
     payload = {
         "schema_version": 2,
         "base_model": {
@@ -80,6 +85,8 @@ def test_builder_packages_every_component_and_preserves_fingerprints(tmp_path: P
     assert built.schema_version == 2
     assert (bundle_path / "structural_adapter/pra_adapter.yaml").is_file()
     assert (bundle_path / "learned_adapters/router-v1/adapter_model.pt").is_file()
+    assert (bundle_path / "qualification/profile_evidence.json").is_file()
+    assert "qualification/profile_evidence.json" in built.checksums
     assert len(built.structural_adapter["fingerprint"]) == 64
     assert len(built.learned_adapters["router-v1"]["fingerprint"]) == 64
     assert built.validate()["status"] == "VALID"

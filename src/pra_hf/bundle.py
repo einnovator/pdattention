@@ -295,6 +295,7 @@ class BundleBuilder:
 
         structural = self._copy_structural(source, target, runtime.get("structural_adapter", {}))
         learned = self._copy_learned(source, target, runtime.get("learned_adapters", {}))
+        self._copy_auxiliary(source, target)
         bundle = PRAModelBundle(
             base_model=base_model,
             structural_adapter=structural,
@@ -367,6 +368,14 @@ class BundleBuilder:
             shutil.copy2(source, destination / source.name)
         else:
             raise BundleValidationError(f"Bundle component is not a file or directory: {source}")
+
+    def _copy_auxiliary(self, source: Path, target: Path) -> None:
+        """Copy optional release evidence and metadata into the closed bundle."""
+
+        for name in ("profiles", "qualification", "engine_compatibility", "provenance"):
+            component = source / name
+            if component.exists():
+                self._copy_component(component, target / name)
 
     @staticmethod
     def _checksums(target: Path) -> dict[str, str]:

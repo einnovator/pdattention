@@ -600,6 +600,7 @@ class HuggingFaceEngineAdapter:
                 request.messages,
                 return_details=True,
                 pra_policy=request.pra_policy or None,
+                max_new_tokens=request.resolved_max_new_tokens,
             )
             return PRAEngineResult(
                 text.text,

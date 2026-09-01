@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import threading
 import urllib.request
+from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
 
 from pra_hf.cli import cli as hf_cli
 from pra_hf.deployment import (
+    HuggingFaceEngineAdapter,
     PRAEngineCapabilities,
     PRAEngineResult,
     PRAGatewayMode,
@@ -96,6 +98,24 @@ def test_typed_decode_limit_precedes_legacy_hint_and_openai_max_tokens_is_mapped
     assert legacy.resolved_max_new_tokens == 2
     assert typed.resolved_max_new_tokens == 3
     assert openai.resolved_max_new_tokens == 4
+
+
+def test_hf_non_streaming_adapter_forwards_resolved_decode_limit():
+    class RecordingModel:
+        def __init__(self):
+            self.calls = []
+
+        def chat(self, messages, **kwargs):
+            self.calls.append((messages, kwargs))
+            return SimpleNamespace(text="answer", stats={"generated_tokens": 2})
+
+    model = RecordingModel()
+    request = _request(max_new_tokens=2)
+
+    result = HuggingFaceEngineAdapter(model).generate(request)
+
+    assert result.text == "answer"
+    assert model.calls[0][1]["max_new_tokens"] == 2
 
 
 def test_g00_pass_through_preserves_structured_messages():

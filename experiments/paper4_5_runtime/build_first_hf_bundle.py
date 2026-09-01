@@ -214,19 +214,7 @@ def build(output: Path, *, force: bool = False) -> Path:
             yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8"
         )
         bundle = BundleBuilder().build(run, output, force=force)
-        # Qualification evidence is not an adapter, but remains part of the closed release.
-        shutil.copytree(qualification, output / "qualification", dirs_exist_ok=True)
-        # Rebuild so the evidence file is covered by the manifest checksum set.
-        bundle = BundleBuilder().build(run, output, force=True)
-        shutil.copytree(qualification, output / "qualification", dirs_exist_ok=True)
-        # The builder intentionally checksums component payloads. Record evidence separately.
-        loaded = yaml.safe_load((output / "bundle.yaml").read_text(encoding="utf-8"))
-        loaded["checksums"]["qualification/profile_evidence.json"] = __import__("hashlib").sha256(
-            (output / "qualification/profile_evidence.json").read_bytes()
-        ).hexdigest()
-        (output / "bundle.yaml").write_text(yaml.safe_dump(loaded, sort_keys=False), encoding="utf-8")
-        from pra_hf.bundle import PRAModelBundle
-        PRAModelBundle.from_pretrained(output).validate()
+        bundle.validate()
     return output
 
 
