@@ -15,6 +15,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from experiments.paper4_training.aggregate_pretrained_tier1 import aggregate
 
 
@@ -93,7 +97,7 @@ def run_grid(args: argparse.Namespace) -> dict:
                 subprocess.run(
                     cell_command(args, model, seed, cell),
                     check=True,
-                    cwd=Path(__file__).resolve().parents[2],
+                    cwd=ROOT,
                     env=env,
                 )
             summaries.append(summary)
