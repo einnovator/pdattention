@@ -354,6 +354,8 @@ def main() -> None:
         for parameter in runner.model.parameters()
     )
     kv_pool_bytes = _tensor_bytes(getattr(runner, "kv_caches", ()))
+    baseline_allocated_bytes = int(torch.cuda.memory_allocated())
+    baseline_reserved_bytes = int(torch.cuda.memory_reserved())
     event_offset = 0
     _, event_offset = _read_events(telemetry, event_offset)
     all_rows: list[dict[str, Any]] = []
@@ -443,8 +445,14 @@ def main() -> None:
         "hbm_decomposition": {
             "model_parameter_bytes": model_parameter_bytes,
             "vllm_kv_pool_bytes": kv_pool_bytes,
-            "global_allocated_bytes_before_measurement": int(torch.cuda.memory_allocated()),
-            "global_reserved_bytes_before_measurement": int(torch.cuda.memory_reserved()),
+            "framework_and_other_allocated_bytes_inferred": max(
+                0, baseline_allocated_bytes - model_parameter_bytes - kv_pool_bytes
+            ),
+            "global_allocated_bytes_before_measurement": baseline_allocated_bytes,
+            "global_reserved_bytes_before_measurement": baseline_reserved_bytes,
+            "device_capacity_bytes": int(
+                torch.cuda.get_device_properties(0).total_memory
+            ),
             "status": "MEASURED_COMPONENTS_PLUS_GLOBAL_ALLOCATOR",
         },
         "rows": all_rows,
