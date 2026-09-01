@@ -47,6 +47,9 @@ def summarize(paths: list[Path]) -> dict[str, object]:
                 ),
                 "first_logit_rmse_vs_full": _mean(values, "first_logit_rmse_vs_full"),
                 "active_detail_bytes": _mean(values, "active_detail_bytes"),
+                "visible_prompt_tokens": _mean(values, "visible_prompt_tokens")
+                if all("visible_prompt_tokens" in row for row in values)
+                else None,
                 "peak_unified_memory_bytes": max(
                     int(row["peak_unified_memory_bytes"]) for row in values
                 ),
@@ -58,6 +61,17 @@ def summarize(paths: list[Path]) -> dict[str, object]:
         for row in aggregate
     }
     comparisons = []
+    raw_by_key = {
+        (
+            str(row["model_id"]),
+            int(row["context_target_tokens"]),
+            str(row["dataset"]),
+            str(row["example_id"]),
+            str(row["condition"]),
+        ): row
+        for row in rows
+        if "example_id" in row
+    }
     for model in sorted(models):
         targets = sorted(
             target
@@ -67,8 +81,29 @@ def summarize(paths: list[Path]) -> dict[str, object]:
         for target in targets:
             full = by_key[(model, target, "FULL_VISIBLE")]
             selected = by_key.get((model, target, "E0_SELECTED"))
+            selected_native = by_key.get((model, target, "E2_SELECTED"))
             source = by_key.get((model, target, "E2_SOURCE_RELATIVE"))
             restart = by_key.get((model, target, "E2_QUERY_RESTART"))
+            selected_pair_keys = {
+                (dataset, example_id)
+                for candidate, candidate_target, dataset, example_id, condition
+                in raw_by_key
+                if candidate == model
+                and candidate_target == target
+                and condition == "E0_SELECTED"
+            }
+            selected_pair_agreement = [
+                float(
+                    raw_by_key[(model, target, dataset, example_id, "E0_SELECTED")][
+                        "output_token_ids"
+                    ]
+                    == raw_by_key[(model, target, dataset, example_id, "E2_SELECTED")][
+                        "output_token_ids"
+                    ]
+                )
+                for dataset, example_id in selected_pair_keys
+                if (model, target, dataset, example_id, "E2_SELECTED") in raw_by_key
+            ]
             comparisons.append(
                 {
                     "model_id": model,
@@ -80,6 +115,23 @@ def summarize(paths: list[Path]) -> dict[str, object]:
                     ),
                     "full_minus_selected_f1": (
                         full["token_f1"] - selected["token_f1"] if selected else None
+                    ),
+                    "selected_native_minus_text_gold_logprob": (
+                        selected_native["gold_answer_logprob"]
+                        - selected["gold_answer_logprob"]
+                        if selected and selected_native else None
+                    ),
+                    "selected_native_minus_text_f1": (
+                        selected_native["token_f1"] - selected["token_f1"]
+                        if selected and selected_native else None
+                    ),
+                    "selected_native_sequence_agreement": (
+                        fmean(selected_pair_agreement)
+                        if selected_pair_agreement else None
+                    ),
+                    "selected_native_active_detail_bytes": (
+                        selected_native["active_detail_bytes"]
+                        if selected_native else None
                     ),
                     "source_relative_logit_rmse": (
                         source["first_logit_rmse_vs_full"] if source else None

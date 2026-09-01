@@ -10,6 +10,7 @@ def _row(condition: str, logprob: float, rmse: float, agreement: float) -> dict:
         "context_target_tokens": 8192,
         "condition": condition,
         "dataset": "qasper",
+        "example_id": "example-1",
         "token_f1": 0.5,
         "gold_answer_logprob": logprob,
         "completion_latency_ms": 10.0,
@@ -18,6 +19,7 @@ def _row(condition: str, logprob: float, rmse: float, agreement: float) -> dict:
         "first_logit_rmse_vs_full": rmse,
         "active_detail_bytes": 64,
         "peak_unified_memory_bytes": 128,
+        "output_token_ids": [1] if agreement else [2],
     }
 
 
@@ -33,6 +35,7 @@ def test_summary_separates_dilution_from_position_error(tmp_path: Path) -> None:
                 "rows": [
                     _row("FULL_VISIBLE", -4.0, 0.0, 1.0),
                     _row("E0_SELECTED", -3.0, 0.2, 1.0),
+                    _row("E2_SELECTED", -3.0, 0.2, 1.0),
                     _row("E2_SOURCE_RELATIVE", -4.1, 0.1, 1.0),
                     _row("E2_QUERY_RESTART", -8.0, 2.0, 0.0),
                 ],
@@ -46,3 +49,5 @@ def test_summary_separates_dilution_from_position_error(tmp_path: Path) -> None:
     assert row["full_minus_selected_gold_logprob"] == -1.0
     assert row["source_relative_logit_rmse"] == 0.1
     assert row["query_restart_sequence_agreement"] == 0.0
+    assert row["selected_native_sequence_agreement"] == 1.0
+    assert row["selected_native_minus_text_gold_logprob"] == 0.0
