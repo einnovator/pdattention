@@ -194,6 +194,7 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                     timeout_seconds=args.timeout_seconds,
                     cache_salt=salt if args.cache_salt else None,
                     max_tokens=args.max_new_tokens,
+                    disable_native_thinking=args.disable_native_thinking,
                 )
                 exact, f1, containment = _quality(
                     str(result["output_text"]), str(entry["answer"])
@@ -293,6 +294,12 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument("--cache-salt", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--disable-native-thinking",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Send the Ollama-compatible top-level think=false extension.",
+    )
     args = parser.parse_args()
     if args.repeats < 1 or args.max_examples_per_dataset < 0:
         parser.error("Repeat count must be positive and example limit non-negative.")

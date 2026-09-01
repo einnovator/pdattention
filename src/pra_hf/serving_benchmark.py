@@ -119,6 +119,7 @@ def stream_chat_completion(
     timeout_seconds: float,
     cache_salt: str | None,
     max_tokens: int = 16,
+    disable_native_thinking: bool = False,
 ) -> dict[str, Any]:
     """Issue one SSE chat completion and return portable timing telemetry."""
 
@@ -131,6 +132,10 @@ def stream_chat_completion(
         "stream_options": {"include_usage": True},
         "chat_template_kwargs": {"enable_thinking": False},
     }
+    if disable_native_thinking:
+        # Ollama exposes reasoning control as a top-level request extension.
+        # Keep it opt-in so strict OpenAI-compatible servers never see it.
+        payload["think"] = False
     if cache_salt is not None:
         payload["cache_salt"] = cache_salt
     request = urllib.request.Request(
