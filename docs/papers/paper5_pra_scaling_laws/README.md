@@ -3,8 +3,10 @@
 This directory contains the controlled first scaling study of Progressive
 Retrieval Attention (PRA). The paper separates logical reference memory,
 selected native-K/V state, routing-index residency, search work, and model
-quality. The current result is a five-seed routing/systems pilot; the matched
-Gemma model ladder and end-to-end serving measurements remain open gates.
+quality. The current result includes a five-seed routing/systems pilot and
+five-seed Gemma 3 270M/1B consumer-adaptation gates. Both Gemma sizes improve
+generic NLL but fail the causal relevant-versus-distractor criterion; logical
+memory scaling and end-to-end serving remain open gates.
 
 Regenerate the measured artifacts and manuscript with:
 

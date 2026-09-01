@@ -7,14 +7,15 @@
 - **Measured:** fixed-difficulty evidence recall remained in [1.000, 1.000] at 128 active tokens.
 - **Measured:** evidence-dispersion sweeps vary regions and chain depth separately from logical address-space size.
 - **Measured:** hard-negative difficulty exposes adaptive escalation: the hard condition fails without a confidence threshold and recovers under thresholded budget expansion.
+- **Measured:** five-seed Gemma 3 270M and 1B Frozen/Consumer/Interface adaptation. Generic NLL improves, but the preregistered causal memory-use gate fails at both sizes.
 - **Inherited calibration only:** Paper 4 Frozen, LoRA, full-weight, and PRA-native controlled consumer-learning results.
 
 ## Not supported yet
 
 - No claim of infinite context, bounded total runtime, or production ANN efficiency.
-- No matched Gemma 270M/1B/4B quality curve and no smaller-PRA-versus-larger-native claim.
+- No Gemma logical-memory scaling curve, 4B point, or smaller-PRA-versus-larger-native claim. The 270M/1B adaptation grid is not a model-size scaling law.
 - No end-to-end NLL, perplexity, EM/F1, TTFT, TPOT, generation throughput, dollar cost, or production HBM curve.
-- No Apple Silicon run and no 4B+ run. These remain preregistered ladder cells.
+- Apple M5 is measured for adaptive routing and Apple M4 Pro for the Gemma adaptation gate; no 4B+ model run is reported.
 - Analytical native/RAG/PRA state rows are accounting baselines, not measured quality or latency.
 
 ## Interpretation rule

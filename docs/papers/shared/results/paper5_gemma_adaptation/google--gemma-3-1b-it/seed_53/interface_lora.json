@@ -1,0 +1,194 @@
+{
+  "regime": "interface_lora",
+  "model_id": "google/gemma-3-1b-it",
+  "revision": null,
+  "pra_layers": [
+    5,
+    11,
+    17,
+    23
+  ],
+  "router_trained": false,
+  "selection_policy": "single_oracle_evidence_entry",
+  "targets": [
+    "model.layers.5.self_attn.original_attention.q_proj",
+    "model.layers.5.self_attn.original_attention.k_proj",
+    "model.layers.5.self_attn.original_attention.v_proj",
+    "model.layers.5.self_attn.original_attention.o_proj",
+    "model.layers.5.mlp.gate_proj",
+    "model.layers.5.mlp.up_proj",
+    "model.layers.5.mlp.down_proj",
+    "model.layers.11.self_attn.original_attention.q_proj",
+    "model.layers.11.self_attn.original_attention.k_proj",
+    "model.layers.11.self_attn.original_attention.v_proj",
+    "model.layers.11.self_attn.original_attention.o_proj",
+    "model.layers.11.mlp.gate_proj",
+    "model.layers.11.mlp.up_proj",
+    "model.layers.11.mlp.down_proj",
+    "model.layers.17.self_attn.original_attention.q_proj",
+    "model.layers.17.self_attn.original_attention.k_proj",
+    "model.layers.17.self_attn.original_attention.v_proj",
+    "model.layers.17.self_attn.original_attention.o_proj",
+    "model.layers.17.mlp.gate_proj",
+    "model.layers.17.mlp.up_proj",
+    "model.layers.17.mlp.down_proj",
+    "model.layers.23.self_attn.original_attention.q_proj",
+    "model.layers.23.self_attn.original_attention.k_proj",
+    "model.layers.23.self_attn.original_attention.v_proj",
+    "model.layers.23.self_attn.original_attention.o_proj",
+    "model.layers.23.mlp.gate_proj",
+    "model.layers.23.mlp.up_proj",
+    "model.layers.23.mlp.down_proj"
+  ],
+  "parameters": {
+    "total_parameters": 1000889477,
+    "trainable_parameters": 1003520,
+    "trainable_fraction": 0.0010026281852896332
+  },
+  "before": {
+    "none": {
+      "examples": 32,
+      "answer_nll": 5.7061799839138985,
+      "answer_perplexity": 300.72011567436874,
+      "answer_token_accuracy": 0.24308064067736268
+    },
+    "matched_distractor": {
+      "examples": 32,
+      "answer_nll": 5.2041806653141975,
+      "answer_perplexity": 182.03166679379382,
+      "answer_token_accuracy": 0.26308222441002727
+    },
+    "evidence_only": {
+      "examples": 32,
+      "answer_nll": 5.478919014334679,
+      "answer_perplexity": 239.58757660526604,
+      "answer_token_accuracy": 0.2473732230719179
+    },
+    "whole_parent": {
+      "examples": 32,
+      "answer_nll": 5.087948881089687,
+      "answer_perplexity": 162.0571224974414,
+      "answer_token_accuracy": 0.27771033509634435
+    },
+    "ordinary_full_context": {
+      "examples": 32,
+      "answer_nll": 4.706302210688591,
+      "answer_perplexity": 110.64227072476358,
+      "answer_token_accuracy": 0.30011475388891995
+    }
+  },
+  "training": {
+    "steps": 100,
+    "tokens_upper_bound": 19200,
+    "wall_seconds": 19.97427558299387,
+    "loss_history": [
+      {
+        "step": 1,
+        "condition": "evidence_only",
+        "loss": 5.5854172706604,
+        "answer_token_accuracy": 0.25
+      },
+      {
+        "step": 10,
+        "condition": "evidence_only",
+        "loss": 4.991140365600586,
+        "answer_token_accuracy": 0.2222222238779068
+      },
+      {
+        "step": 20,
+        "condition": "ordinary_full_context",
+        "loss": 5.579242706298828,
+        "answer_token_accuracy": 0.1428571492433548
+      },
+      {
+        "step": 30,
+        "condition": "evidence_only",
+        "loss": 3.821624279022217,
+        "answer_token_accuracy": 0.4375
+      },
+      {
+        "step": 40,
+        "condition": "ordinary_full_context",
+        "loss": 4.343337059020996,
+        "answer_token_accuracy": 0.1538461595773697
+      },
+      {
+        "step": 50,
+        "condition": "evidence_only",
+        "loss": 4.4086222648620605,
+        "answer_token_accuracy": 0.3333333432674408
+      },
+      {
+        "step": 60,
+        "condition": "ordinary_full_context",
+        "loss": 1.2131747007369995,
+        "answer_token_accuracy": 0.6666666865348816
+      },
+      {
+        "step": 70,
+        "condition": "evidence_only",
+        "loss": 4.887694358825684,
+        "answer_token_accuracy": 0.4285714328289032
+      },
+      {
+        "step": 80,
+        "condition": "ordinary_full_context",
+        "loss": 3.0061655044555664,
+        "answer_token_accuracy": 0.5454545617103577
+      },
+      {
+        "step": 90,
+        "condition": "evidence_only",
+        "loss": 3.654254913330078,
+        "answer_token_accuracy": 0.4000000059604645
+      },
+      {
+        "step": 100,
+        "condition": "ordinary_full_context",
+        "loss": 2.1999151706695557,
+        "answer_token_accuracy": 0.5882353186607361
+      }
+    ],
+    "gradient_norm_max": {
+      "query_output": 70.20595484972,
+      "key_value": 27.817931432276964,
+      "mlp": 95.88227672874928
+    }
+  },
+  "after": {
+    "none": {
+      "examples": 32,
+      "answer_nll": 3.7750199772417545,
+      "answer_perplexity": 43.59837928238674,
+      "answer_token_accuracy": 0.3248324536252767
+    },
+    "matched_distractor": {
+      "examples": 32,
+      "answer_nll": 3.4543423242866993,
+      "answer_perplexity": 31.63747463987918,
+      "answer_token_accuracy": 0.36420497205108404
+    },
+    "evidence_only": {
+      "examples": 32,
+      "answer_nll": 3.5806198567152023,
+      "answer_perplexity": 35.89578419538711,
+      "answer_token_accuracy": 0.332665940746665
+    },
+    "whole_parent": {
+      "examples": 32,
+      "answer_nll": 3.3575320541858673,
+      "answer_perplexity": 28.718228318015925,
+      "answer_token_accuracy": 0.3717408422380686
+    },
+    "ordinary_full_context": {
+      "examples": 32,
+      "answer_nll": 3.2652769088745117,
+      "answer_perplexity": 26.187361499710818,
+      "answer_token_accuracy": 0.40307483938522637
+    }
+  },
+  "evidence_nll_delta": -1.8982991576194763,
+  "ordinary_retention_nll_delta": -1.4410253018140793,
+  "evidence_vs_distractor_nll_margin": -0.12627753242850304,
+  "checkpoint": "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_53/interface_lora_adapter.pt"
+}
