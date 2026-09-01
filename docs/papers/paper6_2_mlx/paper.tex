@@ -867,6 +867,29 @@ consumption; oracle and shuffled conditions are causal bounds.}
 \label{tab:mlx-routed-expanded}
 \end{table}
 
+\subsection{Optional learned routing across MLX model families}
+
+The remaining discovery deficit motivates a controlled adapter comparison, but
+it does not justify replacing the parameter-free router by default. We freeze
+the normalized attention-input states produced by exact 4-bit MLX revisions of
+Qwen3-4B, Qwen3-14B, Llama-3.1-8B, and Gemma-3-1B. For each model, an asymmetric
+rank-128 linear router is trained on 48 QASPER/HotpotQA examples for 512 steps
+under five seeds. Selection uses combined validation AUC$_{0--30}$; the 32 test
+identities remain held out. Generic cosine routing and learned routing then see
+the same chunks, queries, and model states.
+
+\input{../shared/results/paper4_5_runtime/hf_catalog_adapters/generated_hf_catalog_adapters.tex}
+
+The learned router improves QASPER $R_{20}$ for every model, from 0.413 to
+0.640 at Qwen3-4B, 0.318 to 0.679 at Qwen3-14B, 0.318 to 0.468 at Llama-3.1-8B,
+and 0.226 to 0.454 at Gemma-3-1B. It does not transfer uniformly: HotpotQA
+$R_{20}$ is lower for all four selected routers. This result narrows rather than
+closes the discovery gap. Public bundles therefore retain generic cosine as
+the \texttt{balanced} profile and expose the adapter as
+\texttt{qasper-learned}. The comparison qualifies routing on exact MLX model
+identities; it does not alter the selector-frozen E0/E2 transport results or
+establish end-task generation quality.
+
 \subsection{Matched selected-text economics}
 The routed selections also support a direct E0/E2 comparison without changing
 the evidence. For 20 examples per dataset across five seeds, E0 restores an
@@ -1356,8 +1379,10 @@ routed extension now has 50 sampled examples per condition and dataset (49
 unique on QASPER), a parameter-free lexical/hash index, and four selected
 candidates. Strict EM
 is confounded by verbose continuation. Int8 detail is restored before
-attention, so it saves retained bytes rather than active attention bytes. No
-learned native Q/K index, continuous batching, or OOM frontier is measured.
+ attention, so it saves retained bytes rather than active attention bytes. The
+ learned-router cohort has only 16 held-out examples per dataset/model and does
+ not include 2Wiki; no learned native Q/K index, continuous batching, or OOM
+ frontier is measured.
 The residency sweeps use deterministic cyclic schedules rather than a measured
 production session distribution. The original matched benchmark reuses only
 20 examples per dataset; the expanded selector-frozen confirmation increases
@@ -1405,10 +1430,13 @@ budgets cap compact residency but reload every repeated access; fitting all
 eight resources removes reloads and halves resolution time without changing
 F1. With SDK routing, native and ordinary paths remain identical on 60/60
 paired generations, but recall@4 ranges from 0.348 to 0.775 and answer
-likelihood remains below oracle evidence. The next quality improvement belongs
-in discovery, not the MLX cache transport. Queued server pressure, an OOM
-frontier, learned routing, and broader quality cohorts remain necessary before
-production claims. Matched E2 execution removes roughly 91--93\% of visible
+ likelihood remains below oracle evidence. A five-seed router qualification
+ improves QASPER recall across four MLX identities, but its HotpotQA transfer is
+ negative, so generic routing remains the product default. The next quality
+ improvement still belongs in discovery, not the MLX cache transport. Queued
+ server pressure, an OOM frontier, broader learned-routing objectives, and
+ larger quality cohorts remain necessary before production claims. Matched E2
+ execution removes roughly 91--93\% of visible
 tokens and preserves every output, but its unfused decode is slower. Last-half
 consumption remains a narrow controlled result and int8 residency remains a
 candidate; neither is promoted by the natural scaling ladder. A segmented one-softmax primitive

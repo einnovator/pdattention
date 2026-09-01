@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -9,6 +10,7 @@ from click.testing import CliRunner
 
 from pra_hf.bundle import (
     BundleBuilder,
+    HubPublisher,
     BundleRegistryEntry,
     BundleResolver,
     BundleValidationError,
@@ -182,3 +184,48 @@ def test_bundle_cli_card_list_resolve_and_hf_dry_run(tmp_path: Path, monkeypatch
     dry = runner.invoke(cli, ["hf", "push", str(bundle_path), "owner/repo", "--dry-run", "--json"])
     assert dry.exit_code == 0, dry.output
     assert json.loads(dry.output)["schema_version"] == 2
+
+
+def test_hub_update_checks_remote_manifest_without_full_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    bundle_path = tmp_path / "bundle"
+    built = BundleBuilder().build(_run(tmp_path), bundle_path)
+    remote_manifest = tmp_path / "remote-bundle.yaml"
+    remote_manifest.write_text(
+        yaml.safe_dump({"base_model": built.base_model}), encoding="utf-8"
+    )
+
+    class FakeApi:
+        def create_repo(self, *args, **kwargs):
+            return None
+
+        def upload_folder(self, **kwargs):
+            return SimpleNamespace(oid="remote-commit", repo_url="https://example.test")
+
+        def create_tag(self, *args, **kwargs):
+            return None
+
+    import huggingface_hub
+
+    monkeypatch.setattr(huggingface_hub, "HfApi", FakeApi)
+    monkeypatch.setattr(
+        huggingface_hub, "hf_hub_download", lambda *args, **kwargs: str(remote_manifest)
+    )
+    result = HubPublisher().push(bundle_path, "org/pra-model")
+
+    assert result["commit"] == "remote-commit"
+    assert result["base_model"]["revision"] == REVISION
+
+
+def test_default_registry_contains_published_cross_family_catalog() -> None:
+    entries = {entry.name: entry for entry in TrustedBundleRegistry.default().entries}
+    expected = {
+        "pra-qwen3-4b-mlx-4bit": "49c18674ce15c8e267d5d19230d6dc152bca778b",
+        "pra-qwen3-14b-mlx-4bit": "9853a17f84aeebc33e209c87e360715559b2c5c8",
+        "pra-llama3-1-8b-mlx-4bit": "0d14b5eb65cefa56be0ff0c677818b8928d607a2",
+        "pra-gemma3-1b-mlx-4bit": "afb67d45289bcffc180890089c2bfc71bb9ff636",
+    }
+
+    assert {name: entries[name].bundle_revision for name in expected} == expected
+    assert all("qasper-learned" in entries[name].profiles for name in expected)

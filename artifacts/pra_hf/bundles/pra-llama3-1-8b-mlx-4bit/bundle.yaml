@@ -1,0 +1,239 @@
+schema_version: 2
+base_model:
+  id: mlx-community/Llama-3.1-8B-Instruct-4bit
+  revision: 90215b22ec18e72f623dde2ea7af4097025160e2
+  tokenizer_revision: 90215b22ec18e72f623dde2ea7af4097025160e2
+  architecture: LlamaForCausalLM
+  family: llama
+  parameter_count_approx: 8B
+  quantization:
+    bits: 4
+    group_size: 64
+    runtime: MLX
+  fingerprint: 87c83fb36418ee8d4965a612a6df735dafff838e5333ddc1933777a3575f68a7
+structural_adapter:
+  path: structural_adapter
+  status: validated
+  fingerprint: 3d772ca13e8bdea582a1a0e2f2cf9ca3e3c92c71b97c1c9a7367ea9087cecf13
+learned_adapters:
+  combined-router-d128:
+    path: learned_adapters/combined-router-d128
+    type: routing
+    status: controlled-artifact
+    default: false
+    training:
+      datasets:
+      - QASPER
+      - HotpotQA
+      seed: 37
+      seeds_evaluated: &id001
+      - 11
+      - 23
+      - 37
+      - 53
+      - 71
+      steps: 512
+      parameters: 1048576
+      objective: multi-positive softmax
+    validation:
+      AUC0-30: 0.3712122157356532
+      MRR: 0.5365540983139667
+      R@10%: 0.3251041666666667
+      R@16: 0.5138839285714286
+      R@20%: 0.4444288003663004
+      R@3: 0.23999255952380952
+      R@30%: 0.5419808836996337
+      R@5%: 0.2594940476190476
+      R@8: 0.35826636904761905
+      f70: 0.5022667672903487
+      f80: 1.0
+      f90: 1.0
+    fingerprint: a970a9a6b000cdd5e9198ac828ea0e6a0dc1ca227756b8c7ce65e628a9f303a4
+profiles:
+  reference:
+    purpose: Training-free structural checks using generic cosine routing
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: controlled
+  balanced:
+    purpose: Portable default using generic cosine routing
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: controlled-default
+  qasper-learned:
+    purpose: Opt-in learned routing qualified for QASPER; not a HotpotQA default
+    routing_adapter: combined-router-d128
+    consumer_layers: all eligible
+    status: controlled-dataset-specific
+qualification:
+  status: CONTROLLED
+  metrics:
+  - engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.318246336996337
+    secondary_metrics:
+      MRR: 0.18316290567937848
+      AUC0-30: 0.219545177045177
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.46832188644688644
+    secondary_metrics:
+      MRR: 0.696593045112782
+      AUC0-30: 0.4308582112332112
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.6158482142857143
+    secondary_metrics:
+      MRR: 0.624084595959596
+      AUC0-30: 0.4856473214285714
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.4205357142857143
+    secondary_metrics:
+      MRR: 0.3765151515151515
+      AUC0-30: 0.3115662202380952
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.46704727564102566
+    secondary_metrics:
+      MRR: 0.4036237508194872
+      AUC0-30: 0.3525962492368742
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.4444288003663004
+    secondary_metrics:
+      MRR: 0.5365540983139667
+      AUC0-30: 0.3712122157356532
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  training:
+    datasets: QASPER and HotpotQA
+    train_examples: 48
+    validation_examples: 16
+    held_out_test_examples: 32
+    seeds: *id001
+    selection: maximum combined validation AUC0-30
+    method: multi-positive softmax
+    parameter_count: 1048576
+    base_revision: 90215b22ec18e72f623dde2ea7af4097025160e2
+  limitations:
+  - The learned router improves QASPER but is not uniformly positive on HotpotQA;
+    it is opt-in rather than the bundle default.
+  - Routing evidence uses 16 held-out examples per dataset and does not establish
+    generation quality or serving economics.
+  - The qualification identity is the exact 4-bit MLX model and revision; it does
+    not transfer automatically to full-precision Hugging Face weights or another quantization.
+  - Base-model and dataset licenses apply separately to the router artifact.
+  artifacts:
+  - qualification/comparison.json
+  - qualification/feature_dataset_manifest.json
+  - qualification/catalog_summary.json
+runtime_compatibility:
+  mlx:
+    selected_context: validated
+    native_memory: structural mapping controlled for this exact MLX identity
+    native_serving: engine-study evidence; not established by routing qualification
+    recommended: balanced generic; qasper-learned only for matched QASPER workloads
+  hf:
+    selected_context: portable
+    native_memory: NOT_MEASURED for the full-precision HF counterpart
+    native_serving: NOT_MEASURED
+    recommended: Selected Context; exact MLX artifact only
+engine_realizations:
+  mlx:
+    bundle_consumed_by: pra_runtime
+  remote_engines:
+    bundle_consumed_by: pra_gateway
+provenance:
+  pra_version: 0.2.0rc1
+  pra_commit: 27b3ce12d8aec6b6f7855b65204de6b10c4aeb71
+  bundle_build_commit: 27b3ce12d8aec6b6f7855b65204de6b10c4aeb71
+  hf_repo: EInnovator/pra-llama3-1-8b-mlx-4bit
+  hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
+  license: llama3.1
+  license_note: Router and project terms do not replace the base-model or dataset
+    licenses.
+  source_artifact: artifacts/pra_hf/routers/llama3-8b-combined-d128
+  selection_reason: Cross-family controlled comparison of generic and learned routing
+    on frozen held-out features.
+checksums:
+  learned_adapters/combined-router-d128/adapter_model.pt: 7f1c890729d1641b0693b4068bed59b1c2b18e3744b70bb3eb1be069c9b798ad
+  learned_adapters/combined-router-d128/config.json: de48f3e4f4f357dd28947f563e0b679585416229815a7355b6c6b316e28d2529
+  qualification/catalog_summary.json: f74119da8464ecebb2d98c45ef234d5f3d4ea71092f0f2eec06361060cb8d0a0
+  qualification/comparison.json: edbf90e073ef7dd89e1704833a7f6110498e8314cbe34c95d3f9f7fcaedcb62c
+  qualification/feature_dataset_manifest.json: 717daafd0329a95b1fff7067a23d47894095624560c670daf9111b99b9157148
+  structural_adapter/pra_adapter.yaml: 5d3bbc2ba0a4390e7d1f64516e6ada412097ffa4a577483e43e20bc2ce432a44
+trust:
+  status: eInnovator-qualified
+  publisher: EInnovator
+  scope: controlled routing for the exact 4-bit MLX model identity

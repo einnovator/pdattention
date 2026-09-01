@@ -1,0 +1,33 @@
+schema_version: 1
+base_model:
+  id: mlx-community/gemma-3-1b-it-4bit
+  revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
+architecture:
+  model_type: gemma3
+  architecture: Gemma3ForCausalLM
+  layers: 26
+  hidden_size: 1152
+mapping:
+  layers: model.layers
+  attention: self_attn
+  q_proj: q_proj
+  k_proj: k_proj
+  v_proj: v_proj
+  o_proj: o_proj
+heads:
+  query: 4
+  kv: 1
+  head_dim: 256
+position:
+  type: rope
+  implementation: native
+topology:
+  type: mixed_sliding_global
+  sliding_window: 512
+  sliding_window_pattern: 6
+  native_memory_eligible_layers:
+  - 5
+  - 11
+  - 17
+  - 23
+  gqa: true

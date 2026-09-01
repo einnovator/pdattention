@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "protocol": "Frozen MLX attention-input features; generic cosine versus five-seed asymmetric linear router",
+  "selection": "Best combined validation AUC0-30; test identities remain held out",
+  "hardware": "Apple M4 Pro, 48 GB unified memory",
+  "datasets": [
+    "QASPER",
+    "HotpotQA"
+  ],
+  "models": [
+    {
+      "slug": "qwen3-4b",
+      "label": "Qwen3-4B",
+      "base_model": "mlx-community/Qwen3-4B-4bit",
+      "base_model_revision": "4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25",
+      "selected_seed": 71,
+      "adapter_parameters": 655360,
+      "training_examples": 48,
+      "validation_examples": 16,
+      "test_examples": 32,
+      "seeds": [
+        11,
+        23,
+        37,
+        53,
+        71
+      ],
+      "recommendation": "Learned for QASPER; generic for HotpotQA",
+      "datasets": {
+        "qasper": {
+          "R@20%": {
+            "generic": 0.412908,
+            "learned": 0.639943,
+            "delta": 0.227035
+          },
+          "MRR": {
+            "generic": 0.291546,
+            "learned": 0.748264,
+            "delta": 0.456718
+          },
+          "AUC0-30": {
+            "generic": 0.340789,
+            "learned": 0.544601,
+            "delta": 0.203813
+          }
+        },
+        "hotpotqa": {
+          "R@20%": {
+            "generic": 0.38631,
+            "learned": 0.342411,
+            "delta": -0.043899
+          },
+          "MRR": {
+            "generic": 0.373686,
+            "learned": 0.349874,
+            "delta": -0.023811
+          },
+          "AUC0-30": {
+            "generic": 0.297113,
+            "learned": 0.247974,
+            "delta": -0.049139
+          }
+        },
+        "combined": {
+          "R@20%": {
+            "generic": 0.399609,
+            "learned": 0.491177,
+            "delta": 0.091568
+          },
+          "MRR": {
+            "generic": 0.332616,
+            "learned": 0.549069,
+            "delta": 0.216453
+          },
+          "AUC0-30": {
+            "generic": 0.318951,
+            "learned": 0.396288,
+            "delta": 0.077337
+          }
+        }
+      }
+    },
+    {
+      "slug": "qwen3-14b",
+      "label": "Qwen3-14B",
+      "base_model": "mlx-community/Qwen3-14B-4bit",
+      "base_model_revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+      "selected_seed": 23,
+      "adapter_parameters": 1310720,
+      "training_examples": 48,
+      "validation_examples": 16,
+      "test_examples": 32,
+      "seeds": [
+        11,
+        23,
+        37,
+        53,
+        71
+      ],
+      "recommendation": "Learned for QASPER; generic for HotpotQA",
+      "datasets": {
+        "qasper": {
+          "R@20%": {
+            "generic": 0.318234,
+            "learned": 0.678727,
+            "delta": 0.360493
+          },
+          "MRR": {
+            "generic": 0.199634,
+            "learned": 0.895433,
+            "delta": 0.695799
+          },
+          "AUC0-30": {
+            "generic": 0.245015,
+            "learned": 0.597293,
+            "delta": 0.352278
+          }
+        },
+        "hotpotqa": {
+          "R@20%": {
+            "generic": 0.494196,
+            "learned": 0.314435,
+            "delta": -0.179762
+          },
+          "MRR": {
+            "generic": 0.602604,
+            "learned": 0.395067,
+            "delta": -0.207537
+          },
+          "AUC0-30": {
+            "generic": 0.388646,
+            "learned": 0.240751,
+            "delta": -0.147894
+          }
+        },
+        "combined": {
+          "R@20%": {
+            "generic": 0.406215,
+            "learned": 0.496581,
+            "delta": 0.090366
+          },
+          "MRR": {
+            "generic": 0.401119,
+            "learned": 0.64525,
+            "delta": 0.244131
+          },
+          "AUC0-30": {
+            "generic": 0.31683,
+            "learned": 0.419022,
+            "delta": 0.102192
+          }
+        }
+      }
+    },
+    {
+      "slug": "llama3-8b",
+      "label": "Llama-3.1-8B",
+      "base_model": "mlx-community/Llama-3.1-8B-Instruct-4bit",
+      "base_model_revision": "90215b22ec18e72f623dde2ea7af4097025160e2",
+      "selected_seed": 37,
+      "adapter_parameters": 1048576,
+      "training_examples": 48,
+      "validation_examples": 16,
+      "test_examples": 32,
+      "seeds": [
+        11,
+        23,
+        37,
+        53,
+        71
+      ],
+      "recommendation": "Learned for QASPER; generic for recall-sensitive mixed use",
+      "datasets": {
+        "qasper": {
+          "R@20%": {
+            "generic": 0.318246,
+            "learned": 0.468322,
+            "delta": 0.150076
+          },
+          "MRR": {
+            "generic": 0.183163,
+            "learned": 0.696593,
+            "delta": 0.51343
+          },
+          "AUC0-30": {
+            "generic": 0.219545,
+            "learned": 0.430858,
+            "delta": 0.211313
+          }
+        },
+        "hotpotqa": {
+          "R@20%": {
+            "generic": 0.615848,
+            "learned": 0.420536,
+            "delta": -0.195313
+          },
+          "MRR": {
+            "generic": 0.624085,
+            "learned": 0.376515,
+            "delta": -0.247569
+          },
+          "AUC0-30": {
+            "generic": 0.485647,
+            "learned": 0.311566,
+            "delta": -0.174081
+          }
+        },
+        "combined": {
+          "R@20%": {
+            "generic": 0.467047,
+            "learned": 0.444429,
+            "delta": -0.022618
+          },
+          "MRR": {
+            "generic": 0.403624,
+            "learned": 0.536554,
+            "delta": 0.13293
+          },
+          "AUC0-30": {
+            "generic": 0.352596,
+            "learned": 0.371212,
+            "delta": 0.018616
+          }
+        }
+      }
+    },
+    {
+      "slug": "gemma3-1b",
+      "label": "Gemma-3-1B",
+      "base_model": "mlx-community/gemma-3-1b-it-4bit",
+      "base_model_revision": "2d44e83dc9e80843d22fb941d3d699a0b1351aa6",
+      "selected_seed": 71,
+      "adapter_parameters": 294912,
+      "training_examples": 48,
+      "validation_examples": 16,
+      "test_examples": 32,
+      "seeds": [
+        11,
+        23,
+        37,
+        53,
+        71
+      ],
+      "recommendation": "Learned for QASPER/mixed use; HotpotQA remains metric-dependent",
+      "datasets": {
+        "qasper": {
+          "R@20%": {
+            "generic": 0.225906,
+            "learned": 0.453886,
+            "delta": 0.22798
+          },
+          "MRR": {
+            "generic": 0.245932,
+            "learned": 0.449874,
+            "delta": 0.203942
+          },
+          "AUC0-30": {
+            "generic": 0.188285,
+            "learned": 0.392605,
+            "delta": 0.20432
+          }
+        },
+        "hotpotqa": {
+          "R@20%": {
+            "generic": 0.336458,
+            "learned": 0.318006,
+            "delta": -0.018452
+          },
+          "MRR": {
+            "generic": 0.385305,
+            "learned": 0.537874,
+            "delta": 0.152569
+          },
+          "AUC0-30": {
+            "generic": 0.244296,
+            "learned": 0.246895,
+            "delta": 0.002599
+          }
+        },
+        "combined": {
+          "R@20%": {
+            "generic": 0.281182,
+            "learned": 0.385946,
+            "delta": 0.104764
+          },
+          "MRR": {
+            "generic": 0.315618,
+            "learned": 0.493874,
+            "delta": 0.178256
+          },
+          "AUC0-30": {
+            "generic": 0.21629,
+            "learned": 0.31975,
+            "delta": 0.10346
+          }
+        }
+      }
+    }
+  ],
+  "conclusion": "Learned routing is consistently positive on QASPER but does not transfer uniformly to HotpotQA; generic routing remains the catalog default."
+}

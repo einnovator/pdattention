@@ -83,6 +83,10 @@ The implementation adds:
 - warmed M5 4B/8B/14B replication, an explicit 32B capacity-gate row, a
   held-out noncontiguous gate that retains every eligible layer, and corrected
   2K/8K/32K occupied-context receipts.
+- four public cross-family MLX bundles for Qwen3-4B, Qwen3-14B,
+  Llama-3.1-8B, and Gemma-3-1B, each with a five-seed held-out comparison of
+  parameter-free cosine routing and an optional learned router. The learned
+  profile improves QASPER consistently but not HotpotQA, so it remains opt-in.
 
 Reproduce the measured portable profile:
 
@@ -104,6 +108,8 @@ python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwe
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model gemma --device cuda
 python experiments/paper4_5_runtime/run_layer_profile_calibration.py --finalize-only
+python experiments/paper4_5_runtime/summarize_hf_catalog_adapters.py
+python experiments/paper4_5_runtime/build_hf_catalog_bundles.py --force
 python -m experiments.paper4_5_runtime.build_product_matrix_v2
 python -m experiments.paper4_5_runtime.build_engine_qualification
 python -m experiments.paper4_5_runtime.summarize_runtime

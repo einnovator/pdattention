@@ -7,7 +7,7 @@
       "slug": "qwen",
       "name": "Qwen",
       "model_types": ["qwen2", "qwen3"],
-      "examples": ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit"],
+      "examples": ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit", "mlx-community/Qwen3-14B-4bit"],
       "bundle_links": {
         "Qwen/Qwen3-0.6B": {
           "repo": "EInnovator/pra-qwen3-0.6b",
@@ -17,13 +17,31 @@
           "engines": "HF Native Memory; portable Selected Context",
           "recommended_mode": "Selected Context; qualify Native Memory locally",
           "qualified_at": "2026-09-01"
+        },
+        "mlx-community/Qwen3-4B-4bit": {
+          "repo": "EInnovator/pra-qwen3-4b-mlx-4bit",
+          "url": "https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-4bit",
+          "revision": "49c18674ce15c8e267d5d19230d6dc152bca778b",
+          "status": "Controlled",
+          "engines": "MLX routing qualification; portable Selected Context",
+          "recommended_mode": "Generic balanced; learned router only for matched QASPER",
+          "qualified_at": "2026-09-01"
+        },
+        "mlx-community/Qwen3-14B-4bit": {
+          "repo": "EInnovator/pra-qwen3-14b-mlx-4bit",
+          "url": "https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit",
+          "revision": "9853a17f84aeebc33e209c87e360715559b2c5c8",
+          "status": "Controlled",
+          "engines": "MLX routing qualification; portable Selected Context",
+          "recommended_mode": "Generic balanced; learned router only for matched QASPER",
+          "qualified_at": "2026-09-01"
         }
       },
       "selected_context": "Available",
       "native_memory": "Validated mapping",
       "adapter_requirement": "Optional",
       "adapter_detail": "The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter when the deployment needs a pinned, reviewable artifact.",
-      "evidence": "Qwen/Qwen3-0.6B has checked-in model-backed profile rows; larger Qwen configurations have engine-specific evidence.",
+      "evidence": "Qwen3-4B and Qwen3-14B have five-seed, held-out MLX routing comparisons. Learned routing improves QASPER but regresses on HotpotQA, so generic routing remains the portable default.",
       "commands": [
         "pra inspect Qwen/Qwen3-1.7B --engine hf",
         "pra model validate Qwen/Qwen3-1.7B --suite smoke",
@@ -35,12 +53,23 @@
       "slug": "llama",
       "name": "Llama",
       "model_types": ["llama"],
-      "examples": ["unsloth/Llama-3.2-1B", "meta-llama/Llama-3.2-1B-Instruct"],
+      "examples": ["unsloth/Llama-3.2-1B", "meta-llama/Llama-3.2-1B-Instruct", "mlx-community/Llama-3.1-8B-Instruct-4bit"],
+      "bundle_links": {
+        "mlx-community/Llama-3.1-8B-Instruct-4bit": {
+          "repo": "EInnovator/pra-llama3-1-8b-mlx-4bit",
+          "url": "https://huggingface.co/EInnovator/pra-llama3-1-8b-mlx-4bit",
+          "revision": "0d14b5eb65cefa56be0ff0c677818b8928d607a2",
+          "status": "Controlled",
+          "engines": "MLX routing qualification; portable Selected Context",
+          "recommended_mode": "Generic balanced; learned router only for matched QASPER",
+          "qualified_at": "2026-09-01"
+        }
+      },
       "selected_context": "Available",
       "native_memory": "Validated mapping",
       "adapter_requirement": "Optional",
       "adapter_detail": "The SDK includes the conventional Llama decoder mapping. A declarative adapter is optional for discovery and recommended for pinned releases.",
-      "evidence": "unsloth/Llama-3.2-1B has checked-in model-backed profile rows.",
+      "evidence": "Llama-3.1-8B has a five-seed, held-out MLX routing comparison. Learned routing improves QASPER MRR but reduces HotpotQA recall, so generic routing remains the default.",
       "commands": [
         "pra inspect unsloth/Llama-3.2-1B --engine hf",
         "pra model validate unsloth/Llama-3.2-1B --suite smoke",
@@ -53,11 +82,22 @@
       "name": "Gemma 3 text",
       "model_types": ["gemma3_text"],
       "examples": ["google/gemma-3-1b-it", "mlx-community/gemma-3-1b-it-4bit"],
+      "bundle_links": {
+        "mlx-community/gemma-3-1b-it-4bit": {
+          "repo": "EInnovator/pra-gemma3-1b-mlx-4bit",
+          "url": "https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-4bit",
+          "revision": "afb67d45289bcffc180890089c2bfc71bb9ff636",
+          "status": "Controlled",
+          "engines": "MLX mixed/sliding routing qualification; portable Selected Context",
+          "recommended_mode": "Generic balanced; learned router for matched QASPER or validated mixed workloads",
+          "qualified_at": "2026-09-01"
+        }
+      },
       "selected_context": "Available",
       "native_memory": "Partial topology",
       "adapter_requirement": "Required for native production",
       "adapter_detail": "A built-in mapping discovers Gemma 3 text attention, but its heterogeneous topology must be exported, reviewed, and validated for the exact revision before Native Memory is promoted.",
-      "evidence": "google/gemma-3-1b-it has checked-in model-backed profile rows; native deployment remains topology specific.",
+      "evidence": "Gemma-3-1B has a five-seed, held-out MLX comparison under its mixed sliding/global topology. Learned routing helps QASPER and combined MRR, while HotpotQA recall remains mixed.",
       "commands": [
         "pra inspect google/gemma-3-1b-it --engine hf",
         "pra model adapt google/gemma-3-1b-it -o .pra/adapters/gemma3",

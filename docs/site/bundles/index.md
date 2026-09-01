@@ -41,13 +41,25 @@ silently promoted to project-qualified status.
 
 ## Published collection
 
-The first project-qualified release is the
-[`EInnovator/pra-qwen3-0.6b` model card](https://huggingface.co/EInnovator/pra-qwen3-0.6b),
-pinned by the registry to Hub commit `25e69076c48a12b5943fe19b0351e68a86ba563e`.
-Related releases are grouped in the
+Project-qualified releases are grouped in the
 [canonical EInnovator PRA Bundles Collection](https://huggingface.co/collections/EInnovator/pra-bundles-6a971e52093232f858e660f6).
 The [EInnovator organization profile](https://huggingface.co/EInnovator)
 provides the stable publisher entry point.
+
+| Exact base identity | Canonical bundle | Default routing | Learned-router evidence |
+| --- | --- | --- | --- |
+| `Qwen/Qwen3-0.6B` | [`EInnovator/pra-qwen3-0.6b`](https://huggingface.co/EInnovator/pra-qwen3-0.6b) | Existing QASPER router | First controlled public proof |
+| `mlx-community/Qwen3-4B-4bit` | [`EInnovator/pra-qwen3-4b-mlx-4bit`](https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-4bit) | Generic cosine | QASPER `R@20%`: `0.413 -> 0.640`; HotpotQA: `0.386 -> 0.342` |
+| `mlx-community/Qwen3-14B-4bit` | [`EInnovator/pra-qwen3-14b-mlx-4bit`](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit) | Generic cosine | QASPER `R@20%`: `0.318 -> 0.679`; HotpotQA: `0.494 -> 0.314` |
+| `mlx-community/Llama-3.1-8B-Instruct-4bit` | [`EInnovator/pra-llama3-1-8b-mlx-4bit`](https://huggingface.co/EInnovator/pra-llama3-1-8b-mlx-4bit) | Generic cosine | QASPER `R@20%`: `0.318 -> 0.468`; HotpotQA: `0.616 -> 0.421` |
+| `mlx-community/gemma-3-1b-it-4bit` | [`EInnovator/pra-gemma3-1b-mlx-4bit`](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-4bit) | Generic cosine | QASPER `R@20%`: `0.226 -> 0.454`; HotpotQA: `0.336 -> 0.318` |
+
+The four MLX bundles compare the same PRA feature path with and without an
+asymmetric learned router. Because every learned router helps QASPER but none
+improves HotpotQA recall, `balanced` keeps generic routing and
+`qasper-learned` is an explicit dataset-qualified profile. The evidence applies
+only to the pinned 4-bit MLX revision shown in each model card.
+
 The [historical maintainer Collection](https://huggingface.co/collections/jsimao71/pra-bundles-6a97089699497483e5a81c06)
 continues to point to the canonical organization release during migration.
 Future project bundles are published only under the `EInnovator/pra-*` namespace.

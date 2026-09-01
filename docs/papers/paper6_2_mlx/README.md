@@ -57,6 +57,13 @@ natural-QA examples spanning QASPER, HotpotQA, and 2Wiki. Native concat E2 is
 has a 1.032 warm-cost ratio, and a 0.935 cold time-to-usable-context ratio. The
 Qwen-only segmented consumer patch is not generalized by this result.
 
+A separate four-model, five-seed routing qualification compares generic cosine
+routing with an asymmetric learned router on held-out QASPER and HotpotQA
+identities. Learning improves QASPER recall for Qwen3-4B, Qwen3-14B,
+Llama-3.1-8B, and Gemma-3-1B, but it does not improve HotpotQA recall. Public
+MLX bundles therefore keep generic routing as `balanced` and expose
+`qasper-learned` only as an opt-in controlled profile.
+
 The bounded-residency extension covers 1,020 natural-QA requests over five
 seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable
 across budgets. Budgets below the eight-resource working set reload every

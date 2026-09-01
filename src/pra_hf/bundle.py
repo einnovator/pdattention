@@ -406,6 +406,12 @@ class BundleBuilder:
         repo = bundle.provenance.get("hf_repo", "OWNER/REPO")
         collection = bundle.provenance.get("hf_collection")
         publisher = str(bundle.trust.get("publisher", "")).strip()
+        preferred_engine = (
+            "mlx"
+            if "mlx" in bundle.runtime_compatibility
+            and str(model).lower().startswith("mlx-community/")
+            else "hf"
+        )
         lines = ["---", yaml.safe_dump(metadata, sort_keys=False).strip(), "---", "", f"# PRA bundle for {model}", ""]
         lines += [
             "## What this is", "",
@@ -416,9 +422,9 @@ class BundleBuilder:
             "## What PRA provides", "",
             "PRA provides portable Selected Context, model-specific structural mapping, optional learned routing, and measured profiles. Native Memory and Native Serving are enabled only on engine/model combinations marked as qualified below.", "",
             "## Installation", "", "```bash", "pip install 'pra-hf[hf-hub,hf-runtime]'", "pra doctor", "```", "",
-            "## Quickstart", "", "```bash", f"pra inspect {model} -e hf -a {repo}",
-            f"pra evaluate {model} -e hf -D qasper -a {repo}", "pra recommend .pra/runs/latest",
-            f"pra serve {model} -e hf -a {repo} -p balanced", "```", "",
+            "## Quickstart", "", "```bash", f"pra inspect {model} -e {preferred_engine} -a {repo}",
+            f"pra evaluate {model} -e {preferred_engine} -D qasper -a {repo}", "pra recommend .pra/runs/latest",
+            f"pra serve {model} -e {preferred_engine} -a {repo} -p balanced", "```", "",
             "## Bundle contents", "", "| Component | Type | Status | Path |", "| --- | --- | --- | --- |",
             f"| structural | structural | {bundle.structural_adapter.get('status', 'NOT_MEASURED')} | `{bundle.structural_adapter.get('path', 'NOT_MEASURED')}` |",
         ]
@@ -431,12 +437,13 @@ class BundleBuilder:
             consumers = value.get("consumer_layers", "all eligible")
             if isinstance(consumers, Sequence) and not isinstance(consumers, str):
                 consumers = ", ".join(str(layer) for layer in consumers)
-            lines.append(f"| {name} | {value.get('purpose', 'General PRA use')} | {value.get('routing_adapter', 'generic')} | {consumers} | {value.get('status', 'NOT_MEASURED')} |")
+            routing = value.get("routing_adapter") or "generic cosine"
+            lines.append(f"| {name} | {value.get('purpose', 'General PRA use')} | {routing} | {consumers} | {value.get('status', 'NOT_MEASURED')} |")
         lines += ["", "## Engine compatibility", "", "| Engine | Selected Context | Native Memory | Native Serving | Recommended today |", "| --- | --- | --- | --- | --- |"]
         for engine, item in bundle.runtime_compatibility.items():
             value = item if isinstance(item, Mapping) else {}
             lines.append(f"| {engine} | {value.get('selected_context', 'NOT_MEASURED')} | {value.get('native_memory', 'NOT_MEASURED')} | {value.get('native_serving', 'NOT_MEASURED')} | {value.get('recommended', 'Selected Context')} |")
-        lines += ["", "## Expected metrics", "", "| Engine | Hardware | Workload | Mode | Quality | Visible tokens | TTFT | Throughput | Status |", "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |"]
+        lines += ["", "## Expected metrics", "", "| Engine | Hardware | Workload | Mode | Quality metric | Visible tokens | TTFT | Throughput | Status |", "| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |"]
         rows = _qualification_rows(bundle)
         for row in rows:
             lines.append(
@@ -444,7 +451,11 @@ class BundleBuilder:
                     engine=row.get("engine", "NOT_MEASURED"), hardware=row.get("hardware", "NOT_MEASURED"),
                     workload=row.get("dataset", row.get("workload", "NOT_MEASURED")), count=row.get("sample_count", "NOT_MEASURED"),
                     mode=_public_mode(row.get("mode", row.get("representation", "NOT_MEASURED"))),
-                    quality=_metric(row.get("quality", row.get("quality_score"))), visible=_metric(row.get("visible_tokens")),
+                    quality=(
+                        f"{row.get('quality_metric')}={_metric(row.get('quality', row.get('quality_score')))}"
+                        if row.get("quality_metric")
+                        else _metric(row.get("quality", row.get("quality_score")))
+                    ), visible=_metric(row.get("visible_tokens")),
                     ttft=_metric(row.get("ttft_ms")), throughput=_metric(row.get("throughput", row.get("requests_per_second"))),
                     status=row.get("evidence_tier", row.get("status", "NOT_MEASURED")),
                 )
@@ -453,7 +464,7 @@ class BundleBuilder:
             lines.append("| NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |")
         lines += [
             "", "These are qualification measurements, not guaranteed production performance. Run `pra evaluate` on your hardware and workload. Engine version, profile, cohort, evidence tier, date, and artifact provenance remain recorded in `qualification/` and `bundle.yaml`.", "",
-            "## How to evaluate on your system", "", "```bash", f"pra evaluate {model} -a {repo} -D qasper -o .pra/runs/qasper", "pra recommend .pra/runs/qasper", "pra report .pra/runs/qasper --format html", "```", "",
+            "## How to evaluate on your system", "", "```bash", f"pra evaluate {model} -e {preferred_engine} -a {repo} -D qasper -o .pra/runs/qasper", "pra recommend .pra/runs/qasper", "pra report .pra/runs/qasper --format html", "```", "",
             "## How to choose Selected Context vs Native Memory", "",
             "Selected Context is the portable baseline and should be the first deployment. Native Memory is incremental, model-specific, and engine/workload dependent; include it in local qualification before promotion.", "",
             "## Known limitations", "",
@@ -672,9 +683,13 @@ class HubPublisher:
             raise ImportError("Publishing requires the 'hf-hub' optional dependency.") from error
         api = HfApi()
         try:
-            remote_manifest = Path(hf_hub_download(repo_id, "bundle.yaml", revision=revision))
-            remote = PRAModelBundle.from_pretrained(remote_manifest.parent)
-            if remote.base_model.get("id") != loaded.base_model.get("id") or remote.base_model.get("revision") != loaded.base_model.get("revision"):
+            remote_manifest = yaml.safe_load(
+                Path(hf_hub_download(repo_id, "bundle.yaml", revision=revision)).read_text(
+                    encoding="utf-8"
+                )
+            ) or {}
+            remote_model = remote_manifest.get("base_model", {})
+            if remote_model.get("id") != loaded.base_model.get("id") or remote_model.get("revision") != loaded.base_model.get("revision"):
                 raise BundleValidationError("Existing Hub repository targets an incompatible base model or revision.")
         except (RepositoryNotFoundError, HfHubHTTPError):
             pass

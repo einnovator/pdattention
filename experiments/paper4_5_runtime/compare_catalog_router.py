@@ -167,7 +167,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "base_model": args.base_model,
         "base_model_revision": args.base_model_revision,
         "model_family": args.model_family,
-        "feature_manifest": str((args.feature_dir / "feature_dataset_manifest.json").resolve()),
+        "feature_manifest": "feature_dataset_manifest.json",
         "training_examples": len(train),
         "validation_examples": len(validation),
         "test_examples": len(test),

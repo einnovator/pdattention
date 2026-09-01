@@ -71,6 +71,12 @@ A 48~GiB M4 Pro calibration then extends Qwen to 8B, 14B, 32B, and
 native replay preserves every selected-text sequence. Dense 32B is less
 likelihood-sensitive to reduced consumer suffixes, but no sparse profile
 preserves enough sequence identity to graduate beyond calibration-pending.
+On the same host, a separate five-seed routing qualification packages exact
+4-bit MLX identities for Qwen3-4B, Qwen3-14B, Llama-3.1-8B, and Gemma-3-1B.
+Learned routing improves held-out QASPER $R_{20}$ for every model, by
+0.150--0.360 absolute, but does not transfer uniformly to HotpotQA. The public
+bundles therefore keep parameter-free cosine routing as the default and expose
+the learned router only through an explicitly QASPER-qualified profile.
 DeepSeek Harness and Pi bridges preserve typed
 tool-result identity through explicit ordinary-engine fallback in all
 \AgentPluginCases{} contract cases. In a five-seed tiny-HF mechanism profile, token-shared
@@ -779,6 +785,59 @@ grows from 6.37 to 31.85~GiB peak allocation. These receipts are imported into
 the product matrix with model revision, host, seed count, and measurement
 status; they do not upgrade unfused segmented execution to a production
 kernel.
+
+\subsection{Cross-family learned-router qualification}
+
+Structural compatibility does not answer whether an extra routing adapter is
+useful. We therefore compare two PRA configurations while holding the model,
+tokenizer, examples, chunking, and extracted hidden states fixed. The generic
+condition scores each mean chunk gist by normalized cosine similarity to the
+last query state. The learned condition uses a rank-128 asymmetric linear
+router trained with a multi-positive softmax objective. Both conditions retain
+the rest of PRA's typed-resource, chunk-index, selection, and consumer-layer
+machinery. Thus the comparison isolates the routing adapter rather than
+comparing PRA with and without memory.
+
+For each exact 4-bit MLX identity, independent 128-token encoding blocks are
+divided into 32-token routing chunks. We extract the normalized attention input
+from the final decoder layer while retaining each architecture's native
+normalization, masks, RoPE, grouped-query attention, and, for Gemma, mixed
+sliding/global topology. Identity-disjoint splits contain 48 training, 16
+validation, and 32 held-out test examples, evenly divided between QASPER and
+HotpotQA. Five seeds (11, 23, 37, 53, and 71) are trained for 512 steps; the
+seed with the highest combined validation AUC$_{0--30}$ is selected before the
+test split is evaluated.
+
+\input{../shared/results/paper4_5_runtime/hf_catalog_adapters/generated_hf_catalog_adapters.tex}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=.88\textwidth]{../shared/results/paper4_5_runtime/hf_catalog_adapters/adapter_recall_comparison.pdf}
+\caption{Parameter-free generic routing and the validation-selected learned
+router on held-out identities. Learned routing consistently improves QASPER,
+but HotpotQA recall is flat or lower. The adapter is consequently a
+dataset-qualified option, not the catalog default.}
+\label{fig:hf-catalog-adapters}
+\end{figure*}
+
+Table~\ref{tab:hf-catalog-adapters} separates three conclusions. First, the
+adapter is useful on QASPER across model scale and family: $R_{20}$ rises from
+0.413 to 0.640 for Qwen3-4B, 0.318 to 0.679 for Qwen3-14B, 0.318 to 0.468 for
+Llama-3.1-8B, and 0.226 to 0.454 for Gemma-3-1B. Second, this gain is not a
+universal property of additional parameters. HotpotQA $R_{20}$ declines by
+0.044, 0.180, 0.195, and 0.018 respectively. Gemma's HotpotQA MRR nevertheless
+rises from 0.385 to 0.538, showing that even the direction can depend on the
+metric. Third, model size alone does not remove domain dependence: the largest
+Qwen model has both the largest QASPER gain and the largest Qwen HotpotQA loss.
+
+The SDK policy follows the measurement. Each public bundle exposes
+\texttt{balanced} with generic cosine routing and
+\texttt{qasper-learned} with the learned asymmetric router. The latter is
+opt-in and controlled, not production-wide. These are exact MLX quantization
+identities; no result is transferred to a full-precision Hugging Face
+checkpoint or a different tokenizer revision. The study measures evidence
+retrieval, not generation quality, TTFT, or serving throughput. Those remain
+separate qualification gates.
 
 \subsection{Product profile and benchmark matrix}
 
