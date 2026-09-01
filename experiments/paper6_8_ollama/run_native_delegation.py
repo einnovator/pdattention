@@ -142,7 +142,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     warmup_request = _request(
         args.model, *warmup_case[:4], repeat=-1
     )
-    _, e0_cold_model_load_ms = _timed(stock, warmup_request)
+    _, e0_post_unload_reload_ms = _timed(stock, warmup_request)
 
     rows: list[dict[str, object]] = []
     for repeat in range(args.repeats):
@@ -187,9 +187,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     e0_ms = [float(row["e0_ms"]) for row in rows]
     e2_ms = [float(row["e2_ms"]) for row in rows]
     warm_ms = [float(row["e2_warm_ms"]) for row in rows]
+    e0_prompt_tokens = [int(row["e0_prompt_tokens"]) for row in rows]
+    e2_wire_tokens = [int(row["e2_wire_tokens"]) for row in rows]
+    e2_native_tokens = [int(row["e2_native_tokens"]) for row in rows]
     summary = {
         "runs": len(rows),
-        "e0_cold_model_load_ms": e0_cold_model_load_ms,
+        "e0_post_unload_reload_ms": e0_post_unload_reload_ms,
         "negotiated_e2": sum(row["resolved_level"] == "E2" for row in rows),
         "e0_answer_correct": sum(bool(row["e0_answer_correct"]) for row in rows),
         "e2_answer_correct": sum(bool(row["e2_answer_correct"]) for row in rows),
@@ -202,6 +205,14 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "mean_e2_warm_ms": statistics.mean(warm_ms),
         "e2_over_e0": statistics.mean(e2_ms) / statistics.mean(e0_ms),
         "e2_warm_over_e0": statistics.mean(warm_ms) / statistics.mean(e0_ms),
+        "mean_e0_prompt_tokens": statistics.mean(e0_prompt_tokens),
+        "mean_e2_wire_tokens": statistics.mean(e2_wire_tokens),
+        "mean_e2_native_tokens": statistics.mean(e2_native_tokens),
+        "visible_token_reduction": 1.0
+        - statistics.mean(e2_wire_tokens) / statistics.mean(e0_prompt_tokens),
+        "mean_resource_encode_delta_ms": statistics.mean(
+            cold - warm for cold, warm in zip(e2_ms, warm_ms)
+        ),
         "e0_p95_ms": _percentile(e0_ms, 0.95),
         "e2_p95_ms": _percentile(e2_ms, 0.95),
         "e2_warm_p95_ms": _percentile(warm_ms, 0.95),
