@@ -70,6 +70,22 @@ class PRAHFExecutionBridge:
         self._native_rows: dict[tuple[int, int], list[list[SelectedChunk]]] = {}
         self._rankings: dict[tuple[int, int], list[list[dict]]] = {}
 
+    def seed_shared_plan(self, plan, selected, rankings) -> None:
+        """Seed a probe-derived shared plan before the cache-producing prefill.
+
+        The routing probe runs with ``use_cache=False``. The real generation
+        pass can therefore consume this selection at every active layer while
+        producing one internally consistent local prefix cache.
+        """
+
+        if plan.layer_scope != PRASelectionLayerScope.SHARED:
+            raise ValueError("Only shared plans can seed the HF execution bridge.")
+        if plan.source_layer is None:
+            raise ValueError("A seeded shared plan requires a source layer.")
+        key = (plan.epoch_id, int(plan.source_layer))
+        self._native_rows[key] = selected
+        self._rankings[key] = rankings
+
     def _route(self, adapter: "PRAHFAttentionAdapter", routing_states: "torch.Tensor"):
         started = time.perf_counter()
         if routing_states.ndim == 4:
@@ -88,7 +104,12 @@ class PRAHFExecutionBridge:
         source_rows = self._native_rows[(plan.epoch_id, int(source))]
         if plan.layer_scope == PRASelectionLayerScope.PER_LAYER or source == layer_id:
             return source_rows
-        return self.handle.map_chunk_identities_to_layers(source_rows, {layer_id})[layer_id]
+        key = (plan.epoch_id, int(layer_id))
+        if key not in self._native_rows:
+            self._native_rows[key] = self.handle.map_chunk_identities_to_layers(
+                source_rows, {layer_id}
+            )[layer_id]
+        return self._native_rows[key]
 
     def prepare_memory(
         self,
@@ -103,9 +124,19 @@ class PRAHFExecutionBridge:
         layer_id = adapter.layer_idx
         policy = self.context.policy
         self.context.phase = "prefill" if self.context.token_index == 0 else "decode"
+        seeded_prefill = (
+            self.context.phase == "prefill"
+            and "prefill" in self.context.phase_plans
+            and (
+                self.context.phase_plans["prefill"].epoch_id,
+                int(self.context.phase_plans["prefill"].source_layer),
+            )
+            in self._native_rows
+        )
         if (
             policy.selection_layer_scope == PRASelectionLayerScope.SHARED
             and layer_id < self.routing_layer
+            and not seeded_prefill
         ):
             return adapter.pra_core.prepare_selected_memory(
                 query,

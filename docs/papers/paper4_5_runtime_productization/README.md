@@ -7,7 +7,9 @@ The implementation adds:
 
 - one `PRARuntime` facade over the existing HF model API;
 - four independent execution-policy axes with global/model/request precedence;
-- request/per-layer and token/shared HF execution modes with logical plans;
+- request/per-layer, token/shared, and cache-correct phase/shared HF execution
+  modes with logical plans; phase/shared uses a cache-free routing probe and
+  requires routing at the first active PRA layer;
 - Paper 4 authenticated cold/warm/hot memory sessions;
 - Paper 6.5 callable tool records, OpenAI/Anthropic skill folders, lazy
   selection/full-view encoding, typed discovery, and safe execution;
@@ -39,6 +41,7 @@ The implementation adds:
 - permanent visible-prefix/native-logit and prefill/decode lifetime regressions;
 - portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
 - tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
+- atomic tenant/scope revalidation during both storage promotion and request pinning;
 - source-revision, position, materialization, and scope-safe physical payload reuse;
 - pinned Qwen3-0.6B, Llama-3.2-1B mirror, and Gemma-3-1B cross-model gates;
 - the canonical `pra` model-onboarding, profile, bundle, runtime-provider,
@@ -71,6 +74,9 @@ The implementation adds:
   concatenated E0/E2 sequence parity, a live segmented-attention candidate,
   and model-normalized consumer-layer calibration over 60 natural-QA
   model--example pairs.
+- corrected M4/M5 MLX model-scaling evidence imported into the product matrix:
+  `BALANCED` consumes native memory at all eligible layers, while segmented and
+  reduced-layer candidates remain `CALIBRATION_PENDING`.
 
 Reproduce the measured portable profile:
 

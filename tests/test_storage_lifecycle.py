@@ -417,3 +417,41 @@ def test_per_tenant_quota_cannot_be_consumed_by_another_tenant(tmp_path):
         if entry.tenant_id == "tenant-a"
     ) <= 12
     assert manager.entries["b1"].current_tier == PRAStorageTier.WARM
+
+
+def test_request_pinning_rechecks_tenant_and_scope_atomically(tmp_path):
+    manager = PRAStorageManager(_policy(tmp_path))
+    manager.register(
+        _entry(
+            "private-pin",
+            tenant_id="tenant-a",
+            security_scope="case:7",
+            task_status=None,
+        ),
+        b"native",
+    )
+
+    with pytest.raises(PermissionError, match="Cross-tenant"):
+        with manager.pin_request(
+            "request-b",
+            ("private-pin",),
+            tenant_id="tenant-b",
+            authorization_scopes=("case:7",),
+        ):
+            pass
+    with pytest.raises(PermissionError, match="not authorized"):
+        with manager.pin_request(
+            "request-a",
+            ("private-pin",),
+            tenant_id="tenant-a",
+        ):
+            pass
+
+    with manager.pin_request(
+        "request-a",
+        ("private-pin",),
+        tenant_id="tenant-a",
+        authorization_scopes=("case:7",),
+    ):
+        assert manager.entries["private-pin"].request_pin_count == 1
+    assert manager.entries["private-pin"].request_pin_count == 0

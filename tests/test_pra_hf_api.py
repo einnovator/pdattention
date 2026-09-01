@@ -357,9 +357,45 @@ def test_token_shared_routes_once_per_forward_and_skips_earlier_layers():
     assert all(adapter.execution_bridge is None for adapter in pra._handle.adapters.values())
 
 
-def test_phase_policy_is_rejected_without_silent_hf_downgrade():
-    pra = PRAForCausalLM.from_model(_model(), TinyTokenizer(), pra_config=_config())
-    with pytest.raises(ValueError, match="does not support phase selection"):
+def test_phase_shared_uses_probe_prefill_then_completion_reselection():
+    torch.manual_seed(309)
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(routing_layer=0, consumption_layers=(0, 1)),
+    )
+    pra.add_reference("abcdefghijklmnop")
+
+    result = pra.generate(
+        "question",
+        max_new_tokens=2,
+        return_details=True,
+        pra_policy={
+            "selection_stage": "phase",
+            "selection_layer_scope": "shared",
+            "materialization_scope": "phase",
+        },
+    )
+
+    execution = result.stats["pra_execution"]
+    assert execution["execution_policy"]["selection_stage"] == "phase"
+    assert execution["selection_epochs"] == 2
+    assert [
+        row["phase"]
+        for row in execution["trace"]
+        if row["event"] == "selection"
+    ] == ["prefill", "decode"]
+    assert all(adapter.last_selected_chunks[0] for adapter in pra._handle.adapters.values())
+    assert all(adapter.execution_bridge is None for adapter in pra._handle.adapters.values())
+
+
+def test_phase_shared_rejects_routing_after_an_earlier_consumer_layer():
+    pra = PRAForCausalLM.from_model(
+        _model(),
+        TinyTokenizer(),
+        pra_config=_config(routing_layer=1, consumption_layers=(0, 1)),
+    )
+    with pytest.raises(ValueError, match="first active PRA layer"):
         pra.generate(
             "question",
             max_new_tokens=1,

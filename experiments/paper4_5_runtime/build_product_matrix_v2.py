@@ -809,6 +809,7 @@ def _mlx_consumer_scaling_rows() -> list[ProductMatrixRow]:
     result_root = RESULTS / "paper6_2_mlx"
     paths = sorted((result_root / "model_consumer_scaling").glob("qwen3_*.json"))
     paths.extend(sorted((result_root / "model_consumer_scaling_m5").glob("*.json")))
+    paths.extend(sorted((result_root / "model_consumer_cross_family").glob("*.json")))
     rows: list[ProductMatrixRow] = []
     for path in paths:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -856,9 +857,9 @@ def _mlx_consumer_scaling_rows() -> list[ProductMatrixRow]:
                 ProductMatrixRow(
                     row_id=(
                         f"mlx-consumer-{_slug(hardware_model)}-{_slug(model_id)}-"
-                        f"{_slug(condition)}"
+                        f"{_slug(path.parent.name)}-{_slug(path.stem)}-{_slug(condition)}"
                     ),
-                    model_family="qwen",
+                    model_family=_model_family(model_id),
                     model_id=model_id,
                     model_revision=payload.get("model_revision"),
                     model_size=model_size,

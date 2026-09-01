@@ -86,7 +86,9 @@ authorized shared resources.
 
 Eviction never deletes authoritative SOURCE because a native-cache quota is
 full. A reconstructable DB/RAG/tool result can fall back to `SOURCE` and be
-encoded again. Request pins prevent HOT release until decode cleanup.
+encoded again. Request pins prevent HOT release until decode cleanup. Serving
+callers pass tenant and authorization scopes to both promotion and pinning; the
+second atomic check is deliberate because cache residency is not authorization.
 
 ## Inspect and reproduce
 

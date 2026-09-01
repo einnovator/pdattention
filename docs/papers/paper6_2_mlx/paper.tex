@@ -817,14 +817,41 @@ every regime.
 We isolate the principal decode allocation with a one-normalization segmented
 attention primitive. Rather than concatenate selected and local K/V, it forms
 their score blocks separately, shares one maximum and denominator, and sums
-the two value numerators. At local windows 2K, 8K, and 32K with 384 selected
-tokens, eight heads, and 128-dimensional heads, maximum fp16 error against
-concatenated attention is $1.22\times10^{-4}$, $6.10\times10^{-5}$, and
-$6.10\times10^{-5}$. The primitive avoids 9.5, 33.5, and 129.5 MiB of K/V
-concatenation per layer-call. Mean M5 time changes from 0.754 to 0.684 ms,
-2.515 to 1.597 ms, and 3.356 to 1.556 ms. These are isolated attention
-microbenchmarks, not revised end-to-end E2 ratios: installing the primitive in
-each model's GQA/MQA attention path remains an engine patch.
+the two value numerators. We additionally graph-compile that primitive while
+keeping dynamic causal masks outside the captured graph. Table~\ref{tab:mlx-segmented-compiled}
+reports paired M4 Pro kernel measurements with 384 selected tokens, eight heads,
+and 128-dimensional heads.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Eager and graph-compiled segmented attention against concatenation.
+Ratios below one are faster. Avoided MiB is the temporary concatenated K/V per
+layer-call. Compilation is an MLX graph optimization, not a custom Metal
+kernel.}
+\input{../shared/results/paper6_2_mlx/segmented_compilation/generated_segmented_compilation_table.tex}
+\label{tab:mlx-segmented-compiled}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper6_2_mlx/segmented_compilation/segmented_compilation.png}
+\caption{Segmented-attention kernel cost and temporary-memory avoidance as the
+occupied local context grows. Graph compilation reaches 0.959 times concat at
+32K while avoiding 129.5 MiB per layer-call, but does not remove the full-model
+request overhead.}
+\label{fig:mlx-segmented-compiled}
+\end{figure}
+
+The compiled kernel is slower at 2K (1.099 times concat), near parity at 8K
+(1.016), and faster at 32K (0.959), with maximum absolute error at most
+$1.22\times10^{-4}$. The end-to-end check is less favorable. On the same 15
+Qwen3-32B natural-QA examples, compiled concatenated E2 is 1.009 times E0 and
+preserves all outputs; compiled segmented E2 is 1.052 times E0 and agrees on
+13/15 outputs. The eager ratios on that subset are 1.012 and 1.048. Graph
+capture therefore removes neither the residual model-wide overhead nor the
+reduction-order drift. A genuinely fused Metal kernel remains an open systems
+optimization.
 
 \begin{figure}[!htbp]
 \centering

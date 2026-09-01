@@ -203,11 +203,12 @@ class PRAForCausalLM:
         return PRAExecutionCapabilities(
             engine="huggingface_eager",
             request_selection=True,
-            phase_selection=False,
+            phase_selection=True,
             token_selection=True,
             shared_layer_selection=True,
             per_layer_selection=True,
             request_materialization=True,
+            phase_materialization=True,
             layer_materialization=True,
             token_materialization=True,
             keep_residency=True,
@@ -225,13 +226,27 @@ class PRAForCausalLM:
         self._execution_policy = overrides or policy
 
     def _resolve_execution_policy(self, request_policy=None):
-        return resolve_execution_policy(
+        resolved = resolve_execution_policy(
             request_policy=request_policy,
             model_policy=self._execution_policy,
             capabilities=self.execution_capabilities,
             active_layers=self.consumption_layers,
             configured_routing_layer=self.routing_layer,
         )
+        if (
+            resolved.policy.selection_stage == PRASelectionStage.PHASE
+            and resolved.policy.selection_layer_scope
+            == PRASelectionLayerScope.SHARED
+            and resolve_routing_layer(
+                resolved.policy, self.consumption_layers, self.routing_layer
+            )
+            != min(self.consumption_layers)
+        ):
+            raise ValueError(
+                "HF PHASE+SHARED requires the first active PRA layer so "
+                "completion reselection precedes every consumer layer."
+            )
+        return resolved
 
     def _validate_router_compatibility(
         self,
@@ -645,6 +660,29 @@ class PRAForCausalLM:
         )
         context.record_plan(plan)
 
+    def _record_phase_shared_plan(
+        self,
+        context: PRARequestExecutionContext,
+        selected: list[list[SelectedChunk]],
+        routing_seconds: float,
+        *,
+        routing_layer: int,
+    ) -> PRASelectionPlan:
+        """Record a probe-derived prefill plan for cache-correct HF handoff."""
+
+        plan = PRASelectionPlan(
+            selection_stage=PRASelectionStage.PHASE,
+            layer_scope=PRASelectionLayerScope.SHARED,
+            source_layer=routing_layer,
+            epoch_id=context.next_epoch(),
+            shared_rows=selected_rows_to_identities(selected),
+            phase="prefill",
+            token_index=0,
+            routing_seconds=routing_seconds,
+        )
+        context.record_plan(plan)
+        return plan
+
     @torch.no_grad()
     def route(self, prompt: str) -> RoutingResult:
         """Run production query encoding, routing, and native-K/V selection only.
@@ -793,6 +831,37 @@ class PRAForCausalLM:
                     ) = self._route_request_per_layer(
                         input_ids, attention_mask, position_ids, context
                     )
+            elif (
+                resolved.policy.selection_stage == PRASelectionStage.PHASE
+                and resolved.policy.selection_layer_scope
+                == PRASelectionLayerScope.SHARED
+            ):
+                (
+                    selected,
+                    rankings,
+                    query_seconds,
+                    routing_seconds,
+                    retrieval_graphs,
+                ) = self._route_once(
+                    input_ids,
+                    attention_mask,
+                    position_ids,
+                    routing_layer=routing_layer,
+                )
+                plan = self._record_phase_shared_plan(
+                    context,
+                    selected,
+                    routing_seconds,
+                    routing_layer=routing_layer,
+                )
+                bridge = PRAHFExecutionBridge(
+                    self._handle,
+                    context,
+                    active_layers=self.consumption_layers,
+                    routing_layer=routing_layer,
+                )
+                bridge.seed_shared_plan(plan, selected, rankings)
+                self._handle.set_execution_bridge(bridge)
             else:
                 if self.config.routing_mode != "one_shot":
                     raise ValueError(

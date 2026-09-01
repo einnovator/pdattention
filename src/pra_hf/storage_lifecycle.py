@@ -1242,15 +1242,40 @@ class PRAStorageManager:
         self._persist_state()
 
     @contextmanager
-    def pin_request(self, request_id: str, keys: Iterable[str]):
-        """Pin one promoted object set across complete engine request lifetime."""
+    def pin_request(
+        self,
+        request_id: str,
+        keys: Iterable[str],
+        *,
+        tenant_id: str | None = None,
+        authorization_scopes: Iterable[str] = (),
+    ):
+        """Pin one authorized object set across complete request lifetime.
+
+        ``tenant_id=None`` is reserved for trusted internal maintenance callers.
+        Serving adapters must supply tenant and scopes so promotion followed by
+        pinning cannot become a confused-deputy path across sessions.
+        """
 
         unique = tuple(dict.fromkeys(map(str, keys)))
+        scopes = set(authorization_scopes)
         with self._lock:
             for key in unique:
                 entry = self.entries[key]
+                if tenant_id is not None and entry.tenant_id != tenant_id:
+                    raise PermissionError(
+                        "Cross-tenant PRA request pinning is forbidden."
+                    )
+                if entry.security_scope and entry.security_scope not in scopes:
+                    raise PermissionError(
+                        "The request is not authorized to pin this PRA storage object."
+                    )
                 if entry.current_tier != PRAStorageTier.HOT:
-                    self.promote(key)
+                    self.promote(
+                        key,
+                        tenant_id=tenant_id,
+                        authorization_scopes=scopes,
+                    )
                     entry = self.entries[key]
                 self.hot.pin_hot(key, request_id)
                 self.entries[key] = replace(

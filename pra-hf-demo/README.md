@@ -10,7 +10,8 @@ The demo directory contains two executed, user-facing notebooks:
   cursors, size-gated native result routing, lazy selected-region native encoding,
   lifecycle inspection, safe execution, and thin serving handoff.
   It also demonstrates durable user/session resolution, task DAGs, task-scoped records,
-  reusable toolsets, and the coding-agent CLI introduced by Paper 8.
+  reusable toolsets, cache-correct first-layer phase/shared selection, measured profile
+  evidence boundaries, and the coding-agent CLI introduced by Paper 8.
 
 Both import the library directly from this checkout's `src/` directory and run tiny offline
 models by default.

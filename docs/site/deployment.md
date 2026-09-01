@@ -38,11 +38,20 @@ print(result.stats["pra_execution"])
 ```
 
 The HF reference backend implements request/shared, request/per-layer,
-token/shared, and token/per-layer. In token/shared mode, layers before the routing
-layer receive no current-token memory. The routing layer selects once; that logical
-identity set is mapped to each later layer's independently encoded native K/V.
-Phase-level execution is currently rejected because it needs a cache-aware
-prefill-to-decode handoff that the reference `generate()` path does not yet expose.
+phase/shared, phase/per-layer, token/shared, and token/per-layer. In token/shared
+mode, layers before the routing layer receive no current-token memory. The routing
+layer selects once; that logical identity set is mapped to each later layer's
+independently encoded native K/V. Phase/shared is intentionally narrower: its
+routing layer must be the first active PRA layer. HF first runs a cache-free
+routing probe, seeds the shared prefill plan, runs the real cache-producing
+prefill once, and reselects at that first layer for completion. A later routing
+layer is rejected because earlier consumers could not receive one coherent phase
+selection without replaying or corrupting prefix-cache semantics.
+
+The measured MLX profile ladder also sharpens the profile contract. `BALANCED`
+currently means native K/V at every eligible consumer layer. Fixed reduced-layer
+and learned candidates remain `CALIBRATION_PENDING`; the SDK does not infer a
+production sparse suffix from their lower K/V residency.
 
 ## Three components
 
@@ -138,7 +147,10 @@ feasible; native PRA cache integration remains unimplemented
 Retrieval relevance never grants source access or tool permission. The wire parser
 rejects cross-tenant resources and credential-like request metadata. Engine handles
 must remain tenant/session scoped, cache presence is not authorization, and tool side
-effects continue through the independent host authorization boundary.
+effects continue through the independent host authorization boundary. Storage
+promotion and request pinning independently recheck tenant and authorization scope
+under the lifecycle-manager lock, preventing a previously promoted object from
+becoming a cross-session confused-deputy path.
 
 ## Agent integrations
 

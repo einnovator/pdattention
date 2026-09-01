@@ -1,0 +1,72 @@
+{
+  "schema_version": "paper6.2-segmented-compilation-summary-v1",
+  "evidence_tier": "METAL_KERNEL_AND_MODEL_BACKED_NATURAL_QA",
+  "claim_boundary": "MLX graph compilation, not a custom fused Metal kernel; kernel profiles and full-model request ratios are reported separately.",
+  "kernel_rows": [
+    {
+      "occupied_context_tokens": 2048,
+      "selected_native_tokens": 384,
+      "concat_mean_ms": 0.3511561008053832,
+      "eager_segmented_mean_ms": 0.36982285528210923,
+      "compiled_segmented_mean_ms": 0.3858645504806191,
+      "eager_over_concat": 1.0531579956432866,
+      "compiled_over_concat": 1.0988405145051772,
+      "concat_temporary_bytes_avoided": 9961472,
+      "compiled_max_absolute_error": 0.0001220703125
+    },
+    {
+      "occupied_context_tokens": 8192,
+      "selected_native_tokens": 384,
+      "concat_mean_ms": 0.7123710020096041,
+      "eager_segmented_mean_ms": 0.7407270997646265,
+      "compiled_segmented_mean_ms": 0.7236417979584076,
+      "eager_over_concat": 1.0398052386678143,
+      "compiled_over_concat": 1.0158215254649732,
+      "concat_temporary_bytes_avoided": 35127296,
+      "compiled_max_absolute_error": 3.415346145629883e-05
+    },
+    {
+      "occupied_context_tokens": 32768,
+      "selected_native_tokens": 384,
+      "concat_mean_ms": 2.1353271018597297,
+      "eager_segmented_mean_ms": 2.113814548647497,
+      "compiled_segmented_mean_ms": 2.047249952738639,
+      "eager_over_concat": 0.9899254061855456,
+      "compiled_over_concat": 0.9587523855036629,
+      "concat_temporary_bytes_avoided": 135790592,
+      "compiled_max_absolute_error": 3.0517578125e-05
+    }
+  ],
+  "model_id": "mlx-community/Qwen3-32B-4bit",
+  "model_revision": "bcaaf7f538adf166c1080a2befdb4f6019f66639",
+  "model_hardware": "Mac16,7",
+  "matched_model_examples": 15,
+  "compiled_model_conditions": {
+    "E2_CONCAT_WARM": {
+      "samples": 15,
+      "warm_ratio_vs_e0": 1.0085831404339083,
+      "sequence_agreement_vs_e0": 1.0,
+      "mean_f1_delta_vs_e0": 0.0
+    },
+    "E2_SEGMENTED_ALL_LAYERS": {
+      "samples": 15,
+      "warm_ratio_vs_e0": 1.0524486959854948,
+      "sequence_agreement_vs_e0": 0.8666666666666667,
+      "mean_f1_delta_vs_e0": -0.001010101010101011
+    }
+  },
+  "eager_model_conditions_on_compiled_subset": {
+    "E2_CONCAT_WARM": {
+      "samples": 15,
+      "warm_ratio_vs_e0": 1.0115345621393637,
+      "sequence_agreement_vs_e0": 1.0,
+      "mean_f1_delta_vs_e0": 0.0
+    },
+    "E2_SEGMENTED_ALL_LAYERS": {
+      "samples": 15,
+      "warm_ratio_vs_e0": 1.047769757545542,
+      "sequence_agreement_vs_e0": 0.8666666666666667,
+      "mean_f1_delta_vs_e0": -0.001010101010101011
+    }
+  }
+}

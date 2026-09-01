@@ -527,7 +527,14 @@ class HuggingFaceEngineAdapter:
                 if self.storage is None or not keys:
                     yield handles
                 else:
-                    with self.storage.pin_request(request.request_id, keys):
+                    with self.storage.pin_request(
+                        request.request_id,
+                        keys,
+                        tenant_id=request.tenant_id,
+                        authorization_scopes=request.metadata.get(
+                            "authorization_scopes", ()
+                        ),
+                    ):
                         yield handles
             finally:
                 if self.storage is None:
@@ -563,7 +570,7 @@ class HuggingFaceEngineAdapter:
             streaming=True,
             selected_interval_materialization=True,
             request_lifetime=True,
-            phase_selection=False,
+            phase_selection=True,
             host_device_residency=True,
             scheduler_hints=False,
             tenant_isolation=True,

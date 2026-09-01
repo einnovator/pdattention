@@ -234,7 +234,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     unsupported = []
                     for condition, key in zip(conditions, keys):
                         row = {
-                            "schema_version": "pra-mac-long-context-v1",
+                            "schema_version": "pra-mac-long-context-v2",
                             "model_id": args.model,
                             "model_revision": resolved.sha,
                             "dataset": dataset,
@@ -317,7 +317,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         "E2_SELECTED"
                     }
                     row = {
-                        "schema_version": "pra-mac-long-context-v1",
+                        "schema_version": "pra-mac-long-context-v2",
                         "model_id": args.model,
                         "model_revision": resolved.sha,
                         "quantization": "4bit",
@@ -384,8 +384,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
     rows = list(existing.values())
     payload = {
-        "schema_version": "pra-mac-long-context-v1",
+        "schema_version": "pra-mac-long-context-v2",
         "experiment": "mlx_context_dilution_and_position_geometry",
+        "timing_contract": (
+            "All ordinary and native source encodes are synchronized before "
+            "encode_ms and request timing stop; occupied context is the actual "
+            "encoded source length."
+        ),
         "runtime": runtime_metadata(),
         "model_id": args.model,
         "model_revision": resolved.sha,

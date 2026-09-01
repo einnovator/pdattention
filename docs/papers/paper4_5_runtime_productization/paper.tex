@@ -153,7 +153,8 @@ and Llama plus a localized Gemma global/local topology limitation;
 \item an engine-neutral, engine-type-aware gateway with independent PRA and
 ordinary cache/session capabilities, explicit lifecycle, append-only G10
 placement, message/resource deltas, affinity hints, and non-sensitive session
-inspection, while rejecting unsupported phase selection and scheduler hints;
+inspection, while advertising phase selection separately from unsupported
+scheduler hints;
 \item lazy tools and skills, size-adaptive typed-result indexing, task-scoped
 acquisition, external-agent bridges, and a user-facing runtime/agent interface;
 and
@@ -314,8 +315,11 @@ capturing all active layers in one memory-disabled prompt pass, routing each
 once, and freezing each result. It adds token/shared through a request-owned
 bridge: layers before the designated routing layer receive no current-token PRA
 memory; that layer selects once, and later layers resolve the same identities
-to their own K/V. Phase selection is represented but rejected by HF until a
-cache-correct prefill-to-decode handoff is implemented.
+to their own K/V. Phase/shared execution uses a cache-free routing probe at the
+first active PRA layer, seeds the shared logical plan, and then performs one
+cache-producing prefill. Decode reselects once at the same boundary and reuses
+the resulting plan. Requiring the routing layer to be the first active consumer
+prevents an earlier layer from entering the cache with a different memory view.
 
 \subsection{Stable resources and authenticated sessions}
 
@@ -995,10 +999,10 @@ stops. No backing content is included in trace metadata.
 The capability object names native K/V, logical references, streaming,
 selected-interval materialization, request lifetime, host/device residency,
 tenant isolation, phase selection, and scheduler hints independently. The HF
-reference advertises the first seven supported properties and explicitly
-rejects phase selection and scheduler hints. This prevents an E2 adapter from
-being mistaken for an E3 scheduler merely because both accept the same logical
-wire request.
+reference advertises phase selection through the constrained cache-correct
+handoff above, but still rejects scheduler hints. This prevents an E2 adapter
+from being mistaken for an E3 scheduler merely because both accept the same
+logical wire request.
 
 \subsection{Session-Aware Gateway and Conventional Prefix-K/V Reuse}
 
@@ -2146,8 +2150,9 @@ and reload amplification together.
 
 The next policy experiment should use a trained model and retrieval workload,
 hold selected-token budgets fixed, and compare answer quality, TTFT, inter-token
-latency, selection churn, and routing-layer disagreement. Phase/shared requires
-a cache-correct prefill handoff before it enters that comparison.
+latency, selection churn, and routing-layer disagreement. The implemented
+phase/shared handoff closes the cache-correctness prerequisite; its remaining
+gate is workload-scale calibration rather than mechanism availability.
 
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
 have established SGLang and MLX native mechanism baselines and controlled

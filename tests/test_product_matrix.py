@@ -122,3 +122,7 @@ def test_mlx_consumer_scaling_keeps_balanced_all_layer_and_sparse_pending() -> N
     assert reduced
     assert all(row.profile_status == "CALIBRATION_PENDING" for row in reduced)
     assert all(row.profile == "REDUCED_CANDIDATE" for row in reduced)
+    llama = [row for row in rows if row.model_family == "llama"]
+    assert len(llama) == 2
+    assert all(row.sample_count == 60 for row in llama)
+    assert next(row for row in llama if row.integration_level == "E2").exact_pair_parity == 1.0

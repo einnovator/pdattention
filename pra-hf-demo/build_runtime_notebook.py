@@ -1149,8 +1149,9 @@ Selection timing, layer scope, materialization lifetime, and residency are indep
 default is request/shared/request/keep. A request override is isolated and appears with field-level
 provenance in `pra_execution`. Token/shared selects once at the routing layer in each forward;
 earlier layers receive no current-token memory, while later layers resolve the same logical IDs to
-their own native K/V. Phase selection intentionally raises until HF has a cache-correct prefill to
-completion handoff.
+their own native K/V. Phase/shared uses a cache-free routing probe, seeds one shared prefill plan,
+then runs the cache-producing prefill and completion-phase reselection. It is supported only when
+the routing layer is the first active PRA layer.
 '''
     ),
     code(
@@ -1174,9 +1175,22 @@ token_shared = policy_model.generate(
         "materialization_scope": "token",
     },
 )
+phase_shared = policy_model.generate(
+    "Where is the runtime fact?",
+    max_new_tokens=2,
+    return_details=True,
+    do_sample=False,
+    pra_policy={
+        "selection_stage": "phase",
+        "selection_layer_scope": "shared",
+        "materialization_scope": "phase",
+        "routing_layer_policy": "first_pra_layer",
+    },
+)
 {
     "request_per_layer": request_per_layer.stats["pra_execution"],
     "token_shared": token_shared.stats["pra_execution"],
+    "phase_shared": phase_shared.stats["pra_execution"],
 }
 '''
     ),
@@ -1383,6 +1397,10 @@ is `SMOKE` and its product readiness is `CALIBRATION_PENDING`. `QUALITY_MAX` rem
 future workload-scale validation and currently resolves as pending. Unmeasured serving fields remain
 `NOT_MEASURED`, and a workload with no calibration row also returns `CALIBRATION_PENDING`.
 
+The corrected MLX natural-QA ladder makes `BALANCED` concrete: concatenated native K/V is consumed
+at every eligible layer. Segmented and reduced-layer realizations are useful research candidates,
+but fixed suffixes did not pass the quality gate and therefore remain `CALIBRATION_PENDING`.
+
 Explicit mechanism fields still win over profile defaults. The trace records the requested and
 resolved profile, source registry, version, evidence tier, and status.
 '''
@@ -1413,6 +1431,22 @@ balanced_config = PRAConfig(
     detail_kv_layers=(1,),
     consumption_layers=(1,),
 )
+product_matrix = json.loads(
+    (PROJECT_ROOT / "docs" / "papers" / "shared" / "results" /
+     "pra_product_matrix_v2.json").read_text(encoding="utf-8")
+)
+mlx_layer_rows = [
+    row for row in product_matrix["rows"]
+    if row["workload"] == "oracle_evidence_original_answer_qa/layer_scaling"
+]
+mlx_balanced = [
+    row for row in mlx_layer_rows
+    if row["model_variant"] == "E2_CONCAT_WARM"
+]
+mlx_reduced = [
+    row for row in mlx_layer_rows
+    if row["representation"] == "E2_SEGMENTED_CANDIDATE"
+]
 {
     "available_profiles": [row["profile"] for row in qwen_profiles["profiles"]],
     "quality_candidate_evidence": quality_candidate["evidence_tier"],
@@ -1423,6 +1457,9 @@ balanced_config = PRAConfig(
     "typed_record_status": pending_profile["measurement_status"],
     "profile_trace": balanced_config.product_profile_trace(),
     "explicit_consumers": balanced_config.resolved_layer_roles(2).consumption_layers,
+    "mlx_balanced_statuses": sorted({row["profile_status"] for row in mlx_balanced}),
+    "mlx_balanced_layer_counts": sorted({len(row["consumer_layers"]) for row in mlx_balanced}),
+    "mlx_reduced_statuses": sorted({row["profile_status"] for row in mlx_reduced}),
 }
 '''
     ),
@@ -1512,7 +1549,7 @@ class NotebookSessionEngine:
             resource_delta=True,
             cache_affinity=True,
             logical_refs=True,
-            native_kv=True,
+            native_kv=False,
         )
 
     def prepare_session(self, request):
@@ -1690,7 +1727,8 @@ Demonstrated here:
 - size-adaptive native PRA retrieval, explicit lifecycle state, and lazy selected-region encoding;
 - durable user/session resolution, versioned task DAGs, and task-scoped typed records;
 - reusable workspace toolsets and a resumable coding-agent terminal UI;
-- request/per-layer and token/shared execution with request-owned traces;
+- request/per-layer, token/shared, and first-layer phase/shared execution with
+  request-owned traces and a cache-correct probe/prefill handoff;
 - a logical gateway request and explicitly labeled text fallback;
 - DeepSeek Harness and Pi typed-event bridges over that fallback contract;
 - validated task-operation proposals and frozen record-bounded native geometry;
@@ -1708,7 +1746,7 @@ Not demonstrated here:
 - Triton/custom CUDA fusion;
 - asynchronous transfer overlap or production prefetch;
 - continuous batching, p95/p99 serving latency, or a deep vLLM scheduler integration;
-- phase-level HF selection;
+- phase/shared routing after a non-first consumer layer;
 - Paper-4.5-scale engine performance; companion papers own the measured SGLang and MLX mechanisms;
 - native FreeToken, TensorRT-LLM, llama.cpp, TGI, or Ollama adapters.
 
