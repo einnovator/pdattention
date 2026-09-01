@@ -53,6 +53,15 @@ class RecordingAdapter:
         self.closed.append(session_id)
 
 
+class UntypedNativeStreamAdapter(RecordingAdapter):
+    """Model an engine executor that emits raw token rows."""
+
+    def stream(self, request):
+        self.requests.append(request)
+        yield {"text": "raw", "native_kv_used": True}
+        yield {"text": " token", "native_kv_used": True}
+
+
 def _request(**overrides):
     values = {
         "model": "offline/model",
@@ -235,6 +244,20 @@ def test_gateway_stream_preserves_ids_and_uses_the_same_mediation() -> None:
     assert rows[0]["trace"]["native_kv"] is True
     assert "".join(row.get("text", "") for row in rows) == "answer"
     assert adapter.requests[0].session_id == request.session_id
+
+
+def test_gateway_normalizes_raw_native_token_rows_and_commits_session() -> None:
+    adapter = UntypedNativeStreamAdapter(
+        logical_refs=True, native_kv=True, streaming=True
+    )
+    request = _request(resources=(_resource(),))
+
+    rows = list(PRAGateway(adapter, mode="G11").stream(request))
+
+    assert [row["type"] for row in rows[1:4]] == ["delta", "delta", "done"]
+    assert "".join(row.get("text", "") for row in rows) == "raw token"
+    assert rows[1]["request_id"] == request.request_id
+    assert rows[3]["native_kv_used"] is True
 
 
 def test_gateway_stream_rejects_unsupported_transport_before_iteration() -> None:

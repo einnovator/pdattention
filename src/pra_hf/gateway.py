@@ -466,13 +466,31 @@ class PRAGateway:
             completed = False
             last: Mapping[str, Any] | None = None
             text_parts: list[str] = []
-            for row in self.adapter.stream(transformed):
+            for emitted in self.adapter.stream(transformed):
+                row = emitted
+                # Native executors historically emitted token dictionaries
+                # directly. Normalize them at the gateway boundary so engine
+                # adapters cannot silently produce metadata-only SSE chunks.
+                if not row.get("type") and "text" in row:
+                    row = {
+                        "type": "delta",
+                        "request_id": request.request_id,
+                        **row,
+                    }
                 last = row
                 if row.get("type") == "delta":
                     text_parts.append(str(row.get("text", "")))
                 if row.get("type") == "done":
                     completed = True
                 yield row
+            if not completed:
+                last = {
+                    "type": "done",
+                    "request_id": request.request_id,
+                    "native_kv_used": bool((last or {}).get("native_kv_used", False)),
+                }
+                completed = True
+                yield last
             if completed:
                 result = PRAEngineResult("".join(text_parts), dict(last or {}))
                 session_trace, _ = self._commit_and_trace(
