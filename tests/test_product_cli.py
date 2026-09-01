@@ -74,6 +74,21 @@ def test_profile_calibration_and_bundle_workflow_is_offline(tmp_path) -> None:
     calibrated = CliRunner().invoke(
         cli, ["profiles", "calibrate", "unknown/model", "-o", str(run), "--json"]
     )
+    (run / "structural_adapter").mkdir()
+    (run / "structural_adapter" / "pra_adapter.yaml").write_text(
+        "schema_version: 1\nsource: test\n", encoding="utf-8"
+    )
+    payload = __import__("yaml").safe_load((run / "pra.yaml").read_text(encoding="utf-8"))
+    payload["model"] = {
+        "id": "unknown/model",
+        "revision": "0123456789abcdef",
+        "architecture": "TestForCausalLM",
+    }
+    payload["structural_adapter"] = {"path": "structural_adapter", "status": "candidate"}
+    payload["learned_adapters"] = {}
+    (run / "pra.yaml").write_text(
+        __import__("yaml").safe_dump(payload, sort_keys=False), encoding="utf-8"
+    )
     bundle = tmp_path / "bundle"
     built = CliRunner().invoke(cli, ["bundle", "build", str(run), "-o", str(bundle), "--json"])
     inspected = CliRunner().invoke(cli, ["bundle", "inspect", str(bundle), "--json"])
@@ -84,6 +99,7 @@ def test_profile_calibration_and_bundle_workflow_is_offline(tmp_path) -> None:
     assert inspected.exit_code == 0, inspected.output
     assert (bundle / "bundle.yaml").is_file()
     assert (bundle / "README.md").is_file()
+    assert json.loads(inspected.output)["schema_version"] == 2
 
 
 def test_hf_push_dry_run_never_requires_hub_dependency(tmp_path) -> None:

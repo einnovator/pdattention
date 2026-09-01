@@ -41,6 +41,8 @@ pra gateway serve [OPTIONS]
 | `--backend` | openai / sglang / freetoken / vllm / ollama / llama_cpp / mlx / custom / huggingface | `openai` | no | Select the downstream gateway adapter. |
 | `--backend-url` | TEXT | `-` | no | Base URL of the existing downstream model endpoint. |
 | `--model` | TEXT | `-` | no | Model identifier or local model path. |
+| `-a`, `--pra-bundle` | TEXT | `auto` | no | Load a PRA bundle or configuration override. |
+| `-p`, `--profile` | TEXT | `balanced` | no | Select a named PRA or agent profile. |
 | `--prefix-cache-mode` | auto / unknown / stateless / automatic_prefix_cache / explicit_prefix_handle / session_state | `auto` | no | Declare or auto-detect downstream prefix-cache behavior. |
 | `--session-state`, `--no-session-state` | flag | `-` | no | Enable or disable downstream session state. |
 | `--incremental-messages`, `--full-messages` | flag | `-` | no | Send message deltas when supported, or full history. |
@@ -1045,6 +1047,7 @@ pra bundle build [OPTIONS] RUN
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
 | `-o`, `--output` | PATH | `-` | yes | Write artifacts to this file or directory. |
+| `--force` | flag | `off` | no | Replace a non-empty output directory. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -1060,7 +1063,7 @@ pra bundle build .pra/runs/profile-calibration -o .pra/bundles/qwen3
 ```text
 Output: .pra/bundles/qwen3
 Base model: Qwen/Qwen3-1.7B
-Bundle schema: 1
+Bundle schema: 2
 ```
 
 ### `pra bundle inspect`
@@ -1137,7 +1140,121 @@ pra bundle validate .pra/bundles/qwen3
 ```text
 Status: VALID
 Model: Qwen/Qwen3-1.7B
-Schema version: 1
+Schema version: 2
+Checksums: verified
+```
+
+### `pra bundle card`
+
+Generate or update a rich Hugging Face model card.
+
+**Usage**
+
+```text
+pra bundle card [OPTIONS] SOURCE
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `SOURCE` | yes | Local artifact path or supported remote identifier. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--update` | flag | `off` | no | Write the generated card to README.md. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra bundle card .pra/bundles/qwen3 --update
+```
+
+**Example output**
+
+```text
+.pra/bundles/qwen3/README.md
+```
+
+### `pra bundle list`
+
+List immutable bundles in the trusted auto-resolution registry.
+
+**Usage**
+
+```text
+pra bundle list [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--model` | TEXT | `-` | no | Model identifier or local model path. |
+| `--family` | TEXT | `-` | no | Filter trusted bundles by model family. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra bundle list --model Qwen/Qwen3-0.6B
+```
+
+**Example output**
+
+```text
+Bundles: 1
+Qwen/Qwen3-0.6B -> owner/pra-qwen3-0.6b
+Trust: eInnovator-qualified
+```
+
+### `pra bundle resolve`
+
+Explain bundle selection and pin the resolved Hub revision.
+
+**Usage**
+
+```text
+pra bundle resolve [OPTIONS] MODEL
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `MODEL` | yes | Model identifier or local model path. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `-e`, `--engine` | TEXT | `hf` | no | Select the runtime or evidence-registry engine. |
+| `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
+| `-a`, `--pra-bundle` | TEXT | `auto` | no | Load a PRA bundle or configuration override. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra bundle resolve Qwen/Qwen3-0.6B -e hf -a auto
+```
+
+**Example output**
+
+```text
+Status: RESOLVED
+Revision: IMMUTABLE_COMMIT
+Trust: eInnovator-qualified
+Cache: HF snapshot cache
 ```
 
 ## Hugging Face Hub
@@ -1173,7 +1290,7 @@ The token has been saved to the configured Hugging Face cache.
 
 ### `pra hf pull`
 
-Run this PRA operation.
+Pull and validate a bundle, using the normal HF cache by default.
 
 **Usage**
 
@@ -1191,20 +1308,25 @@ pra hf pull [OPTIONS] REPO_ID
 
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `-o`, `--output` | PATH | `-` | yes | Write artifacts to this file or directory. |
+| `-o`, `--output` | PATH | `-` | no | Write artifacts to this file or directory. |
 | `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
 
 ```bash
-pra hf pull owner/Qwen3-PRA -o .pra/bundles/qwen3 --revision main
+pra hf pull owner/pra-qwen3-0.6b --revision IMMUTABLE_COMMIT
 ```
 
 **Example output**
 
 ```text
-.pra/bundles/qwen3
+Repository: owner/pra-qwen3-0.6b
+Resolved revision: IMMUTABLE_COMMIT
+Cache path: HF snapshot cache
+Status: VALID
 ```
 
 ### `pra hf push`
@@ -1231,6 +1353,11 @@ pra hf push [OPTIONS] BUNDLE REPO_ID
 | `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
 | `-y`, `--yes` | flag | `off` | no | Skip the interactive publication confirmation. |
 | `--dry-run` | flag | `off` | no | Validate publication without uploading files. |
+| `--private`, `--public` | flag | `off` | no | Set repository visibility when created. |
+| `--collection` | TEXT | `-` | no | Collection slug, or namespace/name to create. |
+| `--license` | TEXT | `-` | no | Assert a license only when it matches bundle provenance. |
+| `--commit-message` | TEXT | `Publish PRA model bundle` | no | Set the Hugging Face upload commit message. |
+| `--tag` | TEXT | `-` | no | Create an immutable release tag after upload. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -1238,7 +1365,7 @@ pra hf push [OPTIONS] BUNDLE REPO_ID
 **Common use**
 
 ```bash
-pra hf push .pra/bundles/qwen3 owner/Qwen3-PRA --dry-run
+pra hf push .pra/bundles/qwen3 owner/pra-qwen3-0.6b --collection owner/pra-bundles --tag v0.2.0rc1 --dry-run
 ```
 
 **Example output**
@@ -1248,6 +1375,47 @@ Dry run: true
 Repository: owner/Qwen3-PRA
 Files checked: 8
 Uploaded: 0
+```
+
+### `pra hf publish-manifest`
+
+Validate or publish a resumable declarative bundle release list.
+
+**Usage**
+
+```text
+pra hf publish-manifest [OPTIONS] MANIFEST
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `MANIFEST` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--dry-run` | flag | `off` | no | Validate publication without uploading files. |
+| `-y`, `--yes` | flag | `off` | no | Skip the interactive publication confirmation. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra hf publish-manifest releases/pra_bundles.yaml --dry-run
+```
+
+**Example output**
+
+```text
+Manifest: releases/pra_bundles.yaml
+Validated: 1
+Uploaded: 0
+Dry run: true
 ```
 
 ### `pra hf inspect`

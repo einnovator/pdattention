@@ -13,11 +13,12 @@ import urllib.error
 import urllib.request
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .deployment import PRAEngineCapabilities
+from .bundle import BundleResolution, BundleResolver
 from .engine_profiles import EngineType, PrefixCacheMode
 from .product_config import pra_home
 from .observability import engine_observability_capabilities
@@ -119,6 +120,7 @@ class RuntimeProvider(ABC):
     engine_type: str
     package_name: str | None = None
     launch_mode: str = "connect_remote"
+    bundle_consumption: str = "not_applicable"
 
     @abstractmethod
     def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
@@ -134,6 +136,7 @@ class RuntimeProvider(ABC):
             "revision": config.revision,
             "device": config.device,
             "pra_bundle": config.pra_bundle,
+            "bundle_consumption": self.bundle_consumption,
             "pra_profile": config.profile or "REFERENCE_CORRECTNESS",
             "endpoint": config.resolved_endpoint,
             "capabilities": self.capabilities(config).to_dict(),
@@ -229,6 +232,7 @@ class HFRuntimeProvider(RuntimeProvider):
     engine_type = "hf"
     package_name = "transformers"
     launch_mode = "managed_local"
+    bundle_consumption = "pra_runtime"
 
     def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
         return PRAEngineCapabilities(
@@ -270,6 +274,10 @@ class HFRuntimeProvider(RuntimeProvider):
         ]
         if config.revision:
             command += ["--revision", config.revision]
+        if config.pra_bundle:
+            command += ["--pra-bundle", config.pra_bundle]
+        if config.profile:
+            command += ["--profile", config.profile]
         command += ["--storage", config.storage_profile]
         if config.storage_config:
             command += ["--storage-config", config.storage_config]
@@ -287,6 +295,7 @@ class HFRuntimeProvider(RuntimeProvider):
 class GenericOpenAIRuntimeProvider(RuntimeProvider):
     engine_type = "openai"
     launch_mode = "connect_remote"
+    bundle_consumption = "gateway_required"
 
     def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
         return PRAEngineCapabilities(
@@ -309,6 +318,7 @@ class CommandRuntimeProvider(RuntimeProvider):
     native_kv: bool = False
     integration_level: str = "E0"
     prefix_cache_mode: PrefixCacheMode = PrefixCacheMode.UNKNOWN
+    bundle_consumption = "gateway_required"
 
     def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
         return PRAEngineCapabilities(
@@ -434,13 +444,29 @@ class RuntimeManager:
         self.registry = registry or RuntimeProviderRegistry.default()
 
     def inspect(self, config: RuntimeConfig) -> dict[str, Any]:
-        return self.registry.resolve(config.engine).inspect(config)
+        provider = self.registry.resolve(config.engine)
+        resolution = self._bundle_resolution(config)
+        result = provider.inspect(config)
+        result["bundle_resolution"] = resolution.to_dict()
+        result["next_command"] = self._bundle_next_command(config, provider, resolution)
+        return result
 
     def doctor(self, config: RuntimeConfig) -> dict[str, Any]:
         return self.registry.resolve(config.engine).doctor(config).to_dict()
 
     def serve(self, config: RuntimeConfig) -> RuntimeHandle:
-        return self.registry.resolve(config.engine).serve(config)
+        provider = self.registry.resolve(config.engine)
+        resolution = self._bundle_resolution(config)
+        if resolution.bundle is not None and provider.bundle_consumption != "pra_runtime":
+            raise RuntimeError(
+                f"Provider '{config.engine}' does not consume bundles directly; "
+                "run it behind the PRA gateway or select -a none."
+            )
+        resolved_config = replace(
+            config,
+            pra_bundle=(resolution.local_path if resolution.bundle is not None else "none"),
+        )
+        return provider.serve(resolved_config)
 
     def health(self, handle: RuntimeHandle) -> RuntimeHealth:
         return self.registry.resolve(handle.engine).health(handle)
@@ -450,6 +476,32 @@ class RuntimeManager:
 
     def stop(self, handle: RuntimeHandle) -> None:
         self.registry.resolve(handle.engine).stop(handle)
+
+    @staticmethod
+    def _bundle_resolution(config: RuntimeConfig) -> BundleResolution:
+        if not config.model:
+            return BundleResolution(
+                config.pra_bundle or "auto", "NO_MODEL", None, None, None, "none",
+                "Bundle resolution requires a model identity.",
+            )
+        return BundleResolver().resolve(
+            config.pra_bundle or "auto",
+            model=config.model,
+            model_revision=config.revision,
+            engine=config.engine,
+        )
+
+    @staticmethod
+    def _bundle_next_command(
+        config: RuntimeConfig, provider: RuntimeProvider, resolution: BundleResolution
+    ) -> str:
+        if resolution.bundle is None:
+            return f"pra serve {config.model} -e {config.engine} -a none"
+        if provider.bundle_consumption == "pra_runtime":
+            return f"pra serve {config.model} -e {config.engine} -a {resolution.source}"
+        return (
+            f"pra gateway serve --backend {config.engine} --pra-bundle {resolution.source}"
+        )
 
 
 def parse_engine_arguments(values: Sequence[str]) -> dict[str, Any]:

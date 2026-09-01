@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from .deployment import HuggingFaceEngineAdapter
+from .bundle import PRAModelBundle
 from .gateway import PRAGateway, serve_gateway
 from .hf_storage import HFReferenceHotBridge
 from .model import PRAForCausalLM
@@ -16,6 +17,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--revision")
+    parser.add_argument("--pra-bundle")
+    parser.add_argument("--profile")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--storage", default="balanced")
@@ -27,7 +30,20 @@ def main() -> None:
     parser.add_argument("--prometheus-port", type=int)
     args = parser.parse_args()
     storage = PRAStoragePolicy.from_yaml(args.storage_config) if args.storage_config else PRAStoragePolicy.named(args.storage)
-    model = PRAForCausalLM.from_pretrained(args.model, revision=args.revision)
+    model_kwargs = {"revision": args.revision}
+    if args.pra_bundle and args.pra_bundle.lower() != "none":
+        bundle = PRAModelBundle.from_pretrained(args.pra_bundle)
+        if bundle.base_model.get("id") != args.model:
+            raise ValueError("PRA bundle base model does not match --model.")
+        if args.revision and bundle.base_model.get("revision") != args.revision:
+            raise ValueError("PRA bundle base revision does not match --revision.")
+        for name, path in bundle.selected_learned_adapters(args.profile).items():
+            adapter_type = str(bundle.learned_adapters[name].get("type", name))
+            if adapter_type in {"routing", "router"}:
+                model_kwargs["routing_adapter"] = path
+            elif adapter_type in {"memory", "memory_adapter", "consumer"}:
+                model_kwargs["memory_adapter"] = path
+    model = PRAForCausalLM.from_pretrained(args.model, **model_kwargs)
     overrides = {}
     if args.otel or args.otel_endpoint or args.prometheus or args.prometheus_port:
         overrides["enabled"] = True

@@ -138,7 +138,18 @@ from .agent_profiles import (
     AgentProfileRegistry,
     ToolPolicy,
 )
-from .bundle import BundleBuilder, HubPublisher, PRAModelBundle
+from .bundle import (
+    BUNDLE_SCHEMA_VERSION,
+    BundleBuilder,
+    BundleRegistryEntry,
+    BundleResolution,
+    BundleResolver,
+    BundleValidationError,
+    HubPublisher,
+    PRAModelBundle,
+    TrustedBundleRegistry,
+    validate_model_card,
+)
 from .onboarding import (
     DoctorService,
     ModelInspector,
@@ -544,6 +555,10 @@ __all__ += [
     "AgentProfileDocument",
     "AgentProfileRegistry",
     "BundleBuilder",
+    "BundleRegistryEntry",
+    "BundleResolution",
+    "BundleResolver",
+    "BundleValidationError",
     "DoctorService",
     "GenericOpenAIRuntimeProvider",
     "HFRuntimeProvider",
@@ -553,6 +568,9 @@ __all__ += [
     "ModelValidator",
     "OnboardingPipeline",
     "PRAModelBundle",
+    "TrustedBundleRegistry",
+    "BUNDLE_SCHEMA_VERSION",
+    "validate_model_card",
     "ProfileCalibrator",
     "RuntimeConfig",
     "RuntimeDoctorReport",

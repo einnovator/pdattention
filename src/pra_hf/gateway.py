@@ -60,12 +60,16 @@ class PRAGateway:
         session_registry: GatewaySessionRegistry | None = None,
         fallback_injection: FallbackInjectionPolicy | str = FallbackInjectionPolicy.BEFORE_CURRENT_USER,
         observability: Observability | None = None,
+        bundle_source: str | None = None,
+        default_profile: str = "default",
     ) -> None:
         self.adapter = adapter
         self.mode = PRAGatewayMode(mode)
         self.sessions = session_registry or GatewaySessionRegistry(session_service)
         self.fallback_injection = FallbackInjectionPolicy(fallback_injection)
         self.observability = observability or DISABLED_OBSERVABILITY
+        self.bundle_source = bundle_source
+        self.default_profile = default_profile
 
     def capabilities(self) -> dict[str, Any]:
         engine = self.adapter.capabilities()
@@ -105,6 +109,8 @@ class PRAGateway:
             },
             "fallback_injection": self.fallback_injection.value,
             "streaming_implemented": engine.streaming,
+            "pra_bundle": self.bundle_source,
+            "default_profile": self.default_profile,
         }
 
     def _negotiate(self, request: PRAWireRequest) -> tuple[list[str], list[str]]:
@@ -153,7 +159,7 @@ class PRAGateway:
         return tuple(rendered_resources)
 
     def _rendering_profile(self, request: PRAWireRequest) -> str:
-        semantic = request.pra_policy.get("profile", "default")
+        semantic = request.pra_policy.get("profile", self.default_profile)
         return f"{self.fallback_injection.value}/{semantic}"
 
     def _text_fallback(

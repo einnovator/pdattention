@@ -12,7 +12,13 @@ import torch
 import yaml
 
 from .agent_profiles import AgentLauncher, AgentProfileRegistry, load_mcp_config
-from .bundle import BundleBuilder, HubPublisher, PRAModelBundle
+from .bundle import (
+    BundleBuilder,
+    BundleResolver,
+    HubPublisher,
+    PRAModelBundle,
+    TrustedBundleRegistry,
+)
 from .evaluation import evaluate_router_features
 from .execution_modes import ExecutionModeResolver
 from .gateway_cli import gateway_cli
@@ -625,9 +631,10 @@ def bundle_cli() -> None:
 @bundle_cli.command("build")
 @click.argument("run", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("-o", "--output", type=click.Path(path_type=Path), required=True)
+@click.option("--force", is_flag=True, help="Replace a non-empty output directory.")
 @_output_options
-def bundle_build(run, output, json_output, yaml_output) -> None:
-    bundle = BundleBuilder().build(run, output)
+def bundle_build(run, output, force, json_output, yaml_output) -> None:
+    bundle = BundleBuilder().build(run, output, force=force)
     _emit({"output": str(output), "bundle": bundle.to_dict()}, json_output=json_output, yaml_output=yaml_output)
 
 
@@ -644,7 +651,57 @@ def bundle_inspect(source, revision, json_output, yaml_output) -> None:
 @_output_options
 def bundle_validate(source, json_output, yaml_output) -> None:
     bundle = PRAModelBundle.from_pretrained(source)
-    _emit({"status": "VALID", "model": bundle.base_model, "schema_version": bundle.schema_version}, json_output=json_output, yaml_output=yaml_output)
+    _emit(bundle.validate(), json_output=json_output, yaml_output=yaml_output)
+
+
+@bundle_cli.command("card")
+@click.argument("source")
+@click.option("--update", is_flag=True, help="Write the generated card to README.md.")
+@_output_options
+def bundle_card(source, update, json_output, yaml_output) -> None:
+    """Generate or update a rich Hugging Face model card."""
+
+    bundle = PRAModelBundle.from_pretrained(source, validate=False)
+    card = BundleBuilder.model_card(bundle)
+    output = None
+    if update:
+        if bundle.local_path is None:
+            raise click.ClickException("A resolved local bundle path is required for --update.")
+        output = bundle.local_path / "README.md"
+        output.write_text(card, encoding="utf-8")
+        PRAModelBundle.from_pretrained(bundle.local_path).validate()
+    if json_output or yaml_output:
+        _emit({"source": source, "output": str(output) if output else None, "card": card}, json_output=json_output, yaml_output=yaml_output)
+    elif update:
+        click.echo(str(output))
+    else:
+        click.echo(card)
+
+
+@bundle_cli.command("list")
+@click.option("--model")
+@click.option("--family")
+@_output_options
+def bundle_list(model, family, json_output, yaml_output) -> None:
+    """List immutable bundles in the trusted auto-resolution registry."""
+
+    rows = TrustedBundleRegistry.default().list(model=model, family=family)
+    _emit({"bundles": rows, "count": len(rows)}, json_output=json_output, yaml_output=yaml_output)
+
+
+@bundle_cli.command("resolve")
+@click.argument("model")
+@click.option("-e", "--engine", default="hf", show_default=True)
+@click.option("-r", "--revision")
+@click.option("-a", "--pra-bundle", default="auto", show_default=True)
+@_output_options
+def bundle_resolve(model, engine, revision, pra_bundle, json_output, yaml_output) -> None:
+    """Explain bundle selection and pin the resolved Hub revision."""
+
+    value = BundleResolver().resolve(
+        pra_bundle, model=model, model_revision=revision, engine=engine
+    )
+    _emit(value.to_dict(), json_output=json_output, yaml_output=yaml_output)
 
 
 @cli.group("hf")
@@ -663,10 +720,13 @@ def hf_login() -> None:
 
 @hf_cli.command("pull")
 @click.argument("repo_id")
-@click.option("-o", "--output", type=click.Path(path_type=Path), required=True)
+@click.option("-o", "--output", type=click.Path(path_type=Path))
 @click.option("-r", "--revision")
-def hf_pull(repo_id, output, revision) -> None:
-    click.echo(str(HubPublisher().pull(repo_id, output, revision=revision)))
+@_output_options
+def hf_pull(repo_id, output, revision, json_output, yaml_output) -> None:
+    """Pull and validate a bundle, using the normal HF cache by default."""
+
+    _emit(HubPublisher().pull(repo_id, output, revision=revision), json_output=json_output, yaml_output=yaml_output)
 
 
 @hf_cli.command("push")
@@ -675,11 +735,41 @@ def hf_pull(repo_id, output, revision) -> None:
 @click.option("-r", "--revision")
 @click.option("-y", "--yes", is_flag=True)
 @click.option("--dry-run", is_flag=True)
+@click.option("--private/--public", default=False, help="Set repository visibility when created.")
+@click.option("--collection", help="Collection slug, or namespace/name to create.")
+@click.option("--license", "license_name")
+@click.option("--commit-message", default="Publish PRA model bundle", show_default=True)
+@click.option("--tag", help="Create an immutable release tag after upload.")
 @_output_options
-def hf_push(bundle, repo_id, revision, yes, dry_run, json_output, yaml_output) -> None:
+def hf_push(bundle, repo_id, revision, yes, dry_run, private, collection, license_name, commit_message, tag, json_output, yaml_output) -> None:
     if not dry_run and not yes and not click.confirm(f"Publish PRA bundle to {repo_id}?", default=False):
         raise click.Abort()
-    _emit(HubPublisher().push(bundle, repo_id, revision=revision, dry_run=dry_run), json_output=json_output, yaml_output=yaml_output)
+    value = HubPublisher().push(
+        bundle,
+        repo_id,
+        revision=revision,
+        dry_run=dry_run,
+        private=private,
+        collection=collection,
+        license_name=license_name,
+        commit_message=commit_message,
+        tag=tag,
+    )
+    _emit(value, json_output=json_output, yaml_output=yaml_output)
+
+
+@hf_cli.command("publish-manifest")
+@click.argument("manifest", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--dry-run", is_flag=True)
+@click.option("-y", "--yes", is_flag=True)
+@_output_options
+def hf_publish_manifest(manifest, dry_run, yes, json_output, yaml_output) -> None:
+    """Validate or publish a resumable declarative bundle release list."""
+
+    if not dry_run and not yes and not click.confirm("Publish every valid bundle in this manifest?", default=False):
+        raise click.Abort()
+    value = HubPublisher().publish_manifest(manifest, dry_run=dry_run)
+    _emit(value, json_output=json_output, yaml_output=yaml_output)
 
 
 @hf_cli.command("inspect")

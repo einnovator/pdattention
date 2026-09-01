@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import click
 
+from .bundle import BundleResolver
 from .deployment import HuggingFaceEngineAdapter, OpenAICompatibleEngineAdapter
 from .engine_profiles import EngineType
 from .gateway import FallbackInjectionPolicy, PRAGateway, serve_gateway
@@ -58,6 +59,8 @@ def gateway_cli() -> None:
 )
 @click.option("--backend-url")
 @click.option("--model")
+@click.option("-a", "--pra-bundle", default="auto", show_default=True)
+@click.option("-p", "--profile", default="balanced", show_default=True)
 @click.option("--pra-level", type=click.Choice(["auto", "E0", "E1", "E2", "E3"]), default="auto", hidden=True)
 @click.option("--research", is_flag=True, hidden=True, help="Show internal protocol labels.")
 @click.option(
@@ -83,7 +86,7 @@ def gateway_cli() -> None:
 @click.option("--prometheus", is_flag=True, help="Enable the Prometheus endpoint explicitly.")
 @click.option("--prometheus-port", type=click.IntRange(min=1, max=65535))
 def gateway_serve(
-    host, port, mode, backend, backend_url, model, pra_level, research, prefix_cache_mode,
+    host, port, mode, backend, backend_url, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
     fallback_injection, sessions_dir, observability, otel, otel_endpoint,
     prometheus, prometheus_port,
@@ -111,13 +114,30 @@ def gateway_serve(
         start_server=True,
     )
 
+    bundle = None
+    bundle_source = None
+    if model:
+        resolution = BundleResolver().resolve(
+            pra_bundle, model=model, engine="hf" if backend == "huggingface" else backend
+        )
+        bundle = resolution.bundle
+        bundle_source = resolution.source
+
     if backend == "huggingface":
         if not model:
             raise click.UsageError("--model is required for the Hugging Face backend.")
         from .model import PRAForCausalLM
 
+        model_kwargs = {}
+        if bundle is not None:
+            for name, path in bundle.selected_learned_adapters(profile).items():
+                adapter_type = str(bundle.learned_adapters[name].get("type", name))
+                if adapter_type in {"routing", "router"}:
+                    model_kwargs["routing_adapter"] = path
+                elif adapter_type in {"memory", "memory_adapter", "consumer"}:
+                    model_kwargs["memory_adapter"] = path
         adapter = HuggingFaceEngineAdapter(
-            PRAForCausalLM.from_pretrained(model), observability=telemetry
+            PRAForCausalLM.from_pretrained(model, **model_kwargs), observability=telemetry
         )
     else:
         if not backend_url:
@@ -141,6 +161,8 @@ def gateway_serve(
         session_service=LocalSessionService(sessions_dir) if sessions_dir else None,
         fallback_injection=fallback_injection,
         observability=telemetry,
+        bundle_source=bundle_source,
+        default_profile=profile,
     )
     capabilities = adapter.capabilities()
     selected_enabled = resolved_mode in {"G10", "G11"}
