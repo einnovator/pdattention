@@ -42,11 +42,15 @@ HotpotQA, and 0.083/0.080 on 2Wiki, while full context costs 1.71--4.18 times
 the selected median TTFT. The low absolute scores preclude a capability claim,
 but show that the transport advantage is not Qwen-tokenizer-specific. A second
 149-example, 1,341-request natural-QA ablation holds the evidence fixed while
-adding one to eight relevant or irrelevant documents. QASPER F1 peaks at
-0.265 with four relevant additions, versus 0.166 with evidence alone, but
-irrelevant additions reduce it to 0.140 at eight. HotpotQA and 2Wiki do not
-show the same benefit, making bounded, query-specific selection preferable to
-unconditional context expansion. A
+adding one to eight answer-aware or low-overlap documents. QASPER F1 peaks at
+0.265 with four answer-aware additions, versus 0.166 with evidence alone, but
+low-overlap additions reduce it to 0.140 at eight. A paired forensic audit shows
+that the QASPER gain is concentrated when added text contains answer terms;
+HotpotQA and 2Wiki do not show the same benefit. This is a diagnostic of lexical
+reinforcement and recency, not a deployable query-only selector. A counterbalanced
+60-request physical-telemetry run on Iris Xe finds that selected E0 reduces
+median TTFT from 219.5 to 118.3 ms and OpenVINO-reported GPU allocation from
+1,643 to 1,563 MiB. A
 three-point pressure curve keeps selection at 63 tokens while full context
 grows from 417 to 831 tokens; selected recovery remains exact throughout. The
 result establishes a reproducible transport
@@ -77,7 +81,7 @@ Visible context & 63 selected tokens versus 417--1,573 full-context tokens \\
 Loaded serving & 11.1--14.2 selected requests/s and 233--330 ms TTFT p99 at concurrency 16 \\
 Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
 Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
-Evidence tier & Controlled CPU/GPU transport, three 360-request paired cohorts, and a 1,341-request distractor cohort \\
+Evidence tier & Controlled CPU/GPU transport, three 360-request paired cohorts, a 1,341-request distractor cohort, and 60 physical-telemetry requests \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -193,12 +197,16 @@ requests/s, output tokens/s, TTFT, TPOT, generation time, input tokens, and RSS.
 
 The distractor ablation uses 149 examples: 49 QASPER, 50 HotpotQA, and 50
 2WikiMultiHopQA. The evidence-only prompt and eight additions are constructed
-once per example. Relevant additions come from the example's candidate set;
-irrelevant additions come from other examples. Conditions add 1, 2, 4, or 8
-documents while preserving the same answer-bearing evidence. One greedy GPU
-request per condition yields 1,341 requests. We report token F1, exact match,
-answer containment, source-token count, and TTFT. Gold answer log-probability
-is 	extsc{not measured} by the public pipeline.
+once per example. Both addition orders draw from the same example's nonselected
+candidate blocks. The condition previously called ``relevant'' ranks blocks by
+lexical overlap with the question \emph{and gold answer}; the ``irrelevant''
+condition takes the lowest-overlap blocks. Added blocks follow the selected
+evidence and precede the question. Conditions add 1, 2, 4, or 8 blocks while
+preserving the answer-bearing evidence; later additions, rather than selected
+evidence, are truncated at the input cap. One greedy GPU request per condition
+yields 1,341 requests. We report token F1, exact match, answer containment,
+source-token count, and TTFT. Gold answer log-probability is
+\textsc{not measured} by the public pipeline.
 
 \section{Results}
 \subsection{Capability status}
@@ -348,9 +356,9 @@ cost of presenting it survives a change in model family.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Natural-QA token F1 after adding relevant (Rel.) or irrelevant
-(Irr.) documents to fixed answer-bearing evidence. Each cell aggregates 49
-QASPER or 50 HotpotQA/2Wiki examples.}
+\caption{Natural-QA token F1 after adding answer-aware high-overlap (Rel.) or
+  low-overlap (Irr.) blocks to fixed answer-bearing evidence. Each cell
+  aggregates 49 QASPER or 50 HotpotQA/2Wiki examples.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/paper6_3_openvino/generated_distractor_ablation_table.tex}}
 \label{tab:openvino-distractors}
@@ -365,7 +373,7 @@ the added documents differ.}
 \label{fig:openvino-distractors}
 \end{figure}
 
-The response is dataset dependent. On QASPER, four relevant additions raise
+The response is dataset dependent. On QASPER, four answer-aware additions raise
 F1 from 0.166 to 0.265, a 59.8\% relative gain, before falling to 0.205 at
 eight. Eight irrelevant additions instead reduce F1 to 0.140. This is a
 bounded coverage benefit: some related context helps, but adding everything
@@ -384,6 +392,73 @@ and generated lengths differ, and the integrated GPU shares host resources.
 The robust conclusion is therefore about the joint frontier: evidence
 coverage and dilution must be calibrated per workload, while unbounded
 visible context consumes more input work without a reliable quality gain.
+
+The post-hoc paired audit in Table~\ref{tab:openvino-distractor-forensics}
+explains the apparent QASPER exception. At four answer-aware additions, mean
+paired F1 rises by 0.099: 40.8\% of examples improve and 20.4\% are harmed. The
+exact normalized answer appears in an added block for 30.6\% of examples. When
+it appears, mean F1 rises by 0.147; without it, the gain is only 0.030. By
+contrast, answer-absent additions reduce F1 by 0.073 on HotpotQA and 0.057 on
+2Wiki. Across all paired rows, F1 change correlates weakly positively with
+answer-term overlap ($r=0.171$), negatively with question overlap
+($r=-0.104$), and negligibly with added-token count ($r=-0.024$).
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Paired distractor forensics. ``Answer present'' is the fraction whose
+added text contains the exact normalized answer; ``cap hit'' records truncation
+of later additions. Rel. uses question-plus-gold-answer overlap and is not a
+deployable selector.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_distractor_forensics_table.tex}}
+\label{tab:openvino-distractor-forensics}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper6_3_openvino/distractor_forensics.png}
+\caption{Per-example quality changes expose lexical reinforcement rather than a
+generic benefit from adding related context. QASPER's positive tail is strongest
+when answer strings recur near the question; the two multi-hop datasets do not
+share that response.}
+\label{fig:openvino-distractor-forensics}
+\end{figure}
+
+\subsection{Physical Intel telemetry}
+The counterbalanced physical run alternates selected and full conditions by
+example and repeat, for 30 requests per condition on the Iris Xe GPU. Selected
+E0 carries 348 source tokens on average; FULL E0 carries 1,227. Table
+\ref{tab:openvino-physical} reports process counters and the plugin's
+\texttt{GPU\_MEMORY\_STATISTICS} allocation counter. It does not reinterpret
+process RSS as device residency.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Counterbalanced Intel physical telemetry. GPU MiB is OpenVINO plugin
+allocation; RSS and process I/O come from the operating system. Energy and GPU
+utilization are not measured because the host exposes no nonprivileged counter.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_physical_telemetry_table.tex}}
+\label{tab:openvino-physical}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper6_3_openvino/physical_telemetry.png}
+\caption{FULL/selected ratios from the live Intel run. Full context increases
+median TTFT by 1.85$\times$, p95 TTFT by 5.27$\times$, process CPU by
+1.56$\times$, bytes read by 1.95$\times$, and plugin allocation by
+1.05$\times$.}
+\label{fig:openvino-physical}
+\end{figure}
+
+Selected E0 also scores 0.159 F1 versus 0.127 for FULL E0 in this 60-request
+slice. The physical result therefore reinforces the E0 quality-adjusted frontier:
+3.53$\times$ more source tokens do not buy better answers, while they raise
+median completion latency by 19.4\% and p95 latency by 86.0\%. It remains an E0
+comparison; no physical native-K/V saving is inferred.
 
 \begin{table}[H]
 \centering
@@ -479,9 +554,10 @@ per dataset with one generation per condition. Three small INT4 models from
 two families, one CPU, one integrated GPU, and at most ten waves per load
 endpoint are measured. TinyLlama's weak task scores make it a transport check
 rather than a strong quality replication.
-There is no OVMS process, NPU, native K/V parity, device-memory telemetry,
-gold answer log-probability, long-session pressure, eviction sweep, or
-larger capable cross-family replication.
+There is no OVMS process, NPU, native K/V parity, energy or GPU-utilization
+telemetry, gold answer log-probability, long-session pressure, eviction sweep,
+or larger capable cross-family replication. Plugin allocation is available, but
+physical residency by cache class is not.
 All serving results are E0.
 
 \section{Conclusion}
@@ -496,7 +572,12 @@ replication shows that selected context approaches full-context quality on
 QASPER and HotpotQA while retaining lower TTFT, but 2Wiki keeps a meaningful
 coverage gap; better routing remains part of the product requirement.
 TinyLlama confirms the selected-input latency advantage across a second family
-without being capable enough to settle answer quality.
+without being capable enough to settle answer quality. The distractor audit
+narrows the QASPER gain to answer-aware lexical reinforcement rather than
+generic context breadth. Counterbalanced Intel telemetry further shows that the
+selected E0 frontier reduces TTFT, completion tails, process work, and plugin
+allocation in the measured slice. OpenVINO remains primarily an E0 result until
+a legitimate detached-K/V seam exists.
 
 \section*{Reproducibility}
 Raw JSON, generated tables and plots, environment audit, and runners are under

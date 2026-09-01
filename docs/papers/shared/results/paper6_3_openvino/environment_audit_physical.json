@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_3_openvino_environment_audit_v1",
+  "evidence_tier": "LIVE_PACKAGE_AND_HARDWARE_AUDIT",
+  "platform": {
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64",
+    "python": "3.10.0"
+  },
+  "packages": {
+    "openvino": "2026.3.1",
+    "openvino-genai": "2026.3.1.0",
+    "openvino-tokenizers": "2026.3.1.0",
+    "ovms": null
+  },
+  "devices": [
+    {
+      "device": "CPU",
+      "full_name": "13th Gen Intel(R) Core(TM) i7-1355U",
+      "architecture": "intel64",
+      "precision_hint": "<Type: 'float32'>",
+      "physical_telemetry_properties": [],
+      "physical_telemetry_snapshot": {}
+    },
+    {
+      "device": "GPU",
+      "full_name": "Intel(R) Iris(R) Xe Graphics (iGPU)",
+      "architecture": "GPU: vendor=0x8086 arch=v12.3.0",
+      "precision_hint": "<Type: 'float16'>",
+      "physical_telemetry_properties": [
+        "GPU_MEMORY_STATISTICS"
+      ],
+      "physical_telemetry_snapshot": {
+        "GPU_MEMORY_STATISTICS": "{'cl_mem': 0, 'unknown': 0, 'usm_device': 0, 'usm_host': 0, 'usm_shared': 0}"
+      }
+    }
+  ],
+  "api": {
+    "scheduler_attributes": [
+      "__class__",
+      "__delattr__",
+      "__dir__",
+      "__doc__",
+      "__eq__",
+      "__format__",
+      "__ge__",
+      "__getattribute__",
+      "__gt__",
+      "__hash__",
+      "__init__",
+      "__init_subclass__",
+      "__le__",
+      "__lt__",
+      "__module__",
+      "__ne__",
+      "__new__",
+      "__reduce__",
+      "__reduce_ex__",
+      "__repr__",
+      "__setattr__",
+      "__sizeof__",
+      "__str__",
+      "__subclasshook__",
+      "_pybind11_conduit_v1_",
+      "cache_eviction_config",
+      "cache_interval_multiplier",
+      "cache_size",
+      "dynamic_split_fuse",
+      "enable_prefix_caching",
+      "max_num_batched_tokens",
+      "max_num_seqs",
+      "num_kv_blocks",
+      "num_linear_attention_blocks",
+      "sparse_attention_config",
+      "to_string",
+      "use_cache_eviction",
+      "use_sparse_attention"
+    ],
+    "pipeline_attributes": [
+      "__call__",
+      "__class__",
+      "__delattr__",
+      "__dir__",
+      "__doc__",
+      "__eq__",
+      "__format__",
+      "__ge__",
+      "__getattribute__",
+      "__gt__",
+      "__hash__",
+      "__init__",
+      "__init_subclass__",
+      "__le__",
+      "__lt__",
+      "__module__",
+      "__ne__",
+      "__new__",
+      "__reduce__",
+      "__reduce_ex__",
+      "__repr__",
+      "__setattr__",
+      "__sizeof__",
+      "__str__",
+      "__subclasshook__",
+      "_pybind11_conduit_v1_",
+      "finish_chat",
+      "generate",
+      "get_generation_config",
+      "get_tokenizer",
+      "set_generation_config",
+      "start_chat"
+    ],
+    "scheduler_repr": "<openvino_genai.py_openvino_genai.SchedulerConfig object at 0x000001CC0459BDF0>"
+  },
+  "gates": {
+    "e0_pipeline": "READY",
+    "continuous_batching_controls": {
+      "cache_size": true,
+      "dynamic_split_fuse": true,
+      "enable_prefix_caching": true,
+      "max_num_batched_tokens": true,
+      "max_num_seqs": true,
+      "num_kv_blocks": true,
+      "use_cache_eviction": true
+    },
+    "continuous_batching_ready": true,
+    "native_nonprefix_attachment_hooks": [],
+    "e2_status": "BLOCKED_NO_PUBLIC_NONPREFIX_ATTACHMENT_HOOK"
+  }
+}
