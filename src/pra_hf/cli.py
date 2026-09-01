@@ -124,6 +124,50 @@ def _emit_doctor(value: Mapping[str, Any]) -> None:
     click.echo(f"  Next: {value['next_action']}")
 
 
+def _emit_product_inspect(value: Mapping[str, Any]) -> None:
+    """Render model qualification and bundle discovery as an actionable summary."""
+
+    model = value["model"]["model"]
+    engine = value["engine"]
+    requested_engine = value.get("requested_engine", engine["engine"])
+    click.echo(f"Model: {model['id']}")
+    click.echo(f"Revision: {model['revision']}")
+    click.echo(f"Engine: {requested_engine} ({engine['name']})")
+    click.echo(f"Recommendation: {value['current_recommendation']}")
+
+    published = value.get("published_bundle")
+    if published:
+        heading = (
+            "\nPublished PRA bundle found"
+            if published["status"] == "FOUND"
+            else "\nPublished PRA bundle"
+        )
+        click.echo(heading)
+        click.echo(f"  Repository: {_metric(published['source'])}")
+        click.echo(f"  Revision: {_metric(published['bundle_revision'])}")
+        click.echo(f"  Base revision: {_metric(published['base_revision'])}")
+        click.echo(f"  Compatibility: {published['compatibility']}")
+        click.echo(f"  Trust: {published['trust']}")
+        click.echo(f"  Qualification: {_metric(published['qualification'])}")
+        if published["status"] == "FOUND":
+            click.echo(f"  Resolve: pra inspect {model['id']} -e {requested_engine} -a auto")
+        else:
+            click.echo(f"  Status: {published['status']}")
+
+    resolution = value.get("bundle_resolution")
+    if resolution:
+        click.echo("\nPRA bundle resolution")
+        click.echo(f"  Status: {resolution['status']}")
+        click.echo(f"  Repository: {_metric(resolution['source'])}")
+        click.echo(f"  Revision: {_metric(resolution['resolved_revision'])}")
+        click.echo(f"  Trust: {resolution['trust']}")
+        click.echo(f"  Local path: {_metric(resolution['local_path'])}")
+        bundle = resolution.get("bundle")
+        if bundle:
+            click.echo(f"  Base revision: {_metric(bundle['base_model'].get('revision'))}")
+            click.echo("  Compatibility: exact")
+
+
 def _emit_qualification(value: Mapping[str, Any], run_directory: Path | None = None) -> None:
     click.echo("MODE                STATUS              F1            VISIBLE TOKENS  TTFT P95 MS   SUCCESS REQ/S")
     for row in value["modes"].values():
@@ -217,22 +261,38 @@ def engines(details, json_output, yaml_output) -> None:
 @click.argument("model")
 @click.option("-e", "--engine", default="hf", show_default=True)
 @click.option("-r", "--revision")
-@click.option("-a", "--pra-bundle", default="auto", show_default=True)
+@click.option(
+    "-a", "--pra-bundle", default=None, metavar="AUTO|NONE|PATH|REPO",
+    help="Resolve and validate a bundle. Omit to discover published bundles without downloading them.",
+)
 @_output_options
 def product_inspect(model, engine, revision, pra_bundle, json_output, yaml_output) -> None:
     """Inspect one MODEL and ENGINE as a deployable combination."""
     try:
         metadata = ModelInspector().inspect(model, revision=revision)
         value = QualificationService().inspect(model, engine, metadata)
-        value["bundle_resolution"] = BundleResolver().resolve(
-            pra_bundle,
-            model=model,
-            model_revision=revision,
-            engine=engine,
-        ).to_dict()
+        value["requested_engine"] = engine
+        resolved_model_revision = metadata["model"]["revision"]
+        resolver = BundleResolver()
+        if pra_bundle is None:
+            value["published_bundle"] = resolver.discover(
+                model=model,
+                model_revision=resolved_model_revision,
+                engine=engine,
+            ).to_dict()
+        else:
+            value["bundle_resolution"] = resolver.resolve(
+                pra_bundle,
+                model=model,
+                model_revision=resolved_model_revision,
+                engine=engine,
+            ).to_dict()
     except (KeyError, ValueError) as error:
         raise click.ClickException(str(error)) from error
-    _emit(value, json_output=json_output, yaml_output=yaml_output)
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+    else:
+        _emit_product_inspect(value)
 
 
 @cli.command("evaluate")

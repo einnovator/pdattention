@@ -6,13 +6,19 @@ Inspect the model and engine first:
 pra inspect Qwen/Qwen3-0.6B -e hf
 pra bundle list --model Qwen/Qwen3-0.6B
 pra bundle list --family qwen
-pra bundle resolve Qwen/Qwen3-0.6B -e hf
+pra inspect Qwen/Qwen3-0.6B -e hf -a auto
 ```
 
-`bundle resolve` reports the model identity, candidate, trust level,
-qualification boundary, selected immutable Hub revision, local cache path, and
-selection reason. `auto` considers only the trusted registry and requires an
-engine-compatible entry.
+Bare `inspect` downloads only the base-model configuration needed to resolve
+its immutable revision. It then reports a compatible published bundle from the
+local PRA registry without downloading that bundle. Explicit `-a auto` resolves,
+downloads, checksum-validates, and caches the registry-pinned bundle. It never
+falls back from an incompatible base revision to a model-name-only match.
+
+`bundle resolve` provides the same explicit resolution operation and reports
+the model identity, candidate, trust level, qualification boundary, immutable
+Hub revision, local cache path, and selection reason. `auto` considers only the
+trusted registry and requires an engine-compatible entry.
 
 An explicit repository remains valid for community or private work:
 

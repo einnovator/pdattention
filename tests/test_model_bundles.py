@@ -156,6 +156,76 @@ def test_resolver_supports_none_local_and_trusted_auto(tmp_path: Path) -> None:
     assert automatic.resolved_revision == "fedcba"
 
 
+def test_discovery_is_download_free_and_reports_exact_compatibility(
+    monkeypatch,
+) -> None:
+    entry = BundleRegistryEntry(
+        name="test", base_model="org/model", base_revision=REVISION,
+        architecture="TestForCausalLM", bundle_repo="owner/pra-model",
+        bundle_revision="fedcba", pra_version=">=0.2,<0.3", schema_version=2,
+        trust="eInnovator-qualified", engine_compatibility={"hf": "validated"},
+        profiles=["balanced"], qualification="CONTROLLED",
+    )
+    resolver = BundleResolver(TrustedBundleRegistry([entry]))
+    monkeypatch.setattr(
+        PRAModelBundle,
+        "from_pretrained",
+        classmethod(lambda cls, *args, **kwargs: pytest.fail("discovery downloaded a bundle")),
+    )
+
+    found = resolver.discover(model="org/model", model_revision=REVISION, engine="hf")
+    mismatch = resolver.discover(model="org/model", model_revision="different", engine="hf")
+    unresolved = resolver.resolve(
+        "auto", model="org/model", model_revision="different", engine="hf"
+    )
+
+    assert found.status == "FOUND"
+    assert found.compatibility == "exact"
+    assert found.bundle_revision == "fedcba"
+    assert mismatch.status == "INCOMPATIBLE"
+    assert mismatch.compatibility == "base-revision-mismatch"
+    assert unresolved.status == "INCOMPATIBLE"
+
+
+def test_inspect_discovers_without_pull_and_explicit_auto_resolves(
+    tmp_path: Path, monkeypatch
+) -> None:
+    bundle_path = tmp_path / "bundle"
+    BundleBuilder().build(_run(tmp_path), bundle_path)
+    entry = BundleRegistryEntry(
+        name="test", base_model="org/model", base_revision=REVISION,
+        architecture="TestForCausalLM", bundle_repo=str(bundle_path),
+        bundle_revision="fedcba", pra_version=">=0.2,<0.3", schema_version=2,
+        trust="eInnovator-qualified", engine_compatibility={"hf": "validated"},
+        profiles=["balanced"], qualification="CONTROLLED",
+    )
+    resolver = BundleResolver(TrustedBundleRegistry([entry]))
+    metadata = {
+        "model": {
+            "id": "org/model", "revision": REVISION,
+            "architecture": "TestForCausalLM", "family": "test",
+            "variant": "base", "parameter_count_approx": 1,
+        },
+        "attention": {},
+        "pra": {"structural_adapter": {"status": "VALIDATED"}},
+    }
+    monkeypatch.setattr("pra_hf.cli.ModelInspector.inspect", lambda *args, **kwargs: metadata)
+    monkeypatch.setattr("pra_hf.cli.BundleResolver", lambda: resolver)
+    runner = CliRunner()
+
+    discovered = runner.invoke(cli, ["inspect", "org/model", "-e", "hf"])
+    resolved = runner.invoke(cli, ["inspect", "org/model", "-e", "hf", "-a", "auto"])
+
+    assert discovered.exit_code == 0, discovered.output
+    assert "Published PRA bundle found" in discovered.output
+    assert "Compatibility: exact" in discovered.output
+    assert "Local path:" not in discovered.output
+    assert resolved.exit_code == 0, resolved.output
+    assert "PRA bundle resolution" in resolved.output
+    assert "Status: RESOLVED" in resolved.output
+    assert "Compatibility: exact" in resolved.output
+
+
 def test_untrusted_community_bundle_is_explicit_only(tmp_path: Path) -> None:
     bundle_path = tmp_path / "bundle"
     BundleBuilder().build(_run(tmp_path), bundle_path)

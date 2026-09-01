@@ -164,7 +164,7 @@ pra inspect [OPTIONS] MODEL
 | --- | --- | --- | --- | --- |
 | `-e`, `--engine` | TEXT | `hf` | no | Select the runtime or evidence-registry engine. |
 | `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
-| `-a`, `--pra-bundle` | TEXT | `auto` | no | Load a PRA bundle or configuration override. |
+| `-a`, `--pra-bundle` | TEXT | `-` | no | Resolve and validate a bundle. Omit to discover published bundles without downloading them. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -172,16 +172,28 @@ pra inspect [OPTIONS] MODEL
 **Common use**
 
 ```bash
-pra inspect Qwen/Qwen3-1.7B --engine hf --pra-bundle auto
+pra inspect Qwen/Qwen3-0.6B --engine hf
+pra inspect Qwen/Qwen3-0.6B --engine hf --pra-bundle auto
 ```
 
 **Example output**
 
 ```text
-Model: Qwen/Qwen3-1.7B
+Model: Qwen/Qwen3-0.6B
+Revision: c1899de...
 Engine: hf
-Selected Context: AVAILABLE
-Native Memory: qualification pending
+
+Published PRA bundle found
+  Repository: EInnovator/pra-qwen3-0.6b
+  Revision: 25e6907...
+  Base revision: c1899de...
+  Compatibility: exact
+  Trust: eInnovator-qualified
+
+With --pra-bundle auto:
+PRA bundle resolution
+  Status: RESOLVED
+  Compatibility: exact
 ```
 
 ### `pra evaluate`

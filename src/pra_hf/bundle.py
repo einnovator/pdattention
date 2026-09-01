@@ -603,6 +603,34 @@ class TrustedBundleRegistry:
 
 
 @dataclass(frozen=True)
+class BundleAvailability:
+    """Download-free result for a trusted published bundle lookup."""
+
+    status: str
+    source: str | None
+    bundle_revision: str | None
+    base_revision: str | None
+    compatibility: str
+    trust: str
+    qualification: str | None
+    profiles: Sequence[str]
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "source": self.source,
+            "bundle_revision": self.bundle_revision,
+            "base_revision": self.base_revision,
+            "compatibility": self.compatibility,
+            "trust": self.trust,
+            "qualification": self.qualification,
+            "profiles": list(self.profiles),
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
 class BundleResolution:
     requested: str
     status: str
@@ -628,16 +656,58 @@ class BundleResolver:
     def __init__(self, registry: TrustedBundleRegistry | None = None) -> None:
         self.registry = registry or TrustedBundleRegistry.default()
 
+    def discover(
+        self,
+        *,
+        model: str,
+        model_revision: str | None = None,
+        engine: str | None = None,
+    ) -> BundleAvailability:
+        """Find a trusted registry entry without downloading its bundle payload."""
+
+        candidates = self.registry.candidates(model, engine=engine)
+        if not candidates:
+            return BundleAvailability(
+                "NO_TRUSTED_MATCH", None, None, None, "none", "none", None, (),
+                "No trusted published bundle matches the model and engine.",
+            )
+        if model_revision:
+            exact = [entry for entry in candidates if entry.base_revision == model_revision]
+            if not exact:
+                entry = candidates[0]
+                return BundleAvailability(
+                    "INCOMPATIBLE", entry.bundle_repo, entry.bundle_revision,
+                    entry.base_revision, "base-revision-mismatch", entry.trust,
+                    entry.qualification, entry.profiles,
+                    "A trusted bundle exists for this model, but its base revision does not "
+                    "match the inspected model revision.",
+                )
+            entry = exact[0]
+            compatibility = "exact"
+            reason = "Trusted model identity, immutable base revision, and engine compatibility match."
+        else:
+            entry = candidates[0]
+            compatibility = "model-id-only"
+            reason = "Trusted model identity and engine compatibility match; base revision is unresolved."
+        return BundleAvailability(
+            "FOUND", entry.bundle_repo, entry.bundle_revision, entry.base_revision,
+            compatibility, entry.trust, entry.qualification, entry.profiles, reason,
+        )
+
     def resolve(self, requested: str | None, *, model: str, model_revision: str | None = None, engine: str | None = None) -> BundleResolution:
         value = requested or "auto"
         if value.lower() == "none":
             return BundleResolution(value, "DISABLED", None, None, None, "none", "Bundle-specific adapters explicitly disabled; PRA remains available.")
         if value.lower() == "auto":
             candidates = self.registry.candidates(model, revision=model_revision, engine=engine)
-            if not candidates and model_revision:
-                candidates = self.registry.candidates(model, engine=engine)
             if not candidates:
-                return BundleResolution(value, "NO_TRUSTED_MATCH", None, None, None, "none", "No trusted immutable bundle matches the model and engine; generic PRA remains available.")
+                availability = self.discover(
+                    model=model, model_revision=model_revision, engine=engine
+                )
+                return BundleResolution(
+                    value, availability.status, availability.source, None, None,
+                    availability.trust, availability.reason,
+                )
             entry = candidates[0]
             source, revision, trust = entry.bundle_repo, entry.bundle_revision, entry.trust
             reason = "Matched trusted base-model identity, engine compatibility, and qualification metadata."
