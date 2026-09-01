@@ -36,6 +36,7 @@ class ProbeBackend:
             backend="llama.cpp",
             backend_revision="458681e1d5d",
             model_fingerprint="stale" if self.stale else model_fingerprint,
+            model_artifact_digest="sha256:controlled-model",
             integration_level="E2",
             mechanisms=self.mechanisms,
             resource_identity=True,
