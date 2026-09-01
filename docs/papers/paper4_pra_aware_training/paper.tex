@@ -43,6 +43,10 @@ whole-parent accuracy plateaus near one half. The controlled gate passes
 \texttt{\PaperFourGateDecision}. These results concern oracle-selected memory
 consumption in a sub-million-parameter diagnostic model. They do not establish
 learned routing, language-model scaling, or deployment efficiency.
+The same strict gate is then repeated at Gemma 3 270M and 1B. Consumer and
+Interface LoRA lower generic evidence and ordinary NLL at both sizes, but the
+relevant-versus-distractor margin is positive in only 1/5 seeds at 270M and 3/5
+at 1B. Model scale improves neither result enough to reopen routing.
 \end{abstract}
 
 \section{Introduction}
@@ -379,6 +383,42 @@ would in any case have a minimum exact two-sided sign-flip $p=0.0625$.
 Learned routing remains disabled until a harder causal task produces a
 positive matched-distractor margin in every preregistered split.
 
+\subsection{Gemma 270M and 1B continuation}
+
+We next repeat the same five-seed, 100-step Consumer and Interface regimes at
+Gemma 3 270M and 1B. Gemma's mixed attention topology is respected by placing
+PRA only at native global-attention layers; local sliding-window layers are not
+silently rewritten. Each model/seed cell executes in a fresh process and the
+router remains absent.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Two-scale Gemma consumer gate. Deltas are relative to each frozen
+checkpoint; negative NLL is better. Causal + counts seeds preferring relevant
+memory to a matched distractor.}
+\begin{tabular}{llrrrl}
+\toprule
+Model & Regime & $\Delta$ evidence NLL & $\Delta$ ordinary NLL & Causal + & Gate \\
+\midrule
+Gemma 3 270M & Consumer & -2.233 & -1.973 & 1/5 & fail \\
+Gemma 3 270M & Interface & -2.250 & -2.006 & 1/5 & fail \\
+Gemma 3 1B & Consumer & -1.927 & -1.485 & 3/5 & fail \\
+Gemma 3 1B & Interface & -1.936 & -1.506 & 3/5 & fail \\
+\bottomrule
+\end{tabular}
+\label{tab:paper4-gemma-consumer-gate}
+\end{table}
+
+The NLL gains are large but not causally specific. Mean relevant-versus-
+distractor margins remain negative in all four model--regime cells. The 1B
+checkpoint raises the positive-seed count from one to three, but the
+preregistered criterion is five of five. The result strengthens the stage
+boundary: ordinary continuation learning can make both evidence and distractor
+conditions easier without teaching reliable reference-conditioned use.
+Learned routing therefore remains blocked rather than being allowed to absorb
+consumer error.
+
 \section{Related Work}
 
 Sparse-attention methods reduce which token pairs interact inside a sequence
@@ -411,12 +451,13 @@ references remain in the training graph.
 Tier 1 adds an ordinary-language objective and a pretrained model below 0.5B
 parameters. It validates the optimization path but misses the stricter
 all-seed causal criterion: both Consumer and Interface LoRA produce a positive
-evidence-versus-distractor margin in four of five splits. The next experiment
-therefore hardens the continuation task and repeats these two scopes before
-learning a router. If that causal margin replicates, routing advances with
+evidence-versus-distractor margin in four of five splits. The Gemma 270M/1B
+continuation repeats these scopes and still fails the causal criterion. The
+next experiment therefore hardens the continuation task and consumer objective
+before learning a router. If that causal margin replicates, routing advances with
 shuffled, disabled, and oracle controls. Native scratch remains a ceiling and
-a separate architecture-training question. Gemma-scale continuation remains a
-later gate, not a direct consequence of either the toy or 135M result.
+a separate architecture-training question. A larger checkpoint alone is not a
+substitute for causal consumer learning.
 
 \section{Conclusion}
 
