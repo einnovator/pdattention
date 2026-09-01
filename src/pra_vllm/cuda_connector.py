@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -48,6 +50,7 @@ class _RequestTransfer:
     source_tokens: int
     slot_mapping: torch.Tensor
     mode: str
+    residency: str
 
     @classmethod
     def create(
@@ -71,6 +74,7 @@ class _RequestTransfer:
             source_tokens=command.source_tokens,
             slot_mapping=slots,
             mode=command.mode,
+            residency=command.residency,
         )
 
 
@@ -97,9 +101,33 @@ class PRASemanticConnector(KVConnectorBase_V1):
         )
         self._storage = Path(str(configured)).expanduser().resolve()
         self._storage.mkdir(parents=True, exist_ok=True)
+        telemetry = self._kv_transfer_config.get_from_extra_config(
+            "telemetry_path", None
+        )
+        self._telemetry = (
+            None if telemetry is None else Path(str(telemetry)).expanduser().resolve()
+        )
+        if self._telemetry is not None:
+            self._telemetry.parent.mkdir(parents=True, exist_ok=True)
+        self._telemetry_lock = threading.Lock()
+        self._hot_layers: dict[tuple[str, str], torch.Tensor] = {}
         self._commands: dict[str, CudaConnectorCommand] = {}
         self._loads: dict[str, "Request"] = {}
         self._active_store_keys: set[str] = set()
+        self._stored_tensor_bytes: dict[str, int] = {}
+
+    def _write_telemetry(self, event: dict[str, Any]) -> None:
+        """Append one transfer event without sharing mutable benchmark state."""
+
+        if self._telemetry is None:
+            return
+        encoded = json.dumps(event, sort_keys=True) + "\n"
+        with self._telemetry_lock:
+            with self._telemetry.open("a", encoding="utf-8") as stream:
+                stream.write(encoded)
+
+    def _resident_hot_bytes(self) -> int:
+        return sum(tensor.numel() * tensor.element_size() for tensor in self._hot_layers.values())
 
     def _directory(self, logical_key: str) -> Path:
         digest = hashlib.sha256(logical_key.encode("utf-8")).hexdigest()
@@ -226,6 +254,13 @@ class PRASemanticConnector(KVConnectorBase_V1):
         for request in metadata.requests:
             if request.mode != "load":
                 continue
+            started = time.perf_counter()
+            storage_read_ms = 0.0
+            storage_read_bytes = 0
+            h2d_bytes = 0
+            d2d_bytes = 0
+            hot_hits = 0
+            hot_misses = 0
             directory = self._directory(request.logical_key)
             for layer_name, layer in forward_context.no_compile_layers.items():
                 cache = getattr(layer, "kv_cache", None)
@@ -235,7 +270,26 @@ class PRASemanticConnector(KVConnectorBase_V1):
                     attention[layer_name] if isinstance(attention, dict) else attention
                 )
                 path = directory / _layer_file_name(layer_name)
-                tensor = safetensors.torch.load_file(str(path))["kv_cache"]
+                cache_key = (request.logical_key, layer_name)
+                tensor = self._hot_layers.get(cache_key)
+                if request.residency == "hot" and tensor is not None:
+                    hot_hits += 1
+                else:
+                    read_started = time.perf_counter()
+                    tensor = safetensors.torch.load_file(str(path))["kv_cache"]
+                    storage_read_ms += (time.perf_counter() - read_started) * 1000.0
+                    tensor_bytes = tensor.numel() * tensor.element_size()
+                    storage_read_bytes += tensor_bytes
+                    if request.residency == "hot":
+                        hot_misses += 1
+                        tensor = tensor.to(cache.device, non_blocking=True)
+                        h2d_bytes += tensor_bytes
+                        self._hot_layers[cache_key] = tensor
+                tensor_bytes = tensor.numel() * tensor.element_size()
+                if tensor.device == cache.device:
+                    d2d_bytes += tensor_bytes
+                else:
+                    h2d_bytes += tensor_bytes
                 self._inject(
                     cache,
                     tensor,
@@ -243,6 +297,26 @@ class PRASemanticConnector(KVConnectorBase_V1):
                     layer_attention,
                     self._block_size,
                 )
+            if self._telemetry is not None and torch.cuda.is_available():
+                torch.cuda.synchronize()
+            self._write_telemetry(
+                {
+                    "schema_version": "pra-vllm-cuda-transfer-v1",
+                    "event": "load",
+                    "request_id": request.request_id,
+                    "logical_key": request.logical_key,
+                    "residency": request.residency,
+                    "source_tokens": request.source_tokens,
+                    "storage_read_bytes": storage_read_bytes,
+                    "storage_read_ms": storage_read_ms,
+                    "h2d_bytes": h2d_bytes,
+                    "d2d_bytes": d2d_bytes,
+                    "hot_layer_hits": hot_hits,
+                    "hot_layer_misses": hot_misses,
+                    "resident_hot_bytes": self._resident_hot_bytes(),
+                    "load_ms": (time.perf_counter() - started) * 1000.0,
+                }
+            )
 
     def wait_for_layer_load(self, layer_name: str) -> None:
         return
@@ -260,6 +334,11 @@ class PRASemanticConnector(KVConnectorBase_V1):
         for request in metadata.requests:
             if request.mode != "store":
                 continue
+            if request.logical_key not in self._active_store_keys:
+                self._stored_tensor_bytes[request.logical_key] = 0
+            for cache_key in tuple(self._hot_layers):
+                if cache_key[0] == request.logical_key:
+                    del self._hot_layers[cache_key]
             directory = self._directory(request.logical_key)
             directory.mkdir(parents=True, exist_ok=True)
             selected = self._extract(
@@ -267,6 +346,9 @@ class PRASemanticConnector(KVConnectorBase_V1):
                 request.slot_mapping,
                 attn_metadata,
                 self._block_size,
+            )
+            self._stored_tensor_bytes[request.logical_key] += (
+                selected.numel() * selected.element_size()
             )
             safetensors.torch.save_file(
                 {"kv_cache": selected.detach().cpu().contiguous()},
@@ -287,11 +369,15 @@ class PRASemanticConnector(KVConnectorBase_V1):
                 "logical_key": request.logical_key,
                 "source_tokens": request.source_tokens,
                 "layer_files": len(list(directory.glob("layer-*.safetensors"))),
+                "native_tensor_bytes": self._stored_tensor_bytes.get(
+                    request.logical_key, 0
+                ),
             }
             (directory / "manifest.json").write_text(
                 json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8"
             )
             self._active_store_keys.discard(request.logical_key)
+            self._stored_tensor_bytes.pop(request.logical_key, None)
 
     def request_finished(
         self, request: "Request", block_ids: list[int]
