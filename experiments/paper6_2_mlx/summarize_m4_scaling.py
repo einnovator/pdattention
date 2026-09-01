@@ -104,9 +104,9 @@ def write_table(path: Path, rows: list[dict[str, object]]) -> None:
     """Write the compact cross-model table consumed by Paper 6.2."""
 
     lines = [
-        r"\begin{tabular}{llrrrrrr}",
+        r"\begin{tabular}{llrrrrr}",
         r"\toprule",
-        r"Model & Dataset & $n$ & E0 F1 & E2 F1 & Shuf. F1 & E2/E0 & FP/int8 MiB \\",
+        r"Model & Dataset & $n$ & E0 F1 & E2 F1 & Shuf. F1 & FP/int8 MiB \\",
         r"\midrule",
     ]
     for row in rows:
@@ -115,7 +115,6 @@ def write_table(path: Path, rows: list[dict[str, object]]) -> None:
             f"{model} & {DATASET_LABELS[str(row['dataset'])]} & "
             f"{int(row['sample_count'])} & {float(row['ordinary_f1']):.3f} & "
             f"{float(row['native_f1']):.3f} & {float(row['shuffled_f1']):.3f} & "
-            f"{float(row['native_over_ordinary']):.3f} & "
             f"{float(row['native_resident_mib']):.1f}/{float(row['int8_resident_mib']):.1f} \\\\"
         )
     lines.extend((r"\bottomrule", r"\end{tabular}"))
@@ -124,7 +123,7 @@ def write_table(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 def write_plot(path: Path, rows: list[dict[str, object]]) -> None:
-    """Plot transport quality controls and native completion-time ratios."""
+    """Plot transport quality and the valid shuffled-memory causal control."""
 
     import matplotlib.pyplot as plt
     import numpy as np
@@ -146,10 +145,10 @@ def write_plot(path: Path, rows: list[dict[str, object]]) -> None:
     axes[0].legend(frameon=False, fontsize=8)
     axes[0].grid(axis="y", alpha=0.25)
 
-    ratios = [float(row["native_over_ordinary"]) for row in rows]
-    axes[1].bar(x, ratios, color="#2a9d8f")
-    axes[1].axhline(1.0, color="black", linestyle="--", linewidth=1)
-    axes[1].set_ylabel("Native E2 / selected E0 time")
+    deltas = [float(row["gold_logprob_delta_shuffled"]) for row in rows]
+    axes[1].bar(x, deltas, color="#e76f51")
+    axes[1].axhline(0.0, color="black", linewidth=1)
+    axes[1].set_ylabel("Shuffled - native gold log-probability")
     axes[1].set_xticks(x, labels)
     axes[1].grid(axis="y", alpha=0.25)
     fig.tight_layout()
@@ -173,6 +172,11 @@ def main() -> None:
         "schema_version": "paper6-2-mlx-m4-cross-model-v1",
         "evidence_tier": "NATURAL_QA_ORACLE_EVIDENCE_MATERIALIZATION",
         "hardware": "Apple M4 Pro, 20-core GPU, 48 GiB unified memory",
+        "timing_status": (
+            "RETIRED_MIXED_LIFECYCLE_STATE: ordinary source computation was "
+            "lazily evaluated inside request timing while native encoding was "
+            "synchronized before timing"
+        ),
         "conditions": full_summary,
         "comparisons": rows,
     }

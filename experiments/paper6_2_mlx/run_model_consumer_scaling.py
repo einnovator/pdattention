@@ -296,6 +296,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     # Phase one intentionally uses the unpatched MLX model. Both ordinary and
     # native source encodings are synchronized before warm request timing.
     for seed, example in cohort:
+        identity = (example.dataset, seed, example.example_id)
+        if all(
+            (*identity, condition) in completed
+            for condition in BASELINE_CONDITIONS
+        ):
+            continue
         source, query, answer = _prepared_tokens(
             tokenizer, example, args.max_source_tokens
         )
@@ -309,7 +315,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         started = time.perf_counter()
         memory = encode_native_memory(model, source)
         e2_encode_ms = (time.perf_counter() - started) * 1000.0
-        identity = (example.dataset, seed, example.example_id)
         baseline = baseline_outputs.get(identity)
         for condition in BASELINE_CONDITIONS:
             row_key = (*identity, condition)
@@ -354,13 +359,21 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     installed_layers = install_qwen3_segmented_attention(model)
     profiles = tuple(args.profile or PROFILE_FRACTIONS)
     for seed, example in cohort:
+        identity = (example.dataset, seed, example.example_id)
+        profile_conditions = tuple(
+            f"E2_SEGMENTED_{profile.upper()}" for profile in profiles
+        )
+        if all(
+            (*identity, condition) in completed
+            for condition in profile_conditions
+        ):
+            continue
         source, query, answer = _prepared_tokens(
             tokenizer, example, args.max_source_tokens
         )
         started = time.perf_counter()
         memory = encode_native_memory(model, source)
         encode_ms = (time.perf_counter() - started) * 1000.0
-        identity = (example.dataset, seed, example.example_id)
         baseline = baseline_outputs[identity]
         for profile in profiles:
             condition = f"E2_SEGMENTED_{profile.upper()}"

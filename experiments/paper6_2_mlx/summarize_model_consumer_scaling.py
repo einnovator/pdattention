@@ -60,15 +60,17 @@ def summarize_model(payload: dict[str, Any]) -> dict[str, Any]:
             for row, base in paired
         ]
         ci_low, ci_high = _bootstrap_interval(f1_deltas)
-        warm_ratio = _mean(
+        warm_ratios = [
             float(row["warm_request_ms"]) / float(base["warm_request_ms"])
             for row, base in paired
-        )
-        cold_ratio = _mean(
+        ]
+        cold_ratios = [
             float(row["cold_usable_context_ms"])
             / float(base["cold_usable_context_ms"])
             for row, base in paired
-        )
+        ]
+        warm_ratio = _mean(warm_ratios)
+        cold_ratio = _mean(cold_ratios)
         summary = {
             "condition": condition,
             "samples": len(selected),
@@ -85,7 +87,9 @@ def summarize_model(payload: dict[str, Any]) -> dict[str, Any]:
                 float(row["sequence_agreement_vs_e0"]) for row in selected
             ),
             "warm_cost_ratio_vs_e0": warm_ratio,
+            "warm_cost_ratio_ci95": list(_bootstrap_interval(warm_ratios)),
             "cold_cost_ratio_vs_e0": cold_ratio,
+            "cold_cost_ratio_ci95": list(_bootstrap_interval(cold_ratios)),
             "active_detail_mib": _mean(
                 float(row["active_detail_bytes"]) / 2**20 for row in selected
             ),
@@ -107,6 +111,11 @@ def summarize_model(payload: dict[str, Any]) -> dict[str, Any]:
         row for row in conditions if str(row["condition"]).startswith("E2_SEGMENTED")
     ]
     balanced = [row for row in segmented if row["balanced_smoke_gate"]]
+    balanced_reduced = [
+        row
+        for row in balanced
+        if float(row["consumer_layer_fraction"]) < 1.0
+    ]
     strict = [row for row in segmented if row["strict_transport_gate"]]
     return {
         "model_id": payload["model_id"],
@@ -119,6 +128,11 @@ def summarize_model(payload: dict[str, Any]) -> dict[str, Any]:
         "minimum_balanced_smoke_fraction": (
             min(float(row["consumer_layer_fraction"]) for row in balanced)
             if balanced
+            else None
+        ),
+        "minimum_balanced_reduced_fraction": (
+            min(float(row["consumer_layer_fraction"]) for row in balanced_reduced)
+            if balanced_reduced
             else None
         ),
         "minimum_strict_transport_fraction": (
@@ -143,8 +157,8 @@ def write_table(path: Path, models: list[dict[str, Any]]) -> None:
     for model in models:
         concat = _condition(model, "E2_CONCAT_WARM")
         segmented = _condition(model, "E2_SEGMENTED_ALL_LAYERS")
-        balanced = model["minimum_balanced_smoke_fraction"]
-        balanced_text = "--" if balanced is None else f"{float(balanced):.3f}"
+        balanced = model["minimum_balanced_reduced_fraction"]
+        balanced_text = "none" if balanced is None else f"{float(balanced):.3f}"
         lines.append(
             f"Qwen3-{model['model_label']} & {model['samples']} & "
             f"{concat['warm_cost_ratio_vs_e0']:.3f} & "
@@ -153,6 +167,45 @@ def write_table(path: Path, models: list[dict[str, Any]]) -> None:
             f"{segmented['sequence_agreement']:.3f} & {balanced_text} & "
             f"{segmented['active_detail_mib']:.1f} \\\\"
         )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_consumer_table(path: Path, models: list[dict[str, Any]]) -> None:
+    """Write the quality/cost surface for each segmented consumer suffix."""
+
+    lines = [
+        r"\begin{tabular}{llrrrrr}",
+        r"\toprule",
+        r"Model & profile & fraction & $\Delta$F1 & $|\Delta|$LP & agreement & warm ratio \\",
+        r"\midrule",
+    ]
+    for model in models:
+        profiles = sorted(
+            (
+                row
+                for row in model["conditions"]
+                if str(row["condition"]).startswith("E2_SEGMENTED")
+            ),
+            key=lambda row: -float(row["consumer_layer_fraction"]),
+        )
+        for row in profiles:
+            label = str(row["condition"]).removeprefix("E2_SEGMENTED_").lower()
+            label = {
+                "all_layers": "all",
+                "last_7_8": "last 7/8",
+                "last_3_4": "last 3/4",
+                "last_2_3": "last 2/3",
+                "last_1_2": "last 1/2",
+            }.get(label, label.replace("_", r"\_"))
+            lines.append(
+                f"Qwen3-{model['model_label']} & {label} & "
+                f"{row['consumer_layer_fraction']:.3f} & "
+                f"{row['mean_f1_delta']:+.3f} & "
+                f"{row['mean_absolute_gold_logprob_delta']:.3f} & "
+                f"{row['sequence_agreement']:.3f} & "
+                f"{row['warm_cost_ratio_vs_e0']:.3f} \\\\"
+            )
     lines.extend((r"\bottomrule", r"\end{tabular}"))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -174,9 +227,49 @@ def write_plot(path: Path, models: list[dict[str, Any]]) -> None:
         for model in models
     ]
     figure, axes = plt.subplots(1, 2, figsize=(9.6, 3.5))
-    axes[0].plot(labels, concat_warm, marker="o", label="concat E2 warm")
-    axes[0].plot(labels, concat_cold, marker="s", label="concat E2 cold")
-    axes[0].plot(labels, segmented, marker="^", label="segmented E2 warm")
+    concat_warm_ci = [
+        _condition(model, "E2_CONCAT_WARM")["warm_cost_ratio_ci95"]
+        for model in models
+    ]
+    concat_cold_ci = [
+        _condition(model, "E2_CONCAT_WARM")["cold_cost_ratio_ci95"]
+        for model in models
+    ]
+    segmented_ci = [
+        _condition(model, "E2_SEGMENTED_ALL_LAYERS")["warm_cost_ratio_ci95"]
+        for model in models
+    ]
+
+    def errors(values: list[float], intervals: list[list[float]]) -> list[list[float]]:
+        return [
+            [value - interval[0] for value, interval in zip(values, intervals)],
+            [interval[1] - value for value, interval in zip(values, intervals)],
+        ]
+
+    axes[0].errorbar(
+        labels,
+        concat_warm,
+        yerr=errors(concat_warm, concat_warm_ci),
+        marker="o",
+        capsize=3,
+        label="concat E2 warm",
+    )
+    axes[0].errorbar(
+        labels,
+        concat_cold,
+        yerr=errors(concat_cold, concat_cold_ci),
+        marker="s",
+        capsize=3,
+        label="concat E2 cold",
+    )
+    axes[0].errorbar(
+        labels,
+        segmented,
+        yerr=errors(segmented, segmented_ci),
+        marker="^",
+        capsize=3,
+        label="segmented E2 warm",
+    )
     axes[0].axhline(1.0, color="black", linestyle="--", linewidth=1)
     axes[0].set_ylabel("matched E2 / E0 cost")
     axes[0].set_xlabel("Qwen3 model size")
@@ -238,6 +331,9 @@ def main() -> None:
         json.dumps(report, indent=2) + "\n", encoding="utf-8"
     )
     write_table(args.output_dir / "generated_model_consumer_scaling_table.tex", models)
+    write_consumer_table(
+        args.output_dir / "generated_model_consumer_quality_table.tex", models
+    )
     write_plot(args.output_dir / "model_consumer_scaling.png", models)
 
 

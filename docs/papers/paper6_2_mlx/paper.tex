@@ -44,8 +44,10 @@ free-generation F1 is noisy. Per-head int8
 residency halves selected-K/V bytes and preserves this small cohort's quality,
 with request-local dequantization before attention. An independent M4 Pro
 replication adds Qwen3-4B and preserves ordinary/native aggregate F1 exactly in
-all six model--dataset cohorts. At 4B, native completion takes 44.5--47.6\% of
-ordinary split-cache time; shuffled-memory F1 falls to 0.011--0.028. Finally,
+all six model--dataset cohorts; shuffled-memory F1 falls to 0.011--0.028. A
+subsequent timing audit retires that runner's apparent 44.5--54.5\% native cost:
+MLX lazily completed ordinary source encoding inside the timed request while
+native encoding had already been synchronized. Finally,
 an SDK hybrid
 router selects four documents or paper paragraphs before native
 materialization. Native and ordinary consumption agree exactly on all 60
@@ -75,15 +77,14 @@ working-set threshold, while selective int8 remains below the lossless gate.
 An additional 1,500-request Qwen3-4B M4 Pro sweep reproduces that threshold:
 quality is budget-invariant, fitting all eight resources eliminates reloads,
 and mean resolution time falls by about 68\%.
-On a separate 48~GiB M4 Pro, a pinned Qwen3 Q4 ladder at 8B, 14B, and 32B,
-plus Qwen3-30B-A3B, evaluates 60 unique natural-QA model--example pairs.
-Concatenated native K/V preserves all 60 selected-text sequences. A live
-segmented one-softmax path avoids physical K/V concatenation and preserves
-57/60 sequences; its mean absolute gold-log-probability deviation is 0.189,
-0.027, 0.039, and 0.146 nats by model. It costs 1.03--1.12 times selected-text
-completion latency. Reduced consumer suffixes become less
-likelihood-sensitive at dense 32B, but do not preserve sequence identity well
-enough to promote a sparse default.
+On a separate 48~GiB M4 Pro, a synchronized Qwen3 Q4 ladder at 4B, 8B, 14B,
+and 32B evaluates 120 natural-QA model--example pairs. Concatenated native K/V
+preserves all 120 selected-text sequences. Its warm E2/E0 request ratio approaches
+parity with scale (1.054, 1.031, 1.018, and 1.011), while its cold/cold ratio
+rises from 0.932 to 0.976: the cold advantage shrinks rather than grows. Full
+segmented overhead falls from 1.165 to 1.047. No tested 7/8, 3/4, 2/3, or 1/2
+consumer suffix passes the preregistered quality gate at any size, so model scale
+does not yet justify a reduced-layer \textsc{Balanced} profile.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -108,9 +109,10 @@ Quality & 2,086/2,086 matched E0/E2 pairs; six additional oracle-transport cohor
 Context reduction & 90.4--93.0\% fewer visible prompt tokens\\
 TTFT/ITL tails & Online gateway measured separately; common matched tails \texttt{NOT\_MEASURED}\\
 Throughput & Concurrent E2 inverse-cost ratio 1.072, or 93.3\% of E0 rate\\
+Model scaling & Warm concat E2/E0 approaches parity from 1.054 (4B) to 1.011 (32B); cold ratio rises from 0.932 to 0.976\\
 Peak memory & Unified-memory components and controlled pressure measured; full live frontier open\\
 Reuse & HOT/WARM lifecycle and restart recovery measured\\
-Main limitation & Fuse live segmented attention and validate long occupied windows under pressure\\
+Main limitation & Fuse segmented attention; no reduced consumer-layer profile passes the natural-QA smoke gate\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -129,8 +131,8 @@ archive state.
 \textbf{Best validated deployment:} E0 selected text for latency-sensitive
 serving; E2 for bounded native residency, non-disclosure, or persistent resource
 reuse after profiling. \textbf{Use when:} a selected archive should remain
-outside the visible prompt. \textbf{Do not use when:} a cold one-shot request is
-expected to outperform E0 without reuse. \textbf{Main remaining gate:} a fused
+outside the visible prompt. \textbf{Do not use when:} a large speed advantage is
+assumed from model scale alone. \textbf{Main remaining gate:} a fused
 segmented kernel plus a joint local-window/PRA-budget/consumer-layer frontier.
 
 \section{Introduction}
@@ -442,6 +444,84 @@ sparsity therefore does not imply semantic-context sparsity. All reduced-layer
 rows remain \textsc{Calibration Pending}; the correctness profile remains all
 eligible layers.
 
+\subsection{Matched lifecycle scaling law}
+
+The preceding profile experiment synchronized ordinary source encoding, but an
+earlier 1.7B/4B runner did not. MLX executes lazily: that runner called the
+ordinary source forward outside its timer without calling \texttt{mx.eval}, so
+the work completed inside generation. Native encoding did call
+\texttt{mx.eval}. Its apparent 44.5--54.5\% E2/E0 completion ratio therefore
+mixed cold E0 with warm E2 and is retired.
+
+The corrected runner makes lifecycle state part of the metric. \emph{Cold}
+cost is synchronized representation encoding plus query generation;
+\emph{warm} cost is generation from synchronized reusable ordinary or native
+state. It evaluates two independently shuffled examples per dataset under each
+of five seeds, or 30 examples per model, at 384 selected source tokens and 12
+greedy output tokens. The 4B anchor and pinned 8B, 14B, and 32B models each run
+ordinary warm E0, concatenated warm E2, and segmented E2 at all, 7/8, 3/4,
+2/3, and 1/2 of decoder layers. This produces 840 model-backed condition rows;
+retrieval and selected evidence are fixed within each pair.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Matched lifecycle scaling on the M4 Pro. Ratios divide E2 by E0;
+lower is faster. Concat is the numerical reference. Segmented agreement is
+exact greedy-sequence agreement. ``None'' means no reduced profile passed the
+smoke quality gate.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_2_mlx/model_consumer_scaling/generated_model_consumer_scaling_table.tex}}
+\label{tab:mlx-matched-model-scaling}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper6_2_mlx/model_consumer_scaling/model_consumer_scaling.png}
+\caption{Left: matched cold and warm E2/E0 costs. Warm overhead approaches
+parity with model size, but cold E2's advantage contracts. Right: paired task-F1
+change as consumer layers are removed; the dotted line is the $-0.03$ smoke
+margin, not a production noninferiority bound.}
+\label{fig:mlx-matched-model-scaling}
+\end{figure}
+
+Concatenated E2 preserves every one of the 120 E0 sequences and has zero
+gold-answer-likelihood drift. Its warm ratio falls monotonically from 1.054 at
+4B to 1.011 at 32B. Paired bootstrap 95\% intervals are [1.052, 1.056] and
+[1.009, 1.013] at the endpoints. This four-point trend is convergence toward
+parity rather than a native execution advantage. The cold ratio moves in the
+opposite direction, from 0.932 at 4B and 8B to 0.950 at 14B and 0.976 at 32B.
+Reference encoding and ordinary source-cache construction scale similarly, so
+larger models do not amplify the measured cold benefit.
+
+The unfused segmented path also improves with scale: all-layer warm overhead
+falls from 1.165 to 1.047. Its exact agreement is 0.833, 0.767, 0.933, and
+0.833, while mean absolute gold-log-probability drift remains 0.090--0.214
+nats. These are small reduction-order effects accumulated across many layers;
+the concatenated reference shows that source K/V itself is exact.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Consumer-depth quality and cost. $|\Delta|$LP is mean absolute
+gold-answer-log-probability change from E0. Agreement is exact sequence
+agreement. Reduced profiles save active PRA K/V proportionally but none passes
+both the paired F1 and likelihood gate.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_2_mlx/model_consumer_scaling/generated_model_consumer_quality_table.tex}}
+\label{tab:mlx-consumer-depth-scaling}
+\end{table}
+
+The consumer-layer hypothesis is not supported under this evidence geometry.
+At 32B, the last-7/8 profile loses 0.030 mean F1, has a wide paired bootstrap
+interval $[-0.130, 0.058]$, and drifts by 1.009 nats in absolute answer likelihood.
+The last-half profile reaches near-E0 warm cost (1.011) but loses 0.078 F1 and drifts by 2.173
+nats. Similar or larger likelihood losses occur at smaller sizes. The minimum
+supported consumer fraction therefore remains one; \textsc{Balanced} stays a
+calibration candidate rather than a product profile. A learned gate or
+layer-specific training may change that result, but parameter scale alone does
+not.
+
 \section{Long-Context Segmented Execution}
 \label{sec:mlx-long-context}
 
@@ -560,15 +640,15 @@ The M4 Pro replication repeats all five execution conditions for 20 examples
 per dataset and model. It is independent of the earlier M5 run and adds
 Qwen3-4B. Table~\ref{tab:mlx-m4-cross-model} reports the selector-frozen
 oracle-evidence comparison; Figure~\ref{fig:mlx-m4-cross-model} keeps transport
-quality separate from execution cost.
+quality separate from the shuffled-memory causal control.
 
 \begin{table}[!htbp]
 \centering
 \scriptsize
 \caption{Cross-model original-answer QA on the M4 Pro. E0 is ordinary
-split-cache execution; E2 is the same selected evidence as native K/V. E2/E0
-is completion latency, so lower is faster. FP/int8 is retained selected-K/V
-residency; int8 is dequantized before attention.}
+split-cache execution; E2 is the same selected evidence as native K/V. FP/int8
+is retained selected-K/V residency; int8 is dequantized before attention. The
+original mixed-state latency column is retired.}
 \input{../shared/results/paper6_2_mlx/generated_m4_cross_model_table.tex}
 \label{tab:mlx-m4-cross-model}
 \end{table}
@@ -578,14 +658,12 @@ residency; int8 is dequantized before attention.}
 \includegraphics[width=0.96\linewidth]{../shared/results/paper6_2_mlx/m4_cross_model_quality_latency.png}
 \caption{Cross-model transport and causal controls. Full-precision native E2
 matches ordinary split-cache aggregate F1 in every cohort, while shuffled
-memory degrades quality. The latency panel measures the current MLX runner,
-not HTTP queueing or continuous batching.}
+memory degrades quality and gold-answer likelihood.}
 \label{fig:mlx-m4-cross-model}
 \end{figure}
 
-At 1.7B, native E2 takes 52.9--54.5\% of ordinary split-cache completion time;
-at 4B it takes 44.5--47.6\%. Aggregate E0/E2 F1 is identical in all six
-cohorts. The 4B model improves E0/E2 F1 from 0.070 to 0.097 on 2Wiki, 0.143 to
+Aggregate E0/E2 F1 is identical in all six cohorts. The 4B model improves
+E0/E2 F1 from 0.070 to 0.097 on 2Wiki, 0.143 to
 0.212 on HotpotQA, and 0.153 to 0.249 on QASPER. Shuffled 4B memory falls to
 0.011, 0.028, and 0.019, respectively, while its gold-answer log-probability
 drops by 6.81--38.58 nats relative to native E2. These interventions support a
@@ -594,9 +672,12 @@ source-dependent native computation rather than query-only answer bias.
 Full-precision residency is 37.6--42.0 MiB at 1.7B and 48.3--54.0 MiB at 4B;
 compact int8 residency halves each value. This is a retained-storage result:
 request-local dequantization still restores full-precision active K/V. The
-speed advantage over ordinary split-cache is specific to this in-process
-oracle-evidence runner and does not supersede the selector-frozen online E0/E2
-benchmark, whose unfused native path remains slower under gateway schedules.
+The former speed comparison is invalid: the ordinary cache-producing forward
+was lazy and completed after its request timer started, whereas
+\texttt{encode\_native\_memory} calls \texttt{mx.eval} before native request
+timing. The corrected scaling benchmark synchronizes both representations and
+reports cold/cold separately from warm/warm. The selector-frozen online E0/E2
+benchmark remains the serving-path economic reference.
 
 \subsection{Routed evidence rather than oracle evidence}
 We next remove the oracle ordering. Each HotpotQA and 2Wiki article, or each
@@ -1047,8 +1128,9 @@ actually occupy each window. We therefore label the current joint frontier
 partial: resource budgets 2/8, concurrency 1--16, and consumer-layer profiles
 are measured, while long local-window occupancy remains a separate staged run.
 The last-half consumer profile preserves 5/5 controlled recoveries at half the
-active selected K/V bytes; last-quarter and last-four do not, so neither is a
-BALANCED or ECONOMY recommendation.
+active selected K/V bytes; last-quarter and last-four do not. The larger natural
+ladder also rejects last-half consumption, so none is a \textsc{Balanced} or
+\textsc{Economy} recommendation.
 
 \begin{table}[H]
 \centering
@@ -1082,7 +1164,7 @@ rotating-cache control & controlled closed & five seeds, four capacities \\
 native semantic parity & controlled closed & five seeds, zero logit error, 5/5 recovery \\
 rotating plus native & controlled closed & 5/5 with 64-token local cache \\
 lazy native region & prototype closed & selected resources encode on first selection \\
-consumer profile & controlled candidate & last 14/28 layers retain 5/5 at half K/V bytes \\
+consumer profile & open & last 14/28 retains 5/5 on the controlled task; no reduced 4B--32B natural-QA profile passes the smoke gate \\
 persistence & controlled closed & strict fingerprint; zero-error reload in 7.2 ms mean \\
 shared storage lifecycle & controlled closed & segmented WARM 90/90 exact across Qwen/Llama/Gemma; restart recovery; int8 remains gated \\
 concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB avoided at eight \\
@@ -1112,10 +1194,12 @@ p95/p99 are not reported; the later gateway load curve reports finite-wave
 tails but serializes one model runner. The natural controls contain real
 dataset text but an inserted fixed answer-code mechanism.
 The first end-task study uses original answers but oracle-scoped evidence. The
-new M4 scaling calibration reaches dense 32B and a 30B-A3B MoE checkpoint, but
-uses only 15 annotated-evidence examples per model and one Qwen family. It
-establishes a consumer-depth scaling signal, not broad family generalization
-or a production profile. The long-context extension likewise has 15 examples
+M4 scaling calibrations reach dense 32B and a 30B-A3B MoE checkpoint, but use
+only 30 examples per model and one Qwen family. The corrected cost ladder has
+five seeds but two examples per dataset and seed; its bootstrap intervals are
+smoke uncertainty, not a production noninferiority analysis. It establishes
+cost convergence toward parity and rejects the tested reduced-layer profiles,
+not broad family generalization. The long-context extension likewise has 15 examples
 per 8K model point and only three at 32K; 64K exceeds the pinned model limit.
 It measures the MLX allocator rather than whole-system wired memory and does
 not exercise swap as a benchmark condition. The
@@ -1154,9 +1238,15 @@ working native prototype. Full-precision native transport also matches ordinary
 split-cache quality on original-answer QA, while wrong and absent memory fail
 causally. Per-head int8 halves retained detail without measured degradation in
 the small cohort. The M4 Pro replication extends this result to Qwen3-4B:
-ordinary and native aggregate F1 remain equal in all six cohorts, shuffled
-memory degrades sharply, and native completion uses 44.5--54.5\% of ordinary
-split-cache time in this in-process runner. Its 1,500-request pressure
+ordinary and native aggregate F1 remain equal in all six cohorts and shuffled
+memory degrades sharply. The earlier 44.5--54.5\% completion ratio is retired
+because it mixed lazy cold E0 with synchronized warm E2. The corrected 4B--32B
+ladder finds exact concatenated E2 quality, warm cost converging from 1.054 to
+1.011 times E0, and a cold advantage contracting from 0.932 to 0.976. Full
+segmented overhead falls from 1.165 to 1.047, but no reduced consumer suffix
+passes the natural-QA quality gate. Model scale alone therefore supports cost
+convergence, not a native speed advantage or a smaller \textsc{Balanced}
+consumer fraction. Its 1,500-request pressure
 extension reproduces the eight-resource residency threshold and separates
 repeat-load savings from cold p95. Across a 1,020-request hard-budget sweep, sub-working-set
 budgets cap compact residency but reload every repeated access; fitting all
@@ -1168,10 +1258,10 @@ in discovery, not the MLX cache transport. Queued server pressure, an OOM
 frontier, learned routing, and broader quality cohorts remain necessary before
 production claims. Matched E2 execution removes roughly 91--93\% of visible
 tokens and preserves every output, but its unfused decode is slower. Last-half
-consumption and int8 residency are controlled
-candidates, not product profile defaults. A segmented one-softmax primitive
+consumption remains a narrow controlled result and int8 residency remains a
+candidate; neither is promoted by the natural scaling ladder. A segmented one-softmax primitive
 now replaces the live Qwen attention path and removes K/V concatenation. It
-retains a 3--12\% completion-time overhead and small numerical drift because it
+retains a 5--17\% completion-time overhead and small numerical drift because it
 is composed from unfused MLX operations; it is not a fused-kernel speed claim.
 
 \begin{thebibliography}{9}

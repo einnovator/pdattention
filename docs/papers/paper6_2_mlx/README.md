@@ -64,8 +64,9 @@ product gate.
 An independent Apple M4 Pro replication adds Qwen3-4B. Across 20 examples per
 dataset and five seeds, ordinary split-cache and full-precision native K/V have
 identical aggregate F1 on QASPER, HotpotQA, and 2Wiki at both 1.7B and 4B.
-Shuffled memory degrades F1 and answer likelihood. In this in-process runner,
-native completion takes 44.5--54.5% of ordinary split-cache time. A separate
+Shuffled memory degrades F1 and answer likelihood. The original 44.5--54.5%
+native timing result is retired: lazy ordinary source encoding completed inside
+the request timer while native encoding was synchronized beforehand. A separate
 1,500-request 4B session sweep visits eight resources three times. Budget 8
 eliminates repeat reloads and lowers mean resolution by about 68% while leaving
 the cold-load p95 and QA quality unchanged.
@@ -89,10 +90,26 @@ Use `summarize_m4_scaling` and `summarize_m4_pressure` under
 `experiments.paper6_2_mlx` to regenerate the manuscript tables, plots, and
 machine-readable summaries.
 
+The corrected economic scaling runner synchronizes both representations and
+reports matched cold/cold and warm/warm costs. It also sweeps model-normalized
+consumer-layer suffixes after the unpatched E0/concatenated-E2 phase:
+
+```bash
+PYTHONPATH=src python -m experiments.paper6_2_mlx.run_model_consumer_scaling \
+  --model mlx-community/Qwen3-8B-4bit --revision REVISION \
+  --dataset qasper --dataset hotpotqa --dataset 2wikimultihopqa \
+  --examples-per-seed 2 --max-source-tokens 384 --max-new-tokens 12 \
+  --output docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling/qwen3_8b.json \
+  --resume
+```
+
 The larger-model campaign uses pinned Qwen3 8B/14B/32B Q4 checkpoints and a
 30B-A3B MoE control on the 48 GiB M4 Pro. It compares selected-text E0,
 concatenated native E2, live segmented E2, and model-normalized contiguous
 consumer suffixes. Raw rows are checkpointed beside each JSON output.
+The final matched ladder contains 30 natural-QA examples and 210 condition
+rows per model (840 rows total). Concatenated E2 preserves all 120 E0 output
+sequences; no reduced consumer suffix passes the smoke quality gate.
 
 ```bash
 PYTHONPATH=src python experiments/mac_scaling/run_mlx_profile_scaling.py \
