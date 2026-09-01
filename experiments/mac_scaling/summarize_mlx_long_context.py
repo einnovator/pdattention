@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from statistics import fmean
@@ -12,6 +13,13 @@ from statistics import fmean
 
 def _mean(rows: list[dict], field: str) -> float:
     return fmean(float(row[field]) for row in rows)
+
+
+def _model_sort_key(model_id: str) -> tuple[float, str]:
+    """Order a size ladder numerically instead of lexicographically."""
+
+    match = re.search(r"-(\d+(?:\.\d+)?)B(?:-|$)", model_id)
+    return (float(match.group(1)) if match else float("inf"), model_id)
 
 
 def summarize(paths: list[Path]) -> dict[str, object]:
@@ -28,7 +36,10 @@ def summarize(paths: list[Path]) -> dict[str, object]:
             (str(row["model_id"]), int(row["context_target_tokens"]), str(row["condition"]))
         ].append(row)
     aggregate = []
-    for (model, target, condition), values in sorted(grouped.items()):
+    for (model, target, condition), values in sorted(
+        grouped.items(),
+        key=lambda item: (_model_sort_key(item[0][0]), item[0][1], item[0][2]),
+    ):
         aggregate.append(
             {
                 "model_id": model,
@@ -72,7 +83,7 @@ def summarize(paths: list[Path]) -> dict[str, object]:
         for row in rows
         if "example_id" in row
     }
-    for model in sorted(models):
+    for model in sorted(models, key=_model_sort_key):
         targets = sorted(
             target
             for candidate, target, condition in by_key
@@ -243,7 +254,9 @@ def _write_position_table(path: Path, comparisons: list[dict]) -> None:
 def _plot(path: Path, comparisons: list[dict]) -> None:
     import matplotlib.pyplot as plt
 
-    models = sorted({str(row["model_id"]) for row in comparisons})
+    models = sorted(
+        {str(row["model_id"]) for row in comparisons}, key=_model_sort_key
+    )
     figure, axes = plt.subplots(1, 2, figsize=(10.5, 3.8))
     for model in models:
         values = sorted(
@@ -289,7 +302,9 @@ def _plot(path: Path, comparisons: list[dict]) -> None:
 def _plot_single(path: Path, comparisons: list[dict], *, position: bool) -> None:
     import matplotlib.pyplot as plt
 
-    models = sorted({str(row["model_id"]) for row in comparisons})
+    models = sorted(
+        {str(row["model_id"]) for row in comparisons}, key=_model_sort_key
+    )
     figure, axis = plt.subplots(figsize=(6.4, 3.8))
     for model in models:
         values = sorted(

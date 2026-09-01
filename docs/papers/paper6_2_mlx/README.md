@@ -106,6 +106,15 @@ Model IDs, immutable revisions, seeds, profiles, and evidence tiers are in
 `experiments/mac_scaling/campaign.json`. Run `summarize_mlx_scaling.py` after
 all model points to regenerate the shared table and figure.
 
+The restartable long-context extension uses
+experiments/mac_scaling/run_mlx_long_context.py with targets 384, 8192, and
+65536 for each Qwen size; the 8B boundary artifact also includes 32768.
+experiments/mac_scaling/summarize_mlx_long_context.py generates separate
+dilution, position, and combined tables/plots under
+docs/papers/shared/results/mac_long_context/. Every raw row records the frozen
+selection hash, model revision, actual context, position policy, native bytes,
+allocator peak, and explicit unsupported status.
+
 A final 1,000-request QASPER matrix crosses HOT/WARM resource budgets 2 and 8
 with local rotating windows 64 and 256. Tight WARM capacity produces SOURCE
 reconstruction as intended; F1 is identical in all cells, and retaining every

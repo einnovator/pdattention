@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from experiments.mac_scaling.summarize_mlx_long_context import summarize
+from experiments.mac_scaling.summarize_mlx_long_context import (
+    _model_sort_key,
+    summarize,
+)
 
 
 def _row(condition: str, logprob: float, rmse: float, agreement: float) -> dict:
@@ -51,3 +54,13 @@ def test_summary_separates_dilution_from_position_error(tmp_path: Path) -> None:
     assert row["query_restart_sequence_agreement"] == 0.0
     assert row["selected_native_sequence_agreement"] == 1.0
     assert row["selected_native_minus_text_gold_logprob"] == 0.0
+
+
+def test_model_size_sort_is_numeric() -> None:
+    models = ["Qwen3-32B-4bit", "Qwen3-8B-4bit", "Qwen3-14B-4bit"]
+
+    assert sorted(models, key=_model_sort_key) == [
+        "Qwen3-8B-4bit",
+        "Qwen3-14B-4bit",
+        "Qwen3-32B-4bit",
+    ]

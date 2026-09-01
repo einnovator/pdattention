@@ -442,6 +442,54 @@ sparsity therefore does not imply semantic-context sparsity. All reduced-layer
 rows remain \textsc{Calibration Pending}; the correctness profile remains all
 eligible layers.
 
+\section{Long-Context Segmented Execution}
+\label{sec:mlx-long-context}
+
+The preceding ladder fixes selected evidence at a short context. We next keep
+the same 384-token selection and add deterministic same-dataset distractors to
+8K source tokens for Qwen3-8B, 14B, and 32B. Five unique examples per dataset
+give 15 independent questions per model. An 8B boundary run adds one example
+per dataset at 32K. The requested 64K rows are emitted as
+\texttt{NOT\_RUN\_MODEL\_CONTEXT\_LIMIT}: the pinned models expose a 40,960
+position limit, and the harness does not silently truncate.
+
+Four representations separate execution questions. \textsc{Full Visible} is
+the ordinary prefix. \textsc{E0 Selected} renders the frozen evidence as text.
+\textsc{E2 Selected} consumes that selection through segmented native K/V.
+\textsc{E2 Source Relative} consumes the full dense source through the same
+segmented path; \textsc{Query Restart} reuses its K/V but incorrectly starts the
+query at position zero.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Long-context MLX calibration. $\Delta$LP is full visible minus
+selected text. Selected E2 agreement compares the two frozen selected-evidence
+representations. Source/restart columns compare full native K/V with the
+ordinary full prefix.}
+\resizebox{\linewidth}{!}{\input{../shared/results/mac_long_context/generated_mlx_long_context_table.tex}}
+\label{tab:mlx-long-context}
+\end{table}
+
+Selected E2 preserves every selected-text sequence at 8B and 14B. At 32B it
+preserves 13/15 sequences; mean gold-answer log probability differs by only
+$+0.030$ nats and mean F1 by $+0.017$. The full-source segmented path is deliberately held to a stricter
+ordinary-prefix comparison: first-logit RMSE is 0.112 and 0.100 at 8K, whereas
+query restart gives 2.572 and 4.786. Source-relative sequence agreement is
+0.667 and 0.933; restart agreement is zero. The segmented implementation uses
+one mathematical normalization but separate FP32 reductions, so repeated
+unfused numerical differences accumulate through depth. This is distinct from
+the concatenated-cache reference above, which preserves all 60 sequences.
+
+The pressure result illustrates why full-source native K/V is not the product
+goal. At 8B, selected detail occupies 39.6 MiB at both 8K and 32K, while
+all-layer full-source K/V grows from 1,152 to 4,608 MiB. MLX allocator peak for
+the ordinary full condition rises from 9.10 to 22.55 GiB. At 14B and 8K,
+selected detail is 43.9 MiB versus 1,280 MiB full-source K/V. At 32B the
+corresponding pair is 70.3 versus 2,048 MiB, while ordinary full-prefix peak
+allocation reaches 25.62 GiB. The three-case 8B
+32K boundary is useful for mechanism and pressure, not tail-latency inference.
+
 \section{Natural-Text Causal Controls}
 The QASPER and HotpotQA builders draw natural paper or article text and place a
 balanced \texttt{AnswerCode yes/no} anchor among 63 source units. They test
@@ -1067,7 +1115,10 @@ The first end-task study uses original answers but oracle-scoped evidence. The
 new M4 scaling calibration reaches dense 32B and a 30B-A3B MoE checkpoint, but
 uses only 15 annotated-evidence examples per model and one Qwen family. It
 establishes a consumer-depth scaling signal, not broad family generalization
-or a production profile. The
+or a production profile. The long-context extension likewise has 15 examples
+per 8K model point and only three at 32K; 64K exceeds the pinned model limit.
+It measures the MLX allocator rather than whole-system wired memory and does
+not exercise swap as a benchmark condition. The
 routed extension now has 50 sampled examples per condition and dataset (49
 unique on QASPER), a parameter-free lexical/hash index, and four selected
 candidates. Strict EM

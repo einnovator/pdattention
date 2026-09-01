@@ -91,6 +91,25 @@ def runtime_metadata() -> dict[str, object]:
         except importlib.metadata.PackageNotFoundError:
             return "missing"
 
+    chip = _command_value(
+        ["system_profiler", "SPHardwareDataType", "-detailLevel", "mini"]
+    )
+    chip_name = None
+    if chip:
+        chip_name = next(
+            (
+                line.split(":", 1)[1].strip()
+                for line in chip.splitlines()
+                if line.strip().startswith("Chip:")
+            ),
+            None,
+        )
+    # Apple publishes nominal unified-memory bandwidth by chip family. Keep the
+    # source explicit: this is platform metadata, not a measured benchmark.
+    declared_bandwidth = {
+        "Apple M4 Pro": 273,
+    }.get(chip_name)
+
     return {
         "platform": platform.platform(),
         "machine": platform.machine(),
@@ -99,8 +118,13 @@ def runtime_metadata() -> dict[str, object]:
         "mlx_lm": version("mlx-lm"),
         "transformers": version("transformers"),
         "hardware_model": _command_value(["sysctl", "-n", "hw.model"]),
+        "chip": chip_name,
         "physical_memory_bytes": int(
             _command_value(["sysctl", "-n", "hw.memsize"]) or 0
+        ),
+        "declared_memory_bandwidth_gbps": declared_bandwidth,
+        "memory_bandwidth_source": (
+            "Apple chip specification" if declared_bandwidth is not None else None
         ),
         "gpu_wired_limit_mb": int(
             _command_value(["sysctl", "-n", "iogpu.wired_limit_mb"]) or 0

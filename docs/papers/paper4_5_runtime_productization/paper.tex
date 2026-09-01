@@ -732,6 +732,22 @@ materialization, and evidence tier attached. \QualityMax{} remains unassigned;
 neither a favorable likelihood mean nor a large-model label can promote it
 without held-out sequence/task validation.
 
+\paragraph{Long-context pressure receipt.}
+The same frozen selections were then held at at most 384 source tokens while
+same-dataset distractors expanded the full condition to 8K. Selected segmented
+E2 preserves every selected-text sequence at the measured 8B and 14B points,
+but the sign of full-minus-selected answer likelihood changes from $+1.192$
+nats at 8B to $-1.485$ at 14B. This confirms that a profile cannot be promoted
+from a monotonic larger-model context-tolerance assumption. The physical
+profile is stable: selected all-layer K/V is 39.6 MiB at 8B and 43.9 MiB at
+14B, versus 1,152 and 1,280 MiB for the 8K dense source. At 32B it is 70.3 MiB
+versus 2,048 MiB; selected segmented E2 preserves 13/15 sequences with a
+$+0.030$-nat mean likelihood shift. At the three-case 8B
+32K boundary, selected K/V remains 39.6 MiB while dense native K/V reaches
+4,608 MiB. These are \textsc{Calibration} rows. The 64K request exceeds the
+pinned 40,960-position limit and is recorded as unsupported, not silently
+shortened.
+
 \subsection{Product profile and benchmark matrix}
 
 The registry also emits a strict machine-readable product row rather than

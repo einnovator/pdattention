@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from experiments.mac_scaling import run_mlx_profile_scaling
 from experiments.mac_scaling.run_mlx_profile_scaling import resolve_consumer_layers
 
 
@@ -43,3 +44,25 @@ def test_dense_and_moe_models_share_the_preregistered_profile_space() -> None:
     assert dense["parameters_billion"] > moe["parameters_billion"]
     assert moe["active_parameters_billion"] < 4
     assert payload["consumer_profiles"][0] == "all_layers"
+
+
+def test_runtime_metadata_labels_declared_m4_pro_bandwidth(monkeypatch) -> None:
+    values = {
+        ("system_profiler", "SPHardwareDataType", "-detailLevel", "mini"):
+            "Hardware:\n    Chip: Apple M4 Pro",
+        ("sysctl", "-n", "hw.model"): "Mac16,7",
+        ("sysctl", "-n", "hw.memsize"): "51539607552",
+        ("sysctl", "-n", "iogpu.wired_limit_mb"): "0",
+        ("git", "rev-parse", "HEAD"): "abc123",
+    }
+    monkeypatch.setattr(
+        run_mlx_profile_scaling,
+        "_command_value",
+        lambda command: values.get(tuple(command)),
+    )
+
+    metadata = run_mlx_profile_scaling.runtime_metadata()
+
+    assert metadata["chip"] == "Apple M4 Pro"
+    assert metadata["declared_memory_bandwidth_gbps"] == 273
+    assert metadata["memory_bandwidth_source"] == "Apple chip specification"
