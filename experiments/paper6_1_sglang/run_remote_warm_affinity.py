@@ -148,41 +148,59 @@ async def _run(args, remote, prepared) -> tuple[list[dict], list[dict]]:
         root = Path(directory)
         with ThreadPoolExecutor(max_workers=max(16, args.workers * 4)) as executor:
             for lead_ms in args.lead_ms:
-                caches = _new_caches(
-                    root / f"lead-{lead_ms}", args.workers, remote, total_capacity
-                )
                 remote.reset_metrics()
                 keys = [prepared[0]["key"]] * args.lead_concurrency
-                wave = await _wave(
-                    caches=caches,
-                    keys=keys,
-                    policy="affinity",
-                    workers=args.workers,
-                    lead_ms=lead_ms,
-                    randomizer=random.Random(args.seed),
-                    executor=executor,
-                )
-                restored = {id(value): value for value in wave.pop("resolved")}.values()
+                stalls: list[float] = []
+                ready = elapsed_ms = duplicate_bytes = 0.0
+                restored_values: dict[int, object] = {}
+                for repeat in range(args.lead_rounds):
+                    caches = _new_caches(
+                        root / f"lead-{lead_ms}-{repeat}",
+                        args.workers,
+                        remote,
+                        total_capacity,
+                    )
+                    wave = await _wave(
+                        caches=caches,
+                        keys=keys,
+                        policy="affinity",
+                        workers=args.workers,
+                        lead_ms=lead_ms,
+                        randomizer=random.Random(args.seed + repeat),
+                        executor=executor,
+                    )
+                    for value in wave.pop("resolved"):
+                        restored_values[id(value)] = value
+                    stalls.extend(wave.pop("stall_ms"))
+                    ready += int(wave["ready_at_demand"])
+                    elapsed_ms += float(wave["demand_elapsed_ms"])
+                    duplicate_bytes += (
+                        args.lead_concurrency
+                        - int(wave["unique_worker_resources"])
+                    ) * object_bytes[keys[0]]
                 delta = max(
-                    (_max_delta(expected[keys[0]], value) for value in restored),
+                    (
+                        _max_delta(expected[keys[0]], value)
+                        for value in restored_values.values()
+                    ),
                     default=0.0,
                 )
                 metrics = remote.metrics().to_dict()
-                stalls = wave.pop("stall_ms")
                 lead_rows.append(
                     {
-                        **wave,
+                        "lead_ms": lead_ms,
+                        "transfer_repeats": args.lead_rounds,
+                        "requests": args.lead_concurrency * args.lead_rounds,
+                        "ready_at_demand": int(ready),
                         "stall_p50_ms": statistics.median(stalls),
                         "stall_p95_ms": _percentile(stalls, 0.95),
                         "remote_reads": metrics["reads"],
                         "remote_read_bytes": metrics["read_bytes"],
                         "remote_read_ms": metrics["read_ns"] / 1e6,
-                        "requests_per_second": args.lead_concurrency
-                        / max(float(wave["demand_elapsed_ms"]) / 1000.0, 1e-9),
-                        "duplicate_kv_bytes_avoided": (
-                            args.lead_concurrency - int(wave["unique_worker_resources"])
-                        )
-                        * object_bytes[keys[0]],
+                        "requests_per_second": (
+                            args.lead_concurrency * args.lead_rounds
+                        ) / max(elapsed_ms / 1000.0, 1e-9),
+                        "duplicate_kv_bytes_avoided": int(duplicate_bytes),
                         "max_tensor_delta": delta,
                     }
                 )
@@ -270,11 +288,15 @@ def main() -> None:
     )
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--lead-concurrency", type=int, default=8)
+    parser.add_argument("--lead-rounds", type=int, default=5)
     parser.add_argument("--lead-ms", type=_integers, default=(0, 10, 50, 100, 250))
     parser.add_argument("--concurrency", type=_integers, default=(1, 2, 4, 8, 16))
     parser.add_argument("--affinity-lead-ms", type=int, default=100)
     parser.add_argument("--rounds", type=int, default=5)
     parser.add_argument("--seed", type=int, default=20260901)
+    parser.add_argument("--model-host", default="unknown")
+    parser.add_argument("--storage-host", default="unknown")
+    parser.add_argument("--transport", default="http")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -313,6 +335,9 @@ def main() -> None:
         "model_id": args.model,
         "model_revision": args.revision,
         "remote_url": args.remote_url,
+        "model_host": args.model_host,
+        "storage_host": args.storage_host,
+        "transport": args.transport,
         "remote_health": health,
         "workers": args.workers,
         "objects": [
