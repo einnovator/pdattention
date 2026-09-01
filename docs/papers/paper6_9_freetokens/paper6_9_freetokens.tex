@@ -27,7 +27,11 @@ all seeds. At 1 GiB/s, however, PRA-only scheduling was better (162.8 versus
 The available RTX 5060 host lacks the CUDA 13 toolchain and sufficient host
 memory for the documented model set, so live E0/E2/E3 model qualification is
 precisely blocked. The reported result is a scheduler design and controlled
-frontier, not native FreeToken PRA execution.
+frontier, not native FreeToken PRA execution. A separate M4 Pro MLX reference
+compares dense Qwen3-32B with Qwen3-30B-A3B: the MoE uses 26.4 rather than
+70.3 MiB of all-layer selected K/V and completes substantially faster, but is
+more sensitive to removing early PRA consumer layers. Parameter sparsity does
+not therefore imply semantic-context sparsity.
 \end{abstract}
 
 \section{Introduction}
@@ -167,6 +171,40 @@ earliest-deadline policy is therefore not enough for low-bandwidth operation.
 The future scheduler needs a cost objective that considers bytes, slack, CPU
 fallback, and critical-path impact.
 
+\section{Dense-versus-MoE Architecture Reference}
+Before attributing any future result to FreeToken scheduling, we need to know
+how the underlying MoE changes the semantic-memory workload. We therefore reuse
+the selector-frozen MLX calibration owned by Papers 4.5 and 6.2. It runs five
+unique annotated-evidence examples from each of QASPER, HotpotQA, and 2Wiki for
+both Qwen3-32B and Qwen3-30B-A3B, with at most 384 selected source tokens. The
+comparison is model-backed and natural-QA-based, but it is \emph{not} a
+FreeToken execution result.
+
+\begin{table}[t]
+\centering\small
+\caption{Dense and MoE reference on the 48 GB M4 Pro. PRA MiB is all-layer
+selected K/V. $|\Delta|$LP compares segmented native K/V with selected-text
+execution, averaged over dataset-level means.}
+\begin{tabular}{lrrrrrr}
+\toprule Model & E0 F1 & Model GiB & PRA MiB & E0 ms & Seg./E0 & $|\Delta|$LP\\
+\midrule
+Qwen3-32B & .231 & 17.16 & 70.3 & 1177.0 & 1.03 & .039\\
+Qwen3-30B-A3B & .256 & 16.00 & 26.4 & 222.5 & 1.12 & .146\\
+\bottomrule
+\end{tabular}
+\label{tab:moe-reference}
+\end{table}
+
+All-layer concatenated transport reproduces the selected-text sequence for all
+30 model--example pairs. The segmented one-softmax path agrees on 13/15 dense
+and 14/15 MoE examples; those mismatches are numerical execution sensitivity,
+because retrieval is frozen. More importantly for profile design, retaining
+only the last three quarters of consumer layers changes mean gold likelihood by
+.356 nats for dense 32B but 2.662 nats for the MoE. The MoE reduces weight-side
+computation and its native K/V topology is cheaper, yet the tested model needs
+early semantic-memory consumers more strongly. A FreeToken policy must keep
+expert residency and PRA consumer-layer selection as separate decisions.
+
 \section{Capability Matrix and Falsification}
 \begin{table}[h]
 \centering\small
@@ -177,6 +215,7 @@ fallback, and critical-path impact.
 Architecture and extension seam & complete & pinned source audit\\
 E0 adapter & implemented/tested & SDK unit tests\\
 Bandwidth coordination & measured & controlled five-seed model\\
+MLX dense/MoE reference & measured & 30 natural-QA model--example pairs\\
 Live FreeToken E0 & blocked & host/toolchain/model gate\\
 Native E2 & not implemented & no claim\\
 Scheduler E3 & not implemented & no claim\\
@@ -192,9 +231,10 @@ The 1 GiB/s result already rejects the naive stronger claim that coordination is
 always beneficial.
 
 \section{Limitations and Next Work}
-No model generation, quality metric, physical PCIe trace, expert hit trace, or
-native attention path is measured here. The synthetic demand distribution is a
-controlled instrument, not a workload proxy. The next iteration requires a
+No \emph{FreeToken} model generation, physical PCIe trace, expert hit trace, or
+native FreeToken attention path is measured here. The MLX reference isolates
+model architecture and cannot validate the scheduler. The synthetic demand
+distribution is a controlled instrument, not a workload proxy. The next iteration requires a
 CUDA-13-capable host with sufficient RAM for one documented model. It should
 first run FULL and frozen-selection E0, then add E2 with geometry and isolation
 controls, and finally inject the coordinator into the real scheduler. Fixed and
@@ -217,7 +257,9 @@ live engine configuration keeps E2/E3 claims open.
 \section*{Artifact Availability}
 Branch \texttt{research/paper6-9-freetokens} contains the adapter, dependency-light
 coordinator, unit tests, pinned audit, raw five-seed JSON, plotting script,
-README, and manuscript.
+README, manuscript, and the vendored dense/MoE reference artifacts. The
+executable MLX runner is owned by \texttt{research/paper4-5-runtime} at commit
+\texttt{0f0ed60}; this branch does not duplicate that engine implementation.
 
 \begin{thebibliography}{9}
 \bibitem{freetoken} FlashML. \emph{FreeToken: Affordable LLM Inference on

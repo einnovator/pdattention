@@ -19,3 +19,11 @@ python experiments/paper6_9_freetoken/run_bandwidth_coordination.py
 It evaluates a single-link transfer model at 0.5--16 GiB/s. The results test
 coordination policy only and are not evidence of a native FreeToken scheduler
 integration.
+
+## Dense/MoE reference
+
+`docs/papers/shared/results/paper6_9_freetokens/mac_moe_reference/` vendors the
+measured Qwen3-32B and Qwen3-30B-A3B MLX calibration used to separate model
+architecture from future FreeToken scheduler effects. The executable runner is
+owned by `research/paper4-5-runtime` at commit `0f0ed60`; these results are not
+classified as live FreeToken evidence.
