@@ -1,0 +1,519 @@
+{
+  "schema_version": "1.0",
+  "benchmark": "paper6_cross_engine_portable_natural_e0_v1",
+  "evidence_tier": "CONTROLLED_NATURAL_QA",
+  "measurement_status": "MEASURED",
+  "integration_level": "E0_SELECTED_TEXT",
+  "engine": "llama_cpp_cpu_b10679",
+  "model_id": "qwen3-8b-q4_k_m",
+  "model_revision": "main",
+  "base_url": "http://127.0.0.1:18080",
+  "cohort": "paper6_cross_engine_portable_e0_v1",
+  "selection_policy": "frozen Paper 6.2 SDK hybrid top-4 document routing",
+  "datasets": [
+    "2wikimultihopqa",
+    "hotpotqa",
+    "qasper"
+  ],
+  "conditions": [
+    "no_context",
+    "selected_context",
+    "full_context"
+  ],
+  "repeats": 1,
+  "max_selected_tokens": 384,
+  "max_full_tokens": 1024,
+  "max_new_tokens": 12,
+  "cache_salt": true,
+  "elapsed_seconds": 368.30165020799996,
+  "request_throughput_s": 0.0244364911069967,
+  "gpu_before": {
+    "available": false,
+    "error": "[Errno 2] No such file or directory: 'nvidia-smi'"
+  },
+  "gpu_after": {
+    "available": false,
+    "error": "[Errno 2] No such file or directory: 'nvidia-smi'"
+  },
+  "aggregates": [
+    {
+      "dataset": "2wikimultihopqa",
+      "condition": "no_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 1.0,
+      "mean_source_tokens": 0.0,
+      "mean_prompt_tokens": 33.0,
+      "mean_completion_tokens": 5.0,
+      "mean_cached_tokens": 0.0,
+      "ttft_ms": {
+        "p50": 5991.6524589999935,
+        "p95": 5991.6524589999935,
+        "p99": 5991.6524589999935
+      },
+      "itl_ms": {
+        "p50": 1794.4694860000066,
+        "p95": 1794.4694860000066,
+        "p99": 1794.4694860000066
+      },
+      "completion_latency_ms": {
+        "p50": 11612.024708999996,
+        "p95": 11612.024708999996,
+        "p99": 11612.024708999996
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "condition": "selected_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 1.0,
+      "mean_source_tokens": 381.0,
+      "mean_prompt_tokens": 420.0,
+      "mean_completion_tokens": 12.0,
+      "mean_cached_tokens": 0.0,
+      "ttft_ms": {
+        "p50": 38578.613792000026,
+        "p95": 38578.613792000026,
+        "p99": 38578.613792000026
+      },
+      "itl_ms": {
+        "p50": 1574.7785681818154,
+        "p95": 1574.7785681818154,
+        "p99": 1574.7785681818154
+      },
+      "completion_latency_ms": {
+        "p50": 55905.04108299999,
+        "p95": 55905.04108299999,
+        "p99": 55905.04108299999
+      }
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "condition": "full_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 1.0,
+      "mean_source_tokens": 809.0,
+      "mean_prompt_tokens": 848.0,
+      "mean_completion_tokens": 12.0,
+      "mean_cached_tokens": 386.0,
+      "ttft_ms": {
+        "p50": 44946.92658299999,
+        "p95": 44946.92658299999,
+        "p99": 44946.92658299999
+      },
+      "itl_ms": {
+        "p50": 1528.9592538181814,
+        "p95": 1528.9592538181814,
+        "p99": 1528.9592538181814
+      },
+      "completion_latency_ms": {
+        "p50": 61778.79004100004,
+        "p95": 61778.79004100004,
+        "p99": 61778.79004100004
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "condition": "no_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 0.5,
+      "mean_source_tokens": 0.0,
+      "mean_prompt_tokens": 38.0,
+      "mean_completion_tokens": 12.0,
+      "mean_cached_tokens": 0.0,
+      "ttft_ms": {
+        "p50": 4005.3575000000023,
+        "p95": 4005.3575000000023,
+        "p99": 4005.3575000000023
+      },
+      "itl_ms": {
+        "p50": 372.48771590909195,
+        "p95": 372.48771590909195,
+        "p99": 372.48771590909195
+      },
+      "completion_latency_ms": {
+        "p50": 8108.277834000006,
+        "p95": 8108.277834000006,
+        "p99": 8108.277834000006
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "condition": "selected_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.5714285714285715,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 0.5,
+      "mean_source_tokens": 384.0,
+      "mean_prompt_tokens": 429.0,
+      "mean_completion_tokens": 4.0,
+      "mean_cached_tokens": 0.0,
+      "ttft_ms": {
+        "p50": 38797.621708000006,
+        "p95": 38797.621708000006,
+        "p99": 38797.621708000006
+      },
+      "itl_ms": {
+        "p50": 2002.773770999994,
+        "p95": 2002.773770999994,
+        "p99": 2002.773770999994
+      },
+      "completion_latency_ms": {
+        "p50": 43068.452167,
+        "p95": 43068.452167,
+        "p99": 43068.452167
+      }
+    },
+    {
+      "dataset": "hotpotqa",
+      "condition": "full_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.5714285714285715,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 0.5,
+      "mean_source_tokens": 1024.0,
+      "mean_prompt_tokens": 1069.0,
+      "mean_completion_tokens": 4.0,
+      "mean_cached_tokens": 390.0,
+      "ttft_ms": {
+        "p50": 67792.842375,
+        "p95": 67792.842375,
+        "p99": 67792.842375
+      },
+      "itl_ms": {
+        "p50": 756.1022085000104,
+        "p95": 756.1022085000104,
+        "p99": 756.1022085000104
+      },
+      "completion_latency_ms": {
+        "p50": 69586.560833,
+        "p95": 69586.560833,
+        "p99": 69586.560833
+      }
+    },
+    {
+      "dataset": "qasper",
+      "condition": "no_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 0.0,
+      "mean_source_tokens": 0.0,
+      "mean_prompt_tokens": 25.0,
+      "mean_completion_tokens": 12.0,
+      "mean_cached_tokens": 0.0,
+      "ttft_ms": {
+        "p50": 2437.076125,
+        "p95": 2437.076125,
+        "p99": 2437.076125
+      },
+      "itl_ms": {
+        "p50": 212.47493563636365,
+        "p95": 212.47493563636365,
+        "p99": 212.47493563636365
+      },
+      "completion_latency_ms": {
+        "p50": 4776.003167,
+        "p95": 4776.003167,
+        "p99": 4776.003167
+      }
+    },
+    {
+      "dataset": "qasper",
+      "condition": "selected_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 0.0,
+      "mean_source_tokens": 384.0,
+      "mean_prompt_tokens": 416.0,
+      "mean_completion_tokens": 12.0,
+      "mean_cached_tokens": 0.0,
+      "ttft_ms": {
+        "p50": 37496.054749999996,
+        "p95": 37496.054749999996,
+        "p99": 37496.054749999996
+      },
+      "itl_ms": {
+        "p50": 382.46107954545425,
+        "p95": 382.46107954545425,
+        "p99": 382.46107954545425
+      },
+      "completion_latency_ms": {
+        "p50": 41707.768459,
+        "p95": 41707.768459,
+        "p99": 41707.768459
+      }
+    },
+    {
+      "dataset": "qasper",
+      "condition": "full_context",
+      "sample_count": 1,
+      "example_count": 1,
+      "exact_match": 0.0,
+      "token_f1": 0.1111111111111111,
+      "answer_containment": 0.0,
+      "evidence_recall_at_4": 0.0,
+      "mean_source_tokens": 1024.0,
+      "mean_prompt_tokens": 1056.0,
+      "mean_completion_tokens": 12.0,
+      "mean_cached_tokens": 390.0,
+      "ttft_ms": {
+        "p50": 67400.01770800001,
+        "p95": 67400.01770800001,
+        "p99": 67400.01770800001
+      },
+      "itl_ms": {
+        "p50": 366.1374280000005,
+        "p95": 366.1374280000005,
+        "p99": 366.1374280000005
+      },
+      "completion_latency_ms": {
+        "p50": 71432.60604100002,
+        "p95": 71432.60604100002,
+        "p99": 71432.60604100002
+      }
+    }
+  ],
+  "rows": [
+    {
+      "dataset": "qasper",
+      "seed": 11,
+      "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+      "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754",
+      "condition": "no_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "column Ens Test in Table TABREF19",
+      "source_tokens": 0,
+      "selected_source_tokens": 384,
+      "evidence_recall_at_4": 0.0,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "ttft_ms": 2437.076125,
+      "completion_latency_ms": 4776.003167,
+      "mean_itl_ms": 212.47493563636365,
+      "output_events": 12,
+      "output_text": "The scores of their system were 98.5%",
+      "prompt_tokens": 25,
+      "completion_tokens": 12,
+      "cached_tokens": 0
+    },
+    {
+      "dataset": "qasper",
+      "seed": 11,
+      "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+      "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754",
+      "condition": "selected_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "column Ens Test in Table TABREF19",
+      "source_tokens": 384,
+      "selected_source_tokens": 384,
+      "evidence_recall_at_4": 0.0,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "ttft_ms": 37496.054749999996,
+      "completion_latency_ms": 41707.768459,
+      "mean_itl_ms": 382.46107954545425,
+      "output_events": 12,
+      "output_text": "The document does not explicitly mention the scores of their system.",
+      "prompt_tokens": 416,
+      "completion_tokens": 12,
+      "cached_tokens": 0
+    },
+    {
+      "dataset": "qasper",
+      "seed": 11,
+      "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+      "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754",
+      "condition": "full_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "column Ens Test in Table TABREF19",
+      "source_tokens": 1024,
+      "selected_source_tokens": 384,
+      "evidence_recall_at_4": 0.0,
+      "exact_match": 0.0,
+      "token_f1": 0.1111111111111111,
+      "answer_containment": 0.0,
+      "ttft_ms": 67400.01770800001,
+      "completion_latency_ms": 71432.60604100002,
+      "mean_itl_ms": 366.1374280000005,
+      "output_events": 12,
+      "output_text": "The scores of their system are not explicitly stated in the provided",
+      "prompt_tokens": 1056,
+      "completion_tokens": 12,
+      "cached_tokens": 390
+    },
+    {
+      "dataset": "hotpotqa",
+      "seed": 11,
+      "example_id": "5a8367c1554299334474600e",
+      "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad",
+      "condition": "no_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "Bayern Munich of West Germany",
+      "source_tokens": 0,
+      "selected_source_tokens": 384,
+      "evidence_recall_at_4": 0.5,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "ttft_ms": 4005.3575000000023,
+      "completion_latency_ms": 8108.277834000006,
+      "mean_itl_ms": 372.48771590909195,
+      "output_events": 12,
+      "output_text": "Lars Lunde played for Juventus when they were defeated in",
+      "prompt_tokens": 38,
+      "completion_tokens": 12,
+      "cached_tokens": 0
+    },
+    {
+      "dataset": "hotpotqa",
+      "seed": 11,
+      "example_id": "5a8367c1554299334474600e",
+      "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad",
+      "condition": "selected_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "Bayern Munich of West Germany",
+      "source_tokens": 384,
+      "selected_source_tokens": 384,
+      "evidence_recall_at_4": 0.5,
+      "exact_match": 0.0,
+      "token_f1": 0.5714285714285715,
+      "answer_containment": 0.0,
+      "ttft_ms": 38797.621708000006,
+      "completion_latency_ms": 43068.452167,
+      "mean_itl_ms": 2002.773770999994,
+      "output_events": 3,
+      "output_text": "Bayern Munich",
+      "prompt_tokens": 429,
+      "completion_tokens": 4,
+      "cached_tokens": 0
+    },
+    {
+      "dataset": "hotpotqa",
+      "seed": 11,
+      "example_id": "5a8367c1554299334474600e",
+      "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad",
+      "condition": "full_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "Bayern Munich of West Germany",
+      "source_tokens": 1024,
+      "selected_source_tokens": 384,
+      "evidence_recall_at_4": 0.5,
+      "exact_match": 0.0,
+      "token_f1": 0.5714285714285715,
+      "answer_containment": 0.0,
+      "ttft_ms": 67792.842375,
+      "completion_latency_ms": 69586.560833,
+      "mean_itl_ms": 756.1022085000104,
+      "output_events": 3,
+      "output_text": "Bayern Munich",
+      "prompt_tokens": 1069,
+      "completion_tokens": 4,
+      "cached_tokens": 390
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "seed": 11,
+      "example_id": "322178260bde11eba7f7acde48001122",
+      "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e",
+      "condition": "no_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "Cadolzburg",
+      "source_tokens": 0,
+      "selected_source_tokens": 381,
+      "evidence_recall_at_4": 1.0,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "ttft_ms": 5991.6524589999935,
+      "completion_latency_ms": 11612.024708999996,
+      "mean_itl_ms": 1794.4694860000066,
+      "output_events": 4,
+      "output_text": "Nuremberg",
+      "prompt_tokens": 33,
+      "completion_tokens": 5,
+      "cached_tokens": 0
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "seed": 11,
+      "example_id": "322178260bde11eba7f7acde48001122",
+      "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e",
+      "condition": "selected_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "Cadolzburg",
+      "source_tokens": 381,
+      "selected_source_tokens": 381,
+      "evidence_recall_at_4": 1.0,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "ttft_ms": 38578.613792000026,
+      "completion_latency_ms": 55905.04108299999,
+      "mean_itl_ms": 1574.7785681818154,
+      "output_events": 12,
+      "output_text": "John I, Burgrave of Nuremberg's father",
+      "prompt_tokens": 420,
+      "completion_tokens": 12,
+      "cached_tokens": 0
+    },
+    {
+      "dataset": "2wikimultihopqa",
+      "seed": 11,
+      "example_id": "322178260bde11eba7f7acde48001122",
+      "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e",
+      "condition": "full_context",
+      "repeat": 0,
+      "cache_state": "COLD",
+      "answer": "Cadolzburg",
+      "source_tokens": 809,
+      "selected_source_tokens": 381,
+      "evidence_recall_at_4": 1.0,
+      "exact_match": 0.0,
+      "token_f1": 0.0,
+      "answer_containment": 0.0,
+      "ttft_ms": 44946.92658299999,
+      "completion_latency_ms": 61778.79004100004,
+      "mean_itl_ms": 1528.9592538181814,
+      "output_events": 12,
+      "output_text": "Helen of Saxony died in 1309",
+      "prompt_tokens": 848,
+      "completion_tokens": 12,
+      "cached_tokens": 386
+    }
+  ]
+}

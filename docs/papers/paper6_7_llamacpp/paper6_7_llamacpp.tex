@@ -18,10 +18,10 @@ key/value (K/V) states can be reused without becoming visible prompt tokens.
 We pin llama.cpp commit
 \texttt{458681e1d5d4a29a1463c4732e03226cf384b997}, implement a PRA SDK adapter,
 audit public slot and state APIs, and qualify selected-text execution on Apple
-M4 Pro CPU and Metal backends. On a 15-example natural-QA smoke cohort,
-selected prompts used 37.5--51.7\% of the full-context prompt tokens. Metal
-median time to first token fell on HotpotQA (60.1 to 37.0 ms) and QASPER (58.9
-to 31.0 ms), but not on 2Wiki (27.3 to 35.6 ms). A live slot checkpoint saved
+M4 Pro and M5 CPU/Metal backends. A Qwen3-8B replication on 15 natural-QA
+examples used 10.0--42.2\% of the full-context prompt tokens. Metal median time
+to first token fell on HotpotQA (696 to 457 ms) and QASPER (2733 to 348 ms),
+while 2Wiki was confounded by warm prefix reuse. A live slot checkpoint saved
 13 positional tokens as 160,572 bytes and restored them in 2.327 ms. The audit
 shows that this state is sequential prefix state, not detached semantic K/V.
 We therefore qualify upstream llama.cpp at E0 and define, but do not claim, the
@@ -133,6 +133,15 @@ streaming HTTP responses. The small model, short generation cap, and small
 cohort make quality directional rather than conclusive. CPU and Metal cohorts
 also differ in repeat count; their absolute quality is not paired.
 
+We then ran a larger-model replication on an Apple M5 with 10 CPU cores, 10 GPU
+cores, and 16 GB unified memory. It used the official Qwen3-8B Q4\_K\_M GGUF
+with the official llama.app binary (build 10679, commit
+\texttt{50f068fff}). Selection was again frozen before execution. The Metal
+cohort used five unique examples per dataset, two repeats, a 384-token selected
+cap, and a 4096-token full-context cap. A one-example-per-dataset CPU run with
+four threads is reported only as a backend diagnostic; it is not a matched
+throughput comparison.
+
 \section{Results}
 \begin{table}[t]
 \centering\small
@@ -164,6 +173,21 @@ QASPER & 0.356 & 225.7 / 534.6 & 0.070 / 0.106\\
 \label{tab:cpu}
 \end{table}
 
+\begin{table}[t]
+\centering\small
+\caption{Qwen3-8B Q4\_K\_M replication on M5 Metal (five examples per
+dataset, two repeats). Prompt ratio is selected/full; TTFT is p50 milliseconds.}
+\begin{tabular}{lrrr}
+\toprule Dataset & Prompt ratio & TTFT selected/full & F1 selected/full\\
+\midrule
+HotpotQA & 0.327 & 457 / 696 & 0.381 / 0.181\\
+QASPER & 0.100 & 348 / 2733 & 0.185 / 0.150\\
+2Wiki & 0.422 & 452 / 247 & 0.253 / 0.255\\
+\bottomrule
+\end{tabular}
+\label{tab:m5-8b}
+\end{table}
+
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.97\linewidth]{figures/e0_qualification.png}
@@ -180,6 +204,23 @@ dominate this small run. Selected evidence preserves HotpotQA F1 on Metal and
 raises QASPER F1, while 2Wiki loses quality. This is consistent with an upstream
 selection limitation, not evidence for or against native representation.
 
+The 8B replication strengthens the systems observation without turning the
+smoke cohort into a quality claim. Selected text reduced the visible prompt by
+57.8--90.0\%. It reduced median TTFT by 34.3\% on HotpotQA and 87.3\% on
+QASPER. The reversed 2Wiki median coincides with 682 mean cached tokens for the
+full condition versus 207 for selected text; its full-context p95 was still
+1931 ms versus 860 ms selected. Thus warm prefix reuse can dominate a tiny
+median even while selected text improves the tail. Quality was approximately
+preserved on 2Wiki, improved on these five Hotpot examples, and changed only
+slightly on QASPER. These signs are descriptive because examples, not repeated
+requests, are the independent units.
+
+The four-thread CPU diagnostic was orders of magnitude slower: selected TTFT
+was roughly 37--39 s and full-context TTFT 45--68 s across the three cases,
+whereas Metal produced about 24 output tokens/s. This establishes accelerator
+placement as operationally necessary for this 8B local workload; the CPU sample
+is too small for a backend-quality comparison.
+
 \subsection{Slot-state qualification}
 A live slot operation saved 13 cached tokens, wrote 160,572 bytes in 0.412 ms,
 and restored the same 13 tokens from 160,572 bytes in 2.327 ms. This is useful
@@ -194,8 +235,8 @@ is position-shaped, and has no selected-resource attention contract.
 \begin{tabular}{llll}
 \toprule Backend & E0 & E2 & E3\\
 \midrule
-CPU & measured & not implemented & not implemented\\
-Metal & measured & extension boundary only & not implemented\\
+CPU & measured (0.5B; 8B diagnostic) & not implemented & not implemented\\
+Metal & measured (0.5B, 8B) & extension boundary only & not implemented\\
 CUDA & not run here & not run & not run\\
 Vulkan & not run here & not run & not run\\
 \bottomrule
@@ -208,7 +249,8 @@ Native correctness, persistent selected K/V, physical memory accounting,
 CUDA/Vulkan replication, and E3 scheduler ownership remain open.
 
 \section{Limitations and Next Work}
-The cohort is intentionally small and uses a 0.5B quantized model. We do not
+The cohorts remain small; the 8B replication broadens model scale but not the
+number of independent questions. We do not
 measure gold-answer log probability, physical K/V sharing, concurrent tail
 latency, or native E0/E2 parity. The next defensible step is the narrow native
 extension in Figure~\ref{fig:architecture}, followed by geometry-matched
