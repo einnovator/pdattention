@@ -152,6 +152,22 @@ def test_gateway_product_aliases_resolve_and_render_in_help() -> None:
     assert "typed-transport" in result.output
 
 
+def test_gateway_page_explains_request_lifecycle_and_boundaries() -> None:
+    text = (SITE / "deployment/gateway.md").read_text(encoding="utf-8")
+    for value in (
+        "## What the gateway does",
+        "## Operating modes",
+        "### Gateway and engine responsibilities",
+        "## Sessions and resource deltas",
+        "## Fallback placement",
+        "Native K/V never crosses the gateway protocol",
+        "Resources are consumed in",
+        "request order",
+        "DELETE /v1/pra/sessions/{session_id}",
+    ):
+        assert value in text
+
+
 def test_static_html_build_never_contains_file_uris() -> None:
     built = ROOT / "site"
     if not built.is_dir():
