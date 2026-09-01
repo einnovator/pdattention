@@ -227,8 +227,19 @@ def _aggregate(
         "pra_shared_detached_blocks": (
             source_tokens // block_size if native and detached_pages else 0
         ),
+        "pra_shared_detached_bytes": (
+            int(source_tokens * kv_bytes_per_token)
+            if native and detached_pages
+            else 0
+        ),
         "pra_hot_source_bytes": max(
-            (int(event.get("resident_hot_bytes", 0)) for event in transfers),
+            (
+                max(
+                    int(event.get("resident_hot_bytes", 0)),
+                    int(event.get("resident_detached_bytes", 0)),
+                )
+                for event in transfers
+            ),
             default=0,
         ),
         "pra_warm_persisted_bytes": persisted_bytes if condition == "e2_warm" else 0,
@@ -239,6 +250,12 @@ def _aggregate(
         "h2d_bytes_per_request": h2d / len(samples),
         "d2d_bytes_total": d2d,
         "d2d_bytes_per_request": d2d / len(samples),
+        "reload_amplification": (
+            sum(int(event.get("storage_read_bytes", 0)) for event in transfers)
+            / max(1, int(source_tokens * kv_bytes_per_token))
+            if condition == "e2_warm"
+            else 0.0
+        ),
         "connector_load_ms": {
             "p50": percentile(
                 [float(event["load_ms"]) for event in transfers], 0.50
@@ -498,6 +515,24 @@ def main() -> None:
             ]
         ),
     }
+    baseline_sequences = [
+        tuple(sample["output_token_ids"])
+        for sample in raw["e0_selected_text"]["samples"]
+    ]
+    for row in payload["rows"]:
+        sequences = [
+            tuple(sample["output_token_ids"])
+            for sample in raw[row["condition"]]["samples"]
+        ]
+        matches = sum(left == right for left, right in zip(sequences, baseline_sequences))
+        row["sequence_agreement_vs_e0"] = matches / len(baseline_sequences)
+        row["quality_gate_passed"] = (
+            row["success_rate"] >= 0.95
+            and row["sequence_agreement_vs_e0"] >= 0.95
+        )
+        row["useful_throughput"] = (
+            row["requests_per_second"] if row["quality_gate_passed"] else 0.0
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"output": str(args.output), "rows": all_rows}, indent=2))

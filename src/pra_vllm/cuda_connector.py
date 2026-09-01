@@ -142,6 +142,7 @@ class PRASemanticConnector(KVConnectorBase_V1):
         self._detached_free: list[int] | None = None
         self._detached_handles: dict[tuple[str, str], tuple[int, ...]] = {}
         self._detached_materialized: set[tuple[str, str]] = set()
+        self._detached_tensor_bytes: dict[tuple[str, str], int] = {}
         self._detached_active_requests: dict[str, tuple[str, str]] = {}
         self._detached_refcounts: dict[tuple[str, str], int] = {}
 
@@ -306,6 +307,7 @@ class PRASemanticConnector(KVConnectorBase_V1):
             storage_read_bytes = 0
             h2d_bytes = 0
             d2d_bytes = 0
+            native_tensor_bytes = 0
             if newly_materialized:
                 directory = self._directory(exemplar.logical_key)
                 for layer_name, layer in forward_context.no_compile_layers.items():
@@ -322,6 +324,7 @@ class PRASemanticConnector(KVConnectorBase_V1):
                     tensor = safetensors.torch.load_file(str(path))["kv_cache"]
                     storage_read_ms += (time.perf_counter() - read_started) * 1000.0
                     tensor_bytes = tensor.numel() * tensor.element_size()
+                    native_tensor_bytes += tensor_bytes
                     storage_read_bytes += tensor_bytes
                     if tensor.device == cache.device:
                         d2d_bytes += tensor_bytes
@@ -331,6 +334,7 @@ class PRASemanticConnector(KVConnectorBase_V1):
                         cache, tensor, slots, layer_attention, self._block_size
                     )
                 self._detached_materialized.add(handle_key)
+                self._detached_tensor_bytes[handle_key] = native_tensor_bytes
             for group_index, request in enumerate(group):
                 transfer_owner = newly_materialized and group_index == 0
                 if request.request_id not in request_rows:
@@ -369,6 +373,9 @@ class PRASemanticConnector(KVConnectorBase_V1):
                         "h2d_bytes": h2d_bytes if transfer_owner else 0,
                         "d2d_bytes": d2d_bytes if transfer_owner else 0,
                         "shared_resident_hit": not transfer_owner,
+                        "resident_detached_bytes": self._detached_tensor_bytes.get(
+                            handle_key, 0
+                        ),
                         "load_ms": (time.perf_counter() - started) * 1000.0,
                     }
                 )
@@ -389,6 +396,7 @@ class PRASemanticConnector(KVConnectorBase_V1):
                 continue
             blocks = self._detached_handles.pop(handle_key, ())
             self._detached_materialized.discard(handle_key)
+            self._detached_tensor_bytes.pop(handle_key, None)
             if self._detached_free is not None:
                 self._detached_free.extend(blocks)
                 self._detached_free.sort()
@@ -581,6 +589,7 @@ class PRASemanticConnector(KVConnectorBase_V1):
                 if handle_key[1] == "warm":
                     blocks = self._detached_handles.pop(handle_key, ())
                     self._detached_materialized.discard(handle_key)
+                    self._detached_tensor_bytes.pop(handle_key, None)
                     if self._detached_free is not None:
                         self._detached_free.extend(blocks)
                         self._detached_free.sort()
