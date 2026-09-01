@@ -375,7 +375,11 @@ def main() -> None:
             def cache_for(condition: str):
                 if condition == "ordinary_split":
                     cache = make_prompt_cache(model)
-                    model(mx.array(source, dtype=mx.int32)[None], cache=cache)
+                    # MLX is lazy. Synchronize the reusable source cache before
+                    # request timing so ordinary E0 and pre-encoded native E2
+                    # are compared at the same warm lifecycle state.
+                    encoded = model(mx.array(source, dtype=mx.int32)[None], cache=cache)
+                    mx.eval(encoded)
                     return cache
                 if condition == "native_fp":
                     return make_native_prompt_cache(model, memory)
