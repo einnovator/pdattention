@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "benchmark": "paper6_3_openvino_cache_lifecycle_cell_v1",
+  "evidence_tier": "LIVE_ENGINE_LIFECYCLE_REGRESSION",
+  "measurement_status": "MEASURED",
+  "packages": {
+    "openvino": "2026.3.1",
+    "openvino-genai": "2026.3.1.0"
+  },
+  "model": "C:\\Users\\simao.jorge\\models\\openvino\\Qwen2.5-1.5B-Instruct-int4-ov",
+  "device": "GPU",
+  "scenario": "long",
+  "cache_mode": "disabled",
+  "scheduler": {
+    "prefix_caching": false,
+    "cache_eviction": false,
+    "dynamic_split_fuse": true,
+    "num_kv_blocks": 128,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 2048
+  },
+  "compile_ms": 10140.285500034224,
+  "requested_steps": 1,
+  "completed_steps": 1,
+  "all_expected_answers": true,
+  "rows": [
+    {
+      "step": 0,
+      "context_kind": "long",
+      "transition": "long",
+      "measurement_status": "MEASURED",
+      "output_text": "The requested verification code is PRA_EVIDENCE_4821.",
+      "expected_answer_present": true,
+      "wall_latency_ms": 4622.959999949671,
+      "ttft_ms": 2969.205078125,
+      "tpot_ms": 103.13243865966797,
+      "throughput_tokens_s": 9.696269989013672,
+      "generate_duration_ms": 4622.2587890625,
+      "tokenization_duration_ms": 9.406999588012695,
+      "detokenization_duration_ms": 2.634700059890747,
+      "input_tokens": 1573,
+      "generated_tokens": 17,
+      "rss_bytes": 1799036928
+    }
+  ]
+}

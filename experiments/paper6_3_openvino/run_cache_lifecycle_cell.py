@@ -87,7 +87,14 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                 }
             )
         except RuntimeError as error:
-            terminal_status = _runtime_failure(error) or "UNCLASSIFIED_RUNTIME_FAILURE"
+            message = str(error)
+            terminal_status = _runtime_failure(error)
+            if terminal_status is None and (
+                "is_all_free" in message
+                or "blocks across layers must be freed simultaneously" in message
+            ):
+                terminal_status = "NOT_RUN_CACHE_LIFECYCLE"
+            terminal_status = terminal_status or "UNCLASSIFIED_RUNTIME_FAILURE"
             rows.append(
                 {
                     "step": step,

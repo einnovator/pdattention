@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "benchmark": "paper6_3_openvino_cache_lifecycle_cell_v1",
+  "evidence_tier": "LIVE_ENGINE_LIFECYCLE_REGRESSION",
+  "measurement_status": "NOT_RUN_CACHE_LIFECYCLE",
+  "packages": {
+    "openvino": "2026.3.1",
+    "openvino-genai": "2026.3.1.0"
+  },
+  "model": "C:\\Users\\simao.jorge\\models\\openvino\\Qwen2.5-1.5B-Instruct-int4-ov",
+  "device": "GPU",
+  "scenario": "long_long",
+  "cache_mode": "enabled",
+  "scheduler": {
+    "prefix_caching": true,
+    "cache_eviction": true,
+    "dynamic_split_fuse": true,
+    "num_kv_blocks": 128,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 2048
+  },
+  "compile_ms": 8320.496000000276,
+  "requested_steps": 5,
+  "completed_steps": 1,
+  "all_expected_answers": true,
+  "rows": [
+    {
+      "step": 0,
+      "context_kind": "long",
+      "transition": "long",
+      "measurement_status": "MEASURED",
+      "output_text": "The requested verification code is PRA_EVIDENCE_4821.",
+      "expected_answer_present": true,
+      "wall_latency_ms": 3717.769799986854,
+      "ttft_ms": 2289.37548828125,
+      "tpot_ms": 89.14373779296875,
+      "throughput_tokens_s": 11.217838287353516,
+      "generate_duration_ms": 3717.080078125,
+      "tokenization_duration_ms": 8.704000473022461,
+      "detokenization_duration_ms": 1.256500005722046,
+      "input_tokens": 1573,
+      "generated_tokens": 17,
+      "rss_bytes": 1943490560
+    },
+    {
+      "step": 1,
+      "context_kind": "long",
+      "transition": "long_to_long",
+      "measurement_status": "NOT_RUN_CACHE_LIFECYCLE",
+      "wall_latency_ms": 3527.939099993091,
+      "error": "Check 'is_all_free' failed at C:\\Jenkins\\workspace\\private-ci\\ie\\build-windows-vs2022\\b\\repos\\openvino.genai\\src\\cpp\\src\\continuous_batching/cache/block_manager.hpp:371:\nblocks across layers must be freed simultaneously\n"
+    }
+  ]
+}

@@ -63,3 +63,12 @@ def test_cache_lifecycle_corruption_is_distinct_from_capacity_admission():
     assert result["not_measured_count"] == 1
     assert result["cache_admission_failures"] == 0
     assert result["cache_lifecycle_failures"] == 1
+
+
+def test_cross_layer_release_violation_is_a_lifecycle_failure():
+    error = RuntimeError(
+        "Check 'is_all_free' failed in BlockManager: "
+        "blocks across layers must be freed simultaneously"
+    )
+
+    assert _runtime_failure(error) == "NOT_RUN_CACHE_LIFECYCLE"

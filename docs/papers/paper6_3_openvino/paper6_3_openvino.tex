@@ -4,7 +4,7 @@
 \title{Progressive Retrieval Attention on OpenVINO GenAI:\\
 Semantic Resource Identity, Continuous-Batching Evidence, and the Native K/V Boundary}
 \author{Jorge Sim\~ao}
-\date{August 2026}
+\date{September 2026}
 
 \begin{document}
 \maketitle
@@ -50,7 +50,13 @@ HotpotQA and 2Wiki do not show the same benefit. This is a diagnostic of lexical
 reinforcement and recency, not a deployable query-only selector. A counterbalanced
 60-request physical-telemetry run on Iris Xe finds that selected E0 reduces
 median TTFT from 219.5 to 118.3 ms and OpenVINO-reported GPU allocation from
-1,643 to 1,563 MiB. A
+1,643 to 1,563 MiB. A 16-cell process-isolated lifecycle matrix compares
+OpenVINO GenAI 2026.2.1.0 with the latest 2026.3.1.0. Both releases pass
+short, one-shot long, long-to-short, and all cache-disabled cells, but the
+second cached long request violates cross-layer block release in both. Each
+teardown leaks one sequence block table and 59 of 128 blocks. The latest
+release therefore does not close this repeated-long prefix-cache/eviction
+defect. A
 three-point pressure curve keeps selection at 63 tokens while full context
 grows from 417 to 831 tokens; selected recovery remains exact throughout. The
 result establishes a reproducible transport
@@ -81,7 +87,7 @@ Visible context & 63 selected tokens versus 417--1,573 full-context tokens \\
 Loaded serving & 11.1--14.2 selected requests/s and 233--330 ms TTFT p99 at concurrency 16 \\
 Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
 Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
-Evidence tier & Controlled CPU/GPU transport, three 360-request paired cohorts, a 1,341-request distractor cohort, and 60 physical-telemetry requests \\
+Evidence tier & Controlled CPU/GPU transport, three 360-request paired cohorts, a 1,341-request distractor cohort, 60 physical-telemetry requests, and a 16-cell lifecycle matrix \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -286,6 +292,42 @@ repeated long-prefix workload. The harness labels subsequent cells
 \texttt{NOT\_RUN\_CACHE\_LIFECYCLE}; it never converts them to zero latency or
 continues timing a corrupted pipeline. Production use should disable this
 cache combination or upgrade to a release that passes the same regression.
+
+To distinguish a generic long-context failure from a state transition, we ran
+a second matrix in fresh processes. It crosses OpenVINO GenAI 2026.2.1.0 and
+the latest PyPI release, 2026.3.1.0, with cache enabled or disabled and four
+ordered workloads: repeated short, one long request, long followed by five
+short requests, and five repeated long requests. The cache-enabled condition
+sets both prefix caching and cache eviction; the disabled control turns both
+off. All cells use the same Qwen2.5-1.5B INT4 model, Iris Xe device, 128-block
+budget, and deterministic generation.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Process-isolated lifecycle regression. Completed is measured requests
+over planned requests. Quality means every completed request recovered the
+controlled answer. Leaked is the teardown block deficit.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_cache_lifecycle_version_table.tex}}
+\label{tab:openvino-cache-lifecycle-versions}
+\end{table}
+
+The result localizes the defect. Both versions complete 5/5 repeated short,
+1/1 one-shot long, and 6/6 long-to-short requests with the cache enabled. Both
+also complete every cache-disabled sequence, including 5/5 repeated long. In
+contrast, the first cached long request succeeds and the second fails
+\texttt{is\_all\_free}: blocks across layers must be freed simultaneously.
+Teardown then reports one leaked sequence block table and 69 free blocks where
+128 are expected, a 59-block deficit repeated by 28 allocator reports. All 60
+requests that reached generation recovered the expected answer.
+
+This controlled comparison changes the operational advice: upgrading from
+2026.2.1.0 to 2026.3.1.0 is not a remedy. For this model and scheduler geometry,
+repeated long-prefix production should avoid the combined prefix-cache and
+eviction configuration until a later release passes this exact regression.
+The failure belongs to the engine cache lifecycle, not to PRA routing or
+selected-text semantics.
 
 \subsection{Continuous batching}
 \begin{table}[ht]
@@ -591,6 +633,9 @@ There is no OVMS process, NPU, native K/V parity, energy or GPU-utilization
 telemetry, gold answer log-probability, long-session pressure, eviction sweep,
 or larger capable cross-family replication. Plugin allocation is available, but
 physical residency by cache class is not.
+The lifecycle version matrix covers two adjacent release lines, one model,
+one GPU, one 128-block geometry, and five repeats; it localizes a deterministic
+failure but does not estimate its prevalence across models or devices.
 All serving results are E0.
 
 \section{Conclusion}
@@ -609,13 +654,20 @@ without being capable enough to settle answer quality. The distractor audit
 narrows the QASPER gain to answer-aware lexical reinforcement rather than
 generic context breadth. Counterbalanced Intel telemetry further shows that the
 selected E0 frontier reduces TTFT, completion tails, process work, and plugin
-allocation in the measured slice. OpenVINO remains primarily an E0 result until
+allocation in the measured slice. The isolated lifecycle matrix further shows
+that the cached repeated-long defect persists in the latest tested release,
+while one-shot long, long-to-short, and cache-disabled controls remain healthy.
+OpenVINO remains primarily an E0 result until
 a legitimate detached-K/V seam exists.
 
 \section*{Reproducibility}
 Raw JSON, generated tables and plots, environment audit, and runners are under
 \path{docs/papers/shared/results/paper6_3_openvino} and
 \path{experiments/paper6_3_openvino}.
+The version matrix is produced one process per cell by
+\path{run_cache_lifecycle_cell.py};
+\path{summarize_cache_lifecycle_versions.py} parses the JSON and teardown logs
+into Table~\ref{tab:openvino-cache-lifecycle-versions}.
 
 \begin{thebibliography}{9}
 \bibitem{ovgenai}

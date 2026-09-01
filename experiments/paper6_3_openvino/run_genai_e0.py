@@ -98,7 +98,15 @@ def _runtime_failure(error: RuntimeError) -> str | None:
     message = str(error)
     if "did not fit in the available cache budget" in message:
         return "NOT_RUN_CACHE_ADMISSION"
-    if "m_ref_count > 0" in message or "BlockManager leaked" in message:
+    if any(
+        marker in message
+        for marker in (
+            "m_ref_count > 0",
+            "BlockManager leaked",
+            "is_all_free",
+            "blocks across layers must be freed simultaneously",
+        )
+    ):
         return "NOT_RUN_CACHE_LIFECYCLE"
     return None
 
