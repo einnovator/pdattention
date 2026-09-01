@@ -42,7 +42,11 @@ resolution from one to eight raises native-Q/K rank fidelity from .794 to .963 w
 AUC remains .6510--.6516. Conversely, a learned 32-dimensional relevance metric reaches .971
 AUC despite only .178 Q/K fidelity. For fixed selected identities, post-RoPE K, V, and native
 attention output remain bit-exact. A 192-token logical prompt also runs with every measured
-native operation at or below 24 tokens under a 32-token limit. Positional continuity is
+native operation at or below 24 tokens under a 32-token limit. The distinction
+remains consequential in a pretrained Qwen3 8B--32B MLX calibration: at 8K,
+source-relative segmented first-logit error is far below a query-restart control,
+whose greedy-sequence agreement is zero at every measured model point.
+Positional continuity is
 necessary, but coordinate correctness, representation fidelity, attention geometry, semantic
 selection, and downstream use are distinct empirical properties.
 \end{abstract}
@@ -811,6 +815,57 @@ native operation, source-relative coordinates remain continuous, and no measured
 breaks its limit. It does not establish full functional equivalence to dense processing of all
 192 tokens through every layer.
 
+\section{Pretrained Long-Context Position Controls}
+\label{sec:pretrained-position}
+
+The controlled models establish the mechanism, but their short training range
+leaves open whether a reset remains consequential in pretrained long-context
+decoders. We therefore run pinned 4-bit Qwen3-8B, 14B, and 32B checkpoints on a
+48~GiB M4 Pro. For each model, five unique examples from each of QASPER,
+HotpotQA, and 2Wiki are extended to 8K source tokens with deterministic
+same-dataset distractors. The full source is consumed either as an ordinary
+visible prefix, as segmented native K/V with its source positions preserved, or
+with the query incorrectly restarted at zero. The 8B boundary adds three 32K
+examples. The requested 64K rows are explicitly unsupported by the pinned
+40,960-position models.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{\textbf{Query restart is far larger than unfused segmented numerical
+drift.} RMSE compares first-step logits with the ordinary visible prefix;
+agreement is exact greedy-sequence agreement.}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper1_5_rope/mac_long_context/generated_position_geometry_table.tex}}
+\label{tab:pretrained-position}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper1_5_rope/mac_long_context/mlx_position_geometry.pdf}
+\caption{Preserving source positions keeps segmented-native logits close to the
+ordinary prefix. Restarting the query changes the geometry by orders of
+magnitude more at every measured scale.}
+\label{fig:pretrained-position}
+\end{figure}
+
+At 8K, source-relative first-logit RMSE is 0.112, 0.100, and 0.121 for 8B,
+14B, and 32B, versus 2.572, 4.786, and 3.671 under query restart.
+Source-relative sequence agreement is 0.667, 0.933, and 0.667; query restart is
+zero for all three. The three-case 8B 32K
+boundary has RMSE 0.128 versus 2.530 and agreement 0.333 versus zero. These are
+not claims that the segmented path is bit-exact. A companion concatenated-cache
+reference preserves 60/60 selected-text sequences across the Qwen size ladder
+and MoE checkpoint. The residual source-relative error here comes from the
+unfused segmented one-softmax reduction repeated through many layers; the reset
+control is roughly 20--48 times larger.
+
+For one contiguous source, global sequential and source-relative coordinates
+are structurally the same policy, so they are not counted as independent
+conditions. The negative control changes only the query base while preserving
+source tokens and native K/V. The experiment therefore strengthens the
+coordinate-correctness claim on pretrained models without testing arbitrary
+multi-resource serialization, retrieval-time rebinding, or semantic routing.
+
 \section{Related Work and Positioning}
 
 RoPE makes attention depend on relative displacement through position-dependent rotations
@@ -846,6 +901,12 @@ HotpotQA- and QASPER-derived tasks retain natural source text but replace open-e
 with answer codes \cite{yang2018hotpotqa,dasigi2021qasper}. WikiText-2 tests next-token behavior
 in bounded windows \cite{merity2016pointer}. These choices isolate mechanisms but limit
 external validity.
+
+The pretrained Qwen replication narrows that external-validity gap only for
+position transport. Its 8K model points contain 15 independent questions, the
+32K point contains three, and 64K exceeds the pinned model limit. It uses one
+model family and quantization and does not establish quality-optimal rebinding
+or cross-family geometry.
 
 Five paired seeds provide direction counts but weak inferential resolution: the smallest
 exact two-sided sign-flip result with five pairs is $p=0.0625$. Formula-defined RoPE and
