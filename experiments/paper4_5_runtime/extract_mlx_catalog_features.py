@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import platform
+import random
 import subprocess
 import sys
 import time
@@ -20,6 +21,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from datasets import load_dataset
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,12 +29,9 @@ for path in (ROOT, ROOT / "src"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from data.native_kv_benchmarks import load_qasper_papers
 from experiments.paper2_hf.qa.run_smoke import evidence_token_spans
-from experiments.paper2_hf.routing.precompute_router_features import lexical_chunk_scores
-from experiments.paper2_hf.routing.run_query_strategies import (
-    _prompt_with_question_span,
-    load_split_examples,
-)
+from pra_torch.hf import token_span_from_offsets
 
 
 SPLITS = {
@@ -40,6 +39,141 @@ SPLITS = {
     "test": (8, 16),
     "train": (24, 24),
 }
+
+
+def _hotpot_examples(cache_dir: Path, count: int, seed: int) -> list[dict[str, Any]]:
+    rows = load_dataset(
+        "hotpotqa/hotpot_qa",
+        "distractor",
+        split="validation",
+        cache_dir=str(cache_dir),
+    )
+    indices = list(range(len(rows)))
+    random.Random(seed).shuffle(indices)
+    examples = []
+    for index in indices:
+        row = rows[index]
+        supporting = {
+            (str(title), int(sentence_id))
+            for title, sentence_id in zip(
+                row["supporting_facts"]["title"], row["supporting_facts"]["sent_id"]
+            )
+        }
+        segments, evidence = [], []
+        for title, sentences in zip(row["context"]["title"], row["context"]["sentences"]):
+            for sentence_id, sentence in enumerate(sentences):
+                segment = f"{title}: {str(sentence).strip()}"
+                segments.append(segment)
+                if (str(title), sentence_id) in supporting:
+                    evidence.append(segment)
+        if evidence:
+            examples.append(
+                {
+                    "dataset": "hotpotqa",
+                    "id": str(row["id"]),
+                    "question": str(row["question"]),
+                    "answer": str(row["answer"]),
+                    "source": "\n".join(segments),
+                    "evidence": evidence,
+                }
+            )
+        if len(examples) == count:
+            return examples
+    raise RuntimeError(f"HotpotQA yielded only {len(examples)} usable examples.")
+
+
+def _qasper_examples(cache_dir: Path, count: int, seed: int) -> list[dict[str, Any]]:
+    papers = load_qasper_papers("validation", cache_dir=cache_dir)
+    candidates = []
+    for paper_id, paper in papers.items():
+        paragraphs = [str(paper.get("abstract", ""))]
+        for section in paper.get("full_text", []):
+            paragraphs.extend(str(value) for value in section.get("paragraphs", []))
+        for qa in paper.get("qas", []):
+            for annotation in qa.get("answers", []):
+                answer = annotation.get("answer", {})
+                evidence = [
+                    str(value)
+                    for value in answer.get("evidence", [])
+                    if str(value).strip()
+                ]
+                if answer.get("yes_no") is None or not evidence:
+                    continue
+                candidates.append(
+                    {
+                        "dataset": "qasper",
+                        "id": f"{paper_id}:{qa.get('question_id', '')}",
+                        "question": str(qa["question"]),
+                        "answer": "yes" if answer["yes_no"] else "no",
+                        "source": "\n".join(dict.fromkeys([*evidence, *paragraphs])),
+                        "evidence": evidence,
+                    }
+                )
+                break
+    random.Random(seed).shuffle(candidates)
+    if len(candidates) < count:
+        raise RuntimeError(f"QASPER yielded only {len(candidates)} usable examples.")
+    return candidates[:count]
+
+
+def load_split_examples(
+    cache_dir: Path, count: int, offset: int, seed: int
+) -> list[dict[str, Any]]:
+    """Load deterministic identity-disjoint slices from both QA datasets."""
+    stop = int(offset) + int(count)
+    return [
+        *_hotpot_examples(cache_dir, stop, seed)[offset:stop],
+        *_qasper_examples(cache_dir / "qasper", stop, seed + 1)[offset:stop],
+    ]
+
+
+def _prompt_with_question_span(tokenizer: Any, question: str, max_tokens: int):
+    question = question.strip()
+    content = f"Answer briefly and directly.\nQuestion: {question}"
+    if tokenizer.chat_template:
+        rendered = tokenizer.apply_chat_template(
+            [{"role": "user", "content": content}],
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
+    else:
+        rendered = content
+    marker = f"Question: {question}"
+    marker_start = rendered.rfind(marker)
+    if marker_start < 0:
+        raise ValueError("Rendered prompt does not contain the exact question marker.")
+    char_start = marker_start + len("Question: ")
+    char_end = char_start + len(question)
+    previous = tokenizer.truncation_side
+    tokenizer.truncation_side = "left"
+    encoded = tokenizer(
+        rendered,
+        return_tensors="pt",
+        return_offsets_mapping=True,
+        truncation=True,
+        max_length=max_tokens,
+    )
+    tokenizer.truncation_side = previous
+    offsets = encoded.pop("offset_mapping")[0].tolist()
+    return encoded, token_span_from_offsets(offsets, char_start, char_end)
+
+
+def lexical_chunk_scores(
+    tokenizer: Any,
+    source: str,
+    question: str,
+    spans: list[tuple[int, int]],
+) -> torch.Tensor:
+    """Return token-set Jaccard overlap for each routing chunk."""
+    source_ids = tokenizer(source, add_special_tokens=False).input_ids
+    question_ids = set(tokenizer(question, add_special_tokens=False).input_ids)
+    scores = []
+    for start, end in spans:
+        chunk_ids = set(source_ids[start:end])
+        union = question_ids | chunk_ids
+        scores.append(len(question_ids & chunk_ids) / len(union) if union else 0.0)
+    return torch.tensor(scores, dtype=torch.float32)
 
 
 def _git_sha() -> str:
