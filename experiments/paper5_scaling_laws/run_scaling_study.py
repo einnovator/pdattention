@@ -33,6 +33,12 @@ if str(ROOT) not in sys.path:
 from experiments.paper5_scaling_laws.scaling_core import percentile
 
 
+ADAPTIVE_DIFFICULTIES = (
+    ("medium", 8, 0.040),
+    ("hard", 24, 0.015),
+)
+
+
 @dataclass(frozen=True)
 class ScalingConfig:
     """Complete, serializable configuration for the controlled pilot."""
@@ -122,14 +128,21 @@ def build_memory_pool(
     evidence_regions: int,
     seed: int,
     device: torch.device,
+    hard_negatives: int = 0,
+    hard_negative_noise: float = 0.040,
 ) -> MemoryPool:
-    """Build clustered native-key surrogates with a planted fixed working set."""
+    """Build native-key surrogates with planted evidence and optional decoys.
+
+    Hard negatives share the query's coarse region and may be closer to the
+    query than evidence. They make adaptive stopping observable without
+    changing the fixed evidence count or consulting truth during selection.
+    """
 
     clusters = _cluster_count(nodes)
     if nodes % clusters:
         raise ValueError("controlled memory sizes must divide into power-of-two clusters")
     per_cluster = nodes // clusters
-    if per_cluster < evidence_regions:
+    if per_cluster < evidence_regions + hard_negatives:
         raise ValueError("a cluster cannot hold the requested evidence working set")
     generator = torch.Generator(device=device).manual_seed(seed + nodes)
     _synchronize(device)
@@ -147,7 +160,8 @@ def build_memory_pool(
             torch.randn(dimension, generator=generator, device=device), dim=0
         )
         query = F.normalize(1.6 * coarse[cluster] + 0.55 * unique, dim=0)
-        local_start = (query_index * (evidence_regions + 3)) % (per_cluster - evidence_regions + 1)
+        occupied = evidence_regions + hard_negatives
+        local_start = (query_index * (occupied + 3)) % (per_cluster - occupied + 1)
         indices = torch.arange(
             cluster * per_cluster + local_start,
             cluster * per_cluster + local_start + evidence_regions,
@@ -161,6 +175,20 @@ def build_memory_pool(
             ),
             dim=1,
         )
+        if hard_negatives:
+            decoys = torch.arange(
+                int(indices[-1]) + 1,
+                int(indices[-1]) + 1 + hard_negatives,
+                device=device,
+            )
+            keys[decoys] = F.normalize(
+                query.unsqueeze(0)
+                + hard_negative_noise
+                * torch.randn(
+                    hard_negatives, dimension, generator=generator, device=device
+                ),
+                dim=1,
+            )
         query_rows.append(query)
         evidence_rows.append(indices)
 
@@ -445,6 +473,8 @@ def run_primary(config: ScalingConfig, device: torch.device) -> dict[str, list[d
                         "logical_tokens": logical_tokens,
                         "memory_nodes": nodes,
                         "threshold": threshold,
+                        "difficulty": "easy",
+                        "hard_negative_nodes": 0,
                         "backend": "coarse_to_fine",
                         "probes": 4,
                         "expected_active_kv_tokens": mean_tokens,
@@ -494,6 +524,103 @@ def run_primary(config: ScalingConfig, device: torch.device) -> dict[str, list[d
                 torch.cuda.empty_cache()
 
     return tables
+
+
+def run_adaptive_difficulty(
+    config: ScalingConfig, device: torch.device
+) -> list[dict[str, Any]]:
+    """Stress adaptive stopping with semantically confusable planted decoys."""
+
+    rows: list[dict[str, Any]] = []
+    max_k = max(config.active_kv_budgets) // config.materialized_tokens_per_node
+    for difficulty, hard_negatives, noise in ADAPTIVE_DIFFICULTIES:
+        for seed in config.seeds:
+            for logical_tokens in config.logical_tokens:
+                nodes = logical_tokens // config.chunk_tokens
+                pool = build_memory_pool(
+                    nodes,
+                    dimension=config.routing_dimension,
+                    queries=config.queries_per_seed,
+                    evidence_regions=config.evidence_regions,
+                    seed=seed,
+                    device=device,
+                    hard_negatives=hard_negatives,
+                    hard_negative_noise=noise,
+                )
+                indices, scores, timings, comparisons = indexed_search(
+                    pool, max_k + 1, 4, config.search_repeats
+                )
+                for threshold in config.confidence_thresholds:
+                    selected_widths: list[int] = []
+                    selected_rows: list[torch.Tensor] = []
+                    for query_index in range(len(pool.queries)):
+                        chosen = max_k
+                        for budget in config.active_kv_budgets:
+                            width = min(
+                                budget // config.materialized_tokens_per_node,
+                                scores.shape[1] - 1,
+                            )
+                            gap = float(
+                                scores[query_index, width - 1]
+                                - scores[query_index, width]
+                            )
+                            if gap >= threshold:
+                                chosen = width
+                                break
+                        selected_widths.append(chosen)
+                        selected_rows.append(indices[query_index, :chosen])
+                    widest = max(map(len, selected_rows))
+                    padded = torch.stack(
+                        [F.pad(row, (0, widest - len(row)), value=-1) for row in selected_rows]
+                    )
+                    metrics = retrieval_metrics(padded, pool.evidence)
+                    mean_tokens = (
+                        statistics.fmean(selected_widths)
+                        * config.materialized_tokens_per_node
+                    )
+                    rows.append(
+                        {
+                            "seed": seed,
+                            "logical_tokens": logical_tokens,
+                            "memory_nodes": nodes,
+                            "threshold": threshold,
+                            "difficulty": difficulty,
+                            "hard_negative_nodes": hard_negatives,
+                            "hard_negative_noise": noise,
+                            "backend": "coarse_to_fine",
+                            "probes": 4,
+                            "expected_active_kv_tokens": mean_tokens,
+                            "expected_layer_token_kv_states": (
+                                mean_tokens * config.consumer_layers
+                            ),
+                            "escalation_rate": statistics.fmean(
+                                width
+                                > config.active_kv_budgets[0]
+                                // config.materialized_tokens_per_node
+                                for width in selected_widths
+                            ),
+                            "max_budget_rate": statistics.fmean(
+                                width == max_k for width in selected_widths
+                            ),
+                            "search_latency_p50_seconds": percentile(timings, 0.50),
+                            "search_latency_p95_seconds": percentile(timings, 0.95),
+                            "comparisons": comparisons,
+                            **metrics,
+                            "measured": True,
+                            "measurement_scope": (
+                                "oracle-free score-gap controller with planted "
+                                "semantically confusable neighbors"
+                            ),
+                            "training_regime": (
+                                "PRA-native routing surrogate; no LM checkpoint"
+                            ),
+                            "device": str(device),
+                        }
+                    )
+                del pool
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
+    return rows
 
 
 def run_dispersion(config: ScalingConfig, device: torch.device) -> list[dict[str, Any]]:
@@ -766,6 +893,9 @@ def main() -> None:
     )
 
     tables = run_primary(config, device)
+    tables["adaptive_effort_scaling"].extend(
+        run_adaptive_difficulty(config, device)
+    )
     tables["evidence_dispersion_scaling"] = run_dispersion(config, device)
     hardware_devices = [torch.device("cpu")]
     if torch.cuda.is_available():

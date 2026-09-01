@@ -67,3 +67,21 @@ def test_controlled_exact_search_recovers_planted_working_set():
     assert timings and all(value > 0 for value in timings)
     assert metrics["evidence_recall"] == 1.0
     assert metrics["task_accuracy"] == 1.0
+
+
+def test_hard_negatives_create_a_nontrivial_retrieval_budget():
+    pool = build_memory_pool(
+        1024,
+        dimension=32,
+        queries=4,
+        evidence_regions=4,
+        seed=17,
+        device=torch.device("cpu"),
+        hard_negatives=16,
+        hard_negative_noise=0.01,
+    )
+
+    narrow, _, _ = exact_search(pool, 4, repeats=1)
+    wide, _, _ = exact_search(pool, 32, repeats=1)
+    assert retrieval_metrics(narrow, pool.evidence)["evidence_recall"] < 1.0
+    assert retrieval_metrics(wide, pool.evidence)["evidence_recall"] == 1.0
