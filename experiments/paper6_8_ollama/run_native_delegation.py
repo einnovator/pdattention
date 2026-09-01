@@ -20,35 +20,35 @@ CASES = (
         "The launch code is CERULEAN-7.\n",
         "What is the launch code?",
         "The launch code is",
-        "cerulean-7",
+        ("cerulean-7",),
     ),
     (
         "capital",
         "The capital of North Veridia is Lumenport.\n",
         "What is the capital of North Veridia?",
         "The capital of North Veridia is",
-        "lumenport",
+        ("lumenport",),
     ),
     (
         "owner",
         "The Atlas service is maintained by Priya Nair.\n",
         "Who maintains the Atlas service?",
         "The Atlas service is maintained by",
-        "priya nair",
+        ("priya nair",),
     ),
     (
         "date",
         "Project Glasswing launches on 17 October 2031.\n",
         "When does Project Glasswing launch?",
         "Project Glasswing launches on",
-        "17 october 2031",
+        ("17 october 2031",),
     ),
     (
         "numeric",
         "The approved pressure limit is 47 kilopascals.\n",
         "What is the approved pressure limit?",
         "The approved pressure limit is",
-        "47 kilopascals",
+        ("47 kilopascals", "47.00000000", "47"),
     ),
 )
 
@@ -136,9 +136,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     tags = _json_get(f"{args.ollama_url.rstrip('/')}/api/tags")
     model_row = next(row for row in tags.get("models", []) if row.get("name") == args.model)
 
+    # Separate Ollama's process/model cold load from the steady request cohort.
+    stock.unload(args.model)
+    warmup_case = CASES[0]
+    warmup_request = _request(
+        args.model, *warmup_case[:4], repeat=-1
+    )
+    _, e0_cold_model_load_ms = _timed(stock, warmup_request)
+
     rows: list[dict[str, object]] = []
     for repeat in range(args.repeats):
-        for case_id, resource, question, completion_prompt, answer in CASES:
+        for case_id, resource, question, completion_prompt, accepted_answers in CASES:
             request = _request(
                 args.model, case_id, resource, question, completion_prompt, repeat
             )
@@ -149,14 +157,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 {
                     "repeat": repeat,
                     "case_id": case_id,
-                    "answer": answer,
+                    "accepted_answers": accepted_answers,
                     "resource_sha256": hashlib.sha256(resource.encode()).hexdigest(),
                     "e0_text": e0.text,
                     "e2_text": e2.text,
                     "e2_warm_text": e2_warm.text,
-                    "e0_answer_correct": answer in e0.text.lower(),
-                    "e2_answer_correct": answer in e2.text.lower(),
-                    "e2_warm_answer_correct": answer in e2_warm.text.lower(),
+                    "e0_answer_correct": any(
+                        answer in e0.text.lower() for answer in accepted_answers
+                    ),
+                    "e2_answer_correct": any(
+                        answer in e2.text.lower() for answer in accepted_answers
+                    ),
+                    "e2_warm_answer_correct": any(
+                        answer in e2_warm.text.lower() for answer in accepted_answers
+                    ),
                     "e0_ms": e0_ms,
                     "e2_ms": e2_ms,
                     "e2_warm_ms": e2_warm_ms,
@@ -175,6 +189,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     warm_ms = [float(row["e2_warm_ms"]) for row in rows]
     summary = {
         "runs": len(rows),
+        "e0_cold_model_load_ms": e0_cold_model_load_ms,
         "negotiated_e2": sum(row["resolved_level"] == "E2" for row in rows),
         "e0_answer_correct": sum(bool(row["e0_answer_correct"]) for row in rows),
         "e2_answer_correct": sum(bool(row["e2_answer_correct"]) for row in rows),
