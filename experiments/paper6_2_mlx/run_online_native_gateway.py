@@ -18,6 +18,23 @@ from experiments.engine_serving.matched_qa import load_matched_examples
 from experiments.paper6_2_mlx.run_live_storage_concurrency import _percentile
 
 
+def _event_text(row: dict[str, object]) -> str:
+    """Extract text from OpenAI-compatible or legacy gateway stream events."""
+    text = row.get("text")
+    if text:
+        return str(text)
+    choices = row.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first = choices[0]
+    if not isinstance(first, dict):
+        return ""
+    delta = first.get("delta")
+    if not isinstance(delta, dict):
+        return ""
+    return str(delta.get("content") or "")
+
+
 def _post(base: str, payload: dict[str, object], *, stream: bool) -> dict[str, object]:
     body = json.dumps({**payload, "stream": stream}).encode("utf-8")
     request = urllib.request.Request(
@@ -55,8 +72,9 @@ def _post(base: str, payload: dict[str, object], *, stream: bool) -> dict[str, o
             if not line.startswith("data: ") or line == "data: [DONE]":
                 continue
             row = json.loads(line[6:])
-            if row.get("text"):
-                pieces.append(str(row["text"]))
+            text = _event_text(row)
+            if text:
+                pieces.append(text)
                 arrivals.append((time.perf_counter() - started) * 1000.0)
         wall_ms = (time.perf_counter() - started) * 1000.0
     intervals = [right - left for left, right in zip(arrivals, arrivals[1:])]
@@ -87,7 +105,7 @@ def _cancel_after_first_text(base: str, payload: dict[str, object]) -> dict[str,
             if not line.startswith("data: ") or line == "data: [DONE]":
                 continue
             row = json.loads(line[6:])
-            if row.get("text"):
+            if _event_text(row):
                 first_text_ms = (time.perf_counter() - started) * 1000.0
                 break
     finally:

@@ -1,4 +1,4 @@
-from experiments.paper6_2_mlx.run_online_native_gateway import _payload
+from experiments.paper6_2_mlx.run_online_native_gateway import _event_text, _payload
 from pra_hf.deployment import PRAWireRequest
 
 
@@ -23,3 +23,15 @@ def test_online_payload_keeps_native_resource_in_pra_envelope() -> None:
     assert request.request_id == "request"
     assert request.tenant_id == "benchmark"
     assert request.pra_policy["selected_resource_ids"] == ["resource"]
+
+
+def test_event_text_accepts_openai_delta_envelope() -> None:
+    assert _event_text({"choices": [{"delta": {"content": "answer"}}]}) == "answer"
+
+
+def test_event_text_accepts_legacy_gateway_envelope() -> None:
+    assert _event_text({"text": "answer"}) == "answer"
+
+
+def test_event_text_ignores_non_content_events() -> None:
+    assert _event_text({"choices": [{"delta": {}}]}) == ""
