@@ -112,13 +112,24 @@ def test_mlx_consumer_scaling_keeps_balanced_all_layer_and_sparse_pending() -> N
     balanced_native = [
         row for row in rows if row.model_variant == "E2_CONCAT_WARM"
     ]
+    segmented_all = [
+        row
+        for row in rows
+        if row.model_variant == "E2_SEGMENTED_ALL_LAYERS"
+    ]
     reduced = [
-        row for row in rows if row.representation == "E2_SEGMENTED_CANDIDATE"
+        row
+        for row in rows
+        if row.representation == "E2_SEGMENTED_CANDIDATE"
+        and row.model_variant != "E2_SEGMENTED_ALL_LAYERS"
     ]
     assert balanced_native
     assert all(row.profile == "BALANCED" for row in balanced_native)
     assert all(row.profile_status == "MEASURED" for row in balanced_native)
     assert all(len(row.consumer_layers) > 0 for row in balanced_native)
+    assert segmented_all
+    assert all(row.profile == "BALANCED" for row in segmented_all)
+    assert all(row.profile_status == "CALIBRATION_PENDING" for row in segmented_all)
     assert reduced
     assert all(row.profile_status == "CALIBRATION_PENDING" for row in reduced)
     assert all(row.profile == "REDUCED_CANDIDATE" for row in reduced)
@@ -126,3 +137,13 @@ def test_mlx_consumer_scaling_keeps_balanced_all_layer_and_sparse_pending() -> N
     assert len(llama) == 2
     assert all(row.sample_count == 60 for row in llama)
     assert next(row for row in llama if row.integration_level == "E2").exact_pair_parity == 1.0
+    corrected_m5 = [
+        row for row in rows if "m5_corrected" in row.evidence_provenance
+    ]
+    assert corrected_m5
+    assert all(row.sample_count == 30 for row in corrected_m5)
+    assert {row.model_id for row in corrected_m5} == {
+        "mlx-community/Qwen3-4B-4bit",
+        "mlx-community/Qwen3-8B-4bit",
+        "mlx-community/Qwen3-14B-4bit",
+    }

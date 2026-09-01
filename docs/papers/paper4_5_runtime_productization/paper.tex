@@ -754,9 +754,12 @@ shortened.
 
 \paragraph{Corrected M5 and profile-policy receipt.}
 A second-host M5 run adds one graph warm-up per path and matched warm/warm and
-cold/cold tails. Over 15 natural-QA examples per checkpoint, concat E2
-preserves every E0 output. Its warm ratios are 1.036, 1.030, and 1.015 for
-Qwen3-4B, 8B, and 14B; cold usable-context ratios are 0.972, 0.976, and 0.974.
+cold/cold tails. Over 30 natural-QA examples per checkpoint, concat E2
+preserves every E0 output. Its warm ratios are 1.035, 1.015, and 0.980 for
+Qwen3-4B, 8B, and 14B; cold usable-context ratios are 0.973, 0.968, and 0.946.
+The 14B warm point estimate is below E0, but its 95\% paired-bootstrap interval
+[0.922, 1.012] includes parity. Unfused segmented ratios contract from 1.290 to
+1.156 and 1.031.
 The 32B preflight is not forced through swap: 22.86~GB is required against
 17.18~GB physical memory, so its row is
 \texttt{NOT\_RUN\_CAPACITY\_GATE}.

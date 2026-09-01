@@ -1400,7 +1400,9 @@ future workload-scale validation and currently resolves as pending. Unmeasured s
 The corrected MLX natural-QA ladder makes `BALANCED` concrete: concatenated native K/V is consumed
 at every eligible layer. Segmented and reduced-layer realizations are useful research candidates,
 but fixed suffixes did not pass the quality gate and therefore remain `CALIBRATION_PENDING`.
-The warmed M5 replication reaches 4B, 8B, and 14B; 32B is
+The corrected M5 replication uses 30 natural-QA examples per model. Concat E2/E0 moves from
+1.035 at 4B to 1.015 at 8B and a 0.980 point estimate at 14B; the 14B interval includes
+parity. Segmented all-layer execution reaches 1.031 at 14B. The 32B row is
 `NOT_RUN_CAPACITY_GATE` on the 16 GiB host. A held-out noncontiguous
 calibration also keeps all 36 Qwen3-4B layers, so it does not promote a sparse profile.
 At useful cross-family scale, Llama 3.1 8B preserves all 60 E0 outputs, aggregate F1, and

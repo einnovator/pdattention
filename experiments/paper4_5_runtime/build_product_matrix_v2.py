@@ -808,18 +808,27 @@ def _mlx_consumer_scaling_rows() -> list[ProductMatrixRow]:
 
     result_root = RESULTS / "paper6_2_mlx"
     paths = sorted((result_root / "model_consumer_scaling").glob("qwen3_*.json"))
-    paths.extend(sorted((result_root / "model_consumer_scaling_m5").glob("*.json")))
+    corrected_m5 = sorted(
+        (result_root / "model_consumer_scaling_m5" / "m5_corrected").glob(
+            "qwen3_*.json"
+        )
+    )
+    paths.extend(
+        corrected_m5
+        if corrected_m5
+        else sorted((result_root / "model_consumer_scaling_m5").glob("*.json"))
+    )
     paths.extend(sorted((result_root / "model_consumer_cross_family").glob("*.json")))
     warmed_stems = {
         path.stem.removesuffix("_warmed")
         for path in paths
-        if path.parent.name == "model_consumer_scaling_m5"
+        if path.parent.name in {"model_consumer_scaling_m5", "m5_corrected"}
         and path.stem.endswith("_warmed")
     }
     rows: list[ProductMatrixRow] = []
     for path in paths:
         if (
-            path.parent.name == "model_consumer_scaling_m5"
+            path.parent.name in {"model_consumer_scaling_m5", "m5_corrected"}
             and path.stem in warmed_stems
         ):
             continue
@@ -848,7 +857,7 @@ def _mlx_consumer_scaling_rows() -> list[ProductMatrixRow]:
             native = condition != "E0_WARM"
             all_layers = condition in {"E2_CONCAT_WARM", "E2_SEGMENTED_ALL_LAYERS"}
             concat = condition == "E2_CONCAT_WARM"
-            profile = "BALANCED" if (not native or concat) else "REDUCED_CANDIDATE"
+            profile = "BALANCED" if (not native or all_layers) else "REDUCED_CANDIDATE"
             profile_status = "MEASURED" if (not native or concat) else "CALIBRATION_PENDING"
             representation = (
                 "E0_SELECTED"

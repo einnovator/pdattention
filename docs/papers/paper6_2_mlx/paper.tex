@@ -525,8 +525,9 @@ alone does not promote them.
 \subsection{M5 timing replication and held-out layer gate}
 
 We repeated the corrected runner on a 16~GiB M5 after one unmeasured graph
-warm-up per execution path. Each measured checkpoint uses one example from
-each dataset under five seeds. Qwen3-4B, 8B, and 14B complete; the 32B
+warm-up per execution path. Each measured checkpoint uses two examples from
+each dataset under five seeds, or 30 paired examples per model. Qwen3-4B, 8B,
+and 14B complete; the 32B
 preflight requires 22.86~GB against 17.18~GB physical memory and is recorded as
 \texttt{NOT\_RUN\_CAPACITY\_GATE}.
 
@@ -536,17 +537,18 @@ preflight requires 22.86~GB against 17.18~GB physical memory and is recorded as
 \caption{Corrected M5 replication. Ratios compare matched warm or cold states;
 concat preserves every E0 output. No reduced profile passes the quality gate.}
 \resizebox{\linewidth}{!}{%
-\input{../shared/results/paper6_2_mlx/model_consumer_scaling_m5/summary/generated_model_consumer_scaling_table.tex}}
+\input{../shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/generated_model_consumer_scaling_table.tex}}
 \label{tab:mlx-m5-replication}
 \end{table}
 
-Warm concat overhead falls from 1.036 at 4B to 1.030 at 8B and 1.015 at 14B.
-Cold usable-context ratios are 0.972, 0.976, and 0.974. Thus the second host
-replicates convergence toward warm parity and a small cold benefit; it does
-not establish a monotonic advantage with parameter count. Unfused segmented
-overhead is larger (1.367, 1.091, and 1.085), while agreement remains
-0.933, 0.867, and 0.933. The M5 result therefore supports the exact concat
-reference and the all-layer product default, not a fused-kernel claim.
+Warm concat ratios fall from 1.035 at 4B to 1.015 at 8B and 0.980 at 14B.
+The 14B paired-bootstrap interval, [0.922, 1.012], includes parity, so the point
+estimate is promising rather than a confirmed native speedup. Cold
+usable-context ratios are 0.973, 0.968, and 0.946. Unfused segmented overhead
+also contracts from 1.290 to 1.156 and 1.031; agreement remains 0.933, 0.867,
+and 0.933. The M5 result therefore strengthens model-scale convergence and the
+exact concat reference. It does not justify a fused-kernel claim or a reduced
+consumer profile.
 
 We also calibrated a parameter-free noncontiguous layer selector on Qwen3-4B.
 Seed 11 greedily tests eight contiguous layer groups under a 0.05-nat
@@ -1380,7 +1382,10 @@ ladder finds exact concatenated E2 quality, warm cost converging from 1.054 to
 segmented overhead falls from 1.165 to 1.047, but no reduced consumer suffix
 passes the natural-QA quality gate. Model scale alone therefore supports cost
 convergence, not a native speed advantage or a smaller \textsc{Balanced}
-consumer fraction. Its 1,500-request pressure
+consumer fraction. A separate 30-example-per-model M5 replication reaches a
+0.980 concat point estimate and 1.031 segmented ratio at 14B, but the concat
+interval includes parity and 32B exceeds the 16~GiB host's capacity gate. Its
+1,500-request pressure
 extension reproduces the eight-resource residency threshold and separates
 repeat-load savings from cold p95. Across a 1,020-request hard-budget sweep, sub-working-set
 budgets cap compact residency but reload every repeated access; fitting all

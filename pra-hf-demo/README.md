@@ -18,8 +18,10 @@ models by default.
 
 The product notebook treats `BALANCED` as the correctness-preserving all-eligible-layer
 profile. Fixed suffixes and the held-out noncontiguous calibration did not justify dropping
-consumer layers, so reduced profiles remain `CALIBRATION_PENDING`. The M5 32B row is a
-capacity rejection, not a measured latency point. Llama 3.1 8B independently preserves all
+consumer layers, so reduced profiles remain `CALIBRATION_PENDING`. The corrected 30-example
+M5 ladder reaches a `0.980x` concat point estimate and `1.031x` segmented ratio at 14B, but
+the concat confidence interval includes parity. The M5 32B row is a capacity rejection, not
+a measured latency point. Llama 3.1 8B independently preserves all
 60 selected-text outputs through native concat, but remains an all-layer transport result rather
 than evidence for a reduced consumer profile.
 
