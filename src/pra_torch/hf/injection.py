@@ -225,12 +225,15 @@ class PRAHFModel:
             self.native_limit_violations += 1
             raise ValueError("Reference encoding exceeded the configured native-operation limit.")
 
-    def _resident_kv(self, kv: LayerKV) -> LayerKV:
-        """Move full cache K/V to configured residency without expanding GQA heads."""
+    def _resident_kv(self, kv: LayerKV, *, detach: bool = True) -> LayerKV:
+        """Move K/V to residency, optionally retaining its autograd graph."""
+
+        key = kv.k.detach() if detach else kv.k
+        value = kv.v.detach() if detach else kv.v
         if self.pra_config.kv_cache_residency == "gpu":
-            return kv
-        key = kv.k.detach().to("cpu")
-        value = kv.v.detach().to("cpu")
+            return LayerKV(key, value, kv.position_ids, kv.position_state)
+        key = key.to("cpu")
+        value = value.to("cpu")
         if self.pra_config.kv_cache_pin_memory and torch.cuda.is_available():
             key = key.pin_memory()
             value = value.pin_memory()
@@ -304,15 +307,39 @@ class PRAHFModel:
         )
         return computed
 
-    @torch.no_grad()
     def add_reference(
         self,
         uri: str,
         input_ids: torch.Tensor,
         *,
         text: str = "",
+        differentiable: bool = False,
     ) -> PRACacheEntry:
-        """Encode one logical source in bounded blocks and publish routable native K/V."""
+        """Encode one source into persistent or differentiable native K/V.
+
+        Inference retains the existing detached-cache behavior. Paper 4
+        training may request an ephemeral graph-backed entry and must rebuild
+        it after every optimizer update.
+        """
+
+        context = torch.enable_grad() if differentiable else torch.no_grad()
+        with context:
+            return self._add_reference_impl(
+                uri,
+                input_ids,
+                text=text,
+                differentiable=differentiable,
+            )
+
+    def _add_reference_impl(
+        self,
+        uri: str,
+        input_ids: torch.Tensor,
+        *,
+        text: str,
+        differentiable: bool,
+    ) -> PRACacheEntry:
+        """Build the cache entry under the caller-selected gradient mode."""
         if input_ids.ndim == 1:
             input_ids = input_ids.unsqueeze(0)
         if input_ids.ndim != 2 or input_ids.shape[0] != 1:
@@ -421,7 +448,7 @@ class PRAHFModel:
                             token_end=logical_end,
                             logical_start=logical_start,
                             logical_end=logical_end,
-                            token_kv=self._resident_kv(kv),
+                            token_kv=self._resident_kv(kv, detach=not differentiable),
                             routing_gist=ChunkRoutingGist(
                                 k=computed.k.detach(),
                                 query_k=(
