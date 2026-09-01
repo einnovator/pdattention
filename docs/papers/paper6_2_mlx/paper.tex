@@ -75,6 +75,15 @@ working-set threshold, while selective int8 remains below the lossless gate.
 An additional 1,500-request Qwen3-4B M4 Pro sweep reproduces that threshold:
 quality is budget-invariant, fitting all eight resources eliminates reloads,
 and mean resolution time falls by about 68\%.
+On a separate 48~GiB M4 Pro, a pinned Qwen3 Q4 ladder at 8B, 14B, and 32B,
+plus Qwen3-30B-A3B, evaluates 60 unique natural-QA model--example pairs.
+Concatenated native K/V preserves all 60 selected-text sequences. A live
+segmented one-softmax path avoids physical K/V concatenation and preserves
+57/60 sequences; its mean absolute gold-log-probability deviation is 0.189,
+0.027, 0.039, and 0.146 nats by model. It costs 1.03--1.12 times selected-text
+completion latency. Reduced consumer suffixes become less
+likelihood-sensitive at dense 32B, but do not preserve sequence identity well
+enough to promote a sparse default.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -93,7 +102,7 @@ whose memory and non-disclosure properties require workload-specific valuation.
 \begin{tabularx}{0.96\linewidth}{lX}
 \toprule
 Integration level & E2 validated in-process; no E3 scheduler claim\\
-Model/hardware & Qwen, Llama, and Gemma-family checks on Apple M5; Qwen3-1.7B/4B replication on M4 Pro\\
+Model/hardware & Qwen, Llama, and Gemma-family checks on Apple M5; Qwen3 1.7B--32B and 30B-A3B on M4 Pro\\
 Workload & QASPER, HotpotQA, and 2WikiMultiHopQA; frozen selections\\
 Quality & 2,086/2,086 matched E0/E2 pairs; six additional oracle-transport cohorts preserve aggregate F1 exactly\\
 Context reduction & 90.4--93.0\% fewer visible prompt tokens\\
@@ -101,7 +110,7 @@ TTFT/ITL tails & Online gateway measured separately; common matched tails \textt
 Throughput & Concurrent E2 inverse-cost ratio 1.072, or 93.3\% of E0 rate\\
 Peak memory & Unified-memory components and controlled pressure measured; full live frontier open\\
 Reuse & HOT/WARM lifecycle and restart recovery measured\\
-Main limitation & Install segmented one-softmax attention in live decode and rerun pressure\\
+Main limitation & Fuse live segmented attention and validate long occupied windows under pressure\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -121,8 +130,8 @@ archive state.
 serving; E2 for bounded native residency, non-disclosure, or persistent resource
 reuse after profiling. \textbf{Use when:} a selected archive should remain
 outside the visible prompt. \textbf{Do not use when:} a cold one-shot request is
-expected to outperform E0 without reuse. \textbf{Main remaining gate:} live
-fused attention plus a joint local-window/PRA-budget/consumer-layer frontier.
+expected to outperform E0 without reuse. \textbf{Main remaining gate:} a fused
+segmented kernel plus a joint local-window/PRA-budget/consumer-layer frontier.
 
 \section{Introduction}
 MLX provides an efficient array framework and model runtime for Apple
@@ -376,6 +385,62 @@ in-process controlled measurements, not queued server tail latency.
 shared immutable K/V raises throughput until the small Apple host saturates.}
 \label{fig:mlx-profile-concurrency}
 \end{figure}
+
+\section{Larger-Model Segmented-Attention Calibration}
+
+The 48~GiB M4 Pro permits a single-process Q4 ladder that was unavailable to
+the original small-host study. We load pinned Qwen3-8B, 14B, and 32B
+checkpoints and Qwen3-30B-A3B. Each model evaluates five unique annotated
+evidence examples from each of QASPER, HotpotQA, and 2Wiki. The selected source
+is bounded at 384 tokens and held fixed across selected-text E0, concatenated
+native E2, live segmented native E2, and six contiguous consumer profiles.
+Retrieval is absent from this experiment. It asks whether MLX transports the
+same selected evidence and how sensitivity to consumer depth scales.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{M4 Pro larger-model calibration over 15 natural-QA examples per
+model. Agreement is greedy sequence agreement with selected-text E0;
+$|\Delta|$LP is the mean across dataset-level absolute gold-log-probability
+deltas. PRA MiB is active all-layer selected K/V, excluding weights and local
+K/V.}
+\resizebox{\linewidth}{!}{\input{../shared/results/mac_scaling/generated_mlx_scaling_table.tex}}
+\label{tab:mlx-large-scaling}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/mac_scaling/mlx_scaling_profiles.pdf}
+\caption{Left: likelihood sensitivity as contiguous late consumers are
+removed. Dense 32B is less sensitive in likelihood, but reduced profiles still
+change generated sequences. Right: selected text, concatenated native K/V,
+and the unfused segmented implementation on the same selected evidence.}
+\label{fig:mlx-large-scaling}
+\end{figure}
+
+Concatenated E2 is the numerical reference path: all 60 model--example pairs
+match E0 sequences. The segmented path performs the same mathematical
+normalization with separate memory and local score blocks, accumulating the
+shared denominator and value numerator in FP32. It matches every 8B and 14B
+sequence and 27/30 across dense 32B and MoE. The remaining changes are
+tie-sensitive numerical differences after 48--64 repeated attention layers,
+not evidence-selection differences; mean absolute answer-likelihood drift
+stays at or below .189 nats. The current Python/MLX composition is also not a
+speed optimization: it costs 1.08, 1.05, 1.03, and 1.12 times E0 completion
+latency. Its systems result is removal of the temporary K/V concatenation,
+not a fused-kernel throughput claim.
+
+The placement result is more conditional. Across the dense ladder, mean
+absolute likelihood loss for the last-three-quarter profile falls from 2.545
+to 1.665 to .356 nats. This supports the hypothesis that larger dense models
+can be less likelihood-sensitive to omitted early consumers. Yet sequence
+agreement for that profile is only .267, .467, and .133, respectively. The
+30B-A3B point is fast and uses 26.4 MiB of active all-layer K/V versus 70.3 MiB
+for dense 32B, but its last-three-quarter loss is 2.662 nats. Parameter
+sparsity therefore does not imply semantic-context sparsity. All reduced-layer
+rows remain \textsc{Calibration Pending}; the correctness profile remains all
+eligible layers.
 
 \section{Natural-Text Causal Controls}
 The QASPER and HotpotQA builders draw natural paper or article text and place a
@@ -992,16 +1057,17 @@ workloads. The server smoke makes that baseline competitive. Conversely, the
 rotating control shows that bounded sequential KV is not automatically a PRA
 archive.
 
-The profile and original natural controls center on one 4-bit Qwen model and
-one machine; Llama/Gemma lifecycle rows are smaller mechanism replications.
+The original profile and natural controls center on one small 4-bit Qwen model;
+Llama/Gemma lifecycle rows remain smaller mechanism replications.
 The initial server experiment has only five repeats per condition, so its
 p95/p99 are not reported; the later gateway load curve reports finite-wave
 tails but serializes one model runner. The natural controls contain real
 dataset text but an inserted fixed answer-code mechanism.
 The first end-task study uses original answers but oracle-scoped evidence. The
-richer M4 replication still uses only two Qwen sizes and 20 examples per
-dataset/model; it establishes cross-scale transport and causal sensitivity,
-not broad model-family generalization. The
+new M4 scaling calibration reaches dense 32B and a 30B-A3B MoE checkpoint, but
+uses only 15 annotated-evidence examples per model and one Qwen family. It
+establishes a consumer-depth scaling signal, not broad family generalization
+or a production profile. The
 routed extension now has 50 sampled examples per condition and dataset (49
 unique on QASPER), a parameter-free lexical/hash index, and four selected
 candidates. Strict EM
@@ -1053,8 +1119,9 @@ production claims. Matched E2 execution removes roughly 91--93\% of visible
 tokens and preserves every output, but its unfused decode is slower. Last-half
 consumption and int8 residency are controlled
 candidates, not product profile defaults. A segmented one-softmax primitive
-removes the dominant K/V concatenation in isolation, but the model runner is
-not called fused until that primitive replaces the live attention path.
+now replaces the live Qwen attention path and removes K/V concatenation. It
+retains a 3--12\% completion-time overhead and small numerical drift because it
+is composed from unfused MLX operations; it is not a fused-kernel speed claim.
 
 \begin{thebibliography}{9}
 \bibitem{hannun2023mlx}

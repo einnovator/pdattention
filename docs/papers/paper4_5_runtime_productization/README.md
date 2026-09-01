@@ -67,6 +67,10 @@ The implementation adds:
 - shared- versus independent-resource concurrency through 16 sessions;
 - selective K/V int8 calibration and sustained multi-query pressure over
   1,125 natural-QA requests.
+- a pinned M4 Pro Qwen3 8B/14B/32B and 30B-A3B profile campaign with exact
+  concatenated E0/E2 sequence parity, a live segmented-attention candidate,
+  and model-normalized consumer-layer calibration over 60 natural-QA
+  model--example pairs.
 
 Reproduce the measured portable profile:
 

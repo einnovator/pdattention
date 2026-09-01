@@ -66,6 +66,11 @@ routing, and memory consumption. A corrected 102-row layer calibration finds
 that no sparse profile is portable across the three families: all eligible
 layers are the balanced correctness profile for each model, while Qwen's
 last-24 profile is only a small-cohort quality-max candidate.
+A 48~GiB M4 Pro calibration then extends Qwen to 8B, 14B, 32B, and
+30B-A3B over 60 unique natural-QA model--example pairs. Full concatenated
+native replay preserves every selected-text sequence. Dense 32B is less
+likelihood-sensitive to reduced consumer suffixes, but no sparse profile
+preserves enough sequence identity to graduate beyond calibration-pending.
 DeepSeek Harness and Pi bridges preserve typed
 tool-result identity through explicit ordinary-engine fallback in all
 \AgentPluginCases{} contract cases. In a five-seed tiny-HF mechanism profile, token-shared
@@ -674,6 +679,58 @@ the routing index remains 2,048 bytes. A service that needs rapid profile
 switching may ingest the union of candidate detail layers. The production
 default instead stores only the chosen profile and re-encodes explicitly if a
 later request asks for missing detail.
+
+\subsection{Larger-model profile scaling on Apple Silicon}
+
+The small semantic cases above establish a profile contract, not a scaling
+law. We therefore apply the same normalized suffix space to pinned 4-bit
+Qwen3-8B, 14B, and 32B checkpoints and Qwen3-30B-A3B on an M4 Pro with 48~GiB
+unified memory. Each model sees the same five unique annotated-evidence
+examples per dataset from QASPER, HotpotQA, and 2Wiki. Selection identity and
+the 384-token source cap are fixed across conditions. This is workload-backed
+calibration evidence; it is not a routed end-task confirmation because the
+dataset annotations provide the selected documents.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Large-model MLX profile calibration. Concat and segmented agreement
+are greedy-sequence agreement with selected-text E0. PRA MiB counts active
+all-layer selected K/V. Every reduced-layer profile remains
+\textsc{Calibration Pending}.}
+\resizebox{\linewidth}{!}{\input{../shared/results/mac_scaling/generated_mlx_scaling_table.tex}}
+\label{tab:profile-large-scaling}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/mac_scaling/mlx_scaling_profiles.pdf}
+\caption{Profile sensitivity and execution time across the dense Qwen ladder
+and the 30B-A3B control. Larger dense models reduce likelihood sensitivity to
+missing early consumers, but do not establish sequence-stable sparse
+profiles.}
+\label{fig:profile-large-scaling}
+\end{figure}
+
+Full concatenated native K/V preserves all 60 selected-text sequences and is
+therefore the \ReferenceCorrectness{} execution path for these rows. The live
+segmented one-softmax implementation preserves 57/60, with mean absolute
+gold-log-probability differences of .189, .027, .039, and .146 nats at 8B,
+14B, 32B, and 30B-A3B. It remains a kernel candidate rather than a replacement
+for the exact reference path. The dense last-three-quarter profile becomes
+less likelihood-sensitive with scale: its mean absolute delta falls from
+2.545 to 1.665 to .356 nats. Sequence agreement does not improve monotonically
+(.267, .467, and .133), so this trend cannot justify a family-level sparse
+default. The MoE profile uses less active K/V but is more layer-sensitive than
+dense 32B. Parameter sparsity and semantic-context sparsity are separate
+profile axes.
+
+These results leave product naming unchanged but strengthen its basis.
+\ReferenceCorrectness{} remains all eligible layers. A reduced
+\QualityMaxCandidate{} may be emitted only with model, revision, workload,
+materialization, and evidence tier attached. \QualityMax{} remains unassigned;
+neither a favorable likelihood mean nor a large-model label can promote it
+without held-out sequence/task validation.
 
 \subsection{Product profile and benchmark matrix}
 

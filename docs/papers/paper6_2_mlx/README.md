@@ -89,6 +89,23 @@ Use `summarize_m4_scaling` and `summarize_m4_pressure` under
 `experiments.paper6_2_mlx` to regenerate the manuscript tables, plots, and
 machine-readable summaries.
 
+The larger-model campaign uses pinned Qwen3 8B/14B/32B Q4 checkpoints and a
+30B-A3B MoE control on the 48 GiB M4 Pro. It compares selected-text E0,
+concatenated native E2, live segmented E2, and model-normalized contiguous
+consumer suffixes. Raw rows are checkpointed beside each JSON output.
+
+```bash
+PYTHONPATH=src python experiments/mac_scaling/run_mlx_profile_scaling.py \
+  --model mlx-community/Qwen3-8B-4bit \
+  --revision 545dc4251c05440727734bcd94334791f6ab0192 \
+  --dataset qasper --dataset hotpotqa --dataset 2wikimultihopqa \
+  --output docs/papers/shared/results/mac_scaling/qwen3_8b_mlx_profiles.json
+```
+
+Model IDs, immutable revisions, seeds, profiles, and evidence tiers are in
+`experiments/mac_scaling/campaign.json`. Run `summarize_mlx_scaling.py` after
+all model points to regenerate the shared table and figure.
+
 A final 1,000-request QASPER matrix crosses HOT/WARM resource budgets 2 and 8
 with local rotating windows 64 and 256. Tight WARM capacity produces SOURCE
 reconstruction as intended; F1 is identical in all cells, and retaining every
