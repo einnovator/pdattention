@@ -1,0 +1,100 @@
+"""Managed and remote llama-server provider for the PRA runtime SDK."""
+
+from __future__ import annotations
+
+import shutil
+from typing import Any
+
+from pra_hf.deployment import PRAEngineCapabilities
+from pra_hf.engine_profiles import EngineType, PrefixCacheMode
+from pra_hf.runtime_providers import RuntimeConfig, RuntimeDoctorReport, RuntimeProvider
+
+
+class LlamaCppRuntimeProvider(RuntimeProvider):
+    engine_type = "llama_cpp"
+    launch_mode = "both"
+
+    def _executable(self, config: RuntimeConfig) -> str | None:
+        configured = config.engine_options.get("executable")
+        return str(configured) if configured else shutil.which("llama-server")
+
+    def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
+        native = bool(config.engine_options.get("native_pra", False))
+        return PRAEngineCapabilities(
+            adapter="llama_cpp_pra" if native else "llama_cpp_http",
+            engine_type=EngineType.LLAMA_CPP,
+            integration_level="E2" if native else "E0",
+            prefix_cache_mode=PrefixCacheMode.EXPLICIT_PREFIX_HANDLE,
+            automatic_prefix_cache=True,
+            explicit_prefix_cache=True,
+            prefix_cache_handle=True,
+            session_state=True,
+            cache_affinity=True,
+            text_fallback=True,
+            native_kv=native,
+            external_kv_residency=native,
+            cpu_kv=native,
+            gpu_kv=native,
+            selected_interval_materialization=native,
+            request_lifetime=native,
+            tenant_isolation=native,
+            streaming=False,
+        )
+
+    def doctor(self, config: RuntimeConfig) -> RuntimeDoctorReport:
+        executable = self._executable(config)
+        native = bool(config.engine_options.get("native_pra", False))
+        checks: list[dict[str, Any]] = [
+            {"name": "provider", "status": "READY", "detail": type(self).__name__},
+            {
+                "name": "llama-server",
+                "status": "READY" if executable else "NOT_INSTALLED",
+                "detail": executable or "Set engine_options.executable or install llama-server.",
+            },
+            {
+                "name": "native-pra",
+                "status": "CONFIGURED" if native else "NOT_CONFIGURED",
+                "detail": (
+                    "PRA-aware server patch with --kv-unified requested."
+                    if native
+                    else "Set engine_options.native_pra=true for the patched E2 server."
+                ),
+            },
+        ]
+        return RuntimeDoctorReport(
+            self.engine_type,
+            "AVAILABLE" if executable else "NOT_INSTALLED",
+            tuple(checks),
+        )
+
+    def build_command(self, config: RuntimeConfig) -> list[str]:
+        executable = self._executable(config)
+        if executable is None:
+            raise RuntimeError("llama-server executable was not found.")
+        if not config.model:
+            raise ValueError("A GGUF model path or -hf repository is required.")
+        command = [
+            executable,
+            "--model",
+            config.model,
+            "--host",
+            config.host,
+            "--port",
+            str(config.port),
+            "--alias",
+            str(config.engine_options.get("alias", config.model)),
+            "--slots",
+        ]
+        if bool(config.engine_options.get("native_pra", False)):
+            command.append("--kv-unified")
+        reserved = {"executable", "alias", "native_pra"}
+        for key, value in config.engine_options.items():
+            if key in reserved:
+                continue
+            option = "--" + str(key).replace("_", "-")
+            if isinstance(value, bool):
+                if value:
+                    command.append(option)
+            else:
+                command.extend((option, str(value)))
+        return command
