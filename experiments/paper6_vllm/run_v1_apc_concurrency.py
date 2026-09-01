@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
+import subprocess
 import time
 from pathlib import Path
 
@@ -80,12 +82,64 @@ def _wait_batch(llm, expected: int):
 
 def _output_row(output) -> dict[str, object]:
     text = str(output.outputs[0].text)
+    metrics = getattr(output, "metrics", None)
+    arrival = getattr(metrics, "arrival_time", None)
+    first_scheduled = getattr(metrics, "first_scheduled_time", None)
+    first_token = getattr(metrics, "first_token_time", None)
+    finished = getattr(metrics, "finished_time", None)
+    token_ids = list(getattr(output.outputs[0], "token_ids", ()) or ())
+
+    def elapsed_ms(end, start):
+        return None if end is None or start is None else (end - start) * 1000.0
+
     return {
         "output_request_id": str(output.request_id),
         "text": text,
         "exact_recovery": EXPECTED in text,
         "num_cached_tokens": output.num_cached_tokens,
         "num_cache_creation_tokens": output.num_cache_creation_tokens,
+        "generated_tokens": len(token_ids),
+        "queue_ms": elapsed_ms(first_scheduled, arrival),
+        "ttft_ms": elapsed_ms(first_token, arrival),
+        "request_latency_ms": elapsed_ms(finished, arrival),
+        "tpot_ms": (
+            elapsed_ms(finished, first_token) / max(len(token_ids) - 1, 1)
+            if finished is not None and first_token is not None and token_ids
+            else None
+        ),
+    }
+
+
+def _command_value(command: list[str]) -> str | None:
+    try:
+        return subprocess.run(
+            command, check=True, capture_output=True, text=True
+        ).stdout.strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+
+def _runtime_metadata() -> dict[str, object]:
+    """Bind an engine receipt to the exact Apple host and kernel source."""
+
+    return {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "hardware_model": _command_value(["sysctl", "-n", "hw.model"]),
+        "cpu_brand": _command_value(["sysctl", "-n", "machdep.cpu.brand_string"]),
+        "physical_memory_bytes": int(
+            _command_value(["sysctl", "-n", "hw.memsize"]) or 0
+        ),
+        "git_commit": _command_value(["git", "rev-parse", "HEAD"]),
+        "vllm_metal_source_commit": _command_value(
+            [
+                "git",
+                "-C",
+                str(Path.home() / "git/llm-engine-lab/src/vllm-metal"),
+                "rev-parse",
+                "HEAD",
+            ]
+        ),
     }
 
 
@@ -288,6 +342,7 @@ def main() -> None:
         "ordinary_prefix_namespace_used_for_pra": False,
         "native_apc_identity": "sha256_logical_selection_and_geometry",
         "scheduler_observation_point": "before_pra_attention_augmentation",
+        "runtime_metadata": _runtime_metadata(),
         "rows": rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
