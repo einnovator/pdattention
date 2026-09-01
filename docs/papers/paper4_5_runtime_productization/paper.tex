@@ -752,6 +752,31 @@ $+0.030$-nat mean likelihood shift. At the three-case 8B
 pinned 40,960-position limit and is recorded as unsupported, not silently
 shortened.
 
+\paragraph{Corrected M5 and profile-policy receipt.}
+A second-host M5 run adds one graph warm-up per path and matched warm/warm and
+cold/cold tails. Over 15 natural-QA examples per checkpoint, concat E2
+preserves every E0 output. Its warm ratios are 1.036, 1.030, and 1.015 for
+Qwen3-4B, 8B, and 14B; cold usable-context ratios are 0.972, 0.976, and 0.974.
+The 32B preflight is not forced through swap: 22.86~GB is required against
+17.18~GB physical memory, so its row is
+\texttt{NOT\_RUN\_CAPACITY\_GATE}.
+
+A held-out noncontiguous Qwen3-4B calibration also fails to remove any layer
+group under a 0.05-nat likelihood and 0.90 first-token constraint. The
+calibrated set remains 36/36 layers and all 12 held-out outputs match E0.
+This is a negative sparsity result, not evidence for a learned reduced
+profile. Accordingly, \texttt{BALANCED} means all eligible consumer layers;
+every reduced or segmented realization remains
+\texttt{CALIBRATION\_PENDING}.
+
+Finally, corrected Qwen3-8B occupied-context rows keep selected detail at
+39.6~MiB and selected-E2 completion at 387.4~ms across 2K, 8K, and 32K source
+occupancy, with 18/18 selected-text sequence agreement. The full visible path
+grows from 6.37 to 31.85~GiB peak allocation. These receipts are imported into
+the product matrix with model revision, host, seed count, and measurement
+status; they do not upgrade unfused segmented execution to a production
+kernel.
+
 \subsection{Product profile and benchmark matrix}
 
 The registry also emits a strict machine-readable product row rather than

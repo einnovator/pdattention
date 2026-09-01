@@ -810,8 +810,19 @@ def _mlx_consumer_scaling_rows() -> list[ProductMatrixRow]:
     paths = sorted((result_root / "model_consumer_scaling").glob("qwen3_*.json"))
     paths.extend(sorted((result_root / "model_consumer_scaling_m5").glob("*.json")))
     paths.extend(sorted((result_root / "model_consumer_cross_family").glob("*.json")))
+    warmed_stems = {
+        path.stem.removesuffix("_warmed")
+        for path in paths
+        if path.parent.name == "model_consumer_scaling_m5"
+        and path.stem.endswith("_warmed")
+    }
     rows: list[ProductMatrixRow] = []
     for path in paths:
+        if (
+            path.parent.name == "model_consumer_scaling_m5"
+            and path.stem in warmed_stems
+        ):
+            continue
         payload = json.loads(path.read_text(encoding="utf-8"))
         if payload.get("experiment") != "matched_economics_and_consumer_depth":
             continue

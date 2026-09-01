@@ -16,6 +16,11 @@ The demo directory contains two executed, user-facing notebooks:
 Both import the library directly from this checkout's `src/` directory and run tiny offline
 models by default.
 
+The product notebook treats `BALANCED` as the correctness-preserving all-eligible-layer
+profile. Fixed suffixes and the held-out noncontiguous calibration did not justify dropping
+consumer layers, so reduced profiles remain `CALIBRATION_PENDING`. The M5 32B row is a
+capacity rejection, not a measured latency point.
+
 The model-family notebook answers whether PRA attaches correctly to Qwen, Llama, and Gemma. The
 runtime notebook instead follows one Llama request through the mechanisms that turn logical PRA
 selection into physical state and a deployable SDK boundary. Its opening table maps the differences

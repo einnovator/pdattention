@@ -77,6 +77,16 @@ def matched_costs(row: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def _percentile(values: list[float], probability: float) -> float:
+    """Return a deterministic nearest-rank percentile for small cohorts."""
+
+    if not values:
+        raise ValueError("Cannot summarize an empty latency cohort.")
+    ordered = sorted(values)
+    rank = max(1, math.ceil(probability * len(ordered)))
+    return ordered[min(rank - 1, len(ordered) - 1)]
+
+
 def _command_value(command: list[str]) -> str | None:
     try:
         return subprocess.run(
@@ -185,7 +195,7 @@ def _measure_condition(
     exact, f1 = _metrics(str(generated["output"]), example.answer)
     output_ids = list(map(int, generated["output_token_ids"]))
     row: dict[str, Any] = {
-        "schema_version": "paper6.2-mlx-model-consumer-scaling-v2",
+        "schema_version": "paper6.2-mlx-model-consumer-scaling-v3",
         "dataset": example.dataset,
         "seed": seed,
         "example_id": example.example_id,
@@ -235,6 +245,8 @@ def _aggregate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     result = []
     for condition in sorted({str(row["condition"]) for row in rows}):
         selected = [row for row in rows if row["condition"] == condition]
+        warm = [float(row["warm_request_ms"]) for row in selected]
+        cold = [float(row["cold_usable_context_ms"]) for row in selected]
         result.append(
             {
                 "condition": condition,
@@ -251,11 +263,15 @@ def _aggregate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     float(row["consumer_layer_fraction"]) for row in selected
                 ),
                 "warm_request_ms": fmean(
-                    float(row["warm_request_ms"]) for row in selected
+                    warm
                 ),
+                "warm_request_median_ms": _percentile(warm, 0.5),
+                "warm_request_p95_ms": _percentile(warm, 0.95),
                 "cold_usable_context_ms": fmean(
-                    float(row["cold_usable_context_ms"]) for row in selected
+                    cold
                 ),
+                "cold_usable_context_median_ms": _percentile(cold, 0.5),
+                "cold_usable_context_p95_ms": _percentile(cold, 0.95),
                 "active_detail_bytes": fmean(
                     float(row["active_detail_bytes"]) for row in selected
                 ),
@@ -292,6 +308,30 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         if row["condition"] == "E0_WARM"
     }
     cohort = _cohort(args)
+
+    # MLX graph compilation is shape-sensitive and can dominate the first
+    # request by orders of magnitude on larger checkpoints. Exercise both
+    # numerical reference paths before recording rows so compile time is not
+    # misreported as steady-state serving latency.
+    if not rows and cohort:
+        _, warmup_example = cohort[0]
+        source, query, _ = _prepared_tokens(
+            tokenizer, warmup_example, args.max_source_tokens
+        )
+        ordinary = make_prompt_cache(model)
+        encoded = model(mx.array(source, dtype=mx.int32)[None], cache=ordinary)
+        mx.eval(encoded)
+        ordinary_states = _cache_snapshot(ordinary)
+        memory = encode_native_memory(model, source)
+        warmup_tokens = min(args.max_new_tokens, 2)
+        _generate_timed(
+            model, tokenizer, query, _restore_cache(model, ordinary_states), warmup_tokens
+        )
+        _generate_timed(
+            model, tokenizer, query, make_native_prompt_cache(model, memory), warmup_tokens
+        )
+        del encoded, ordinary, ordinary_states, memory
+        mx.clear_cache()
 
     # Phase one intentionally uses the unpatched MLX model. Both ordinary and
     # native source encodings are synchronized before warm request timing.
@@ -360,6 +400,26 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     profiles = tuple(args.profile or PROFILE_FRACTIONS)
     if not args.baseline_only:
         installed_layers = install_qwen3_segmented_attention(model)
+        if not any(str(row["condition"]).startswith("E2_SEGMENTED_") for row in rows):
+            _, warmup_example = cohort[0]
+            source, query, _ = _prepared_tokens(
+                tokenizer, warmup_example, args.max_source_tokens
+            )
+            memory = encode_native_memory(model, source)
+            _generate_timed(
+                model,
+                tokenizer,
+                query,
+                make_native_prompt_cache(
+                    model,
+                    memory,
+                    selected_layers=tuple(range(layer_count)),
+                    segmented=True,
+                ),
+                min(args.max_new_tokens, 2),
+            )
+            del memory
+            mx.clear_cache()
     for seed, example in (() if args.baseline_only else cohort):
         identity = (example.dataset, seed, example.example_id)
         profile_conditions = tuple(
@@ -410,11 +470,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         mx.clear_cache()
 
     payload: dict[str, object] = {
-        "schema_version": "paper6.2-mlx-model-consumer-scaling-v2",
+        "schema_version": "paper6.2-mlx-model-consumer-scaling-v3",
         "experiment": "matched_economics_and_consumer_depth",
         "timing_contract": {
             "cold": "synchronized representation encoding plus request generation",
             "warm": "request generation from synchronized reusable representation",
+            "graph_warmup": "one unmeasured request per execution path before measured rows",
+            "tail_statistics": "nearest-rank median and p95 over independent examples",
             "legacy_mixed_ratio": "not reported: cold E0 divided by warm E2 is unmatched",
         },
         "runtime": _runtime_metadata(),

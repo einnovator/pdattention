@@ -1400,6 +1400,9 @@ future workload-scale validation and currently resolves as pending. Unmeasured s
 The corrected MLX natural-QA ladder makes `BALANCED` concrete: concatenated native K/V is consumed
 at every eligible layer. Segmented and reduced-layer realizations are useful research candidates,
 but fixed suffixes did not pass the quality gate and therefore remain `CALIBRATION_PENDING`.
+The warmed M5 replication reaches 4B, 8B, and 14B; 32B is
+`NOT_RUN_CAPACITY_GATE` on the 16 GiB host. A held-out noncontiguous
+calibration also keeps all 36 Qwen3-4B layers, so it does not promote a sparse profile.
 
 Explicit mechanism fields still win over profile defaults. The trace records the requested and
 resolved profile, source registry, version, evidence tier, and status.

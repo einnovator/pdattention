@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .native import (
+    MLXPositionedKVCache,
     MLXSegmentedSelectedKVCache,
     compiled_segmented_selected_attention,
     segmented_selected_attention,
@@ -39,7 +40,9 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
             self.inner = inner
 
         def __call__(self, x, mask=None, cache=None):
-            if not isinstance(cache, MLXSegmentedSelectedKVCache):
+            if not isinstance(
+                cache, (MLXPositionedKVCache, MLXSegmentedSelectedKVCache)
+            ):
                 return self.inner(x, mask, cache)
 
             batch, length, _ = x.shape
@@ -58,6 +61,25 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
             ).transpose(0, 2, 1, 3)
             queries = attention.rope(queries, offset=cache.offset)
             keys = attention.rope(keys, offset=cache.offset)
+            if isinstance(cache, MLXPositionedKVCache):
+                # A non-consumer layer still evaluates the query at its
+                # source-relative RoPE coordinates, but it has no source K/V.
+                # Qwen's model-level mask is derived from cache[0].offset and
+                # therefore incorrectly assumes those skipped source tokens
+                # are physically present. Build the local causal mask here.
+                layer_mask = cache.make_mask(length, return_array=True)
+                keys, values = cache.update_and_fetch(keys, values)
+                output = mx.fast.scaled_dot_product_attention(
+                    queries,
+                    keys,
+                    values,
+                    scale=attention.scale,
+                    mask=layer_mask,
+                )
+                output = output.transpose(0, 2, 1, 3).reshape(
+                    batch, length, -1
+                )
+                return attention.o_proj(output)
             # Build the mask before update_and_fetch_segments advances the
             # local cache offset. Otherwise the current query is counted twice.
             layer_mask = cache.make_mask(length, return_array=True)

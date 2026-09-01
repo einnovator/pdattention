@@ -1,4 +1,5 @@
 from experiments.paper6_2_mlx.run_model_consumer_scaling import (
+    _percentile,
     matched_costs,
     resolve_consumer_layers,
 )
@@ -14,6 +15,12 @@ def test_matched_costs_keep_warm_and_cold_states_separate():
     assert matched_costs(
         {"completion_latency_ms": 40.0, "representation_encode_ms": 60.0}
     ) == {"warm_request_ms": 40.0, "cold_usable_context_ms": 100.0}
+
+
+def test_nearest_rank_percentiles_expose_first_use_tail_outliers():
+    values = [10.0, 11.0, 12.0, 13.0, 1_000.0]
+    assert _percentile(values, 0.5) == 12.0
+    assert _percentile(values, 0.95) == 1_000.0
 
 
 def _row(condition, f1, logprob, agreement, warm, cold, fraction):

@@ -517,10 +517,57 @@ At 32B, the last-7/8 profile loses 0.030 mean F1, has a wide paired bootstrap
 interval $[-0.130, 0.058]$, and drifts by 1.009 nats in absolute answer likelihood.
 The last-half profile reaches near-E0 warm cost (1.011) but loses 0.078 F1 and drifts by 2.173
 nats. Similar or larger likelihood losses occur at smaller sizes. The minimum
-supported consumer fraction therefore remains one; \textsc{Balanced} stays a
-calibration candidate rather than a product profile. A learned gate or
-layer-specific training may change that result, but parameter scale alone does
-not.
+supported consumer fraction therefore remains one. The SDK's
+\textsc{Balanced} profile consequently consumes native memory at all eligible
+layers. Reduced profiles remain \textsc{Calibration Pending}; parameter scale
+alone does not promote them.
+
+\subsection{M5 timing replication and held-out layer gate}
+
+We repeated the corrected runner on a 16~GiB M5 after one unmeasured graph
+warm-up per execution path. Each measured checkpoint uses one example from
+each dataset under five seeds. Qwen3-4B, 8B, and 14B complete; the 32B
+preflight requires 22.86~GB against 17.18~GB physical memory and is recorded as
+\texttt{NOT\_RUN\_CAPACITY\_GATE}.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Corrected M5 replication. Ratios compare matched warm or cold states;
+concat preserves every E0 output. No reduced profile passes the quality gate.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_2_mlx/model_consumer_scaling_m5/summary/generated_model_consumer_scaling_table.tex}}
+\label{tab:mlx-m5-replication}
+\end{table}
+
+Warm concat overhead falls from 1.036 at 4B to 1.030 at 8B and 1.015 at 14B.
+Cold usable-context ratios are 0.972, 0.976, and 0.974. Thus the second host
+replicates convergence toward warm parity and a small cold benefit; it does
+not establish a monotonic advantage with parameter count. Unfused segmented
+overhead is larger (1.367, 1.091, and 1.085), while agreement remains
+0.933, 0.867, and 0.933. The M5 result therefore supports the exact concat
+reference and the all-layer product default, not a fused-kernel claim.
+
+We also calibrated a parameter-free noncontiguous layer selector on Qwen3-4B.
+Seed 11 greedily tests eight contiguous layer groups under a 0.05-nat
+absolute-likelihood bound and 0.90 first-token agreement, then seeds
+23/37/53/71 form the held-out cohort. Every candidate removal fails on the
+calibration split; even dropping the first five layers changes likelihood by
+1.538 nats. The selected set is therefore all 36 layers.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Held-out noncontiguous consumer-layer calibration. The calibrated
+gate is learned from the calibration split but resolves to all layers.}
+\input{../shared/results/paper6_2_mlx/generated_learned_gate_table.tex}
+\label{tab:mlx-learned-layer-gate}
+\end{table}
+
+The 12 held-out examples preserve every selected-text sequence, but because
+the calibrated action equals the all-layer action this is a negative sparsity
+result. A trained, query-conditioned gate remains open work. Fixed suffixes
+and calibration-only group elimination have both failed.
 
 \section{Long-Context Segmented Execution}
 \label{sec:mlx-long-context}
@@ -569,6 +616,30 @@ selected detail is 43.9 MiB versus 1,280 MiB full-source K/V. At 32B the
 corresponding pair is 70.3 versus 2,048 MiB, while ordinary full-prefix peak
 allocation reaches 25.62 GiB. The three-case 8B
 32K boundary is useful for mechanism and pressure, not tail-latency inference.
+
+\paragraph{Corrected occupied-context curve.}
+An independent Qwen3-8B rerun uses six natural-QA examples at each of 2K, 8K,
+and 32K occupied source tokens. Selection remains fixed at the same bounded
+evidence, and each execution path is warmed before measurement.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Corrected occupied-context pressure. Selected detail stays fixed as
+the distractor-bearing visible context grows. Times are in-process completion
+latencies and do not estimate queued tails.}
+\input{../shared/results/paper6_2_mlx/generated_corrected_pressure_table.tex}
+\label{tab:mlx-corrected-pressure}
+\end{table}
+
+Selected E2 agrees with selected-text E0 on all 18 sequences and keeps active
+detail at 39.6~MiB. Its mean completion time is 387.4~ms at every occupancy,
+1.104 times the 350.9~ms E0 selected path. In contrast, full-visible peak
+allocation grows from 6.37 to 31.85~GiB and completion time from 387.1 to
+1,116.0~ms. Full-source native K/V grows from 288 to 4,608~MiB and is not the
+intended product mode. Query restart fails on every 8K and 32K sequence,
+confirming that source-relative position continuity is a correctness
+requirement rather than optional metadata.
 
 \section{Natural-Text Causal Controls}
 The QASPER and HotpotQA builders draw natural paper or article text and place a
