@@ -320,7 +320,7 @@ def _load_model(args, regime: HFAdaptationRegime):
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         revision=args.revision,
-        dtype=dtype,
+        torch_dtype=dtype,
         attn_implementation="eager",
     ).to(args.device)
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
