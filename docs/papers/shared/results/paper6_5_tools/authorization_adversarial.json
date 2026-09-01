@@ -1,0 +1,85 @@
+{
+  "schema_version": "paper6.5-authorization-adversarial-v1",
+  "experiment": "typed_execution_authorization_boundary",
+  "evidence_tier": "DETERMINISTIC_MECHANISM_TEST",
+  "rows": [
+    {
+      "case": "valid_bound_call",
+      "expected_reason": "executed",
+      "observed_reason": "executed",
+      "executed": true,
+      "passed": true
+    },
+    {
+      "case": "cross_tenant_replay",
+      "expected_reason": "tenant_not_authorized",
+      "observed_reason": "tenant_not_authorized",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "cross_session_replay",
+      "expected_reason": "session_not_authorized",
+      "observed_reason": "session_not_authorized",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "expired_grant",
+      "expected_reason": "authorization_expired",
+      "observed_reason": "authorization_expired",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "undisclosed_uri",
+      "expected_reason": "tool_not_disclosed",
+      "observed_reason": "tool_not_disclosed",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "write_escalation",
+      "expected_reason": "write_not_authorized",
+      "observed_reason": "write_not_authorized",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "destructive_escalation",
+      "expected_reason": "destructive_not_authorized",
+      "observed_reason": "destructive_not_authorized",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "unknown_argument_injection",
+      "expected_reason": "unknown_argument",
+      "observed_reason": "unknown_argument",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "argument_type_confusion",
+      "expected_reason": "argument_type_mismatch",
+      "observed_reason": "argument_type_mismatch",
+      "executed": false,
+      "passed": true
+    },
+    {
+      "case": "revoked_resource",
+      "expected_reason": "tool_revoked",
+      "observed_reason": "tool_revoked",
+      "executed": false,
+      "passed": true
+    }
+  ],
+  "summary": {
+    "checks": 10,
+    "checks_passed": 10,
+    "adversarial_attempts": 9,
+    "adversarial_attempts_blocked": 9,
+    "valid_calls_executed": 1
+  },
+  "scope": "Deterministic in-memory execution-boundary checks; not a penetration test or remote-provider security evaluation."
+}

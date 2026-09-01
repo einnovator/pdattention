@@ -1506,6 +1506,25 @@ Fusion remains the SDK default, diversity union is a measured experimental
 high-recall mode, and callbacks or dynamic detail generation remain outside
 this paper.
 
+\subsection{Request-scoped authorization controls}
+\label{sec:authorization-adversarial}
+
+The final mechanism check holds discovery and handler behavior fixed and
+attacks only the execution boundary. One correctly tenant/session-bound write
+executes. All nine adversarial cases are rejected for the preregistered reason:
+cross-tenant replay, cross-session replay, expiry, undisclosed identity, write
+and destructive privilege escalation, unknown-argument injection,
+argument-type confusion, and revocation. Thus the measured result is 9/9
+blocked attacks and 1/1 valid execution. The raw artifact records expected and
+observed reason codes for every row.
+
+This is a deterministic in-memory mechanism test, not a claim of end-to-end
+security. It establishes that retrieval score and model choice cannot create
+execution authority, and that an otherwise valid URI grant can be scoped to a
+tenant, session, and lifetime. Remote provider boundaries, token theft,
+distributed revocation propagation, and cross-tenant physical cache residency
+remain outside the experiment.
+
 \begin{thebibliography}{9}
 \bibitem{schick2023toolformer}
 Timo Schick, Jane Dwivedi-Yu, Roberto Dess\`i, et al.

@@ -78,6 +78,70 @@ def test_executor_rejects_destructive_call_without_separate_authority():
     assert result.reason == "destructive_not_authorized"
 
 
+def test_executor_rejects_cross_tenant_and_cross_session_grant_replay():
+    resources = realistic_tool_catalog()
+    task = next(task for task in workflow_tasks() if task.task_id == "m4-user-3")
+    executor = workflow_executor(resources, task)
+    update = _resource("update_user")
+    call = ToolCall("update_user", {"user_id": "u17", "status": "reviewed"})
+    authorization = ExecutionAuthorization(
+        frozenset((update.uri,)),
+        allow_writes=True,
+        tenant_id=update.tenant_id,
+        session_id="session-a",
+    )
+
+    wrong_tenant = executor.execute(
+        call,
+        selected_uris=(update.uri,),
+        authorization=authorization,
+        tenant_id="tenant-b",
+        session_id="session-a",
+        call_id="cross-tenant",
+    )
+    wrong_session = executor.execute(
+        call,
+        selected_uris=(update.uri,),
+        authorization=authorization,
+        tenant_id=update.tenant_id,
+        session_id="session-b",
+        call_id="cross-session",
+    )
+    accepted = executor.execute(
+        call,
+        selected_uris=(update.uri,),
+        authorization=authorization,
+        tenant_id=update.tenant_id,
+        session_id="session-a",
+        call_id="bound-grant",
+    )
+
+    assert wrong_tenant.reason == "tenant_not_authorized"
+    assert wrong_session.reason == "session_not_authorized"
+    assert accepted.executed
+
+
+def test_executor_rejects_expired_authorization_before_handler_execution():
+    resources = realistic_tool_catalog()
+    task = next(task for task in workflow_tasks() if task.task_id == "m4-user-3")
+    executor = workflow_executor(resources, task)
+    update = _resource("update_user")
+    result = executor.execute(
+        ToolCall("update_user", {"user_id": "u17", "status": "reviewed"}),
+        selected_uris=(update.uri,),
+        authorization=ExecutionAuthorization(
+            frozenset((update.uri,)),
+            allow_writes=True,
+            expires_at_unix=100.0,
+        ),
+        now_unix=100.0,
+        call_id="expired-grant",
+    )
+
+    assert not result.executed
+    assert result.reason == "authorization_expired"
+
+
 def test_workflow_catalog_covers_one_through_five_step_composition():
     horizons = {len(task.steps) for task in workflow_tasks()}
     assert {1, 3, 4, 5}.issubset(horizons)
@@ -85,4 +149,3 @@ def test_workflow_catalog_covers_one_through_five_step_composition():
     for task in workflow_tasks():
         assert set(task.required_tools) <= catalog_names
         assert task.unsafe_tools.isdisjoint(task.required_tools)
-

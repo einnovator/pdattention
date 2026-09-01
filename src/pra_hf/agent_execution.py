@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Mapping, Sequence
 
@@ -36,11 +37,20 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class ExecutionAuthorization:
-    """Request-scoped authority independent of discovery confidence."""
+    """Request-scoped authority independent of discovery confidence.
+
+    ``tenant_id`` and ``session_id`` optionally bind a grant to the caller's
+    execution scope.  ``expires_at_unix`` bounds replay in long-running agent
+    sessions.  They are optional so local fixtures and older SDK callers keep
+    their URI-only behavior while production gateways can enforce all three.
+    """
 
     allowed_uris: frozenset[str]
     allow_writes: bool = False
     allow_destructive: bool = False
+    tenant_id: str | None = None
+    session_id: str | None = None
+    expires_at_unix: float | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +154,9 @@ class SafeToolExecutor:
         authorization: ExecutionAuthorization,
         prior_observations: Sequence[AgentResource] = (),
         call_id: str,
+        tenant_id: str | None = None,
+        session_id: str | None = None,
+        now_unix: float | None = None,
     ) -> ToolExecutionResult:
         """Validate and execute one proposed call against the disclosed set."""
 
@@ -152,6 +165,28 @@ class SafeToolExecutor:
         resource = self.by_name.get(call.name)
         if resource is None:
             return ToolExecutionResult(False, False, "unknown_tool", None, call)
+        if authorization.tenant_id is not None:
+            if tenant_id != authorization.tenant_id:
+                return ToolExecutionResult(
+                    False, False, "tenant_not_authorized", resource.uri, call
+                )
+            if resource.tenant_id != authorization.tenant_id:
+                return ToolExecutionResult(
+                    False, False, "resource_tenant_mismatch", resource.uri, call
+                )
+        if (
+            authorization.session_id is not None
+            and session_id != authorization.session_id
+        ):
+            return ToolExecutionResult(
+                False, False, "session_not_authorized", resource.uri, call
+            )
+        if authorization.expires_at_unix is not None:
+            current_time = time.time() if now_unix is None else now_unix
+            if current_time >= authorization.expires_at_unix:
+                return ToolExecutionResult(
+                    False, False, "authorization_expired", resource.uri, call
+                )
         if resource.uri not in selected_uris:
             return ToolExecutionResult(False, False, "tool_not_disclosed", resource.uri, call)
         if resource.uri not in authorization.allowed_uris:
@@ -192,4 +227,3 @@ class SafeToolExecutor:
         return ToolExecutionResult(
             True, True, "executed", resource.uri, call, observation, output
         )
-

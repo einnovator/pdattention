@@ -227,6 +227,13 @@ rebuilt, or a model adapter can change without weakening record atomicity or
 authorization. Conversely, a high retrieval score cannot bypass palette
 membership, exact activation, schema validation, or host permission.
 
+The implementation also supports optional tenant, session, and expiry binding
+on each execution grant. These checks precede disclosure, risk, schema, and
+handler checks. A grant issued for one session therefore cannot be replayed in
+another session or tenant merely because the discovered URI is identical.
+Appendix~\ref{sec:authorization-adversarial} reports the corresponding
+deterministic mechanism matrix.
+
 The local implementation uses lazy view objects and a cache keyed by the
 encoding fingerprint described above. This makes registration inexpensive and
 permits warm full-record reactivation. It does not imply that an opaque remote
@@ -808,9 +815,12 @@ increasing model confusion.
 
 The reference resolver still contains exhaustive Python components. Indexed
 latency is measured locally, not under a production remote-serving topology.
-The paper does not provide a comprehensive adversarial security evaluation,
-distributed cache policy, cross-tenant residency study, or remote-provider
-request/TTFT analysis. Tool execution uses an in-memory harness.
+The paper does not provide a comprehensive penetration test, distributed cache
+policy, cross-tenant residency study, or remote-provider request/TTFT analysis.
+The in-memory execution harness does test disclosure bypass, privilege
+escalation, schema confusion, revocation, expiry, and cross-tenant/session
+grant replay, but this bounded matrix is not a substitute for hostile network
+and provider testing.
 
 Skills are declarative only. Scripted skills, executable assets, mutation,
 session inheritance, and long-horizon procedural evaluation are excluded.
