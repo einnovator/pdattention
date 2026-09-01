@@ -27,9 +27,11 @@ Python-thread sweep is a negative latency result: all 20 tensors restore
 exactly, while requested 10--50 ms leads delay the caller by 193--235 ms.
 The replacement event-loop-owned promotion path is now measured: all 35
 outputs are exact, and a 250 ms lead reduces median demand stall to 0.013 ms.
-The native HTTP gateway is also measured through concurrency eight, including
-streaming cancellation and cleanup; TTFT p95 rises from 40.4 to 2,336.9 ms as
-the serialized model runner queues.
+The native HTTP gateway is measured through concurrency sixteen, including
+streaming cancellation and cleanup. A gateway correction now converts raw
+native token rows into OpenAI-compatible deltas and a terminal completion event.
+All 31 concurrent outputs are exact; TTFT p95 rises from 35.6 to 5,026.6 ms as
+the serialized model runner queues, while throughput stays near 3 requests/s.
 
 The shared lifecycle manager now owns the local built-in HiCache file backend
 end to end. Across 80 examples spanning three datasets at 0.6B and QASPER at

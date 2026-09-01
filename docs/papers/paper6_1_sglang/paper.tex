@@ -64,8 +64,9 @@ output. Gemma-3-1B is not runnable on the pinned SGLang-MLX build because its
 per-layer sliding-window topology is unsupported before PRA is attached. An
 event-loop-owned replacement for Python-thread prefetch preserves 35/35
 outputs and, with 250 ms lead, reduces median demand stall to 0.013 ms. The
-native streaming gateway then covers concurrency one through eight,
-cancellation, and request-owned cleanup; TTFT tails expose the serialized
+native streaming gateway then covers concurrency one through sixteen,
+cancellation, and request-owned cleanup; all 31 concurrent outputs are exact.
+TTFT p95 reaches 5.03 s at concurrency sixteen, exposing the serialized
 model-runner queue rather than hidden parallel execution.
 \end{abstract}
 
@@ -93,7 +94,7 @@ TTFT/ITL tails & Online gateway measured separately; common matched tails \textt
 Throughput & Concurrent E2 inverse-cost ratio 1.054, or 94.9\% of E0 rate\\
 Peak memory & Native objects measured; complete engine decomposition \texttt{NOT\_MEASURED}\\
 Reuse & Radix and PRA identities remain separate; local HiCache cold/warm measured\\
-Main limitation & Distributed HiCache, scheduler prefetch, affinity, and tail curves\\
+Main limitation & Distributed HiCache, distributed scheduler prefetch, affinity, and continuous batching\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -468,11 +469,16 @@ mechanism, while distributed prefetch policy remains open.
 \end{table}
 
 The native executor also runs through the OpenAI-compatible streaming gateway.
-Throughput is 3.04--3.20 requests/s from concurrency one to eight; TTFT p95
-rises from 40.4 to 2,336.9 ms under queued load. Cancellation after the first
-streamed token succeeds, and every exercised session releases request-owned
-PRA state. These measurements include HTTP handling and queueing but remain a
-single-host SGLang-MLX realization rather than distributed HiCache evidence.
+A runtime correction normalizes raw native token rows into portable delta and
+completion events; before this correction the HTTP layer emitted metadata-only
+chunks and did not commit streamed sessions. The corrected run returns 24
+content chunks per request with exact output in all 31 concurrency requests.
+Throughput remains 2.99--3.06 requests/s from concurrency one to sixteen; TTFT
+p95 rises from 35.6 to 5,026.6 ms under queued load. Cancellation after the
+first streamed token succeeds, and every exercised session releases
+request-owned PRA state. These measurements include HTTP handling and queueing
+but remain a single-host SGLang-MLX realization rather than distributed
+HiCache evidence.
 
 \begin{table}[!htbp]
 \centering
