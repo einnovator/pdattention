@@ -133,6 +133,9 @@ def summarize(paths: list[Path]) -> dict[str, object]:
                         selected_native["active_detail_bytes"]
                         if selected_native else None
                     ),
+                    "full_native_active_detail_bytes": (
+                        source["active_detail_bytes"] if source else None
+                    ),
                     "source_relative_logit_rmse": (
                         source["first_logit_rmse_vs_full"] if source else None
                     ),
@@ -192,6 +195,51 @@ def _write_table(path: Path, comparisons: list[dict]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _write_dilution_table(path: Path, comparisons: list[dict]) -> None:
+    rows = [row for row in comparisons if row["context_target_tokens"] in {8192, 32768}]
+    lines = [
+        r"\begin{tabular}{llrrrrrr}",
+        r"\toprule",
+        r"Model & Context & $n$ & $\Delta$LP & $\Delta$F1 & E2 agr. & selected MiB & full MiB \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        lines.append(
+            f"{_short_model(str(row['model_id']))} & "
+            f"{int(row['context_target_tokens']) // 1024}K & "
+            f"{int(row['samples'])} & "
+            f"{row['full_minus_selected_gold_logprob']:+.3f} & "
+            f"{row['full_minus_selected_f1']:+.3f} & "
+            f"{row['selected_native_sequence_agreement']:.3f} & "
+            f"{row['selected_native_active_detail_bytes'] / 2**20:.1f} & "
+            f"{row['full_native_active_detail_bytes'] / 2**20:.1f} \\\\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_position_table(path: Path, comparisons: list[dict]) -> None:
+    rows = [row for row in comparisons if row["context_target_tokens"] in {8192, 32768}]
+    lines = [
+        r"\begin{tabular}{llrrrrr}",
+        r"\toprule",
+        r"Model & Context & $n$ & source RMSE & restart RMSE & source agr. & restart agr. \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        lines.append(
+            f"{_short_model(str(row['model_id']))} & "
+            f"{int(row['context_target_tokens']) // 1024}K & "
+            f"{int(row['samples'])} & "
+            f"{row['source_relative_logit_rmse']:.3f} & "
+            f"{row['query_restart_logit_rmse']:.3f} & "
+            f"{row['source_relative_sequence_agreement']:.3f} & "
+            f"{row['query_restart_sequence_agreement']:.3f} \\\\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _plot(path: Path, comparisons: list[dict]) -> None:
     import matplotlib.pyplot as plt
 
@@ -238,6 +286,46 @@ def _plot(path: Path, comparisons: list[dict]) -> None:
     plt.close(figure)
 
 
+def _plot_single(path: Path, comparisons: list[dict], *, position: bool) -> None:
+    import matplotlib.pyplot as plt
+
+    models = sorted({str(row["model_id"]) for row in comparisons})
+    figure, axis = plt.subplots(figsize=(6.4, 3.8))
+    for model in models:
+        values = sorted(
+            (row for row in comparisons if row["model_id"] == model),
+            key=lambda row: row["context_target_tokens"],
+        )
+        x = [row["context_target_tokens"] / 1024 for row in values]
+        if position:
+            axis.plot(
+                x, [row["source_relative_logit_rmse"] for row in values],
+                marker="o", label=f"{_short_model(model)} source",
+            )
+            axis.plot(
+                x, [row["query_restart_logit_rmse"] for row in values],
+                marker="x", linestyle="--", label=f"{_short_model(model)} restart",
+            )
+        else:
+            axis.plot(
+                x, [row["full_minus_selected_gold_logprob"] for row in values],
+                marker="o", label=_short_model(model),
+            )
+    axis.set_xscale("log", base=2)
+    axis.set_xlabel("Full-context source tokens (K)")
+    if position:
+        axis.set_yscale("log")
+        axis.set_ylabel("First-logit RMSE vs ordinary prefix")
+    else:
+        axis.axhline(0, color="black", linewidth=0.8)
+        axis.set_ylabel("Gold logP: full minus selected")
+    axis.legend(fontsize=7)
+    figure.tight_layout()
+    figure.savefig(path.with_suffix(".png"), dpi=180)
+    figure.savefig(path.with_suffix(".pdf"))
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("inputs", nargs="+", type=Path)
@@ -251,7 +339,19 @@ def main() -> None:
     _write_csv(args.output_dir / "mlx_long_context_aggregate.csv", payload["aggregate"])
     _write_csv(args.output_dir / "mlx_long_context_comparisons.csv", payload["comparisons"])
     _write_table(args.output_dir / "generated_mlx_long_context_table.tex", payload["comparisons"])
+    _write_dilution_table(
+        args.output_dir / "generated_context_dilution_table.tex", payload["comparisons"]
+    )
+    _write_position_table(
+        args.output_dir / "generated_position_geometry_table.tex", payload["comparisons"]
+    )
     _plot(args.output_dir / "mlx_long_context", payload["comparisons"])
+    _plot_single(
+        args.output_dir / "mlx_context_dilution", payload["comparisons"], position=False
+    )
+    _plot_single(
+        args.output_dir / "mlx_position_geometry", payload["comparisons"], position=True
+    )
 
 
 if __name__ == "__main__":
