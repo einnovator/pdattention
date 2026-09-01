@@ -430,7 +430,11 @@ def main() -> None:
                     query_tokens=query_tokens,
                     placeholder_token=padding_token,
                     logical_key=logical_key,
-                    scope=f"{condition}-{wave}-{slot}",
+                    # Requests share one immutable resource/session scope, so
+                    # ordinary APC may reuse identical query blocks in E2 just
+                    # as it does after the selected source block in E0. Cross-
+                    # resource isolation is measured by the dedicated suite.
+                    scope=condition,
                     detached_pages=args.detached_pages,
                 )
                 for slot in range(args.concurrency)
