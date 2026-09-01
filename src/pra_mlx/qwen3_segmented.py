@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from .native import MLXSegmentedSelectedKVCache, segmented_selected_attention
+from .native import (
+    MLXSegmentedSelectedKVCache,
+    compiled_segmented_selected_attention,
+    segmented_selected_attention,
+)
 
 
-def install_qwen3_segmented_attention(model: object) -> int:
+def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -> int:
     """Patch Qwen3 attention layers to consume physically separate PRA K/V.
 
     The wrapper delegates ordinary and concatenated-cache requests to MLX-LM's
@@ -62,7 +66,12 @@ def install_qwen3_segmented_attention(model: object) -> int:
             )
             # Qwen3 builds one mask from cache[0]. Consumer profiles may start
             # later in the stack, so every selected layer derives its own mask.
-            output = segmented_selected_attention(
+            attention_fn = (
+                compiled_segmented_selected_attention
+                if compiled
+                else segmented_selected_attention
+            )
+            output = attention_fn(
                 queries,
                 memory_k,
                 memory_v,

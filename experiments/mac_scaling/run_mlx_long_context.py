@@ -196,7 +196,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
             selected_ordinary = make_prompt_cache(model)
             started = time.perf_counter()
-            model(mx.array(selected_tokens, dtype=mx.int32)[None], cache=selected_ordinary)
+            selected_encoded = model(
+                mx.array(selected_tokens, dtype=mx.int32)[None],
+                cache=selected_ordinary,
+            )
+            mx.eval(selected_encoded)
             selected_states = _cache_snapshot(selected_ordinary)
             selected_e0_encode_ms = (time.perf_counter() - started) * 1000.0
             started = time.perf_counter()
@@ -257,7 +261,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 )
                 started = time.perf_counter()
                 ordinary = make_prompt_cache(model)
-                model(mx.array(full_tokens, dtype=mx.int32)[None], cache=ordinary)
+                encoded = model(
+                    mx.array(full_tokens, dtype=mx.int32)[None], cache=ordinary
+                )
+                mx.eval(encoded)
                 ordinary_states = _cache_snapshot(ordinary)
                 e0_encode_ms = (time.perf_counter() - started) * 1000.0
                 started = time.perf_counter()
@@ -369,10 +376,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     existing[key] = row
                     pending.append(row)
                 _append(checkpoint, pending)
-                del ordinary, ordinary_states, memory
+                del encoded, ordinary, ordinary_states, memory
                 mx.clear_cache()
 
-            del selected_ordinary, selected_states, selected_memory
+            del selected_encoded, selected_ordinary, selected_states, selected_memory
             mx.clear_cache()
 
     rows = list(existing.values())

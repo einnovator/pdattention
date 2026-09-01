@@ -797,6 +797,136 @@ def _mlx_m4_pressure_rows() -> list[ProductMatrixRow]:
     return rows
 
 
+def _mlx_consumer_scaling_rows() -> list[ProductMatrixRow]:
+    """Import corrected MLX model/layer scaling into the product registry.
+
+    The corrected campaign synchronizes both ordinary source prefill and native
+    K/V encoding before starting request timers. ``E2_CONCAT_WARM`` consumes
+    memory at every eligible layer and is the evidence behind ``BALANCED``.
+    Segmented and reduced-layer realizations remain calibration candidates.
+    """
+
+    result_root = RESULTS / "paper6_2_mlx"
+    paths = sorted((result_root / "model_consumer_scaling").glob("qwen3_*.json"))
+    paths.extend(sorted((result_root / "model_consumer_scaling_m5").glob("*.json")))
+    rows: list[ProductMatrixRow] = []
+    for path in paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("experiment") != "matched_economics_and_consumer_depth":
+            continue
+        source_rows = list(payload["rows"])
+        runtime = payload["runtime"]
+        model_id = str(payload["model_id"])
+        layer_count = int(payload["layer_count"])
+        model_size_match = re.search(r"(\d+(?:\.\d+)?)B", model_id, re.IGNORECASE)
+        model_size = (
+            int(float(model_size_match.group(1)) * 1_000_000_000)
+            if model_size_match
+            else None
+        )
+        hardware_model = str(runtime.get("hardware_model") or "Apple Silicon")
+        physical_memory = optional_number(runtime.get("physical_memory_bytes"))
+        provenance = str(path.relative_to(ROOT)).replace("\\", "/")
+        by_condition = {
+            str(aggregate["condition"]): aggregate
+            for aggregate in payload["aggregate"]
+        }
+        for condition, aggregate in by_condition.items():
+            selected = [row for row in source_rows if row["condition"] == condition]
+            native = condition != "E0_WARM"
+            all_layers = condition in {"E2_CONCAT_WARM", "E2_SEGMENTED_ALL_LAYERS"}
+            concat = condition == "E2_CONCAT_WARM"
+            profile = "BALANCED" if (not native or concat) else "REDUCED_CANDIDATE"
+            profile_status = "MEASURED" if (not native or concat) else "CALIBRATION_PENDING"
+            representation = (
+                "E0_SELECTED"
+                if not native
+                else "E2_HOT" if concat else "E2_SEGMENTED_CANDIDATE"
+            )
+            consumer_layers = tuple(selected[0].get("consumer_layers") or ())
+            source_tokens = statistics.fmean(float(row["source_tokens"]) for row in selected)
+            active_layer_tokens = statistics.fmean(
+                float(row["source_tokens"]) * float(row["consumer_layer_count"])
+                for row in selected
+            )
+            ttft = [float(row["ttft_ms"]) for row in selected]
+            itl = [float(row["itl_ms"]) for row in selected]
+            completion = [float(row["completion_latency_ms"]) for row in selected]
+            rows.append(
+                ProductMatrixRow(
+                    row_id=(
+                        f"mlx-consumer-{_slug(hardware_model)}-{_slug(model_id)}-"
+                        f"{_slug(condition)}"
+                    ),
+                    model_family="qwen",
+                    model_id=model_id,
+                    model_revision=payload.get("model_revision"),
+                    model_size=model_size,
+                    model_variant=condition,
+                    engine="mlx-lm",
+                    engine_version=str(runtime.get("mlx_lm") or "unknown"),
+                    hardware=(
+                        f"{hardware_model}, {int(physical_memory / 1024**3)} GiB unified memory"
+                        if physical_memory is not None
+                        else hardware_model
+                    ),
+                    profile=profile,
+                    profile_status=profile_status,
+                    workload="oracle_evidence_original_answer_qa/layer_scaling",
+                    dataset="qasper+hotpotqa+2wikimultihopqa",
+                    quality_metric="token_f1",
+                    integration_level="E2" if native else "E0",
+                    representation=representation,
+                    quantization="4bit_model/float16_kv",
+                    accelerator=f"{hardware_model} GPU",
+                    ram_bytes=physical_memory,
+                    quality_score=float(aggregate["token_f1"]),
+                    f1=float(aggregate["token_f1"]),
+                    exact_pair_parity=float(aggregate["sequence_agreement_vs_e0"]),
+                    gold_answer_log_probability=float(aggregate["gold_answer_logprob"]),
+                    source_tokens=source_tokens,
+                    visible_tokens=statistics.fmean(
+                        float(row["visible_prompt_tokens"]) for row in selected
+                    ),
+                    active_kv_tokens=active_layer_tokens if native else None,
+                    active_kv_bytes=(
+                        float(aggregate["active_detail_bytes"]) if native else None
+                    ),
+                    reference_kv_tokens=(source_tokens * layer_count if native else None),
+                    consumer_layers=consumer_layers,
+                    hot_bytes=float(aggregate["active_detail_bytes"]) if native else None,
+                    peak_memory_bytes=float(aggregate["peak_unified_memory_bytes"]),
+                    ttft_p50_ms=_percentile(ttft, 0.50),
+                    ttft_p95_ms=_percentile(ttft, 0.95),
+                    ttft_p99_ms=_percentile(ttft, 0.99),
+                    itl_p50_ms=_percentile(itl, 0.50),
+                    itl_p95_ms=_percentile(itl, 0.95),
+                    itl_p99_ms=_percentile(itl, 0.99),
+                    completion_p50_ms=_percentile(completion, 0.50),
+                    completion_p95_ms=_percentile(completion, 0.95),
+                    completion_p99_ms=_percentile(completion, 0.99),
+                    sample_count=int(aggregate["samples"]),
+                    seed_count=int(aggregate["seeds"]),
+                    evidence_tier=str(selected[0]["evidence_tier"]),
+                    evidence_provenance=provenance,
+                    experiment_status="NATURAL_WORKLOAD",
+                    verified_invariants=(
+                        "selector_frozen",
+                        "ordinary_prefill_synchronized",
+                        "native_encoding_synchronized",
+                        "all_eligible_consumer_layers" if all_layers else "reduced_layer_candidate",
+                    ),
+                    notes=(
+                        f"consumer_layer_fraction={aggregate['consumer_layer_fraction']:.6f}; "
+                        f"cold_usable_context_ms={aggregate['cold_usable_context_ms']:.6f}; "
+                        "BALANCED is all eligible layers; reduced and segmented paths "
+                        "remain CALIBRATION_PENDING"
+                    ),
+                )
+            )
+    return rows
+
+
 def _openvino_distractor_rows() -> list[ProductMatrixRow]:
     """Import the frozen-evidence OpenVINO natural distractor ablation."""
 
@@ -962,6 +1092,7 @@ def build_matrix() -> ProductMatrix:
     rows.extend(_airllm_natural_rows())
     rows.extend(_mlx_m4_cross_model_rows())
     rows.extend(_mlx_m4_pressure_rows())
+    rows.extend(_mlx_consumer_scaling_rows())
     rows.extend(_vllm_cuda_concurrency_rows())
     rows.extend(_openvino_distractor_rows())
     rows.extend(_openvino_cross_model_rows())

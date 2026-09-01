@@ -20,6 +20,7 @@ from .native import (
     load_native_memory,
     quantize_native_memory,
     save_native_memory,
+    compiled_segmented_selected_attention,
     segmented_selected_attention,
     serialize_native_memory,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "load_native_memory",
     "quantize_native_memory",
     "save_native_memory",
+    "compiled_segmented_selected_attention",
     "segmented_selected_attention",
     "install_qwen3_segmented_attention",
     "serialize_native_memory",

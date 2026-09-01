@@ -341,6 +341,43 @@ def segmented_selected_attention(
     supplied local segment is already causally valid for the query.
     """
 
+    memory_mask = None
+    local_mask = None
+    if mask is not None:
+        memory_tokens = int(memory_keys.shape[2])
+        local_tokens = int(local_keys.shape[2])
+        if int(mask.shape[-1]) != memory_tokens + local_tokens:
+            raise ValueError("Segmented attention mask does not match K/V width.")
+        # Split dynamic masks before entering a compiled graph. MLX cannot
+        # infer output shapes for token-dependent Slice primitives in a
+        # shapeless graph, while each already-split mask remains shapeless.
+        memory_mask = mask[..., :memory_tokens]
+        local_mask = mask[..., memory_tokens:]
+    return _segmented_selected_attention_impl(
+        queries,
+        memory_keys,
+        memory_values,
+        local_keys,
+        local_values,
+        scale=scale,
+        memory_mask=memory_mask,
+        local_mask=local_mask,
+    )
+
+
+def _segmented_selected_attention_impl(
+    queries: object,
+    memory_keys: object,
+    memory_values: object,
+    local_keys: object,
+    local_values: object,
+    *,
+    scale: float,
+    memory_mask: object | None,
+    local_mask: object | None,
+) -> object:
+    """Compute segmented attention from masks already split by segment."""
+
     import mlx.core as mx
 
     query_heads = int(queries.shape[1])
@@ -350,8 +387,10 @@ def segmented_selected_attention(
     if query_heads % kv_heads:
         raise ValueError("Query head count must be divisible by K/V head count.")
     groups = query_heads // kv_heads
-    batch, _, query_tokens, head_dim = queries.shape
-    grouped_queries = queries.reshape(batch, kv_heads, groups, query_tokens, head_dim)
+    # Preserve dynamic prefill/decode widths inside a shapeless compiled graph.
+    # ``unflatten`` and ``flatten`` infer untouched dimensions from the input;
+    # constructing Python reshape tuples would freeze the first query length.
+    grouped_queries = mx.unflatten(queries, 1, (kv_heads, groups))
 
     def scores(keys):
         expanded = mx.expand_dims(keys, axis=2)
@@ -362,18 +401,14 @@ def segmented_selected_attention(
     # creates a small per-layer error that compounds through deep decoders.
     memory_scores = scores(memory_keys).astype(mx.float32)
     local_scores = scores(local_keys).astype(mx.float32)
-    if mask is not None:
-        memory_tokens = int(memory_keys.shape[2])
-        local_tokens = int(local_keys.shape[2])
-        if int(mask.shape[-1]) != memory_tokens + local_tokens:
-            raise ValueError("Segmented attention mask does not match K/V width.")
-        memory_mask = mask[..., :memory_tokens]
-        local_mask = mask[..., memory_tokens:]
-
+    if memory_mask is not None:
+        if local_mask is None:
+            raise ValueError("Selected and local masks must be supplied together.")
         def apply_mask(values, segment_mask):
-            segment_mask = segment_mask.reshape(
-                (1,) * (values.ndim - segment_mask.ndim) + segment_mask.shape
-            )
+            # Add broadcast axes by rank, not by a Python shape tuple. The
+            # latter freezes the first decode width inside a shapeless graph.
+            for _ in range(values.ndim - segment_mask.ndim):
+                segment_mask = mx.expand_dims(segment_mask, axis=0)
             if segment_mask.dtype == mx.bool_:
                 return mx.where(segment_mask, values, mx.array(-1e9, values.dtype))
             return values + segment_mask
@@ -395,9 +430,102 @@ def segmented_selected_attention(
         memory_weights @ expanded_memory_values
         + local_weights @ expanded_local_values
     )
-    return (numerator / denominator).reshape(
-        batch, query_heads, query_tokens, head_dim
-    ).astype(queries.dtype)
+    return mx.flatten(numerator / denominator, 1, 2).astype(queries.dtype)
+
+
+_COMPILED_SEGMENTED_ATTENTION: dict[bool, object] = {}
+
+
+def _segmented_selected_attention_unmasked(
+    queries, memory_keys, memory_values, local_keys, local_values, *, scale
+):
+    return _segmented_selected_attention_impl(
+        queries,
+        memory_keys,
+        memory_values,
+        local_keys,
+        local_values,
+        scale=scale,
+        memory_mask=None,
+        local_mask=None,
+    )
+
+
+def _segmented_selected_attention_masked(
+    queries,
+    memory_keys,
+    memory_values,
+    local_keys,
+    local_values,
+    memory_mask,
+    local_mask,
+    *,
+    scale,
+):
+    return _segmented_selected_attention_impl(
+        queries,
+        memory_keys,
+        memory_values,
+        local_keys,
+        local_values,
+        scale=scale,
+        memory_mask=memory_mask,
+        local_mask=local_mask,
+    )
+
+
+def compiled_segmented_selected_attention(
+    queries: object,
+    memory_keys: object,
+    memory_values: object,
+    local_keys: object,
+    local_values: object,
+    *,
+    scale: float,
+    mask: object | None = None,
+) -> object:
+    """Run segmented attention through MLX's shapeless graph compiler.
+
+    Separate masked and unmasked graphs avoid retracing when decode switches
+    between the microbenchmark and model paths. ``shapeless=True`` permits the
+    local-cache token dimension to grow during autoregressive decoding.
+    """
+
+    import mlx.core as mx
+
+    masked = mask is not None
+    compiled = _COMPILED_SEGMENTED_ATTENTION.get(masked)
+    if compiled is None:
+        target = (
+            _segmented_selected_attention_masked
+            if masked
+            else _segmented_selected_attention_unmasked
+        )
+        compiled = mx.compile(target, shapeless=True)
+        _COMPILED_SEGMENTED_ATTENTION[masked] = compiled
+    if mask is None:
+        return compiled(
+            queries,
+            memory_keys,
+            memory_values,
+            local_keys,
+            local_values,
+            scale=scale,
+        )
+    memory_tokens = int(memory_keys.shape[2])
+    local_tokens = int(local_keys.shape[2])
+    if int(mask.shape[-1]) != memory_tokens + local_tokens:
+        raise ValueError("Segmented attention mask does not match K/V width.")
+    return compiled(
+        queries,
+        memory_keys,
+        memory_values,
+        local_keys,
+        local_values,
+        mask[..., :memory_tokens],
+        mask[..., memory_tokens:],
+        scale=scale,
+    )
 
 
 def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMemory:

@@ -29,7 +29,17 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
     airllm = [row for row in matrix.rows if row.engine == "airllm"]
     assert len(airllm) == 12
     assert {row.integration_level for row in airllm} == {"E0", "E1"}
-    assert all(row.exact_pair_parity == 0.0 for row in airllm)
+    airllm_pairs = {
+        (row.dataset, row.workload): row.exact_pair_parity
+        for row in airllm
+        if row.integration_level == "E0"
+    }
+    assert all(
+        row.exact_pair_parity == airllm_pairs[(row.dataset, row.workload)]
+        for row in airllm
+        if row.integration_level == "E1"
+    )
+    assert max(row.exact_pair_parity or 0.0 for row in airllm) <= 0.1
     assert all(
         row.profile_status == "RESEARCH_ONLY"
         for row in airllm

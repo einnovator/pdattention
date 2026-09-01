@@ -7,6 +7,7 @@ import pytest
 from experiments.paper4_5_runtime.build_product_matrix_v2 import (
     _mlx_m4_cross_model_rows,
     _mlx_m4_pressure_rows,
+    _mlx_consumer_scaling_rows,
     _vllm_cuda_concurrency_rows,
 )
 from pra_hf.product_matrix import ProductMatrix, ProductMatrixRow, optional_number
@@ -102,3 +103,22 @@ def test_engine_evidence_rows_preserve_candidate_boundaries() -> None:
     assert all(row.integration_level == "E2" for row in pressure_rows)
     assert all(row.integration_level == "E1" for row in cuda_rows)
     assert all(row.profile_status == "RESEARCH_ONLY" for row in cuda_rows)
+
+
+def test_mlx_consumer_scaling_keeps_balanced_all_layer_and_sparse_pending() -> None:
+    rows = _mlx_consumer_scaling_rows()
+
+    assert rows
+    balanced_native = [
+        row for row in rows if row.model_variant == "E2_CONCAT_WARM"
+    ]
+    reduced = [
+        row for row in rows if row.representation == "E2_SEGMENTED_CANDIDATE"
+    ]
+    assert balanced_native
+    assert all(row.profile == "BALANCED" for row in balanced_native)
+    assert all(row.profile_status == "MEASURED" for row in balanced_native)
+    assert all(len(row.consumer_layers) > 0 for row in balanced_native)
+    assert reduced
+    assert all(row.profile_status == "CALIBRATION_PENDING" for row in reduced)
+    assert all(row.profile == "REDUCED_CANDIDATE" for row in reduced)

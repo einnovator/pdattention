@@ -356,9 +356,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         del encoded, ordinary, ordinary_states, memory
         mx.clear_cache()
 
-    installed_layers = install_qwen3_segmented_attention(model)
+    installed_layers = 0
     profiles = tuple(args.profile or PROFILE_FRACTIONS)
-    for seed, example in cohort:
+    if not args.baseline_only:
+        installed_layers = install_qwen3_segmented_attention(model)
+    for seed, example in (() if args.baseline_only else cohort):
         identity = (example.dataset, seed, example.example_id)
         profile_conditions = tuple(
             f"E2_SEGMENTED_{profile.upper()}" for profile in profiles
@@ -440,6 +442,11 @@ def parse_args() -> argparse.Namespace:
         required=True,
     )
     parser.add_argument("--profile", action="append", choices=tuple(PROFILE_FRACTIONS))
+    parser.add_argument(
+        "--baseline-only",
+        action="store_true",
+        help="Run only matched ordinary and concatenated-native conditions.",
+    )
     parser.add_argument("--examples-per-seed", type=int, default=1)
     parser.add_argument("--max-source-tokens", type=int, default=384)
     parser.add_argument("--max-new-tokens", type=int, default=12)

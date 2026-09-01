@@ -27,7 +27,10 @@ def main() -> None:
     args = parser.parse_args()
 
     import mlx.core as mx
-    from pra_mlx.native import segmented_selected_attention
+    from pra_mlx.native import (
+        compiled_segmented_selected_attention,
+        segmented_selected_attention,
+    )
 
     rows = []
     scale = args.head_dim ** -0.5
@@ -52,16 +55,33 @@ def main() -> None:
                 query, memory_k, memory_v, local_k, local_v, scale=scale
             )
 
+        def compiled_segmented():
+            return compiled_segmented_selected_attention(
+                query, memory_k, memory_v, local_k, local_v, scale=scale
+            )
+
         for _ in range(args.warmup):
-            mx.eval(concatenated(), segmented())
+            mx.eval(concatenated(), segmented(), compiled_segmented())
         reference = concatenated()
         candidate = segmented()
-        mx.eval(reference, candidate)
+        compiled_candidate = compiled_segmented()
+        mx.eval(reference, candidate, compiled_candidate)
         error = float(mx.max(mx.abs(reference - candidate)).item())
+        compiled_error = float(
+            mx.max(mx.abs(reference - compiled_candidate)).item()
+        )
 
-        timings: dict[str, list[float]] = {"concatenated": [], "segmented": []}
+        timings: dict[str, list[float]] = {
+            "concatenated": [],
+            "segmented": [],
+            "compiled_segmented": [],
+        }
         for _ in range(args.repeats):
-            for name, operation in (("concatenated", concatenated), ("segmented", segmented)):
+            for name, operation in (
+                ("concatenated", concatenated),
+                ("segmented", segmented),
+                ("compiled_segmented", compiled_segmented),
+            ):
                 started = time.perf_counter()
                 value = operation()
                 mx.eval(value)
@@ -78,14 +98,22 @@ def main() -> None:
                 "heads": args.heads,
                 "head_dim": args.head_dim,
                 "max_absolute_error": error,
+                "compiled_max_absolute_error": compiled_error,
                 "exact_within_fp16_tolerance": error <= 2e-3,
+                "compiled_exact_within_fp16_tolerance": compiled_error <= 2e-3,
                 "concatenated_mean_ms": fmean(timings["concatenated"]),
                 "concatenated_p95_ms": _percentile(timings["concatenated"], 0.95),
                 "segmented_mean_ms": fmean(timings["segmented"]),
                 "segmented_p95_ms": _percentile(timings["segmented"], 0.95),
+                "compiled_segmented_mean_ms": fmean(
+                    timings["compiled_segmented"]
+                ),
+                "compiled_segmented_p95_ms": _percentile(
+                    timings["compiled_segmented"], 0.95
+                ),
                 "kv_concat_temporary_bytes_avoided": concat_temporary,
                 "segmented_score_temporary_bytes": score_temporary,
-                "integration_status": "PRIMITIVE_MEASURED_MODEL_ATTENTION_PATCH_PENDING",
+                "integration_status": "GRAPH_COMPILED_AND_MODEL_PATCHED",
             }
         )
         del local_k, local_v
@@ -97,7 +125,8 @@ def main() -> None:
         "evidence_tier": "METAL_KERNEL_MICROBENCHMARK",
         "dtype": "float16",
         "one_attention_normalization": True,
-        "model_runner_fused": False,
+        "model_runner_graph_compiled": True,
+        "custom_metal_kernel": False,
         "rows": rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
