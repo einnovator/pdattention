@@ -43,7 +43,7 @@ silently promoted to project-qualified status.
 
 The first project-qualified release is the
 [`jsimao71/pra-qwen3-0.6b` model card](https://huggingface.co/jsimao71/pra-qwen3-0.6b),
-pinned by the registry to Hub commit `ffa081ab17e083282c2fd2ec07402570e72719e7`.
+pinned by the registry to Hub commit `d5efe5d082c22a195a37a6f696cb97980c688d40`.
 Related releases are grouped in the
 [PRA Bundles Collection](https://huggingface.co/collections/jsimao71/pra-bundles-6a97089699497483e5a81c06).
 The maintainer token cannot publish under the `einnovator` Hub namespace, so

@@ -45,8 +45,10 @@ def main() -> None:
     model_kwargs = {"revision": args.revision}
     if device == "cuda":
         model_kwargs.update(torch_dtype=torch.float16, device_map="cuda")
+    bundle_source = None
     if args.pra_bundle and args.pra_bundle.lower() != "none":
         bundle = PRAModelBundle.from_pretrained(args.pra_bundle)
+        bundle_source = bundle.source
         if bundle.base_model.get("id") != args.model:
             raise ValueError("PRA bundle base model does not match --model.")
         if args.revision and bundle.base_model.get("revision") != args.revision:
@@ -92,6 +94,8 @@ def main() -> None:
         ),
         mode="G00",
         observability=telemetry,
+        bundle_source=bundle_source,
+        default_profile=args.profile or "default",
     )
     try:
         serve_gateway(gateway, host=args.host, port=args.port)
