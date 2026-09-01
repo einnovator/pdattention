@@ -72,6 +72,26 @@ def _devices(openvino_module) -> list[Mapping[str, object]]:
                 row[output_name] = str(core.get_property(device, key))
             except Exception as error:
                 row[output_name] = {"unavailable": type(error).__name__}
+        try:
+            supported = [
+                str(value)
+                for value in core.get_property(device, "SUPPORTED_PROPERTIES")
+            ]
+        except Exception:
+            supported = []
+        physical = [
+            name
+            for name in supported
+            if any(term in name.upper() for term in ("MEMORY", "POWER", "UTILIZATION"))
+        ]
+        row["physical_telemetry_properties"] = physical
+        snapshots = {}
+        for name in physical:
+            try:
+                snapshots[name] = str(core.get_property(device, name))
+            except Exception as error:
+                snapshots[name] = {"unavailable": type(error).__name__}
+        row["physical_telemetry_snapshot"] = snapshots
         rows.append(row)
     return rows
 
