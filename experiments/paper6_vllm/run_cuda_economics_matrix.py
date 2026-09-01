@@ -75,6 +75,7 @@ def _request_times(output: Any) -> dict[str, float | None]:
             "mean_itl_ms": None,
             "completion_latency_ms": None,
             "queue_ms": None,
+            "preemptions": None,
         }
     arrival = getattr(metrics, "arrival_time", None)
     first = getattr(metrics, "first_token_time", None)
@@ -100,6 +101,7 @@ def _request_times(output: Any) -> dict[str, float | None]:
             if arrival is None or scheduled is None
             else (scheduled - arrival) * 1000.0
         ),
+        "preemptions": getattr(metrics, "num_preemptions", 0),
     }
 
 
@@ -119,6 +121,7 @@ def _prompt_for_condition(
     placeholder_token: int,
     logical_key: str,
     scope: str,
+    detached_pages: bool = False,
 ) -> dict[str, object]:
     if condition == "full":
         salt = hashlib.sha256(b"paper6-cuda-economics-full").hexdigest()
@@ -134,8 +137,8 @@ def _prompt_for_condition(
         residency=residency,
         request_scope=scope,
     )
-    placeholders = [placeholder_token] * len(source_tokens)
-    return _prompt(placeholders + query_tokens, command.cache_salt())
+    prefix = [] if detached_pages else [placeholder_token] * len(source_tokens)
+    return _prompt(prefix + query_tokens, command.cache_salt())
 
 
 def _finite(samples: list[dict[str, Any]], field: str) -> list[float]:
@@ -154,6 +157,7 @@ def _aggregate(
     query_tokens: int,
     persisted_bytes: int,
     kv_bytes_per_token: float,
+    detached_pages: bool,
 ) -> dict[str, Any]:
     elapsed = sum(float(row["elapsed_ms"]) for row in batches) / 1000.0
     successes = sum(bool(row["expected_recovery"]) for row in samples)
@@ -162,8 +166,8 @@ def _aggregate(
     prompt_tokens = {
         "full": full_tokens + query_tokens,
         "e0_selected_text": source_tokens + query_tokens,
-        "e2_hot": source_tokens + query_tokens,
-        "e2_warm": source_tokens + query_tokens,
+        "e2_hot": query_tokens if detached_pages else source_tokens + query_tokens,
+        "e2_warm": query_tokens if detached_pages else source_tokens + query_tokens,
     }[condition]
     visible_source_tokens = {
         "full": full_tokens,
@@ -185,6 +189,7 @@ def _aggregate(
         "success_rate": successes / len(samples),
         "requests_per_second": request_rate,
         "successful_requests_per_second": successes / max(elapsed, 1e-9),
+        "useful_throughput": successes / max(elapsed, 1e-9),
         "ttft_ms": {
             "p50": percentile(ttft, 0.50),
             "p95": percentile(ttft, 0.95),
@@ -211,9 +216,16 @@ def _aggregate(
         "apc_cached_tokens_mean": statistics.fmean(cached),
         "apc_blocks_mean": statistics.fmean(cached) / block_size,
         "pra_logical_blocks": source_tokens // block_size if native else 0,
-        "pra_request_slot_blocks": source_tokens // block_size if native else 0,
+        "pra_request_slot_blocks": (
+            source_tokens // block_size if native and not detached_pages else 0
+        ),
         "pra_request_slot_bytes_inferred": (
-            int(source_tokens * kv_bytes_per_token) if native else 0
+            int(source_tokens * kv_bytes_per_token)
+            if native and not detached_pages
+            else 0
+        ),
+        "pra_shared_detached_blocks": (
+            source_tokens // block_size if native and detached_pages else 0
         ),
         "pra_hot_source_bytes": max(
             (int(event.get("resident_hot_bytes", 0)) for event in transfers),
@@ -243,6 +255,9 @@ def _aggregate(
         ),
         "peak_reserved_bytes": max(int(row["peak_reserved_bytes"]) for row in batches),
         "tail_status": "MEASURED" if len(samples) >= 100 else "SMALL_SAMPLE",
+        "preemptions": sum(
+            int(row.get("preemptions") or 0) for row in samples
+        ),
     }
 
 
@@ -256,6 +271,8 @@ def main() -> None:
     parser.add_argument("--full-source-blocks", type=int, default=16)
     parser.add_argument("--max-new-tokens", type=int, default=12)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.72)
+    parser.add_argument("--detached-pages", action="store_true")
+    parser.add_argument("--detached-reserve-blocks", type=int, default=64)
     args = parser.parse_args()
     if args.concurrency <= 0 or args.waves <= 0 or args.full_source_blocks <= 1:
         raise ValueError("Concurrency/waves must be positive and FULL needs >1 block.")
@@ -286,6 +303,8 @@ def main() -> None:
             "kv_connector_extra_config": {
                 "storage_path": str(storage),
                 "telemetry_path": str(telemetry),
+                "detached_pages": args.detached_pages,
+                "detached_reserve_blocks": args.detached_reserve_blocks,
             },
         },
     )
@@ -345,6 +364,7 @@ def main() -> None:
             placeholder_token=padding_token,
             logical_key=logical_key,
             scope=f"warmup-{index}",
+            detached_pages=args.detached_pages,
         )
         llm.generate(prompt, sampling, use_tqdm=False)
 
@@ -374,6 +394,7 @@ def main() -> None:
                     placeholder_token=padding_token,
                     logical_key=logical_key,
                     scope=f"{condition}-{wave}-{slot}",
+                    detached_pages=args.detached_pages,
                 )
                 for slot in range(args.concurrency)
             ]
@@ -419,13 +440,14 @@ def main() -> None:
                 query_tokens=len(query_tokens),
                 persisted_bytes=persisted_bytes,
                 kv_bytes_per_token=kv_bytes_per_token,
+                detached_pages=args.detached_pages,
             )
         )
 
     payload = {
-        "schema_version": "paper6-vllm-cuda-economics-v1",
-        "evidence_tier": "CUDA_MATCHED_CONNECTOR_CANDIDATE",
-        "integration_status": "E2_CANDIDATE_PREFIX_SHAPED",
+        "schema_version": "paper6-vllm-cuda-economics-v2",
+        "evidence_tier": "CUDA_MATCHED_DETACHED_PAGES" if args.detached_pages else "CUDA_MATCHED_CONNECTOR_CANDIDATE",
+        "integration_status": "E2_SCHEDULER_INVISIBLE" if args.detached_pages else "E2_CANDIDATE_PREFIX_SHAPED",
         "engine": "vllm",
         "engine_version": vllm.__version__,
         "model_id": args.model,
@@ -433,7 +455,7 @@ def main() -> None:
         "selector_frozen": True,
         "selection_identity": logical_key,
         "source_content_visible_in_e2": False,
-        "source_slots_scheduler_visible_in_e2": True,
+        "source_slots_scheduler_visible_in_e2": not args.detached_pages,
         "apc_enabled": True,
         "concurrency": args.concurrency,
         "waves": args.waves,
@@ -442,6 +464,9 @@ def main() -> None:
         "source_tokens": len(source_tokens),
         "full_source_tokens": len(full_tokens),
         "query_tokens": len(query_tokens),
+        "detached_reserve_blocks": (
+            args.detached_reserve_blocks if args.detached_pages else 0
+        ),
         "hbm_decomposition": {
             "model_parameter_bytes": model_parameter_bytes,
             "vllm_kv_pool_bytes": kv_pool_bytes,
@@ -457,12 +482,21 @@ def main() -> None:
         },
         "rows": all_rows,
         "raw": raw,
-        "limitations": [
-            "CUDA E2 uses source-length scheduler placeholder slots.",
-            "E2-HOT is a persistent source tensor plus request-owned attachment, not detached shared vLLM pages.",
-            "E2-WARM uses the PRA connector store, not an LMCache deployment.",
-            "ITL percentiles are across per-request mean inter-token latency derived from vLLM request timestamps.",
-        ],
+        "limitations": (
+            [
+                "Detached CUDA pages use a version-bounded vLLM 0.28 worker hook; an upstream extension point remains preferable.",
+                "E2-WARM uses the PRA connector store, not an LMCache deployment.",
+                "Cancellation is not exercised by the offline LLM harness.",
+                "ITL percentiles are across per-request mean inter-token latency derived from vLLM request timestamps.",
+            ]
+            if args.detached_pages
+            else [
+                "CUDA E2 uses source-length scheduler placeholder slots.",
+                "E2-HOT is a persistent source tensor plus request-owned attachment, not detached shared vLLM pages.",
+                "E2-WARM uses the PRA connector store, not an LMCache deployment.",
+                "ITL percentiles are across per-request mean inter-token latency derived from vLLM request timestamps.",
+            ]
+        ),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
