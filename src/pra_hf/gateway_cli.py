@@ -10,6 +10,28 @@ from .gateway import FallbackInjectionPolicy, PRAGateway, serve_gateway
 from .session_service import LocalSessionService
 
 
+GATEWAY_MODE_ALIASES = {
+    "passthrough": "G00",
+    "selected-context": "G10",
+    "upgrade": "G01",
+    "typed-transport": "G11",
+    "g00": "G00",
+    "g10": "G10",
+    "g01": "G01",
+    "g11": "G11",
+}
+
+
+def resolve_gateway_mode(value: str) -> str:
+    """Map public deployment names and legacy research codes to wire modes."""
+
+    try:
+        return GATEWAY_MODE_ALIASES[value.lower()]
+    except KeyError as error:
+        choices = ", ".join(GATEWAY_MODE_ALIASES)
+        raise click.BadParameter(f"expected one of: {choices}") from error
+
+
 @click.group("gateway")
 def gateway_cli() -> None:
     """Run and inspect the standalone PRA mediation gateway."""
@@ -20,8 +42,8 @@ def gateway_cli() -> None:
 @click.option("--port", default=8080, type=int, show_default=True)
 @click.option(
     "--mode",
-    type=click.Choice(["G00", "G10", "G01", "G11"], case_sensitive=False),
-    default="G00",
+    type=click.Choice(tuple(GATEWAY_MODE_ALIASES), case_sensitive=False),
+    default="passthrough",
     show_default=True,
 )
 @click.option(
@@ -59,6 +81,8 @@ def gateway_serve(
 ) -> None:
     """Serve logical PRA and OpenAI-compatible HTTP endpoints."""
 
+    resolved_mode = resolve_gateway_mode(mode)
+
     if backend == "huggingface":
         if not model:
             raise click.UsageError("--model is required for the Hugging Face backend.")
@@ -82,13 +106,13 @@ def gateway_serve(
         )
     gateway = PRAGateway(
         adapter,
-        mode=mode.upper(),
+        mode=resolved_mode,
         session_service=LocalSessionService(sessions_dir) if sessions_dir else None,
         fallback_injection=fallback_injection,
     )
     capabilities = adapter.capabilities()
     click.echo(
-        f"PRA gateway {mode.upper()} on http://{host}:{port} "
+        f"PRA gateway {mode} on http://{host}:{port} "
         f"-> {capabilities.adapter}/{capabilities.engine_type.value} "
         f"({capabilities.integration_level.value}, {capabilities.prefix_cache_mode.value})"
     )

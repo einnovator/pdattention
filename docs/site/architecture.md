@@ -1,114 +1,143 @@
 # Architecture
 
-## Prompt and references
+## Architecture at a glance
 
-A prompt can contain lightweight handles such as `<REF_1>`. A row-local
-`ReferenceTable` maps each handle to a URI and optional summary or nested reference
-metadata. Handles are symbolic addresses; their referenced text is not automatically
-inserted into the prompt.
-
-## Cache construction
-
-`build_cache_from_metadata()` converts collator metadata into resolver documents and asks
-`RecursiveReferenceCacheBuilder` to construct memory child-first. Depth, reference-count,
-token-count, cycle, and missing-reference policies bound recursive expansion.
-
-Each retained document is partitioned into chunks. `TinyPRAModel` independently encodes
-each chunk through the same block stack used by the prompt. Before a PRA sublayer runs,
-the model captures that layer's projected token K/V:
+PRA sits between application state and model execution. The application keeps
+the full logical record stream; the runtime builds a bounded active working set
+for each operation.
 
 ```text
-K, V: [1, heads, reference_tokens, head_width]
+Agent/application
+        |
+typed records + tasks + sessions
+        |
+PRA runtime
+  route
+  select
+  materialize
+        |
+Gateway / SDK / native engine
+        |
+Inference engine
 ```
 
-One or more paired routing gists are built from projected keys and values for each chunk and
-layer. Optional URI-level gist sets compress all chunk gists at that layer and are cached for
-true reference-first routing. The default remains one mean chunk gist, preserving existing
-configs while keeping cheap routing state separate from detailed attention memory.
+The three runtime operations have independent responsibilities:
 
-## Hierarchical routing
+1. **Route** scores compact addresses against the current query.
+2. **Select** applies identity, authorization, task scope, and budgets.
+3. **Materialize** converts the frozen selection to text, typed resources, or
+   qualified model-native memory.
 
-At each PRA layer, the final prompt token supplies one projected routing query per batch
-row. The configured search strategy selects references and chunks under independent
-budgets:
+This separation lets the same selector feed a portable Selected Context path
+and a Native Memory path. It also makes comparisons meaningful: representation
+changes without silently changing retrieved evidence.
+
+## Ownership boundaries
+
+| Component | Owns |
+| --- | --- |
+| Agent/application | User intent, messages, tasks, tool authorization |
+| PRA runtime | Typed records, routing, selection, exact backing, lifecycle policy |
+| Gateway | Capability negotiation, deltas, explicit fallback, wire traces |
+| Engine adapter | Model revision, K/V geometry, positions, masks, cleanup |
+| Serving scheduler | Placement, prefetch, batching, sharing, eviction |
+
+Raw K/V remains below the gateway boundary. The wire protocol carries stable
+resource identities and policy, not engine page handles or tensors.
+
+## Record flow
+
+A record enters with type, version, source fingerprint, tenant/session scope,
+provenance, and authorization. Type-specific compactors build:
+
+- an initial compact view safe for the active context;
+- address views for lexical, semantic, entity, schema, or structural search;
+- exact backing detail for later materialization.
+
+Selection returns stable record IDs and bounded regions. Materialization
+rechecks scope and authorization, retrieves exact detail, and records measured
+cost. Native ingestion is size-gated; an oversized record remains searchable
+and can encode only an authorized selected region lazily.
+
+## Session and task lifecycle
+
+Sessions are resolved by user and session identity and retain a typed record
+stream across turns. Tasks form a versioned dependency graph. Task status can
+adjust selection scope and storage retention without changing record ownership.
+
+Closing an engine session releases request-local and ephemeral native state.
+The logical session and authoritative backing can remain durable. Cache
+presence never grants access to another tenant or session.
+
+## Deep internals
+
+The rest of this page explains how a native-capable model consumes a frozen
+selection. These details are not required for Selected Context deployments.
+
+### Reference identity and tables
+
+Explicit handles and runtime-created record references resolve through a scoped
+reference table to immutable source versions. Recursive expansion is bounded by
+depth, reference count, token count, cycle detection, and missing-reference
+policy.
+
+### Chunks, gists, and routing
+
+Each retained source is partitioned into routing chunks. One or more compact
+gists represent each chunk or resource. A projected query scores those gists,
+then selects resources and chunks under independent budgets:
 
 ```text
-query [B, model_width]
-  -> optionally score cached URI gist sets [G_ref,D]
-  -> select up to top_k_references URIs
-  -> score chunk gist sets [G_chunk,D] in selected URIs
-  -> select up to top_k_chunks_per_reference chunks per URI
+query [batch, model_width]
+  -> resource gist scores [resources, gists]
+  -> selected resource IDs
+  -> chunk gist scores [chunks, gists]
+  -> selected source intervals
 ```
 
-The `hierarchical`, `reference_first`, and `global_chunks` strategies provide controlled
-alternatives for experiments.
+The compact routing index identifies source intervals. It does not replace the
+exact token detail used by the model.
 
-## Long prompt history
+### Layer-specific native memory
 
-`prepare_prompt_batch_for_pra()` splits oversized prompts on exact token IDs. The recent
-tail, bounded by `max_prompt_direct_tokens` and `max_seq_len`, remains in ordinary causal
-self-attention. The displaced prefix becomes the request-local URI
-`pra://implicit/prompt/head` (`#__head`) in that row's existing cache. It uses the same
-chunk and gist strategies as explicit references, while `max_prompt_gists` independently
-controls its chunk cap. A null cap keeps all prompt-head chunks.
+For each consuming decoder layer, the model encodes selected detail with that
+layer's own projections and positional policy. A typical cache tensor is:
 
-Mixed-length direct tails are padded with an attention mask, and routing uses each row's
-last valid token. Long initial generation prompts are supported. Streaming migration of
-generated history into the implicit reference is not implemented yet.
+```text
+K, V: [batch, kv_heads, selected_tokens, head_width]
+```
 
-## Batch isolation
+Native memory must match model revision, tokenizer, layer, dtype, head geometry,
+position policy, and source version. A mismatch invalidates reuse.
 
-Every prompt row owns an independent reference namespace. `PRABatchedMemoryCache` wraps
-the completed row caches and guarantees that `query[i]` searches only `row_caches[i]`.
-Duplicate URI strings across rows are therefore safe.
+### Positions and long prompts
 
-The prompt model runs once for `input_ids [B,T]`. Selected memory may have a different
-length `M_i` in each row. `dynamic_memory_attention()` buckets similar lengths, masks
-padding, and restores the original row order.
+The direct prompt tail stays in ordinary causal attention. Displaced history can
+be represented as a request-local implicit source and routed through the same
+selection path as explicit resources. Source-relative and query-relative
+positions remain distinct; adapters must preserve the host model's positional
+geometry.
 
-## Attention fusion
+### Attention consumption
 
-`PRAttention` computes normal causal self-attention and optional external-memory attention.
-After materialization, the two branches are combined as:
+A consumer layer computes ordinary local attention and selected-memory
+attention over the same hidden query. Implementations may concatenate K/V or
+use a mathematically equivalent segmented normalization. The selected and local
+segments must share one normalization if they are intended to compete directly.
 
-\[
-y = y_{\mathrm{local}} + \alpha y_{\mathrm{memory}}.
-\]
+### Batch isolation
 
-`detail_materialization` controls whether selected chunks, full selected references, or
-winning gist-only positions enter the memory branch. Passing `use_pra_memory=False` bypasses the
-branch for controlled disabled-reference evaluation.
+Every batch row owns a separate reference namespace. Selected lengths can vary
+by row; implementations bucket or pad physical tensors, mask invalid positions,
+and restore row order. No routing or materialization operation may consult
+another row's identities.
 
-## Training boundary
+### Storage and serving
 
-The `common` package owns model-independent optimization, checkpointing, timing, logging,
-and metric history. `pra_torch.pra_train` injects PRA-aware batch and evaluation callbacks.
-`PRAStandaloneTrainer` is a thin object-oriented facade over those functional APIs.
+Native objects can move between attention-ready, warm lossless, cold persistent,
+and reconstructible source states. Request pins prevent eviction during decode.
+Native Serving additionally gives the scheduler ownership of prefetch, sharing,
+placement, and batching while preserving tenant/session authorization.
 
-## Typed capabilities
-
-Tools and skills enter the runtime as immutable typed records. Their selection
-views contain only identity, description, and use conditions. A bounded palette
-is encoded first; selecting one stable ID activates its complete schema or
-instructions without semantic rediscovery. Tool visibility remains separate
-from host execution authorization.
-
-## Compact result backing
-
-Tool responses, database rows, logs, terminal output, graphs, files, RAG
-results, and generic API payloads can be stored as session-scoped exact backing.
-Type-aware compactors produce bounded prompt views while lexical, entity,
-rare-term, schema, and optional summary addresses remain retrieval-only.
-Materialization can return the full record, selected fields or ranges, search
-matches, or cursor pages.
-
-The Hugging Face loader applies native result routing within the configured
-ingestion budget. `max_native_index_tokens` and `max_native_index_bytes` resolve
-globally and per record type. The lifecycle reports `NOT_REQUESTED`, `BUILT`,
-`SKIPPED_SIZE_LIMIT`, or `DEFERRED`; a skipped record retains compact/search/cursor
-recovery instead of being silently truncated. After cheap selection,
-`encode_result_region_native()` can authorize and natively encode one bounded
-region. `route_result_backing()` uses the production PRA query/router path over
-built full indexes, and teardown removes compact, full, and lazy references.
-Model-resident result K/V still requires session isolation so it cannot cross
-tenant boundaries.
+See [Storage](storage.md) for lifecycle policy and [Protocol](protocol.md) for
+the application-to-engine boundary.

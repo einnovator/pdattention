@@ -136,12 +136,12 @@ separate. This command explicitly materializes PRA resources as text for an ordi
 OpenAI-compatible backend; it is not native-K/V execution:
 
 ```bash
-pra gateway serve --mode G10 --backend openai \
+pra gateway serve --mode selected-context --backend openai \
   --backend-url http://localhost:8000 --host 127.0.0.1 --port 8080
 ```
 
-See `docs/site/deployment.md` for G00/G10/G01/G11 modes, E0--E3 engine levels,
-capability negotiation, and the JSON wire contract.
+See `docs/site/deployment/index.md` for deployment choices and
+`docs/site/protocol.md` for capability negotiation and the JSON wire contract.
 
 ## HTML documentation
 
@@ -150,6 +150,7 @@ docstrings by `mkdocstrings-python`.
 
 ```bash
 python -m pip install -e ".[docs]"
+python -m experiments.paper4_5_runtime.build_technical_site --check
 python -m mkdocs build --strict
 ```
 

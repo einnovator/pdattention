@@ -1,221 +1,127 @@
 # Getting Started
 
+Choose the path closest to your application. All three begin with Selected
+Context; Native Memory is a later, measured optimization.
+
 ## Install
 
-Create a Python 3.10 or newer environment and install the project in editable mode:
+Use Python 3.10 or newer:
 
 ```bash
 python -m pip install -e .
+pra doctor
 ```
 
-`pra doctor` reports capabilities of the Python environment that installed the
-CLI; it is not a machine-wide accelerator scan. Install the desired PyTorch
-build before the project, or expose an existing accelerator-enabled installation
-to the project environment. For example, this Windows workspace reuses its
-CUDA-enabled Python 3.10 packages with:
+`pra doctor` inspects the Python environment containing the CLI. It is not a
+machine-wide accelerator scan. Install the intended PyTorch build in that
+environment before diagnosing CUDA or Apple Metal support.
 
-```powershell
-py -3.10 -m venv --system-site-packages .venv
-.\.venv\Scripts\python.exe -m pip install -e . --no-deps
-.\.venv\Scripts\pra.exe doctor
-```
+## Path 1: five-minute evaluation
 
-The resulting doctor output should show `CUDA / AVAILABLE / True`. `MPS` is
-PyTorch's Apple Metal Performance Shaders device backend, not a PRA serving
-engine; it is expected to be unsupported on Windows. MLX, vLLM, and SGLang are
-reported separately because they are runtime engines or integration targets.
-
-Install documentation tooling as well:
-
-```bash
-python -m pip install -e ".[docs]"
-```
-
-## Inspect configuration
-
-The Click CLI loads defaults from `config/config.yml`. A named model profile can override
-model, training, and dataset sections.
-
-```bash
-python -m pra_torch.cli config show
-python -m pra_torch.cli dataset show -g stage0_synthetic_memory -m 2
-```
-
-Inspect a pretrained model and the local runtime separately:
+Inspect a model, inspect the execution plan, run a local benchmark, and compare
+the evidence recorded for its profiles:
 
 ```bash
 pra doctor
 pra model inspect Qwen/Qwen3-1.7B
 pra runtime inspect Qwen/Qwen3-1.7B -e hf
+pra runtime benchmark Qwen/Qwen3-1.7B -e hf -o .pra/bench
+pra profiles compare Qwen/Qwen3-1.7B
 ```
 
-## Train and evaluate
+The benchmark writes a structured report under `.pra/bench`. For a Full Context
+versus Selected Context evaluation, keep the task examples and model fixed,
+freeze the selected record IDs/intervals, and compare quality alongside input
+tokens and serving metrics. Follow the [qualification contract](metrics.md);
+never interpret token reduction alone as cost savings.
 
-Run the standalone entry points:
+## Path 2: existing OpenAI-compatible app
+
+Start a gateway in front of the existing endpoint:
 
 ```bash
-python scripts/train_standalone.py --model standalone_tiny
-python scripts/eval_standalone.py \
-  --model standalone_tiny \
-  --checkpoint out/standalone_tiny/checkpoints/best.pt
+pra gateway serve \
+  --mode selected-context \
+  --backend vllm \
+  --backend-url http://127.0.0.1:8000/v1
 ```
 
-Use `--device cuda` when CUDA-enabled PyTorch is installed and a compatible GPU is
-available. The generic runtime also accepts `device="auto"` and selects CUDA when present.
+Point the application's OpenAI base URL to `http://127.0.0.1:8080/v1`. Ordinary
+chat requests continue to work. PRA-aware requests can add typed records,
+session identity, task metadata, and resource deltas; the gateway selects and
+renders authorized context for the ordinary downstream engine.
 
-## Run tests
+Use `typed-transport` only when the immediate backend advertises the required
+typed-resource capabilities:
 
 ```bash
-python -m pytest
+pra gateway serve \
+  --mode typed-transport \
+  --backend sglang \
+  --backend-url http://127.0.0.1:30000
 ```
 
-Focused suites for the core architecture are:
+See [Gateway deployment](deployment/gateway.md) and the [wire
+protocol](protocol.md).
 
-```bash
-python -m pytest tests/test_pra_routing.py tests/test_pra_batching.py
-```
+## Path 3: embedded Python or agent
 
-## Configure tools and skills
-
-`AgentConfig` accepts Python callables, explicit `Skill` objects, and a parent
-directory whose child folders contain OpenAI- or Anthropic-style `SKILL.md`
-files. Compact selection views and complete schemas or instructions are encoded
-lazily by default.
+Create the runtime, open a scoped session, ingest a typed record, and generate:
 
 ```python
-from pra_hf import AgentConfig, CapabilityEncodingPolicy, Skill
+from pra_hf import PRARuntime, RecordType
 
-agent = AgentConfig(
-    tools=(lookup_incidents,),
-    skills=(Skill(
-        name="incident-triage",
-        description="Prioritize operational incidents.",
-        when_to_use="Use when service health degrades.",
-        instructions="Inspect evidence and assign the next safe action.",
-    ),),
-    skills_path="./skills",
-    max_candidates=24,
-    selection_view_token_budget=2048,
-    encoding=CapabilityEncodingPolicy(lazy_selection=True, lazy_full=True),
-)
-```
-
-Pass `agent_config=agent` to `PRARuntime`. Discovery returns stable record IDs;
-`activate_capability_candidates()` admits a bounded selection palette and
-`activate_capability()` resolves one exact full definition locally.
-
-## Compact result records
-
-Each runtime session owns a scoped exact backing store. Successful tool output
-can be compacted automatically, or any supported result can be ingested directly:
-
-```python
-from pra_hf import ContextPolicy, RecordType, RecordViewName, TypeContextPolicy
-
-runtime = PRARuntime.from_pretrained(
-    model_id,
-    agent_config=agent,
-    context_policy=ContextPolicy(
-        max_native_index_tokens=4096,
-        max_native_index_bytes=65536,
-        record_policies={
-            RecordType.TOOL_RESPONSE: TypeContextPolicy(
-                unit_limit=8,
-                max_native_index_tokens=2048,
-            ),
-        },
-    ),
-)
+runtime = PRARuntime.from_pretrained("Qwen/Qwen3-1.7B")
 session = runtime.open_session(
-    session_id="request-7", user_id="user-1", tenant_id="tenant-1"
+    session_id="incident-42",
+    user_id="user-1",
+    tenant_id="tenant-1",
 )
 record = runtime.ingest_result(
-    session, payload, record_type=RecordType.API_RESULT
-)
-compact = runtime.compact_result(session, record.record_id)
-selected = runtime.materialize_result(
     session,
-    record.record_id,
-    level=RecordViewName.SELECTED,
-    selector={"rows": [20, 30]},
+    "Restart the worker only after draining its queue.",
+    record_type=RecordType.GENERIC_TEXT,
 )
+match = runtime.search_results(session, "worker restarts", top_k=1)[0]
+detail = runtime.materialize_result(session, match.record_id)
+answer = runtime.generate(
+    f"Context:\n{detail.payload}\n\n"
+    "Question: What should happen before the worker restarts?"
+)
+print(answer)
 ```
 
-Tool/API results infer tabular, log, graph, terminal, or generic structured
-shape. Full bytes stay hash-verified and tenant/session scoped. Address search,
-bounded cursors, TTLs, storage placement, native-index ingestion limits, and
-per-record overrides are configured through `ContextPolicy`.
-
-`PRARuntime.from_pretrained()` enables size-adaptive native result routing by
-default. In-budget records enter `BUILT`; oversized records enter
-`SKIPPED_SIZE_LIMIT`; policy-deferred records enter `DEFERRED`. A skipped record
-is not truncated or mislabeled as native. Its compact view, cheap addresses,
-search, and cursor remain available. After cheap selection, promote only an
-authorized bounded region with:
-
-```python
-audit = runtime.result_native_index_audit(session, record.record_id)
-region = runtime.encode_result_region_native(
-    session, record.record_id, {"rows": [20, 30]}
-)
-```
-
-Use `prepare_result_native_index(..., force=True)` to resolve a deliberately
-deferred index. Pass `native_result_routing=False` when model-resident result
-references are not appropriate, such as a shared model process without tenant
-partitioning.
-
-## Run a persistent PRA agent
-
-`PRAAgent` combines the same runtime with durable typed sessions, a versioned task DAG,
-lazy skills, and a reusable `Toolset`. The default local service resolves sessions by
-`user_id` and `session_id`; closing the model session releases ephemeral K/V without
-deleting the logical record stream.
-
-```python
-from pra_hf import PRAAgent, PRAAgentConfig
-
-agent = PRAAgent.from_pretrained(
-    model_id,
-    config=PRAAgentConfig(user_id="user-1"),
-    workspace=".",
-    sessions_path=".pra/sessions",
-    skills_path="./skills",
-)
-state = agent.start_session(task_description="Inspect the failing tests")
-turn = agent.run_turn("Find the relevant test and explain the failure")
-agent.close()
-```
-
-The coding-agent terminal exposes task, context, tool, and session inspection:
+For an agent with durable sessions, tasks, skills, and tools:
 
 ```bash
 pra agent chat Qwen/Qwen3-0.6B -w . -t "Inspect this repository"
-pra agent chat -p work -r
 pra agent run -p work "Summarize the current task state."
 ```
 
-The built-in toolset can list, read, search, edit, inspect Git, and run a command inside
-the configured workspace. Writes are denied by default and require one interactive host
-approval. Named agent profiles keep this policy separate from low-level PRA
-runtime configuration; see [Agent Profiles and UI](agent-ui.md).
+See [Agent deployment](deployment/agent.md) and [Runtime / SDK](deployment/runtime-sdk.md).
 
-## Build this site
+## Choose an engine
 
-Generate the static HTML site under `site/`:
+Do not infer Native Memory support from ordinary prefix caching. Check the
+[engine support matrix](engines/overview.md), run `pra runtime doctor` where a
+provider exists, and require explicit capability negotiation through a gateway.
+
+## Build the documentation
+
+Install the documentation dependencies and build strict static HTML:
 
 ```bash
+python -m pip install -e ".[docs]"
+python -m experiments.paper4_5_runtime.build_technical_site --check
 python -m mkdocs build --strict
 ```
 
-The generated site uses explicit `.html` links so it can be browsed directly
-from disk. Open `site/index.html`; navigation does not require a local web
-server.
-
-Run a local development server with automatic source and documentation reloads:
+Open `site/index.html` directly. The build uses explicit `.html` links, so local
+navigation does not require a web server. For authoring with live reload:
 
 ```bash
 python -m mkdocs serve
 ```
 
-MkDocs serves the site at `http://127.0.0.1:8000/` by default.
+Standalone model training and paper reproduction live in [Research /
+Evidence](research/index.md), not in the product quickstart.

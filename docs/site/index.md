@@ -1,37 +1,67 @@
 # Progressive Retrieval Attention
 
-Progressive Retrieval Attention (PRA) is a research prototype for decoder-only
-Transformers that resolve explicit reference handles into external, layer-specific memory.
-Instead of placing every referenced token in the prompt, the model routes with compact
-chunk gists and materializes detailed K/V only for selected references.
+PRA is context infrastructure for AI agents and long-running model
+applications. It keeps documents, tools, results, task state, and other reusable
+context addressable outside the active prompt, then selects and materializes
+only what each model operation needs.
 
 ```text
-prompt reference handle
-  -> URI resolver
-  -> reference chunks
-  -> layer-specific routing gists and token K/V
-  -> row-local reference and chunk selection
-  -> memory attention
+large logical context
+        |
+typed records + addresses + policy
+        |
+route -> select -> materialize
+        |
+small active working context
+        |
+model
 ```
 
-## Explore the project
+## What PRA changes
 
-- [Getting started](getting-started.md) covers installation, CLI use, tests, and site builds.
-- [Architecture](architecture.md) explains the prompt, resolver, cache, routing, and
-  attention path.
-- [API reference](api/index.md) is generated from the Python source and docstrings.
+### Send less
 
-## Main packages
+**Selected Context** chooses relevant evidence and presents it through an
+ordinary model input. It works with unmodified inference engines and is the
+recommended starting point.
 
-| Package | Responsibility |
-| --- | --- |
-| `common` | Reusable configuration, training, metrics, logging, plotting, and checkpoints |
-| `pra_core` | Framework-neutral reference handles, tables, and dataset records |
-| `data` | Dataset generation, tokenization, collation, and datamodules |
-| `pra_torch` | PyTorch PRA model, memory cache, routing, resolution, training, and evaluation |
-| `hf_wrappers` | Experimental compatibility adapter for Hugging Face decoder models |
+### Recompute less
 
-!!! note "Research status"
-    This codebase is an experimental research system. Architecture variants and reference
-    interventions should be compared with controlled datasets and multiple seeds before
-    drawing model-quality conclusions.
+**Native Memory** keeps qualified, selected resources in model-native form so
+repeated requests can reuse them without reconstructing the same visible text.
+It is useful only when model parity, quality, and workload economics have been
+measured.
+
+### Manage reuse explicitly
+
+**Native Serving** lets a scheduler own placement, prefetch, sharing, eviction,
+and batching for native resources. This is the deepest integration and the most
+engine-specific one.
+
+## Start here
+
+- [Getting Started](getting-started.md): evaluate PRA in five minutes or connect
+  an existing application.
+- [Concepts](concepts.md): understand logical context, active context, routing,
+  and materialization.
+- [Engine Support](engines/overview.md): choose the deployment supported by your
+  engine today.
+- [Metrics & Qualification](metrics.md): compare full, selected, native, and
+  serving paths without mixing retrieval with transport.
+- [Deployment](deployment/index.md): choose an agent, gateway, SDK, or native
+  engine path.
+
+## Product boundary
+
+Typed PRA Transport preserves record identity, provenance, task/session scope,
+authorization, deltas, and explicit fallback. It does not send raw K/V over the
+application protocol. Native Memory is an engine capability negotiated below
+that transport boundary.
+
+!!! note "Evidence before depth"
+    A deeper integration is not automatically faster or better. Start with
+    Selected Context, freeze the selected evidence, and qualify each deeper
+    mechanism against the same workload.
+
+Paper-specific terminology, experimental variants, and raw artifact paths are
+kept in [Research / Evidence](research/index.md), away from the first-use path.

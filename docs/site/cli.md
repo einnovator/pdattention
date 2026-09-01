@@ -28,6 +28,19 @@ The command groups keep four concepts separate:
 | `profiles` | measured semantic and physical calibration |
 | `hf` | Hub authentication and artifact transport only |
 
+The gateway accepts product-facing deployment names:
+
+```bash
+pra gateway serve --mode passthrough --backend openai --backend-url URL
+pra gateway serve --mode selected-context --backend vllm --backend-url URL
+pra gateway serve --mode typed-transport --backend sglang --backend-url URL
+```
+
+`selected-context` renders authorized selected records for an ordinary engine.
+`typed-transport` preserves typed resources for a capable endpoint. Legacy
+research spellings remain accepted for reproduction but are not used in public
+deployment examples.
+
 ## Structural adapters
 
 A structural adapter maps a conventional decoder's layers, attention module,

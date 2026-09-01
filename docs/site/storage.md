@@ -102,7 +102,7 @@ $env:PYTHONPATH = "src;."
 python -m experiments.paper4_5_runtime.run_storage_lifecycle
 ```
 
-The checked-in control workload runs E1--E9 over HF, vLLM, SGLang, and MLX
-policy realizations with five seeds. It tests tier recovery, quantization,
+The checked-in control workload runs nine lifecycle scenarios over HF, vLLM,
+SGLang, and MLX policy realizations with five seeds. It tests tier recovery, quantization,
 record/task/dependency/session behavior, reconstruction, and persistence-write
 waste. It does not substitute for engine-native end-task quality evaluation.

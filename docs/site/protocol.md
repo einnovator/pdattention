@@ -1,79 +1,67 @@
-# Agent/Gateway/Engine Protocol
+# Agent, Gateway, and Engine Protocol
 
-PRA extends the OpenAI chat-completions request without replacing its message
-protocol. The live conversation remains an ordinary sequence of system, user,
+PRA extends OpenAI-compatible chat requests without replacing their message
+protocol. The conversation remains an ordinary sequence of system, user,
 assistant, and provider-required tool messages. Large or reusable context is a
 separate stream of typed logical resources.
 
 ```text
 AgentTurnContext
-  messages ─────────────────────────────── OpenAI conversation spine
-  records/tools/skills/tasks ───────────── detached PRA resources
-                         │
-                         ▼
-                  transport negotiation
-                 /                     \
-           ordinary endpoint       PRA endpoint
-              TEXT                 PRA_FULL/DELTA
+  messages -------------------------- OpenAI conversation spine
+  records/tools/skills/tasks -------- detached PRA resources
+                         |
+                         v
+                  capability negotiation
+                 /                      \
+          ordinary endpoint        PRA-aware endpoint
+          selected text          typed full/delta records
 ```
 
-## Capability Handshake
+## Capability handshake
 
-At launch or session reconnect, an agent requests:
+At launch or reconnect, a client requests:
 
 ```http
 GET /v1/pra/capabilities
 ```
 
-A PRA endpoint returns protocol version `1`, its endpoint type, separate
-gateway and engine capabilities, and the effective end-to-end features. A
-reachable endpoint returning `404`, `405`, or `501` is treated as ordinary
-OpenAI. An unreachable endpoint is an error, not evidence that text fallback
-is appropriate.
-
-Capability decisions are feature-based. The agent checks `logical_refs`,
+The response separates gateway features, engine features, and effective
+end-to-end features. Clients check capabilities such as `logical_refs`,
 `typed_records`, `task_metadata`, `resource_delta`, `session_state`, and
-`incremental_messages`; it does not branch on names such as vLLM or SGLang.
+`incremental_messages`; they do not branch on engine names.
 
-## Transport Policy
+A reachable endpoint returning an unsupported-route status can be treated as an
+ordinary OpenAI endpoint. An unreachable endpoint is an error, not permission to
+silently downgrade.
 
-Agent profiles use:
+## Transport policy
+
+Agent profiles choose `auto`, `pra`, or `text` transport:
 
 ```yaml
 context:
-  transport: auto       # auto | pra | text
+  transport: auto
   allow_text_fallback: true
   require:
     - logical_refs
     - typed_records
 ```
 
-`auto` chooses typed transport when the immediate endpoint accepts it and text
-otherwise. `pra` requires typed transport unless fallback is explicitly
-enabled. `text` is a reproducible compatibility and experimental baseline.
+Resolved behavior is one of:
 
-The resolved wire modes are:
+| Public behavior | Messages | Detached resources |
+| --- | --- | --- |
+| Pass through | Full OpenAI messages | None |
+| Selected Context | Full OpenAI messages | Deterministically rendered selected records |
+| Typed full transport | Full OpenAI messages | Full logical resource inventory |
+| Typed delta transport | Incremental messages | Add, update, remove, or unchanged operations |
 
-| Mode | Messages | Detached resources |
-|---|---|---|
-| `TEXT` | OpenAI messages | Canonical `PRA_RECORD` text rendering |
-| `PRA_FULL` | OpenAI messages | Full logical resource inventory |
-| `PRA_DELTA` | Incremental messages | `ADD`, `UPDATE`, `REMOVE`, or body-free `UNCHANGED` operations |
+Native K/V is not a transport mode. Raw tensors and physical page identifiers
+never cross this wire.
 
-Native K/V is not an agent transport mode. It is an engine capability. Raw K/V
-and physical page identifiers never cross this wire.
+## Request envelope
 
-CLI overrides are independent of `-P/--pra`:
-
-```bash
-pra agent chat -p work --context-transport auto
-pra agent run -p work --context-transport pra --no-text-fallback "Continue task"
-pra agent run -p baseline --context-transport text "Continue task"
-```
-
-## OpenAI-Compatible Envelope
-
-PRA-aware requests retain the normal top-level chat fields:
+PRA-aware requests retain ordinary top-level chat fields:
 
 ```json
 {
@@ -93,78 +81,55 @@ PRA-aware requests retain the normal top-level chat fields:
 }
 ```
 
-Ordinary OpenAI endpoints receive no `pra` field. Credentials remain in HTTP
-headers or local credential configuration and are prohibited from PRA request,
-resource, provenance, and trace metadata.
+Ordinary endpoints receive no `pra` field. Credentials stay in HTTP headers or
+local provider configuration and are prohibited from resource, provenance, and
+trace metadata.
 
-## Record Projection
+## Record projection
 
-`context_record_to_wire_resource()` is the canonical projection. It preserves:
+`context_record_to_wire_resource()` preserves:
 
 - record ID, type, URI, version, and source fingerprint;
 - provenance and authorization scope;
-- task ID/status;
-- available, initial, and selected named views;
+- task ID and status;
+- available, initial, and selected views;
 - tenant/session binding and explicit shareability.
 
-It sends the selected logical body only when required. An unchanged resource
-uses a body-free operation after the gateway or engine has acknowledged its
-inventory.
-
-Four representations remain distinct:
+The representations remain distinct:
 
 | Representation | Owner | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `ContextRecord` | Agent/runtime | Semantic typed record and named views |
 | `PRAWireResource` | Transport | Portable logical network projection |
-| `BackingRecord` | Storage | Reconstructible SOURCE descriptor |
-| `PRAStorageEntry` | Engine/storage | Model-specific native-K/V residency |
+| `BackingRecord` | Storage | Reconstructible authoritative detail |
+| `PRAStorageEntry` | Engine/storage | Model-specific derived native residency |
 
-The mappings are `ContextRecord -> PRAWireResource`, source content to
-`BackingRecord`, and source plus model encoding to `PRAStorageEntry` and native
-K/V.
+## Sessions, deltas, and resynchronization
 
-## Gateway Modes
+The transport caches acknowledged message and resource inventories per session.
+Endpoint changes, reconnects, engine restarts, protocol mismatch, or explicit
+refresh invalidate that state. The next request sends full messages and a full
+resource inventory before deltas resume.
 
-- `G00` passes through a compatible request.
-- `G10` accepts typed resources from the agent and performs deterministic text
-  injection for an E0 engine.
-- `G11` preserves resources, task/session metadata, and deltas for a PRA-aware
-  engine.
-- `G01` cautiously recognizes supported typed ordinary traffic and upgrades it.
+Resource identity changes when version, source fingerprint, authorization, task
+ownership, or shareability changes. Storage deduplication never grants access
+across tenants or sessions.
 
-AUTO always negotiates with the immediate endpoint. Therefore a G10 gateway
-receives typed resources even though its downstream engine is E0. Protocol
-downgrade belongs to the gateway, not the agent.
+## Responses and streaming
 
-## Sessions, Deltas, and Resynchronization
+Non-streaming responses remain OpenAI-compatible and may add a `pra` object with
+selected resource IDs, materialized token counts, native-memory status, and a
+trace ID. Streaming uses ordinary `chat.completion.chunk` content events.
+Additive PRA trace events carry no content choices, so conventional clients can
+continue reading text deltas.
 
-The transport caches capabilities and acknowledged message/resource inventory
-per session. Endpoint changes, reconnects, engine restarts, protocol mismatch,
-or explicit refresh invalidate this state. The next request sends full messages
-and an `ADD` inventory before delta mode resumes.
+## Fallback rules
 
-Resource identity changes when version, source fingerprint, authorization,
-task ownership, or shareability changes. Storage deduplication never grants
-authorization across tenants or sessions.
+- Fallback must be explicitly permitted by the request or profile.
+- Selected Context fallback must preserve identity labels and authorization.
+- A request requiring Native Memory fails if the engine cannot provide it.
+- Capability loss invalidates cached native receipts.
+- The trace records the selected public behavior and any fallback reason.
 
-Debug traces expose negotiated mode, capability source, fallback, history mode,
-delta counts, selected IDs, native-K/V status, and engine integration level.
-Bodies and credentials are excluded.
-
-## Responses and Streaming
-
-Non-streaming responses remain OpenAI-compatible and may add:
-
-```json
-"pra": {
-  "selected_resource_ids": ["record-1"],
-  "materialized_tokens": 128,
-  "native_kv": true,
-  "trace_id": "..."
-}
-```
-
-Streaming uses ordinary `chat.completion.chunk` events. PRA trace metadata is
-carried in additive chunks with an empty `choices` list, so ordinary OpenAI
-consumers can continue reading content deltas.
+The legacy research codes that map to these public behaviors are documented
+only in [Research / Evidence](research/index.md).

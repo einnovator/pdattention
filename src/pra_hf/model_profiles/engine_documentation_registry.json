@@ -1,0 +1,228 @@
+{
+  "schema_version": "1.0",
+  "evidence_as_of": "2026-09-01",
+  "product_matrix": "docs/papers/shared/results/pra_product_matrix_v2.json",
+  "evidence_labels": [
+    "Controlled",
+    "Model-backed",
+    "Natural workload",
+    "Serving",
+    "Candidate",
+    "Not measured",
+    "Not applicable"
+  ],
+  "engines": [
+    {
+      "slug": "hugging-face",
+      "name": "Hugging Face",
+      "purpose": "Reference integration for model development, correctness checks, and portable Python experiments.",
+      "best_deployment": "Use Selected Context for ordinary pipelines. Use Native Memory when validating model-level PRA behavior or a measured model profile.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Validated", "native_serving": "Not measured"},
+      "recommended_today": "Selected Context for applications; Native Memory for reference and research workloads.",
+      "evidence": "Model-backed",
+      "summary": "The reference runtime supports typed resources and layer-specific native memory, but it is not a scheduler-managed serving system.",
+      "requirements": ["Python 3.10 or newer", "PyTorch and Transformers", "A model adapter supported by the runtime"],
+      "quickstart": ["pra runtime doctor -e hf", "pra runtime inspect Qwen/Qwen3-1.7B -e hf", "pra runtime serve Qwen/Qwen3-1.7B -e hf --storage balanced"],
+      "metrics": [
+        {"name": "Natural serving tails", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"},
+        {"name": "Reference mechanism", "value": "Validated across Qwen, Llama, and Gemma adapters", "status": "Model-backed", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+      ],
+      "selected_context_when": "Choose it for maximum engine portability, new models, and workloads without repeated immutable evidence.",
+      "native_memory_when": "Consider it for repeated selected resources after model-specific parity and quality gates pass.",
+      "limitations": ["No production scheduler ownership", "Profile qualification remains model and workload specific"],
+      "troubleshooting": ["Run pra doctor in the same Python environment as the CLI", "Use pra model validate before enabling a native profile"],
+      "production_recommendation": "Start with Selected Context and promote Native Memory only from a measured bundle."
+    },
+    {
+      "slug": "mlx",
+      "name": "MLX",
+      "purpose": "Apple-silicon execution and lifecycle research with unified memory.",
+      "best_deployment": "Selected Context is the portable default. Native Memory is validated with all eligible consumer layers for measured models.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Validated", "native_serving": "Candidate"},
+      "recommended_today": "Use Selected Context by default; qualify Native Memory for repeated immutable resources.",
+      "evidence": "Natural workload",
+      "summary": "Synchronized larger-model measurements approach Selected Context cost parity as model scale grows; they do not establish a universal native speedup.",
+      "requirements": ["Apple silicon", "MLX and mlx-lm", "A supported Qwen or reference-compatible model"],
+      "quickstart": ["pra runtime doctor -e mlx", "pra runtime inspect mlx-community/Qwen3-4B-4bit -e mlx", "pra runtime serve mlx-community/Qwen3-4B-4bit -e mlx --storage balanced"],
+      "metrics": [
+        {"name": "Warm native/selected cost, 4B", "value": "1.035x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"},
+        {"name": "Warm native/selected cost, 8B", "value": "1.015x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"},
+        {"name": "Warm native/selected cost, 14B", "value": "0.980x; interval includes parity", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"},
+        {"name": "Reduced consumer-layer profile", "value": "CALIBRATION_PENDING", "status": "Candidate", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"}
+      ],
+      "selected_context_when": "Choose it for one-shot context, unqualified models, or the simplest operational path.",
+      "native_memory_when": "Consider it for multi-query reuse over immutable resources when the exact model profile has passed quality gates.",
+      "limitations": ["The segmented implementation is not fully fused", "Reduced consumer-layer profiles did not pass held-out quality gates", "The 16 GiB M5 cannot load the measured 32B configuration"],
+      "troubleshooting": ["Keep BALANCED on all eligible layers", "Check model and tokenizer revision before reusing native memory"],
+      "production_recommendation": "Use BALANCED only where measured; keep reduced profiles at CALIBRATION_PENDING."
+    },
+    {
+      "slug": "vllm",
+      "name": "vLLM",
+      "purpose": "High-throughput CUDA serving with continuous batching and automatic prefix caching.",
+      "best_deployment": "Selected Context is qualified. Native CUDA correctness and concurrency are promising but matched economics remain pending.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Candidate", "native_serving": "Candidate"},
+      "recommended_today": "Selected Context through the gateway or ordinary vLLM API.",
+      "evidence": "Serving",
+      "summary": "Controlled native concurrency recovered all expected values without cross-request leakage, but it is not yet a complete selected-versus-native serving comparison.",
+      "requirements": ["CUDA-capable NVIDIA GPU", "Supported vLLM release", "PRA gateway for typed transport"],
+      "quickstart": ["pra runtime doctor -e vllm", "pra runtime inspect Qwen/Qwen3-1.7B -e vllm", "pra runtime serve Qwen/Qwen3-1.7B -e vllm"],
+      "metrics": [
+        {"name": "Controlled shared-native concurrency 8", "value": "48.9 requests/s; 45/45 recoveries; zero leakage", "status": "Controlled", "source": "docs/papers/shared/results/paper6_vllm/cuda_connector_concurrency_rtx5060_summary.json"},
+        {"name": "Matched native economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+      ],
+      "selected_context_when": "Choose it for production throughput today, especially when prefix caching already captures reuse.",
+      "native_memory_when": "Reconsider after matched cold, hot, warm, APC, transfer, and tail-latency rows are qualified.",
+      "limitations": ["Native candidate is not the default runtime provider", "Final HBM, transfer, and tail-latency economics are incomplete"],
+      "troubleshooting": ["Inspect the effective gateway and engine capabilities", "Treat a missing native receipt as Selected Context, not silent native execution"],
+      "production_recommendation": "Deploy Selected Context; keep Native Memory and Native Serving experimental."
+    },
+    {
+      "slug": "sglang",
+      "name": "SGLang",
+      "purpose": "Structured generation and cache-aware serving with RadixAttention and hierarchical cache facilities.",
+      "best_deployment": "Selected Context is the default. A companion native mechanism is validated, while distributed scheduler economics remain open.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Validated", "native_serving": "Candidate"},
+      "recommended_today": "Selected Context unless deploying the measured companion integration under controlled scope.",
+      "evidence": "Serving",
+      "summary": "Native resources are isolated from ordinary sequential cache state. Full distributed placement, affinity, and concurrent tier economics are still candidates.",
+      "requirements": ["Supported SGLang server or companion runner", "PRA gateway", "Explicit tenant and session scope"],
+      "quickstart": ["pra runtime doctor -e sglang", "pra runtime inspect Qwen/Qwen3-1.7B -e sglang", "pra runtime serve Qwen/Qwen3-1.7B -e sglang"],
+      "metrics": [
+        {"name": "Matched quality and lifecycle cohorts", "value": "Available in registry", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_1_sglang/expanded_matched_e0_e2_qasper.json"},
+        {"name": "Distributed HiCache economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+      ],
+      "selected_context_when": "Choose it when ordinary Radix/prefix behavior is sufficient or native placement has not been qualified.",
+      "native_memory_when": "Consider it for immutable shared resources under the companion path and explicit isolation tests.",
+      "limitations": ["Distributed HiCache placement is not fully lifecycle-managed", "Concurrent cold/warm tail curves remain incomplete"],
+      "troubleshooting": ["Never return selected native detail to the ordinary Radix cache pool", "Verify cleanup and one-copy attachment per request"],
+      "production_recommendation": "Use Selected Context; treat Native Serving as a measured deployment project, not a flag."
+    },
+    {
+      "slug": "openvino",
+      "name": "OpenVINO",
+      "purpose": "Intel CPU and integrated-GPU inference through OpenVINO GenAI or OVMS.",
+      "best_deployment": "Selected Context through an ordinary OpenVINO prompt path.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Not qualified", "native_serving": "Not applicable"},
+      "recommended_today": "Selected Context.",
+      "evidence": "Natural workload",
+      "summary": "Selected Context reduces input and latency on the measured Intel cohorts. No legitimate detached native-memory seam is qualified.",
+      "requirements": ["OpenVINO GenAI or OVMS", "Supported Intel CPU or GPU", "PRA gateway for typed resources"],
+      "quickstart": ["pra doctor", "pra gateway serve --mode selected-context --backend custom --backend-url http://127.0.0.1:8000/v1"],
+      "metrics": [
+        {"name": "Full/selected source tokens", "value": "3.53x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_3_openvino/cross_model_summary.json"},
+        {"name": "Full/selected median TTFT", "value": "1.85x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_3_openvino/cross_model_summary.json"},
+        {"name": "Full/selected p95 TTFT", "value": "5.27x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_3_openvino/cross_model_summary.json"},
+        {"name": "Detached native memory", "value": "NOT_APPLICABLE", "status": "Not applicable", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+      ],
+      "selected_context_when": "Choose it for Intel deployments where token reduction improves prefill and process work.",
+      "native_memory_when": "Do not plan around it until OpenVINO exposes and qualifies a detached non-prefix memory seam.",
+      "limitations": ["Quality remains selector and workload dependent", "No qualified Native Memory path"],
+      "troubleshooting": ["Freeze selector output when comparing full and selected prompts", "Record device, model conversion, and OpenVINO versions"],
+      "production_recommendation": "Use Selected Context and report quality together with token and latency reduction."
+    },
+    {
+      "slug": "tensorrt-llm",
+      "name": "TensorRT-LLM",
+      "purpose": "Optimized NVIDIA inference using compiled engines and paged serving primitives.",
+      "best_deployment": "Selected Context through the compatible request path.",
+      "capabilities": {"selected_context": "Candidate", "typed_transport": "Validated", "native_memory": "Not measured", "native_serving": "Not measured"},
+      "recommended_today": "Selected Context after local model and engine validation.",
+      "evidence": "Candidate",
+      "summary": "The transport and runtime boundary are defined, but native quality and economics are not yet qualified.",
+      "requirements": ["NVIDIA GPU", "TensorRT-LLM engine built for the model", "Compatible gateway endpoint"],
+      "quickstart": ["pra gateway serve --mode selected-context --backend custom --backend-url http://127.0.0.1:8000/v1"],
+      "metrics": [{"name": "Matched natural serving benchmark", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}],
+      "selected_context_when": "Choose it when a conventional TensorRT-LLM engine is already operational.",
+      "native_memory_when": "Wait for a versioned native attention seam and matched quality/economic evidence.",
+      "limitations": ["No qualified native-memory implementation in the product runtime", "Engine builds are model and hardware specific"],
+      "troubleshooting": ["Validate the ordinary endpoint before adding typed transport", "Do not infer native support from paged-cache support alone"],
+      "production_recommendation": "Use Selected Context; native modes are not yet product-qualified."
+    },
+    {
+      "slug": "airllm",
+      "name": "AirLLM",
+      "purpose": "Layer-streamed inference for models that exceed accelerator memory.",
+      "best_deployment": "Selected Context; it reduces visible work without adding a separate native reference pass.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Research only", "native_serving": "Not measured"},
+      "recommended_today": "Selected Context.",
+      "evidence": "Natural workload",
+      "summary": "Native memory is semantically feasible but slower in the measured request path, including warm reuse.",
+      "requirements": ["CUDA system supported by AirLLM", "Sufficient host or storage capacity for streamed layers", "PRA gateway or harness"],
+      "quickstart": ["pra gateway serve --mode selected-context --backend custom --backend-url http://127.0.0.1:8000/v1"],
+      "metrics": [
+        {"name": "Native/selected TTFT", "value": "2.186x-2.351x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_6_airllm/tinyllama_cuda_natural_summary.json"},
+        {"name": "Native/selected ITL or completion", "value": "approximately 1.10x-1.17x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_6_airllm/tinyllama_cuda_natural_summary.json"},
+        {"name": "Mean separate reference encoding", "value": "10.91 seconds", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_6_airllm/tinyllama_rtx5060_natural_60_summary.json"}
+      ],
+      "selected_context_when": "Choose it for current AirLLM deployments, especially one-shot or low-reuse resources.",
+      "native_memory_when": "Only investigate workloads where a large immutable resource is reused enough to amortize both reference encoding and layer streaming.",
+      "limitations": ["Warm reuse did not remove request-path overhead", "Beyond-VRAM native CUDA validation remains incomplete"],
+      "troubleshooting": ["Measure disabled, preselected, and routed paths separately", "Attribute reference encoding and per-layer transfer independently"],
+      "production_recommendation": "Prefer Selected Context; keep Native Memory research-only."
+    },
+    {
+      "slug": "llama-cpp",
+      "name": "llama.cpp",
+      "purpose": "Portable local inference across CPU, Metal, CUDA, and other backends.",
+      "best_deployment": "Selected Context through prompts or a compatible server.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Candidate", "native_serving": "Not measured"},
+      "recommended_today": "Selected Context.",
+      "evidence": "Controlled",
+      "summary": "Ordinary slot and session cache state is sequential prefix state, not automatically PRA Native Memory. A separate experimental sequence-attachment seam requires explicit qualification.",
+      "requirements": ["llama.cpp server or local runtime", "A compatible GGUF model", "PRA gateway for typed transport"],
+      "quickstart": ["pra gateway serve --mode selected-context --backend llama_cpp --backend-url http://127.0.0.1:8080/v1"],
+      "metrics": [
+        {"name": "Selected/full initial prompt tokens", "value": "37.5%-51.7%", "status": "Controlled", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"},
+        {"name": "Qualified native serving economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+      ],
+      "selected_context_when": "Choose it for portable local deployments and unmodified upstream builds.",
+      "native_memory_when": "Only with a pinned PRA-aware backend receipt and exact isolation, parity, and lifecycle tests.",
+      "limitations": ["Prefix/session cache reuse is not detached semantic memory", "Native attachment is not part of the stock public runtime"],
+      "troubleshooting": ["Do not label slot reuse as Native Memory", "Require model fingerprint and backend revision in any native capability receipt"],
+      "production_recommendation": "Use Selected Context with stock llama.cpp."
+    },
+    {
+      "slug": "ollama",
+      "name": "Ollama",
+      "purpose": "Local model packaging and a simple HTTP serving surface.",
+      "best_deployment": "Selected Context through the gateway and Ollama API.",
+      "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Candidate", "native_serving": "Not measured"},
+      "recommended_today": "Selected Context with keep-alive tuned to the workload.",
+      "evidence": "Natural workload",
+      "summary": "Keep-alive can improve reuse, but it remains ordinary model lifecycle behavior. Deeper native use requires a validated PRA-aware backend capability handshake.",
+      "requirements": ["Ollama server", "Installed model", "PRA gateway for typed resources"],
+      "quickstart": ["pra doctor", "pra gateway serve --mode selected-context --backend ollama --backend-url http://127.0.0.1:11434"],
+      "metrics": [
+        {"name": "Selected prompt latency", "value": "Improved on current 14B HotpotQA/QASPER cohorts; quality is workload dependent", "status": "Natural workload", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"},
+        {"name": "Stock backend native memory", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+      ],
+      "selected_context_when": "Choose it for stock Ollama installations and broad model compatibility.",
+      "native_memory_when": "Only when the backend returns a validated protocol, model fingerprint, mechanism list, and lifecycle receipt.",
+      "limitations": ["Keep-alive is not detached semantic memory", "Quality gains depend on selection quality"],
+      "troubleshooting": ["Treat malformed or stale capability receipts as Selected Context", "Invalidate native receipts on model switch or unload"],
+      "production_recommendation": "Use Selected Context; deeper integration is opt-in and receipt-gated."
+    },
+    {
+      "slug": "freetoken",
+      "name": "FreeToken",
+      "purpose": "Logical context and bandwidth coordination research across compatible endpoints.",
+      "best_deployment": "Selected Context or Typed PRA Transport at the application boundary.",
+      "capabilities": {"selected_context": "Candidate", "typed_transport": "Candidate", "native_memory": "Not measured", "native_serving": "Not measured"},
+      "recommended_today": "Use only for controlled logical-transport experiments.",
+      "evidence": "Controlled",
+      "summary": "Current evidence concerns coordination and bandwidth, not live native-memory serving.",
+      "requirements": ["Compatible endpoint", "Explicit transport contract", "Independent quality and authorization checks"],
+      "quickstart": ["pra gateway serve --mode selected-context --backend freetoken --backend-url http://127.0.0.1:8000/v1"],
+      "metrics": [
+        {"name": "Live native qualification", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"},
+        {"name": "Serving economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+      ],
+      "selected_context_when": "Choose it only when the endpoint contract and selected-text baseline are reproducible.",
+      "native_memory_when": "Not currently recommended.",
+      "limitations": ["No live native-serving claim", "Coordination metrics do not establish model-quality or serving gains"],
+      "troubleshooting": ["Preserve NOT_MEASURED instead of converting it to zero", "Separate network token reduction from infrastructure cost"],
+      "production_recommendation": "Treat as research evidence, not a qualified engine deployment."
+    }
+  ]
+}

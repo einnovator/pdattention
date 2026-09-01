@@ -1,15 +1,18 @@
 site_name: Progressive Retrieval Attention
-site_description: Architecture, usage, and Python API reference for the PRA research prototype
+site_description: Engineering manual for PRA context selection, typed transport, native memory, and serving
 site_url: https://einnovator.github.io/pdattention/
 use_directory_urls: false
 repo_url: https://github.com/einnovator/pdattention
 repo_name: einnovator/pdattention
-edit_uri: edit/main/docs/site/
+edit_uri: edit/research/paper4-5-runtime/docs/site/
 
 docs_dir: docs/site
 site_dir: site
 watch:
   - src
+
+extra_css:
+  - stylesheets/extra.css
 
 theme:
   name: material
@@ -69,14 +72,32 @@ markdown_extensions:
   - pymdownx.superfences
 
 nav:
-  - Home: index.md
+  - Overview: index.md
   - Getting Started: getting-started.md
-  - Product CLI: cli.md
-  - Agent Profiles and UI: agent-ui.md
-  - Agent/Gateway Protocol: protocol.md
+  - Concepts: concepts.md
   - Architecture: architecture.md
-  - Execution and Deployment: deployment.md
-  - Storage Lifecycle: storage.md
+  - Deployment:
+      - Choose a Path: deployment/index.md
+      - Agent: deployment/agent.md
+      - Gateway: deployment/gateway.md
+      - Runtime / SDK: deployment/runtime-sdk.md
+      - Engines: deployment/engines.md
+  - Engines:
+      - Overview: engines/overview.md
+      - Hugging Face: engines/hugging-face.md
+      - MLX: engines/mlx.md
+      - vLLM: engines/vllm.md
+      - SGLang: engines/sglang.md
+      - OpenVINO: engines/openvino.md
+      - TensorRT-LLM: engines/tensorrt-llm.md
+      - AirLLM: engines/airllm.md
+      - llama.cpp: engines/llama-cpp.md
+      - Ollama: engines/ollama.md
+      - FreeToken: engines/freetoken.md
+  - Metrics & Qualification: metrics.md
+  - CLI: cli.md
+  - Protocol: protocol.md
+  - Storage: storage.md
   - API Reference:
       - Overview: api/index.md
       - Common Infrastructure: api/common.md
@@ -87,5 +108,6 @@ nav:
       - Training and Evaluation: api/training.md
       - Hugging Face Adapter: api/integrations.md
       - Agent SDK: api/agents.md
+  - Research / Evidence: research/index.md
 
 copyright: Copyright &copy; Progressive Retrieval Attention contributors
