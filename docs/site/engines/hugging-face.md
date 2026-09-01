@@ -10,14 +10,27 @@ Reference integration for model development, correctness checks, and portable Py
 
 Use Selected Context for ordinary pipelines. Use Native Memory when validating model-level PRA behavior or a measured model profile.
 
+## What PRA adds to this engine
+
+PRA gives Hugging Face a query-addressed context layer above ordinary
+prompt construction. Long-lived documents, tool results, task state, and other
+typed resources remain separately addressable; the request receives only the
+authorized regions selected for that operation. This reduces visible context
+without requiring Native Memory. Deeper native reuse is enabled only where the
+table below says it has been measured for this engine.
+
+For Hugging Face, the practical boundary is: Use Selected Context for ordinary pipelines. Use Native Memory when validating model-level PRA behavior or a measured model profile.
+
 ## Supported PRA capabilities
 
 | Capability | Status |
 | --- | --- |
-| Selected Context | Validated |
-| Typed PRA Transport | Validated |
-| Native Memory | Validated |
-| Native Serving | Not measured |
+| Selected Context | ✅ Validated |
+| Typed PRA Transport | ✅ Validated |
+| Native Memory | ✅ Validated |
+| Native Serving | ⏳ Not measured |
+
+**Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.
 
 ## Architecture
 
@@ -34,7 +47,9 @@ application -> typed context -> PRA route/select/materialize
 - PyTorch and Transformers
 - A model adapter supported by the runtime
 
-## Quickstart
+## Install and launch
+
+Run these commands in order:
 
 ```bash
 pra runtime doctor -e hf
@@ -42,16 +57,45 @@ pra runtime inspect Qwen/Qwen3-1.7B -e hf
 pra runtime serve Qwen/Qwen3-1.7B -e hf --storage balanced
 ```
 
+
+### Command options
+
+- `--engine` / `-e` selects the runtime provider used for inspection or launch.
+- `--mode selected-context` renders the frozen selected evidence as ordinary
+  input. `--mode native-memory` requests a qualified detached-memory path.
+  `--mode auto` remains conservative when economics are not qualified.
+- `--profile recommended` selects the current qualified model profile; it
+  does not promote smoke-only consumer-layer candidates.
+- `--storage memory|balanced|persistent|minimal` controls native-resource
+  lifecycle when the selected engine exposes it.
+- `--backend` names a gateway adapter; `--backend-url` is the existing
+  OpenAI-compatible endpoint. The gateway does not own that engine process.
+- `--measurements RESULTS.json` imports selector-frozen quality, latency,
+  memory, and lifecycle results into `pra evaluate`.
+
 Inspect the capability report before relying on anything beyond Selected
 Context. An unavailable capability must fail explicitly or fall back only
 when the request permits that fallback.
 
-## Measured results
+### Qualify this exact deployment
 
-| Metric | Value | Evidence |
-| --- | --- | --- |
-| Natural serving tails | NOT_MEASURED | Not measured |
-| Reference mechanism | Validated across Qwen, Llama, and Gemma adapters | Model-backed |
+```bash
+pra engines --details hugging-face
+pra evaluate MODEL --engine hugging-face --dataset DATASET \
+  --measurements RESULTS.json -o .pra/runs/engine-evaluation
+pra recommend .pra/runs/engine-evaluation
+pra report .pra/runs/engine-evaluation --format html
+```
+
+## Metrics from the engine paper
+
+These values are imported from the checked-in paper artifacts. They apply to
+the named model, workload, hardware, and engine version rather than every deployment.
+
+| Metric | Value | Evidence | Source |
+| --- | --- | --- | --- |
+| Natural serving tails | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/pra_product_matrix_v2.json) |
+| Reference mechanism | Validated across Qwen, Llama, and Gemma adapters | Model-backed | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/pra_product_matrix_v2.json) |
 
 ## Metrics and explicit gaps
 

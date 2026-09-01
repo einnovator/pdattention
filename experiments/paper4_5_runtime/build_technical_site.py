@@ -9,13 +9,40 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "src/pra_hf/model_profiles/engine_documentation_registry.json"
+MODEL_REGISTRY = ROOT / "src/pra_hf/model_profiles/model_documentation_registry.json"
 ENGINE_DIR = ROOT / "docs/site/engines"
+MODEL_PAGE = ROOT / "docs/site/models.md"
+REPOSITORY_BLOB = "https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime"
 
 
 def _escape(value: object) -> str:
     """Escape text for a Markdown table cell."""
 
     return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _status_icon(status: object) -> str:
+    """Add a compact visual cue without replacing the textual status."""
+
+    normalized = str(status).lower().replace("-", " ")
+    if normalized in {"validated", "measured", "recommended", "available"}:
+        return "✅"
+    if normalized in {"candidate", "research only", "partial topology", "engine dependent"}:
+        return "🧪"
+    if normalized in {"not measured", "not qualified", "qualification pending"}:
+        return "⏳"
+    if normalized in {"not applicable", "blocked", "unavailable"}:
+        return "⛔"
+    return "ℹ️"
+
+
+def _status(value: object) -> str:
+    return f"{_status_icon(value)} {_escape(value)}"
+
+
+def _artifact_link(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    return f"[artifact]({REPOSITORY_BLOB}/{normalized})"
 
 
 def load_registry(path: Path = REGISTRY) -> dict:
@@ -48,6 +75,23 @@ def load_registry(path: Path = REGISTRY) -> dict:
     return payload
 
 
+def load_model_registry(path: Path = MODEL_REGISTRY) -> dict:
+    """Load model-family claims and validate their checked-in evidence registry."""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    profile_registry = ROOT / payload["profile_registry"]
+    if not profile_registry.is_file():
+        raise FileNotFoundError(profile_registry)
+    slugs = [str(row["slug"]) for row in payload.get("families", ())]
+    if not slugs or len(slugs) != len(set(slugs)):
+        raise ValueError("Model documentation slugs must be non-empty and unique.")
+    for family in payload["families"]:
+        for key in ("name", "adapter_requirement", "adapter_detail", "evidence"):
+            if not family.get(key):
+                raise ValueError(f"Missing model documentation field {family['slug']}.{key}")
+    return payload
+
+
 def render_overview(registry: dict) -> str:
     """Render the public capability and recommendation matrix."""
 
@@ -67,24 +111,31 @@ def render_overview(registry: dict) -> str:
         lines.append(
             "| "
             f"[{_escape(engine['name'])}]({_escape(engine['slug'])}.md) | "
-            f"{_escape(capabilities['selected_context'])} | "
-            f"{_escape(capabilities['typed_transport'])} | "
-            f"{_escape(capabilities['native_memory'])} | "
-            f"{_escape(capabilities['native_serving'])} | "
+            f"{_status(capabilities['selected_context'])} | "
+            f"{_status(capabilities['typed_transport'])} | "
+            f"{_status(capabilities['native_memory'])} | "
+            f"{_status(capabilities['native_serving'])} | "
             f"{_escape(engine['recommended_today'])} | "
             f"{_escape(engine['evidence'])} |"
         )
     lines.extend(
         [
             "",
+            "## Key",
+            "",
+            "- ✅ **Validated / measured / recommended:** passed the stated evidence boundary.",
+            "- 🧪 **Candidate / research-only:** implemented or under study, but not a default.",
+            "- ⏳ **Qualification pending / not measured:** evidence is incomplete; this is not zero.",
+            "- ⛔ **Blocked / not applicable:** the required engine seam is unavailable in the stated scope.",
+            "",
             "## Reading the matrix",
             "",
-            "- **Validated** means the named capability passed the scope described on",
+            "**Validated** means the named capability passed the scope described on",
             "  that engine's page. It is not a claim about every model or workload.",
-            "- **Candidate** or **Research only** means the mechanism exists but has not",
+            "**Candidate** or **Research only** means the mechanism exists but has not",
             "  passed the product qualification boundary.",
-            "- **Not measured** is unknown. It is never interpreted as zero.",
-            "- **Not applicable** means the required engine seam does not currently exist.",
+            "**Not measured** is unknown. It is never interpreted as zero.",
+            "**Not applicable** means the required engine seam does not currently exist.",
             "",
             "See [Metrics & Qualification](../metrics.md) for comparison contracts and",
             "[Research / Evidence](../research/index.md) for paper terminology and raw",
@@ -115,14 +166,27 @@ def render_engine(engine: dict, registry: dict) -> str:
         "",
         engine["best_deployment"],
         "",
+        "## What PRA adds to this engine",
+        "",
+        f"PRA gives {engine['name']} a query-addressed context layer above ordinary",
+        "prompt construction. Long-lived documents, tool results, task state, and other",
+        "typed resources remain separately addressable; the request receives only the",
+        "authorized regions selected for that operation. This reduces visible context",
+        "without requiring Native Memory. Deeper native reuse is enabled only where the",
+        "table below says it has been measured for this engine.",
+        "",
+        f"For {engine['name']}, the practical boundary is: {engine['best_deployment']}",
+        "",
         "## Supported PRA capabilities",
         "",
         "| Capability | Status |",
         "| --- | --- |",
-        f"| Selected Context | {capabilities['selected_context']} |",
-        f"| Typed PRA Transport | {capabilities['typed_transport']} |",
-        f"| Native Memory | {capabilities['native_memory']} |",
-        f"| Native Serving | {capabilities['native_serving']} |",
+        f"| Selected Context | {_status(capabilities['selected_context'])} |",
+        f"| Typed PRA Transport | {_status(capabilities['typed_transport'])} |",
+        f"| Native Memory | {_status(capabilities['native_memory'])} |",
+        f"| Native Serving | {_status(capabilities['native_serving'])} |",
+        "",
+        "**Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.",
         "",
         "## Architecture",
         "",
@@ -137,26 +201,55 @@ def render_engine(engine: dict, registry: dict) -> str:
         "",
     ]
     lines.extend(f"- {item}" for item in engine["requirements"])
-    lines.extend(["", "## Quickstart", "", "```bash"])
+    lines.extend(["", "## Install and launch", "", "Run these commands in order:", "", "```bash"])
     lines.extend(engine["quickstart"])
     lines.extend(
         [
             "```",
             "",
+            "",
+            "### Command options",
+            "",
+            "- `--engine` / `-e` selects the runtime provider used for inspection or launch.",
+            "- `--mode selected-context` renders the frozen selected evidence as ordinary",
+            "  input. `--mode native-memory` requests a qualified detached-memory path.",
+            "  `--mode auto` remains conservative when economics are not qualified.",
+            "- `--profile recommended` selects the current qualified model profile; it",
+            "  does not promote smoke-only consumer-layer candidates.",
+            "- `--storage memory|balanced|persistent|minimal` controls native-resource",
+            "  lifecycle when the selected engine exposes it.",
+            "- `--backend` names a gateway adapter; `--backend-url` is the existing",
+            "  OpenAI-compatible endpoint. The gateway does not own that engine process.",
+            "- `--measurements RESULTS.json` imports selector-frozen quality, latency,",
+            "  memory, and lifecycle results into `pra evaluate`.",
+            "",
             "Inspect the capability report before relying on anything beyond Selected",
             "Context. An unavailable capability must fail explicitly or fall back only",
             "when the request permits that fallback.",
             "",
-            "## Measured results",
+            "### Qualify this exact deployment",
             "",
-            "| Metric | Value | Evidence |",
-            "| --- | --- | --- |",
+            "```bash",
+            f"pra engines --details {engine['slug']}",
+            f"pra evaluate MODEL --engine {engine['slug']} --dataset DATASET \\",
+            "  --measurements RESULTS.json -o .pra/runs/engine-evaluation",
+            "pra recommend .pra/runs/engine-evaluation",
+            "pra report .pra/runs/engine-evaluation --format html",
+            "```",
+            "",
+            "## Metrics from the engine paper",
+            "",
+            "These values are imported from the checked-in paper artifacts. They apply to",
+            "the named model, workload, hardware, and engine version rather than every deployment.",
+            "",
+            "| Metric | Value | Evidence | Source |",
+            "| --- | --- | --- | --- |",
         ]
     )
     for metric in engine["metrics"]:
         lines.append(
             f"| {_escape(metric['name'])} | {_escape(metric['value'])} | "
-            f"{_escape(metric['status'])} |"
+            f"{_escape(metric['status'])} | {_artifact_link(metric['source'])} |"
         )
     lines.extend(
         [
@@ -209,6 +302,65 @@ def render_engine(engine: dict, registry: dict) -> str:
     return "\n".join(lines)
 
 
+def render_models(registry: dict) -> str:
+    """Render model support by family and make adapter requirements explicit."""
+
+    lines = [
+        "# Model Support",
+        "",
+        "PRA support has two distinct boundaries. **Selected Context** works with any",
+        "model that accepts ordinary text through a supported runtime or endpoint; it",
+        "does not require an attention adapter. **Native Memory** changes model execution",
+        "and therefore requires a known structural mapping plus model-specific validation.",
+        "",
+        "| Family | Selected Context | Native Memory | Structural adapter | Evidence |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for family in registry["families"]:
+        lines.append(
+            f"| [{_escape(family['name'])}](#{family['slug']}) | {_status(family['selected_context'])} | "
+            f"{_status(family['native_memory'])} | **{_escape(family['adapter_requirement'])}** | "
+            f"{_escape(family['evidence'])} |"
+        )
+    lines.extend([
+        "",
+        "**Key:** ✅ available/validated · 🧪 partial or engine-dependent · ⏳ qualification pending.",
+        "",
+    ])
+    for family in registry["families"]:
+        lines.extend([
+            f"## {family['name']} {{ #{family['slug']} }}",
+            "",
+            f"**Model types:** `{', '.join(family['model_types'])}`  ",
+            f"**Adapter:** {family['adapter_requirement']}",
+            "",
+            family["adapter_detail"],
+            "",
+            "**Known examples**",
+            "",
+        ])
+        lines.extend(f"- `{model}`" for model in family["examples"])
+        lines.extend(["", "**Inspect and launch**", "", "```bash"])
+        lines.extend(family["commands"])
+        lines.extend(["```", "", "**Evidence boundary**", "", family["evidence"], "", "**Limitations**", ""])
+        lines.extend(f"- {item}" for item in family["limitations"])
+        lines.append("")
+    lines.extend([
+        "## Adapter decision",
+        "",
+        "1. Start with `pra inspect MODEL --engine ENGINE`.",
+        "2. If Selected Context is the target, no model structural adapter is required.",
+        "3. For a built-in family, run `pra model validate`; exporting an adapter pins the mapping.",
+        "4. For a partial or unknown family, run `pra model adapt` and the full validation ladder.",
+        "5. Promote Native Memory only after quality, geometry, lifecycle, and economics pass",
+        "   for the exact model revision, tokenizer, quantization, engine, and hardware.",
+        "",
+        f"_Generated from the model registry; evidence current through {registry['evidence_as_of']}._",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def generated_files(registry: dict) -> dict[Path, str]:
     """Return every generated site path and its expected contents."""
 
@@ -219,6 +371,7 @@ def generated_files(registry: dict) -> dict[Path, str]:
             for engine in registry["engines"]
         }
     )
+    files[MODEL_PAGE] = render_models(load_model_registry())
     return files
 
 

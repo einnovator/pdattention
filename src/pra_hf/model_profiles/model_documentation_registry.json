@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "evidence_as_of": "2026-09-01",
+  "profile_registry": "src/pra_hf/model_profiles/pra_profile_benchmarks.json",
+  "families": [
+    {
+      "slug": "qwen",
+      "name": "Qwen",
+      "model_types": ["qwen2", "qwen3"],
+      "examples": ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit"],
+      "selected_context": "Available",
+      "native_memory": "Validated mapping",
+      "adapter_requirement": "Optional",
+      "adapter_detail": "The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter when the deployment needs a pinned, reviewable artifact.",
+      "evidence": "Qwen/Qwen3-0.6B has checked-in model-backed profile rows; larger Qwen configurations have engine-specific evidence.",
+      "commands": [
+        "pra inspect Qwen/Qwen3-1.7B --engine hf",
+        "pra model validate Qwen/Qwen3-1.7B --suite smoke",
+        "pra serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended"
+      ],
+      "limitations": ["Model revision, tokenizer, quantization, engine, and profile still require qualification together."]
+    },
+    {
+      "slug": "llama",
+      "name": "Llama",
+      "model_types": ["llama"],
+      "examples": ["unsloth/Llama-3.2-1B", "meta-llama/Llama-3.2-1B-Instruct"],
+      "selected_context": "Available",
+      "native_memory": "Validated mapping",
+      "adapter_requirement": "Optional",
+      "adapter_detail": "The SDK includes the conventional Llama decoder mapping. A declarative adapter is optional for discovery and recommended for pinned releases.",
+      "evidence": "unsloth/Llama-3.2-1B has checked-in model-backed profile rows.",
+      "commands": [
+        "pra inspect unsloth/Llama-3.2-1B --engine hf",
+        "pra model validate unsloth/Llama-3.2-1B --suite smoke",
+        "pra serve unsloth/Llama-3.2-1B --engine hf --mode auto --profile recommended"
+      ],
+      "limitations": ["Instruction tuning and quantized derivatives are separate qualification identities."]
+    },
+    {
+      "slug": "gemma3",
+      "name": "Gemma 3 text",
+      "model_types": ["gemma3_text"],
+      "examples": ["google/gemma-3-1b-it", "mlx-community/gemma-3-1b-it-4bit"],
+      "selected_context": "Available",
+      "native_memory": "Partial topology",
+      "adapter_requirement": "Required for native production",
+      "adapter_detail": "A built-in mapping discovers Gemma 3 text attention, but its heterogeneous topology must be exported, reviewed, and validated for the exact revision before Native Memory is promoted.",
+      "evidence": "google/gemma-3-1b-it has checked-in model-backed profile rows; native deployment remains topology specific.",
+      "commands": [
+        "pra inspect google/gemma-3-1b-it --engine hf",
+        "pra model adapt google/gemma-3-1b-it -o .pra/adapters/gemma3",
+        "pra model validate google/gemma-3-1b-it --adapter .pra/adapters/gemma3 --suite standard"
+      ],
+      "limitations": ["Sliding/global attention topology and multimodal wrappers require explicit review."]
+    },
+    {
+      "slug": "other-hf",
+      "name": "Other Hugging Face causal decoders",
+      "model_types": ["unregistered"],
+      "examples": ["Any AutoConfig-compatible causal decoder"],
+      "selected_context": "Available",
+      "native_memory": "Qualification pending",
+      "adapter_requirement": "Required",
+      "adapter_detail": "Selected Context needs no attention adapter. Native Memory requires a generated declarative mapping or reviewed Python plugin plus the complete validation ladder.",
+      "evidence": "No family-wide native claim is made for unregistered architectures.",
+      "commands": [
+        "pra model inspect ORG/MODEL",
+        "pra model adapt ORG/MODEL -o .pra/adapters/model",
+        "pra model validate ORG/MODEL --adapter .pra/adapters/model --suite standard"
+      ],
+      "limitations": ["Projection-name discovery alone does not establish mask, position, cache, or generation correctness."]
+    },
+    {
+      "slug": "endpoint-only",
+      "name": "Models behind ordinary API endpoints",
+      "model_types": ["openai-compatible"],
+      "examples": ["vLLM, SGLang, Ollama, llama.cpp, OpenVINO or custom OpenAI-compatible endpoints"],
+      "selected_context": "Available",
+      "native_memory": "Engine dependent",
+      "adapter_requirement": "Not required for Selected Context",
+      "adapter_detail": "The gateway can select and render context for an ordinary endpoint without modifying the model. Native modes require an explicit backend capability handshake and model qualification.",
+      "evidence": "Selected Context is the portable cross-engine path.",
+      "commands": [
+        "pra gateway serve --mode selected-context --backend custom --backend-url http://127.0.0.1:8000/v1"
+      ],
+      "limitations": ["Do not infer detached Native Memory from prefix caching or a paged K/V implementation."]
+    }
+  ]
+}

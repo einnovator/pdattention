@@ -9,6 +9,7 @@ from click.testing import CliRunner
 from experiments.paper4_5_runtime.build_technical_site import (
     ROOT,
     generated_files,
+    load_model_registry,
     load_registry,
 )
 from pra_hf.cli import cli
@@ -29,6 +30,50 @@ def test_generated_engine_pages_match_registry() -> None:
     registry = load_registry()
     for path, expected in generated_files(registry).items():
         assert path.read_text(encoding="utf-8") == expected
+
+
+def test_engine_matrix_and_pages_are_product_self_contained() -> None:
+    overview = (SITE / "engines/overview.md").read_text(encoding="utf-8")
+    for marker in ("✅", "🧪", "⏳", "⛔", "## Key"):
+        assert marker in overview
+    for page in (SITE / "engines").glob("*.md"):
+        if page.name == "overview.md":
+            continue
+        text = page.read_text(encoding="utf-8")
+        for section in (
+            "## What PRA adds to this engine", "## Install and launch",
+            "### Command options", "## Metrics from the engine paper",
+            "## Production recommendation",
+        ):
+            assert section in text, f"{page.name} is missing {section}"
+        assert "pra evaluate MODEL" in text
+        assert "--measurements RESULTS.json" in text
+
+
+def test_model_page_matches_registry_and_explains_adapter_boundary() -> None:
+    registry = load_model_registry()
+    text = (SITE / "models.md").read_text(encoding="utf-8")
+    assert "# Model Support" in text
+    assert "## Adapter decision" in text
+    assert "Selected Context" in text
+    assert "Native Memory" in text
+    for family in registry["families"]:
+        assert f"## {family['name']}" in text
+        assert family["adapter_requirement"] in text
+        assert family["evidence"] in text
+
+
+def test_web_ui_is_a_dedicated_operational_page() -> None:
+    text = (SITE / "web-ui.md").read_text(encoding="utf-8")
+    for value in (
+        "pra agent start", "pra agent stop", "--detach", "--open",
+        "/api/sessions", "/ws/sessions/{id}", "authentication layer",
+    ):
+        assert value in text
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    assert mkdocs.index("- CLI: cli.md") < mkdocs.index("- Concepts: concepts.md")
+    assert "- Model Support: models.md" in mkdocs
+    assert "- Web UI: web-ui.md" in mkdocs
 
 
 def test_all_internal_markdown_links_resolve() -> None:

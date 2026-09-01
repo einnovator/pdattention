@@ -10,14 +10,27 @@ Apple-silicon execution and lifecycle research with unified memory.
 
 Selected Context is the portable default. Native Memory is validated with all eligible consumer layers for measured models.
 
+## What PRA adds to this engine
+
+PRA gives MLX a query-addressed context layer above ordinary
+prompt construction. Long-lived documents, tool results, task state, and other
+typed resources remain separately addressable; the request receives only the
+authorized regions selected for that operation. This reduces visible context
+without requiring Native Memory. Deeper native reuse is enabled only where the
+table below says it has been measured for this engine.
+
+For MLX, the practical boundary is: Selected Context is the portable default. Native Memory is validated with all eligible consumer layers for measured models.
+
 ## Supported PRA capabilities
 
 | Capability | Status |
 | --- | --- |
-| Selected Context | Validated |
-| Typed PRA Transport | Validated |
-| Native Memory | Validated |
-| Native Serving | Candidate |
+| Selected Context | ✅ Validated |
+| Typed PRA Transport | ✅ Validated |
+| Native Memory | ✅ Validated |
+| Native Serving | 🧪 Candidate |
+
+**Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.
 
 ## Architecture
 
@@ -34,7 +47,9 @@ application -> typed context -> PRA route/select/materialize
 - MLX and mlx-lm
 - A supported Qwen or reference-compatible model
 
-## Quickstart
+## Install and launch
+
+Run these commands in order:
 
 ```bash
 pra runtime doctor -e mlx
@@ -42,18 +57,47 @@ pra runtime inspect mlx-community/Qwen3-4B-4bit -e mlx
 pra runtime serve mlx-community/Qwen3-4B-4bit -e mlx --storage balanced
 ```
 
+
+### Command options
+
+- `--engine` / `-e` selects the runtime provider used for inspection or launch.
+- `--mode selected-context` renders the frozen selected evidence as ordinary
+  input. `--mode native-memory` requests a qualified detached-memory path.
+  `--mode auto` remains conservative when economics are not qualified.
+- `--profile recommended` selects the current qualified model profile; it
+  does not promote smoke-only consumer-layer candidates.
+- `--storage memory|balanced|persistent|minimal` controls native-resource
+  lifecycle when the selected engine exposes it.
+- `--backend` names a gateway adapter; `--backend-url` is the existing
+  OpenAI-compatible endpoint. The gateway does not own that engine process.
+- `--measurements RESULTS.json` imports selector-frozen quality, latency,
+  memory, and lifecycle results into `pra evaluate`.
+
 Inspect the capability report before relying on anything beyond Selected
 Context. An unavailable capability must fail explicitly or fall back only
 when the request permits that fallback.
 
-## Measured results
+### Qualify this exact deployment
 
-| Metric | Value | Evidence |
-| --- | --- | --- |
-| Warm native/selected cost, 4B | 1.035x | Natural workload |
-| Warm native/selected cost, 8B | 1.015x | Natural workload |
-| Warm native/selected cost, 14B | 0.980x; interval includes parity | Natural workload |
-| Reduced consumer-layer profile | CALIBRATION_PENDING | Candidate |
+```bash
+pra engines --details mlx
+pra evaluate MODEL --engine mlx --dataset DATASET \
+  --measurements RESULTS.json -o .pra/runs/engine-evaluation
+pra recommend .pra/runs/engine-evaluation
+pra report .pra/runs/engine-evaluation --format html
+```
+
+## Metrics from the engine paper
+
+These values are imported from the checked-in paper artifacts. They apply to
+the named model, workload, hardware, and engine version rather than every deployment.
+
+| Metric | Value | Evidence | Source |
+| --- | --- | --- | --- |
+| Warm native/selected cost, 4B | 1.035x | Natural workload | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
+| Warm native/selected cost, 8B | 1.015x | Natural workload | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
+| Warm native/selected cost, 14B | 0.980x; interval includes parity | Natural workload | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
+| Reduced consumer-layer profile | CALIBRATION_PENDING | Candidate | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
 
 ## Metrics and explicit gaps
 

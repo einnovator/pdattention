@@ -21,7 +21,36 @@
   overflow-wrap: anywhere;
 }
 
+.md-typeset__scrollwrap,
+.md-typeset__table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.md-typeset__table table {
+  min-width: 44rem;
+}
+
 @media screen and (max-width: 480px) {
+  html,
+  body,
+  .md-container,
+  .md-main,
+  .md-content {
+    overflow-x: hidden;
+  }
+
+  .md-content__inner,
+  .md-typeset {
+    width: auto;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .md-typeset__scrollwrap {
+    width: calc(100vw - 2rem);
+  }
+
   .md-typeset h1 {
     font-size: 1.75rem;
     line-height: 1.2;
@@ -29,5 +58,9 @@
 
   .md-typeset pre > code {
     overflow-wrap: normal;
+  }
+
+  .md-typeset__table table {
+    min-width: 40rem;
   }
 }
