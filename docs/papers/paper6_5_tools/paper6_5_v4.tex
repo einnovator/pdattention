@@ -45,7 +45,10 @@ from 0.653 at $K=8$ to 0.701 at $K=32$ and 0.746 at $K=48$. Candidate breadth
 has a model-side cost. At $K=10$, a frozen Qwen3-0.6B chooser reaches 0.667
 conditional accuracy when the target is present and 0.250 end-to-end accuracy;
 at $K=32$, conditional and end-to-end accuracy fall to 0.400 and 0.150 on the
-same executable cohort. Deterministic selection-to-full disclosure saves 51.3\%
+same executable cohort. Replacing only the chooser with a 4-bit Qwen3-14B on
+the identical palettes does not remove the interference: its corresponding
+$K=10$ scores are also 0.667 and 0.250, and its $K=32$ scores are 0.333 and
+0.125. Deterministic selection-to-full disclosure saves 51.3\%
 of tool capability tokens and active native K/V at $K=32$; for 50 declarative
 skills, the saving is 84.3\%. Large-catalog two-step workflows still fail when
 per-step target recall is only 0.250. The supported deployment pattern is thus
@@ -441,7 +444,11 @@ retrieval frontier and the smaller frozen-model choice cohort separately.
 \subsection{Matched palette protocol}
 
 Each model-facing row serializes the same compact fields in a stable order and
-asks frozen Qwen3-0.6B to return one bound capability identity. The target may
+asks a frozen chooser to return one bound capability identity. The main curve
+uses Qwen3-0.6B Q4. A controlled replication substitutes Qwen3-14B 4-bit while
+holding every query, candidate identity, order, compact payload, seed, and
+label protocol fixed. The 14B run used MLX 0.32.2 and MLX-LM 0.31.3 on a 48-GB
+Apple M4 Pro. The target may
 be absent; such a row is a retrieval failure for end-to-end choice, not a model
 error in conditional choice. When the target is present, distractor count and
 composition define the discrimination problem. Seeds are paired across policy
@@ -493,6 +500,49 @@ cohort. Conditional accuracy excludes target-absent palettes; end-to-end
 accuracy counts them as failures.}
 \label{tab:tool-choice-high-k}
 \end{table}
+
+\subsection{Does a larger chooser repair palette interference?}
+
+Table~\ref{tab:chooser-decomposition} separates the three gates requested by
+the deployment pipeline. ``Present'' is discovery recall on the executable
+cohort. $A_K$ is discrimination conditional on target presence. $E_K$ includes
+target-absent retrieval failures. The execution ceiling removes both retrieval
+and choice by exposing the target's complete schema, then scores tool identity
+and argument semantics on the eight unique requests. ``Full pipeline'' joins
+each fixed-palette choice to that same model's deterministic oracle-schema
+execution result for the corresponding request. It is a composed diagnostic,
+not a separately sampled workflow run.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\input{../shared/results/paper6_5_tools/chooser_decomposition/generated_chooser_decomposition_table.tex}
+\caption{Frozen-palette chooser decomposition over five seeds. Increasing
+model size alone neither shifts the best measured $K$ nor eliminates
+candidate interference. Execution ceiling is measured once per unique request.}
+\label{tab:chooser-decomposition}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper6_5_tools/chooser_decomposition/chooser_decomposition.pdf}
+\caption{The same 8,192-tool diversity-union palettes evaluated by two frozen
+Qwen choosers. Discovery recall is fixed at 15/40 for all displayed points.
+The 14B model modestly improves oracle argument construction but does not
+produce a monotone discrimination advantage as the palette grows.}
+\label{fig:chooser-decomposition}
+\end{figure}
+
+At $K=10$, both models choose 10 of 15 present targets, although they disagree
+on ten individual rows: each model uniquely wins five. At $K=16$, the 14B
+model moves from 6/15 to 7/15 correct choices; at $K=32$, it moves in the
+opposite direction, from 6/15 to 5/15. Oracle full-schema execution improves
+from 3/8 to 4/8. The composed full pipeline improves from 0/40 to 5/40 at
+$K=10$, then falls to 0/40 at $K=32$. These small counts do not establish a
+scaling law, but they reject the simple explanation that the observed
+large-palette failure is merely insufficient parameter count. Candidate
+ordering, near-duplicate surface forms, compact-view content, and the choice
+protocol remain active design variables.
 
 The practical operating point is consequently policy- and model-dependent.
 At the retrieval scale, increasing $K$ through 48 continues to recover targets,
@@ -800,12 +850,13 @@ negative control, not a general argument against trained model-native routing.
 
 \section{Limitations}
 
-The generation model is frozen Qwen3-0.6B. Conditional choice given target
-presence is model-dependent, and the $K$ that works best here need not transfer
-to a larger model or another tokenizer. Retrieval cohorts are substantially
-larger than model-choice, mixed-palette, and workflow cohorts. Exact paired
-tests are retained where justified, but small raw counts remain small raw
-counts.
+Most generation experiments use frozen Qwen3-0.6B. The matched chooser
+decomposition adds one 4-bit Qwen3-14B replication, but it remains within one
+model family, one tokenizer family, one prompt protocol, eight query identities,
+and five catalog seeds. It is evidence against a simple scale-only remedy, not
+a broad model scaling claim. Retrieval cohorts are substantially larger than
+model-choice, mixed-palette, and workflow cohorts. Exact paired tests are
+retained where justified, but small raw counts remain small raw counts.
 
 Semantic-hard queries and confusable catalogs are authored or generated rather
 than sampled from production traffic. Capability domains are limited. The

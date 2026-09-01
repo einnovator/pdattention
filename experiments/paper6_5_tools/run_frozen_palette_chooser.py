@@ -175,6 +175,7 @@ def run(args: argparse.Namespace) -> None:
     }
     completed_execution = {str(row["query_id"]) for row in execution_rows}
     generator = MLXGenerator(args.model)
+    model_label = args.model_label or args.model
 
     for palette in palettes:
         key = (int(palette["seed"]), str(palette["query_id"]), int(palette["max_candidates"]))
@@ -189,7 +190,7 @@ def run(args: argparse.Namespace) -> None:
             raw, chosen = "", ""
             costs = {"prompt_tokens": 0, "generated_tokens": 0, "wall_seconds": 0.0}
         choice_rows.append({
-            "model": args.model,
+            "model": model_label,
             "catalog_size": 8192,
             "seed": key[0],
             "query_id": key[1],
@@ -203,7 +204,7 @@ def run(args: argparse.Namespace) -> None:
             **costs,
         })
         atomic_json(checkpoint_path, {
-            "protocol": {"model": args.model, "k_values": args.k_values, "frozen_palettes": True},
+            "protocol": {"model": model_label, "k_values": args.k_values, "frozen_palettes": True},
             "choice_rows": choice_rows,
             "execution_rows": execution_rows,
         })
@@ -227,7 +228,7 @@ def run(args: argparse.Namespace) -> None:
         chosen, arguments = parse_call(raw)
         semantic = arguments_match(arguments, case["expected_arguments"])
         execution_rows.append({
-            "model": args.model,
+            "model": model_label,
             "query_id": case["query_id"],
             "target_name": target,
             "chosen_tool": chosen,
@@ -241,7 +242,7 @@ def run(args: argparse.Namespace) -> None:
             **costs,
         })
         atomic_json(checkpoint_path, {
-            "protocol": {"model": args.model, "k_values": args.k_values, "frozen_palettes": True},
+            "protocol": {"model": model_label, "k_values": args.k_values, "frozen_palettes": True},
             "choice_rows": choice_rows,
             "execution_rows": execution_rows,
         })
@@ -254,6 +255,7 @@ def run(args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="mlx-community/Qwen3-14B-4bit")
+    parser.add_argument("--model-label", default="")
     parser.add_argument("--run-name", default="qwen3_14b_mlx")
     parser.add_argument("--k-values", nargs="+", type=int, default=[10, 16, 32])
     parser.add_argument("--output", type=Path, default=OUTPUT)
