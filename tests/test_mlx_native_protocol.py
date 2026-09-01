@@ -12,6 +12,7 @@ from pra_mlx.native import (
     MLXQuantizedMemory,
     combine_native_memories,
     deserialize_native_memory,
+    resolve_query_position_base,
     serialize_native_memory,
 )
 from pra_mlx.native_storage import MLXNativeSegmentStore
@@ -66,6 +67,11 @@ def test_positioned_cache_separates_source_and_local_offsets() -> None:
     cache = MLXPositionedKVCache(Local(), position_base=17)
     assert cache.offset == 20
     assert cache.local_offset == 3
+
+
+def test_query_position_base_defaults_to_source_and_allows_bug_control() -> None:
+    assert resolve_query_position_base(17, None) == 17
+    assert resolve_query_position_base(17, 0) == 0
 
 
 def test_native_fingerprint_is_explicit_and_stable() -> None:

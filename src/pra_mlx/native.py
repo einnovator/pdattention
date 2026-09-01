@@ -640,8 +640,16 @@ def make_native_prompt_cache(
     max_kv_size: int | None = None,
     selected_layers: Iterable[int] | None = None,
     segmented: bool = False,
+    query_position_base: int | None = None,
 ):
-    """Create request-local sequential caches backed by immutable selected K/V."""
+    """Create request-local sequential caches backed by immutable selected K/V.
+
+    ``query_position_base`` normally equals the encoded resource length.  The
+    explicit override exists for positional-policy controls and adapters that
+    have already resolved a different logical source frame.  Production
+    callers should leave it unset unless stored post-RoPE K/V and the query use
+    the same coordinate policy.
+    """
 
     from mlx_lm.models.cache import make_prompt_cache
 
@@ -659,14 +667,28 @@ def make_native_prompt_cache(
     selected_cache_type = (
         MLXSegmentedSelectedKVCache if segmented else MLXSelectedKVCache
     )
+    position_base = resolve_query_position_base(
+        memory.source_tokens, query_position_base
+    )
     return [
         (
-            selected_cache_type(cache, layer, memory.source_tokens)
+            selected_cache_type(cache, layer, position_base)
             if index in selected
-            else MLXPositionedKVCache(cache, memory.source_tokens)
+            else MLXPositionedKVCache(cache, position_base)
         )
         for index, (cache, layer) in enumerate(zip(local, memory.layers))
     ]
+
+
+def resolve_query_position_base(
+    source_tokens: int, query_position_base: int | None
+) -> int:
+    """Resolve and validate the RoPE offset used by a native-memory query."""
+
+    value = int(source_tokens if query_position_base is None else query_position_base)
+    if value < 0:
+        raise ValueError("MLX native query position base cannot be negative.")
+    return value
 
 
 def save_native_memory(
