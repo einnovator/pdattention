@@ -25,6 +25,12 @@ from experiments.paper6_2_mlx.run_online_native_gateway import (
 )
 
 
+def _optional_percentile(values: list[float], probability: float) -> float | None:
+    """Preserve missing engine timestamps as null instead of aborting a run."""
+
+    return _percentile(values, probability) if values else None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="qasper")
@@ -183,7 +189,11 @@ def main() -> None:
                     )
                 wave_ms = (time.perf_counter() - wave_started) * 1000.0
                 walls = [float(row["wall_ms"]) for row in results]
-                ttfts = [float(row["ttft_ms"]) for row in results if row["ttft_ms"]]
+                ttfts = [
+                    float(row["ttft_ms"])
+                    for row in results
+                    if row.get("ttft_ms") is not None
+                ]
                 concurrency_rows.append(
                     {
                         "concurrency": concurrency,
@@ -193,8 +203,10 @@ def main() -> None:
                         "request_p50_ms": _percentile(walls, 0.50),
                         "request_p95_ms": _percentile(walls, 0.95),
                         "request_p99_ms": _percentile(walls, 0.99),
-                        "ttft_p50_ms": _percentile(ttfts, 0.50),
-                        "ttft_p95_ms": _percentile(ttfts, 0.95),
+                        "ttft_p50_ms": _optional_percentile(ttfts, 0.50),
+                        "ttft_p95_ms": _optional_percentile(ttfts, 0.95),
+                        "ttft_p99_ms": _optional_percentile(ttfts, 0.99),
+                        "ttft_status": "MEASURED" if ttfts else "NOT_EXPOSED",
                         "exact_output_rate": sum(
                             row["output"] == prime["output"] for row in results
                         )
