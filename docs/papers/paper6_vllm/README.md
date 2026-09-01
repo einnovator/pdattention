@@ -37,6 +37,12 @@ Explicit int8 COLD is exact in only 17/80 sequences and is not a default
 profile. This is a finite lifecycle cohort, not online tail-latency or LMCache
 evidence.
 
+A second Apple M5 receipt loads the prebuilt NAX kernels and repeats the native
+PRA plus APC cohort: 75/75 selected requests recover exactly through concurrency
+eight, with 40/40 mixed-batch and 40/40 post-request isolation checks. The
+offline plugin does not populate request-level TTFT/queue/TPOT timestamps, so
+those fields remain null in the raw artifact.
+
 Rebuild the generated artifacts and paper from the repository root:
 
 ```bash

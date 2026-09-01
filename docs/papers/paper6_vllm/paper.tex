@@ -456,6 +456,20 @@ benchmark. Wrong memory redirects 30/40 outputs to its counterfactual code;
 the imperfect rate limits the strength of that prompt-level causal control,
 while the earlier short-prefix experiment supplies the cleaner 5/5 result.
 
+\paragraph{M5 NAX replication.}
+We independently restored vLLM 0.28.0 and the pinned vLLM-Metal source on a
+16~GB Mac17,2, loaded the prebuilt M5 NAX and paged-attention libraries, and
+reran the same five-seed schedule. Native recovery again reaches 75/75;
+mixed selected/ordinary isolation is 40/40 and post-request isolation is
+40/40. Mean throughput is 4.79, 9.90, 18.75, and 30.71 requests/s at
+concurrency 1, 2, 4, and 8. This is a successful correctness replication but
+not a throughput improvement over the earlier 34.41 requests/s run. The
+offline V1 \texttt{RequestOutput} objects expose APC counts but no per-request
+arrival or first-token timestamps on this plugin revision, so TTFT, queue, and
+TPOT remain explicitly unavailable rather than inferred from batch completion.
+The machine-readable receipt records the engine and source revisions, Apple
+chip identity, physical memory, every output, and nullable latency fields.
+
 \subsection{CUDA E0 reproduction and saturation boundary}
 We separately run vLLM 0.28.0 with TinyLlama-1.1B-Chat on an NVIDIA RTX 5060
 Laptop GPU. The installed V2 runner requires unified virtual addressing, which

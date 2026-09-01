@@ -1,0 +1,4987 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_vllm_metal_v1_apc_concurrency_v1",
+  "evidence_tier": "CONTROLLED",
+  "engine": "vllm-metal",
+  "engine_version": "0.28.0",
+  "model_id": "mlx-community/Qwen3-0.6B-4bit",
+  "concurrency_levels": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71
+  ],
+  "max_model_len": 512,
+  "gpu_memory_utilization": 0.4,
+  "ordinary_prefix_namespace_used_for_pra": false,
+  "native_apc_identity": "sha256_logical_selection_and_geometry",
+  "scheduler_observation_point": "before_pra_attention_augmentation",
+  "runtime_metadata": {
+    "platform": "macOS-26.4.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "hardware_model": "Mac17,2",
+    "cpu_brand": "Apple M5",
+    "physical_memory_bytes": 17179869184,
+    "git_commit": "2a412e161e975210b959379c1373c8034fcfeca5",
+    "vllm_metal_source_commit": "14705ad974863f68d00315655514f200366441bf"
+  },
+  "rows": [
+    {
+      "seed": 11,
+      "concurrency": 1,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "1-9f8c954d"
+      ],
+      "elapsed_ms": 216.74695913679898,
+      "requests_per_second": 4.613674876835776,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "1",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "1-9f8c954d",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true
+      ]
+    },
+    {
+      "seed": 11,
+      "concurrency": 2,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "2-988b176e",
+        "3-a83d181e"
+      ],
+      "elapsed_ms": 205.2642919588834,
+      "requests_per_second": 9.743535911256407,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "2",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "3",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "2-988b176e",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "3-a83d181e",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 11,
+      "concurrency": 4,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "4-8484b143",
+        "5-9aad0692",
+        "6-a2ac63e2",
+        "7-a04f9d33"
+      ],
+      "elapsed_ms": 223.1323749292642,
+      "requests_per_second": 17.92657834286957,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "4",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "5",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "6",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "7",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "4-8484b143",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "5-9aad0692",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "6-a2ac63e2",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "7-a04f9d33",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 11,
+      "concurrency": 8,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "8-b22d847c",
+        "9-b011fffc",
+        "10-a5530c45",
+        "11-83f24a90",
+        "12-9529ad4c",
+        "13-90810fde",
+        "14-862fe0a7",
+        "15-ae3a969e"
+      ],
+      "elapsed_ms": 356.2892081681639,
+      "requests_per_second": 22.453669144601495,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "8",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "9",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "10",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "11",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "12",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "13",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "14",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "15",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "8-b22d847c",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "9-b011fffc",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "10-a5530c45",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "11-83f24a90",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "12-9529ad4c",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "13-90810fde",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "14-862fe0a7",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "15-ae3a969e",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 11,
+      "concurrency": 8,
+      "condition": "mixed_selected_and_ordinary",
+      "selected_tokens": 32,
+      "request_ids": [
+        "16-910dc345",
+        "17-b5147376",
+        "18-af99cc1b",
+        "19-a9204e48",
+        "20-87243354",
+        "21-aa629e7b",
+        "22-bae7e473",
+        "23-8d573046"
+      ],
+      "elapsed_ms": 239.4377919845283,
+      "requests_per_second": 33.41160112484221,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "16",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "17",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "18",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "19",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "20",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "21",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "22",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "23",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "16-910dc345",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "17-b5147376",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "18-af99cc1b",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "19-a9204e48",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "20-87243354",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "21-aa629e7b",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "22-bae7e473",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "23-8d573046",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "seed": 11,
+      "concurrency": 8,
+      "condition": "disabled_after_native",
+      "selected_tokens": 0,
+      "request_ids": [
+        "24-96ae5b83",
+        "25-9a1f1c2a",
+        "26-96143cd1",
+        "27-ab3c9fb8",
+        "28-a5c775c8",
+        "29-984f5adf",
+        "30-855bac44",
+        "31-aa62438b"
+      ],
+      "elapsed_ms": 260.5283330194652,
+      "requests_per_second": 30.70683294704183,
+      "outputs": [
+        {
+          "selected_registered": false,
+          "output_request_id": "24",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "25",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "26",
+          "text": " 1234.\nThe text is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "27",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "28",
+          "text": " 1234.\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "29",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "30",
+          "text": " 1234.\nThe text is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "31",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "24-96ae5b83",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "25-9a1f1c2a",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "26-96143cd1",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "27-ab3c9fb8",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "28-a5c775c8",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "29-984f5adf",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "30-855bac44",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "31-aa62438b",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "seed": 11,
+      "concurrency": 8,
+      "condition": "wrong_memory_plus_apc",
+      "selected_tokens": 32,
+      "request_ids": [
+        "32-87dc2725",
+        "33-a0996644",
+        "34-aaa8e74a",
+        "35-84a43494",
+        "36-96882617",
+        "37-864d5976",
+        "38-b6ac1e51",
+        "39-b118e0e3"
+      ],
+      "elapsed_ms": 240.01137493178248,
+      "requests_per_second": 33.331753556571265,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "32",
+          "text": " 0000? \n\nThe text provided is:",
+          "exact_recovery": false,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "33",
+          "text": " 8402.\nAnswer:\n8402",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "34",
+          "text": " 8402.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "35",
+          "text": " 8402.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "36",
+          "text": " 4444.\n\nAnswer: 444",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "37",
+          "text": " 4567? Or 4567",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "38",
+          "text": " 8402.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "39",
+          "text": " 7402.\n\nAnswer: 740",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "32-87dc2725",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "33-a0996644",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "34-aaa8e74a",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "35-84a43494",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "36-96882617",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "37-864d5976",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "38-b6ac1e51",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "39-b118e0e3",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 23,
+      "concurrency": 1,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "41-a0617378"
+      ],
+      "elapsed_ms": 198.48991697654128,
+      "requests_per_second": 5.038039288001647,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "41",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "41-a0617378",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true
+      ]
+    },
+    {
+      "seed": 23,
+      "concurrency": 2,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "42-89f2a7c1",
+        "43-871632df"
+      ],
+      "elapsed_ms": 206.9697082042694,
+      "requests_per_second": 9.663249841498997,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "42",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "43",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "42-89f2a7c1",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "43-871632df",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 23,
+      "concurrency": 4,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "44-968e79d7",
+        "45-8000f7e0",
+        "46-a55d4f7c",
+        "47-9d234e66"
+      ],
+      "elapsed_ms": 201.3869578950107,
+      "requests_per_second": 19.86225941247558,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "44",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "45",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "46",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "47",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "44-968e79d7",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "45-8000f7e0",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "46-a55d4f7c",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "47-9d234e66",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 23,
+      "concurrency": 8,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "48-9e6d80b7",
+        "49-94a63903",
+        "50-b3441758",
+        "51-9ecb6b85",
+        "52-907d3c95",
+        "53-8fe72a19",
+        "54-9301cdff",
+        "55-8e72150c"
+      ],
+      "elapsed_ms": 242.26616695523262,
+      "requests_per_second": 33.02153206344445,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "48",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "49",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "50",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "51",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "52",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "53",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "54",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "55",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "48-9e6d80b7",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "49-94a63903",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "50-b3441758",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "51-9ecb6b85",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "52-907d3c95",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "53-8fe72a19",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "54-9301cdff",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "55-8e72150c",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 23,
+      "concurrency": 8,
+      "condition": "mixed_selected_and_ordinary",
+      "selected_tokens": 32,
+      "request_ids": [
+        "56-a8dae730",
+        "57-adea1a42",
+        "58-891a7d88",
+        "59-a33f6378",
+        "60-8afa93b0",
+        "61-805bff01",
+        "62-a04942d3",
+        "63-b82f78c5"
+      ],
+      "elapsed_ms": 340.9253340214491,
+      "requests_per_second": 23.46554861627469,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "56",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "57",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "58",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "59",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "60",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "61",
+          "text": " 1234.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "62",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "63",
+          "text": " _ _ _ _.\nThe text is: \"This is",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "56-a8dae730",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "57-adea1a42",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "58-891a7d88",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "59-a33f6378",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "60-8afa93b0",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "61-805bff01",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "62-a04942d3",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "63-b82f78c5",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "seed": 23,
+      "concurrency": 8,
+      "condition": "disabled_after_native",
+      "selected_tokens": 0,
+      "request_ids": [
+        "64-9ed24a03",
+        "65-b9e42dfa",
+        "66-a0fac60f",
+        "67-8b7d989b",
+        "68-b32cfa10",
+        "69-b5a97010",
+        "70-afac302b",
+        "71-b96e1c28"
+      ],
+      "elapsed_ms": 231.94083315320313,
+      "requests_per_second": 34.49155498512755,
+      "outputs": [
+        {
+          "selected_registered": false,
+          "output_request_id": "64",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "65",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "66",
+          "text": " _ _ _ _.\nThe text is: \"This is",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "67",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "68",
+          "text": " 1234.\nAnswer:\nThe four digits are",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "69",
+          "text": " 1234.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "70",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "71",
+          "text": " _ _ _ _.\nThe text is: \"This is",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "64-9ed24a03",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "65-b9e42dfa",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "66-a0fac60f",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "67-8b7d989b",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "68-b32cfa10",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "69-b5a97010",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "70-afac302b",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "71-b96e1c28",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "seed": 23,
+      "concurrency": 8,
+      "condition": "wrong_memory_plus_apc",
+      "selected_tokens": 32,
+      "request_ids": [
+        "72-b28156c6",
+        "73-8c854735",
+        "74-a7d1d35b",
+        "75-bb3163b4",
+        "76-997a9f07",
+        "77-9ca996b3",
+        "78-9b2be667",
+        "79-bbabe2f2"
+      ],
+      "elapsed_ms": 249.44154103286564,
+      "requests_per_second": 32.07164278601833,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "72",
+          "text": " 0000? \n\nThe text provided is:",
+          "exact_recovery": false,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "73",
+          "text": " 8414.\nAnswer:\n8414",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "74",
+          "text": " 8414.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "75",
+          "text": " 8414.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "76",
+          "text": " 8414.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "77",
+          "text": " 8414.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "78",
+          "text": " 8414.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "79",
+          "text": " 8414.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "72-b28156c6",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "73-8c854735",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "74-a7d1d35b",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "75-bb3163b4",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "76-997a9f07",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "77-9ca996b3",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "78-9b2be667",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "79-bbabe2f2",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 37,
+      "concurrency": 1,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "81-b6f93ece"
+      ],
+      "elapsed_ms": 199.5982090011239,
+      "requests_per_second": 5.010064995094065,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "81",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "81-b6f93ece",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true
+      ]
+    },
+    {
+      "seed": 37,
+      "concurrency": 2,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "82-8ff6032f",
+        "83-991a446f"
+      ],
+      "elapsed_ms": 189.12691692821681,
+      "requests_per_second": 10.57490933857448,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "82",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "83",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "82-8ff6032f",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "83-991a446f",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 37,
+      "concurrency": 4,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "84-8485dc5f",
+        "85-b161b206",
+        "86-91dea304",
+        "87-9d7481d4"
+      ],
+      "elapsed_ms": 221.23887506313622,
+      "requests_per_second": 18.080005147641874,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "84",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "85",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "86",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "87",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "84-8485dc5f",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "85-b161b206",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "86-91dea304",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "87-9d7481d4",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 37,
+      "concurrency": 8,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "88-bed131da",
+        "89-8b815cf9",
+        "90-83015a8b",
+        "91-baa24873",
+        "92-aa1efb0e",
+        "93-80d8c830",
+        "94-810313e5",
+        "95-931ae94a"
+      ],
+      "elapsed_ms": 235.95895897597075,
+      "requests_per_second": 33.90420111496886,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "88",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "89",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "90",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "91",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "92",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "93",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "94",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "95",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "88-bed131da",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "89-8b815cf9",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "90-83015a8b",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "91-baa24873",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "92-aa1efb0e",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "93-80d8c830",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "94-810313e5",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "95-931ae94a",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 37,
+      "concurrency": 8,
+      "condition": "mixed_selected_and_ordinary",
+      "selected_tokens": 32,
+      "request_ids": [
+        "96-9d4de1fb",
+        "97-b4d212ee",
+        "98-ab38ad1c",
+        "99-8142fb02",
+        "100-94eedb7a",
+        "101-8fefa0f8",
+        "102-906506d7",
+        "103-b45d9d13"
+      ],
+      "elapsed_ms": 234.69608300365508,
+      "requests_per_second": 34.08663620464177,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "96",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "97",
+          "text": " _ _ _ _.\nThe text provided is: \"This",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "98",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "99",
+          "text": " 1234.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "100",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "101",
+          "text": " 1234.\nThe text is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "102",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "103",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "96-9d4de1fb",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "97-b4d212ee",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "98-ab38ad1c",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "99-8142fb02",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "100-94eedb7a",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "101-8fefa0f8",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "102-906506d7",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "103-b45d9d13",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "seed": 37,
+      "concurrency": 8,
+      "condition": "disabled_after_native",
+      "selected_tokens": 0,
+      "request_ids": [
+        "104-87b235b8",
+        "105-9f075be2",
+        "106-b53543ec",
+        "107-8764f98d",
+        "108-a2395afc",
+        "109-ad007024",
+        "110-a53654a7",
+        "111-a0fc69b4"
+      ],
+      "elapsed_ms": 219.9012089986354,
+      "requests_per_second": 36.379972790643656,
+      "outputs": [
+        {
+          "selected_registered": false,
+          "output_request_id": "104",
+          "text": " _ _ _ _.\nThe text provided is: \"This",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "105",
+          "text": " _ _ _ _.\nThe text provided is: \"This",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "106",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "107",
+          "text": " 1234.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "108",
+          "text": " 1234.\nThe text is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "109",
+          "text": " 1234.\nThe text is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "110",
+          "text": " 1234.\nAnswer:\nThe four digits are",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "111",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "104-87b235b8",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "105-9f075be2",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "106-b53543ec",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "107-8764f98d",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "108-a2395afc",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "109-ad007024",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "110-a53654a7",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "111-a0fc69b4",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "seed": 37,
+      "concurrency": 8,
+      "condition": "wrong_memory_plus_apc",
+      "selected_tokens": 32,
+      "request_ids": [
+        "112-b75e18e7",
+        "113-b9eb0950",
+        "114-b33cff68",
+        "115-9469ae2e",
+        "116-8888c5fd",
+        "117-a94753f2",
+        "118-8760a754",
+        "119-a5b685e1"
+      ],
+      "elapsed_ms": 235.65891687758267,
+      "requests_per_second": 33.94736811149712,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "112",
+          "text": " 0000? \n\nThe text provided is:",
+          "exact_recovery": false,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "113",
+          "text": " 8428.\nAnswer:\n8428",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "114",
+          "text": " 8428.\nAnswer:\nThe four digits are",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "115",
+          "text": " 8428.\nAnswer:\n8428",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "116",
+          "text": " 4828.\nAnswer:\nThe four digits are",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "117",
+          "text": " 8428.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "118",
+          "text": " 8428.\n\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "119",
+          "text": " 8428.\nAnswer:\nThe four digits are",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "112-b75e18e7",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "113-b9eb0950",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "114-b33cff68",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "115-9469ae2e",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "116-8888c5fd",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "117-a94753f2",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "118-8760a754",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "119-a5b685e1",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 53,
+      "concurrency": 1,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "121-a4d4d327"
+      ],
+      "elapsed_ms": 214.4083329476416,
+      "requests_per_second": 4.6639978318575865,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "121",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "121-a4d4d327",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true
+      ]
+    },
+    {
+      "seed": 53,
+      "concurrency": 2,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "122-9e393eb2",
+        "123-83a37f64"
+      ],
+      "elapsed_ms": 193.70625005103648,
+      "requests_per_second": 10.324912074200254,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "122",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "123",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "122-9e393eb2",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "123-83a37f64",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 53,
+      "concurrency": 4,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "124-8a3d529c",
+        "125-b1c1cb58",
+        "126-b6e83f01",
+        "127-8c76c2d7"
+      ],
+      "elapsed_ms": 207.58408401161432,
+      "requests_per_second": 19.26930004795647,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "124",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "125",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "126",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "127",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "124-8a3d529c",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "125-b1c1cb58",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "126-b6e83f01",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "127-8c76c2d7",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 53,
+      "concurrency": 8,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "128-97d6df03",
+        "129-a26f0ae6",
+        "130-9f8b7d9b",
+        "131-a60736a2",
+        "132-b6a73791",
+        "133-a0d97d5a",
+        "134-835de78c",
+        "135-aa82b9b4"
+      ],
+      "elapsed_ms": 246.55991699546576,
+      "requests_per_second": 32.4464742586165,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "128",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "129",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "130",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "131",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "132",
+          "text": " 7391.\n\nThe answer should be in the",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "133",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "134",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "135",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "128-97d6df03",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "129-a26f0ae6",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "130-9f8b7d9b",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "131-a60736a2",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "132-b6a73791",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "133-a0d97d5a",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "134-835de78c",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "135-aa82b9b4",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 53,
+      "concurrency": 8,
+      "condition": "mixed_selected_and_ordinary",
+      "selected_tokens": 32,
+      "request_ids": [
+        "136-9264948b",
+        "137-9cd26b48",
+        "138-aac1d06a",
+        "139-ae61ec88",
+        "140-8389f8b6",
+        "141-a9fefdf7",
+        "142-94dc41a7",
+        "143-bbc9b2ec"
+      ],
+      "elapsed_ms": 311.659500002861,
+      "requests_per_second": 25.669039448265046,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "136",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "137",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "138",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "139",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "140",
+          "text": " 7391.\n\nThe answer should be in the",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "141",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "142",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "143",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "136-9264948b",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "137-9cd26b48",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "138-aac1d06a",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "139-ae61ec88",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "140-8389f8b6",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "141-a9fefdf7",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "142-94dc41a7",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "143-bbc9b2ec",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "seed": 53,
+      "concurrency": 8,
+      "condition": "disabled_after_native",
+      "selected_tokens": 0,
+      "request_ids": [
+        "144-9074aae8",
+        "145-a1e96687",
+        "146-9c4d802b",
+        "147-9d7cfae8",
+        "148-a39be6d1",
+        "149-885ead44",
+        "150-8b937fe3",
+        "151-926bb82e"
+      ],
+      "elapsed_ms": 251.6911660786718,
+      "requests_per_second": 31.784985244573175,
+      "outputs": [
+        {
+          "selected_registered": false,
+          "output_request_id": "144",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "145",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "146",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "147",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "148",
+          "text": " 1234.\nThe text is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "149",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "150",
+          "text": " _ _ _ _.\nThe text is: \"The first",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "151",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "144-9074aae8",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "145-a1e96687",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "146-9c4d802b",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "147-9d7cfae8",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "148-a39be6d1",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "149-885ead44",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "150-8b937fe3",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "151-926bb82e",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "seed": 53,
+      "concurrency": 8,
+      "condition": "wrong_memory_plus_apc",
+      "selected_tokens": 32,
+      "request_ids": [
+        "152-a7e95d97",
+        "153-a5ba54f1",
+        "154-82c4036b",
+        "155-abcaf808",
+        "156-971a3790",
+        "157-bf39f5a2",
+        "158-afbdd21d",
+        "159-9cdc1ffe"
+      ],
+      "elapsed_ms": 222.62679203413427,
+      "requests_per_second": 35.934578793972825,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "152",
+          "text": " 0000? \n\nThe text provided is:",
+          "exact_recovery": false,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "153",
+          "text": " 8444.\nAnswer:\n8444",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "154",
+          "text": " 8444.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "155",
+          "text": " 8444.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "156",
+          "text": " 4444? Or 4444",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "157",
+          "text": " 8444.\n\nThe text provided is in the",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "158",
+          "text": " 8444.\n\nThe text provided is in the",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "159",
+          "text": " 8444.\n\nThe text provided is in the",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "152-a7e95d97",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "153-a5ba54f1",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "154-82c4036b",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "155-abcaf808",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "156-971a3790",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "157-bf39f5a2",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "158-afbdd21d",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "159-9cdc1ffe",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 71,
+      "concurrency": 1,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "161-9904f3ac"
+      ],
+      "elapsed_ms": 216.7913329321891,
+      "requests_per_second": 4.6127305297430565,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "161",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "161-9904f3ac",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true
+      ]
+    },
+    {
+      "seed": 71,
+      "concurrency": 2,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "162-b138701d",
+        "163-ba4efaac"
+      ],
+      "elapsed_ms": 217.0906658284366,
+      "requests_per_second": 9.212740641647711,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "162",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "163",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "162-b138701d",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "163-ba4efaac",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 71,
+      "concurrency": 4,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "164-a7855bc6",
+        "165-9ae0a5cd",
+        "166-88a6864d",
+        "167-91cfe983"
+      ],
+      "elapsed_ms": 214.95254221372306,
+      "requests_per_second": 18.608758746490558,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "164",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "165",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "166",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "167",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "164-a7855bc6",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "165-9ae0a5cd",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "166-88a6864d",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "167-91cfe983",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 71,
+      "concurrency": 8,
+      "condition": "native_pra_plus_apc",
+      "selected_tokens": 32,
+      "active_native_kv_bytes": 3670016,
+      "request_ids": [
+        "168-a179b63b",
+        "169-8a23d729",
+        "170-b579e48a",
+        "171-bfbfe932",
+        "172-b2fa1233",
+        "173-b644a50a",
+        "174-bac44953",
+        "175-9e062443"
+      ],
+      "elapsed_ms": 252.20754207111895,
+      "requests_per_second": 31.71990787549134,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "168",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "169",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "170",
+          "text": " 7391.\n\nThe answer is: 7",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "171",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "172",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "173",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "174",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "175",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "168-a179b63b",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "169-8a23d729",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "170-b579e48a",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "171-bfbfe932",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "172-b2fa1233",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "173-b644a50a",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "174-bac44953",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "175-9e062443",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "seed": 71,
+      "concurrency": 8,
+      "condition": "mixed_selected_and_ordinary",
+      "selected_tokens": 32,
+      "request_ids": [
+        "176-8b539d76",
+        "177-892db264",
+        "178-a4aaec18",
+        "179-968c0645",
+        "180-92a2cdab",
+        "181-af247732",
+        "182-937b5fe1",
+        "183-8daa231f"
+      ],
+      "elapsed_ms": 242.78220813721418,
+      "requests_per_second": 32.95134376353727,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "176",
+          "text": " 7391.\nAnswer:\nThe four digits are",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "177",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "178",
+          "text": " 7391.\n\nThe answer is: 7",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "179",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "180",
+          "text": " 7391.\n\nThe answer is 73",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "181",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "182",
+          "text": " 7391.\n\nThe text provided is: \"",
+          "exact_recovery": true,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "183",
+          "text": " _ _ _ _.\nThe text provided is: \"This",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "176-8b539d76",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "177-892db264",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "178-a4aaec18",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "179-968c0645",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "180-92a2cdab",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "181-af247732",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "182-937b5fe1",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "183-8daa231f",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "seed": 71,
+      "concurrency": 8,
+      "condition": "disabled_after_native",
+      "selected_tokens": 0,
+      "request_ids": [
+        "184-8ad3604c",
+        "185-bcfba73e",
+        "186-b1c1db6d",
+        "187-80d45445",
+        "188-a7c650a0",
+        "189-88b9b72c",
+        "190-a54d61e4",
+        "191-ae5ea573"
+      ],
+      "elapsed_ms": 212.62549981474876,
+      "requests_per_second": 37.62483806961088,
+      "outputs": [
+        {
+          "selected_registered": false,
+          "output_request_id": "184",
+          "text": " _ _ _ _.\nThe text provided is: \"Session",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "185",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "186",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "187",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "188",
+          "text": " 1234.\nThe text provided is: \"",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "189",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "190",
+          "text": " _ _ _ _.\nThe text provided is: \"The",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": false,
+          "output_request_id": "191",
+          "text": " _ _ _ _.\nThe text provided is: \"This",
+          "exact_recovery": false,
+          "num_cached_tokens": 144,
+          "num_cache_creation_tokens": 0,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "184-8ad3604c",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "185-bcfba73e",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "186-b1c1db6d",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "187-80d45445",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "188-a7c650a0",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "189-88b9b72c",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "190-a54d61e4",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        },
+        {
+          "request_id": "191-ae5ea573",
+          "scheduler_cache_start": 144,
+          "scheduled_query_tokens": 9,
+          "prompt_tokens": 153,
+          "selected_registered": false
+        }
+      ],
+      "native_apc_salt_applied": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "seed": 71,
+      "concurrency": 8,
+      "condition": "wrong_memory_plus_apc",
+      "selected_tokens": 32,
+      "request_ids": [
+        "192-af9b6d60",
+        "193-8f2fb8a9",
+        "194-905d465d",
+        "195-bd66d602",
+        "196-84aafbc2",
+        "197-9ea2fcd4",
+        "198-bff13d0f",
+        "199-86f37847"
+      ],
+      "elapsed_ms": 239.71287487074733,
+      "requests_per_second": 33.37325958947171,
+      "outputs": [
+        {
+          "selected_registered": true,
+          "output_request_id": "192",
+          "text": " 0000? \n\nThe answer is 0",
+          "exact_recovery": false,
+          "num_cached_tokens": 0,
+          "num_cache_creation_tokens": 144,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": false
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "193",
+          "text": " 8462.\nAnswer:\n8462",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "194",
+          "text": " 8462.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "195",
+          "text": " 8462.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "196",
+          "text": " 8462.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "197",
+          "text": " 8462.\n\nThe answer should be in the",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "198",
+          "text": " 8462.\n\nThe answer is: 8",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        },
+        {
+          "selected_registered": true,
+          "output_request_id": "199",
+          "text": " 8462.\n\nThe answer should be in the",
+          "exact_recovery": false,
+          "num_cached_tokens": 128,
+          "num_cache_creation_tokens": 16,
+          "generated_tokens": 12,
+          "queue_ms": null,
+          "ttft_ms": null,
+          "request_latency_ms": null,
+          "tpot_ms": null,
+          "wrong_memory_follows_wrong_code": true
+        }
+      ],
+      "scheduler_observations": [
+        {
+          "request_id": "192-af9b6d60",
+          "scheduler_cache_start": 0,
+          "scheduled_query_tokens": 153,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "193-8f2fb8a9",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "194-905d465d",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "195-bd66d602",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "196-84aafbc2",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "197-9ea2fcd4",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "198-bff13d0f",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        },
+        {
+          "request_id": "199-86f37847",
+          "scheduler_cache_start": 128,
+          "scheduled_query_tokens": 25,
+          "prompt_tokens": 153,
+          "selected_registered": true
+        }
+      ],
+      "native_apc_salt_applied": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    }
+  ]
+}
