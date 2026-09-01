@@ -4,29 +4,45 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.136.0
     profiles: [observability]
+    restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:4318:4318"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4317:4317"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4318:4318"
     healthcheck:
       test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol-contrib/config.yaml"]
       interval: 10s
       timeout: 5s
       retries: 5
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:2.8.2
+    profiles: [observability]
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3200:3200"
 
   prometheus:
     image: prom/prometheus:v3.5.0
     profiles: [observability]
+    restart: unless-stopped
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-targets:/etc/prometheus/targets:ro
       - prometheus-data:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "127.0.0.1:9090:9090"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:9090:9090"
     depends_on:
       otel-collector:
         condition: service_started
@@ -34,6 +50,7 @@ services:
   grafana:
     image: grafana/grafana:12.1.1
     profiles: [observability]
+    restart: unless-stopped
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
@@ -43,11 +60,14 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3000:3000"
     depends_on:
       prometheus:
+        condition: service_started
+      tempo:
         condition: service_started
 
 volumes:
   prometheus-data:
   grafana-data:
+  tempo-data:

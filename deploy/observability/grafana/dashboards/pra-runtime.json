@@ -221,7 +221,7 @@
         {
           "refId": "A",
           "expr": "sum(rate(pra_context_selected_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode) / clamp_min(sum(rate(pra_context_source_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode), 1)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -255,7 +255,7 @@
         {
           "refId": "A",
           "expr": "sum(rate(pra_context_visible_reuse_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -289,7 +289,7 @@
         {
           "refId": "A",
           "expr": "histogram_quantile(0.95, sum(rate(pra_gateway_request_duration_seconds_bucket{engine=~\"$engine\"}[5m])) by (le,engine,execution_mode))",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -323,7 +323,7 @@
         {
           "refId": "A",
           "expr": "sum(rate(pra_engine_successful_requests_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -357,7 +357,7 @@
         {
           "refId": "A",
           "expr": "sum(pra_native_bytes{engine=~\"$engine\"}) by (engine,storage_tier)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -391,7 +391,7 @@
         {
           "refId": "A",
           "expr": "sum(pra_storage_hot_bytes{engine=~\"$engine\"}) by (engine)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     }

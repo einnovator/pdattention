@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "pra-vllm",
-  "title": "PRA + vllm",
+  "title": "PRA + vllm: Prometheus Metrics",
   "tags": [
     "pra",
     "vllm"
@@ -220,8 +220,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum(rate(pra_engine_request_duration_seconds_bucket{engine=~\"vllm\"}[5m])) by (le,engine,execution_mode))",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "histogram_quantile(0.95, sum(rate(pra_engine_request_duration_seconds_bucket{engine=~\"vllm\",host=~\"$host\"}[5m])) by (le,host,engine,execution_mode))",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -254,8 +254,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(pra_context_selected_tokens_total{engine=~\"vllm\"}[5m])) / clamp_min(sum(rate(pra_context_source_tokens_total{engine=~\"vllm\"}[5m])), 1)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "sum(rate(pra_context_selected_tokens_total{engine=~\"vllm\",host=~\"$host\"}[5m])) by (host) / clamp_min(sum(rate(pra_context_source_tokens_total{engine=~\"vllm\",host=~\"$host\"}[5m])) by (host), 1)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -288,8 +288,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(pra_native_attaches_total{engine=~\"vllm\"}[5m])) by (status)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "sum(rate(pra_native_attaches_total{engine=~\"vllm\",host=~\"$host\"}[5m])) by (host,status)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -322,8 +322,76 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(pra_native_bytes{engine=~\"vllm\"}) by (storage_tier)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "sum(pra_native_bytes{engine=~\"vllm\",host=~\"$host\"}) by (host,storage_tier)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "vLLM running and waiting requests",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum({__name__=~\"vllm:num_requests_(running|waiting)\",metrics_scope=\"native\",host=~\"$host\"}) by (host,__name__)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "vLLM KV cache usage",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum({__name__=~\"vllm:(kv_cache_usage_perc|gpu_cache_usage_perc)\",metrics_scope=\"native\",host=~\"$host\"}) by (host)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     }

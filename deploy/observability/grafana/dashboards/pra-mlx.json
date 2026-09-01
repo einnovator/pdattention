@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "pra-mlx",
-  "title": "PRA + mlx",
+  "title": "PRA + mlx: Prometheus Metrics",
   "tags": [
     "pra",
     "mlx"
@@ -220,8 +220,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum(rate(pra_engine_request_duration_seconds_bucket{engine=~\"mlx\"}[5m])) by (le,engine,execution_mode))",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "histogram_quantile(0.95, sum(rate(pra_engine_request_duration_seconds_bucket{engine=~\"mlx\",host=~\"$host\"}[5m])) by (le,host,engine,execution_mode))",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -254,8 +254,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(pra_context_selected_tokens_total{engine=~\"mlx\"}[5m])) / clamp_min(sum(rate(pra_context_source_tokens_total{engine=~\"mlx\"}[5m])), 1)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "sum(rate(pra_context_selected_tokens_total{engine=~\"mlx\",host=~\"$host\"}[5m])) by (host) / clamp_min(sum(rate(pra_context_source_tokens_total{engine=~\"mlx\",host=~\"$host\"}[5m])) by (host), 1)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -288,8 +288,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(pra_native_attaches_total{engine=~\"mlx\"}[5m])) by (status)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "sum(rate(pra_native_attaches_total{engine=~\"mlx\",host=~\"$host\"}[5m])) by (host,status)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     },
@@ -322,8 +322,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(pra_native_bytes{engine=~\"mlx\"}) by (storage_tier)",
-          "legendFormat": "{{engine}} {{execution_mode}}"
+          "expr": "sum(pra_native_bytes{engine=~\"mlx\",host=~\"$host\"}) by (host,storage_tier)",
+          "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]
     }

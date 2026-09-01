@@ -44,7 +44,7 @@ def panel(panel_id: int, title: str, expression: str, *, unit: str = "short") ->
         "fieldConfig": {"defaults": {"unit": unit}, "overrides": []},
         "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
         "targets": [
-            {"refId": "A", "expr": expression, "legendFormat": "{{engine}} {{execution_mode}}"}
+            {"refId": "A", "expr": expression, "legendFormat": "{{host}} {{engine}} {{execution_mode}}"}
         ],
     }
 
@@ -70,6 +70,40 @@ def dashboard(slug: str, title: str, panels: list[dict], *, engine: str | None =
         "templating": {"list": variables},
         "annotations": {"list": []},
         "panels": panels,
+    }
+
+
+def trace_dashboard(engine: str) -> dict:
+    """Build the Tempo view paired with one engine's Prometheus dashboard."""
+
+    selector = engine.replace("-", "_")
+    return {
+        "id": None,
+        "uid": f"pra-{engine}-otel",
+        "title": f"PRA + {engine}: OTEL Traces",
+        "tags": ["pra", engine, "otel", "tempo"],
+        "schemaVersion": 41,
+        "version": 1,
+        "refresh": "10s",
+        "time": {"from": "now-1h", "to": "now"},
+        "templating": {"list": []},
+        "annotations": {"list": []},
+        "panels": [{
+            "id": 1,
+            "title": f"{engine} request and lifecycle spans",
+            "type": "traces",
+            "datasource": {"type": "tempo", "uid": "pra-tempo"},
+            "gridPos": {"h": 20, "w": 24, "x": 0, "y": 0},
+            "targets": [{
+                "refId": "A",
+                "queryType": "traceql",
+                "query": f'{{ resource.pra.engine = "{selector}" }}',
+                "limit": 100,
+                "tableType": "traces",
+            }],
+            "options": {"showTraceServiceMap": True},
+            "fieldConfig": {"defaults": {}, "overrides": []},
+        }],
     }
 
 
@@ -104,12 +138,21 @@ def main() -> None:
     }
     for engine in ENGINES:
         selector = engine.replace("-", "[_-]")
-        values[f"pra-{engine}.json"] = dashboard(engine, f"PRA + {engine}", [
-            panel(1, "Normalized request p95", f"histogram_quantile(0.95, sum(rate(pra_engine_request_duration_seconds_bucket{{engine=~\"{selector}\"}}[5m])) by (le,engine,execution_mode))", unit="s"),
-            panel(2, "Context economy", f"sum(rate(pra_context_selected_tokens_total{{engine=~\"{selector}\"}}[5m])) / clamp_min(sum(rate(pra_context_source_tokens_total{{engine=~\"{selector}\"}}[5m])), 1)", unit="percentunit"),
-            panel(3, "Native attaches", f"sum(rate(pra_native_attaches_total{{engine=~\"{selector}\"}}[5m])) by (status)"),
-            panel(4, "Native bytes", f"sum(pra_native_bytes{{engine=~\"{selector}\"}}) by (storage_tier)", unit="bytes"),
-        ], engine=engine)
+        engine_panels = [
+            panel(1, "Normalized request p95", f"histogram_quantile(0.95, sum(rate(pra_engine_request_duration_seconds_bucket{{engine=~\"{selector}\",host=~\"$host\"}}[5m])) by (le,host,engine,execution_mode))", unit="s"),
+            panel(2, "Context economy", f"sum(rate(pra_context_selected_tokens_total{{engine=~\"{selector}\",host=~\"$host\"}}[5m])) by (host) / clamp_min(sum(rate(pra_context_source_tokens_total{{engine=~\"{selector}\",host=~\"$host\"}}[5m])) by (host), 1)", unit="percentunit"),
+            panel(3, "Native attaches", f"sum(rate(pra_native_attaches_total{{engine=~\"{selector}\",host=~\"$host\"}}[5m])) by (host,status)"),
+            panel(4, "Native bytes", f"sum(pra_native_bytes{{engine=~\"{selector}\",host=~\"$host\"}}) by (host,storage_tier)", unit="bytes"),
+        ]
+        if engine == "vllm":
+            engine_panels.extend([
+                panel(5, "vLLM running and waiting requests", 'sum({__name__=~"vllm:num_requests_(running|waiting)",metrics_scope="native",host=~"$host"}) by (host,__name__)'),
+                panel(6, "vLLM KV cache usage", 'sum({__name__=~"vllm:(kv_cache_usage_perc|gpu_cache_usage_perc)",metrics_scope="native",host=~"$host"}) by (host)', unit="percentunit"),
+            ])
+        values[f"pra-{engine}.json"] = dashboard(
+            engine, f"PRA + {engine}: Prometheus Metrics", engine_panels, engine=engine
+        )
+        values[f"pra-{engine}-otel.json"] = trace_dashboard(engine)
     for name, value in values.items():
         (target / name).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 

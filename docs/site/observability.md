@@ -18,7 +18,7 @@ PRA exposes two complementary views:
 
 | View | Answers |
 | --- | --- |
-| Distributed traces | Where did one request spend time across the Agent, Gateway, runtime, storage, and engine? |
+| Distributed traces | Where did one request spend time across the Agent, Gateway, runtime, storage, and engine? Tempo stores and searches these spans. |
 | Operational metrics | What are rates, tails, errors, active sessions, and bytes over time? |
 | Engine-native metrics | What did the engine scheduler, prefix cache, device, or physical K/V pool do? |
 | PRA semantic metrics | What was selected, already visible, newly materialized, prefix-reused, native-reused, promoted, or evicted? |
@@ -63,7 +63,9 @@ mode, status, record type, and storage tier. Request/session/user/resource IDs
 never become metric labels.
 
 Production deployments should put authentication and TLS in front of metrics,
-Grafana, and collectors. All supplied Compose ports bind localhost.
+Grafana, and collectors. Compose binds localhost by default; a trusted lab can
+set `OBSERVABILITY_BIND_ADDRESS=0.0.0.0` to accept OTLP and browser traffic from
+multiple machines.
 
 ## Next
 

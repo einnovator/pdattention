@@ -4,12 +4,12 @@ observability:
     environment: development
   prometheus:
     enabled: true
-    host: 127.0.0.1
+    host: 0.0.0.0
     port: 9464
     path: /metrics
   otel:
     enabled: true
-    endpoint: http://localhost:4317
+    endpoint: http://192.168.1.102:4317
     protocol: grpc
     traces: true
     metrics: false
@@ -20,4 +20,5 @@ observability:
     enable_metrics: false
   content:
     capture: none
-  grafana_url: http://localhost:3000
+  grafana_url: http://192.168.1.102:3000
+  trace_url: http://192.168.1.102:3200
