@@ -71,7 +71,7 @@ sequences and remains an explicit, unpromoted option. Five-example Llama and
 Gemma replications also preserve every lossless WARM output, while their small
 int8 results remain calibration observations rather than defaults. Event-loop
 promotion hides the WARM stall with sufficient lead, and the native streaming
-gateway measures queueing through concurrency eight with cancellation-safe
+gateway measures queueing through concurrency sixteen with cancellation-safe
 cleanup. A 1,125-request long-session extension confirms an eight-resource
 working-set threshold, while selective int8 remains below the lossless gate.
 An additional 1,500-request Qwen3-4B M4 Pro sweep reproduces that threshold:
@@ -568,6 +568,37 @@ The 12 held-out examples preserve every selected-text sequence, but because
 the calibrated action equals the all-layer action this is a negative sparsity
 result. A trained, query-conditioned gate remains open work. Fixed suffixes
 and calibration-only group elimination have both failed.
+
+\subsection{Cross-family replication at 8B}
+
+The concat transport result is not Qwen-specific. On a 48~GiB M4 Pro we run
+Llama~3.1-8B-Instruct-4bit on 60 natural-QA examples: 20 each from QASPER,
+HotpotQA, and 2Wiki, with five seeds. The selector output, source cap, and
+12-token greedy decode are frozen between E0 and E2. Native E2 preserves all
+60 output sequences, aggregate token F1 (0.3563), and gold-answer log
+probability ($-6.0414$). Warm request cost is 349.4 versus 338.7 ms, a 1.032
+ratio; cold time to usable context is 1,076.1 versus 1,151.2 ms, a 0.935 ratio.
+Mean active native detail is 46.2~MiB. A current-code 45-example overlapping
+rerun reproduces exact output and likelihood parity with warm/cold ratios
+1.032/0.939. This closes useful-scale transport replication for a second model
+family, but not reduced-layer calibration: the segmented consumer patch remains
+Qwen-specific.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Llama 3.1 8B cross-family transport replication over 60 natural-QA
+examples. Times are means in milliseconds.}
+\begin{tabular}{lrrrrr}
+\toprule
+Mode & F1 & Gold log-prob. & Warm & Cold usable & Agreement \\
+\midrule
+E0 selected text & 0.3563 & -6.0414 & 338.7 & 1,151.2 & 60/60 \\
+E2 native concat & 0.3563 & -6.0414 & 349.4 & 1,076.1 & 60/60 \\
+\bottomrule
+\end{tabular}
+\label{tab:mlx-llama8b-cross-family}
+\end{table}
 
 \section{Long-Context Segmented Execution}
 \label{sec:mlx-long-context}
@@ -1107,13 +1138,16 @@ dashed line is HOT request latency.}
 \end{figure}
 
 The native executor is also exercised through the OpenAI-compatible gateway,
-including streaming, cancellation, cleanup, and session ownership. At
-concurrency one through eight, throughput is 1.56--1.66 requests/s; TTFT p95
-rises from 324 to 4,845 ms as the deliberately serialized model runner queues.
-The client cancels after the first streamed token (338 ms) and all 18 exercised sessions
-close without retaining request-owned native detail. This is a real HTTP-path
-measurement, but the single MLX model instance is intentionally serialized to
-avoid unsafe concurrent mutation of prompt-cache arrays.
+including streaming, cancellation, cleanup, and session ownership. A shared
+gateway correction normalizes native token rows into portable deltas and a
+terminal completion event. At concurrency one through sixteen, throughput is
+1.52--1.70 requests/s; TTFT p95 rises from 302 to 9,988 ms as the deliberately
+serialized model runner queues. Every one of the 31 concurrent outputs matches
+the prime output. The client cancels after the first streamed token (364 ms)
+and all 34 exercised sessions close without retaining request-owned native
+detail. This is a real HTTP-path measurement, but the single MLX model instance
+is intentionally serialized to avoid unsafe concurrent mutation of
+prompt-cache arrays.
 
 \begin{table}[!htbp]
 \centering
@@ -1293,7 +1327,9 @@ tails but serializes one model runner. The natural controls contain real
 dataset text but an inserted fixed answer-code mechanism.
 The first end-task study uses original answers but oracle-scoped evidence. The
 M4 scaling calibrations reach dense 32B and a 30B-A3B MoE checkpoint, but use
-only 30 examples per model and one Qwen family. The corrected cost ladder has
+only 30 examples per Qwen model. Llama 3.1 8B adds a 60-example cross-family
+concat-transport replication, but not a cross-family segmented-layer curve.
+The corrected cost ladder has
 five seeds but two examples per dataset and seed; its bootstrap intervals are
 smoke uncertainty, not a production noninferiority analysis. It establishes
 cost convergence toward parity and rejects the tested reduced-layer profiles,

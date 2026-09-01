@@ -51,7 +51,16 @@ selection without replaying or corrupting prefix-cache semantics.
 The measured MLX profile ladder also sharpens the profile contract. `BALANCED`
 currently means native K/V at every eligible consumer layer. Fixed reduced-layer
 and learned candidates remain `CALIBRATION_PENDING`; the SDK does not infer a
-production sparse suffix from their lower K/V residency.
+production sparse suffix from their lower K/V residency. A 60-example Llama
+3.1 8B replication preserves E0/E2 output, F1, and answer likelihood with all
+layers, but does not change that policy because reduced Llama profiles were not
+calibrated.
+
+Native engine streams may emit raw token rows internally. The gateway
+normalizes those rows into OpenAI-compatible content deltas and always emits a
+terminal completion event before committing session state. This keeps MLX and
+SGLang cancellation, cleanup, and session semantics identical at the SDK wire
+boundary.
 
 ## Three components
 

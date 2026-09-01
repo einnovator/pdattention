@@ -1994,9 +1994,38 @@
           "model_id": "mlx-community/Qwen3-0.6B-4bit",
           "model_revision": "main",
           "dataset": "qasper",
-          "health_ms": 4.1054170578718185,
+          "runtime": {
+            "platform": "macOS-26.4.1-arm64-arm-64bit",
+            "machine": "arm64",
+            "hardware_model": "Mac17,2",
+            "cpu_brand": "Apple M5",
+            "physical_memory_bytes": 17179869184,
+            "git_commit": "91505538adb0f1e1eb05fdde076bbc6db245f8e6"
+          },
+          "health_ms": 3.9709999691694975,
           "capabilities": {
             "status": "ok",
+            "protocol": "pra",
+            "protocol_version": "1",
+            "endpoint_type": "gateway",
+            "gateway": {
+              "mode": "G11",
+              "typed_records": true,
+              "resource_delta": true,
+              "session_state": true,
+              "incremental_messages": true
+            },
+            "effective_capabilities": {
+              "logical_refs": true,
+              "typed_records": true,
+              "task_metadata": true,
+              "resource_delta": true,
+              "session_state": true,
+              "incremental_messages": true,
+              "cache_affinity": true,
+              "native_kv": true,
+              "streaming": true
+            },
             "gateway_mode": "G11",
             "engine": {
               "adapter": "mlx_lm_native",
@@ -2029,23 +2058,24 @@
               "tenant_isolation": true,
               "callback_routing": false,
               "pra_scheduler": false,
-              "tool_resources": false
+              "tool_resources": false,
+              "type": "mlx"
             },
             "fallback_injection": "before_current_user",
             "streaming_implemented": true
           },
           "prime": {
             "status": 200,
-            "headers_ms": 860.6920000165701,
+            "headers_ms": 917.451708111912,
             "ttft_ms": null,
             "itl_ms": null,
-            "wall_ms": 860.9420829452574,
+            "wall_ms": 917.6736660301685,
             "output": "The scores of their system, as determined in the error analysis and algorithmic details, are not explicitly provided in the documents",
             "trace": [
               {
                 "stage": "gateway_parse",
                 "gateway_mode": "G11",
-                "correlation_id": "c1a172e33873486ab1fb42b45d60a114"
+                "correlation_id": "b2bc169bec4b458ead80ed01755a70dc"
               },
               {
                 "stage": "protocol_translation",
@@ -2053,7 +2083,7 @@
                 "downgrades": [],
                 "selected_resource_ids": [],
                 "native_kv": true,
-                "seconds": 0.8590713341254741
+                "seconds": 0.913971290923655
               },
               {
                 "stage": "gateway_session",
@@ -2067,7 +2097,7 @@
                 "prefix_tokens_reusable": 0,
                 "prefix_reuse_fraction": 0.0,
                 "message_bytes_sent": 70,
-                "resource_bytes_sent": 3368,
+                "resource_bytes_sent": 3560,
                 "session_delta_bytes": 0,
                 "engine_prefix_cache_hit": null,
                 "engine_session_reuse": false,
@@ -2080,9 +2110,9 @@
               {
                 "action": "load",
                 "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
-                "timestamp_ns": 1390374196720333,
+                "timestamp_ns": 1561283968222125,
                 "bytes": 64339968,
-                "duration_ns": 708,
+                "duration_ns": 2042,
                 "request_id": null,
                 "reused": false,
                 "wasted": false
@@ -2090,9 +2120,9 @@
               {
                 "action": "resolve",
                 "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
-                "timestamp_ns": 1390374196765375,
+                "timestamp_ns": 1561283968421416,
                 "bytes": 64339968,
-                "duration_ns": 45458,
+                "duration_ns": 200667,
                 "request_id": null,
                 "reused": false,
                 "wasted": false
@@ -2100,7 +2130,7 @@
               {
                 "action": "pin",
                 "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
-                "timestamp_ns": 1390374235886500,
+                "timestamp_ns": 1561284001368833,
                 "bytes": 0,
                 "duration_ns": 0,
                 "request_id": "prime-request",
@@ -2110,7 +2140,7 @@
               {
                 "action": "unpin",
                 "logical_key": "3f2d5430ec9616ff7fcd530a4af7f17214ad256242076e2671738ab7c32428dd",
-                "timestamp_ns": 1390374838313958,
+                "timestamp_ns": 1561284643954166,
                 "bytes": 0,
                 "duration_ns": 0,
                 "request_id": "prime-request",
@@ -2121,65 +2151,77 @@
           },
           "streamed": {
             "status": 200,
-            "headers_ms": 6.564958021044731,
-            "ttft_ms": 362.4520408920944,
-            "itl_ms": 10.972891306585591,
-            "wall_ms": 616.6647910140455,
+            "headers_ms": 2.291375072672963,
+            "ttft_ms": 388.4142090100795,
+            "itl_ms": 11.96800178402792,
+            "wall_ms": 666.097209090367,
             "output": "The scores of their system, as determined in the error analysis and algorithmic details, are not explicitly provided in the documents",
             "stream_chunks": 24
           },
           "concurrency_rows": [
             {
               "concurrency": 1,
-              "wave_ms": 607.6122499071062,
-              "requests_per_second": 1.6457864372432969,
-              "request_p50_ms": 607.0735000539571,
-              "request_p95_ms": 607.0735000539571,
-              "request_p99_ms": 607.0735000539571,
-              "ttft_p50_ms": 323.82937520742416,
-              "ttft_p95_ms": 323.82937520742416,
+              "wave_ms": 589.6618750412017,
+              "requests_per_second": 1.6958871555501642,
+              "request_p50_ms": 588.9492919668555,
+              "request_p95_ms": 588.9492919668555,
+              "request_p99_ms": 588.9492919668555,
+              "ttft_p50_ms": 302.0216668955982,
+              "ttft_p95_ms": 302.0216668955982,
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             },
             {
               "concurrency": 2,
-              "wave_ms": 1202.8271248564124,
-              "requests_per_second": 1.662749333358067,
-              "request_p50_ms": 614.7994161583483,
-              "request_p95_ms": 1201.7151659820229,
-              "request_p99_ms": 1201.7151659820229,
-              "ttft_p50_ms": 335.61525004915893,
-              "ttft_p95_ms": 924.5441658422351,
+              "wave_ms": 1316.7915409430861,
+              "requests_per_second": 1.5188432928173277,
+              "request_p50_ms": 642.4274169839919,
+              "request_p95_ms": 1316.1798750516027,
+              "request_p99_ms": 1316.1798750516027,
+              "ttft_p50_ms": 355.1957078743726,
+              "ttft_p95_ms": 1027.5649160612375,
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             },
             {
               "concurrency": 4,
-              "wave_ms": 2563.1679999642074,
-              "requests_per_second": 1.5605687961366,
-              "request_p50_ms": 1291.1614999175072,
-              "request_p95_ms": 2560.6270420830697,
-              "request_p99_ms": 2560.6270420830697,
-              "ttft_p50_ms": 1005.6570419110358,
-              "ttft_p95_ms": 2269.3571669515222,
+              "wave_ms": 2415.361083112657,
+              "requests_per_second": 1.6560670899132113,
+              "request_p50_ms": 1233.4032917860895,
+              "request_p95_ms": 2414.6479999180883,
+              "request_p99_ms": 2414.6479999180883,
+              "ttft_p50_ms": 950.0403748825192,
+              "ttft_p95_ms": 2138.1852079648525,
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             },
             {
               "concurrency": 8,
-              "wave_ms": 5131.5400002058595,
-              "requests_per_second": 1.5589861912172696,
-              "request_p50_ms": 2663.472290849313,
-              "request_p95_ms": 5125.607083085924,
-              "request_p99_ms": 5125.607083085924,
-              "ttft_p50_ms": 2383.6319579277188,
-              "ttft_p95_ms": 4845.467624953017,
+              "wave_ms": 5069.062208989635,
+              "requests_per_second": 1.5782011879460756,
+              "request_p50_ms": 2537.606416037306,
+              "request_p95_ms": 5066.186832962558,
+              "request_p99_ms": 5066.186832962558,
+              "ttft_p50_ms": 2246.874916134402,
+              "ttft_p95_ms": 4779.330708086491,
+              "exact_output_rate": 1.0,
+              "stream_chunk_min": 24
+            },
+            {
+              "concurrency": 16,
+              "wave_ms": 10283.946957904845,
+              "requests_per_second": 1.5558228825462252,
+              "request_p50_ms": 5123.153417138383,
+              "request_p95_ms": 10274.907415965572,
+              "request_p99_ms": 10274.907415965572,
+              "ttft_p50_ms": 4837.508999975398,
+              "ttft_p95_ms": 9988.10379090719,
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             }
           ],
           "cancellation": {
-            "first_text_ms": 337.9272499587387,
+            "first_text_ms": 363.9855838846415,
             "client_closed": true
           },
           "session_affinity": {
@@ -2191,51 +2233,23 @@
           "cleanup": [
             {
               "closed": true,
-              "session_id": "concurrency-8-3"
-            },
-            {
-              "closed": true,
               "session_id": "concurrency-2-0"
             },
             {
               "closed": true,
-              "session_id": "concurrency-4-2"
+              "session_id": "concurrency-16-3"
             },
             {
               "closed": true,
-              "session_id": "concurrency-8-4"
+              "session_id": "concurrency-16-2"
             },
             {
               "closed": true,
-              "session_id": "concurrency-8-0"
+              "session_id": "concurrency-16-9"
             },
             {
               "closed": true,
-              "session_id": "concurrency-8-2"
-            },
-            {
-              "closed": true,
-              "session_id": "prime"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-8-1"
-            },
-            {
-              "closed": true,
-              "session_id": "cancelled-session"
-            },
-            {
-              "closed": true,
-              "session_id": "stream"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-2-1"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-4-0"
+              "session_id": "concurrency-16-0"
             },
             {
               "closed": true,
@@ -2243,7 +2257,19 @@
             },
             {
               "closed": true,
-              "session_id": "concurrency-4-3"
+              "session_id": "concurrency-8-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-4-2"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-12"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-3"
             },
             {
               "closed": true,
@@ -2251,7 +2277,55 @@
             },
             {
               "closed": true,
-              "session_id": "concurrency-1-0"
+              "session_id": "concurrency-4-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-14"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-4"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-13"
+            },
+            {
+              "closed": true,
+              "session_id": "stream"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-15"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-4"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-7"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-10"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-11"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-2-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-2"
             },
             {
               "closed": true,
@@ -2259,7 +2333,39 @@
             },
             {
               "closed": true,
-              "session_id": "concurrency-4-1"
+              "session_id": "concurrency-1-0"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-4-0"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-4-3"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-0"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-6"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-8"
+            },
+            {
+              "closed": true,
+              "session_id": "cancelled-session"
+            },
+            {
+              "closed": true,
+              "session_id": "prime"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-5"
             }
           ]
         },
@@ -2271,9 +2377,39 @@
           "model_id": "mlx-community/Qwen3-0.6B-4bit",
           "model_revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
           "dataset": "qasper",
-          "health_ms": 3.120542038232088,
+          "runtime": {
+            "platform": "macOS-26.4.1-arm64-arm-64bit",
+            "machine": "arm64",
+            "hardware_model": "Mac17,2",
+            "cpu_brand": "Apple M5",
+            "physical_memory_bytes": 17179869184,
+            "git_commit": "961d99855b2517c9305179a9f0fb11fb981057d1",
+            "sglang_source_commit": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5"
+          },
+          "health_ms": 2.70054186694324,
           "capabilities": {
             "status": "ok",
+            "protocol": "pra",
+            "protocol_version": "1",
+            "endpoint_type": "gateway",
+            "gateway": {
+              "mode": "G11",
+              "typed_records": true,
+              "resource_delta": true,
+              "session_state": true,
+              "incremental_messages": true
+            },
+            "effective_capabilities": {
+              "logical_refs": true,
+              "typed_records": true,
+              "task_metadata": true,
+              "resource_delta": true,
+              "session_state": true,
+              "incremental_messages": true,
+              "cache_affinity": true,
+              "native_kv": true,
+              "streaming": true
+            },
             "gateway_mode": "G11",
             "engine": {
               "adapter": "sglang_pra",
@@ -2306,23 +2442,24 @@
               "tenant_isolation": true,
               "callback_routing": false,
               "pra_scheduler": false,
-              "tool_resources": false
+              "tool_resources": false,
+              "type": "sglang"
             },
             "fallback_injection": "before_current_user",
             "streaming_implemented": true
           },
           "prime": {
             "status": 200,
-            "headers_ms": 764.877500012517,
+            "headers_ms": 771.1290419101715,
             "ttft_ms": null,
             "itl_ms": null,
-            "wall_ms": 765.1671250350773,
+            "wall_ms": 771.5544169768691,
             "output": "<think>\nOkay, let's tackle this question: \"What were the scores of their system?\" The user is referring to",
             "trace": [
               {
                 "stage": "gateway_parse",
                 "gateway_mode": "G11",
-                "correlation_id": "5beb79b9db08488a8b43794d980c2878"
+                "correlation_id": "a3655066ed5a45769104c92a2f25be03"
               },
               {
                 "stage": "protocol_translation",
@@ -2330,7 +2467,7 @@
                 "downgrades": [],
                 "selected_resource_ids": [],
                 "native_kv": true,
-                "seconds": 0.7620593330357224
+                "seconds": 0.7668092909734696
               },
               {
                 "stage": "gateway_session",
@@ -2344,7 +2481,7 @@
                 "prefix_tokens_reusable": 0,
                 "prefix_reuse_fraction": 0.0,
                 "message_bytes_sent": 70,
-                "resource_bytes_sent": 3368,
+                "resource_bytes_sent": 3560,
                 "session_delta_bytes": 0,
                 "engine_prefix_cache_hit": null,
                 "engine_session_reuse": false,
@@ -2358,7 +2495,7 @@
                 "text": "<think>",
                 "token_id": 151667,
                 "token_index": 0,
-                "ttft_ms": 120.14429201371968,
+                "ttft_ms": 124.28224994800985,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2366,7 +2503,7 @@
                 "text": "\n",
                 "token_id": 198,
                 "token_index": 1,
-                "elapsed_ms": 142.1777089126408,
+                "elapsed_ms": 134.73341707140207,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2374,7 +2511,7 @@
                 "text": "Okay",
                 "token_id": 32313,
                 "token_index": 2,
-                "elapsed_ms": 157.0777918677777,
+                "elapsed_ms": 147.77429192326963,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2382,7 +2519,7 @@
                 "text": ",",
                 "token_id": 11,
                 "token_index": 3,
-                "elapsed_ms": 171.89166694879532,
+                "elapsed_ms": 161.07066697441041,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2390,7 +2527,7 @@
                 "text": " let",
                 "token_id": 1077,
                 "token_index": 4,
-                "elapsed_ms": 185.3122499305755,
+                "elapsed_ms": 174.09554193727672,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2398,7 +2535,7 @@
                 "text": "'s",
                 "token_id": 594,
                 "token_index": 5,
-                "elapsed_ms": 198.77449981868267,
+                "elapsed_ms": 186.6166670806706,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2406,7 +2543,7 @@
                 "text": " tackle",
                 "token_id": 21403,
                 "token_index": 6,
-                "elapsed_ms": 211.82429185137153,
+                "elapsed_ms": 199.14479204453528,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2414,7 +2551,7 @@
                 "text": " this",
                 "token_id": 419,
                 "token_index": 7,
-                "elapsed_ms": 225.03516683354974,
+                "elapsed_ms": 211.5764170885086,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2422,7 +2559,7 @@
                 "text": " question",
                 "token_id": 3405,
                 "token_index": 8,
-                "elapsed_ms": 242.060124874115,
+                "elapsed_ms": 224.9842919409275,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2430,7 +2567,7 @@
                 "text": ":",
                 "token_id": 25,
                 "token_index": 9,
-                "elapsed_ms": 255.57174999266863,
+                "elapsed_ms": 239.19424996711314,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2438,7 +2575,7 @@
                 "text": " \"",
                 "token_id": 330,
                 "token_index": 10,
-                "elapsed_ms": 268.5238749254495,
+                "elapsed_ms": 253.2145839650184,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2446,7 +2583,7 @@
                 "text": "What",
                 "token_id": 3838,
                 "token_index": 11,
-                "elapsed_ms": 281.2649589031935,
+                "elapsed_ms": 266.93199994042516,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2454,7 +2591,7 @@
                 "text": " were",
                 "token_id": 1033,
                 "token_index": 12,
-                "elapsed_ms": 293.8581670168787,
+                "elapsed_ms": 280.61179211363196,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2462,7 +2599,7 @@
                 "text": " the",
                 "token_id": 279,
                 "token_index": 13,
-                "elapsed_ms": 306.7554999142885,
+                "elapsed_ms": 294.0448340959847,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2470,7 +2607,7 @@
                 "text": " scores",
                 "token_id": 12205,
                 "token_index": 14,
-                "elapsed_ms": 318.54633381590247,
+                "elapsed_ms": 307.1709170471877,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2478,7 +2615,7 @@
                 "text": " of",
                 "token_id": 315,
                 "token_index": 15,
-                "elapsed_ms": 331.33774995803833,
+                "elapsed_ms": 321.46004191599786,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2486,7 +2623,7 @@
                 "text": " their",
                 "token_id": 862,
                 "token_index": 16,
-                "elapsed_ms": 345.3672919422388,
+                "elapsed_ms": 338.1124590523541,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2494,7 +2631,7 @@
                 "text": " system",
                 "token_id": 1849,
                 "token_index": 17,
-                "elapsed_ms": 358.301208820194,
+                "elapsed_ms": 351.80466691963375,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2502,7 +2639,7 @@
                 "text": "?\"",
                 "token_id": 7521,
                 "token_index": 18,
-                "elapsed_ms": 376.13358395174146,
+                "elapsed_ms": 364.8493750952184,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2510,7 +2647,7 @@
                 "text": " The",
                 "token_id": 576,
                 "token_index": 19,
-                "elapsed_ms": 388.51291686296463,
+                "elapsed_ms": 378.0067500192672,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2518,7 +2655,7 @@
                 "text": " user",
                 "token_id": 1196,
                 "token_index": 20,
-                "elapsed_ms": 401.46520896814764,
+                "elapsed_ms": 390.9718750510365,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2526,7 +2663,7 @@
                 "text": " is",
                 "token_id": 374,
                 "token_index": 21,
-                "elapsed_ms": 414.7285840008408,
+                "elapsed_ms": 404.051834018901,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2534,7 +2671,7 @@
                 "text": " referring",
                 "token_id": 22023,
                 "token_index": 22,
-                "elapsed_ms": 428.0783338472247,
+                "elapsed_ms": 417.262792121619,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               },
@@ -2542,7 +2679,7 @@
                 "text": " to",
                 "token_id": 311,
                 "token_index": 23,
-                "elapsed_ms": 438.2297499105334,
+                "elapsed_ms": 430.0301671028137,
                 "selected_native_tokens": 561,
                 "native_kv_used": true
               }
@@ -2550,66 +2687,88 @@
           },
           "streamed": {
             "status": 200,
-            "headers_ms": 1.5553750563412905,
-            "ttft_ms": 34.14662508293986,
-            "itl_ms": 12.298686561458137,
-            "wall_ms": 318.7054581940174,
+            "headers_ms": 3.2972500193864107,
+            "ttft_ms": 43.34874986670911,
+            "itl_ms": 12.785304347863017,
+            "wall_ms": 339.73150001838803,
             "output": "<think>\nOkay, let's tackle this question: \"What were the scores of their system?\" The user is referring to",
             "stream_chunks": 24
           },
           "concurrency_rows": [
             {
               "concurrency": 1,
-              "wave_ms": 312.2366250026971,
-              "requests_per_second": 3.2026992348875214,
-              "request_p50_ms": 310.95062498934567,
-              "request_p95_ms": 310.95062498934567,
-              "request_p99_ms": 310.95062498934567,
-              "ttft_p50_ms": 40.40287504903972,
-              "ttft_p95_ms": 40.40287504903972,
+              "wave_ms": 326.2655830476433,
+              "requests_per_second": 3.0649877031435886,
+              "request_p50_ms": 324.9387079849839,
+              "request_p95_ms": 324.9387079849839,
+              "request_p99_ms": 324.9387079849839,
+              "ttft_p50_ms": 35.82899994216859,
+              "ttft_p95_ms": 35.82899994216859,
+              "ttft_p99_ms": 35.82899994216859,
+              "ttft_status": "MEASURED",
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             },
             {
               "concurrency": 2,
-              "wave_ms": 631.6869999282062,
-              "requests_per_second": 3.1661249958085382,
-              "request_p50_ms": 332.06108305603266,
-              "request_p95_ms": 630.6392909027636,
-              "request_p99_ms": 630.6392909027636,
-              "ttft_p50_ms": 34.257792169228196,
-              "ttft_p95_ms": 359.63699989952147,
+              "wave_ms": 679.1417920030653,
+              "requests_per_second": 2.944893133584353,
+              "request_p50_ms": 353.36933308281004,
+              "request_p95_ms": 678.4555830527097,
+              "request_p99_ms": 678.4555830527097,
+              "ttft_p50_ms": 43.23408310301602,
+              "ttft_p95_ms": 381.29408308304846,
+              "ttft_p99_ms": 381.29408308304846,
+              "ttft_status": "MEASURED",
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             },
             {
               "concurrency": 4,
-              "wave_ms": 1281.4459579531103,
-              "requests_per_second": 3.1214738125900467,
-              "request_p50_ms": 655.3479160647839,
-              "request_p95_ms": 1279.915584018454,
-              "request_p99_ms": 1279.915584018454,
-              "ttft_p50_ms": 357.4550829362124,
-              "ttft_p95_ms": 987.7182499039918,
+              "wave_ms": 1306.509458925575,
+              "requests_per_second": 3.06159283629638,
+              "request_p50_ms": 670.2564579900354,
+              "request_p95_ms": 1305.218291003257,
+              "request_p99_ms": 1305.218291003257,
+              "ttft_p50_ms": 368.7420829664916,
+              "ttft_p95_ms": 1007.0400829426944,
+              "ttft_p99_ms": 1007.0400829426944,
+              "ttft_status": "MEASURED",
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             },
             {
               "concurrency": 8,
-              "wave_ms": 2627.3789580445737,
-              "requests_per_second": 3.0448595835425274,
-              "request_p50_ms": 1356.4205418806523,
-              "request_p95_ms": 2625.143999932334,
-              "request_p99_ms": 2625.143999932334,
-              "ttft_p50_ms": 1050.980458036065,
-              "ttft_p95_ms": 2336.9013341143727,
+              "wave_ms": 2669.107999885455,
+              "requests_per_second": 2.997256012249531,
+              "request_p50_ms": 1344.9600420426577,
+              "request_p95_ms": 2666.8575410731137,
+              "request_p99_ms": 2666.8575410731137,
+              "ttft_p50_ms": 1037.422584136948,
+              "ttft_p95_ms": 2364.478833042085,
+              "ttft_p99_ms": 2364.478833042085,
+              "ttft_status": "MEASURED",
+              "exact_output_rate": 1.0,
+              "stream_chunk_min": 24
+            },
+            {
+              "concurrency": 16,
+              "wave_ms": 5346.5278330259025,
+              "requests_per_second": 2.9925964101723745,
+              "request_p50_ms": 2619.2714588250965,
+              "request_p95_ms": 5325.639332877472,
+              "request_p99_ms": 5325.639332877472,
+              "ttft_p50_ms": 2336.7292918264866,
+              "ttft_p95_ms": 5027.233749860898,
+              "ttft_p99_ms": 5027.233749860898,
+              "ttft_status": "MEASURED",
               "exact_output_rate": 1.0,
               "stream_chunk_min": 24
             }
           ],
           "concurrency_execution": "threaded HTTP arrivals, serialized in-process runner",
           "cancellation": {
-            "first_text_ms": 37.29387512430549,
+            "first_text_ms": 37.38699993118644,
             "client_closed": true
           },
           "session_affinity": {
@@ -2621,63 +2780,7 @@
           "cleanup": [
             {
               "closed": true,
-              "session_id": "concurrency-4-1"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-8-2"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-4-3"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-8-0"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-1-0"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-2-0"
-            },
-            {
-              "closed": true,
-              "session_id": "cancelled-session"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-8-1"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-8-7"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-4-2"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-8-5"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-2-1"
-            },
-            {
-              "closed": true,
-              "session_id": "prime"
-            },
-            {
-              "closed": true,
-              "session_id": "stream"
-            },
-            {
-              "closed": true,
-              "session_id": "concurrency-8-4"
+              "session_id": "concurrency-16-14"
             },
             {
               "closed": true,
@@ -2685,11 +2788,131 @@
             },
             {
               "closed": true,
-              "session_id": "concurrency-8-6"
+              "session_id": "concurrency-8-0"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-2-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-5"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-2"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-2-0"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-11"
+            },
+            {
+              "closed": true,
+              "session_id": "prime"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-10"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-4-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-1"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-2"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-7"
             },
             {
               "closed": true,
               "session_id": "concurrency-8-3"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-6"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-4"
+            },
+            {
+              "closed": true,
+              "session_id": "cancelled-session"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-3"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-4"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-7"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-0"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-12"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-8"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-4-3"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-1-0"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-4-2"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-9"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-8-5"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-13"
+            },
+            {
+              "closed": true,
+              "session_id": "stream"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-6"
+            },
+            {
+              "closed": true,
+              "session_id": "concurrency-16-15"
             }
           ]
         }
@@ -7253,6 +7476,14 @@
       "hardware": "Apple M5 MacBook Pro, 10 CPU cores, 10 GPU cores, 16 GB unified memory, Metal 4",
       "evidence_tier": "NATURAL_QA_ROUTED_EVIDENCE_MATERIALIZATION",
       "status": "routed natural QA; bounded residency curve; oracle gap remains"
+    },
+    {
+      "engine": "MLX-LM",
+      "model": "mlx-community/Llama-3.1-8B-Instruct-4bit",
+      "profile": "all-layer native concat; reduced profiles calibration pending",
+      "hardware": "Mac16,7 / 48 GB / Metal",
+      "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+      "status": "60/60 exact; warm ratio 1.032; cold ratio 0.935"
     },
     {
       "engine": "vLLM-Metal V1",

@@ -77,6 +77,9 @@ The implementation adds:
 - corrected M4/M5 MLX model-scaling evidence imported into the product matrix:
   `BALANCED` consumes native memory at all eligible layers, while segmented and
   reduced-layer candidates remain `CALIBRATION_PENDING`.
+- a 60-example Llama 3.1 8B cross-family row with exact E0/E2 transport parity,
+  a 1.032 warm ratio, and a 0.935 cold time-to-usable-context ratio; this retains
+  the all-layer default rather than promoting an uncalibrated sparse profile.
 - warmed M5 4B/8B/14B replication, an explicit 32B capacity-gate row, a
   held-out noncontiguous gate that retains every eligible layer, and corrected
   2K/8K/32K occupied-context receipts.

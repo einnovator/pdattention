@@ -19,7 +19,9 @@ models by default.
 The product notebook treats `BALANCED` as the correctness-preserving all-eligible-layer
 profile. Fixed suffixes and the held-out noncontiguous calibration did not justify dropping
 consumer layers, so reduced profiles remain `CALIBRATION_PENDING`. The M5 32B row is a
-capacity rejection, not a measured latency point.
+capacity rejection, not a measured latency point. Llama 3.1 8B independently preserves all
+60 selected-text outputs through native concat, but remains an all-layer transport result rather
+than evidence for a reduced consumer profile.
 
 The model-family notebook answers whether PRA attaches correctly to Qwen, Llama, and Gemma. The
 runtime notebook instead follows one Llama request through the mechanisms that turn logical PRA

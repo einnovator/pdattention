@@ -177,6 +177,32 @@ def build_registry() -> dict:
             "(smoke; gated)"
         )
 
+    cross_family_path = (
+        ENGINE_DIRS["mlx"] / "model_consumer_cross_family" / "llama31_8b.json"
+    )
+    cross_family = _load(cross_family_path) if cross_family_path.exists() else None
+    cross_family_status = "not measured"
+    cross_family_hardware = metadata["mlx"]["hardware"]
+    if cross_family is not None:
+        aggregates = {
+            str(row["condition"]): row for row in cross_family["aggregate"]
+        }
+        e0 = aggregates["E0_WARM"]
+        e2 = aggregates["E2_CONCAT_WARM"]
+        sample_count = int(e2["samples"])
+        cross_family_status = (
+            f"{sample_count}/{sample_count} exact; warm ratio "
+            f"{float(e2['warm_request_ms']) / float(e0['warm_request_ms']):.3f}; "
+            f"cold ratio "
+            f"{float(e2['cold_usable_context_ms']) / float(e0['cold_usable_context_ms']):.3f}"
+        )
+        runtime = cross_family.get("runtime", {})
+        if runtime.get("hardware_model"):
+            memory_gib = int(runtime.get("physical_memory_bytes", 0)) / 1024**3
+            cross_family_hardware = (
+                f"{runtime['hardware_model']} / {memory_gib:.0f} GB / Metal"
+            )
+
     product_matrix = [
         {
             "engine": "vLLM-Metal V1",
@@ -209,6 +235,14 @@ def build_registry() -> dict:
             "hardware": metadata["mlx"]["hardware"],
             "evidence_tier": "NATURAL_QA_ROUTED_EVIDENCE_MATERIALIZATION",
             "status": "routed natural QA; bounded residency curve; oracle gap remains",
+        },
+        {
+            "engine": "MLX-LM",
+            "model": "mlx-community/Llama-3.1-8B-Instruct-4bit",
+            "profile": "all-layer native concat; reduced profiles calibration pending",
+            "hardware": cross_family_hardware,
+            "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+            "status": cross_family_status,
         },
         {
             "engine": "vLLM-Metal V1",
@@ -1566,6 +1600,7 @@ def write_latest_engine_tables(registry: dict) -> None:
                 "Qwen3-0.6B": "Qwen3-0.6B",
                 "Qwen3-1.7B-4bit": "Qwen3-1.7B",
                 "Llama-3.2-1B-Instruct-4bit": "Llama-3.2-1B",
+                "Llama-3.1-8B-Instruct-4bit": "Llama-3.1-8B",
                 "gemma-3-1b-it-4bit": "Gemma-3-1B",
             }.get(model_name, model_name)
             hardware = str(row["hardware"])

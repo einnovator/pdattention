@@ -64,7 +64,14 @@ def test_engine_registry_separates_smoke_from_native_evidence() -> None:
         row["exact_output_parity"] == 1.0
         for row in expanded_matched["parity"]
     )
-    assert len(registry["product_matrix"]) == 13
+    assert len(registry["product_matrix"]) == 14
+    assert any(
+        row["model"].endswith("Llama-3.1-8B-Instruct-4bit")
+        and row["engine"] == "MLX-LM"
+        and "60/60 exact" in row["status"]
+        and "calibration pending" in row["profile"]
+        for row in registry["product_matrix"]
+    )
     assert any(
         row["model"].endswith("gemma-3-1b-it-4bit")
         and row["engine"] == "SGLang MLX"

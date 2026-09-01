@@ -1403,6 +1403,9 @@ but fixed suffixes did not pass the quality gate and therefore remain `CALIBRATI
 The warmed M5 replication reaches 4B, 8B, and 14B; 32B is
 `NOT_RUN_CAPACITY_GATE` on the 16 GiB host. A held-out noncontiguous
 calibration also keeps all 36 Qwen3-4B layers, so it does not promote a sparse profile.
+At useful cross-family scale, Llama 3.1 8B preserves all 60 E0 outputs, aggregate F1, and
+answer likelihood through all-layer native concat. Its 1.032 warm and 0.935 cold ratios are
+measured transport evidence, not a reduced-layer calibration.
 
 Explicit mechanism fields still win over profile defaults. The trace records the requested and
 resolved profile, source registry, version, evidence tier, and status.

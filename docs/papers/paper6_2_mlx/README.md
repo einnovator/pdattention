@@ -39,15 +39,23 @@ remains outside the default profile.
 Five-example Llama-3.2-1B and Gemma-3-1B lifecycle replications are each 5/5
 lossless-WARM exact. Event-loop-owned promotion preserves all 35 outputs and,
 with 500 ms lead, makes all five objects HOT before demand. The native HTTP
-gateway now covers concurrency one through eight, streamed cancellation, and
-session cleanup. These are serialized-runner queueing measurements, not a
-claim of parallel model execution.
+gateway now covers concurrency one through sixteen, streamed cancellation, and
+session cleanup. All 31 concurrent outputs match the prime output; TTFT p95
+reaches 9.99 seconds at concurrency sixteen while throughput remains about 1.56
+requests/s. These are serialized-runner queueing measurements, not a claim of
+parallel model execution.
 
 A separate physical-tier curve covers concurrency 1, 2, 4, 8, and 16 for
 shared and independent resources. All 124 HOT/WARM requests remain
 baseline-exact. At concurrency 16, shared WARM avoids 630 MiB of duplicate K/V
 and sustains 2.91 requests/s; independent WARM performs 16 promotions and
 sustains 1.22 requests/s.
+
+Useful-scale cross-family transport is measured on Llama 3.1 8B over 60
+natural-QA examples spanning QASPER, HotpotQA, and 2Wiki. Native concat E2 is
+60/60 exact to selected-text E0, preserves aggregate F1 and answer likelihood,
+has a 1.032 warm-cost ratio, and a 0.935 cold time-to-usable-context ratio. The
+Qwen-only segmented consumer patch is not generalized by this result.
 
 The bounded-residency extension covers 1,020 natural-QA requests over five
 seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable
