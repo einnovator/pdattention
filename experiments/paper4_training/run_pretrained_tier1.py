@@ -25,6 +25,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from pra_hf.pra_aware_training import (
     HFAdaptationRegime,
+    gemma_layer_topology,
     hf_parameter_summary,
     install_hf_adaptation_regime,
 )
@@ -324,7 +325,14 @@ def _load_model(args, regime: HFAdaptationRegime):
         attn_implementation="eager",
     ).to(args.device)
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
-    selected = pra_layers(int(model.config.num_hidden_layers), args.pra_spacing)
+    if getattr(model.config, "model_type", None) == "gemma3_text":
+        selected = tuple(
+            row.layer_index
+            for row in gemma_layer_topology(model.config, "all_global")
+            if row.pra_enabled
+        )
+    else:
+        selected = pra_layers(int(model.config.num_hidden_layers), args.pra_spacing)
     config = PRAHFConfig(
         layer_ids=selected,
         encoding_block_tokens=args.reference_limit,
