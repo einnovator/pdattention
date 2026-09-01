@@ -8,7 +8,7 @@ from pra_hf.deployment import PRAEngineCapabilities
 from pra_hf.engine_profiles import EngineType, PrefixCacheMode
 from pra_hf.runtime_providers import RuntimeConfig, RuntimeDoctorReport, RuntimeProvider
 
-from .adapter import OllamaEngineAdapter
+from .adapter import OllamaEngineAdapter, OllamaLlamaCppBackendExecutor
 
 
 class OllamaRuntimeProvider(RuntimeProvider):
@@ -47,11 +47,43 @@ class OllamaRuntimeProvider(RuntimeProvider):
                     "status": "READY" if info.installed_models else "EMPTY",
                     "detail": ", ".join(info.installed_models),
                 },
+            )
+        )
+        native_url = config.engine_options.get("native_backend_url")
+        artifact_digest = config.engine_options.get("model_artifact_digest")
+        backend_revision = config.engine_options.get("backend_revision")
+        if native_url and artifact_digest and backend_revision:
+            try:
+                backend = OllamaLlamaCppBackendExecutor(
+                    str(native_url),
+                    backend_revision=str(backend_revision),
+                    model_artifact_digest=str(artifact_digest),
+                    resource_slot=int(config.engine_options.get("resource_slot", 0)),
+                    request_slot=int(config.engine_options.get("request_slot", 1)),
+                )
+                checks.append(
+                    {
+                        "name": "native-pra",
+                        "status": "READY",
+                        "detail": (
+                            f"{backend.native.protocol}; artifact "
+                            f"{str(artifact_digest)[:12]}...; AUTO may negotiate E2."
+                        ),
+                    }
+                )
+            except Exception as exc:
+                checks.append(
+                    {"name": "native-pra", "status": "UNREACHABLE", "detail": str(exc)}
+                )
+        else:
+            checks.append(
                 {
                     "name": "native-pra",
                     "status": "FALLBACK",
-                    "detail": "No backend PRA handshake; AUTO remains E0.",
-                },
+                    "detail": (
+                        "Configure native_backend_url, backend_revision, and "
+                        "model_artifact_digest to negotiate E2; AUTO remains E0."
+                    ),
+                }
             )
-        )
         return RuntimeDoctorReport(self.engine_type, "AVAILABLE", tuple(checks))

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
-from pra_ollama import OllamaBackendHandshake, OllamaEngineAdapter
+from pra_ollama import (
+    OllamaBackendHandshake,
+    OllamaEngineAdapter,
+    OllamaLlamaCppBackendExecutor,
+)
 
 from experiments.paper6_8_ollama.run_backend_handshake import run as run_handshake
 
@@ -39,6 +43,7 @@ class NativeBackend:
             backend="llama.cpp",
             backend_revision="458681e1d5d",
             model_fingerprint=model_fingerprint,
+            model_artifact_digest="sha256:controlled-model",
             integration_level="E2",
             mechanisms=(
                 "native_kv",
@@ -151,3 +156,38 @@ def test_backend_handshake_artifact_closes_fallback_and_lifecycle_controls() -> 
     }
     assert payload["backend_receipt"]["schedule_matched_exact_logits"] == 10
     assert payload["backend_receipt"]["physical_kv_copy"] is False
+
+
+def test_concrete_llamacpp_backend_invokes_negotiated_native_executor(monkeypatch) -> None:
+    class Native:
+        protocol = "pra.llama.cpp/v1"
+        _capabilities = {
+            "protocol": protocol,
+            "native_sequence_attach": True,
+        }
+
+        def generate(self, request, block_store):
+            self.generated = request.request_id
+            return PRAEngineResult("native-live", {"pra": {"native_tokens": 8}})
+
+        def close_session(self, session_id):
+            self.closed = session_id
+
+    native = Native()
+    monkeypatch.setattr(
+        "pra_ollama.adapter.LlamaCppNativeServerExecutor", lambda *args, **kwargs: native
+    )
+    backend = OllamaLlamaCppBackendExecutor(
+        "http://native.test",
+        backend_revision="458681e1d5d",
+        model_artifact_digest="sha256:exact-model",
+    )
+    adapter = FakeOllama(backend_executor=backend)
+    request = wire_request()
+    result = adapter.generate(request)
+
+    assert result.text == "native-live"
+    assert adapter.capabilities().integration_level.value == "E2"
+    assert native.generated == request.request_id
+    adapter.close_session("session-a")
+    assert native.closed == "session-a"

@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from pra_hf.deployment import PRAEngineCapabilities, PRAEngineResult, PRAWireRequest
+from pra_hf.engine_memory import LogicalPRABlockStore
 from pra_hf.engine_profiles import EngineType, PrefixCacheMode
+from pra_llamacpp import LlamaCppNativeServerExecutor
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class OllamaBackendHandshake:
     backend: str
     backend_revision: str
     model_fingerprint: str
+    model_artifact_digest: str | None
     integration_level: str
     mechanisms: tuple[str, ...]
     resource_identity: bool
@@ -55,6 +58,7 @@ class OllamaBackendHandshake:
             and self.backend == "llama.cpp"
             and self.backend_revision
             and self.model_fingerprint == model_fingerprint
+            and self.model_artifact_digest
             and self.integration_level in {"E2", "E3"}
             and required.issubset(self.mechanisms)
             and self.resource_identity
@@ -75,6 +79,80 @@ class OllamaBackendExecutor(Protocol):
     ) -> PRAEngineResult: ...
 
     def invalidate_model(self, model_fingerprint: str) -> None: ...
+
+
+class OllamaLlamaCppBackendExecutor:
+    """Delegate Ollama AUTO requests to a negotiated PRA-aware llama-server.
+
+    Ollama remains the model catalog and default E0 serving surface. The
+    sidecar is selected only after it proves the versioned sequence-attachment
+    protocol; the returned receipt is bound to Ollama's current model
+    fingerprint so model switches cannot reuse stale native state.
+    """
+
+    mechanisms = (
+        "native_kv",
+        "unified_kv_sequence_attach",
+        "metadata_only_attach",
+        "request_sequence_cleanup",
+    )
+
+    def __init__(
+        self,
+        native_base_url: str,
+        *,
+        backend_revision: str,
+        model_artifact_digest: str,
+        resource_slot: int = 0,
+        request_slot: int = 1,
+        timeout_seconds: float = 300.0,
+    ) -> None:
+        self.backend_revision = str(backend_revision)
+        self.model_artifact_digest = str(model_artifact_digest)
+        self.native = LlamaCppNativeServerExecutor(
+            native_base_url,
+            resource_slot=resource_slot,
+            request_slot=request_slot,
+            timeout_seconds=timeout_seconds,
+        )
+        self.block_store = LogicalPRABlockStore()
+        self._fingerprint: str | None = None
+
+    def negotiate(
+        self, *, model: str, model_fingerprint: str
+    ) -> OllamaBackendHandshake | None:
+        del model
+        capabilities = self.native._capabilities
+        if (
+            capabilities.get("protocol") != self.native.protocol
+            or not capabilities.get("native_sequence_attach")
+        ):
+            return None
+        self._fingerprint = model_fingerprint
+        return OllamaBackendHandshake(
+            protocol_version="pra-engine/1",
+            backend="llama.cpp",
+            backend_revision=self.backend_revision,
+            model_fingerprint=model_fingerprint,
+            model_artifact_digest=self.model_artifact_digest,
+            integration_level="E2",
+            mechanisms=self.mechanisms,
+            resource_identity=True,
+            tenant_isolation=True,
+            request_cleanup=True,
+        )
+
+    def generate(
+        self, request: PRAWireRequest, handshake: OllamaBackendHandshake
+    ) -> PRAEngineResult:
+        if self._fingerprint is None or not handshake.validates(self._fingerprint):
+            raise RuntimeError("The Ollama/native-backend receipt is stale.")
+        return self.native.generate(request, self.block_store)
+
+    def invalidate_model(self, model_fingerprint: str) -> None:
+        if self._fingerprint == model_fingerprint:
+            self.native.close_session("ollama-model")
+            self._fingerprint = None
 
 
 class OllamaEngineAdapter:
@@ -286,4 +364,7 @@ class OllamaEngineAdapter:
         raise NotImplementedError("The initial Ollama adapter exposes non-streaming generation.")
 
     def close_session(self, session_id: str) -> None:
-        del session_id
+        if self.backend_executor is not None:
+            native = getattr(self.backend_executor, "native", None)
+            if native is not None:
+                native.close_session(session_id)

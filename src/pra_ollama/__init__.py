@@ -5,6 +5,7 @@ from .adapter import (
     OllamaBackendHandshake,
     OllamaEngineAdapter,
     OllamaEndpointInfo,
+    OllamaLlamaCppBackendExecutor,
 )
 from .runtime_provider import OllamaRuntimeProvider
 
@@ -13,5 +14,6 @@ __all__ = [
     "OllamaBackendHandshake",
     "OllamaEngineAdapter",
     "OllamaEndpointInfo",
+    "OllamaLlamaCppBackendExecutor",
     "OllamaRuntimeProvider",
 ]
