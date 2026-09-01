@@ -81,6 +81,7 @@ def test_five_seed_aggregate_requires_and_summarizes_all_seeds(tmp_path):
                     "regime": "consumer_lora",
                     "evidence_nll_delta": delta,
                     "ordinary_retention_nll_delta": 0.01,
+                    "evidence_vs_distractor_nll_margin": 0.05,
                 }
             ],
         }

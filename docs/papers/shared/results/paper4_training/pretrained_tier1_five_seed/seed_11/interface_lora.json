@@ -1,0 +1,217 @@
+{
+  "regime": "interface_lora",
+  "model_id": "HuggingFaceTB/SmolLM2-135M",
+  "revision": null,
+  "pra_layers": [
+    3,
+    7,
+    11,
+    15,
+    19,
+    23,
+    27
+  ],
+  "router_trained": false,
+  "selection_policy": "single_oracle_evidence_entry",
+  "targets": [
+    "model.layers.3.self_attn.original_attention.q_proj",
+    "model.layers.3.self_attn.original_attention.k_proj",
+    "model.layers.3.self_attn.original_attention.v_proj",
+    "model.layers.3.self_attn.original_attention.o_proj",
+    "model.layers.3.mlp.gate_proj",
+    "model.layers.3.mlp.up_proj",
+    "model.layers.3.mlp.down_proj",
+    "model.layers.7.self_attn.original_attention.q_proj",
+    "model.layers.7.self_attn.original_attention.k_proj",
+    "model.layers.7.self_attn.original_attention.v_proj",
+    "model.layers.7.self_attn.original_attention.o_proj",
+    "model.layers.7.mlp.gate_proj",
+    "model.layers.7.mlp.up_proj",
+    "model.layers.7.mlp.down_proj",
+    "model.layers.11.self_attn.original_attention.q_proj",
+    "model.layers.11.self_attn.original_attention.k_proj",
+    "model.layers.11.self_attn.original_attention.v_proj",
+    "model.layers.11.self_attn.original_attention.o_proj",
+    "model.layers.11.mlp.gate_proj",
+    "model.layers.11.mlp.up_proj",
+    "model.layers.11.mlp.down_proj",
+    "model.layers.15.self_attn.original_attention.q_proj",
+    "model.layers.15.self_attn.original_attention.k_proj",
+    "model.layers.15.self_attn.original_attention.v_proj",
+    "model.layers.15.self_attn.original_attention.o_proj",
+    "model.layers.15.mlp.gate_proj",
+    "model.layers.15.mlp.up_proj",
+    "model.layers.15.mlp.down_proj",
+    "model.layers.19.self_attn.original_attention.q_proj",
+    "model.layers.19.self_attn.original_attention.k_proj",
+    "model.layers.19.self_attn.original_attention.v_proj",
+    "model.layers.19.self_attn.original_attention.o_proj",
+    "model.layers.19.mlp.gate_proj",
+    "model.layers.19.mlp.up_proj",
+    "model.layers.19.mlp.down_proj",
+    "model.layers.23.self_attn.original_attention.q_proj",
+    "model.layers.23.self_attn.original_attention.k_proj",
+    "model.layers.23.self_attn.original_attention.v_proj",
+    "model.layers.23.self_attn.original_attention.o_proj",
+    "model.layers.23.mlp.gate_proj",
+    "model.layers.23.mlp.up_proj",
+    "model.layers.23.mlp.down_proj",
+    "model.layers.27.self_attn.original_attention.q_proj",
+    "model.layers.27.self_attn.original_attention.k_proj",
+    "model.layers.27.self_attn.original_attention.v_proj",
+    "model.layers.27.self_attn.original_attention.o_proj",
+    "model.layers.27.mlp.gate_proj",
+    "model.layers.27.mlp.up_proj",
+    "model.layers.27.mlp.down_proj"
+  ],
+  "parameters": {
+    "total_parameters": 135084872,
+    "trainable_parameters": 569856,
+    "trainable_fraction": 0.004218503460550342
+  },
+  "before": {
+    "none": {
+      "examples": 32,
+      "answer_nll": 4.381541233509779,
+      "answer_perplexity": 79.96117732991868,
+      "answer_token_accuracy": 0.30670543503947556
+    },
+    "matched_distractor": {
+      "examples": 32,
+      "answer_nll": 4.393755607306957,
+      "answer_perplexity": 80.94384213971506,
+      "answer_token_accuracy": 0.3010707371868193
+    },
+    "evidence_only": {
+      "examples": 32,
+      "answer_nll": 4.363695673644543,
+      "answer_perplexity": 78.546882329338,
+      "answer_token_accuracy": 0.3146602676715702
+    },
+    "whole_parent": {
+      "examples": 32,
+      "answer_nll": 4.393670193850994,
+      "answer_perplexity": 80.93692874167178,
+      "answer_token_accuracy": 0.3005355962086469
+    },
+    "ordinary_full_context": {
+      "examples": 32,
+      "answer_nll": 3.7933582700788975,
+      "answer_perplexity": 44.40527506178205,
+      "answer_token_accuracy": 0.39978778432123363
+    }
+  },
+  "training": {
+    "steps": 100,
+    "tokens_upper_bound": 19200,
+    "wall_seconds": 10.746874790987931,
+    "loss_history": [
+      {
+        "step": 1,
+        "condition": "evidence_only",
+        "loss": 4.387327194213867,
+        "answer_token_accuracy": 0.4545454680919647
+      },
+      {
+        "step": 10,
+        "condition": "evidence_only",
+        "loss": 4.426476955413818,
+        "answer_token_accuracy": 0.0
+      },
+      {
+        "step": 20,
+        "condition": "ordinary_full_context",
+        "loss": 4.22256326675415,
+        "answer_token_accuracy": 0.29411765933036804
+      },
+      {
+        "step": 30,
+        "condition": "evidence_only",
+        "loss": 5.2121758460998535,
+        "answer_token_accuracy": 0.1666666716337204
+      },
+      {
+        "step": 40,
+        "condition": "ordinary_full_context",
+        "loss": 4.743277072906494,
+        "answer_token_accuracy": 0.3636363744735718
+      },
+      {
+        "step": 50,
+        "condition": "evidence_only",
+        "loss": 4.031268119812012,
+        "answer_token_accuracy": 0.2142857164144516
+      },
+      {
+        "step": 60,
+        "condition": "ordinary_full_context",
+        "loss": 4.783605575561523,
+        "answer_token_accuracy": 0.0833333358168602
+      },
+      {
+        "step": 70,
+        "condition": "evidence_only",
+        "loss": 5.114123344421387,
+        "answer_token_accuracy": 0.07692307978868484
+      },
+      {
+        "step": 80,
+        "condition": "ordinary_full_context",
+        "loss": 2.492180347442627,
+        "answer_token_accuracy": 0.46666666865348816
+      },
+      {
+        "step": 90,
+        "condition": "evidence_only",
+        "loss": 4.828084468841553,
+        "answer_token_accuracy": 0.25
+      },
+      {
+        "step": 100,
+        "condition": "ordinary_full_context",
+        "loss": 2.766007900238037,
+        "answer_token_accuracy": 0.4000000059604645
+      }
+    ],
+    "gradient_norm_max": {
+      "query_output": 3.8494053268805146,
+      "key_value": 5.732627111487091,
+      "mlp": 12.636745989322662
+    }
+  },
+  "after": {
+    "none": {
+      "examples": 32,
+      "answer_nll": 3.839477088302374,
+      "answer_perplexity": 46.50115208474324,
+      "answer_token_accuracy": 0.3187554671894759
+    },
+    "matched_distractor": {
+      "examples": 32,
+      "answer_nll": 3.767592627555132,
+      "answer_perplexity": 43.275758465625074,
+      "answer_token_accuracy": 0.3254371234215796
+    },
+    "evidence_only": {
+      "examples": 32,
+      "answer_nll": 3.731707990169525,
+      "answer_perplexity": 41.750356499455634,
+      "answer_token_accuracy": 0.3257942935451865
+    },
+    "whole_parent": {
+      "examples": 32,
+      "answer_nll": 3.7447326108813286,
+      "answer_perplexity": 42.2976957630332,
+      "answer_token_accuracy": 0.31295572593808174
+    },
+    "ordinary_full_context": {
+      "examples": 32,
+      "answer_nll": 3.21572794765234,
+      "answer_perplexity": 24.921426803873075,
+      "answer_token_accuracy": 0.40524316648952663
+    }
+  },
+  "evidence_nll_delta": -0.6319876834750175,
+  "ordinary_retention_nll_delta": -0.5776303224265575,
+  "checkpoint": "docs/papers/shared/results/paper4_training/pretrained_tier1_five_seed/seed_11/interface_lora_adapter.pt"
+}

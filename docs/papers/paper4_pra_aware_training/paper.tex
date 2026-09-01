@@ -338,6 +338,47 @@ descriptive: even a same-direction effect in all seeds has a minimum exact
 two-sided sign-flip $p=0.0625$. We therefore use the gate to decide the next
 experiment, not to claim a population-level scaling law.
 
+\section{Tier 1: Pretrained Ordinary-Language Gate}
+
+The first pretrained tier uses the 135M-parameter SmolLM2 checkpoint and the
+WikiText-2 reference corpus. Oracle evidence identity remains fixed, preserving
+the separation between consumption and discovery. Each of five deterministic
+train/validation splits runs 100 steps with ordinary full-context rehearsal
+every fourth step and evaluates 32 held-out continuations under no memory,
+matched distractor, selected evidence, whole-parent memory, and ordinary
+visible-context conditions. Consumer LoRA exposes 483,840 parameters at one
+PRA slot per four blocks; Interface LoRA adds K/V projections for 569,856
+trainable parameters.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Five-seed pretrained Tier-1 gate. Evidence NLL is the post-adaptation
+held-out mean; $\Delta$ NLL is relative to the same checkpoint before
+adaptation. Retention $\Delta$ is the ordinary visible-context NLL change, so
+negative values are improvements. Causal margin is matched-distractor NLL
+minus evidence NLL.}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper4_training/pretrained_tier1_five_seed/generated_table.tex}}
+\label{tab:paper4-pretrained-tier1}
+\end{table}
+
+Both adaptation scopes optimize successfully. Mean evidence NLL falls by
+0.618 for Consumer and 0.636 for Interface, while ordinary visible-context NLL
+also improves rather than regresses. The differentiable native-memory path is
+active rather than nominal: mean maximum K/V gradient norm is zero for
+Consumer by construction and 6.837 for Interface. Query/output and MLP
+gradients are nonzero in both regimes.
+
+The stricter causal gate does not yet pass. Evidence has lower NLL than the
+matched distractor in four of five seeds for both adaptation scopes, with mean
+margins of 0.0468 and 0.0472 nats. On seed 71 the signs reverse slightly
+($-0.0128$ and $-0.0154$). The large before/after gain therefore includes
+general continuation learning and cannot by itself establish replicated
+reference-specific consumption. With five seeds, a same-direction result
+would in any case have a minimum exact two-sided sign-flip $p=0.0625$.
+Learned routing remains disabled until a harder causal task produces a
+positive matched-distractor margin in every preregistered split.
+
 \section{Related Work}
 
 Sparse-attention methods reduce which token pairs interact inside a sequence
@@ -358,30 +399,34 @@ justifies reconnecting learned routing at the next gate.
 
 \section{Limitations and Next Gate}
 
-The controlled vocabulary, answer-only objective, sub-million-parameter model,
-and short schedule do not demonstrate ordinary language modeling. Oracle memory
-removes identity errors and does not test top-$k$ recall, graph traversal, or
-materialization budgets. The reported attention masses are correlates of use;
-the matched-distractor margin is the stronger causal output control. We do not
-measure production throughput because references remain in the training graph.
+Tier 0 uses a controlled vocabulary, answer-only objective, sub-million-parameter
+model, and short schedule. Tier 1 adds pretrained ordinary text, but remains a
+short continuation experiment rather than broad language-model evaluation.
+Oracle memory removes identity errors in both tiers and does not test top-$k$
+recall, graph traversal, or materialization budgets. The reported attention
+masses are correlates of use; the matched-distractor margin is the stronger
+causal output control. We do not measure production throughput because
+references remain in the training graph.
 
-The next tier should preserve the same intervention structure while adding an
-ordinary-language objective and a pretrained model below 0.5B parameters. Only
-the best one or two adaptation scopes should advance. Consumer or Interface LoRA
-is the conservative first choice because it captures most of the evidence-only
-gain while limiting full-context regression. Native scratch remains the ceiling
-and a separate architecture-training question. Learned routing should be
-reintroduced after consumer learning replicates, followed by shuffled, disabled,
-and oracle controls. Gemma-scale continuation remains a later gate, not a direct
-consequence of this toy result.
+Tier 1 adds an ordinary-language objective and a pretrained model below 0.5B
+parameters. It validates the optimization path but misses the stricter
+all-seed causal criterion: both Consumer and Interface LoRA produce a positive
+evidence-versus-distractor margin in four of five splits. The next experiment
+therefore hardens the continuation task and repeats these two scopes before
+learning a router. If that causal margin replicates, routing advances with
+shuffled, disabled, and oracle controls. Native scratch remains a ceiling and
+a separate architecture-training question. Gemma-scale continuation remains a
+later gate, not a direct consequence of either the toy or 135M result.
 
 \section{Conclusion}
 
 Sparse memory has two learning problems: finding the right state and making that
 state computationally useful. By fixing the first, this study measures the second
 directly. The differentiable native-KV path and matched adaptation ladder turn a
-previously ambiguous frozen result into a testable training question. The outcome
-supports a stage-gated research program in which consumer plasticity is established
+previously ambiguous frozen result into a testable training question. The toy
+outcome and pretrained optimization result support a stage-gated program, but
+the adverse causal split shows why optimization gain is not the same as
+reference-specific learning. Consumer plasticity must clear that causal gate
 before router complexity and model scale are increased.
 
 \small
