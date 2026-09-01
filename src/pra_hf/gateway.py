@@ -31,6 +31,7 @@ from .session_realization import (
     RealizationPlanner,
 )
 from .session_service import SessionService
+from .observability import DISABLED_OBSERVABILITY, Observability
 
 
 class PRACapabilityError(RuntimeError):
@@ -58,11 +59,13 @@ class PRAGateway:
         session_service: SessionService | None = None,
         session_registry: GatewaySessionRegistry | None = None,
         fallback_injection: FallbackInjectionPolicy | str = FallbackInjectionPolicy.BEFORE_CURRENT_USER,
+        observability: Observability | None = None,
     ) -> None:
         self.adapter = adapter
         self.mode = PRAGatewayMode(mode)
         self.sessions = session_registry or GatewaySessionRegistry(session_service)
         self.fallback_injection = FallbackInjectionPolicy(fallback_injection)
+        self.observability = observability or DISABLED_OBSERVABILITY
 
     def capabilities(self) -> dict[str, Any]:
         engine = self.adapter.capabilities()
@@ -492,45 +495,172 @@ class PRAGateway:
             trace["native_attach_bytes"] = 0
         return trace, state
 
-    def generate(self, request: PRAWireRequest | Mapping[str, Any]) -> PRAEngineResult:
+    def _telemetry_attributes(self, request: PRAWireRequest) -> dict[str, Any]:
+        capabilities = self.adapter.capabilities()
+        return {
+            "pra.request.id": request.request_id,
+            "pra.tenant.id_hash": self.observability.hash_id(request.tenant_id),
+            "pra.session.id_hash": self.observability.hash_id(request.session_id),
+            "pra.task.id_hash": self.observability.hash_id(request.task_id),
+            "pra.engine": capabilities.engine_type.value,
+            "gen_ai.system": capabilities.engine_type.value,
+            "gen_ai.request.model": request.model,
+            "pra.execution_mode": self.mode.value,
+            "pra.profile": str(request.pra_policy.get("profile", "default")),
+        }
+
+    def _record_metrics(
+        self,
+        request: PRAWireRequest,
+        trace: Mapping[str, Any],
+        seconds: float,
+        *,
+        status: str,
+    ) -> None:
+        if not self.observability.metrics_enabled:
+            return
+        capabilities = self.adapter.capabilities()
+        engine = capabilities.engine_type.value
+        mode = self.mode.value
+        profile = str(request.pra_policy.get("profile", "default"))
+        labels = {"engine": engine, "execution_mode": mode, "status": status}
+        self.observability.increment("pra_gateway_requests_total", labels=labels)
+        self.observability.observe("pra_gateway_request_duration_seconds", seconds, labels=labels)
+        self.observability.set_gauge(
+            "pra_gateway_active_sessions",
+            len(self.sessions.inspect_all()),
+            labels={"engine": engine},
+        )
+        message_bytes = float(trace.get("message_bytes_sent", 0))
+        resource_bytes = float(trace.get("resource_bytes_sent", 0))
+        delta_bytes = float(trace.get("session_delta_bytes", 0))
+        for name, value in (
+            ("pra_gateway_message_bytes_total", message_bytes),
+            ("pra_gateway_resource_bytes_total", resource_bytes),
+            ("pra_gateway_delta_bytes_total", delta_bytes),
+            ("pra_gateway_transport_bytes_total", message_bytes + resource_bytes),
+        ):
+            self.observability.increment(name, value, labels={"engine": engine})
+        prefix_status = str(trace.get("prefix_reuse_status", "unknown"))
+        self.observability.increment(
+            "pra_prefix_observations_total",
+            labels={"engine": engine, "status": prefix_status},
+        )
+        self.observability.increment(
+            "pra_prefix_cached_tokens_total",
+            float(trace.get("prefix_cached_tokens", 0)),
+            labels={"engine": engine},
+        )
+        context_labels = {
+            "engine": engine,
+            "profile": profile,
+            "execution_mode": mode,
+        }
+        for name, keys in (
+            ("pra_context_source_tokens_total", ("source_tokens", "context_source_tokens")),
+            ("pra_context_selected_tokens_total", ("selected_tokens", "context_selected_tokens")),
+            ("pra_context_new_materialized_tokens_total", ("new_materialized_tokens",)),
+            ("pra_context_visible_reuse_tokens_total", ("visible_reuse_tokens", "prefix_tokens_reusable")),
+        ):
+            value = next((trace[key] for key in keys if trace.get(key) is not None), 0)
+            self.observability.increment(name, float(value), labels=context_labels)
+        attached = trace.get("native_attached_resources", ()) or ()
+        if attached:
+            self.observability.increment(
+                "pra_native_attaches_total",
+                len(attached),
+                labels={"engine": engine, "status": "success"},
+            )
+        if trace.get("native_attach_bytes") is not None:
+            self.observability.set_gauge(
+                "pra_native_bytes",
+                float(trace["native_attach_bytes"]),
+                labels={"engine": engine, "storage_tier": "active"},
+            )
+
+    def generate(
+        self,
+        request: PRAWireRequest | Mapping[str, Any],
+        *,
+        trace_headers: Mapping[str, str] | None = None,
+    ) -> PRAEngineResult:
         if not isinstance(request, PRAWireRequest):
             request = PRAWireRequest.from_dict(request)
         started = time.perf_counter()
-        (
-            transformed,
-            turn,
-            engine_session_id,
-            unsupported,
-            downgrades,
-            selected_ids,
-            invalidation,
-        ) = self._resolve_request(request)
-        result = self.adapter.generate(transformed)
-        session_trace, _ = self._commit_and_trace(
-            request, turn, engine_session_id, result, transformed, invalidation
-        )
-        trace = (
-            {
-                "stage": "gateway_parse",
-                "gateway_mode": self.mode.value,
-                "correlation_id": request.correlation_id,
-            },
-            {
-                "stage": "protocol_translation",
-                "unsupported_capabilities": unsupported,
-                "downgrades": downgrades,
-                "selected_resource_ids": selected_ids,
-                "native_kv": self.adapter.capabilities().native_kv
-                and self.mode != PRAGatewayMode.G10_TEXT_FALLBACK,
-                "seconds": time.perf_counter() - started,
-            },
-            session_trace,
-            *result.trace,
-        )
-        return PRAEngineResult(result.text, result.raw, trace)
+        status = "success"
+        session_trace: Mapping[str, Any] = {}
+        try:
+            with self.observability.span(
+                "pra.gateway.request",
+                lambda: self._telemetry_attributes(request),
+                parent_headers=trace_headers,
+            ):
+                with self.observability.span("pra.gateway.session.resolve"):
+                    (
+                        transformed,
+                        turn,
+                        engine_session_id,
+                        unsupported,
+                        downgrades,
+                        selected_ids,
+                        invalidation,
+                    ) = self._resolve_request(request)
+                with self.observability.span(
+                    "pra.gateway.translate",
+                    lambda: {
+                        "pra.routing.selected_records": len(selected_ids),
+                        "pra.realization.fallback": bool(downgrades),
+                    },
+                ):
+                    pass
+                with self.observability.span(
+                    "pra.engine.request",
+                    lambda: self._telemetry_attributes(request),
+                ):
+                    result = self.adapter.generate(transformed)
+                session_trace, _ = self._commit_and_trace(
+                    request, turn, engine_session_id, result, transformed, invalidation
+                )
+                trace = (
+                    {
+                        "stage": "gateway_parse",
+                        "gateway_mode": self.mode.value,
+                        "correlation_id": request.correlation_id,
+                    },
+                    {
+                        "stage": "protocol_translation",
+                        "unsupported_capabilities": unsupported,
+                        "downgrades": downgrades,
+                        "selected_resource_ids": selected_ids,
+                        "native_kv": self.adapter.capabilities().native_kv
+                        and self.mode != PRAGatewayMode.G10_TEXT_FALLBACK,
+                        "seconds": time.perf_counter() - started,
+                    },
+                    session_trace,
+                    *result.trace,
+                )
+                return PRAEngineResult(result.text, result.raw, trace)
+        except BaseException:
+            status = "error"
+            if self.observability.metrics_enabled:
+                self.observability.increment(
+                    "pra_gateway_upstream_errors_total",
+                    labels={"engine": self.adapter.capabilities().engine_type.value},
+                )
+            raise
+        finally:
+            self._record_metrics(
+                request,
+                session_trace,
+                time.perf_counter() - started,
+                status=status,
+            )
 
     def stream(
-        self, request: PRAWireRequest | Mapping[str, Any]
+        self,
+        request: PRAWireRequest | Mapping[str, Any],
+        *,
+        trace_headers: Mapping[str, str] | None = None,
     ) -> Iterator[Mapping[str, Any]]:
         """Stream portable deltas after applying the same deterministic mediation."""
 
@@ -549,60 +679,88 @@ class PRAGateway:
             selected_ids,
             invalidation,
         ) = self._resolve_request(request)
+
         def rows() -> Iterator[Mapping[str, Any]]:
-            yield {
-                "type": "trace",
-                "request_id": request.request_id,
-                "trace": {
-                    "stage": "protocol_translation",
-                    "gateway_mode": self.mode.value,
-                    "correlation_id": request.correlation_id,
-                    "unsupported_capabilities": unsupported,
-                    "downgrades": downgrades,
-                    "selected_resource_ids": selected_ids,
-                    "native_kv": self.adapter.capabilities().native_kv
-                    and self.mode != PRAGatewayMode.G10_TEXT_FALLBACK,
-                },
-            }
-            completed = False
-            last: Mapping[str, Any] | None = None
-            text_parts: list[str] = []
-            for emitted in self.adapter.stream(transformed):
-                row = emitted
-                # Native executors historically emitted token dictionaries
-                # directly. Normalize them at the gateway boundary so engine
-                # adapters cannot silently produce metadata-only SSE chunks.
-                if not row.get("type") and "text" in row:
-                    row = {
-                        "type": "delta",
-                        "request_id": request.request_id,
-                        **row,
-                    }
-                last = row
-                if row.get("type") == "delta":
-                    text_parts.append(str(row.get("text", "")))
-                if row.get("type") == "done":
-                    completed = True
-                yield row
-            if not completed:
-                last = {
-                    "type": "done",
+            started = time.perf_counter()
+            status = "success"
+            session_trace: Mapping[str, Any] = {}
+            span_context = self.observability.span(
+                "pra.gateway.request",
+                lambda: self._telemetry_attributes(request),
+                parent_headers=trace_headers,
+            )
+            span_context.__enter__()
+            try:
+                yield {
+                    "type": "trace",
                     "request_id": request.request_id,
-                    "native_kv_used": bool((last or {}).get("native_kv_used", False)),
+                    "trace": {
+                        "stage": "protocol_translation",
+                        "gateway_mode": self.mode.value,
+                        "correlation_id": request.correlation_id,
+                        "unsupported_capabilities": unsupported,
+                        "downgrades": downgrades,
+                        "selected_resource_ids": selected_ids,
+                        "native_kv": self.adapter.capabilities().native_kv
+                        and self.mode != PRAGatewayMode.G10_TEXT_FALLBACK,
+                    },
                 }
-                completed = True
-                yield last
-            if completed:
-                result = PRAEngineResult("".join(text_parts), dict(last or {}))
-                session_trace, _ = self._commit_and_trace(
+                completed = False
+                last: Mapping[str, Any] | None = None
+                text_parts: list[str] = []
+                for emitted in self.adapter.stream(transformed):
+                    row = emitted
+                    # Normalize older native executors at the gateway boundary.
+                    if not row.get("type") and "text" in row:
+                        row = {
+                            "type": "delta",
+                            "request_id": request.request_id,
+                            **row,
+                        }
+                    last = row
+                    if row.get("type") == "delta":
+                        text_parts.append(str(row.get("text", "")))
+                    if row.get("type") == "done":
+                        completed = True
+                    yield row
+                if not completed:
+                    last = {
+                        "type": "done",
+                        "request_id": request.request_id,
+                        "native_kv_used": bool(
+                            (last or {}).get("native_kv_used", False)
+                        ),
+                    }
+                    completed = True
+                    yield last
+                if completed:
+                    result = PRAEngineResult("".join(text_parts), dict(last or {}))
+                    session_trace, _ = self._commit_and_trace(
                     request,
                     turn,
                     engine_session_id,
-                    result,
-                    transformed,
-                    invalidation,
+                        result,
+                        transformed,
+                        invalidation,
+                    )
+                    yield {
+                        "type": "trace",
+                        "request_id": request.request_id,
+                        "trace": session_trace,
+                    }
+            except BaseException as error:
+                status = "error"
+                span_context.__exit__(type(error), error, error.__traceback__)
+                raise
+            else:
+                span_context.__exit__(None, None, None)
+            finally:
+                self._record_metrics(
+                    request,
+                    session_trace,
+                    time.perf_counter() - started,
+                    status=status,
                 )
-                yield {"type": "trace", "request_id": request.request_id, "trace": session_trace}
 
         return rows()
 
@@ -722,7 +880,7 @@ def _handler(gateway: PRAGateway):
                     if bool(payload.get("stream", False)):
                         self._sse(gateway.stream(request))
                     else:
-                        result = gateway.generate(request)
+                        result = gateway.generate(request, trace_headers=dict(self.headers.items()))
                         protocol_trace = next(
                             (
                                 row for row in result.trace
@@ -752,7 +910,10 @@ def _handler(gateway: PRAGateway):
                             },
                         )
                 elif self.path == "/v1/pra/generate":
-                    self._json(200, gateway.generate(payload).to_dict())
+                    self._json(
+                        200,
+                        gateway.generate(payload, trace_headers=dict(self.headers.items())).to_dict(),
+                    )
                 else:
                     self._json(404, {"error": "not_found"})
             except (ValueError, TypeError, PermissionError, PRACapabilityError) as error:

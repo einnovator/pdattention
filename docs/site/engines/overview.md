@@ -39,3 +39,13 @@ See [Metrics & Qualification](../metrics.md) for comparison contracts and
 artifact provenance.
 
 _Generated from the engine documentation registry and 265 product-matrix rows; evidence current through 2026-09-01._
+
+## Observability integration
+
+Every engine dashboard combines PRA's normalized selection, realization,
+prefix/native reuse, and storage metrics with the engine's own telemetry where
+available. vLLM can propagate native OTel and exposes serving metrics; SGLang,
+OpenVINO/OVMS, TensorRT-LLM/Triton, and llama.cpp expose useful native metrics;
+MLX, HF, AirLLM, Ollama, and FreeToken use wrapper observations where a native
+surface is absent. Capability does not imply enablement. See the
+[observability overview](../observability.md) and [Grafana dashboards](../observability/grafana.md).

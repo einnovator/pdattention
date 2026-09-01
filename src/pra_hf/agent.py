@@ -31,6 +31,7 @@ from .skill_records import Skill
 from .task_context import TaskEvent, TaskEventType
 from .task_scope import ScopeSelection, TaskScopePolicy
 from .toolsets import Toolset, default_toolset
+from .observability import DISABLED_OBSERVABILITY, Observability
 
 
 @dataclass(frozen=True)
@@ -82,11 +83,15 @@ class PRAAgent:
         config: PRAAgentConfig | None = None,
         toolset: Toolset | None = None,
         authorization_callback: Callable[[AgentResource, ToolCall], bool] | None = None,
+        observability: Observability | None = None,
     ) -> None:
         self.runtime = runtime
         self.config = config or PRAAgentConfig()
         self.toolset = toolset
         self.authorization_callback = authorization_callback
+        self.observability = observability or getattr(
+            runtime, "observability", DISABLED_OBSERVABILITY
+        )
         self.session = None
 
     @classmethod
@@ -103,6 +108,7 @@ class PRAAgent:
         skills_path: str | Path | None = None,
         session_service: SessionService | None = None,
         sessions_path: str | Path = ".pra/sessions",
+        observability: Observability | None = None,
         **model_kwargs: object,
     ) -> "PRAAgent":
         """Load a model and assemble the complete local agent SDK."""
@@ -130,9 +136,15 @@ class PRAAgent:
             capability_sdk=capabilities,
             executor=toolset.executor(),
             session_service=session_service or LocalSessionService(sessions_path),
+            observability=observability,
             **model_kwargs,
         )
-        return cls(runtime, config=agent_config, toolset=toolset)
+        return cls(
+            runtime,
+            config=agent_config,
+            toolset=toolset,
+            observability=observability,
+        )
 
     def start_session(
         self,
@@ -149,6 +161,9 @@ class PRAAgent:
             tenant_id=self.config.tenant_id,
             resume=resume,
             task_description=task_description,
+        )
+        self.observability.set_gauge(
+            "pra_agent_active_sessions", len(self.runtime.sessions)
         )
         return self.runtime.logical_session_for(self.session)
 
@@ -227,27 +242,29 @@ class PRAAgent:
         )
 
     def _context(self, query: str) -> ScopeSelection | None:
-        if self.state.active_task_id is None or not self.state.records:
-            return None
-        return self.runtime.select_task_context(
-            self.session,
-            query,
-            policy=self.config.task_scope,
-            max_records=self.config.context_records,
-        )
+        with self.observability.span("pra.agent.context.prepare"):
+            if self.state.active_task_id is None or not self.state.records:
+                return None
+            return self.runtime.select_task_context(
+                self.session,
+                query,
+                policy=self.config.task_scope,
+                max_records=self.config.context_records,
+            )
 
     def _disclosed_capabilities(
         self, query: str
     ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         if self.runtime.discovery is None:
             return (), ()
-        trace = self.runtime.discover_resources(
-            DiscoveryRequest(
-                query=query,
-                tenant_id=self.config.tenant_id,
-                top_k=self.config.tool_candidates,
+        with self.observability.span("pra.agent.tool.select"):
+            trace = self.runtime.discover_resources(
+                DiscoveryRequest(
+                    query=query,
+                    tenant_id=self.config.tenant_id,
+                    top_k=self.config.tool_candidates,
+                )
             )
-        )
         uris = tuple(dict.fromkeys((
             *trace.selected_uris,
             *(row.uri for row in trace.candidates[: self.config.tool_candidates]),
@@ -374,6 +391,42 @@ class PRAAgent:
         )
 
     def run_turn(self, query: str) -> AgentTurn:
+        """Run one instrumented turn without capturing user content by default."""
+
+        started = time.perf_counter()
+        status = "success"
+        result: AgentTurn | None = None
+        try:
+            with self.observability.span(
+                "pra.agent.turn",
+                lambda: {
+                    "pra.tenant.id_hash": self.observability.hash_id(self.config.tenant_id),
+                    "pra.session.id_hash": self.observability.hash_id(self.state.session_id),
+                    "pra.task.id_hash": self.observability.hash_id(self.state.active_task_id),
+                },
+            ):
+                result = self._run_turn_uninstrumented(query)
+                return result
+        except BaseException:
+            status = "error"
+            raise
+        finally:
+            self.observability.increment(
+                "pra_agent_turns_total", labels={"status": status}
+            )
+            self.observability.observe(
+                "pra_agent_turn_duration_seconds",
+                time.perf_counter() - started,
+                labels={"status": status},
+            )
+            if result is not None:
+                for execution in result.tool_executions:
+                    tool_status = "success" if execution.execution.executed else "rejected"
+                    self.observability.increment(
+                        "pra_agent_tool_calls_total", labels={"status": tool_status}
+                    )
+
+    def _run_turn_uninstrumented(self, query: str) -> AgentTurn:
         """Generate one answer and execute at most the configured tool rounds."""
 
         if not query.strip():
@@ -450,3 +503,6 @@ class PRAAgent:
         if self.session is not None and not self.session.closed:
             self.runtime.close_session(self.session)
         self.session = None
+        self.observability.set_gauge(
+            "pra_agent_active_sessions", len(self.runtime.sessions)
+        )

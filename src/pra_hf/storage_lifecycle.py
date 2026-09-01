@@ -29,6 +29,7 @@ from urllib.request import url2pathname
 from .context_records import RecordType
 from .product_config import pra_home, read_yaml
 from .task_context import TaskStatus
+from .observability import DISABLED_OBSERVABILITY, Observability
 
 
 class PRAStorageTier(str, Enum):
@@ -811,6 +812,62 @@ def _storage_locked(method):
     return synchronized
 
 
+def _storage_observed(span_name: str):
+    """Wrap coarse lifecycle operations without affecting disabled behavior."""
+
+    def decorate(method):
+        def observed(self, *args, **kwargs):
+            key = str(args[0]) if args else "unknown"
+            before = self.entries.get(key)
+            source_tier = before.current_tier.value if before is not None else "unknown"
+            started = time.perf_counter()
+            with self.observability.span(
+                span_name,
+                lambda: {
+                    "pra.engine": self.engine,
+                    "pra.storage.source_tier": source_tier,
+                },
+            ):
+                result = method(self, *args, **kwargs)
+            elapsed = time.perf_counter() - started
+            self._observe_usage()
+            if span_name == "pra.storage.promote" and source_tier != "hot":
+                self.observability.increment(
+                    "pra_storage_promotions_total",
+                    labels={"engine": self.engine, "storage_tier": source_tier},
+                )
+                self.observability.observe(
+                    "pra_storage_promotion_duration_seconds",
+                    elapsed,
+                    labels={"engine": self.engine, "storage_tier": source_tier},
+                )
+                if source_tier in {"warm", "cold"}:
+                    self.observability.increment(
+                        "pra_storage_reloads_total",
+                        labels={"engine": self.engine, "storage_tier": source_tier},
+                    )
+                elif source_tier == "source":
+                    self.observability.increment(
+                        "pra_storage_source_reads_total", labels={"engine": self.engine}
+                    )
+                    self.observability.increment(
+                        "pra_storage_reconstructions_total", labels={"engine": self.engine}
+                    )
+            elif span_name == "pra.storage.demote":
+                target = self.entries[key].current_tier.value
+                self.observability.increment(
+                    "pra_storage_demotions_total",
+                    labels={"engine": self.engine, "storage_tier": target},
+                )
+            return result
+
+        observed.__name__ = method.__name__
+        observed.__doc__ = method.__doc__
+        return observed
+
+    return decorate
+
+
 class PRAStorageManager:
     """Apply record/task-aware lifecycle policy to opaque native K/V bytes."""
 
@@ -827,6 +884,8 @@ class PRAStorageManager:
         source_resolver: Callable[[PRAStorageEntry], bytes] | None = None,
         state_path: str | Path | None = None,
         recover: bool = True,
+        observability: Observability | None = None,
+        engine: str = "unknown",
     ) -> None:
         self.policy = policy
         self.hot = hot or InMemoryHotBridge()
@@ -843,6 +902,8 @@ class PRAStorageManager:
         self._fingerprints: dict[str, str] = {}
         self._cold_metadata: dict[str, dict[str, object]] = {}
         self.metrics = PRAStorageMetrics()
+        self.observability = observability or DISABLED_OBSERVABILITY
+        self.engine = str(engine)
         self._lock = threading.RLock()
         self._maintenance_stop = threading.Event()
         self._maintenance_thread: threading.Thread | None = None
@@ -871,6 +932,20 @@ class PRAStorageManager:
             if config.enabled and config.path:
                 return Path(config.path).expanduser().resolve().parent / "lifecycle.json"
         return None
+
+    def _observe_usage(self) -> None:
+        if not self.observability.metrics_enabled:
+            return
+        usage = self.usage()
+        self.observability.set_gauge(
+            "pra_storage_hot_bytes", usage["hot_bytes"], labels={"engine": self.engine}
+        )
+        self.observability.set_gauge(
+            "pra_storage_warm_bytes", usage["warm_bytes"], labels={"engine": self.engine}
+        )
+        self.observability.set_gauge(
+            "pra_storage_cold_bytes", usage["cold_bytes"], labels={"engine": self.engine}
+        )
 
     @staticmethod
     def _entry_dict(entry: PRAStorageEntry) -> dict[str, object]:
@@ -1127,6 +1202,7 @@ class PRAStorageManager:
                 )
         self._persist_state()
 
+    @_storage_observed("pra.storage.demote")
     @_storage_locked
     def demote_hot(self, key: str, *, payload: bytes | None = None, now_ns: int | None = None) -> PRAStorageEntry:
         """Release HOT and retain lossless WARM when policy permits."""
@@ -1170,6 +1246,7 @@ class PRAStorageManager:
         self._persist_state()
         return self.entries[key]
 
+    @_storage_observed("pra.storage.promote")
     @_storage_locked
     def promote(self, key: str, *, request_id: str | None = None, tenant_id: str | None = None, authorization_scopes: Iterable[str] = (), now_ns: int | None = None) -> object:
         """Promote exact WARM/COLD bytes, or reconstruct from SOURCE."""

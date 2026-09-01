@@ -1318,6 +1318,15 @@ large local-window Pareto & open & 2K/8K/32K/full require occupied long historie
 \end{tabularx}
 \end{center}
 
+\subsection{Observability contract}
+
+MLX does not require a container-native telemetry stack.  PRA wraps Metal/MLX
+timing and residency observations in standard spans and normalized Prometheus
+metrics while the engine remains on the macOS host; Collector, Prometheus, and
+Grafana may run in containers.  The dashboard distinguishes selected tokens,
+native K/V bytes, HOT/WARM promotion, rotating-cache behavior, TTFT, and ITL.
+All reported performance qualification keeps detailed tracing disabled.
+
 \section{Falsification and Limitations}
 Native PRA-MLX is unnecessary if selected visible text plus ordinary MLX
 caching matches its quality, memory, and latency on realistic long-memory

@@ -8,6 +8,7 @@ from .deployment import HuggingFaceEngineAdapter, OpenAICompatibleEngineAdapter
 from .engine_profiles import EngineType
 from .gateway import FallbackInjectionPolicy, PRAGateway, serve_gateway
 from .session_service import LocalSessionService
+from .observability import Observability, load_observability_config
 
 
 GATEWAY_MODE_ALIASES = {
@@ -76,21 +77,48 @@ def gateway_cli() -> None:
     show_default=True,
 )
 @click.option("--sessions-dir", type=click.Path(path_type=str))
+@click.option("--observability", type=click.Path(exists=True, dir_okay=False))
+@click.option("--otel", is_flag=True, help="Enable OpenTelemetry tracing explicitly.")
+@click.option("--otel-endpoint")
+@click.option("--prometheus", is_flag=True, help="Enable the Prometheus endpoint explicitly.")
+@click.option("--prometheus-port", type=click.IntRange(min=1, max=65535))
 def gateway_serve(
     host, port, mode, backend, backend_url, model, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
-    fallback_injection, sessions_dir,
+    fallback_injection, sessions_dir, observability, otel, otel_endpoint,
+    prometheus, prometheus_port,
 ) -> None:
     """Serve logical PRA and OpenAI-compatible HTTP endpoints."""
 
     resolved_mode = resolve_gateway_mode(mode)
+    overrides = {}
+    if otel or otel_endpoint or prometheus or prometheus_port:
+        overrides["enabled"] = True
+    if otel or otel_endpoint:
+        overrides["otel"] = {
+            "enabled": True,
+            **({"endpoint": otel_endpoint} if otel_endpoint else {}),
+        }
+    if prometheus or prometheus_port:
+        overrides["prometheus"] = {
+            "enabled": True,
+            **({"port": prometheus_port} if prometheus_port else {}),
+        }
+    telemetry = Observability(
+        load_observability_config(
+            observability, overrides=overrides, service="gateway"
+        ),
+        start_server=True,
+    )
 
     if backend == "huggingface":
         if not model:
             raise click.UsageError("--model is required for the Hugging Face backend.")
         from .model import PRAForCausalLM
 
-        adapter = HuggingFaceEngineAdapter(PRAForCausalLM.from_pretrained(model))
+        adapter = HuggingFaceEngineAdapter(
+            PRAForCausalLM.from_pretrained(model), observability=telemetry
+        )
     else:
         if not backend_url:
             raise click.UsageError("--backend-url is required for remote engines.")
@@ -105,12 +133,14 @@ def gateway_serve(
             incremental_messages=incremental_messages,
             resource_delta=resource_delta,
             cache_affinity=cache_affinity,
+            observability=telemetry,
         )
     gateway = PRAGateway(
         adapter,
         mode=resolved_mode,
         session_service=LocalSessionService(sessions_dir) if sessions_dir else None,
         fallback_injection=fallback_injection,
+        observability=telemetry,
     )
     capabilities = adapter.capabilities()
     selected_enabled = resolved_mode in {"G10", "G11"}
@@ -128,4 +158,7 @@ def gateway_serve(
             f"Internal protocol: {resolved_mode}, {capabilities.integration_level.value}, "
             f"{capabilities.prefix_cache_mode.value}"
         )
-    serve_gateway(gateway, host=host, port=port)
+    try:
+        serve_gateway(gateway, host=host, port=port)
+    finally:
+        telemetry.close()

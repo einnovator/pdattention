@@ -902,6 +902,15 @@ but detached attachment and LMCache remain unimplemented. HBM decomposition,
 PCIe/NVLink transfer, asynchronous promotion, and native CUDA tails remain
 explicitly unmeasured rather than inferred from Metal, E0, or completion time.
 
+\subsection{Observability contract}
+
+The adapter advertises native OpenTelemetry and Prometheus capability without
+enabling either implicitly.  When configured, PRA propagates W3C trace context
+into vLLM and records normalized selection, realization, prefix-reuse, native
+attach, and storage metrics; vLLM scheduler, APC, paged-K/V, queue, and serving
+metrics remain engine-native.  Primary latency and throughput tables in this
+paper were collected with detailed tracing disabled.
+
 \section{Falsification and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
 engine-aware implementation at equal quality across memory pressure,

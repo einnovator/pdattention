@@ -1,0 +1,23 @@
+observability:
+  enabled: true
+  service:
+    environment: development
+  prometheus:
+    enabled: true
+    host: 127.0.0.1
+    port: 9464
+    path: /metrics
+  otel:
+    enabled: true
+    endpoint: http://localhost:4317
+    protocol: grpc
+    traces: true
+    metrics: false
+    sampler: parent_based_trace_id_ratio
+    sample_rate: 0.01
+  engine_native:
+    enable_tracing: false
+    enable_metrics: false
+  content:
+    capture: none
+  grafana_url: http://localhost:3000

@@ -8,6 +8,7 @@ from .deployment import HuggingFaceEngineAdapter
 from .gateway import PRAGateway, serve_gateway
 from .hf_storage import HFReferenceHotBridge
 from .model import PRAForCausalLM
+from .observability import Observability, load_observability_config
 from .storage_lifecycle import PRAStorageManager, PRAStoragePolicy
 
 
@@ -19,20 +20,52 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--storage", default="balanced")
     parser.add_argument("--storage-config")
+    parser.add_argument("--observability")
+    parser.add_argument("--otel", action="store_true")
+    parser.add_argument("--otel-endpoint")
+    parser.add_argument("--prometheus", action="store_true")
+    parser.add_argument("--prometheus-port", type=int)
     args = parser.parse_args()
     storage = PRAStoragePolicy.from_yaml(args.storage_config) if args.storage_config else PRAStoragePolicy.named(args.storage)
     model = PRAForCausalLM.from_pretrained(args.model, revision=args.revision)
+    overrides = {}
+    if args.otel or args.otel_endpoint or args.prometheus or args.prometheus_port:
+        overrides["enabled"] = True
+    if args.otel or args.otel_endpoint:
+        overrides["otel"] = {
+            "enabled": True,
+            **({"endpoint": args.otel_endpoint} if args.otel_endpoint else {}),
+        }
+    if args.prometheus or args.prometheus_port:
+        overrides["prometheus"] = {
+            "enabled": True,
+            **({"port": args.prometheus_port} if args.prometheus_port else {}),
+        }
+    telemetry = Observability(
+        load_observability_config(
+            args.observability, overrides=overrides, service="runtime"
+        ),
+        start_server=True,
+    )
     storage_manager = PRAStorageManager(
-        storage, hot=HFReferenceHotBridge(model)
+        storage,
+        hot=HFReferenceHotBridge(model),
+        observability=telemetry,
+        engine="hf",
     )
     storage_manager.start_maintenance()
     gateway = PRAGateway(
-        HuggingFaceEngineAdapter(model, storage_manager=storage_manager), mode="G00"
+        HuggingFaceEngineAdapter(
+            model, storage_manager=storage_manager, observability=telemetry
+        ),
+        mode="G00",
+        observability=telemetry,
     )
     try:
         serve_gateway(gateway, host=args.host, port=args.port)
     finally:
         storage_manager.close()
+        telemetry.close()
 
 
 if __name__ == "__main__":

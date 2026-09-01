@@ -658,6 +658,15 @@ delay can be longer on this serialized runner. An off-node follow-up must
 repeat this curve with network bytes, backend queueing, wasted prefetches, and
 resource/session affinity under sustained arrivals.
 
+\subsection{Observability contract}
+
+PRA wrapper spans preserve W3C request identity across gateway mediation and
+the SGLang boundary.  Native scheduler, Radix-cache, and HiCache metrics are
+scraped directly when exposed by the pinned runtime, while PRA reports
+normalized selected context, native attach, semantic tier movement, and
+session-affinity outcomes.  Telemetry remains explicit and detailed tracing is
+off for primary qualification runs.
+
 \section{Falsification and Limitations}
 Deep SGLang integration is unnecessary if RadixAttention plus the tuned
 black-box path matches native PRA on quality-adjusted memory, TTFT, and

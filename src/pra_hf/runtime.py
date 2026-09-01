@@ -52,6 +52,7 @@ from .context_store import RecordScope
 from .external_memory import AuthContext, ExternalMemoryManager, PRASession
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
 from .native_geometry import FrozenNativeSelection, NativeMaterializationPlan
+from .observability import DISABLED_OBSERVABILITY, Observability
 from .progressive_context import (
     ContextExecutionResult,
     LazyNativeRegion,
@@ -948,6 +949,7 @@ class PRARuntime:
         native_result_routing: bool = False,
         session_service: SessionService | None = None,
         storage_manager: PRAStorageManager | None = None,
+        observability: Observability | None = None,
     ) -> None:
         if agent_config is not None and capability_sdk is not None:
             raise ValueError("Pass agent_config or capability_sdk, not both.")
@@ -966,7 +968,12 @@ class PRARuntime:
         self.context_policy = context_policy or config.context_policy
         self.native_result_routing = bool(native_result_routing)
         self.session_service = session_service
-        self.storage = storage_manager or PRAStorageManager(config.storage)
+        self.observability = observability or DISABLED_OBSERVABILITY
+        self.storage = storage_manager or PRAStorageManager(
+            config.storage,
+            observability=self.observability,
+            engine=config.backend,
+        )
         self.engine_sessions = GatewaySessionRegistry(session_service)
         if self.native_result_routing and not isinstance(self.backend, HuggingFaceBackend):
             raise ValueError("Native result routing requires the Hugging Face backend.")
@@ -992,6 +999,7 @@ class PRARuntime:
         context_policy: ContextPolicy | None = None,
         native_result_routing: bool = True,
         session_service: SessionService | None = None,
+        observability: Observability | None = None,
         **model_kwargs: Any,
     ) -> "PRARuntime":
         config = (
@@ -1019,6 +1027,7 @@ class PRARuntime:
             context_policy=context_policy,
             native_result_routing=native_result_routing,
             session_service=session_service,
+            observability=observability,
         )
 
     @classmethod
@@ -1287,7 +1296,22 @@ class PRARuntime:
     def discover_resources(self, request: DiscoveryRequest) -> DiscoveryTrace:
         if self.discovery is None:
             raise RuntimeError("No typed resource discovery engine is installed.")
-        return self.discovery.discover(request)
+        started = time.perf_counter()
+        with self.observability.span(
+            "pra.context.route",
+            lambda: {
+                "pra.tenant.id_hash": self.observability.hash_id(request.tenant_id),
+                "pra.routing.policy": "typed-resource-discovery",
+                "pra.routing.typed_filter_enabled": True,
+            },
+        ):
+            result = self.discovery.discover(request)
+        self.observability.observe(
+            "pra_routing_duration_seconds",
+            time.perf_counter() - started,
+            labels={"engine": self.config.backend, "profile": "runtime"},
+        )
+        return result
 
     def ingest_result(
         self,
@@ -1550,7 +1574,39 @@ class PRARuntime:
         return RuntimeToolExecution(execution, record)
 
     def generate(self, prompt: str, **kwargs: Any) -> str | GenerationResult:
-        return self.backend.generate(prompt, **kwargs)
+        started = time.perf_counter()
+        labels = {
+            "engine": self.config.backend,
+            "model_family": "unknown",
+            "profile": "runtime",
+            "execution_mode": "native-memory",
+        }
+        status = "success"
+        try:
+            with self.observability.span(
+                "pra.engine.request",
+                lambda: {
+                    "pra.engine": self.config.backend,
+                    "pra.profile": "runtime",
+                    "pra.execution_mode": "native-memory",
+                },
+            ):
+                return self.backend.generate(prompt, **kwargs)
+        except BaseException:
+            status = "error"
+            self.observability.increment("pra_engine_errors_total", labels=labels)
+            raise
+        finally:
+            elapsed = time.perf_counter() - started
+            request_labels = {**labels, "status": status}
+            self.observability.increment("pra_engine_requests_total", labels=request_labels)
+            self.observability.observe(
+                "pra_engine_request_duration_seconds", elapsed, labels=request_labels
+            )
+            if status == "success":
+                self.observability.increment(
+                    "pra_engine_successful_requests_total", labels=labels
+                )
 
     def route(self, prompt: str):
         """Run discovery without generation when the selected backend supports it."""
@@ -1663,6 +1719,7 @@ class PRARuntime:
             "engine_sessions": self.engine_sessions.inspect_all(),
             "hot_cache": self.hot_cache.snapshot(),
             "storage": self.storage.inspect(),
+            "observability": self.observability.snapshot(),
         }
 
     def save_pretrained(self, directory: str | Path) -> Path:

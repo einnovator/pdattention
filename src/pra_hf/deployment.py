@@ -15,6 +15,11 @@ from typing import Any, Iterator, Mapping, Protocol, Sequence
 
 from .engine_profiles import EngineProfileRegistry, EngineType, PrefixCacheMode
 from .gateway_session import HistoryMode, ResourceDelta
+from .observability import (
+    DISABLED_OBSERVABILITY,
+    Observability,
+    engine_observability_capabilities,
+)
 
 
 class PRAEngineIntegrationLevel(str, Enum):
@@ -76,6 +81,7 @@ class PRAEngineCapabilities:
     callback_routing: bool = False
     pra_scheduler: bool = False
     tool_resources: bool = False
+    observability: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -83,6 +89,7 @@ class PRAEngineCapabilities:
         )
         object.__setattr__(self, "engine_type", EngineType(self.engine_type))
         object.__setattr__(self, "prefix_cache_mode", PrefixCacheMode(self.prefix_cache_mode))
+        object.__setattr__(self, "observability", dict(self.observability))
         if self.native_kv and self.integration_level not in {
             PRAEngineIntegrationLevel.E2_NATIVE_ATTENTION,
             PRAEngineIntegrationLevel.E3_SCHEDULER,
@@ -321,6 +328,7 @@ class OpenAICompatibleEngineAdapter:
         incremental_messages: bool | None = None,
         resource_delta: bool | None = None,
         cache_affinity: bool | None = None,
+        observability: Observability | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = float(timeout_seconds)
@@ -337,6 +345,7 @@ class OpenAICompatibleEngineAdapter:
         self.incremental_messages = profile.incremental_messages if incremental_messages is None else bool(incremental_messages)
         self.resource_delta = profile.resource_delta if resource_delta is None else bool(resource_delta)
         self.cache_affinity = profile.cache_affinity if cache_affinity is None else bool(cache_affinity)
+        self.observability = observability or DISABLED_OBSERVABILITY
 
     def capabilities(self) -> PRAEngineCapabilities:
         level = PRAEngineIntegrationLevel(self.pra_level)
@@ -362,6 +371,7 @@ class OpenAICompatibleEngineAdapter:
             text_fallback=True,
             native_kv=native,
             streaming=False,
+            observability=engine_observability_capabilities(self.engine_type.value),
         )
 
     def prepare_session(self, request: PRAWireRequest) -> str | None:
@@ -370,10 +380,12 @@ class OpenAICompatibleEngineAdapter:
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
         payload = json.dumps(self._payload(request)).encode("utf-8")
         started = time.perf_counter()
+        headers = {"Content-Type": "application/json"}
+        self.observability.inject(headers)
         http_request = urllib.request.Request(
             f"{self.base_url}/v1/chat/completions",
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
@@ -414,9 +426,10 @@ class OpenAICompatibleEngineAdapter:
 class HuggingFaceEngineAdapter:
     """E1 in-process adapter using the HF semantic-reference implementation."""
 
-    def __init__(self, model, *, storage_manager=None) -> None:
+    def __init__(self, model, *, storage_manager=None, observability: Observability | None = None) -> None:
         self.model = model
         self.storage = storage_manager
+        self.observability = observability or DISABLED_OBSERVABILITY
         self._reference_lock = threading.RLock()
 
     def _logical_key(self, request: PRAWireRequest, resource: PRAWireResource) -> str:
@@ -575,6 +588,7 @@ class HuggingFaceEngineAdapter:
             scheduler_hints=False,
             tenant_isolation=True,
             tool_resources=True,
+            observability=engine_observability_capabilities("hf"),
         )
 
     def prepare_session(self, request: PRAWireRequest) -> str | None:

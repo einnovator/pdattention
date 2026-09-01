@@ -2148,6 +2148,98 @@ after reconnect. A dangerous tool call remains blocked until the backend
 receives a typed one-shot approval; the browser cannot bypass host policy. The
 UI binds to loopback by default and is experimental rather than a scientific
 contribution or production security claim.
+\subsection{Distributed observability and semantic context telemetry}
+
+The product runtime now carries one W3C trace context across the agent,
+gateway, PRA realization path, and inference adapter.  This is not a new
+coupling between those services: each remains a distinct OpenTelemetry service
+(``\texttt{pra-agent}'', ``\texttt{pra-gateway}'', and
+``\texttt{pra-runtime}''), and an engine-native provider contributes child
+spans only when its pinned integration explicitly enables them.  Engines with
+Prometheus but no native tracing are scraped directly; engines exposing only
+timing APIs receive wrapper spans and normalized metrics.  Thus common PRA
+telemetry does not pretend that every engine exports the same physical facts.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.92\linewidth}
+\centering
+\textbf{Request path}\par\smallskip
+Agent $\longrightarrow$ Gateway $\longrightarrow$ PRA routing / realization
+$\longrightarrow$ Engine\par
+\smallskip
+$\downarrow$ \hfill $\downarrow$ \hfill $\downarrow$ \hfill $\downarrow$\par
+OpenTelemetry spans $\longrightarrow$ OTel Collector
+$\longrightarrow$ trace backend\par
+Prometheus counters / histograms $\longrightarrow$ Prometheus
+$\longrightarrow$ Grafana\par
+\smallskip
+Engine-native scheduler and cache metrics are scraped beside, rather than
+renamed as, PRA semantic context metrics.
+\end{minipage}}
+\caption{The observability boundary.  W3C context joins request causality,
+while Prometheus and Grafana correlate semantic context decisions with
+engine-native serving behavior.}
+\label{fig:observability-architecture}
+\end{figure}
+
+A representative trace is rooted at \texttt{pra.agent.turn}; its
+\texttt{pra.gateway.request} child contains session resolution and protocol
+translation, followed by \texttt{pra.context.route}, selection and realization,
+then \texttt{pra.engine.request}.  The attributes separate source and selected
+tokens, already-visible and newly materialized records, prefix reuse status,
+native attached bytes, storage tier activity, and queue/prefill/decode timing.
+This decomposition answers whether a high TTFT arose in routing, WARM
+promotion, native attach, engine queueing, or ordinary model prefill.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{lY}
+\toprule
+Telemetry family & Normalized observations \\
+\midrule
+Context economy & Source, selected, newly materialized, and visible-reuse tokens \\
+Conventional reuse & Prefix-cache status and physically confirmed cached tokens \\
+Native Memory & Selected/attached resources, HOT/WARM resources, bytes, and attach time \\
+Storage & HOT/WARM/COLD bytes, promotion, demotion, eviction, reload, and reconstruction \\
+Serving & Request latency, TTFT, ITL, completion time, errors, and successful throughput \\
+\bottomrule
+\end{tabularx}
+\caption{PRA's normalized metrics complement engine-native scheduler, cache,
+device, and transfer telemetry.  Missing physical observations remain unknown.}
+\label{tab:observability-metrics}
+\end{table}
+
+Privacy and overhead are policy, not deployment accidents.  The absent or
+disabled configuration follows a genuine no-op path: no exporter, listener,
+background thread, identifier hash, or telemetry-only attribute construction.
+The default content policy exports no prompts, documents, tool payloads,
+credentials, or raw resource identifiers.  Prometheus labels are restricted to
+bounded deployment dimensions; private request, session, user, task, and URI
+identities never become labels.
+
+Table~\ref{tab:observability-overhead} isolates instrumentation cost from model
+serving.  It times 10,000 span-plus-counter operations in seven repetitions on
+the development host.  Ratios look large because the disabled baseline is only
+a few microseconds; they are not model-latency multipliers.  The result confirms
+the key mechanism: the off and metrics-only paths evaluate zero span-attribute
+callables, whereas tracing evaluates them.  All primary performance evidence
+in this paper remains telemetry-off.
+
+\begin{table}[t]
+\centering
+\small
+\input{../shared/results/paper4_5_runtime/observability/generated_observability_overhead.tex}
+\caption{Telemetry instrumentation microbenchmark.  This is an overhead
+diagnostic, not model-serving qualification.}
+\label{tab:observability-overhead}
+\end{table}
+
+The open artifact includes baseline Agent, Gateway, runtime, multi-engine, and
+engine-specific Grafana dashboards plus profile-gated Collector/Prometheus/
+Grafana Compose deployment.  Host-native MLX and embedded runtimes use the same
+collector through a documented hybrid-host arrangement.
 
 \section{Limitations and Next Gates}
 

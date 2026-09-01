@@ -20,6 +20,7 @@ from typing import Any, Callable, Mapping, Sequence
 from .context_records import ContextRecord, RecordViewName, serialize_record
 from .deployment import PRAWireRequest, PRAWireResource
 from .gateway_session import HistoryMode, ResourceDelta, ResourceOperation
+from .observability import DISABLED_OBSERVABILITY, Observability
 
 
 class ContextTransportMode(str, Enum):
@@ -335,11 +336,18 @@ def resolve_wire_mode(
 class CapabilityNegotiator:
     """Cache the immediate endpoint handshake until explicit invalidation."""
 
-    def __init__(self, endpoint: str, *, timeout_seconds: float = 10.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        timeout_seconds: float = 10.0,
+        observability: Observability | None = None,
+    ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.timeout_seconds = float(timeout_seconds)
         self._cached: AgentTransportCapabilities | None = None
         self._lock = threading.RLock()
+        self.observability = observability or DISABLED_OBSERVABILITY
 
     def invalidate(self) -> None:
         with self._lock:
@@ -349,8 +357,10 @@ class CapabilityNegotiator:
         with self._lock:
             if self._cached is not None and not refresh:
                 return self._cached
+            headers: dict[str, str] = {}
+            self.observability.inject(headers)
             request = urllib.request.Request(
-                self.endpoint + "/v1/pra/capabilities", method="GET"
+                self.endpoint + "/v1/pra/capabilities", headers=headers, method="GET"
             )
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
@@ -385,6 +395,7 @@ class NegotiatedRemoteBackend:
         required_capabilities: Sequence[str] = (),
         credentials_file: str | None = None,
         timeout_seconds: float = 300.0,
+        observability: Observability | None = None,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.model = model
@@ -393,7 +404,10 @@ class NegotiatedRemoteBackend:
         self.required_capabilities = tuple(required_capabilities)
         self.credentials_file = credentials_file
         self.timeout_seconds = float(timeout_seconds)
-        self.negotiator = CapabilityNegotiator(self.endpoint)
+        self.observability = observability or DISABLED_OBSERVABILITY
+        self.negotiator = CapabilityNegotiator(
+            self.endpoint, observability=self.observability
+        )
         self._resource_versions: dict[str, dict[str, str]] = {}
         self._message_history: dict[str, tuple[Mapping[str, Any], ...]] = {}
         self._last_trace: dict[str, Any] = {}
@@ -418,6 +432,7 @@ class NegotiatedRemoteBackend:
         token = os.environ.get("PRA_API_KEY") or os.environ.get("OPENAI_API_KEY")
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        self.observability.inject(headers)
         return headers
 
     @staticmethod

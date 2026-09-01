@@ -20,6 +20,7 @@ from typing import Any, Mapping, Sequence
 from .deployment import PRAEngineCapabilities
 from .engine_profiles import EngineType, PrefixCacheMode
 from .product_config import pra_home
+from .observability import engine_observability_capabilities
 from .runtime_benchmark import run_runtime_microbenchmark, write_runtime_benchmark
 from .storage_lifecycle import PRAStoragePolicy
 
@@ -45,6 +46,11 @@ class RuntimeConfig:
     verbose: bool = False
     storage_profile: str = "balanced"
     storage_config: str | None = None
+    observability_config: str | None = None
+    otel: bool = False
+    otel_endpoint: str | None = None
+    prometheus: bool = False
+    prometheus_port: int = 9464
 
     def __post_init__(self) -> None:
         if not (0 < self.port < 65536):
@@ -245,6 +251,7 @@ class HFRuntimeProvider(RuntimeProvider):
             host_device_residency=True,
             tenant_isolation=True,
             tool_resources=True,
+            observability=engine_observability_capabilities("hf"),
         )
 
     def build_command(self, config: RuntimeConfig) -> list[str]:
@@ -266,6 +273,14 @@ class HFRuntimeProvider(RuntimeProvider):
         command += ["--storage", config.storage_profile]
         if config.storage_config:
             command += ["--storage-config", config.storage_config]
+        if config.observability_config:
+            command += ["--observability", config.observability_config]
+        if config.otel:
+            command.append("--otel")
+        if config.otel_endpoint:
+            command += ["--otel-endpoint", config.otel_endpoint]
+        if config.prometheus:
+            command += ["--prometheus", "--prometheus-port", str(config.prometheus_port)]
         return command
 
 
@@ -281,6 +296,7 @@ class GenericOpenAIRuntimeProvider(RuntimeProvider):
             prefix_cache_mode=PrefixCacheMode.UNKNOWN,
             text_fallback=True,
             streaming=True,
+            observability=engine_observability_capabilities("openai"),
         )
 
 
@@ -310,6 +326,7 @@ class CommandRuntimeProvider(RuntimeProvider):
             request_lifetime=self.native_kv,
             host_device_residency=self.native_kv,
             tenant_isolation=self.native_kv,
+            observability=engine_observability_capabilities(self.engine_type),
         )
 
     def build_command(self, config: RuntimeConfig) -> list[str]:

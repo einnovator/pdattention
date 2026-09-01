@@ -144,6 +144,16 @@ def render_overview(registry: dict) -> str:
             f"_Generated from the engine documentation registry and {registry['product_matrix_rows']} "
             f"product-matrix rows; evidence current through {registry['evidence_as_of']}._",
             "",
+            "## Observability integration",
+            "",
+            "Every engine dashboard combines PRA's normalized selection, realization,",
+            "prefix/native reuse, and storage metrics with the engine's own telemetry where",
+            "available. vLLM can propagate native OTel and exposes serving metrics; SGLang,",
+            "OpenVINO/OVMS, TensorRT-LLM/Triton, and llama.cpp expose useful native metrics;",
+            "MLX, HF, AirLLM, Ollama, and FreeToken use wrapper observations where a native",
+            "surface is absent. Capability does not imply enablement. See the",
+            "[observability overview](../observability.md) and [Grafana dashboards](../observability/grafana.md).",
+            "",
         ]
     )
     return "\n".join(lines)

@@ -16,6 +16,7 @@ from .agent_transport import (
     resolve_wire_mode,
 )
 from .product_config import deep_merge, pra_home, read_yaml
+from .observability import Observability
 from .runtime import PRARuntime, PRARuntimeConfig
 from .runtime_providers import RuntimeConfig
 from .session_service import LocalSessionService
@@ -296,7 +297,9 @@ class AgentLaunch:
 class AgentLauncher:
     """Build the same PRA agent for CLI, TUI, scripts, and web transports."""
 
-    def launch(self, profile: AgentProfile) -> AgentLaunch:
+    def launch(
+        self, profile: AgentProfile, *, observability: Observability | None = None
+    ) -> AgentLaunch:
         workspace = Path(profile.workspace).expanduser()
         sessions = Path(profile.sessions_path).expanduser()
         allow_all = profile.tools.approval == "allow_all"
@@ -326,6 +329,7 @@ class AgentLauncher:
                 session_service=LocalSessionService(sessions),
                 runtime_config={"profile": profile.pra} if profile.pra else None,
                 revision=profile.model_revision,
+                observability=observability,
             )
         else:
             if not profile.runtime.endpoint:
@@ -337,6 +341,7 @@ class AgentLauncher:
                 allow_text_fallback=profile.allow_text_fallback,
                 required_capabilities=profile.required_context_capabilities,
                 credentials_file=profile.credentials_file,
+                observability=observability,
             )
             capabilities = backend.capabilities()
             resolved_transport = resolve_wire_mode(
@@ -350,8 +355,9 @@ class AgentLauncher:
                 backend=backend,
                 native_result_routing=False,
                 session_service=LocalSessionService(sessions),
+                observability=observability,
             )
-            agent = PRAAgent(runtime, config=agent_config)
+            agent = PRAAgent(runtime, config=agent_config, observability=observability)
         transport_summary = (
             {
                 "requested": profile.context_transport.value,

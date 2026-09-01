@@ -1,0 +1,399 @@
+{
+  "id": null,
+  "uid": "pra-overview",
+  "title": "PRA Multi-engine Overview",
+  "tags": [
+    "pra",
+    "multi-engine"
+  ],
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "pra-prometheus"
+        }
+      },
+      {
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(environment)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(service)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "engine",
+        "label": "Engine",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(engine)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(model_family)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(host)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(instance)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "profile",
+        "label": "Profile",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(profile)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "execution_mode",
+        "label": "Execution Mode",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(execution_mode)",
+          "refId": "variable"
+        },
+        "includeAll": true,
+        "multi": true,
+        "refresh": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Selected / source token ratio",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(pra_context_selected_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode) / clamp_min(sum(rate(pra_context_source_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode), 1)",
+          "legendFormat": "{{engine}} {{execution_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Visible and native reuse",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(pra_context_visible_reuse_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode)",
+          "legendFormat": "{{engine}} {{execution_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Gateway p95 latency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(pra_gateway_request_duration_seconds_bucket{engine=~\"$engine\"}[5m])) by (le,engine,execution_mode))",
+          "legendFormat": "{{engine}} {{execution_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Successful request throughput",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(pra_engine_successful_requests_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode)",
+          "legendFormat": "{{engine}} {{execution_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Native active bytes",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(pra_native_bytes{engine=~\"$engine\"}) by (engine,storage_tier)",
+          "legendFormat": "{{engine}} {{execution_mode}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Storage HOT bytes",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(pra_storage_hot_bytes{engine=~\"$engine\"}) by (engine)",
+          "legendFormat": "{{engine}} {{execution_mode}}"
+        }
+      ]
+    }
+  ]
+}

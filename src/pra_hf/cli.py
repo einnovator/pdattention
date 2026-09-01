@@ -18,6 +18,7 @@ from .execution_modes import ExecutionModeResolver
 from .gateway_cli import gateway_cli
 from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
+from .observability import Observability, load_observability_config
 from .product_config import dump_data
 from .product_qualification import (
     EngineProductRegistry,
@@ -51,6 +52,33 @@ def _output_options(function):
     function = click.option("--yaml", "yaml_output", is_flag=True, help="Emit YAML.")(function)
     function = click.option("--json", "json_output", is_flag=True, help="Emit JSON.")(function)
     return function
+
+
+def _observability_options(function):
+    decorators = (
+        click.option("--observability", type=click.Path(exists=True, dir_okay=False, path_type=Path)),
+        click.option("--otel", is_flag=True, help="Enable OpenTelemetry tracing explicitly."),
+        click.option("--otel-endpoint", metavar="URL"),
+        click.option("--prometheus", is_flag=True, help="Enable Prometheus metrics explicitly."),
+        click.option("--prometheus-port", type=click.IntRange(min=1, max=65535)),
+    )
+    for decorator in reversed(decorators):
+        function = decorator(function)
+    return function
+
+
+def _telemetry(observability, otel, otel_endpoint, prometheus, prometheus_port, *, service, start_server=True):
+    overrides = {}
+    if otel or otel_endpoint or prometheus or prometheus_port:
+        overrides["enabled"] = True
+    if otel or otel_endpoint:
+        overrides["otel"] = {"enabled": True, **({"endpoint": otel_endpoint} if otel_endpoint else {})}
+    if prometheus or prometheus_port:
+        overrides["prometheus"] = {"enabled": True, **({"port": prometheus_port} if prometheus_port else {})}
+    return Observability(
+        load_observability_config(observability, overrides=overrides, service=service),
+        start_server=start_server,
+    )
 
 
 def _metric(value: Any) -> str:
@@ -117,7 +145,7 @@ def _emit_qualification(value: Mapping[str, Any], run_directory: Path | None = N
         click.echo(f"Run directory: {run_directory}")
 
 
-def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args=(), verbose=False):
+def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args=(), verbose=False, observability=None, otel=False, otel_endpoint=None, prometheus=False, prometheus_port=None):
     try:
         options = parse_engine_arguments(engine_args)
     except ValueError as error:
@@ -127,6 +155,11 @@ def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bu
         host=host, port=port, pra_bundle=pra_bundle, profile=profile,
         engine_options=options, verbose=verbose, storage_profile=storage,
         storage_config=str(storage_config) if storage_config is not None else None,
+        observability_config=str(observability) if observability is not None else None,
+        otel=otel,
+        otel_endpoint=otel_endpoint,
+        prometheus=prometheus,
+        prometheus_port=prometheus_port or 9464,
     )
 
 
@@ -693,6 +726,9 @@ def _runtime_options(function):
         click.option("--storage", type=click.Choice(["memory", "balanced", "persistent", "minimal"]), default="balanced", show_default=True),
         click.option("--storage-config", type=click.Path(exists=True, dir_okay=False, path_type=Path)),
         click.option("--engine-arg", "engine_args", multiple=True), click.option("-v", "--verbose", is_flag=True),
+        click.option("--observability", type=click.Path(exists=True, dir_okay=False, path_type=Path)),
+        click.option("--otel", is_flag=True), click.option("--otel-endpoint"),
+        click.option("--prometheus", is_flag=True), click.option("--prometheus-port", type=click.IntRange(min=1, max=65535)),
     )
     for decorator in reversed(decorators):
         function = decorator(function)
@@ -713,7 +749,7 @@ def _runtime_options(function):
 @click.option("--allow-unqualified-native", is_flag=True, hidden=True)
 @_runtime_options
 @_output_options
-def runtime_serve(model, mode, explain, allow_unqualified_native, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
+def runtime_serve(model, mode, explain, allow_unqualified_native, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, json_output, yaml_output) -> None:
     """Serve MODEL with an explicit or policy-selected execution mode."""
     try:
         engine_row = EngineProductRegistry.default().resolve(engine)
@@ -730,7 +766,7 @@ def runtime_serve(model, mode, explain, allow_unqualified_native, engine, revisi
     selected_mode = resolution.resolved_mode.value
     resolved_profile = "BALANCED" if profile == "recommended" else profile
     mode_args = (*engine_args, f"execution-mode={selected_mode}")
-    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, resolved_profile, storage, storage_config, mode_args, verbose)
+    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, resolved_profile, storage, storage_config, mode_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port)
     try:
         manager = RuntimeManager()
         handle = manager.serve(config)
@@ -760,8 +796,8 @@ cli.add_command(runtime_serve, "serve")
 @click.argument("model", required=False)
 @_runtime_options
 @_output_options
-def runtime_inspect(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
-    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose)
+def runtime_inspect(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, json_output, yaml_output) -> None:
+    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port)
     try:
         value = RuntimeManager().inspect(config)
     except KeyError as error:
@@ -866,10 +902,12 @@ def _agent_options(function):
 @agent_cli.command("chat")
 @click.argument("legacy_model", required=False)
 @_agent_options
-def agent_chat(legacy_model, profile, pra, model, engine, endpoint, config, workspace, skills, context_transport, allow_text_fallback, session, resume, task, verbose) -> None:
+@_observability_options
+def agent_chat(legacy_model, profile, pra, model, engine, endpoint, config, workspace, skills, context_transport, allow_text_fallback, session, resume, task, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port) -> None:
     """Open the persistent TUI; no flags uses the default profile."""
     selected, trace = _resolve_agent_profile(profile, config, model or legacy_model, pra, engine, endpoint, workspace, skills, context_transport, allow_text_fallback)
-    launch = AgentLauncher().launch(selected)
+    telemetry = _telemetry(observability, otel, otel_endpoint, prometheus, prometheus_port, service="agent")
+    launch = AgentLauncher().launch(selected, observability=telemetry)
     if verbose:
         _emit({"resolution": trace, "profile": selected.redacted_dict(), "mcp": load_mcp_config(selected)})
     _emit(launch.summary)
@@ -878,19 +916,22 @@ def agent_chat(legacy_model, profile, pra, model, engine, endpoint, config, work
         AgentShell(launch.agent).run()
     finally:
         launch.agent.close()
+        telemetry.close()
 
 
 @agent_cli.command("run")
 @click.argument("prompt", required=False)
 @_agent_options
 @click.option("--json", "json_output", is_flag=True)
-def agent_run(prompt, profile, pra, model, engine, endpoint, config, workspace, skills, context_transport, allow_text_fallback, session, resume, task, verbose, json_output) -> None:
+@_observability_options
+def agent_run(prompt, profile, pra, model, engine, endpoint, config, workspace, skills, context_transport, allow_text_fallback, session, resume, task, verbose, json_output, observability, otel, otel_endpoint, prometheus, prometheus_port) -> None:
     """Run one noninteractive turn from an argument or stdin."""
     query = prompt if prompt is not None else sys.stdin.read()
     if not query.strip():
         raise click.UsageError("Provide PROMPT or pipe input on stdin.")
     selected, trace = _resolve_agent_profile(profile, config, model, pra, engine, endpoint, workspace, skills, context_transport, allow_text_fallback)
-    launch = AgentLauncher().launch(selected)
+    telemetry = _telemetry(observability, otel, otel_endpoint, prometheus, prometheus_port, service="agent")
+    launch = AgentLauncher().launch(selected, observability=telemetry)
     try:
         launch.agent.start_session(session, resume=resume or selected.resume_last, task_description=task)
         turn = launch.agent.run_turn(query)
@@ -900,6 +941,7 @@ def agent_run(prompt, profile, pra, model, engine, endpoint, config, workspace, 
             click.echo(turn.text)
     finally:
         launch.agent.close()
+        telemetry.close()
 
 
 @agent_cli.command("inspect")

@@ -1,0 +1,46 @@
+services:
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:latest}
+    profiles: [vllm]
+    command: ["--model", "${MODEL:?Set MODEL}", "--enable-prefix-caching"]
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on: [otel-collector]
+
+  sglang:
+    image: ${SGLANG_IMAGE:-lmsysorg/sglang:latest}
+    profiles: [sglang]
+    command: ["python3", "-m", "sglang.launch_server", "--model-path", "${MODEL:?Set MODEL}", "--host", "0.0.0.0"]
+    ports: ["127.0.0.1:30000:30000"]
+    depends_on: [otel-collector]
+
+  openvino-model-server:
+    image: ${OVMS_IMAGE:-openvino/model_server:latest}
+    profiles: [openvino]
+    command: ["--config_path", "/models/config.json", "--port", "9000", "--rest_port", "8000"]
+    volumes: ["${MODEL_DIR:?Set MODEL_DIR}:/models:ro"]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:8001:8000"]
+
+  tensorrt-llm:
+    image: ${TRTLLM_IMAGE:-nvcr.io/nvidia/tritonserver:latest}
+    profiles: [tensorrt-llm]
+    command: ["tritonserver", "--model-repository=/models"]
+    volumes: ["${MODEL_DIR:?Set MODEL_DIR}:/models:ro"]
+    ports: ["127.0.0.1:8002:8000", "127.0.0.1:8003:8001", "127.0.0.1:8004:8002"]
+
+  llama-cpp:
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server}
+    profiles: [llama-cpp]
+    command: ["-m", "/models/${MODEL_FILE:?Set MODEL_FILE}", "--host", "0.0.0.0", "--metrics"]
+    volumes: ["${MODEL_DIR:?Set MODEL_DIR}:/models:ro"]
+    ports: ["127.0.0.1:8081:8080"]
+
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    profiles: [ollama]
+    volumes: ["ollama-data:/root/.ollama"]
+    ports: ["127.0.0.1:11434:11434"]
+
+volumes:
+  ollama-data:

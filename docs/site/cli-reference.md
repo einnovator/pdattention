@@ -11,6 +11,14 @@ and supplied evidence. Use `--json` or `--yaml` where offered for automation.
 Use `pra COMMAND --help` as the runtime authority and this page for discoverable
 examples. Start with the [CLI workflow guide](cli.md) for the qualification journey.
 
+## Shared observability controls
+
+Serving, Gateway, and Agent launch commands expose the same default-off controls:
+`--observability`, `--otel`, `--otel-endpoint`, `--prometheus`, and
+`--prometheus-port`. CLI overrides take precedence over the observability file
+and conventional OTel environment variables. None auto-enable merely because a
+collector or dashboard is present. See [Observability](observability.md).
+
 ## Gateway
 
 ### `pra gateway serve`
@@ -40,6 +48,11 @@ pra gateway serve [OPTIONS]
 | `--cache-affinity`, `--no-cache-affinity` | flag | `-` | no | Enable or disable stable cache-affinity hints. |
 | `--fallback-injection` | before_current_user / system_suffix / tool_context / append_context_record / engine_native | `before_current_user` | no | Choose where Selected Context is inserted into ordinary messages. |
 | `--sessions-dir` | PATH | `-` | no | Persist gateway session metadata under this directory. |
+| `--observability` | PATH | `-` | no | Configure `observability`. |
+| `--otel` | flag | `off` | no | Enable OpenTelemetry tracing explicitly. |
+| `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
+| `--prometheus` | flag | `off` | no | Enable the Prometheus endpoint explicitly. |
+| `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
@@ -1351,6 +1364,11 @@ pra runtime serve [OPTIONS] MODEL
 | `--storage-config` | PATH | `-` | no | Load a detailed storage policy file. |
 | `--engine-arg` | TEXT; repeatable | `-` | no | Pass a provider-specific engine argument; repeat as needed. |
 | `-v`, `--verbose` | flag | `off` | no | Show additional resolution and diagnostic detail. |
+| `--observability` | PATH | `-` | no | Configure `observability`. |
+| `--otel` | flag | `off` | no | Configure `otel`. |
+| `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
+| `--prometheus` | flag | `off` | no | Configure `prometheus`. |
+| `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -1404,6 +1422,11 @@ pra runtime inspect [OPTIONS] [MODEL]
 | `--storage-config` | PATH | `-` | no | Load a detailed storage policy file. |
 | `--engine-arg` | TEXT; repeatable | `-` | no | Pass a provider-specific engine argument; repeat as needed. |
 | `-v`, `--verbose` | flag | `off` | no | Show additional resolution and diagnostic detail. |
+| `--observability` | PATH | `-` | no | Configure `observability`. |
+| `--otel` | flag | `off` | no | Configure `otel`. |
+| `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
+| `--prometheus` | flag | `off` | no | Configure `prometheus`. |
+| `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -1570,6 +1593,11 @@ pra serve [OPTIONS] MODEL
 | `--storage-config` | PATH | `-` | no | Load a detailed storage policy file. |
 | `--engine-arg` | TEXT; repeatable | `-` | no | Pass a provider-specific engine argument; repeat as needed. |
 | `-v`, `--verbose` | flag | `off` | no | Show additional resolution and diagnostic detail. |
+| `--observability` | PATH | `-` | no | Configure `observability`. |
+| `--otel` | flag | `off` | no | Configure `otel`. |
+| `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
+| `--prometheus` | flag | `off` | no | Configure `prometheus`. |
+| `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -1625,6 +1653,11 @@ pra agent chat [OPTIONS] [LEGACY_MODEL]
 | `-r`, `--resume` | flag | `off` | no | Resume persisted session state. |
 | `-t`, `--task` | TEXT | `-` | no | Set or update the active task description. |
 | `-v`, `--verbose` | flag | `off` | no | Show additional resolution and diagnostic detail. |
+| `--observability` | PATH | `-` | no | Configure `observability`. |
+| `--otel` | flag | `off` | no | Enable OpenTelemetry tracing explicitly. |
+| `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
+| `--prometheus` | flag | `off` | no | Enable Prometheus metrics explicitly. |
+| `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
@@ -1677,6 +1710,11 @@ pra agent run [OPTIONS] [PROMPT]
 | `-t`, `--task` | TEXT | `-` | no | Set or update the active task description. |
 | `-v`, `--verbose` | flag | `off` | no | Show additional resolution and diagnostic detail. |
 | `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--observability` | PATH | `-` | no | Configure `observability`. |
+| `--otel` | flag | `off` | no | Enable OpenTelemetry tracing explicitly. |
+| `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
+| `--prometheus` | flag | `off` | no | Enable Prometheus metrics explicitly. |
+| `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**

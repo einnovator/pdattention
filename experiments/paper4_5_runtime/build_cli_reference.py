@@ -313,6 +313,14 @@ def render() -> str:
         "Use `pra COMMAND --help` as the runtime authority and this page for discoverable",
         "examples. Start with the [CLI workflow guide](cli.md) for the qualification journey.",
         "",
+        "## Shared observability controls",
+        "",
+        "Serving, Gateway, and Agent launch commands expose the same default-off controls:",
+        "`--observability`, `--otel`, `--otel-endpoint`, `--prometheus`, and",
+        "`--prometheus-port`. CLI overrides take precedence over the observability file",
+        "and conventional OTel environment variables. None auto-enable merely because a",
+        "collector or dashboard is present. See [Observability](observability.md).",
+        "",
     ]
     current_group = None
     for path, command in commands.items():
