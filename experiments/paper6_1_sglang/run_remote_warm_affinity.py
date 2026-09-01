@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import importlib.metadata
+import importlib.util
 import json
 import random
 import statistics
@@ -277,7 +279,6 @@ def main() -> None:
     args = parser.parse_args()
 
     import mlx.core as mx
-    import sglang
     from mlx_lm import load
     from pra_mlx.native import encode_native_memory
     from pra_sglang.hicache_backend import SGLangHiCacheStorageBackend
@@ -304,7 +305,11 @@ def main() -> None:
         "experiment": "offnode_warm_prefetch_affinity",
         "evidence_tier": "TWO_HOST_CONTROLLED_NATIVE_KV",
         "engine": "sglang-mlx",
-        "engine_version": getattr(sglang, "__version__", "unknown"),
+        "engine_version": (
+            importlib.metadata.version("sglang")
+            if importlib.util.find_spec("sglang") is not None
+            else "control-plane-only"
+        ),
         "model_id": args.model,
         "model_revision": args.revision,
         "remote_url": args.remote_url,
