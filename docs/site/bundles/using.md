@@ -14,9 +14,9 @@ PRA available.
 ## Explicit Hub or local selection
 
 ```bash
-pra hf pull OWNER/pra-qwen3-0.6b
-pra bundle validate OWNER/pra-qwen3-0.6b
-pra serve Qwen/Qwen3-0.6B -e hf -a OWNER/pra-qwen3-0.6b -p balanced
+pra hf pull EInnovator/pra-qwen3-0.6b
+pra bundle validate EInnovator/pra-qwen3-0.6b
+pra serve Qwen/Qwen3-0.6B -e hf -a EInnovator/pra-qwen3-0.6b -p balanced
 
 pra serve Qwen/Qwen3-0.6B -e hf -a ./.pra/bundles/qwen3 -p balanced
 ```

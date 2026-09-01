@@ -17,7 +17,8 @@ from pra_hf.bundle import BundleBuilder
 ROOT = Path(__file__).resolve().parents[2]
 BASE_MODEL = "Qwen/Qwen3-0.6B"
 BASE_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
-HF_REPO = "jsimao71/pra-qwen3-0.6b"
+HF_REPO = "EInnovator/pra-qwen3-0.6b"
+HF_COLLECTION = "EInnovator/pra-bundles-6a971e52093232f858e660f6"
 ROUTER = ROOT / "artifacts/pra_hf/routers/qwen3-0.6b-qasper-d128"
 
 
@@ -174,13 +175,14 @@ def _manifest(commit: str, router_config: dict) -> dict:
             "pra_commit": commit,
             "bundle_build_commit": commit,
             "hf_repo": HF_REPO,
+            "hf_collection": HF_COLLECTION,
             "license": "apache-2.0",
             "source_artifact": "artifacts/pra_hf/routers/qwen3-0.6b-qasper-d128",
             "selection_reason": "Best existing artifact with immutable base identity, weights, training provenance, QASPER validation metrics, and current runtime support.",
         },
         "trust": {
             "status": "eInnovator-qualified",
-            "publisher": "PRA project maintainer",
+            "publisher": "EInnovator",
             "scope": "controlled QASPER routing and HF structural validation",
         },
     }

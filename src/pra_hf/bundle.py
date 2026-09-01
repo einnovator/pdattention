@@ -404,6 +404,8 @@ class BundleBuilder:
         if bundle.provenance.get("license"):
             metadata["license"] = bundle.provenance["license"]
         repo = bundle.provenance.get("hf_repo", "OWNER/REPO")
+        collection = bundle.provenance.get("hf_collection")
+        publisher = str(bundle.trust.get("publisher", "")).strip()
         lines = ["---", yaml.safe_dump(metadata, sort_keys=False).strip(), "---", "", f"# PRA bundle for {model}", ""]
         lines += [
             "## What this is", "",
@@ -472,6 +474,10 @@ class BundleBuilder:
             "- [Source repository](https://github.com/einnovator/pdattention)", "- [Issues](https://github.com/einnovator/pdattention/issues)",
             "- [Contribution guide](https://github.com/einnovator/pdattention/blob/main/CONTRIBUTING.md)", "",
         ]
+        if collection:
+            lines[-1:-1] = [f"- [Canonical PRA Bundles Collection](https://huggingface.co/collections/{collection})"]
+        if publisher:
+            lines[-1:-1] = [f"- [{publisher} on Hugging Face](https://huggingface.co/{publisher})"]
         return "\n".join(lines)
 
 

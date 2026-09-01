@@ -72,7 +72,13 @@ def _run(tmp_path: Path) -> Path:
             "metrics": [],
             "limitations": ["test fixture"],
         },
-        "provenance": {"pra_version": "0.2.0rc1", "pra_commit": "abc", "bundle_build_commit": "abc"},
+        "provenance": {
+            "pra_version": "0.2.0rc1",
+            "pra_commit": "abc",
+            "bundle_build_commit": "abc",
+            "hf_collection": "EInnovator/pra-bundles-test",
+        },
+        "trust": {"publisher": "EInnovator"},
     }
     (run / "pra.yaml").write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return run
@@ -125,6 +131,8 @@ def test_generated_card_is_complete_and_uses_public_terms(tmp_path: Path) -> Non
     assert metadata["base_model"] == "org/model"
     assert "Native Memory" in text
     assert " E2 " not in text
+    assert "collections/EInnovator/pra-bundles-test" in text
+    assert "huggingface.co/EInnovator" in text
 
 
 def test_resolver_supports_none_local_and_trusted_auto(tmp_path: Path) -> None:

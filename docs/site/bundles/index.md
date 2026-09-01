@@ -42,10 +42,12 @@ silently promoted to project-qualified status.
 ## Published collection
 
 The first project-qualified release is the
-[`jsimao71/pra-qwen3-0.6b` model card](https://huggingface.co/jsimao71/pra-qwen3-0.6b),
-pinned by the registry to Hub commit `d5efe5d082c22a195a37a6f696cb97980c688d40`.
+[`EInnovator/pra-qwen3-0.6b` model card](https://huggingface.co/EInnovator/pra-qwen3-0.6b),
+pinned by the registry to Hub commit `25e69076c48a12b5943fe19b0351e68a86ba563e`.
 Related releases are grouped in the
-[PRA Bundles Collection](https://huggingface.co/collections/jsimao71/pra-bundles-6a97089699497483e5a81c06).
-The maintainer token cannot publish under the `einnovator` Hub namespace, so
-the repository is hosted under the authenticated maintainer account while its
-qualification scope remains controlled by the project registry.
+[canonical EInnovator PRA Bundles Collection](https://huggingface.co/collections/EInnovator/pra-bundles-6a971e52093232f858e660f6).
+The [EInnovator organization profile](https://huggingface.co/EInnovator)
+provides the stable publisher entry point.
+The [historical maintainer Collection](https://huggingface.co/collections/jsimao71/pra-bundles-6a97089699497483e5a81c06)
+continues to point to the canonical organization release during migration.
+Future project bundles are published only under the `EInnovator/pra-*` namespace.

@@ -26,7 +26,7 @@ The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter w
 
 | Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
 | --- | --- | --- | --- | --- | --- |
-| `Qwen/Qwen3-0.6B` | [jsimao71/pra-qwen3-0.6b](https://huggingface.co/jsimao71/pra-qwen3-0.6b) | Controlled | HF Native Memory; portable Selected Context | Selected Context; qualify Native Memory locally | 2026-09-01 |
+| `Qwen/Qwen3-0.6B` | [EInnovator/pra-qwen3-0.6b](https://huggingface.co/EInnovator/pra-qwen3-0.6b) | Controlled | HF Native Memory; portable Selected Context | Selected Context; qualify Native Memory locally | 2026-09-01 |
 | `Qwen/Qwen3-1.7B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `mlx-community/Qwen3-4B-4bit` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 

@@ -40,10 +40,10 @@ pra doctor
 ## Quickstart
 
 ```bash
-pra inspect Qwen/Qwen3-0.6B -e hf -a jsimao71/pra-qwen3-0.6b
-pra evaluate Qwen/Qwen3-0.6B -e hf -D qasper -a jsimao71/pra-qwen3-0.6b
+pra inspect Qwen/Qwen3-0.6B -e hf -a EInnovator/pra-qwen3-0.6b
+pra evaluate Qwen/Qwen3-0.6B -e hf -D qasper -a EInnovator/pra-qwen3-0.6b
 pra recommend .pra/runs/latest
-pra serve Qwen/Qwen3-0.6B -e hf -a jsimao71/pra-qwen3-0.6b -p balanced
+pra serve Qwen/Qwen3-0.6B -e hf -a EInnovator/pra-qwen3-0.6b -p balanced
 ```
 
 ## Bundle contents
@@ -80,7 +80,7 @@ These are qualification measurements, not guaranteed production performance. Run
 ## How to evaluate on your system
 
 ```bash
-pra evaluate Qwen/Qwen3-0.6B -a jsimao71/pra-qwen3-0.6b -D qasper -o .pra/runs/qasper
+pra evaluate Qwen/Qwen3-0.6B -a EInnovator/pra-qwen3-0.6b -D qasper -o .pra/runs/qasper
 pra recommend .pra/runs/qasper
 pra report .pra/runs/qasper --format html
 ```
@@ -113,6 +113,8 @@ Selected Context is the portable baseline and should be the first deployment. Na
 
 ## Community and support
 
+- [Canonical PRA Bundles Collection](https://huggingface.co/collections/EInnovator/pra-bundles-6a971e52093232f858e660f6)
+- [EInnovator on Hugging Face](https://huggingface.co/EInnovator)
 - [PRA documentation](https://einnovator.github.io/pdattention/)
 - [Source repository](https://github.com/einnovator/pdattention)
 - [Issues](https://github.com/einnovator/pdattention/issues)

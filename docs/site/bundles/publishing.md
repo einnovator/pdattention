@@ -7,9 +7,9 @@ pra hf login
 pra bundle build .pra/runs/model-calibration -o .pra/bundles/model
 pra bundle validate .pra/bundles/model
 pra bundle card .pra/bundles/model --update
-pra hf push .pra/bundles/model OWNER/pra-model --dry-run
-pra hf push .pra/bundles/model OWNER/pra-model \
-  --collection OWNER/pra-bundles --tag v0.2.0rc1 --yes
+pra hf push .pra/bundles/model EInnovator/pra-model --dry-run
+pra hf push .pra/bundles/model EInnovator/pra-model \
+  --collection EInnovator/pra-bundles --tag v0.2.0rc1 --yes
 ```
 
 Publishing validates the complete bundle and model card before upload. If an
@@ -21,8 +21,8 @@ revision, the command refuses to overwrite it.
 ```yaml
 bundles:
   - bundle: artifacts/pra_hf/bundles/pra-qwen3-0.6b
-    repo_id: OWNER/pra-qwen3-0.6b
-    collection: OWNER/pra-bundles
+    repo_id: EInnovator/pra-qwen3-0.6b
+    collection: EInnovator/pra-bundles
     tag: v0.2.0rc1
 ```
 
@@ -38,11 +38,22 @@ maintainer-controlled manual release with protected credentials.
 ## Verify the release
 
 ```bash
-pra hf pull OWNER/pra-model
-pra bundle inspect OWNER/pra-model
-pra bundle validate OWNER/pra-model
-pra bundle resolve BASE_MODEL -e hf -a OWNER/pra-model
+pra hf pull EInnovator/pra-model
+pra bundle inspect EInnovator/pra-model
+pra bundle validate EInnovator/pra-model
+pra bundle resolve BASE_MODEL -e hf -a EInnovator/pra-model
 ```
 
 The pull output includes the immutable Hub revision and cache path. Run a local
 `pra evaluate` before promoting the bundle into the trusted registry.
+
+Project-qualified releases use the canonical `EInnovator/pra-*` namespace.
+Personal namespaces are not release targets. Collections remain the discovery
+layer, while runtime resolution pins the direct repository and immutable commit.
+
+## Organization profile
+
+The public [EInnovator Hugging Face profile](https://huggingface.co/EInnovator)
+is backed by the `EInnovator/README` organization-card Space. Its versioned
+source lives in `deploy/huggingface/organization-card/`; publish all three files
+there together so the profile card and its static presentation stay aligned.
