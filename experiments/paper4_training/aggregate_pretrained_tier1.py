@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from statistics import fmean, stdev
 
-from experiments.paper4_training.run_pretrained_tier1 import SEEDS
+SEEDS = (11, 23, 37, 53, 71)
 
 
 def aggregate(paths: list[Path]) -> dict:
@@ -30,13 +30,24 @@ def aggregate(paths: list[Path]) -> dict:
     for regime, rows in sorted(by_regime.items()):
         evidence = [float(row["evidence_nll_delta"]) for row in rows]
         retention = [float(row["ordinary_retention_nll_delta"]) for row in rows]
+        causal = [
+            float(row["evidence_vs_distractor_nll_margin"])
+            if "evidence_vs_distractor_nll_margin" in row
+            else float(row["after"]["matched_distractor"]["answer_nll"])
+            - float(row["after"]["evidence_only"]["answer_nll"])
+            for row in rows
+        ]
+        minimum_causal = float(
+            payloads[0]["configuration"].get("minimum_causal_evidence_margin", 0.0)
+        )
         passes = [
             row["regime"] != "frozen_pra"
             and float(row["evidence_nll_delta"])
             <= -float(payloads[0]["configuration"]["minimum_evidence_nll_gain"])
             and float(row["ordinary_retention_nll_delta"])
             <= float(payloads[0]["configuration"]["maximum_retention_nll_loss"])
-            for row in rows
+            and causal[index] > minimum_causal
+            for index, row in enumerate(rows)
         ]
         regimes.append(
             {
@@ -46,6 +57,11 @@ def aggregate(paths: list[Path]) -> dict:
                 "evidence_nll_delta_stdev": stdev(evidence),
                 "mean_ordinary_retention_nll_delta": fmean(retention),
                 "ordinary_retention_nll_delta_stdev": stdev(retention),
+                "mean_evidence_vs_distractor_nll_margin": fmean(causal),
+                "evidence_vs_distractor_nll_margin_stdev": stdev(causal),
+                "positive_causal_margin_seeds": sum(
+                    value > minimum_causal for value in causal
+                ),
                 "passing_seeds": sum(passes),
                 "all_seeds_pass": all(passes),
             }

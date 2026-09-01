@@ -399,6 +399,10 @@ def run(args: argparse.Namespace) -> dict:
                 after["ordinary_full_context"]["answer_nll"]
                 - before["ordinary_full_context"]["answer_nll"]
             ),
+            "evidence_vs_distractor_nll_margin": (
+                after["matched_distractor"]["answer_nll"]
+                - after["evidence_only"]["answer_nll"]
+            ),
             "checkpoint": str(checkpoint) if checkpoint else None,
         }
         results.append(result)
@@ -414,6 +418,8 @@ def run(args: argparse.Namespace) -> dict:
         if row["regime"] != "frozen_pra"
         and row["evidence_nll_delta"] <= -args.minimum_evidence_nll_gain
         and row["ordinary_retention_nll_delta"] <= args.maximum_retention_nll_loss
+        and row["evidence_vs_distractor_nll_margin"]
+        > args.minimum_causal_evidence_margin
     ]
     payload = {
         "schema_version": "paper4-pretrained-tier1-v1",
@@ -465,6 +471,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--minimum-evidence-nll-gain", type=float, default=0.05)
     parser.add_argument("--maximum-retention-nll-loss", type=float, default=0.10)
+    parser.add_argument("--minimum-causal-evidence-margin", type=float, default=0.0)
     args = parser.parse_args()
     args.regime = args.regime or list(REGIMES)
     return args

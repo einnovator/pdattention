@@ -75,12 +75,14 @@ def test_five_seed_aggregate_requires_and_summarizes_all_seeds(tmp_path):
             "configuration": {
                 "minimum_evidence_nll_gain": 0.05,
                 "maximum_retention_nll_loss": 0.1,
+                "minimum_causal_evidence_margin": 0.0,
             },
             "results": [
                 {
                     "regime": "consumer_lora",
                     "evidence_nll_delta": delta,
                     "ordinary_retention_nll_delta": 0.01,
+                    "evidence_vs_distractor_nll_margin": 0.2,
                 }
             ],
         }
@@ -92,3 +94,4 @@ def test_five_seed_aggregate_requires_and_summarizes_all_seeds(tmp_path):
     assert result["consumer_gate"] == "PASS"
     assert result["passing_regimes"] == ["consumer_lora"]
     assert result["regimes"][0]["seed_count"] == 5
+    assert result["regimes"][0]["positive_causal_margin_seeds"] == 5
