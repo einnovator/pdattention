@@ -107,3 +107,14 @@ state, and reuse govern transitions.
 
 These depths compose, but they do not form a quality ranking. The best deployment
 is the shallowest one that satisfies the measured workload.
+
+## 12. Three kinds of reuse
+
+PRA avoids sending selected context again when it is already active, lets the
+inference engine reuse ordinary prefix cache where available, and can reuse
+native semantic memory on qualified integrations.
+
+Already-visible reuse is a logical session fact. Prefix-cache reuse is a
+physical engine observation about a sequential prefix. Native semantic reuse is
+an explicit model/engine capability for selected K/V. They are accounted for
+separately, and no one fact is inferred from either of the others.

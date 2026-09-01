@@ -359,6 +359,25 @@ from .gateway_session import (
     cache_affinity_key,
     canonical_digest,
 )
+from .execution_modes import (
+    ExecutionMode,
+    ExecutionModeResolver,
+    ModeEvidence,
+    ModeResolution,
+    ModeStatus,
+)
+from .session_realization import (
+    MaterializationIdentity,
+    PrefixReuseObservation,
+    PrefixReuseStatus,
+    RealizationDecision,
+    RealizationItem,
+    RealizationPlan,
+    RealizationPlanner,
+    VisibilityState,
+    VisibleMaterialization,
+    VisibleMaterializationLedger,
+)
 from .gateway import (
     FallbackInjectionPolicy,
     PRACapabilityError,
@@ -565,6 +584,21 @@ __all__ += [
     "serve_gateway",
     "cache_affinity_key",
     "canonical_digest",
+    "ExecutionMode",
+    "ExecutionModeResolver",
+    "ModeEvidence",
+    "ModeResolution",
+    "ModeStatus",
+    "MaterializationIdentity",
+    "PrefixReuseObservation",
+    "PrefixReuseStatus",
+    "RealizationDecision",
+    "RealizationItem",
+    "RealizationPlan",
+    "RealizationPlanner",
+    "VisibilityState",
+    "VisibleMaterialization",
+    "VisibleMaterializationLedger",
 ]
 
 __all__ += [

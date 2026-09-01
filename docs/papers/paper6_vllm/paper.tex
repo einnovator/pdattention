@@ -179,6 +179,10 @@ non-prefix logical resource or interval. These mechanisms can coexist:
   +
   \underbrace{\text{query-selected retained memory}}_{\text{PRA}}.
 \]
+Selected Context session deduplication is owned by the shared PRA runtime;
+engine-native prefix caching is measured independently. In this paper, APC
+denotes only sequential-prefix physical reuse, not proof that selected evidence
+remains logically visible.
 The security scopes are also independent. Prefix cache presence does not grant
 resource authorization, and a PRA block selected for one tenant cannot be
 reused by another merely because its physical bytes remain resident.

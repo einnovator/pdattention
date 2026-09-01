@@ -15,6 +15,12 @@ from enum import Enum
 from typing import Any, Mapping, Sequence
 
 from .session_service import SessionConflict, SessionService
+from .session_realization import (
+    RealizationPlan,
+    VisibilityState,
+    VisibleMaterialization,
+    VisibleMaterializationLedger,
+)
 
 
 class HistoryMode(str, Enum):
@@ -112,6 +118,8 @@ class GatewaySessionState:
     prefix_token_count: int | None = None
     engine_session_id: str | None = None
     prefix_cache_handle: str | None = None
+    engine_worker_identity: str | None = None
+    engine_model_fingerprint: str | None = None
     known_resources: Mapping[str, str] = field(default_factory=dict)
     known_resource_metadata: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     known_resource_bodies: Mapping[str, Any] = field(default_factory=dict, repr=False)
@@ -122,6 +130,7 @@ class GatewaySessionState:
     visible_prefix_profile: str | None = None
     cache_affinity_key: str = ""
     last_invalidation_reason: str | None = None
+    visible_materializations: tuple[VisibleMaterialization, ...] = ()
     turns: int = 0
 
     def __post_init__(self) -> None:
@@ -134,6 +143,7 @@ class GatewaySessionState:
             {key: dict(value) for key, value in self.known_resource_metadata.items()},
         )
         object.__setattr__(self, "known_resource_bodies", dict(self.known_resource_bodies))
+        object.__setattr__(self, "visible_materializations", tuple(self.visible_materializations))
         if not self.cache_affinity_key:
             object.__setattr__(
                 self,
@@ -154,6 +164,8 @@ class GatewaySessionState:
             "model": self.model,
             "engine_session_present": self.engine_session_id is not None,
             "prefix_cache_handle_present": self.prefix_cache_handle is not None,
+            "engine_worker_identity": self.engine_worker_identity,
+            "engine_model_fingerprint": self.engine_model_fingerprint,
             "prefix_digest": self.prefix_digest,
             "last_serialized_prefix_digest": self.last_serialized_prefix_digest,
             "prefix_message_count": self.prefix_message_count,
@@ -165,8 +177,84 @@ class GatewaySessionState:
             "chat_template_digest": self.chat_template_digest,
             "visible_prefix_profile": self.visible_prefix_profile,
             "last_invalidation_reason": self.last_invalidation_reason,
+            "visible_materializations": [
+                {
+                    "resource_id": row.identity.resource_id,
+                    "resource_version": row.identity.resource_version,
+                    "selected_interval": list(row.identity.selected_interval),
+                    "rendering_profile": row.identity.rendering_profile,
+                    "token_count": row.token_count,
+                    "introduced_turn": row.introduced_turn,
+                    "last_visible_turn": row.last_visible_turn,
+                    "task_id": row.task_id,
+                    "state": row.state.value,
+                }
+                for row in self.visible_materializations
+            ],
             "turns": self.turns,
         }
+
+    def durable_snapshot(self) -> dict[str, Any]:
+        """Serialize logical session state without persisting opaque engine handles."""
+
+        return {
+            "tenant_id": self.tenant_id,
+            "session_id": self.session_id,
+            "model": self.model,
+            "canonical_messages": [dict(row) for row in self.canonical_messages],
+            "serialized_messages": [dict(row) for row in self.serialized_messages],
+            "prefix_digest": self.prefix_digest,
+            "last_serialized_prefix_digest": self.last_serialized_prefix_digest,
+            "prefix_message_count": self.prefix_message_count,
+            "prefix_token_count": self.prefix_token_count,
+            "known_resources": dict(self.known_resources),
+            "known_resource_metadata": {
+                key: dict(value) for key, value in self.known_resource_metadata.items()
+            },
+            "last_profile": self.last_profile,
+            "last_policy_digest": self.last_policy_digest,
+            "model_revision": self.model_revision,
+            "chat_template_digest": self.chat_template_digest,
+            "visible_prefix_profile": self.visible_prefix_profile,
+            "cache_affinity_key": self.cache_affinity_key,
+            "last_invalidation_reason": self.last_invalidation_reason,
+            "visible_materializations": [
+                row.to_dict() for row in self.visible_materializations
+            ],
+            "turns": self.turns,
+        }
+
+    @classmethod
+    def from_durable_snapshot(cls, value: Mapping[str, Any]) -> "GatewaySessionState":
+        """Restore logical visibility while intentionally discarding physical cache state."""
+
+        return cls(
+            tenant_id=str(value["tenant_id"]),
+            session_id=str(value["session_id"]),
+            model=str(value["model"]),
+            canonical_messages=tuple(value.get("canonical_messages", ())),
+            serialized_messages=tuple(value.get("serialized_messages", ())),
+            prefix_digest=str(value.get("prefix_digest", "")),
+            last_serialized_prefix_digest=str(
+                value.get("last_serialized_prefix_digest", "")
+            ),
+            prefix_message_count=int(value.get("prefix_message_count", 0)),
+            prefix_token_count=value.get("prefix_token_count"),
+            known_resources=dict(value.get("known_resources", {})),
+            known_resource_metadata=dict(value.get("known_resource_metadata", {})),
+            last_profile=value.get("last_profile"),
+            last_policy_digest=value.get("last_policy_digest"),
+            model_revision=value.get("model_revision"),
+            chat_template_digest=value.get("chat_template_digest"),
+            visible_prefix_profile=value.get("visible_prefix_profile"),
+            cache_affinity_key=str(value.get("cache_affinity_key", "")),
+            last_invalidation_reason="process_restart",
+            visible_materializations=tuple(
+                VisibleMaterialization.from_dict(row)
+                for row in value.get("visible_materializations", ())
+            ),
+            turns=int(value.get("turns", 0)),
+        )
 
 
 @dataclass(frozen=True)
@@ -184,6 +272,7 @@ class ResolvedSessionTurn:
     message_bytes_sent: int
     resource_bytes_sent: int
     session_delta_bytes: int
+    realization_plan: RealizationPlan | None = None
 
 
 class GatewaySessionRegistry:
@@ -197,6 +286,20 @@ class GatewaySessionRegistry:
     def get(self, tenant_id: str, session_id: str, model: str) -> GatewaySessionState | None:
         with self._lock:
             return self._states.get((tenant_id, session_id, model))
+
+    def snapshot(self, tenant_id: str, session_id: str, model: str) -> dict[str, Any] | None:
+        """Return restart-safe logical state for an external durable store."""
+
+        state = self.get(tenant_id, session_id, model)
+        return None if state is None else state.durable_snapshot()
+
+    def restore(self, snapshot: Mapping[str, Any]) -> GatewaySessionState:
+        """Reconstruct logical state; physical prefix handles are never restored."""
+
+        state = GatewaySessionState.from_durable_snapshot(snapshot)
+        with self._lock:
+            self._states[state.key] = state
+        return state
 
     def resolve_turn(
         self,
@@ -245,6 +348,26 @@ class GatewaySessionRegistry:
                 )
                 new_messages = tuple(canonical[len(prefix) :]) if stable else canonical
 
+            # Visibility is reconciled against the actual gateway-owned
+            # serialization. A rewritten logical history cannot inherit hidden
+            # materializations from the old serialization. Tests and bounded
+            # context runners may report the active serialized suffix explicitly.
+            visible_context = previous.serialized_messages
+            active_count = request.metadata.get("active_context_message_count")
+            if active_count is not None:
+                count = max(int(active_count), 0)
+                visible_context = previous.serialized_messages[-count:] if count else ()
+            elif reason == "history_rewrite":
+                visible_context = canonical
+            reconciled = VisibleMaterializationLedger.reconcile(
+                previous.visible_materializations,
+                visible_context,
+                turn=previous.turns,
+            )
+            if reconciled != previous.visible_materializations:
+                previous = replace(previous, visible_materializations=reconciled)
+                self._states[key] = previous
+
             requested_outbound = input_mode
             if input_mode == HistoryMode.AUTO:
                 requested_outbound = (
@@ -287,8 +410,12 @@ class GatewaySessionRegistry:
         *,
         engine_session_id: str | None,
         prefix_cache_handle: str | None = None,
+        engine_worker_identity: str | None = None,
+        engine_model_fingerprint: str | None = None,
         prefix_token_count: int | None = None,
         serialized_messages: Sequence[Mapping[str, Any]] | None = None,
+        materialized_resources: Sequence[Any] = (),
+        rendering_profile: str = "selected-context/default",
     ) -> GatewaySessionState:
         """Commit one successful turn without persisting engine cache contents."""
 
@@ -297,6 +424,7 @@ class GatewaySessionRegistry:
         resources = dict(turn.state.known_resources)
         metadata = dict(turn.state.known_resource_metadata)
         bodies = dict(turn.state.known_resource_bodies)
+        ledger = tuple(turn.state.visible_materializations)
         active_by_id = {
             resource.resource_id: resource for resource in turn.active_resources
         }
@@ -310,6 +438,9 @@ class GatewaySessionRegistry:
                 resources.pop(delta.resource_id, None)
                 metadata.pop(delta.resource_id, None)
                 bodies.pop(delta.resource_id, None)
+                ledger = VisibleMaterializationLedger.mark_resource_state(
+                    ledger, delta.resource_id, VisibilityState.REMOVED
+                )
             else:
                 resources[delta.resource_id] = delta.version
                 metadata[delta.resource_id] = {
@@ -320,16 +451,33 @@ class GatewaySessionRegistry:
                 body = delta.resource or active_by_id.get(delta.resource_id)
                 if body is not None:
                     bodies[delta.resource_id] = body
+                if delta.operation == ResourceOperation.UPDATE:
+                    ledger = VisibleMaterializationLedger.mark_resource_state(
+                        ledger, delta.resource_id, VisibilityState.SUPERSEDED
+                    )
         policy_digest = canonical_digest(dict(request.pra_policy))
         profile = request.pra_policy.get("profile") if request.pra_policy else None
+        committed_serialization = (
+            turn.canonical_messages
+            if serialized_messages is None
+            else tuple(serialized_messages)
+        )
+        ledger = VisibleMaterializationLedger.reconcile(
+            ledger, committed_serialization, turn=turn.state.turns + 1
+        )
+        ledger = VisibleMaterializationLedger.add_materializations(
+            ledger,
+            materialized_resources,
+            committed_serialization,
+            tenant_id=request.tenant_id,
+            session_id=request.session_id,
+            rendering_profile=rendering_profile,
+            turn=turn.state.turns + 1,
+        )
         updated = replace(
             turn.state,
             canonical_messages=turn.canonical_messages,
-            serialized_messages=(
-                turn.canonical_messages
-                if serialized_messages is None
-                else tuple(serialized_messages)
-            ),
+            serialized_messages=committed_serialization,
             prefix_digest=canonical_digest(turn.canonical_messages),
             last_serialized_prefix_digest=canonical_digest(
                 turn.canonical_messages if serialized_messages is None else serialized_messages
@@ -340,6 +488,12 @@ class GatewaySessionRegistry:
             prefix_token_count=prefix_token_count,
             engine_session_id=engine_session_id or turn.state.engine_session_id,
             prefix_cache_handle=prefix_cache_handle or turn.state.prefix_cache_handle,
+            engine_worker_identity=(
+                engine_worker_identity or turn.state.engine_worker_identity
+            ),
+            engine_model_fingerprint=(
+                engine_model_fingerprint or turn.state.engine_model_fingerprint
+            ),
             known_resources=resources,
             known_resource_metadata=metadata,
             known_resource_bodies=bodies,
@@ -366,6 +520,7 @@ class GatewaySessionRegistry:
             last_invalidation_reason=(
                 turn.prefix_changed_reason or turn.state.last_invalidation_reason
             ),
+            visible_materializations=ledger,
             turns=turn.state.turns + 1,
         )
         with self._lock:
@@ -381,6 +536,8 @@ class GatewaySessionRegistry:
                     state,
                     engine_session_id=None,
                     prefix_cache_handle=None,
+                    engine_worker_identity=None,
+                    engine_model_fingerprint=None,
                     last_invalidation_reason=reason,
                 )
 

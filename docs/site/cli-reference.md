@@ -1337,7 +1337,8 @@ pra runtime serve [OPTIONS] MODEL
 
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `--mode` | selected-context / native-memory / auto | `auto` | no | Choose the qualified product execution mode. |
+| `-m`, `--mode` | auto / selected-context / native-memory / native-serving | `auto` | no | Choose the qualified product execution mode. |
+| `--explain` | flag | `off` | no | Explain mode evidence and resolution. |
 | `-e`, `--engine` | TEXT | `hf` | no | Select the runtime or evidence-registry engine. |
 | `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
 | `-d`, `--device` | TEXT | `auto` | no | Execution device such as auto, cpu, cuda, or mps. |
@@ -1357,7 +1358,7 @@ pra runtime serve [OPTIONS] MODEL
 **Common use**
 
 ```bash
-pra runtime serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended --port 8000
+pra runtime serve Qwen/Qwen3-1.7B --engine hf -m auto --explain --profile recommended --port 8000
 ```
 
 **Example output**
@@ -1366,7 +1367,8 @@ pra runtime serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended 
 Runtime: hf
 Status: healthy
 Requested mode: auto
-Selected mode: selected-context
+Resolved mode: selected-context
+Reason: native economics require qualified evidence
 Endpoint: http://127.0.0.1:8000
 ```
 
@@ -1554,7 +1556,8 @@ pra serve [OPTIONS] MODEL
 
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `--mode` | selected-context / native-memory / auto | `auto` | no | Choose the qualified product execution mode. |
+| `-m`, `--mode` | auto / selected-context / native-memory / native-serving | `auto` | no | Choose the qualified product execution mode. |
+| `--explain` | flag | `off` | no | Explain mode evidence and resolution. |
 | `-e`, `--engine` | TEXT | `hf` | no | Select the runtime or evidence-registry engine. |
 | `-r`, `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
 | `-d`, `--device` | TEXT | `auto` | no | Execution device such as auto, cpu, cuda, or mps. |
@@ -1574,7 +1577,7 @@ pra serve [OPTIONS] MODEL
 **Common use**
 
 ```bash
-pra serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended --port 8000
+pra serve Qwen/Qwen3-1.7B --engine hf -m auto --explain --profile recommended --port 8000
 ```
 
 **Example output**
@@ -1582,8 +1585,8 @@ pra serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended --port 8
 ```text
 Status: healthy
 Requested mode: auto
-Selected mode: selected-context
-Selection reason: native economics require qualified evidence
+Resolved mode: selected-context
+Resolution reason: native economics require qualified evidence
 ```
 
 ## Agents

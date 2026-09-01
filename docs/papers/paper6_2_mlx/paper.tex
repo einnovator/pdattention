@@ -146,6 +146,10 @@ different object:
   \rightarrow \text{query-selected region}
   \rightarrow \text{active native detail}.
 \]
+Selected Context session deduplication is owned by the shared PRA runtime;
+engine-native prefix caching is measured independently. MLX prompt, rotating,
+and split caches report physical sequential reuse separately from logical
+visibility and native PRA memory.
 Unified memory may reduce copy overhead, but it does not make every retained
 token free to index, keep, or attend to.
 

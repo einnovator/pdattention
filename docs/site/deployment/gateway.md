@@ -21,31 +21,35 @@ For each request, the gateway performs this sequence:
    message and resource state for that tenant, session, and model. A capable
    backend receives only message and resource deltas; a stateless backend
    receives the reconstructed state it needs.
-3. **Protect resource boundaries.** Resource ownership is checked against the
+3. **Plan realization.** A visibility ledger reconciled against the actual
+   serialized model context classifies each selected resource as already
+   visible, natively available, newly materialized, or invalid. Selected Context
+   injects only the resources that are not already active.
+4. **Protect resource boundaries.** Resource ownership is checked against the
    request tenant. Credential-like fields are rejected from PRA metadata, and
    resource authorization scope remains attached during transport. Relevance or
    cache residency never grants access.
-4. **Negotiate backend capabilities.** The gateway determines whether the
+5. **Negotiate backend capabilities.** The gateway determines whether the
    backend understands typed records, resource deltas, session state, streaming,
    cache affinity, and Native Memory. Required capabilities either remain intact,
    use an explicitly allowed fallback, or cause a clear request error.
-5. **Choose the effective transport.** Depending on the configured mode, it can
+6. **Choose the effective transport.** Depending on the configured mode, it can
    pass the request through, convert selected resources into visible context,
    infer typed resources from compatible message metadata, or preserve typed
    resources for a PRA-aware engine.
-6. **Apply context budgets.** In `selected-context` mode, the reference gateway
+7. **Apply context budgets.** In `selected-context` mode, the reference gateway
    limits both the number of resources and selected source tokens, then injects
    labeled context at the configured message position. Resources are consumed in
    request order; semantic routing should happen upstream or in a PRA-aware
    backend.
-7. **Coordinate engine lifecycle.** It prepares or reuses the backend session,
+8. **Coordinate engine lifecycle.** It prepares or reuses the backend session,
    propagates prefix handles and affinity keys, and invalidates stale engine
    state after model, system-prefix, resource-version, or explicit session
    changes.
-8. **Forward generation and preserve streaming.** The transformed request is
+9. **Forward generation and preserve streaming.** The transformed request is
    sent through the selected engine adapter. Streaming responses remain
    OpenAI-compatible server-sent events.
-9. **Commit and report the turn.** Successful output is added to session history.
+10. **Commit and report the turn.** Successful output is added to session history.
    The response trace records the effective transport, selected resource IDs,
    downgrades, bytes sent, delta operations, prefix reuse, engine-session reuse,
    and whether Native Memory was used.
@@ -64,6 +68,23 @@ Native K/V never crosses the gateway protocol. The gateway can request or report
 Native Memory, but only a capable engine adapter may create and consume it inside
 the engine process. This keeps model-specific tensors out of application payloads
 and prevents selected detail from being mistaken for ordinary prefix-cache state.
+
+## Three kinds of reuse
+
+PRA avoids sending selected context again when it is already active, lets the
+inference engine reuse ordinary prefix cache where available, and can reuse
+native semantic memory on qualified integrations.
+
+| Reuse | Authority | Correctness role | Turn diagnostic |
+| --- | --- | --- | --- |
+| Already visible | PRA logical session ledger | Prevent duplicate context injection | `already_visible_resources`, `visible_reuse_tokens` |
+| Engine prefix cached | Engine cache observation | Physical compute optimization only | `prefix_reuse_status`, `prefix_cached_tokens` |
+| Native semantic memory | Qualified model/engine integration | Attach selected model-native state | `native_available_resources`, `native_attach_bytes` |
+
+The three quantities are disjoint. A prefix hit never proves that selected
+evidence is logically visible, and logical reuse never claims that K/V remained
+resident. Worker, model-fingerprint, and engine-restart changes downgrade
+unproven prefix observations to `UNKNOWN`.
 
 ## Operating modes
 
@@ -110,9 +131,12 @@ and policy. Native K/V still remains inside the engine process.
 ## Sessions and resource deltas
 
 Set `--sessions-dir PATH` to persist gateway session state with the local session
-service. Within a session, the gateway tracks canonical messages, serialized
-backend history, resource versions, prefix-cache handles, and cache-affinity
-keys. When the engine advertises incremental messages and resource deltas, later
+service. Within a session, the gateway tracks canonical messages, the actual
+serialized backend history, compatible visible materializations, resource
+versions, prefix-cache observations, and cache-affinity keys. Durable logical
+snapshots reconstruct visibility after a gateway restart but intentionally do
+not restore opaque engine sessions or cache handles. When the engine advertises
+incremental messages and resource deltas, later
 turns can send only new messages and `add`, `update`, or `remove` resource
 operations.
 

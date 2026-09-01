@@ -14,6 +14,7 @@ import yaml
 from .agent_profiles import AgentLauncher, AgentProfileRegistry, load_mcp_config
 from .bundle import BundleBuilder, HubPublisher, PRAModelBundle
 from .evaluation import evaluate_router_features
+from .execution_modes import ExecutionModeResolver
 from .gateway_cli import gateway_cli
 from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
@@ -25,6 +26,7 @@ from .product_qualification import (
     environment_report,
     load_run,
     recommend_run,
+    resolve_run_mode,
     render_report,
 )
 from .profile_benchmarks import ProfileBenchmarkRegistry
@@ -235,6 +237,9 @@ def recommend(run, allow_unqualified_native, json_output, yaml_output) -> None:
     try:
         document = load_run(run)
         value = recommend_run(document, allow_unqualified_native=allow_unqualified_native)
+        value["mode_resolution"] = resolve_run_mode(
+            document, allow_unqualified_native=allow_unqualified_native
+        )
     except ValueError as error:
         raise click.ClickException(str(error)) from error
     if Path(run).is_dir():
@@ -697,34 +702,32 @@ def _runtime_options(function):
 @runtime_cli.command("serve")
 @click.argument("model")
 @click.option(
+    "-m",
     "--mode",
-    type=click.Choice(["selected-context", "native-memory", "auto"]),
+    type=click.Choice(["auto", "selected-context", "native-memory", "native-serving"]),
     default="auto",
     show_default=True,
     help="Choose the qualified product execution mode.",
 )
+@click.option("--explain", is_flag=True, help="Explain mode evidence and resolution.")
+@click.option("--allow-unqualified-native", is_flag=True, hidden=True)
 @_runtime_options
 @_output_options
-def runtime_serve(model, mode, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
+def runtime_serve(model, mode, explain, allow_unqualified_native, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
     """Serve MODEL with an explicit or policy-selected execution mode."""
     try:
         engine_row = EngineProductRegistry.default().resolve(engine)
     except KeyError as error:
         raise click.ClickException(str(error)) from error
-    native_status = str(engine_row["capabilities"]["native_memory"]).lower()
-    if mode == "auto":
-        selected_mode = "selected-context"
-        reason = "Native Memory is selected only from model, workload, and hardware-specific qualified evidence."
-    elif mode == "native-memory":
-        if native_status in {"not measured", "not qualified", "not applicable"}:
-            raise click.ClickException(
-                f"Native Memory is {engine_row['capabilities']['native_memory']} for {engine_row['name']}; run Selected Context."
-            )
-        selected_mode = mode
-        reason = "Native Memory was explicitly requested; verify a qualification report for production use."
-    else:
-        selected_mode = mode
-        reason = "Selected Context is the portable production baseline."
+    try:
+        resolution = ExecutionModeResolver().resolve(
+            mode,
+            engine_row,
+            allow_unqualified_native=allow_unqualified_native,
+        )
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
+    selected_mode = resolution.resolved_mode.value
     resolved_profile = "BALANCED" if profile == "recommended" else profile
     mode_args = (*engine_args, f"execution-mode={selected_mode}")
     config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, resolved_profile, storage, storage_config, mode_args, verbose)
@@ -735,7 +738,17 @@ def runtime_serve(model, mode, engine, revision, device, endpoint, host, port, p
         value["status"] = manager.health(handle).status
     except (KeyError, ValueError, RuntimeError) as error:
         raise click.ClickException(str(error)) from error
-    value.update({"requested_mode": mode, "selected_mode": selected_mode, "selection_reason": reason})
+    value.update(
+        {
+            "requested_mode": mode,
+            "resolved_mode": selected_mode,
+            "resolution_reason": resolution.reason,
+            "mode_resolution": resolution.to_dict(),
+        }
+    )
+    if explain and not json_output and not yaml_output:
+        click.echo(resolution.explain())
+        click.echo("")
     _emit(value, json_output=json_output, yaml_output=yaml_output)
 
 

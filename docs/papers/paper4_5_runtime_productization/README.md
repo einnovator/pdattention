@@ -92,6 +92,7 @@ python -m experiments.paper4_5_runtime.run_runtime_profile
 python -m experiments.paper4_5_runtime.run_execution_policy_profile
 python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
 python -m experiments.paper4_5_runtime.run_gateway_session_profile
+python -m experiments.paper4_5_runtime.run_session_aware_selected_context
 python -m experiments.paper4_5_runtime.run_storage_lifecycle
 python -m experiments.paper6_vllm.run_live_storage_lifecycle
 python -m experiments.paper6_1_sglang.run_live_storage_lifecycle

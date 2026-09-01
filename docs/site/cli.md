@@ -18,7 +18,7 @@ pra evaluate Qwen/Qwen3-1.7B --engine hf --dataset qasper \
   --measurements matched-results.json -o .pra/runs/qwen-qasper
 pra recommend .pra/runs/qwen-qasper
 pra report .pra/runs/qwen-qasper --format html
-pra serve Qwen/Qwen3-1.7B --engine hf --profile recommended --mode auto
+pra serve Qwen/Qwen3-1.7B --engine hf --profile recommended -m auto --explain
 ```
 
 `doctor` groups system, engine, local-artifact, problem, and next-action
@@ -170,12 +170,20 @@ or profile, project config, user config, then package defaults.
 
 Both `pra serve` and `pra runtime serve` accept:
 
-- `--mode selected-context` for the portable baseline;
-- `--mode native-memory` for an explicitly qualified native path;
-- `--mode auto` for conservative policy selection.
+- `-m auto` for conservative qualification-driven selection;
+- `-m selected-context` for the portable selected-text baseline;
+- `-m native-memory` for qualified model-native semantic memory;
+- `-m native-serving` for qualified engine-scheduler ownership.
 
 `auto` does not promote a deeper mode from capability availability alone. It
-reports the requested mode, selected mode, and reason. `--profile recommended`
+requires separate mechanism, quality, incremental-economic, and recommendation
+gates. `--explain` reports every candidate, all four statuses, the resolved
+mode, fallback, and reason. An explicitly requested but unqualified native mode
+fails instead of silently changing execution.
+
+`--mode` and `--profile` are orthogonal: mode controls how selected information
+reaches the model, while profile controls selection, materialization, and
+retention policy. `--profile recommended`
 resolves to the current conservative `BALANCED` profile; reduced consumer-layer
 profiles remain calibration candidates until workload evidence qualifies them.
 # Storage profiles

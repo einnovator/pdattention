@@ -24,6 +24,13 @@ from typing import Any, Mapping, Sequence
 import torch
 import yaml
 
+from .execution_modes import (
+    ExecutionMode,
+    ExecutionModeResolver,
+    ModeEvidence,
+    ModeStatus,
+    normalize_status,
+)
 from .product_config import pra_home
 
 
@@ -176,10 +183,12 @@ class EngineProductRegistry:
         }
         row["registry_version"] = self.payload.get("evidence_as_of")
         row["provenance"] = self.source
+        row["mode_resolution"] = ExecutionModeResolver().resolve("auto", row).to_dict()
         return row
 
     def summary(self, row: Mapping[str, Any]) -> dict[str, Any]:
         capabilities = row["capabilities"]
+        resolution = ExecutionModeResolver().resolve("auto", row)
         return {
             "engine": row["slug"],
             "name": row["name"],
@@ -188,6 +197,9 @@ class EngineProductRegistry:
             "native_memory": _status(capabilities["native_memory"]),
             "native_serving": _status(capabilities["native_serving"]),
             "recommended": row["recommended_today"],
+            "resolved_mode": resolution.resolved_mode.value,
+            "resolution_reason": resolution.reason,
+            "mode_status": [candidate.to_dict() for candidate in resolution.candidates],
             "evidence": row["evidence"],
             "provenance": self.source,
         }
@@ -478,6 +490,92 @@ def recommend_run(document: Mapping[str, Any], *, allow_unqualified_native: bool
     return recommendation
 
 
+def resolve_run_mode(
+    document: Mapping[str, Any], *, allow_unqualified_native: bool = False
+) -> dict[str, Any]:
+    """Express measured qualification through the common four-axis resolver."""
+
+    modes = document["modes"]
+    capabilities = document["engine_capabilities"]
+    gate = document.get("quality_gate", {})
+    recommendation = recommend_run(
+        document, allow_unqualified_native=allow_unqualified_native
+    )
+    recommended = str(recommendation.get("recommended_mode") or "").lower()
+
+    def quality_status(name: str) -> ModeStatus:
+        if name == "selected_context":
+            passed = gate.get("passed")
+            return (
+                ModeStatus.VALIDATED if passed is True
+                else ModeStatus.BLOCKED if passed is False
+                else ModeStatus.NOT_MEASURED
+            )
+        row = modes.get(name)
+        if row is None or row.get("status") == NOT_MEASURED:
+            return ModeStatus.NOT_MEASURED
+        baseline = modes["selected_context"] if name != "native_serving" else modes.get("native_memory_hot")
+        if baseline is None:
+            return ModeStatus.NOT_MEASURED
+        return (
+            ModeStatus.VALIDATED
+            if _mode_quality_pass(row, baseline, float(gate.get("threshold", 0.95)))
+            else ModeStatus.BLOCKED
+        )
+
+    def economic_status(gain_name: str) -> ModeStatus:
+        values = [
+            float(value)
+            for key, value in document["attribution"][gain_name].items()
+            if key != "comparison" and value is not None
+        ]
+        if not values:
+            return ModeStatus.NOT_MEASURED
+        if all(value > 1.0 for value in values):
+            return ModeStatus.VALIDATED
+        if all(value <= 1.0 for value in values):
+            return ModeStatus.BLOCKED
+        return ModeStatus.QUALIFICATION_PENDING
+
+    native_quality = quality_status("native_memory_hot")
+    warm_quality = quality_status("native_memory_warm")
+    if ModeStatus.BLOCKED in {native_quality, warm_quality}:
+        native_quality = ModeStatus.BLOCKED
+    elif ModeStatus.NOT_MEASURED in {native_quality, warm_quality}:
+        native_quality = ModeStatus.NOT_MEASURED
+    candidates = (
+        ModeEvidence(
+            ExecutionMode.SELECTED_CONTEXT,
+            normalize_status(capabilities.get("selected_context", "available")),
+            quality_status("selected_context"),
+            ModeStatus.VALIDATED,
+            ModeStatus.RECOMMENDED if recommended == "selected context" else ModeStatus.CANDIDATE,
+            "Measured Selected Context qualification.",
+        ),
+        ModeEvidence(
+            ExecutionMode.NATIVE_MEMORY,
+            normalize_status(capabilities.get("native_memory", "not measured")),
+            native_quality,
+            economic_status("native_gain"),
+            ModeStatus.RECOMMENDED if recommended == "native memory" else ModeStatus.CANDIDATE,
+            "Measured Native Memory qualification relative to Selected Context.",
+        ),
+        ModeEvidence(
+            ExecutionMode.NATIVE_SERVING,
+            normalize_status(capabilities.get("native_serving", "not measured")),
+            quality_status("native_serving"),
+            economic_status("serving_gain"),
+            ModeStatus.RECOMMENDED if recommended == "native serving" else ModeStatus.CANDIDATE,
+            "Measured Native Serving qualification relative to Native Memory.",
+        ),
+    )
+    return ExecutionModeResolver().resolve_candidates(
+        ExecutionMode.AUTO,
+        candidates,
+        allow_unqualified_native=allow_unqualified_native,
+    ).to_dict()
+
+
 class QualificationService:
     """Build, persist, recommend, and report one enterprise qualification run."""
 
@@ -486,12 +584,14 @@ class QualificationService:
 
     def inspect(self, model: str, engine: str, model_metadata: Mapping[str, Any]) -> dict[str, Any]:
         row = self.registry.resolve(engine)
+        resolution = ExecutionModeResolver().resolve("auto", row)
         profiles = ["REFERENCE_CORRECTNESS", "BALANCED", "ECONOMY", "QUALITY_MAX_CANDIDATE"]
         return {
             "model": dict(model_metadata),
             "engine": self.registry.summary(row),
             "capabilities": {key: _status(value) for key, value in row["capabilities"].items()},
             "current_recommendation": row["recommended_today"],
+            "mode_resolution": resolution.to_dict(),
             "available_profiles": profiles,
             "evidence_status": {"tier": row["evidence"], "as_of": self.registry.payload.get("evidence_as_of")},
             "next_command": f"pra evaluate {model} --engine {row['slug']} --dataset DATASET",
@@ -578,6 +678,7 @@ class QualificationService:
         document["quality_gate"] = _quality_gate(modes, quality_threshold)
         document["missing_measurements"] = self.missing_measurements(document)
         document["recommendation"] = recommend_run(document)
+        document["mode_resolution"] = resolve_run_mode(document)
         self.write_run(output, document)
         return document
 

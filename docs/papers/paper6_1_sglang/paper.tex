@@ -155,6 +155,9 @@ The black-box baseline selects exact evidence outside SGLang and serializes it
 into the current turn. RadixAttention may then cache that resulting token
 prefix. An engine-aware design would instead retain the PRA logical identity
 while placing its physical detail in GPU, host, or distributed hierarchy.
+Selected Context session deduplication is owned by the shared PRA runtime;
+engine-native prefix caching is measured independently. RadixAttention is
+therefore reported as prefix-tree physical reuse, not as logical PRA visibility.
 
 \section{Implementation Boundary}
 \path{src/pra_hf/engine_memory.py} provides validated states

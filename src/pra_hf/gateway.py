@@ -25,6 +25,11 @@ from .gateway_session import (
     ResolvedSessionTurn,
     canonical_digest,
 )
+from .session_realization import (
+    PrefixReuseObservation,
+    RealizationDecision,
+    RealizationPlanner,
+)
 from .session_service import SessionService
 
 
@@ -120,9 +125,11 @@ class PRAGateway:
             )
         return unsupported, downgrades
 
-    def _text_fallback(self, request: PRAWireRequest) -> tuple[PRAWireRequest, list[str]]:
+    @staticmethod
+    def _budgeted_resources(request: PRAWireRequest) -> tuple[Any, ...]:
+        """Freeze deterministic selected-text intervals before realization."""
+
         remaining = request.budget.max_selected_tokens
-        selected = []
         rendered_resources = []
         for resource in request.resources[: request.budget.max_resources]:
             if not resource.text or remaining <= 0:
@@ -135,8 +142,20 @@ class PRAGateway:
                 else " ".join(selected_tokens)
             )
             remaining -= len(selected_tokens)
-            selected.append(resource.resource_id)
-            rendered_resources.append(replace(resource, text=materialized))
+            metadata = dict(resource.metadata)
+            metadata.setdefault("selected_interval", (0, len(selected_tokens)))
+            rendered_resources.append(
+                replace(resource, text=materialized, metadata=metadata)
+            )
+        return tuple(rendered_resources)
+
+    def _rendering_profile(self, request: PRAWireRequest) -> str:
+        semantic = request.pra_policy.get("profile", "default")
+        return f"{self.fallback_injection.value}/{semantic}"
+
+    def _text_fallback(
+        self, request: PRAWireRequest, rendered_resources: tuple[Any, ...]
+    ) -> PRAWireRequest:
         messages = list(request.messages)
         if rendered_resources:
             if self.fallback_injection == FallbackInjectionPolicy.BEFORE_CURRENT_USER:
@@ -149,7 +168,7 @@ class PRAGateway:
                     for resource in rendered_resources
                 )
                 messages = self._inject_fallback(messages, context)
-        return replace(request, messages=tuple(messages), resources=()), selected
+        return replace(request, messages=tuple(messages), resources=())
 
     def _inject_fallback(
         self, messages: list[Mapping[str, Any]], context: str
@@ -249,6 +268,38 @@ class PRAGateway:
             base = replace(base, engine_session_id=engine_session_id)
         selected_ids: list[str] = []
         transformed = base
+        rendering_profile = self._rendering_profile(request)
+        selected_resources = self._budgeted_resources(
+            replace(base, resources=turn.active_resources)
+        )
+        resolved_mode = (
+            "selected-context"
+            if self.mode == PRAGatewayMode.G10_TEXT_FALLBACK
+            else "native-serving"
+            if capabilities.pra_scheduler
+            else "native-memory"
+            if capabilities.native_kv
+            else "selected-context"
+        )
+        plan = RealizationPlanner().plan(
+            selected_resources,
+            turn.state.visible_materializations,
+            requested_mode=str(request.metadata.get("requested_mode", resolved_mode)),
+            resolved_mode=resolved_mode,
+            rendering_profile=rendering_profile,
+            tenant_id=request.tenant_id,
+            native_capable=capabilities.native_kv,
+            fallback_reason=(
+                "engine_uses_selected_text"
+                if self.mode == PRAGatewayMode.G10_TEXT_FALLBACK
+                and str(request.metadata.get("requested_mode", resolved_mode)) != resolved_mode
+                else None
+            ),
+        )
+        invalid = plan.resources_for(RealizationDecision.INVALID)
+        if invalid:
+            raise PermissionError("Selected resources failed realization authorization.")
+        turn = replace(turn, realization_plan=plan)
         if self.mode == PRAGatewayMode.G10_TEXT_FALLBACK:
             # G10 selection uses the current logical resources even though an
             # E0 adapter never receives their detached PRA descriptors.
@@ -258,14 +309,22 @@ class PRAGateway:
                 and turn.gateway_prefix_stable
                 and turn.state.serialized_messages
             ):
+                prior_serialized = turn.state.serialized_messages
+                active_count = request.metadata.get("active_context_message_count")
+                if active_count is not None:
+                    count = max(int(active_count), 0)
+                    prior_serialized = prior_serialized[-count:] if count else ()
                 new_messages = turn.canonical_messages[len(turn.state.canonical_messages) :]
                 fallback_base = replace(
                     base,
-                    messages=(*turn.state.serialized_messages, *new_messages),
+                    messages=(*prior_serialized, *new_messages),
                 )
-            transformed, selected_ids = self._text_fallback(
-                replace(fallback_base, resources=turn.active_resources)
+            newly_materialized = plan.resources_for(
+                RealizationDecision.MUST_MATERIALIZE,
+                RealizationDecision.OPTIONAL_REFRESH,
             )
+            transformed = self._text_fallback(fallback_base, newly_materialized)
+            selected_ids = list(plan.diagnostics["selected_resources"])
         elif self.mode == PRAGatewayMode.G01_UPGRADE:
             transformed = self._upgrade(base)
             if transformed.resources and not capabilities.logical_refs:
@@ -316,6 +375,13 @@ class PRAGateway:
         invalidation_reason: str | None,
     ) -> tuple[dict[str, Any], Any]:
         prefix_handle = result.raw.get("prefix_cache_handle") if result.raw else None
+        worker_identity = (
+            result.raw.get("worker_identity", result.raw.get("runner_identity"))
+            if result.raw else None
+        )
+        model_fingerprint = (
+            result.raw.get("model_fingerprint") if result.raw else None
+        ) or request.metadata.get("model_fingerprint") or request.model
         committed_turn = turn
         if result.text:
             assistant = {"role": "assistant", "content": result.text}
@@ -343,9 +409,33 @@ class PRAGateway:
             request,
             engine_session_id=engine_session_id,
             prefix_cache_handle=prefix_handle,
+            engine_worker_identity=(str(worker_identity) if worker_identity is not None else None),
+            engine_model_fingerprint=str(model_fingerprint),
             serialized_messages=serialized,
+            materialized_resources=(
+                turn.realization_plan.resources_for(
+                    RealizationDecision.MUST_MATERIALIZE,
+                    RealizationDecision.OPTIONAL_REFRESH,
+                )
+                if self.mode == PRAGatewayMode.G10_TEXT_FALLBACK
+                and turn.realization_plan is not None
+                else ()
+            ),
+            rendering_profile=self._rendering_profile(request),
         )
         physical_hit = result.raw.get("prefix_cache_hit") if result.raw else None
+        capabilities = self.adapter.capabilities()
+        prefix_observation = PrefixReuseObservation.from_result(
+            result.raw,
+            prefix_cache_mode=capabilities.prefix_cache_mode.value,
+            prior_engine_session=bool(turn.state.engine_session_id),
+            prefix_digest=state.last_serialized_prefix_digest,
+            prefix_token_count=state.prefix_token_count,
+            model_fingerprint=str(model_fingerprint),
+            prior_worker_identity=turn.state.engine_worker_identity,
+            prior_model_fingerprint=turn.state.engine_model_fingerprint,
+            engine_restarted=bool(request.metadata.get("engine_restart")),
+        )
         message_bytes_sent = len(
             json.dumps(list(transformed.messages), default=str).encode("utf-8")
         )
@@ -384,11 +474,22 @@ class PRAGateway:
                 if turn.outbound_history_mode == HistoryMode.DELTA else 0
             ),
             "engine_prefix_cache_hit": physical_hit,
+            "prefix_reuse_status": prefix_observation.status.value,
+            "prefix_cached_tokens": prefix_observation.cached_token_count,
+            "prefix_reuse_observation": prefix_observation.to_dict(),
             "engine_session_reuse": bool(turn.state.engine_session_id),
             "engine_session_present": state.engine_session_id is not None,
             "cache_affinity_key": state.cache_affinity_key,
             "resource_ops": [row.operation.value for row in turn.resource_deltas],
         }
+        if turn.realization_plan is not None:
+            trace.update(turn.realization_plan.diagnostics)
+        attached = result.raw.get("native_attached_resources", ()) if result.raw else ()
+        trace["native_attached_resources"] = list(attached or ())
+        if result.raw and result.raw.get("native_attach_bytes") is not None:
+            trace["native_attach_bytes"] = int(result.raw["native_attach_bytes"])
+        elif not attached:
+            trace["native_attach_bytes"] = 0
         return trace, state
 
     def generate(self, request: PRAWireRequest | Mapping[str, Any]) -> PRAEngineResult:

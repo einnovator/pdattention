@@ -26,12 +26,30 @@ The runtime keeps selection and physical execution separate. It can freeze
 selected identities, plan model-specific materialization, and inspect every
 lifecycle decision without changing task semantics.
 
+## Session-aware realization
+
+The gateway and embedded runtime share one realization planner. For each
+selected resource it checks resource ID, version, interval, rendering profile,
+and rendering digest against the model-visible session ledger. A compatible
+active occurrence is preserved in place; a dropped, superseded, removed, or
+task-closed occurrence does not satisfy the new turn.
+
+Turn traces expose `requested_mode`, `resolved_mode`, selected and already-visible
+resource IDs, newly materialized tokens, native attachment bytes, and physical
+prefix-cache observations. Logical visibility, engine prefix reuse, and Native
+Memory reuse remain separate counters so reports cannot count the same token as
+two kinds of savings.
+
+The ledger is reconciled from the actual serialized context after compaction or
+history rewrite. Its durable snapshot can be restored after a process restart;
+engine handles and inferred physical residency are deliberately discarded.
+
 ## Runtime commands
 
 ```bash
 pra runtime inspect Qwen/Qwen3-1.7B -e hf --storage balanced
 pra runtime doctor -e hf
-pra runtime serve Qwen/Qwen3-1.7B -e hf --storage balanced
+pra runtime serve Qwen/Qwen3-1.7B -e hf -m auto --explain --storage balanced
 pra runtime benchmark Qwen/Qwen3-1.7B -e hf -o .pra/bench
 ```
 

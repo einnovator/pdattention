@@ -16,7 +16,7 @@ from pra_hf.deployment import (
 )
 from pra_hf.engine_profiles import EngineProfileRegistry, EngineType, PrefixCacheMode
 from pra_hf.gateway import PRAGateway, create_gateway_server
-from pra_hf.gateway_session import HistoryMode, ResourceOperation
+from pra_hf.gateway_session import GatewaySessionRegistry, HistoryMode, ResourceOperation
 from pra_hf.session_service import InMemorySessionService
 
 
@@ -175,6 +175,100 @@ def test_full_delta_auto_and_prefix_preserving_g10_keep_prior_messages_identical
         history_mode="DELTA",
     ))
     assert delta.trace[2]["history_mode"] == "DELTA"
+
+
+def test_selected_context_reuses_visible_resource_and_only_injects_new_resource():
+    adapter = SessionAdapter()
+    gateway = PRAGateway(adapter, mode="G10")
+    a = _resource("alpha", "v1")
+    b = PRAWireResource(
+        "other", "pra://tenant-a/other", text="delta evidence",
+        metadata={"tenant_id": "tenant-a", "version": "v1"},
+        authorization_scope="tenant-a",
+    )
+    gateway.generate(_request(resources=(a,)))
+
+    result = gateway.generate(_request(
+        messages=({"role": "user", "content": "follow up"},),
+        resources=(a, b),
+        history_mode="DELTA",
+    ))
+
+    current = adapter.requests[-1].messages[0]["content"]
+    assert "delta evidence" in current
+    assert "[PRA resource pra://tenant-a/facts]" not in current
+    assert result.trace[2]["already_visible_resources"] == ["facts"]
+    assert result.trace[2]["newly_materialized_resources"] == ["other"]
+    assert result.trace[2]["visible_reuse_tokens"] == 1
+    assert result.trace[2]["new_materialized_tokens"] == 2
+
+
+def test_dropped_visible_context_and_version_update_force_rematerialization():
+    adapter = SessionAdapter()
+    gateway = PRAGateway(adapter, mode="G10")
+    gateway.generate(_request(resources=(_resource("alpha", "v1"),)))
+
+    dropped = gateway.generate(_request(
+        messages=({"role": "user", "content": "after truncation"},),
+        resources=(_resource("alpha", "v1"),),
+        history_mode="DELTA",
+        metadata={"active_context_message_count": 0},
+    ))
+    assert dropped.trace[2]["newly_materialized_resources"] == ["facts"]
+
+    updated = gateway.generate(_request(
+        messages=({"role": "user", "content": "after update"},),
+        resources=(_resource("beta", "v2"),),
+        history_mode="DELTA",
+    ))
+    state = gateway.inspect_session("tenant-a", "session-a", "offline/model")
+    assert updated.trace[2]["newly_materialized_resources"] == ["facts"]
+    assert {row["state"] for row in state["visible_materializations"]} >= {
+        "SUPERSEDED", "VISIBLE"
+    }
+
+
+def test_history_rewrite_does_not_inherit_old_visible_materialization():
+    adapter = SessionAdapter()
+    gateway = PRAGateway(adapter, mode="G10")
+    gateway.generate(_request(resources=(_resource(),)))
+
+    result = gateway.generate(_request(
+        messages=(
+            {"role": "system", "content": "rewritten"},
+            {"role": "user", "content": "new question"},
+        ),
+        resources=(_resource(),),
+        history_mode="FULL",
+    ))
+
+    assert result.trace[2]["prefix_invalidations"] == 1
+    assert result.trace[2]["newly_materialized_resources"] == ["facts"]
+
+
+def test_restart_reconstructs_logical_visibility_without_restoring_engine_cache() -> None:
+    first_gateway = PRAGateway(SessionAdapter(), mode="G10")
+    first_gateway.generate(_request(resources=(_resource(),)))
+    snapshot = first_gateway.sessions.snapshot("tenant-a", "session-a", "offline/model")
+    assert snapshot is not None
+
+    registry = GatewaySessionRegistry()
+    restored = registry.restore(snapshot)
+    second_adapter = SessionAdapter()
+    second_gateway = PRAGateway(
+        second_adapter, mode="G10", session_registry=registry
+    )
+    result = second_gateway.generate(_request(
+        messages=({"role": "user", "content": "after restart"},),
+        resources=(_resource(),),
+        history_mode="DELTA",
+    ))
+
+    assert restored.engine_session_id is None
+    assert restored.prefix_cache_handle is None
+    assert result.trace[2]["already_visible_resources"] == ["facts"]
+    assert result.trace[2]["newly_materialized_resources"] == []
+    assert result.trace[2]["prefix_reuse_status"] != "CONFIRMED"
 
 
 def test_full_transport_replays_the_exact_prior_g10_serialization():

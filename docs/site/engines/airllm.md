@@ -21,6 +21,15 @@ table below says it has been measured for this engine.
 
 For AirLLM, the practical boundary is: Selected Context; it reduces visible work without adding a separate native reference pass.
 
+## Three kinds of reuse
+
+Selected Context session deduplication is owned by the shared PRA runtime.
+Engine-native prefix caching is measured independently. Native semantic
+memory is used only when this engine/model/hardware path is qualified.
+PRA avoids sending selected context again when it is already active, lets
+the inference engine reuse ordinary prefix cache where available, and can
+reuse native semantic memory on qualified integrations.
+
 ## Supported PRA capabilities
 
 | Capability | Status |
@@ -59,9 +68,9 @@ pra gateway serve --mode selected-context --backend custom --backend-url http://
 ### Command options
 
 - `--engine` / `-e` selects the runtime provider used for inspection or launch.
-- `--mode selected-context` renders the frozen selected evidence as ordinary
-  input. `--mode native-memory` requests a qualified detached-memory path.
-  `--mode auto` remains conservative when economics are not qualified.
+- `--mode` / `-m` selects `auto`, `selected-context`, `native-memory`, or
+  `native-serving`. Native modes require qualification; `auto` remains
+  conservative when incremental economics are not qualified.
 - `--profile recommended` selects the current qualified model profile; it
   does not promote smoke-only consumer-layer candidates.
 - `--storage memory|balanced|persistent|minimal` controls native-resource

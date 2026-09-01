@@ -1032,12 +1032,29 @@ handoff above, but still rejects scheduler hints. This prevents an E2 adapter
 from being mistaken for an E3 scheduler merely because both accept the same
 logical wire request.
 
-\subsection{Session-Aware Gateway and Conventional Prefix-K/V Reuse}
+\subsection{Session-aware realization and cumulative context reuse}
 
 PRA does not replace ordinary prefix caching. A session may simultaneously
 retain a conventional sequential-prefix K/V cache and separately address PRA
 records or native detail. The gateway preserves append-only prefixes for
 ordinary engines and can send logical deltas to PRA-aware remote engines.
+Between selection and request construction, an engine-independent realization
+planner reconciles a visible-materialization ledger against the actual
+serialized model context. Identity is strict: resource ID, version, selected
+interval, rendering profile, and rendered-content digest must all agree.
+Compatible occurrences remain in place; dropped, superseded, removed, or
+task-closed occurrences materialize again. This rule survives process restart
+through a durable logical snapshot, while opaque engine handles and inferred
+physical residency are intentionally discarded.
+
+The planner classifies each selected item as already visible, natively
+available, requiring materialization, optionally refreshable, or invalid. Its
+accounting keeps three quantities disjoint. Logical visibility prevents a
+duplicate input occurrence. An engine prefix observation reports only physical
+reuse of a sequential prefix and may be confirmed, likely, unknown, or absent.
+Native Memory reports selected model-native state only on a qualified path.
+Correctness never depends on a likely or unknown prefix hit, and worker,
+model-fingerprint, or engine-restart changes invalidate unproven continuity.
 The first PRA-DELTA turn sends a full inventory. Later unchanged resources emit
 body-free UNCHANGED operations; changed identity, content fingerprint,
 authorization, task ownership, or shareability emits ADD or UPDATE, while
@@ -1292,6 +1309,25 @@ explicit. This is a semantic and accounting result, not evidence that PRA
 transport is always smaller. All four conditions report physical prefix-cache
 hits as unknown. No vLLM/SGLang affinity, TTFT, throughput, or scheduler result
 is inferred from logical prefix stability.
+
+\begin{table}[H]
+\centering
+\caption{Five-seed repeated-session accounting. Turn one selects A/B/C; turn
+two selects B/D. Prefix-cache tokens, native reuse, and TTFT were not measured,
+so they remain explicit rather than being inferred from logical visibility.}
+\label{tab:session-realization}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper4_5_runtime/session_realization/generated_session_realization_table.tex}}
+\end{table}
+
+Table~\ref{tab:session-realization} isolates the new ledger from retrieval and
+engine effects. Without logical reuse, Selected Context renders the selected B
+again and materializes 28 tokens across the two turns. Session-aware realization
+preserves B's 16-token active occurrence and materializes only the 12 tokens of
+D, reducing total visible tokens from 88 to 72 while preserving the controlled
+quality check. Full Context also exposes 72 tokens in this fixture but counts all
+72 as newly materialized. These are deterministic token-accounting results, not
+TTFT or attention-compute measurements; Native Memory remains
+\textsc{Not measured} in this cohort.
 
 \subsection{Typed transport avoids repeated record bodies}
 

@@ -121,6 +121,41 @@ def test_normal_help_uses_product_terms_only() -> None:
         assert internal not in output
     assert "selected-context" in output
     assert "native-memory" in output
+    assert "native-serving" in output
+
+
+def test_serve_mode_alias_and_explanation_use_shared_status_axes(monkeypatch) -> None:
+    class Handle:
+        def to_dict(self):
+            return {"engine": "ollama"}
+
+    class Health:
+        status = "ready"
+
+    monkeypatch.setattr("pra_hf.cli.RuntimeManager.serve", lambda self, config: Handle())
+    monkeypatch.setattr("pra_hf.cli.RuntimeManager.health", lambda self, handle: Health())
+    result = CliRunner().invoke(
+        cli,
+        ["serve", "org/model", "-e", "ollama", "-m", "auto", "--explain"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Requested: auto" in result.output
+    assert "mechanism:" in result.output
+    assert "quality:" in result.output
+    assert "economics:" in result.output
+    assert "recommendation:" in result.output
+    assert "Resolved: selected-context" in result.output
+
+
+def test_explicit_unqualified_native_serving_is_rejected() -> None:
+    result = CliRunner().invoke(
+        cli,
+        ["serve", "org/model", "-e", "ollama", "-m", "native-serving"],
+    )
+
+    assert result.exit_code != 0
+    assert "not qualified" in result.output
 
 
 def test_documented_product_workflow_commands_exist() -> None:
