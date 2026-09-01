@@ -19,10 +19,11 @@ python experiments/paper6_8_ollama/plot_results.py
 ```
 
 AUTO reports E0 unless an explicit backend executor returns a validated,
-model-fingerprint-bound `pra-engine/1` receipt. The receipt must name the pinned
-llama.cpp revision and prove native K/V, unified-cache sequence attachment,
-metadata-only attachment, request cleanup, resource identity, and isolation.
-The adapter never infers native PRA from Ollama's version or backend history.
+model- and artifact-bound `pra-engine/1` receipt. The receipt must name the
+pinned llama.cpp revision and prove native K/V, unified-cache sequence
+attachment, metadata-only attachment, request cleanup, resource identity, and
+isolation. The adapter never infers native PRA from Ollama's version or backend
+history.
 
 Reproduce the handshake, downgrade, model-switch, and unload controls with:
 
@@ -31,6 +32,25 @@ set PYTHONPATH=src
 python experiments/paper6_8_ollama/run_backend_handshake.py
 ```
 
-The inherited llama.cpp mechanism result is model-backed; the Ollama handshake
-cohort is a controlled protocol test. Stock Ollama still exposes no public E2
-endpoint, so ordinary installations remain E0.
+The live delegation cohort uses the model layer referenced by Ollama's manifest
+as the patched llama-server's model path. After applying
+`engine-patches/llamacpp/llamacpp-pra-server.patch`, launch llama-server with
+`--parallel 4 --kv-unified --slots`, then run:
+
+```bash
+PYTHONPATH=src python experiments/paper6_8_ollama/run_native_delegation.py \
+  --model qwen2.5:0.5b \
+  --model-blob ~/.ollama/models/blobs/sha256-c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515 \
+  --model-blob-sha256 c5396e06af294bd101b30dce59131a76d2b773e76950acc870eda801d3ab0515 \
+  --ollama-manifest ~/.ollama/models/manifests/registry.ollama.ai/library/qwen2.5/0.5b \
+  --output docs/papers/shared/results/paper6_8_ollama/native_delegation.json
+python experiments/paper6_8_ollama/plot_native_delegation.py \
+  docs/papers/shared/results/paper6_8_ollama/native_delegation.json \
+  docs/papers/paper6_8_ollama/figures/native_delegation.png
+```
+
+The runner refuses a blob whose SHA-256 does not match both the command-line
+digest and Ollama's model-layer manifest. The measured cohort delegates 25/25
+requests to E2, preserves 25/25 semantic answers, and reproduces 25/25 warm
+token sequences. Stock Ollama still exposes no public E2 endpoint, so ordinary
+installations remain E0.

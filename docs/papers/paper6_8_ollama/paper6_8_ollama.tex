@@ -27,9 +27,13 @@ to 0.714 s across five warm requests (8.18$\times$). Stock Ollama exposed no
 native endpoint, so AUTO correctly remained E0. We then connect the product
 boundary to a pinned llama.cpp sequence-attachment mechanism: 10/10 CPU/Metal
 runs have exact schedule-matched logits and persistent decode. A versioned,
-model-bound Ollama handshake accepts that complete receipt, rejects two
-incomplete or stale receipts, and invalidates state on model switch and unload.
-This closes the delegation protocol, not an Ollama-native serving claim.
+  model-bound Ollama handshake accepts that complete receipt, rejects incomplete
+  or stale receipts, and invalidates state on model switch and unload. A live
+  M4 Pro run then delegates 25/25 requests against Ollama's exact Qwen2.5-0.5B
+  model blob. E0 and E2 both answer 25/25 correctly; warm E2 reproduces 25/25
+  token sequences. Mean latency is 147.8 ms for E0, 78.3 ms for cold-resource E2,
+  and 54.1 ms for warm-resource E2. This closes product delegation to a pinned
+  sidecar, not native execution inside the stock Ollama runner.
 \end{abstract}
 
 \section{Introduction}
@@ -46,10 +50,10 @@ particular backend. Current Ollama may select different runners for different
 models and platforms. An application-facing adapter must therefore be able to
 downgrade safely.
 
-Our contributions are an Ollama-native HTTP adapter, a model-fingerprint
-invalidation rule, a mechanism-specific backend handshake, live selected-text
-and lifecycle measurements, and tests that keep the advertised integration
-level honest.
+Our contributions are an Ollama-native HTTP adapter, model- and artifact-bound
+invalidation, a mechanism-specific backend handshake, a live negotiated
+llama.cpp executor, selected-text and lifecycle measurements, and tests that
+keep the advertised integration level honest.
 
 \section{PRA Levels and Ownership}
 E0 serializes selected evidence into visible messages. E1 transports logical
@@ -111,7 +115,8 @@ than scored as zero quality.
 
 The backend contract is \texttt{pra-engine/1}. A valid E2 receipt names
 llama.cpp and its revision, matches the model fingerprint returned by
-\texttt{/api/show}, and asserts native K/V, unified-cache sequence attachment,
+\texttt{/api/show}, binds the configured sidecar to a model-artifact digest,
+and asserts native K/V, unified-cache sequence attachment,
 metadata-only attachment, request-sequence cleanup, resource identity, tenant
 isolation, and cleanup. Missing mechanisms, a stale fingerprint, negotiation
 errors, or disappearance of the executor select E0. The adapter caches a valid
@@ -119,7 +124,9 @@ receipt only for that fingerprint; model change and unload invalidate it.
 
 \texttt{inspect\_endpoint()} queries \texttt{/api/version}, \texttt{/api/tags},
 and \texttt{/api/ps}. The runtime provider's doctor reports the endpoint and
-models but labels native PRA as fallback unless a backend handshake is supplied.
+models. It labels native PRA as fallback unless a sidecar URL, pinned backend
+revision, and model-artifact digest are supplied and the sidecar proves
+\texttt{pra.llama.cpp/v1}.
 \texttt{unload()} uses Ollama's zero keep-alive request and invalidates delegated
 state. Unit tests cover E0 injection, endpoint inspection, metrics preservation,
 and the rule that only explicit backend delegation upgrades to E2.
@@ -150,6 +157,16 @@ A third run uses an M4 Pro with 20 GPU cores, 48~GiB unified memory, and Ollama
 0.32.7. Qwen3-14B is fully GPU resident. The same 15 frozen identities,
 384/4096 source-token caps, two repeats, and 12-token generation bound are sent
 through native \texttt{/api/chat}; retrieval does not change from the 8B run.
+
+The live delegation cohort runs on the same M4 Pro with Ollama 0.32.7 and a
+patched llama-server at commit \texttt{458681e1d5d}. Ollama's manifest and the
+sidecar both resolve to GGUF SHA-256 \texttt{c5396e06af29...}. Five controlled
+facts are repeated five times. Selection is frozen: E0 serializes the selected
+fact through \texttt{/api/chat}; E2 sends only the completion stem and attaches
+the same fact's native K/V by sequence membership. We report one post-unload
+Ollama reload separately, then steady E0, E2 with resource encoding, and E2 with
+the resource already resident. Semantic answer aliases accept equivalent
+numeric formatting; warm determinism compares generated token IDs exactly.
 
 \section{Results}
 \begin{table}[t]
@@ -280,6 +297,36 @@ Unload & E0 & new state invalidated\\
 \label{tab:backend-handshake}
 \end{table}
 
+\subsection{Live product delegation}
+
+The negotiated executor now invokes the patched server rather than a mock
+receipt. All 25 requests negotiate E2. E0, first-use E2, and warm E2 each answer
+25/25 facts correctly, and every warm E2 sequence exactly matches its first-use
+E2 sequence. The post-unload Ollama reload takes 722.8 ms and is excluded from
+steady E0. Mean request latency is 147.8, 78.3, and 54.1 ms respectively;
+first-use E2 is 0.530$\times$ E0 and warm E2 is 0.366$\times$ E0. The mean
+first-use minus warm difference is 24.3 ms, an empirical estimate of resource
+encoding in this cohort. P95 is 168.0, 83.8, and 58.4 ms.
+
+E0 exposes 62.0 mean prompt tokens. E2 carries 5.4 mean wire tokens and attaches
+12.2 native tokens without physical K/V copy, reducing visible transport by
+91.3\%. These counts describe different representations of the same selected
+fact; they should not be added and interpreted as an ordinary prompt length.
+The result demonstrates a local-AI path in which Ollama remains the catalog and
+fallback surface while a pinned backend consumes persistent native memory. It
+does not establish scheduler-managed E3, general natural-QA parity, or a speed
+advantage for larger contexts and models.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{figures/native_delegation.png}
+\caption{Live E0/E2 delegation on one exact Qwen2.5-0.5B GGUF. Left: steady
+latency, separating first resource encoding from warm reuse. Right: E0 visible
+prompt tokens versus E2 wire and attached-native tokens. All three conditions
+answer 25/25 controlled facts correctly.}
+\label{fig:native-delegation}
+\end{figure}
+
 \section{Deployment Matrix}
 \begin{table}[H]
 \centering\small
@@ -289,7 +336,7 @@ Unload & E0 & new state invalidated\\
 \midrule
 E0 selected & Ollama/OpenAI HTTP & measured & supported default\\
 E1 logical & optional envelope & interface only & no native effect\\
-E2 native & delegated llama.cpp & controlled negotiated & mechanism/protocol only\\
+E2 native & delegated llama.cpp & live measured & pinned sidecar\\
 E3 scheduler & Ollama runner & not implemented & no claim\\
 \bottomrule
 \end{tabular}
@@ -305,22 +352,24 @@ AUTO returns to E0.
 The original Windows runtime is old relative to the pinned source audit; the
 paper does not merge those observations with the separate 0.30.8 M5 and 0.32.7
 M4 Pro replications. Three model sizes are measured, but all natural cohorts are small.
-Memory use, concurrent requests, cancellation, reconnects, daemon restart,
-quantized variants, and native E0/E2 parity through a live Ollama request remain
-open. The llama.cpp probe establishes the narrow attention seam and the adapter
-establishes negotiation behavior, but stock Ollama does not carry selected
-resource identity or invoke that executor. The next step is runner plumbing,
-followed by frozen-selection natural QA, concurrency, and lifecycle tests
-without changing the client.
+Memory use, concurrent requests, cancellation, reconnects, daemon restart, and
+quantized variants remain open. The live E0/E2 cohort is controlled and small;
+it does not replace frozen-selection natural QA or establish that the stock
+Ollama runner itself carries selected resource identity. The sidecar currently
+uses one locked resource/request slot pair, so multi-tenant scheduling and
+resource-slot allocation remain engineering work. The next experiment should
+hold natural selections fixed across both transports, then add concurrency and
+lifecycle failure injection without changing the client.
 
 \section{Conclusion}
 Ollama can provide a low-friction PRA entry point without becoming a second PRA
 runtime. The measured E0 path reduces visible context at 0.5B, 8B, and 14B;
 the larger Mac runs expose both substantial TTFT reductions and dataset-specific
 quality/reuse reversals. Keep-alive dominates cold latency. Native support must
-be delegated and negotiated. The pinned llama.cpp seam now supplies a concrete
-mechanism receipt and the Ollama adapter validates it conservatively; on stock
-daemons the receipt remains absent and safe E0 fallback remains the default.
+be delegated and negotiated. The pinned llama.cpp sidecar now provides a live
+E2 path with exact warm reuse and lower latency on a 25-request controlled
+cohort. On stock daemons the receipt remains absent and safe E0 fallback remains
+the default.
 
 \section*{Artifact Availability}
 Branch \texttt{research/paper6-8-ollama} contains the adapter, pinned llama.cpp
