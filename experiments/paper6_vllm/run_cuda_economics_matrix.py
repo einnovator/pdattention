@@ -145,11 +145,16 @@ def _generate_stepwise(
         output = outputs[lookup]
         ordered.append(output)
         token_times = arrivals.get(lookup, arrivals.get(request_id, []))
+        incremental_arrivals = len(set(token_times)) > 1
         timings[str(output.request_id)] = {
-            "ttft_ms": token_times[0] if token_times else None,
+            # The offline V1 runner can return a complete decode in one step.
+            # Such a boundary is completion latency, not observable TTFT/ITL.
+            "ttft_ms": (
+                token_times[0] if token_times and incremental_arrivals else None
+            ),
             "mean_itl_ms": (
                 (token_times[-1] - token_times[0]) / (len(token_times) - 1)
-                if len(token_times) > 1
+                if len(token_times) > 1 and incremental_arrivals
                 else None
             ),
             "completion_latency_ms": completed.get(lookup),

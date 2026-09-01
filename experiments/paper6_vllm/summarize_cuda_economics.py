@@ -35,24 +35,43 @@ def summarize(payload: dict[str, Any]) -> dict[str, Any]:
                 "successful_requests_per_second": source[
                     "successful_requests_per_second"
                 ],
+                "sequence_agreement_vs_e0": source["sequence_agreement_vs_e0"],
+                "quality_gate_passed": source["quality_gate_passed"],
                 "ttft_p50_ms": source["ttft_ms"]["p50"],
                 "ttft_p95_ms": source["ttft_ms"]["p95"],
                 "ttft_p99_ms": source["ttft_ms"]["p99"],
                 "itl_p50_ms": source["mean_itl_ms"]["p50"],
                 "itl_p95_ms": source["mean_itl_ms"]["p95"],
                 "itl_p99_ms": source["mean_itl_ms"]["p99"],
+                "completion_p50_ms": source["completion_latency_ms"]["p50"],
+                "completion_p95_ms": source["completion_latency_ms"]["p95"],
+                "completion_p99_ms": source["completion_latency_ms"]["p99"],
+                "visible_source_tokens": source["visible_source_tokens_per_request"],
+                "scheduler_prompt_tokens": source[
+                    "scheduler_prompt_tokens_per_request"
+                ],
+                "selected_native_tokens": source[
+                    "selected_native_tokens_per_request"
+                ],
                 "peak_allocated_mib": source["peak_allocated_bytes"] / 2**20,
                 "apc_blocks_mean": source["apc_blocks_mean"],
                 "pra_logical_blocks": source["pra_logical_blocks"],
+                "pra_request_slot_blocks": source["pra_request_slot_blocks"],
+                "pra_shared_detached_blocks": source["pra_shared_detached_blocks"],
+                "pra_shared_detached_mib": source["pra_shared_detached_bytes"] / 2**20,
                 "pra_hot_source_mib": source["pra_hot_source_bytes"] / 2**20,
                 "pra_warm_persisted_mib": source["pra_warm_persisted_bytes"] / 2**20,
+                "storage_read_mib_total": source["storage_read_bytes_total"] / 2**20,
                 "h2d_mib_per_request": source["h2d_bytes_per_request"] / 2**20,
                 "d2d_mib_per_request": source["d2d_bytes_per_request"] / 2**20,
+                "reload_amplification": source["reload_amplification"],
+                "connector_load_p95_ms": source["connector_load_ms"]["p95"],
+                "connector_load_p99_ms": source["connector_load_ms"]["p99"],
                 "tail_status": source["tail_status"],
             }
         )
     return {
-        "schema_version": "paper6-vllm-cuda-economics-summary-v1",
+        "schema_version": "paper6-vllm-cuda-economics-summary-v2",
         "source_schema_version": payload["schema_version"],
         "evidence_tier": payload["evidence_tier"],
         "integration_status": payload["integration_status"],
@@ -65,6 +84,9 @@ def summarize(payload: dict[str, Any]) -> dict[str, Any]:
         ],
         "concurrency": payload["concurrency"],
         "requests_per_condition": payload["requests_per_condition"],
+        "source_tokens": payload["source_tokens"],
+        "full_source_tokens": payload["full_source_tokens"],
+        "query_tokens": payload["query_tokens"],
         "hbm_decomposition": payload["hbm_decomposition"],
         "rows": rows,
         "limitations": payload["limitations"],
@@ -81,42 +103,42 @@ def _write_csv(summary: dict[str, Any], path: Path) -> None:
 
 def _write_tables(summary: dict[str, Any], output_dir: Path) -> None:
     latency = [
-        r"\begin{tabular}{lrrrrrrrr}",
+        r"\begin{tabular}{lrrrrrrr}",
         r"\toprule",
-        r"Condition & Success & succ. req/s & \multicolumn{3}{c}{TTFT (ms)} & \multicolumn{3}{c}{mean ITL (ms)} \\",
-        r" &  &  & p50 & p95 & p99 & p50 & p95 & p99 \\",
+        r"Condition & Success & Exact & req/s & \multicolumn{3}{c}{completion (ms)} & attach p95 \\",
+        r" &  &  &  & p50 & p95 & p99 &  \\",
         r"\midrule",
     ]
     memory = [
-        r"\begin{tabular}{lrrrrrrr}",
+        r"\begin{tabular}{lrrrrrrrr}",
         r"\toprule",
-        r"Condition & peak HBM & APC blocks & PRA blocks & HOT MiB & WARM MiB & H2D/req & D2D/req \\",
+        r"Condition & visible src. & sched. prompt & native tok. & APC blocks & request blocks & shared blocks & shared MiB & H2D/req \\",
         r"\midrule",
     ]
     for row in summary["rows"]:
         latency.append(
-            "{} & {} & {} & {} & {} & {} & {} & {} & {} \\\\".format(
+            "{} & {} & {} & {} & {} & {} & {} & {} \\\\".format(
                 row["label"],
                 _number(row["success_rate"], 3),
+                _number(row["sequence_agreement_vs_e0"], 3),
                 _number(row["successful_requests_per_second"], 1),
-                _number(row["ttft_p50_ms"]),
-                _number(row["ttft_p95_ms"]),
-                _number(row["ttft_p99_ms"]),
-                _number(row["itl_p50_ms"]),
-                _number(row["itl_p95_ms"]),
-                _number(row["itl_p99_ms"]),
+                _number(row["completion_p50_ms"]),
+                _number(row["completion_p95_ms"]),
+                _number(row["completion_p99_ms"]),
+                _number(row["connector_load_p95_ms"]),
             )
         )
         memory.append(
-            "{} & {} & {} & {} & {} & {} & {} & {} \\\\".format(
+            "{} & {} & {} & {} & {} & {} & {} & {} & {} \\\\".format(
                 row["label"],
-                _number(row["peak_allocated_mib"]),
+                row["visible_source_tokens"],
+                row["scheduler_prompt_tokens"],
+                row["selected_native_tokens"],
                 _number(row["apc_blocks_mean"], 2),
-                row["pra_logical_blocks"],
-                _number(row["pra_hot_source_mib"], 2),
-                _number(row["pra_warm_persisted_mib"], 2),
+                row["pra_request_slot_blocks"],
+                row["pra_shared_detached_blocks"],
+                _number(row["pra_shared_detached_mib"], 2),
                 _number(row["h2d_mib_per_request"], 2),
-                _number(row["d2d_mib_per_request"], 2),
             )
         )
     latency.extend((r"\bottomrule", r"\end{tabular}"))
@@ -134,18 +156,18 @@ def _write_plot(summary: dict[str, Any], path: Path) -> None:
 
     labels = [row["label"] for row in summary["rows"]]
     rates = [row["successful_requests_per_second"] for row in summary["rows"]]
-    ttft50 = [row["ttft_p50_ms"] for row in summary["rows"]]
-    ttft99 = [row["ttft_p99_ms"] for row in summary["rows"]]
+    completion50 = [row["completion_p50_ms"] for row in summary["rows"]]
+    completion99 = [row["completion_p99_ms"] for row in summary["rows"]]
     figure, axes = plt.subplots(1, 2, figsize=(8.6, 3.2))
     axes[0].bar(labels, rates, color=("#4c78a8", "#59a14f", "#e15759", "#f28e2b"))
     axes[0].set_ylabel("successful requests/s")
     axes[0].set_title("Useful throughput")
     x = range(len(labels))
-    axes[1].plot(x, ttft50, marker="o", label="p50")
-    axes[1].plot(x, ttft99, marker="s", label="p99")
+    axes[1].plot(x, completion50, marker="o", label="p50")
+    axes[1].plot(x, completion99, marker="s", label="p99")
     axes[1].set_xticks(list(x), labels)
-    axes[1].set_ylabel("TTFT (ms)")
-    axes[1].set_title("First-token latency")
+    axes[1].set_ylabel("completion latency (ms)")
+    axes[1].set_title("Offline completion tails")
     axes[1].legend(frameon=False)
     for axis in axes:
         axis.grid(axis="y", alpha=0.25)
