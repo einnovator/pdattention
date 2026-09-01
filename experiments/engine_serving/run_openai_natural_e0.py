@@ -187,15 +187,25 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
                 f"{args.engine}:{entry['selection_id']}:{condition}".encode("utf-8")
             ).hexdigest()
             for repeat in range(args.repeats):
-                result = helpers.stream_chat_completion(
-                    args.base_url,
-                    model=args.model,
-                    messages=messages,
-                    timeout_seconds=args.timeout_seconds,
-                    cache_salt=salt if args.cache_salt else None,
-                    max_tokens=args.max_new_tokens,
-                    disable_native_thinking=args.disable_native_thinking,
-                )
+                if args.protocol == "ollama-native":
+                    result = helpers.stream_ollama_chat(
+                        args.base_url,
+                        model=args.model,
+                        messages=messages,
+                        timeout_seconds=args.timeout_seconds,
+                        max_tokens=args.max_new_tokens,
+                        thinking=not args.disable_native_thinking,
+                    )
+                else:
+                    result = helpers.stream_chat_completion(
+                        args.base_url,
+                        model=args.model,
+                        messages=messages,
+                        timeout_seconds=args.timeout_seconds,
+                        cache_salt=salt if args.cache_salt else None,
+                        max_tokens=args.max_new_tokens,
+                        disable_native_thinking=args.disable_native_thinking,
+                    )
                 exact, f1, containment = _quality(
                     str(result["output_text"]), str(entry["answer"])
                 )
@@ -241,6 +251,7 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
         "measurement_status": "MEASURED",
         "integration_level": "E0_SELECTED_TEXT",
         "engine": args.engine,
+        "protocol": args.protocol,
         "model_id": args.model,
         "model_revision": args.revision,
         "base_url": args.base_url,
@@ -266,6 +277,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--engine", required=True)
+    parser.add_argument(
+        "--protocol",
+        choices=("openai", "ollama-native"),
+        default="openai",
+    )
     parser.add_argument("--model", required=True)
     parser.add_argument("--tokenizer")
     parser.add_argument("--revision", default="main")

@@ -9,6 +9,7 @@ from pra_hf.serving_benchmark import (
     percentile,
     run_serving_benchmark,
     stream_chat_completion,
+    stream_ollama_chat,
 )
 
 
@@ -108,3 +109,45 @@ def test_ollama_thinking_control_uses_prompt_and_request_extension(monkeypatch) 
     assert captured["messages"][-1]["content"].endswith("/no_think")
     assert messages[-1]["content"] == "Question"
     assert result["output_text"] == "answer"
+
+
+def test_native_ollama_stream_uses_visible_content_and_usage(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def __iter__(self):
+            return iter(
+                [
+                    b'{"message":{"content":"short "},"done":false}\n',
+                    b'{"message":{"content":"answer"},"done":false}\n',
+                    b'{"message":{"content":""},"done":true,'
+                    b'"prompt_eval_count":31,"eval_count":2}\n',
+                ]
+            )
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured["url"] = request.full_url
+        captured.update(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    result = stream_ollama_chat(
+        "http://engine",
+        model="model",
+        messages=[{"role": "user", "content": "Question"}],
+        timeout_seconds=1,
+        thinking=False,
+    )
+
+    assert captured["url"] == "http://engine/api/chat"
+    assert captured["think"] is False
+    assert result["output_text"] == "short answer"
+    assert result["prompt_tokens"] == 31
+    assert result["completion_tokens"] == 2

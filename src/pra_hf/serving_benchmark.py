@@ -196,6 +196,78 @@ def stream_chat_completion(
     }
 
 
+def stream_ollama_chat(
+    base_url: str,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    timeout_seconds: float,
+    max_tokens: int = 16,
+    thinking: bool = False,
+) -> dict[str, Any]:
+    """Issue a native Ollama streaming request with explicit thinking control.
+
+    Ollama's OpenAI-compatible endpoint can expose Qwen reasoning in a separate
+    field and leave ``content`` empty. The native contract makes ``think`` an
+    owned request field, so benchmark quality is computed from user-visible
+    answer content rather than accidentally treating hidden reasoning as an
+    empty generation.
+    """
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "think": thinking,
+        "options": {"temperature": 0, "num_predict": max_tokens},
+    }
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Accept": "application/x-ndjson"},
+        method="POST",
+    )
+    started = time.perf_counter()
+    first_content: float | None = None
+    content_times: list[float] = []
+    pieces: list[str] = []
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        for raw_line in response:
+            line = raw_line.decode("utf-8").strip()
+            if not line:
+                continue
+            event = json.loads(line)
+            content = (event.get("message") or {}).get("content")
+            if content:
+                observed = time.perf_counter()
+                if first_content is None:
+                    first_content = observed
+                content_times.append(observed)
+                pieces.append(str(content))
+            if event.get("done"):
+                if event.get("prompt_eval_count") is not None:
+                    prompt_tokens = int(event["prompt_eval_count"])
+                if event.get("eval_count") is not None:
+                    completion_tokens = int(event["eval_count"])
+    ended = time.perf_counter()
+    intervals = [
+        (right - left) * 1000.0
+        for left, right in zip(content_times, content_times[1:])
+    ]
+    return {
+        "ttft_ms": None if first_content is None else (first_content - started) * 1000.0,
+        "completion_latency_ms": (ended - started) * 1000.0,
+        "mean_itl_ms": statistics.fmean(intervals) if intervals else None,
+        "output_events": len(content_times),
+        "output_text": "".join(pieces),
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "cached_tokens": None,
+    }
+
+
 def run_serving_benchmark(
     base_url: str,
     *,
