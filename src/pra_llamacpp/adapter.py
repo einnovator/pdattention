@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -76,6 +77,149 @@ class LlamaCppNativeExecutor(Protocol):
     def close_session(self, session_id: str) -> None: ...
 
 
+class LlamaCppNativeServerExecutor:
+    """Invoke the PRA-aware llama-server sequence-attachment protocol.
+
+    One idle slot owns an encoded resource sequence and a second slot owns the
+    request.  The server adds request-sequence membership to the resource's
+    unified-cache cells with ``llama_memory_seq_cp``; it does not copy K/V.
+    A lock protects this explicit slot pair until a larger scheduler allocates
+    pairs per concurrent request.
+    """
+
+    protocol = "pra.llama.cpp/v1"
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        resource_slot: int = 0,
+        request_slot: int = 1,
+        timeout_seconds: float = 120.0,
+    ) -> None:
+        if resource_slot == request_slot:
+            raise ValueError("PRA resource and request slots must differ.")
+        self.base_url = base_url.rstrip("/")
+        self.resource_slot = int(resource_slot)
+        self.request_slot = int(request_slot)
+        self.timeout_seconds = float(timeout_seconds)
+        self._resource_digest: str | None = None
+        self._lock = threading.RLock()
+        self._capabilities = self._negotiate()
+
+    def _request_json(
+        self, path: str, payload: Mapping[str, object] | None = None
+    ) -> Mapping[str, object]:
+        request = urllib.request.Request(
+            f"{self.base_url}{path}",
+            data=None if payload is None else json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="GET" if payload is None else "POST",
+        )
+        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _negotiate(self) -> Mapping[str, object]:
+        capabilities = self._request_json("/pra/capabilities")
+        if capabilities.get("protocol") != self.protocol:
+            raise RuntimeError("llama-server does not expose the supported PRA protocol.")
+        if not capabilities.get("native_sequence_attach"):
+            raise RuntimeError("llama-server was not started with --kv-unified.")
+        return capabilities
+
+    def _delete_resource(self) -> Mapping[str, object]:
+        request = urllib.request.Request(
+            f"{self.base_url}/pra/resources/{self.resource_slot}",
+            method="DELETE",
+        )
+        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _resource_text(request: PRAWireRequest) -> str:
+        parts = [resource.text for resource in request.resources if resource.text]
+        if not parts:
+            raise ValueError("Native llama.cpp execution requires selected resource text.")
+        return "\n".join(parts)
+
+    @staticmethod
+    def _query_text(request: PRAWireRequest) -> str:
+        explicit = request.engine_hints.get("prompt")
+        if explicit is not None:
+            return str(explicit)
+        return "\n".join(
+            f"{message.get('role', 'user')}: {message.get('content', '')}"
+            for message in request.messages
+        )
+
+    def _ensure_resource(self, request: PRAWireRequest) -> tuple[str, bool]:
+        text = self._resource_text(request)
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if digest == self._resource_digest:
+            return digest, False
+        self._request_json(
+            "/completion",
+            {
+                "prompt": text,
+                "id_slot": self.resource_slot,
+                "n_predict": 0,
+                "cache_prompt": True,
+                "temperature": 0,
+                "pra_pin_resource": True,
+            },
+        )
+        self._resource_digest = digest
+        return digest, True
+
+    def generate(
+        self, request: PRAWireRequest, block_store: LogicalPRABlockStore
+    ) -> PRAEngineResult:
+        del block_store
+        with self._lock:
+            digest, encoded = self._ensure_resource(request)
+            raw = self._request_json(
+                "/completion",
+                {
+                    "prompt": self._query_text(request),
+                    "id_slot": self.request_slot,
+                    "pra_resource_slot": self.resource_slot,
+                    "n_predict": request.resolved_max_new_tokens,
+                    "cache_prompt": True,
+                    "temperature": float(request.engine_hints.get("temperature", 0)),
+                    "return_tokens": True,
+                },
+            )
+        pra = dict(raw.get("pra", {}))
+        trace = (
+            {
+                "stage": "llama_cpp_native_resource",
+                "resource_digest": digest,
+                "encoded": encoded,
+                "resource_slot": self.resource_slot,
+            },
+            {
+                "stage": "llama_cpp_native_attach",
+                "request_slot": self.request_slot,
+                "wire_tokens": pra.get("wire_tokens"),
+                "native_tokens": pra.get("native_tokens"),
+                "physical_kv_copy": pra.get("physical_kv_copy"),
+            },
+        )
+        return PRAEngineResult(str(raw.get("content", "")), raw, trace)
+
+    def stream(
+        self, request: PRAWireRequest, block_store: LogicalPRABlockStore
+    ) -> Iterator[Mapping[str, object]]:
+        result = self.generate(request, block_store)
+        yield {"text": result.text, "done": True, "raw": result.raw}
+
+    def close_session(self, session_id: str) -> None:
+        del session_id
+        with self._lock:
+            self._delete_resource()
+            self._resource_digest = None
+
+
 class LlamaCppEngineAdapter(OpenAICompatibleEngineAdapter):
     """Use llama-server at E0/E1 or an explicit detached-memory extension at E2.
 
@@ -131,7 +275,7 @@ class LlamaCppEngineAdapter(OpenAICompatibleEngineAdapter):
                 gpu_kv=True,
                 selected_interval_materialization=True,
                 request_lifetime=True,
-                streaming=True,
+                streaming=False,
                 host_device_residency=True,
                 tenant_isolation=True,
             )

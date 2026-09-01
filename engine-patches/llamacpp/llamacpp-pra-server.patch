@@ -1,0 +1,301 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index f547735..9edf7a5 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -296,6 +296,10 @@ struct server_slot {
+ 
+     server_prompt prompt;
+ 
++    // Pinned PRA resources remain idle but are unavailable to ordinary LRU
++    // scheduling and unified-cache idle eviction until explicitly erased.
++    bool pra_resource_pinned = false;
++
+     bool prompt_save(server_prompt_cache & prompt_cache) const {
+         if (prompt.tokens.size() == 0) {
+             return false;
+@@ -691,6 +695,7 @@ struct server_slot {
+             {"n_ctx",         n_ctx},
+             {"speculative",   can_speculate()},
+             {"is_processing", is_processing()},
++            {"pra_resource_pinned", pra_resource_pinned},
+         };
+ 
+         const auto & ptask = task ? task : task_prev;
+@@ -1560,6 +1565,9 @@ private:
+                     SLT_TRC(slot, " - skipping, is_processing = %d\n", slot.is_processing());
+                     continue;
+                 }
++                if (slot.pra_resource_pinned && task.id_slot == -1) {
++                    continue;
++                }
+ 
+                 const auto & tokens = slot.prompt.tokens;
+ 
+@@ -1607,6 +1615,9 @@ private:
+                 if (slot.is_processing()) {
+                     continue;
+                 }
++                if (slot.pra_resource_pinned) {
++                    continue;
++                }
+ 
+                 // select the current slot if the criteria match
+                 if (!ret || slot.t_last_used <= t_last) {
+@@ -1664,6 +1675,9 @@ private:
+             if (slot.is_processing()) {
+                 continue;
+             }
++            if (slot.pra_resource_pinned) {
++                continue;
++            }
+ 
+             if (slot.prompt.n_tokens() > 0) {
+                 SRV_WRN("purging slot %d with %zu tokens\n", slot.id, slot.prompt.tokens.size());
+@@ -1694,6 +1708,10 @@ private:
+     }
+ 
+     bool launch_slot_with_task(server_slot & slot, server_task && task) {
++        if (slot.pra_resource_pinned && !task.pra_pin_resource) {
++            send_error(task, "Requested slot is reserved as a PRA resource", ERROR_TYPE_INVALID_REQUEST);
++            return false;
++        }
+         // process per-request lora adapters
+         if (!task.params.lora.empty()) {
+             auto task_loras = construct_lora_list(task.params.lora);
+@@ -1711,6 +1729,67 @@ private:
+             slot.lora = params_base.lora_adapters;
+         }
+ 
++        if (task.pra_resource_slot >= 0) {
++            if (!params_base.kv_unified) {
++                send_error(task, "PRA native attachment requires --kv-unified", ERROR_TYPE_INVALID_REQUEST);
++                return false;
++            }
++            if (task.pra_resource_slot >= (int32_t) slots.size()) {
++                send_error(task, "PRA resource slot is out of range", ERROR_TYPE_INVALID_REQUEST);
++                return false;
++            }
++
++            auto & source = slots[task.pra_resource_slot];
++            if (source.id == slot.id) {
++                send_error(task, "PRA resource and request slots must differ", ERROR_TYPE_INVALID_REQUEST);
++                return false;
++            }
++            if (source.is_processing()) {
++                send_error(task, "PRA resource slot is busy", ERROR_TYPE_UNAVAILABLE);
++                return false;
++            }
++            if (source.prompt.tokens.empty()) {
++                send_error(task, "PRA resource slot has no encoded context", ERROR_TYPE_INVALID_REQUEST);
++                return false;
++            }
++            if (source.prompt.tokens.has_mtmd || task.tokens.has_mtmd) {
++                send_error(task, "PRA native attachment currently supports text tokens only", ERROR_TYPE_NOT_SUPPORTED);
++                return false;
++            }
++            if (!are_lora_equal(source.lora, slot.lora)) {
++                send_error(task, "PRA resource and request slots use different LoRA state", ERROR_TYPE_INVALID_REQUEST);
++                return false;
++            }
++            source.pra_resource_pinned = true;
++
++            llama_tokens query = task.tokens.get_text_tokens();
++            const llama_token bos = llama_vocab_bos(vocab);
++            if (!query.empty() && !source.prompt.tokens.empty() &&
++                    query.front() == bos && source.prompt.tokens[0] == bos) {
++                query.erase(query.begin());
++            }
++            if (source.prompt.n_tokens() + (int32_t) query.size() >= slot.n_ctx) {
++                send_error(task, "PRA resource plus query exceeds the request slot context", ERROR_TYPE_EXCEED_CONTEXT_SIZE);
++                return false;
++            }
++
++            server_tokens merged = source.prompt.tokens.clone();
++            server_tokens query_tokens(query, false);
++            merged.push_back(query_tokens);
++            task.tokens = std::move(merged);
++            task.pra_native_tokens = source.prompt.n_tokens();
++
++            // seq_cp adds destination membership to the same physical cells.
++            // Clearing the destination first prevents leakage and duplicate
++            // materialization when a slot is reused for another request.
++            slot.prompt_clear();
++            slot.mem.seq_cp(source.id, slot.id, -1, -1);
++            slot.prompt = source.prompt.clone();
++
++            SLT_INF(slot, "attached PRA resource slot %d: native_tokens = %d, wire_tokens = %d\n",
++                    source.id, task.pra_native_tokens, task.pra_wire_tokens);
++        }
++
+         // if using alora, make sure it's only a single one requested and active
+         size_t alora_invocation_start = task.tokens.size();
+         if (lora_all_alora(slot.lora)) {
+@@ -1808,6 +1887,10 @@ private:
+ 
+         slot.task = std::make_unique<const server_task>(std::move(task));
+ 
++        if (slot.task->pra_pin_resource) {
++            slot.pra_resource_pinned = true;
++        }
++
+         slot.state = slot.task->is_child()
+             ? SLOT_STATE_WAIT_OTHER // wait for the parent to process prompt
+             : SLOT_STATE_STARTED;
+@@ -2105,6 +2188,9 @@ private:
+         res->n_prompt_tokens       = slot.task->n_tokens();
+         res->n_prompt_tokens_cache = slot.stats.n_prompt_cached;
+         res->n_tokens_cached       = slot.prompt.n_tokens();
++        res->pra_resource_slot     = slot.task->pra_resource_slot;
++        res->pra_wire_tokens       = slot.task->pra_wire_tokens;
++        res->pra_native_tokens     = slot.task->pra_native_tokens;
+         res->has_new_line          = slot.has_new_line;
+         res->stopping_word         = slot.stopping_word;
+         res->stop                  = slot.stop;
+@@ -2418,7 +2504,9 @@ private:
+ 
+                                 if (params_base.kv_unified) {
+                                     // [TAG_IDLE_SLOT_CLEAR]
+-                                    slot.prompt_clear();
++                                    if (!slot.pra_resource_pinned) {
++                                        slot.prompt_clear();
++                                    }
+                                 }
+                             }
+                         }
+@@ -2649,6 +2737,7 @@ private:
+                     const size_t n_erased = slot->prompt.tokens.size();
+ 
+                     slot->prompt_clear();
++                    slot->pra_resource_pinned = false;
+ 
+                     auto res = std::make_unique<server_task_result_slot_erase>();
+                     res->id       = task.id;
+@@ -4294,6 +4383,9 @@ std::unique_ptr<server_res_generator> server_routes::handle_completions_impl(
+             task.params.message_spans = task.tokens.find_message_spans(delimiters);
+ 
+             task.id_slot = json_value(data, "id_slot", -1);
++            task.pra_resource_slot = json_value(data, "pra_resource_slot", -1);
++            task.pra_wire_tokens = task.n_tokens();
++            task.pra_pin_resource = json_value(data, "pra_pin_resource", false);
+             sse_ping_interval = task.params.sse_ping_interval;
+ 
+             // OAI-compat
+@@ -4786,6 +4878,34 @@ void server_routes::init_routes() {
+         return res;
+     };
+ 
++    this->get_pra_capabilities = [this](const server_http_req &) {
++        auto res = create_response(true);
++        res->ok({
++            {"protocol", "pra.llama.cpp/v1"},
++            {"engine", "llama.cpp"},
++            {"integration_level", params.kv_unified ? "E2" : "E0"},
++            {"native_sequence_attach", params.kv_unified},
++            {"physical_kv_copy", false},
++            {"requires_kv_unified", true},
++            {"explicit_slot_ownership_required", true},
++            {"request_field", "pra_resource_slot"},
++            {"resource_release_endpoint", "/pra/resources/{id_slot}"},
++        });
++        return res;
++    };
++
++    this->delete_pra_resource = [this](const server_http_req & req) {
++        int id_slot;
++        try {
++            id_slot = std::stoi(req.get_param("id_slot"));
++        } catch (const std::exception &) {
++            auto res = create_response();
++            res->error(format_error_response("Invalid PRA resource slot ID", ERROR_TYPE_INVALID_REQUEST));
++            return res;
++        }
++        return handle_slots_erase(req, id_slot);
++    };
++
+     this->post_props = [this](const server_http_req &) {
+         auto res = create_response();
+         if (!params.endpoint_props) {
+diff --git a/tools/server/server-context.h b/tools/server/server-context.h
+index 0acbbff..1c1dc55 100644
+--- a/tools/server/server-context.h
++++ b/tools/server/server-context.h
+@@ -133,6 +133,8 @@ struct server_routes {
+     server_http_context::handler_t get_slots;
+     server_http_context::handler_t post_slots;
+     server_http_context::handler_t get_props;
++    server_http_context::handler_t get_pra_capabilities;
++    server_http_context::handler_t delete_pra_resource;
+     server_http_context::handler_t post_props;
+     server_http_context::handler_t post_infill;
+     server_http_context::handler_t post_completions;
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 0d3beb3..a6b5c00 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -356,6 +356,15 @@ json server_task_result_cmpl_final::to_json_non_oaicompat() {
+         {"tokens_cached",       n_tokens_cached},
+         {"timings",             stats.to_json()},
+     };
++    if (pra_resource_slot >= 0) {
++        res["pra"] = {
++            {"integration_level", "E2"},
++            {"resource_slot", pra_resource_slot},
++            {"wire_tokens", pra_wire_tokens},
++            {"native_tokens", pra_native_tokens},
++            {"physical_kv_copy", false},
++        };
++    }
+     if (!stream && !probs_output.empty()) {
+         res["completion_probabilities"] = completion_token_output::probs_vector_to_json(probs_output, post_sampling_probs);
+     }
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 9c99143..526c43d 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -153,6 +153,13 @@ struct server_task {
+     task_params   params;
+     server_tokens tokens;
+ 
++    // PRA native-memory extension. The client sends only query tokens and
++    // names an idle slot whose already-encoded sequence should be attached.
++    int32_t pra_resource_slot = -1;
++    int32_t pra_wire_tokens   = 0;
++    int32_t pra_native_tokens = 0;
++    bool    pra_pin_resource  = false;
++
+     // only used by CLI, this allow tokenizing CLI inputs on server side
+     // we need this because mtmd_context and vocab are not accessible outside of server_context
+     bool                    cli = false;
+@@ -234,6 +241,9 @@ struct server_task {
+         copy.type      = type;
+         copy.tokens    = tokens.clone();
+         copy.id_slot   = -1; // child tasks cannot specify slot
++        copy.pra_resource_slot = pra_resource_slot;
++        copy.pra_wire_tokens   = pra_wire_tokens;
++        copy.pra_pin_resource  = pra_pin_resource;
+ 
+         // use different sampling seed for each child
+         // note: https://github.com/ggml-org/llama.cpp/pull/18700#discussion_r2675115723
+@@ -331,6 +341,9 @@ struct server_task_result_cmpl_final : server_task_result {
+     int32_t n_prompt_tokens;
+     int32_t n_prompt_tokens_cache;
+     int32_t n_tokens_cached;
++    int32_t pra_resource_slot = -1;
++    int32_t pra_wire_tokens   = 0;
++    int32_t pra_native_tokens = 0;
+     bool has_new_line;
+     std::string stopping_word;
+     stop_type stop = STOP_TYPE_NONE;
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 22378b3..ef3431c 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -247,6 +247,8 @@ int llama_server(common_params & params, int argc, char ** argv) {
+     ctx_http.get ("/v1/health",                ex_wrapper(routes.get_health)); // public endpoint (no API key check)
+     ctx_http.get ("/metrics",                  ex_wrapper(routes.get_metrics));
+     ctx_http.get ("/props",                    ex_wrapper(routes.get_props));
++    ctx_http.get ("/pra/capabilities",         ex_wrapper(routes.get_pra_capabilities));
++    ctx_http.del ("/pra/resources/:id_slot",   ex_wrapper(routes.delete_pra_resource));
+     ctx_http.post("/props",                    ex_wrapper(routes.post_props));
+     ctx_http.get ("/models",                   ex_wrapper(routes.get_models));
+     ctx_http.get ("/v1/models",                ex_wrapper(routes.get_models));

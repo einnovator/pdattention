@@ -19,11 +19,11 @@ class LlamaCppRuntimeProvider(RuntimeProvider):
         return str(configured) if configured else shutil.which("llama-server")
 
     def capabilities(self, config: RuntimeConfig) -> PRAEngineCapabilities:
-        del config
+        native = bool(config.engine_options.get("native_pra", False))
         return PRAEngineCapabilities(
-            adapter="llama_cpp_http",
+            adapter="llama_cpp_pra" if native else "llama_cpp_http",
             engine_type=EngineType.LLAMA_CPP,
-            integration_level="E0",
+            integration_level="E2" if native else "E0",
             prefix_cache_mode=PrefixCacheMode.EXPLICIT_PREFIX_HANDLE,
             automatic_prefix_cache=True,
             explicit_prefix_cache=True,
@@ -31,11 +31,19 @@ class LlamaCppRuntimeProvider(RuntimeProvider):
             session_state=True,
             cache_affinity=True,
             text_fallback=True,
+            native_kv=native,
+            external_kv_residency=native,
+            cpu_kv=native,
+            gpu_kv=native,
+            selected_interval_materialization=native,
+            request_lifetime=native,
+            tenant_isolation=native,
             streaming=False,
         )
 
     def doctor(self, config: RuntimeConfig) -> RuntimeDoctorReport:
         executable = self._executable(config)
+        native = bool(config.engine_options.get("native_pra", False))
         checks: list[dict[str, Any]] = [
             {"name": "provider", "status": "READY", "detail": type(self).__name__},
             {
@@ -45,8 +53,12 @@ class LlamaCppRuntimeProvider(RuntimeProvider):
             },
             {
                 "name": "native-pra",
-                "status": "NOT_INSTALLED",
-                "detail": "Upstream slot state is sequential prefix state, not detached E2 K/V.",
+                "status": "CONFIGURED" if native else "NOT_CONFIGURED",
+                "detail": (
+                    "PRA-aware server patch with --kv-unified requested."
+                    if native
+                    else "Set engine_options.native_pra=true for the patched E2 server."
+                ),
             },
         ]
         return RuntimeDoctorReport(
@@ -73,7 +85,9 @@ class LlamaCppRuntimeProvider(RuntimeProvider):
             str(config.engine_options.get("alias", config.model)),
             "--slots",
         ]
-        reserved = {"executable", "alias"}
+        if bool(config.engine_options.get("native_pra", False)):
+            command.append("--kv-unified")
+        reserved = {"executable", "alias", "native_pra"}
         for key, value in config.engine_options.items():
             if key in reserved:
                 continue

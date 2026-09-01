@@ -24,12 +24,15 @@ to first token fell on HotpotQA (696 to 457 ms) and QASPER (2733 to 348 ms),
 while 2Wiki was confounded by warm prefix reuse. A live slot checkpoint saved
 13 positional tokens as 160,572 bytes and restored them in 2.327 ms. The audit
 shows that this state is sequential prefix state, not detached semantic K/V.
-However, the public in-process memory API exposes a narrower native seam:
-encode a resource under one sequence, enable unified K/V storage, and attach
-its existing cells to a request with \texttt{llama\_memory\_seq\_cp}. Across
-five prompts on CPU and Metal, all 10 schedule-matched E0/E2 runs have zero
-maximum logit error through four decode steps. We therefore qualify HTTP/slot
-execution at E0 and this pinned in-process, prefix-positioned mechanism at E2.
+The public memory API also exposes a native seam: encode a resource under one
+sequence and attach its existing unified-cache cells to a request with
+\texttt{llama\_memory\_seq\_cp}. We wire that seam into \texttt{llama-server}
+with negotiated capabilities, pinned resource slots, query-only requests, and
+explicit release. All 25 matched E0/E2 generations and 25 warm reuses are
+token-exact; 15/15 concurrent requests share one resource correctly. Warm E2
+latency is $0.898\times$ E0, while cold attachment is $1.096\times$ E0. Thus
+the pinned server path qualifies a prefix-positioned E2 mechanism, while
+scheduler-owned resource allocation remains E3 work.
 \end{abstract}
 
 \section{Introduction}
@@ -51,7 +54,8 @@ This paper contributes: (i) a capability-honest llama.cpp SDK provider and
 adapter; (ii) a pinned audit of public server and cache-state seams; (iii) live
 CPU and Metal E0 qualification with frozen evidence selections; and (iv) a
 minimal native selected-K/V implementation over llama.cpp's public C API with
-schedule-matched logit and persistent-decode parity.
+schedule-matched logit parity; and (v) a live server protocol with resource
+lifecycle, warm reuse, absent-memory controls, and shared-resource concurrency.
 
 \section{PRA Contract}
 For query state $q$ and selected native memory $(K_M,V_M)$, native PRA requires
@@ -110,8 +114,8 @@ llama.cpp independently owns GGUF loading, CPU/Metal/CUDA/Vulkan placement,
 slots, scheduling, graph execution, and kernels. Slot snapshots remain on the
 ordinary sequential-state path.
 \end{minipage}}
-\caption{Ownership and integration boundary. E0 is measured through the HTTP
-server. The narrow E2 path is measured through the pinned in-process C API.}
+\caption{Ownership and integration boundary. Both E0 and the narrow E2 path
+are now measured through HTTP; the in-process probe independently checks logits.}
 \label{fig:architecture}
 \end{figure}
 
@@ -123,15 +127,25 @@ prevents an application from reusing a slot solely because two visible prompts
 look alike. The filename discipline improves prefix-state isolation but does
 not upgrade its integration level.
 
-Only an explicit \texttt{LlamaCppNativeExecutor} can advertise E2. It receives
-the versioned \texttt{PRAWireRequest} and a \texttt{LogicalPRABlockStore}. The
-reference probe implements its engine-side core in C++: encode the selected
-resource under a dedicated sequence; attach those cache cells to the request;
-then decode query tokens at the same logical positions used by split E0. Unit
-tests enforce that HTTP and slot paths remain E0, that resource changes alter
-slot identity, and that only a native executor changes the advertised
-capability. Production wiring must additionally bind sequence IDs to tenant,
-model, resource version, and request lifetime.
+Only an explicit \texttt{LlamaCppNativeExecutor} can advertise E2. The concrete
+\texttt{LlamaCppNativeServerExecutor} first negotiates
+\texttt{/pra/capabilities}. It encodes selected text once in a resource slot
+marked \texttt{pra\_pin\_resource}, sends only the query to a separate request
+slot, and names the source with \texttt{pra\_resource\_slot}. At launch, the
+server rejects non-unified caches, busy or empty sources, source/destination
+aliasing, multimodal tokens, LoRA mismatch, and context overflow. It strips a
+duplicate query BOS, clones logical prompt metadata, and calls
+\texttt{seq\_cp(source,destination)}. The unified cache adds destination
+membership to existing cells rather than copying K/V payloads.
+
+Pinned resource slots are excluded from ordinary LRU selection, idle-slot
+clearing, and emergency idle eviction. This rule was required by a live warm
+reuse failure found during development: upstream unified-cache housekeeping
+correctly clears ordinary idle slots, but a PRA resource is deliberately idle
+between queries. \texttt{DELETE /pra/resources/\{slot\}} removes sequence
+membership, clears the pin, and returns the slot to the ordinary pool. The
+current SDK serializes one explicit resource/request slot pair; allocation,
+authorization, and multiplexing of many pairs belong to an E3 scheduler.
 
 \section{Experimental Method}
 We used an Apple M4 Pro with 14 CPU cores, 20 GPU cores, and 48 GB unified
@@ -166,6 +180,14 @@ decodes only the same query tokens. We compare every vocabulary logit at the
 first prediction and through four greedy decode steps. A one-call FULL control
 is retained separately because changing prefill batch shape can introduce
 ordinary floating-point differences.
+
+The server cohort uses the same 0.5B GGUF on the 48-GB M4 Pro Metal backend.
+Five factual resource/query pairs are repeated five times. For every pair, E0
+receives selected text plus query, whereas E2 first pins the selected resource
+and then sends only the same query. We also repeat the E2 attachment without
+re-encoding, run a query with no resource, and issue three concurrent requests
+against one immutable source. Reported request latency is client-observed HTTP
+wall time; this short non-streaming run does not separate TTFT from completion.
 
 \section{Results}
 \begin{table}[t]
@@ -282,6 +304,48 @@ of 0.0015--0.0058 because resident masked cells change the unified-cache kernel
 shape. Explicitly reattaching the still-resident resource reproduces
 first-request logits exactly in all 10 runs.
 
+\subsection{Native server lifecycle and economics}
+
+\begin{table}[h]
+\centering\small
+\caption{Matched llama-server E0/E2 cohort on M4 Pro Metal. Latencies are
+milliseconds over 25 requests; ratios use means.}
+\begin{tabular}{lrrrr}
+\toprule Condition & Mean & p95 & New/wire tokens & Exact vs E0\\
+\midrule
+E0 selected text & 37.46 & 40.51 & 17.6 & reference\\
+E2 cold attach & 41.05 & 78.76 & 5.4 & 25/25\\
+E2 warm attach & 33.65 & 36.29 & 5.4 & 25/25\\
+\bottomrule
+\end{tabular}
+\label{tab:native-server}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.94\linewidth]{figures/native_server_attach.png}
+\caption{Server-level native attachment. Warm E2 is faster than E0 in this
+short cohort; cold E2 retains a first-use tail. All parity, reuse, concurrent
+sharing, and absent-memory checks pass.}
+\label{fig:native-server}
+\end{figure}
+
+E0 evaluates 17.6 prompt tokens on average. E2 carries 5.4 query tokens on the
+wire and attaches 12.2 already encoded native tokens; initial resource ingest
+costs 8.00 ms on average. Cold E2 is $1.096\times$ E0 mean latency, but warm E2
+falls to $0.898\times$ E0. The p95 difference is larger in the cold condition
+because first-use graph work is included. The result therefore supports the
+expected economic boundary: one-shot attachment need not win, whereas reuse
+can amortize ingestion and avoid selected-text prefill.
+
+All 25 E0/E2 token sequences match exactly, as do all 25 warm repeats. All 25
+no-resource controls differ from their resource-enabled counterparts. Three
+simultaneous request slots share one pinned resource with 15/15 exact outputs,
+no physical K/V copy, and mean throughput of 48.62 requests/s. Explicit release
+removes the source sequence and clears its pin. These checks close transport,
+reuse, isolation, sharing, and cleanup for this narrow mechanism; they do not
+establish natural-QA quality or a production scheduler.
+
 \section{Capability and Stop Gate}
 \begin{table}[h]
 \centering\small
@@ -290,7 +354,7 @@ first-request logits exactly in all 10 runs.
 \toprule Backend & E0 & E2 & E3\\
 \midrule
 CPU & measured (0.5B; 8B diagnostic) & 5-case in-process mechanism & not implemented\\
-Metal & measured (0.5B, 8B) & 5-case in-process mechanism & not implemented\\
+Metal & measured (0.5B, 8B) & 25-run server + 5-case logits & not implemented\\
 CUDA & not run here & not run & not run\\
 Vulkan & not run here & not run & not run\\
 \bottomrule
@@ -298,31 +362,33 @@ Vulkan & not run here & not run & not run\\
 \end{table}
 
 The mechanism gate is closed at narrow scope: E0 works, slot state is precisely
-classified, and unified-cache sequence attachment has exact CPU/Metal logits
-and persistent decode. Server request plumbing, multi-resource controls,
-physical memory accounting under load, CUDA/Vulkan replication, and E3
-scheduler ownership remain open.
+classified, unified-cache sequence attachment has exact CPU/Metal logits, and
+the server path now has explicit ingest, attach, reuse, concurrency, isolation,
+and release. Multi-resource controls, physical byte accounting under sustained
+load, CUDA/Vulkan replication, and E3 scheduler ownership remain open.
 
 \section{Limitations and Next Work}
 The cohorts remain small; the 8B replication broadens model scale but not the
 number of independent questions. Native parity uses five synthetic factual
-prompts and one model, not natural QA. We do not measure gold-answer log
-probability, physical sharing under concurrency, server tail latency, or
-multi-resource budgeting. The sequence-attached mechanism also preserves
-prefix-equivalent positions; arbitrary non-prefix positional geometry would
-still require a graph-level attention extension. Next work is HTTP request
-wiring with absent/wrong/multiple-memory and tenant-isolation controls,
-followed by matched CPU, Metal, CUDA, and Vulkan runs.
+prompts and one model, not natural QA. The concurrency cohort has only 15
+requests, and non-streaming responses do not provide TTFT, ITL, or reliable
+tail estimates. We do not yet measure gold-answer log probability, physical
+bytes saved under pressure, or multi-resource budgeting. The sequence-attached
+mechanism also preserves prefix-equivalent positions; arbitrary non-prefix
+geometry requires a graph-level attention extension. Next work is a
+tenant-aware slot allocator, multiple selected resources, longer natural-QA
+workloads, then matched CPU, Metal, CUDA, and Vulkan runs.
 
 \section{Conclusion}
 llama.cpp supplies a portable selected-text baseline and cheap sequential slot
 persistence. Slot restore remains E0/E1. The pinned public C API nevertheless
 supports a narrow E2 path: unified-cache sequence membership can expose an
-already encoded selected resource to a request with exact schedule-matched
-logits and persistent decode. This result is an implementation foothold, not a
-finished server product. Resource identity, authorization, lifecycle,
-concurrency, multi-resource geometry, and arbitrary non-prefix positions still
-belong in the adapter and scheduler layers.
+already encoded selected resource to a query-only server request without a
+physical K/V copy. Exact matched generation, warm reuse, shared-resource
+concurrency, absent-memory isolation, and explicit cleanup now work end to end.
+Warm E2 beats selected text in this short cohort, while cold E2 does not. The
+remaining product boundary is no longer basic transport; it is E3 allocation,
+authorization, multi-resource geometry, pressure behavior, and portability.
 
 \section*{Artifact Availability}
 The adapter, tests, raw JSON, figure generator, commands, and manuscript are
