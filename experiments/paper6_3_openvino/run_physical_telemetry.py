@@ -175,7 +175,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     core = ov.Core()
     sampler = PhysicalSampler(core, args.device, args.sample_interval_ms / 1000.0)
     rows = []
-    for entry in entries:
+    for entry_index, entry in enumerate(entries):
         selected, selected_tokens = _bounded_text(
             tokenizer, str(entry["selected_source"]), args.max_selected_tokens
         )
@@ -184,15 +184,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             f"{selected}\n\nDistractor material:\n{entry['distractor_source']}",
             args.max_full_tokens,
         )
-        for condition, evidence, source_tokens in (
+        conditions = (
             ("selected_text_e0", selected, selected_tokens),
             ("full_context_e0", full, full_tokens),
-        ):
-            prompt = (
-                f"Evidence:\n{evidence}\n\nQuestion: {entry['question']}\n"
-                "Answer briefly using only the evidence."
+        )
+        for repeat in range(args.repeats):
+            ordered = (
+                conditions
+                if (entry_index + repeat) % 2 == 0
+                else tuple(reversed(conditions))
             )
-            for repeat in range(args.repeats):
+            for condition, evidence, source_tokens in ordered:
+                prompt = (
+                    f"Evidence:\n{evidence}\n\nQuestion: {entry['question']}\n"
+                    "Answer briefly using only the evidence."
+                )
                 cpu_before = sampler.process.cpu_times()
                 sampler.start()
                 started = time.perf_counter()
