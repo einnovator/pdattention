@@ -17,10 +17,12 @@ product surface: ordinary installations receive selected-text E0, while a
 PRA-aware model backend may negotiate native E2 without requiring a second
 attention implementation in Ollama. We implement this capability-negotiated
 adapter, pin a current source audit, and test Windows and Apple Metal daemons.
-In a Qwen3-8B M5 replication over 15 natural-QA examples, selected prompts used
-10.0--42.2\% of full-context tokens. Median time to first token decreased from
-1328 to 1129 ms on HotpotQA and from 2533 to 929 ms on QASPER; 2Wiki again
-reversed direction under warm reuse. Keeping Qwen3-8B alive reduced request
+Across Qwen3-8B on M5 and Qwen3-14B on M4 Pro, selected prompts use
+10.0--42.4\% of full-context tokens. At 14B, median time to first token falls
+from 1731 to 1044 ms on HotpotQA and from 6257 to 847 ms on QASPER; 2Wiki again
+reverses direction under warm reuse. Its small-cohort F1 is lower on HotpotQA
+and QASPER and equal on 2Wiki, separating transport benefit from quality
+preservation. Keeping Qwen3-8B alive reduced request
 latency from 5.84 s cold to 0.714 s across five warm requests
 (8.18$\times$). No native backend
 handshake was available, so AUTO correctly remained E0. The result is a usable
@@ -98,6 +100,11 @@ option and defaults off for bounded answer generation. Ollama 0.30.8 honors
 ignored that extension in our run, so the benchmark also sends Qwen's
 \texttt{/no\_think} control. A regression test protects both the request field
 and prompt control and verifies that the caller's messages are not mutated.
+Ollama 0.32.7 with the official Qwen3-14B package still emitted reasoning-only
+OpenAI deltas. We therefore add a native NDJSON benchmark path that reads only
+user-visible \texttt{message.content}, captures prompt/evaluation counts, and
+sets \texttt{think=false}. The empty-content OpenAI pass is rejected rather
+than scored as zero quality.
 
 \texttt{inspect\_endpoint()} queries \texttt{/api/version}, \texttt{/api/tags},
 and \texttt{/api/ps}. The runtime provider's doctor reports the endpoint and
@@ -128,6 +135,11 @@ requests, switches to SmolLM2-135M, and returns to Qwen. The first SmolLM use
 includes Metal runner compilation and is therefore a deployment observation,
 not model-scale evidence.
 
+A third run uses an M4 Pro with 20 GPU cores, 48~GiB unified memory, and Ollama
+0.32.7. Qwen3-14B is fully GPU resident. The same 15 frozen identities,
+384/4096 source-token caps, two repeats, and 12-token generation bound are sent
+through native \texttt{/api/chat}; retrieval does not change from the 8B run.
+
 \section{Results}
 \begin{table}[t]
 \centering\small
@@ -146,14 +158,17 @@ QASPER & 0.375 & 300.0 / 732.7 & 0.217 / 0.099\\
 
 \begin{table}[t]
 \centering\small
-\caption{Qwen3-8B Q4\_K\_M on M5 Metal. Prompt ratio is selected/full; TTFT is
+\caption{Qwen3 Metal scale replication. Prompt ratio is selected/full; TTFT is
 p50 ms; F1 is selected/full.}
-\begin{tabular}{lrrr}
-\toprule Dataset & Prompt ratio & TTFT selected/full & F1 selected/full\\
+\begin{tabular}{llrrr}
+\toprule Model & Dataset & Prompt ratio & TTFT selected/full & F1 selected/full\\
 \midrule
-HotpotQA & 0.327 & 1129 / 1328 & 0.381 / 0.181\\
-QASPER & 0.100 & 929 / 2533 & 0.113 / 0.108\\
-2Wiki & 0.422 & 984 / 844 & 0.195 / 0.200\\
+8B & HotpotQA & 0.327 & 1129 / 1328 & 0.381 / 0.181\\
+8B & QASPER & 0.100 & 929 / 2533 & 0.113 / 0.108\\
+8B & 2Wiki & 0.422 & 984 / 844 & 0.195 / 0.200\\
+14B & HotpotQA & 0.329 & 1044 / 1731 & 0.120 / 0.270\\
+14B & QASPER & 0.100 & 847 / 6257 & 0.086 / 0.110\\
+14B & 2Wiki & 0.424 & 981 / 658 & 0.163 / 0.163\\
 \bottomrule
 \end{tabular}
 \label{tab:m5-8b}
@@ -172,6 +187,14 @@ It lowers median TTFT by 14.9\% on HotpotQA and 63.3\% on QASPER; 2Wiki is
 1528 ms selected. F1 is approximately preserved on QASPER and 2Wiki and higher
 on the five Hotpot examples. Repeats contribute latency samples, not independent
 quality samples, so these signs remain smoke evidence.
+
+The 14B point strengthens the transport result but not a selected-context
+quality claim. It removes 57.6--90.0\% of visible prompt tokens and lowers
+median TTFT by 39.7\% on HotpotQA and 86.5\% on QASPER. The 2Wiki median is
+49.1\% slower selected, while its full-context p95 is 5.03 s versus 2.37 s
+selected. F1 is 0.120/0.270 and 0.086/0.110 selected/full on HotpotQA and
+QASPER, and equal at 0.163 on 2Wiki. These five-example slices show that input
+pressure and answer quality remain separate acceptance gates.
 
 \begin{table}[t]
 \centering\small
@@ -232,8 +255,8 @@ AUTO returns to E0.
 
 \section{Limitations and Next Work}
 The original Windows runtime is old relative to the pinned source audit; the
-paper does not merge those observations with the separate 0.30.8 M5
-replication. Two model sizes and hosts are measured, but both cohorts are small.
+paper does not merge those observations with the separate 0.30.8 M5 and 0.32.7
+M4 Pro replications. Three model sizes are measured, but all natural cohorts are small.
 Memory use, concurrent requests, cancellation, reconnects, daemon
 restart, quantized variants, and native E0/E2 parity remain open. The next step
 is to expose the same capability handshake through a PRA-aware llama.cpp or
@@ -242,8 +265,9 @@ without changing the client.
 
 \section{Conclusion}
 Ollama can provide a low-friction PRA entry point without becoming a second PRA
-runtime. The measured E0 path reduces visible context at both 0.5B and 8B and
-benefits two of three small natural-QA slices; keep-alive dominates cold
+runtime. The measured E0 path reduces visible context at 0.5B, 8B, and 14B;
+the larger Mac runs expose both substantial TTFT reductions and dataset-specific
+quality/reuse reversals. Keep-alive dominates cold
 latency. Native support must
 be delegated and negotiated. On the tested daemon it was absent, and the safe
 fallback worked as designed.
