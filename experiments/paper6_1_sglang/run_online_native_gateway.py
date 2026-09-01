@@ -8,6 +8,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
+import subprocess
 import tempfile
 import threading
 import time
@@ -29,6 +31,39 @@ def _optional_percentile(values: list[float], probability: float) -> float | Non
     """Preserve missing engine timestamps as null instead of aborting a run."""
 
     return _percentile(values, probability) if values else None
+
+
+def _command_value(command: list[str]) -> str | None:
+    try:
+        return subprocess.run(
+            command, check=True, capture_output=True, text=True
+        ).stdout.strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+
+def _runtime_metadata() -> dict[str, object]:
+    """Bind the online receipt to its Apple host and SGLang source tree."""
+
+    return {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "hardware_model": _command_value(["sysctl", "-n", "hw.model"]),
+        "cpu_brand": _command_value(["sysctl", "-n", "machdep.cpu.brand_string"]),
+        "physical_memory_bytes": int(
+            _command_value(["sysctl", "-n", "hw.memsize"]) or 0
+        ),
+        "git_commit": _command_value(["git", "rev-parse", "HEAD"]),
+        "sglang_source_commit": _command_value(
+            [
+                "git",
+                "-C",
+                str(Path.home() / "git/llm-engine-lab/src/sglang"),
+                "rev-parse",
+                "HEAD",
+            ]
+        ),
+    }
 
 
 def main() -> None:
@@ -259,6 +294,7 @@ def main() -> None:
         "model_id": args.model,
         "model_revision": revision,
         "dataset": args.dataset,
+        "runtime": _runtime_metadata(),
         "health_ms": health_ms,
         "capabilities": health,
         "prime": prime,
