@@ -1,149 +1,153 @@
-{
-  "schema_version": "paper5-gemma-adaptation-grid-v1",
-  "models": [
-    "google/gemma-3-270m-it",
-    "google/gemma-3-1b-it"
-  ],
-  "seeds": [
-    11,
-    23,
-    37,
-    53,
-    71
-  ],
-  "regimes": [
-    "frozen_pra",
-    "consumer_lora",
-    "interface_lora"
-  ],
-  "aggregates": [
-    {
-      "schema_version": "paper4-pretrained-tier1-five-seed-v1",
-      "experiment": "ordinary_language_pretrained_consumer_learning_five_seed",
-      "model_id": "google/gemma-3-270m-it",
-      "seeds": [
-        11,
-        23,
-        37,
-        53,
-        71
-      ],
-      "regimes": [
-        {
-          "regime": "consumer_lora",
-          "seed_count": 5,
-          "mean_evidence_nll_delta": -2.233450661599636,
-          "evidence_nll_delta_stdev": 0.200005089667441,
-          "mean_ordinary_retention_nll_delta": -1.9727392055094242,
-          "ordinary_retention_nll_delta_stdev": 0.10229088416711596,
-          "mean_evidence_vs_distractor_nll_margin": -0.011798501014709473,
-          "evidence_vs_distractor_nll_margin_stdev": 0.03366243552959495,
-          "positive_causal_margin_seeds": 1,
-          "passing_seeds": 1,
-          "all_seeds_pass": false
-        },
-        {
-          "regime": "frozen_pra",
-          "seed_count": 5,
-          "mean_evidence_nll_delta": 0.0,
-          "evidence_nll_delta_stdev": 0.0,
-          "mean_ordinary_retention_nll_delta": 0.0,
-          "ordinary_retention_nll_delta_stdev": 0.0,
-          "mean_evidence_vs_distractor_nll_margin": -0.03829847425222397,
-          "evidence_vs_distractor_nll_margin_stdev": 0.017763556314777145,
-          "positive_causal_margin_seeds": 0,
-          "passing_seeds": 0,
-          "all_seeds_pass": false
-        },
-        {
-          "regime": "interface_lora",
-          "seed_count": 5,
-          "mean_evidence_nll_delta": -2.2503259532153606,
-          "evidence_nll_delta_stdev": 0.1903418018137985,
-          "mean_ordinary_retention_nll_delta": -2.0057904183864594,
-          "ordinary_retention_nll_delta_stdev": 0.11793429434498531,
-          "mean_evidence_vs_distractor_nll_margin": -0.00882616639137268,
-          "evidence_vs_distractor_nll_margin_stdev": 0.03241210219522206,
-          "positive_causal_margin_seeds": 1,
-          "passing_seeds": 1,
-          "all_seeds_pass": false
-        }
-      ],
-      "consumer_gate": "FAIL",
-      "routing_stage": "BLOCKED_CONSUMER_NOT_REPLICATED",
-      "passing_regimes": [],
-      "source_files": [
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_11/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_23/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_37/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_53/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_71/summary.json"
-      ],
-      "paper5_scope": "two-scale pretrained consumer adaptation; no logical-memory scaling claim"
-    },
-    {
-      "schema_version": "paper4-pretrained-tier1-five-seed-v1",
-      "experiment": "ordinary_language_pretrained_consumer_learning_five_seed",
-      "model_id": "google/gemma-3-1b-it",
-      "seeds": [
-        11,
-        23,
-        37,
-        53,
-        71
-      ],
-      "regimes": [
-        {
-          "regime": "consumer_lora",
-          "seed_count": 5,
-          "mean_evidence_nll_delta": -1.9265995912253857,
-          "evidence_nll_delta_stdev": 0.053738723244884025,
-          "mean_ordinary_retention_nll_delta": -1.485028964281082,
-          "ordinary_retention_nll_delta_stdev": 0.07081609916887846,
-          "mean_evidence_vs_distractor_nll_margin": -0.008473856747150421,
-          "evidence_vs_distractor_nll_margin_stdev": 0.0945061059531666,
-          "positive_causal_margin_seeds": 3,
-          "passing_seeds": 3,
-          "all_seeds_pass": false
-        },
-        {
-          "regime": "frozen_pra",
-          "seed_count": 5,
-          "mean_evidence_nll_delta": 0.0,
-          "evidence_nll_delta_stdev": 0.0,
-          "mean_ordinary_retention_nll_delta": 0.0,
-          "ordinary_retention_nll_delta_stdev": 0.0,
-          "mean_evidence_vs_distractor_nll_margin": -0.2097977250814438,
-          "evidence_vs_distractor_nll_margin_stdev": 0.0697391735800909,
-          "positive_causal_margin_seeds": 0,
-          "passing_seeds": 0,
-          "all_seeds_pass": false
-        },
-        {
-          "regime": "interface_lora",
-          "seed_count": 5,
-          "mean_evidence_nll_delta": -1.9357175074517727,
-          "evidence_nll_delta_stdev": 0.062172174811435395,
-          "mean_ordinary_retention_nll_delta": -1.5055688455700875,
-          "ordinary_retention_nll_delta_stdev": 0.08784167954606549,
-          "mean_evidence_vs_distractor_nll_margin": -0.012259433418512345,
-          "evidence_vs_distractor_nll_margin_stdev": 0.08827391405380172,
-          "positive_causal_margin_seeds": 3,
-          "passing_seeds": 3,
-          "all_seeds_pass": false
-        }
-      ],
-      "consumer_gate": "FAIL",
-      "routing_stage": "BLOCKED_CONSUMER_NOT_REPLICATED",
-      "passing_regimes": [],
-      "source_files": [
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_11/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_23/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_37/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_53/summary.json",
-        "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_71/summary.json"
-      ],
-      "paper5_scope": "two-scale pretrained consumer adaptation; no logical-memory scaling claim"
-    }
-  ]
+﻿{
+    "schema_version":  "paper4-gemma-adaptation-grid-v1",
+    "models":  [
+                   "google/gemma-3-270m-it",
+                   "google/gemma-3-1b-it"
+               ],
+    "seeds":  [
+                  11,
+                  23,
+                  37,
+                  53,
+                  71
+              ],
+    "regimes":  [
+                    "frozen_pra",
+                    "consumer_lora",
+                    "interface_lora"
+                ],
+    "aggregates":  [
+                       {
+                           "schema_version":  "paper4-pretrained-tier1-five-seed-v1",
+                           "experiment":  "ordinary_language_pretrained_consumer_learning_five_seed",
+                           "model_id":  "google/gemma-3-270m-it",
+                           "seeds":  [
+                                         11,
+                                         23,
+                                         37,
+                                         53,
+                                         71
+                                     ],
+                           "regimes":  [
+                                           {
+                                               "regime":  "consumer_lora",
+                                               "seed_count":  5,
+                                               "mean_evidence_nll_delta":  -2.233450661599636,
+                                               "evidence_nll_delta_stdev":  0.200005089667441,
+                                               "mean_ordinary_retention_nll_delta":  -1.9727392055094242,
+                                               "ordinary_retention_nll_delta_stdev":  0.10229088416711596,
+                                               "mean_evidence_vs_distractor_nll_margin":  -0.011798501014709473,
+                                               "evidence_vs_distractor_nll_margin_stdev":  0.03366243552959495,
+                                               "positive_causal_margin_seeds":  1,
+                                               "passing_seeds":  1,
+                                               "all_seeds_pass":  false
+                                           },
+                                           {
+                                               "regime":  "frozen_pra",
+                                               "seed_count":  5,
+                                               "mean_evidence_nll_delta":  0.0,
+                                               "evidence_nll_delta_stdev":  0.0,
+                                               "mean_ordinary_retention_nll_delta":  0.0,
+                                               "ordinary_retention_nll_delta_stdev":  0.0,
+                                               "mean_evidence_vs_distractor_nll_margin":  -0.03829847425222397,
+                                               "evidence_vs_distractor_nll_margin_stdev":  0.017763556314777145,
+                                               "positive_causal_margin_seeds":  0,
+                                               "passing_seeds":  0,
+                                               "all_seeds_pass":  false
+                                           },
+                                           {
+                                               "regime":  "interface_lora",
+                                               "seed_count":  5,
+                                               "mean_evidence_nll_delta":  -2.2503259532153606,
+                                               "evidence_nll_delta_stdev":  0.1903418018137985,
+                                               "mean_ordinary_retention_nll_delta":  -2.0057904183864594,
+                                               "ordinary_retention_nll_delta_stdev":  0.11793429434498531,
+                                               "mean_evidence_vs_distractor_nll_margin":  -0.00882616639137268,
+                                               "evidence_vs_distractor_nll_margin_stdev":  0.03241210219522206,
+                                               "positive_causal_margin_seeds":  1,
+                                               "passing_seeds":  1,
+                                               "all_seeds_pass":  false
+                                           }
+                                       ],
+                           "consumer_gate":  "FAIL",
+                           "routing_stage":  "BLOCKED_CONSUMER_NOT_REPLICATED",
+                           "passing_regimes":  [
+
+                                               ],
+                           "source_files":  [
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_11/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_23/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_37/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_53/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-270m-it/seed_71/summary.json"
+                                            ],
+                           "scope":  "pretrained consumer adaptation; no routing stage"
+                       },
+                       {
+                           "schema_version":  "paper4-pretrained-tier1-five-seed-v1",
+                           "experiment":  "ordinary_language_pretrained_consumer_learning_five_seed",
+                           "model_id":  "google/gemma-3-1b-it",
+                           "seeds":  [
+                                         11,
+                                         23,
+                                         37,
+                                         53,
+                                         71
+                                     ],
+                           "regimes":  [
+                                           {
+                                               "regime":  "consumer_lora",
+                                               "seed_count":  5,
+                                               "mean_evidence_nll_delta":  -1.9265995912253857,
+                                               "evidence_nll_delta_stdev":  0.053738723244884025,
+                                               "mean_ordinary_retention_nll_delta":  -1.485028964281082,
+                                               "ordinary_retention_nll_delta_stdev":  0.07081609916887846,
+                                               "mean_evidence_vs_distractor_nll_margin":  -0.008473856747150421,
+                                               "evidence_vs_distractor_nll_margin_stdev":  0.0945061059531666,
+                                               "positive_causal_margin_seeds":  3,
+                                               "passing_seeds":  3,
+                                               "all_seeds_pass":  false
+                                           },
+                                           {
+                                               "regime":  "frozen_pra",
+                                               "seed_count":  5,
+                                               "mean_evidence_nll_delta":  0.0,
+                                               "evidence_nll_delta_stdev":  0.0,
+                                               "mean_ordinary_retention_nll_delta":  0.0,
+                                               "ordinary_retention_nll_delta_stdev":  0.0,
+                                               "mean_evidence_vs_distractor_nll_margin":  -0.2097977250814438,
+                                               "evidence_vs_distractor_nll_margin_stdev":  0.0697391735800909,
+                                               "positive_causal_margin_seeds":  0,
+                                               "passing_seeds":  0,
+                                               "all_seeds_pass":  false
+                                           },
+                                           {
+                                               "regime":  "interface_lora",
+                                               "seed_count":  5,
+                                               "mean_evidence_nll_delta":  -1.9357175074517727,
+                                               "evidence_nll_delta_stdev":  0.062172174811435395,
+                                               "mean_ordinary_retention_nll_delta":  -1.5055688455700875,
+                                               "ordinary_retention_nll_delta_stdev":  0.08784167954606549,
+                                               "mean_evidence_vs_distractor_nll_margin":  -0.012259433418512345,
+                                               "evidence_vs_distractor_nll_margin_stdev":  0.08827391405380172,
+                                               "positive_causal_margin_seeds":  3,
+                                               "passing_seeds":  3,
+                                               "all_seeds_pass":  false
+                                           }
+                                       ],
+                           "consumer_gate":  "FAIL",
+                           "routing_stage":  "BLOCKED_CONSUMER_NOT_REPLICATED",
+                           "passing_regimes":  [
+
+                                               ],
+                           "source_files":  [
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_11/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_23/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_37/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_53/summary.json",
+                                                "/private/tmp/paper5_gemma_grid/google--gemma-3-1b-it/seed_71/summary.json"
+                                            ],
+                           "scope":  "pretrained consumer adaptation; no routing stage"
+                       }
+                   ]
 }
