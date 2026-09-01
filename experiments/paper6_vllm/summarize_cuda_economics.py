@@ -26,6 +26,8 @@ def summarize(payload: dict[str, Any]) -> dict[str, Any]:
 
     rows = []
     for source in payload["rows"]:
+        completion = source.get("completion_latency_ms", {})
+        connector = source.get("connector_load_ms", {})
         rows.append(
             {
                 "condition": source["condition"],
@@ -35,38 +37,38 @@ def summarize(payload: dict[str, Any]) -> dict[str, Any]:
                 "successful_requests_per_second": source[
                     "successful_requests_per_second"
                 ],
-                "sequence_agreement_vs_e0": source["sequence_agreement_vs_e0"],
-                "quality_gate_passed": source["quality_gate_passed"],
+                "sequence_agreement_vs_e0": source.get("sequence_agreement_vs_e0"),
+                "quality_gate_passed": source.get("quality_gate_passed"),
                 "ttft_p50_ms": source["ttft_ms"]["p50"],
                 "ttft_p95_ms": source["ttft_ms"]["p95"],
                 "ttft_p99_ms": source["ttft_ms"]["p99"],
                 "itl_p50_ms": source["mean_itl_ms"]["p50"],
                 "itl_p95_ms": source["mean_itl_ms"]["p95"],
                 "itl_p99_ms": source["mean_itl_ms"]["p99"],
-                "completion_p50_ms": source["completion_latency_ms"]["p50"],
-                "completion_p95_ms": source["completion_latency_ms"]["p95"],
-                "completion_p99_ms": source["completion_latency_ms"]["p99"],
-                "visible_source_tokens": source["visible_source_tokens_per_request"],
-                "scheduler_prompt_tokens": source[
+                "completion_p50_ms": completion.get("p50"),
+                "completion_p95_ms": completion.get("p95"),
+                "completion_p99_ms": completion.get("p99"),
+                "visible_source_tokens": source.get("visible_source_tokens_per_request"),
+                "scheduler_prompt_tokens": source.get(
                     "scheduler_prompt_tokens_per_request"
-                ],
-                "selected_native_tokens": source[
+                ),
+                "selected_native_tokens": source.get(
                     "selected_native_tokens_per_request"
-                ],
+                ),
                 "peak_allocated_mib": source["peak_allocated_bytes"] / 2**20,
                 "apc_blocks_mean": source["apc_blocks_mean"],
                 "pra_logical_blocks": source["pra_logical_blocks"],
-                "pra_request_slot_blocks": source["pra_request_slot_blocks"],
-                "pra_shared_detached_blocks": source["pra_shared_detached_blocks"],
-                "pra_shared_detached_mib": source["pra_shared_detached_bytes"] / 2**20,
+                "pra_request_slot_blocks": source.get("pra_request_slot_blocks"),
+                "pra_shared_detached_blocks": source.get("pra_shared_detached_blocks"),
+                "pra_shared_detached_mib": source.get("pra_shared_detached_bytes", 0) / 2**20,
                 "pra_hot_source_mib": source["pra_hot_source_bytes"] / 2**20,
                 "pra_warm_persisted_mib": source["pra_warm_persisted_bytes"] / 2**20,
-                "storage_read_mib_total": source["storage_read_bytes_total"] / 2**20,
+                "storage_read_mib_total": source.get("storage_read_bytes_total", 0) / 2**20,
                 "h2d_mib_per_request": source["h2d_bytes_per_request"] / 2**20,
                 "d2d_mib_per_request": source["d2d_bytes_per_request"] / 2**20,
-                "reload_amplification": source["reload_amplification"],
-                "connector_load_p95_ms": source["connector_load_ms"]["p95"],
-                "connector_load_p99_ms": source["connector_load_ms"]["p99"],
+                "reload_amplification": source.get("reload_amplification"),
+                "connector_load_p95_ms": connector.get("p95"),
+                "connector_load_p99_ms": connector.get("p99"),
                 "tail_status": source["tail_status"],
             }
         )
@@ -84,9 +86,9 @@ def summarize(payload: dict[str, Any]) -> dict[str, Any]:
         ],
         "concurrency": payload["concurrency"],
         "requests_per_condition": payload["requests_per_condition"],
-        "source_tokens": payload["source_tokens"],
-        "full_source_tokens": payload["full_source_tokens"],
-        "query_tokens": payload["query_tokens"],
+        "source_tokens": payload.get("source_tokens"),
+        "full_source_tokens": payload.get("full_source_tokens"),
+        "query_tokens": payload.get("query_tokens"),
         "hbm_decomposition": payload["hbm_decomposition"],
         "rows": rows,
         "limitations": payload["limitations"],

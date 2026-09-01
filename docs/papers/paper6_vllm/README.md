@@ -18,17 +18,21 @@ Llama-3.2-1B-Instruct, and Gemma-3-1B-IT each independently reach 840/840;
 all 3,360 paired completions are exact and all cost ratios are within 3.1% of
 parity. An expanded Qwen3-1.7B confirmation covers 149 unique examples and
 reaches 2,086/2,086 exact pairs; its four E2/E0 cost ratios are
-1.009/0.997/1.003/0.991. Detached CUDA pages, LMCache, and online arrival-load
-tails remain open; the measured CUDA connector is still prefix-shaped.
+1.009/0.997/1.003/0.991. CUDA now also has a version-bounded
+scheduler-invisible worker reserve. In a 512-request FULL/E0/E2 matrix, both
+native conditions preserve 128/128 E0 sequences, use zero request-owned PRA
+slots, and share one physical source block. HOT and WARM reach 80.8% and 75.4%
+of E0 throughput, so this closes the detached mechanism gate but not the
+product-performance gate. LMCache and online arrival-load tails remain open.
 
-The CUDA connector economics harness freezes one selected source across FULL
-retained text, E0 selected text, E2-HOT, and E2-WARM. Request-scoped E2
-identities prevent ordinary APC from silently satisfying the selected source.
-HOT keeps an immutable GPU source tensor; WARM reloads the persisted tensor and
-records host-to-device traffic. The runner reports TTFT/mean-ITL tails, useful
-throughput, APC and PRA occupancy, peak CUDA allocation, storage reads, and
-H2D/D2D bytes. This remains a prefix-shaped connector experiment: selected
-content is hidden, but source-length scheduler slots are still allocated.
+The CUDA economics harness freezes one selected source across FULL retained
+text, E0 selected text, E2-HOT, and E2-WARM. HOT keeps an immutable GPU source
+page; WARM reloads the persisted page and records host-to-device traffic. The
+worker reserve is outside the scheduler-owned block range, so selected content
+uses neither visible text nor request-owned source slots. The runner reports
+completion tails, useful throughput, APC and PRA occupancy, HBM components,
+storage reads, and H2D/D2D bytes. The offline V1 runner emits each short decode
+at one observable boundary, so token TTFT/ITL remain unavailable.
 
 The shared storage manager is also connected to live reserved pages. Across
 80 examples spanning three datasets at 0.6B and QASPER at 1.7B, lossless WARM
@@ -58,7 +62,7 @@ PYTHONPATH=src:. python -m experiments.paper6_vllm.summarize_cross_model \
   --output-dir docs/papers/shared/results/paper6_vllm/cross_model_matched
 PYTHONPATH=src:. python -m experiments.paper6_vllm.run_cuda_economics_matrix \
   --output docs/papers/shared/results/paper6_vllm/cuda_economics_raw.json \
-  --concurrency 8 --waves 16
+  --concurrency 8 --waves 16 --detached-pages
 PYTHONPATH=src:. python -m experiments.paper6_vllm.summarize_cuda_economics \
   --input docs/papers/shared/results/paper6_vllm/cuda_economics_raw.json \
   --output-dir docs/papers/shared/results/paper6_vllm
