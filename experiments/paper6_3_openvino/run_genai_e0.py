@@ -76,6 +76,7 @@ def _sample(pipe: object, genai: object, messages: list[dict[str, str]], max_tok
     perf = result.perf_metrics
     text = _decoded_text(result)
     return {
+        "measurement_status": "MEASURED",
         "output_text": text,
         "expected_answer_present": "PRA_EVIDENCE_4821" in text,
         "wall_latency_ms": elapsed_ms,
@@ -97,29 +98,44 @@ def _aggregate(
     *,
     percentile,
 ) -> Mapping[str, object]:
+    measured = [row for row in rows if row.get("measurement_status") == "MEASURED"]
+
     def values(name: str) -> list[float]:
-        return [float(row[name]) for row in rows if row.get(name) is not None]
+        return [float(row[name]) for row in measured if row.get(name) is not None]
 
     ttft = values("ttft_ms")
     latency = values("wall_latency_ms")
     return {
         "condition": condition,
-        "sample_count": len(rows),
-        "quality_success_rate": statistics.fmean(
-            float(bool(row["expected_answer_present"])) for row in rows
+        "sample_count": len(measured),
+        "requested_sample_count": len(rows),
+        "cache_admission_failures": len(rows) - len(measured),
+        "quality_success_rate": (
+            statistics.fmean(
+                float(bool(row["expected_answer_present"])) for row in measured
+            )
+            if measured
+            else None
         ),
-        "cold_ttft_ms": rows[0].get("ttft_ms"),
+        "cold_ttft_ms": measured[0].get("ttft_ms") if measured else None,
         "warm_ttft_ms_mean": statistics.fmean(ttft[1:]) if len(ttft) > 1 else None,
-        "ttft_ms_p50": percentile(ttft, 0.50),
-        "ttft_ms_p95": percentile(ttft, 0.95),
-        "ttft_ms_p99": percentile(ttft, 0.99),
-        "completion_latency_ms_p50": percentile(latency, 0.50),
-        "completion_latency_ms_p95": percentile(latency, 0.95),
-        "completion_latency_ms_p99": percentile(latency, 0.99),
+        "ttft_ms_p50": percentile(ttft, 0.50) if ttft else None,
+        "ttft_ms_p95": percentile(ttft, 0.95) if ttft else None,
+        "ttft_ms_p99": percentile(ttft, 0.99) if ttft else None,
+        "completion_latency_ms_p50": percentile(latency, 0.50) if latency else None,
+        "completion_latency_ms_p95": percentile(latency, 0.95) if latency else None,
+        "completion_latency_ms_p99": percentile(latency, 0.99) if latency else None,
         "mean_input_tokens": (
             statistics.fmean(values("input_tokens")) if values("input_tokens") else None
         ),
         "mean_rss_bytes": statistics.fmean(values("rss_bytes")) if values("rss_bytes") else None,
+        "admission_errors": sorted(
+            {
+                str(row["error"])
+                for row in rows
+                if row.get("measurement_status") == "NOT_RUN_CACHE_ADMISSION"
+            }
+        ),
     }
 
 
@@ -153,7 +169,15 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
     conditions = harness.benchmark_messages()
     for condition, messages in conditions.items():
         for repeat in range(args.repeats):
-            values = _sample(pipe, genai, messages, args.max_tokens)
+            try:
+                values = _sample(pipe, genai, messages, args.max_tokens)
+            except RuntimeError as error:
+                if "did not fit in the available cache budget" not in str(error):
+                    raise
+                values = {
+                    "measurement_status": "NOT_RUN_CACHE_ADMISSION",
+                    "error": str(error),
+                }
             samples.append({"condition": condition, "repeat": repeat, **values})
     aggregates = [
         _aggregate(
