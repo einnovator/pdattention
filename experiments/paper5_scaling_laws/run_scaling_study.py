@@ -107,6 +107,30 @@ def _git_dirty() -> bool:
     )
 
 
+def _host_hardware() -> dict[str, Any]:
+    """Return portable host identity plus Apple-specific fields when present."""
+
+    result: dict[str, Any] = {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor() or None,
+    }
+    if platform.system() == "Darwin":
+        for field, name in (
+            ("apple_hardware_model", "hw.model"),
+            ("cpu_brand", "machdep.cpu.brand_string"),
+            ("physical_memory_bytes", "hw.memsize"),
+        ):
+            try:
+                value = subprocess.check_output(
+                    ["sysctl", "-n", name], text=True
+                ).strip()
+                result[field] = int(value) if field.endswith("_bytes") else value
+            except (OSError, subprocess.CalledProcessError, ValueError):
+                result[field] = None
+    return result
+
+
 def _source_hash(paths: Sequence[Path]) -> str:
     digest = hashlib.sha256()
     for path in sorted(paths):
@@ -886,6 +910,7 @@ def main() -> None:
         "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "torch_version": torch.__version__,
         "python_version": platform.python_version(),
+        "host_hardware": _host_hardware(),
         "scope": "controlled retrieval and systems pilot; no language-model output evaluation",
     }
     (output / "scaling_configs.json").write_text(
