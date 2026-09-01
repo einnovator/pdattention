@@ -3,7 +3,7 @@
 \usepackage{booktabs,amsmath,graphicx,hyperref,xcolor}
 \hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
 \title{Progressive Retrieval Attention for llama.cpp:\\
-Portable Semantic Non-Prefix Memory in the GGUF Ecosystem}
+Portable Sequence-Attached Semantic K/V in the GGUF Ecosystem}
 \author{Jorge Sim\~ao}
 \date{September 2026}
 
@@ -24,8 +24,12 @@ to first token fell on HotpotQA (696 to 457 ms) and QASPER (2733 to 348 ms),
 while 2Wiki was confounded by warm prefix reuse. A live slot checkpoint saved
 13 positional tokens as 160,572 bytes and restored them in 2.327 ms. The audit
 shows that this state is sequential prefix state, not detached semantic K/V.
-We therefore qualify upstream llama.cpp at E0 and define, but do not claim, the
-minimal native boundary required for E2.
+However, the public in-process memory API exposes a narrower native seam:
+encode a resource under one sequence, enable unified K/V storage, and attach
+its existing cells to a request with \texttt{llama\_memory\_seq\_cp}. Across
+five prompts on CPU and Metal, all 10 schedule-matched E0/E2 runs have zero
+maximum logit error through four decode steps. We therefore qualify HTTP/slot
+execution at E0 and this pinned in-process, prefix-positioned mechanism at E2.
 \end{abstract}
 
 \section{Introduction}
@@ -45,8 +49,9 @@ memory would produce an attractive but incorrect E2 claim.
 
 This paper contributes: (i) a capability-honest llama.cpp SDK provider and
 adapter; (ii) a pinned audit of public server and cache-state seams; (iii) live
-CPU and Metal E0 qualification with frozen evidence selections; and (iv) an
-explicit native-extension contract for future E2 work.
+CPU and Metal E0 qualification with frozen evidence selections; and (iv) a
+minimal native selected-K/V implementation over llama.cpp's public C API with
+schedule-matched logit and persistent-decode parity.
 
 \section{PRA Contract}
 For query state $q$ and selected native memory $(K_M,V_M)$, native PRA requires
@@ -78,27 +83,35 @@ configuration, cache quantization, CPU execution, and Metal offload. GGUF owns
 model topology and quantized weights; llama.cpp owns tensor placement, graph
 execution, attention kernels, and sequential cache representation.
 
-The public \texttt{/slots/\{id\}} save/restore API is operational only when the
+The public slot save/restore endpoint is operational only when the
 server is launched with \texttt{--slot-save-path}. Its object is an engine slot:
 token positions, recurrent conversational state, and ordinary cached K/V. It
 does not accept an immutable resource identifier, per-layer selected intervals,
-or separate direct/memory geometry. Consequently, public state APIs cannot be
-used to claim E2.
+or separate direct/memory geometry. Consequently, slot state cannot be used to
+claim E2.
+
+The in-process C API has a distinct seam. \texttt{llama\_memory\_seq\_cp}
+adds one sequence's cache cells to another sequence. With
+\texttt{kv\_unified=true}, the pinned implementation updates cell metadata and
+does not copy K/V buffers. A selected resource can therefore remain under a
+stable resource sequence, be attached to a request sequence, and be consumed
+without resubmitting its text. This is native transport with ordinary
+prefix-equivalent positions; it is not yet an arbitrary-position memory branch.
 
 \begin{figure}[t]
 \centering
 \fbox{\begin{minipage}{0.92\linewidth}\small
 Typed PRA records $\rightarrow$ authorization and frozen selection
 $\rightarrow$ \textbf{E0}: selected text in llama-server prompt.\\[2pt]
-The same logical selection $\rightarrow$ resource-bound native block store
-$\rightarrow$ \textbf{future E2 extension}: detached per-layer K/V
-$\rightarrow$ one direct+memory attention normalization.\\[2pt]
+The same selection $\rightarrow$ resource sequence in unified K/V
+$\rightarrow$ metadata-only sequence attachment
+$\rightarrow$ \textbf{E2}: query-only decode over selected native K/V.\\[2pt]
 llama.cpp independently owns GGUF loading, CPU/Metal/CUDA/Vulkan placement,
 slots, scheduling, graph execution, and kernels. Slot snapshots remain on the
 ordinary sequential-state path.
 \end{minipage}}
-\caption{Ownership and integration boundary. The upper path is measured; the
-native path is a tested SDK boundary but not an upstream engine result.}
+\caption{Ownership and integration boundary. E0 is measured through the HTTP
+server. The narrow E2 path is measured through the pinned in-process C API.}
 \label{fig:architecture}
 \end{figure}
 
@@ -111,12 +124,14 @@ look alike. The filename discipline improves prefix-state isolation but does
 not upgrade its integration level.
 
 Only an explicit \texttt{LlamaCppNativeExecutor} can advertise E2. It receives
-the versioned \texttt{PRAWireRequest} and a \texttt{LogicalPRABlockStore}. This
-small interface is the intended seam for a future llama/ggml extension that
-imports selected per-layer K/V, validates model and geometry fingerprints, and
-joins them to direct attention exactly once. Unit tests enforce that HTTP and
-slot paths remain E0, that resource changes alter slot identity, and that only
-the native executor changes the advertised capability.
+the versioned \texttt{PRAWireRequest} and a \texttt{LogicalPRABlockStore}. The
+reference probe implements its engine-side core in C++: encode the selected
+resource under a dedicated sequence; attach those cache cells to the request;
+then decode query tokens at the same logical positions used by split E0. Unit
+tests enforce that HTTP and slot paths remain E0, that resource changes alter
+slot identity, and that only a native executor changes the advertised
+capability. Production wiring must additionally bind sequence IDs to tenant,
+model, resource version, and request lifetime.
 
 \section{Experimental Method}
 We used an Apple M4 Pro with 14 CPU cores, 20 GPU cores, and 48 GB unified
@@ -141,6 +156,16 @@ cohort used five unique examples per dataset, two repeats, a 384-token selected
 cap, and a 4096-token full-context cap. A one-example-per-dataset CPU run with
 four threads is reported only as a backend diagnostic; it is not a matched
 throughput comparison.
+
+The native mechanism cohort uses pinned llama.cpp commit
+\texttt{458681e1d5d}, Qwen2.5-0.5B-Instruct Q4\_K\_M, and five factual prompts.
+Each prompt runs on CPU and Metal. The E0 control encodes resource and query in
+two calls under one request sequence. E2 encodes the same resource tokens under
+a resource sequence, attaches them to the request in unified-cache mode, and
+decodes only the same query tokens. We compare every vocabulary logit at the
+first prediction and through four greedy decode steps. A one-call FULL control
+is retained separately because changing prefill batch shape can introduce
+ordinary floating-point differences.
 
 \section{Results}
 \begin{table}[t]
@@ -228,6 +253,35 @@ for repeated sequential sessions. It also demonstrates why slots are not a
 substitute for PRA: the saved object is much larger than a logical reference,
 is position-shaped, and has no selected-resource attention contract.
 
+\subsection{Native sequence-attachment qualification}
+
+\begin{table}[h]
+\centering\small
+\caption{Pinned in-process native selected-K/V mechanism cohort. Exact logits
+refer to schedule-matched split E0 versus E2 through four decode steps.}
+\begin{tabular}{lrrrrr}
+\toprule Backend & Cases & Exact logits & Exact decode & Isolation & Warm reuse\\
+\midrule
+CPU & 5 & 5/5 & 5/5 & 5/5 exact & 5/5\\
+Metal & 5 & 5/5 & 5/5 & 5/5 $<.006$ & 5/5\\
+\bottomrule
+\end{tabular}
+\label{tab:native-sequence-attach}
+\end{table}
+
+Schedule-matched E0 and E2 have maximum logit error exactly zero in all 10
+runs, including every persistent-decode step. One-shot FULL retains the same
+top token in 10/10 runs but differs numerically from split E0/E2: maximum
+FULL--E2 error ranges up to 0.415 on CPU and 0.0201 on Metal. The split control
+localizes that difference to prefill batch shape rather than native sequence
+attachment. In unified-cache mode, upstream \texttt{seq\_cp} adds the request
+sequence ID to existing cells; it does not copy their physical K/V payload.
+After first-request cleanup, absent second requests match a fresh query exactly
+on CPU. Metal preserves all five top tokens but has maximum logit differences
+of 0.0015--0.0058 because resident masked cells change the unified-cache kernel
+shape. Explicitly reattaching the still-resident resource reproduces
+first-request logits exactly in all 10 runs.
+
 \section{Capability and Stop Gate}
 \begin{table}[h]
 \centering\small
@@ -235,41 +289,45 @@ is position-shaped, and has no selected-resource attention contract.
 \begin{tabular}{llll}
 \toprule Backend & E0 & E2 & E3\\
 \midrule
-CPU & measured (0.5B; 8B diagnostic) & not implemented & not implemented\\
-Metal & measured (0.5B, 8B) & extension boundary only & not implemented\\
+CPU & measured (0.5B; 8B diagnostic) & 5-case in-process mechanism & not implemented\\
+Metal & measured (0.5B, 8B) & 5-case in-process mechanism & not implemented\\
 CUDA & not run here & not run & not run\\
 Vulkan & not run here & not run & not run\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The stop gate is partially closed: E0 works, CPU and one accelerator are
-measured, public state is precisely classified, and SDK isolation tests pass.
-Native correctness, persistent selected K/V, physical memory accounting,
-CUDA/Vulkan replication, and E3 scheduler ownership remain open.
+The mechanism gate is closed at narrow scope: E0 works, slot state is precisely
+classified, and unified-cache sequence attachment has exact CPU/Metal logits
+and persistent decode. Server request plumbing, multi-resource controls,
+physical memory accounting under load, CUDA/Vulkan replication, and E3
+scheduler ownership remain open.
 
 \section{Limitations and Next Work}
 The cohorts remain small; the 8B replication broadens model scale but not the
-number of independent questions. We do not
-measure gold-answer log probability, physical K/V sharing, concurrent tail
-latency, or native E0/E2 parity. The next defensible step is the narrow native
-extension in Figure~\ref{fig:architecture}, followed by geometry-matched
-absent/wrong/multiple-memory controls and matched CPU, Metal, CUDA, and Vulkan
-runs. Backend portability must be demonstrated independently.
+number of independent questions. Native parity uses five synthetic factual
+prompts and one model, not natural QA. We do not measure gold-answer log
+probability, physical sharing under concurrency, server tail latency, or
+multi-resource budgeting. The sequence-attached mechanism also preserves
+prefix-equivalent positions; arbitrary non-prefix positional geometry would
+still require a graph-level attention extension. Next work is HTTP request
+wiring with absent/wrong/multiple-memory and tenant-isolation controls,
+followed by matched CPU, Metal, CUDA, and Vulkan runs.
 
 \section{Conclusion}
-llama.cpp already supplies a strong, portable selected-text baseline and cheap
-sequential slot persistence. Its public state APIs do not provide detached
-semantic K/V. PRA integration should therefore remain E0 upstream today and
-move to E2 only through an explicit attention seam with resource identity,
-geometry validation, isolation, and one normalization. This classification is
-less dramatic than relabeling slot reuse, but it is the result another team can
-reproduce and build on.
+llama.cpp supplies a portable selected-text baseline and cheap sequential slot
+persistence. Slot restore remains E0/E1. The pinned public C API nevertheless
+supports a narrow E2 path: unified-cache sequence membership can expose an
+already encoded selected resource to a request with exact schedule-matched
+logits and persistent decode. This result is an implementation foothold, not a
+finished server product. Resource identity, authorization, lifecycle,
+concurrency, multi-resource geometry, and arbitrary non-prefix positions still
+belong in the adapter and scheduler layers.
 
 \section*{Artifact Availability}
-The adapter, tests, raw JSON, figure generator, commands, and manuscript are in
-branch \texttt{research/paper6-7-llamacpp}. The README records the pinned model,
-backend flags, and benchmark invocation.
+The adapter, tests, raw JSON, figure generator, commands, and manuscript are
+available on the Paper 6.7 research branch. The README records the exact branch,
+pinned model, backend flags, and benchmark invocation.
 
 \begin{thebibliography}{9}
 \bibitem{llamacpp} G. Gerganov et al. \emph{llama.cpp}. 2023--2026.
