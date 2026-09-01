@@ -6,7 +6,7 @@
 
 \title{PRA-SGLang: Query-Addressed Non-Prefix Memory beside RadixAttention}
 \author{Jorge Sim\~ao\\EInnovator R\&D}
-\date{August 2026}
+\date{September 2026}
 
 \begin{document}
 \maketitle
@@ -67,7 +67,13 @@ outputs and, with 250 ms lead, reduces median demand stall to 0.013 ms. The
 native streaming gateway then covers concurrency one through sixteen,
 cancellation, and request-owned cleanup; all 31 concurrent outputs are exact.
 TTFT p95 reaches 5.03 s at concurrency sixteen, exposing the serialized
-model-runner queue rather than hidden parallel execution.
+model-runner queue rather than hidden parallel execution. Finally, a two-Mac
+off-node WARM control transfers five exact 14.35 MB native objects over
+SSH-tunneled HTTP. Five independent transfers per lead show that 0--1,000 ms
+prefetch remains late, whereas 2,000 ms makes 40/40 concurrent demands ready.
+At concurrency sixteen, stable affinity reduces shared-resource traffic from
+54.8 to 13.7 MiB and mixed-resource traffic from 260.1 to 68.4 MiB. This closes
+off-node placement as a controlled mechanism, not SGLang-native distributed E3.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -77,9 +83,9 @@ useful beside SGLang's prefix-addressed Radix cache and hierarchical HiCache.
 The native runner is validated at E2: it consumes frozen selected K/V outside
 Radix ownership and preserves all 2,086/2,086 matched E0 outputs. Visible prompt
 tokens fall by 90.4--93.0\%. Macro E2/E0 cost ratios are 0.980 cold, 1.074 warm,
-1.071 multi-query, and 1.054 concurrent. Local HiCache placement demonstrates
-an E3 mechanism candidate, but scheduler-owned distributed/off-node E3 remains
-unvalidated.
+1.071 multi-query, and 1.054 concurrent. Local HiCache and a two-host WARM
+bridge demonstrate E3 mechanism candidates, but SGLang-owned distributed E3
+remains unvalidated.
 
 \begin{center}
 \small
@@ -93,8 +99,8 @@ Context reduction & 90.4--93.0\% fewer visible prompt tokens\\
 TTFT/ITL tails & Online gateway measured separately; common matched tails \texttt{NOT\_MEASURED}\\
 Throughput & Concurrent E2 inverse-cost ratio 1.054, or 94.9\% of E0 rate\\
 Peak memory & Native objects measured; complete engine decomposition \texttt{NOT\_MEASURED}\\
-Reuse & Radix and PRA identities remain separate; local HiCache cold/warm measured\\
-Main limitation & Distributed HiCache, distributed scheduler prefetch, affinity, and continuous batching\\
+Reuse & Radix/PRA identities separate; local and two-host WARM reuse measured\\
+Main limitation & Engine-native distributed HiCache, scheduler prefetch, and continuous batching\\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -112,9 +118,10 @@ Radix prefix and PRA resource namespaces therefore coexist rather than alias.
 \textbf{Best validated deployment:} E0 selected text for ordinary repeated and
 concurrent serving; E2 when hidden native context or independent resource
 identity is required. \textbf{Use when:} semantic resources outlive or cut
-across sequential prefixes. \textbf{Do not use when:} the local file backend is
-being treated as distributed HiCache evidence. \textbf{Main remaining gate:}
-scheduler-owned off-node HiCache with cold/warm concurrency tails.
+across sequential prefixes. \textbf{Do not use when:} the controlled HTTP
+bridge is being treated as SGLang's native distributed HiCache provider.
+\textbf{Main remaining gate:} scheduler-owned distributed HiCache with
+continuous-batching tails and native placement telemetry.
 
 \section{Introduction}
 A prefix cache and a retrieval memory answer different questions. A radix tree
@@ -471,6 +478,55 @@ mechanism, while distributed prefetch policy remains open.
 \label{tab:sglang-async-warm}
 \end{table}
 
+\subsection{Two-host WARM prefetch and affinity}
+
+We next separate the model and WARM store across two Apple hosts. The model host
+uses the SGLang PRA HiCache adapter with Qwen3-0.6B; the storage host writes
+immutable objects atomically to disk. Because macOS local-network policy denied
+the benchmark Python binary direct LAN sockets, HTTP crosses an SSH local
+forward. We therefore label this transport \emph{SSH-tunneled HTTP} and include
+its encryption, process, and forwarding overhead. It is a controlled off-node
+mechanism result, not a Mooncake, NIXL, or native SGLang HiCache result.
+
+Each object contains 125 source tokens and occupies 14.35 MB. The lead-time
+curve uses eight simultaneous demands for one shared object and five fresh-cache
+transfers per lead. At 0 ms, median/p95 demand stall is 1,514/1,889 ms. Leads
+through 1,000 ms remain late in all 280 requests across those seven conditions.
+At 2,000 and 3,000 ms, all 80 demands are ready and p95 stall is below 0.003 ms.
+The non-monotonic short-lead values reflect five network transfers per point;
+the defensible conclusion is a 1--2 s crossover on this tunneled path, not a
+smooth latency law. Every restored tensor has zero maximum absolute error.
+
+The placement experiment models four worker-local HOT sets over five rounds.
+Affinity hashes each resource identity to one worker; random placement samples
+a worker per request. At concurrency sixteen, affinity transfers one shared
+object (13.7 MiB) versus four under random placement (54.8 MiB). For five mixed
+resources it transfers 68.4 versus 260.1 MiB. Shared p95 demand stall falls from
+5.27 to 1.56 s, and mixed p95 falls from 18.12 to 5.54 s. Aggregate arrival-wave
+throughput rises from 12.24 to 28.38 requests/s for shared resources and from
+2.25 to 11.77 requests/s for mixed resources. These values include prefetch
+lead and the controlled transfer path, but not model generation or an SGLang
+distributed scheduler queue.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\caption{Two-host WARM placement at five repeated arrival waves. Stall is ms;
+HOT counts objects resident when prefetch is scheduled.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_1_sglang/generated_offnode_warm_table.tex}}
+\label{tab:sglang-offnode-warm}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper6_1_sglang/offnode_warm_affinity.png}
+\caption{Off-node WARM behavior. Left: five-transfer lead-time curve at
+concurrency eight. Center and right: stable affinity bounds remote traffic and
+tail stall for mixed-resource arrivals.}
+\label{fig:sglang-offnode-warm}
+\end{figure}
+
 The native executor also runs through the OpenAI-compatible streaming gateway.
 A runtime correction normalizes raw native token rows into portable delta and
 completion events; before this correction the HTTP layer emitted metadata-only
@@ -629,6 +685,7 @@ built-in HiCache storage & controlled closed & file backend, fresh adapter 5/5, 
 shared storage lifecycle & controlled closed & logical-key promotion; WARM 85/85 exact across Qwen/Llama; restart recovery \\
 prefetch overlap & negative/open & exact 20/20; 10--50 ms requests became 193--235 ms caller delays \\
 event-loop promotion & controlled closed & 35/35 exact; 250 ms lead reduces median demand stall to 0.013 ms \\
+off-node WARM/affinity & controlled closed & two Macs; five transfer repeats/lead; zero tensor error; affinity bounds copies \\
 selected native attention & controlled closed & 5/5 exact, zero logit error, all 28 layers \\
 radix/native identity & controlled closed & PRA tokens excluded from local prefix length \\
 Radix + HiCache request & controlled closed & A/C 10/10, cleanup B 0/5, exactly one selected copy \\
@@ -642,21 +699,22 @@ robustness & partial & one model; synthetic and two natural-text transport fixtu
 \end{center}
 
 \section{Next Engine-Native Experiment}
-The matched comparison and event-loop overlap mechanism are complete. A fresh
-environment audit finds no installed Mooncake, NIXL, HF3FS, or AIBrix backend
-on the Apple host. The built-in file backend is therefore local L3 evidence,
-not distributed HiCache evidence. The off-node gate is blocked because no
-supported remote backend is installed; no remote latency or bandwidth is
-inferred.
+The matched comparison, local event-loop overlap, and controlled two-host WARM
+mechanism are complete. A fresh environment audit still finds no installed
+Mooncake, NIXL, HF3FS, or AIBrix backend on the Apple hosts. The built-in file
+backend remains local L3 evidence, while the new SSH-tunneled HTTP bridge proves
+that off-node identity, transfer, coalescing, and affinity are measurable. It
+does not prove integration with SGLang's distributed HiCache scheduler.
 
-The scheduler-owned prefetch control nevertheless identifies the required
-overlap behavior. With zero lead, no request is ready and median/p95 demand
-stall is 27.6/32.9 ms. At nominal leads of 10, 25, and 50 ms all 15 transfers
-are ready before demand, p95 stall is at most 0.138 ms, and every restored
-tensor is exact. The nominal lead is only a request parameter: observed caller
-delay can be longer on this serialized runner. An off-node follow-up must
-repeat this curve with network bytes, backend queueing, wasted prefetches, and
-resource/session affinity under sustained arrivals.
+The next experiment should replace the controlled bridge with one supported
+distributed backend and preserve the same frozen object/arrival schedule. It
+must measure backend queue time, network and device bytes separately, wasted
+prefetches, eviction/reload amplification, and p50/p95/p99 under continuous
+batching. The controlled result predicts that resource affinity matters: at
+concurrency sixteen, random placement creates 3.8--4.0 times as much remote
+traffic and 3.4 times the shared-resource p95 stall. A native scheduler result
+should either reproduce that direction or explain why backend sharing removes
+it.
 
 \subsection{Observability contract}
 
@@ -673,20 +731,23 @@ black-box path matches native PRA on quality-adjusted memory, TTFT, and
 throughput. The current baseline is already strong, so a metadata-only object
 registry cannot satisfy the claim.
 
-The measurements use one small model family, a local compatibility patch, and
-one Apple host. The HTTP and native runs use different model precisions. The
+The principal model measurements use one small model family and a local
+compatibility patch. The off-node control adds a second Apple host but uses an
+SSH-tunneled HTTP store rather than a supported distributed HiCache backend.
+The HTTP and native generation runs use different model precisions. The
 broad concurrency and natural-text runner cohorts disable Radix pooling; the
 dedicated combined cohort instead drives the exact prefix-slot boundary
 directly. The later HTTP gateway exercises native streaming, cancellation, and
-cleanup, but serializes one local model runner. Distributed HiCache,
-continuous-batching tails, resource-affinity routing, and archived-head
-transition remain unmeasured. L3 timing includes only five
+cleanup, but serializes one local model runner. Engine-owned distributed
+HiCache, continuous-batching tails, production affinity routing, and
+archived-head transition remain unmeasured. L3 timing includes only five
 loads and one large outlier. The natural controls contain real dataset text
 but an inserted answer-code task. The original matched cohort uses only 20
 routed selections per dataset and a 24-token greedy decode; the expanded
 confirmation improves sample size while retaining the bounded decoder. Its
-exact transport parity is stronger than its low absolute F1. No distributed
-HiCache or distributed SGLang scheduling result is implied.
+exact transport parity is stronger than its low absolute F1. The two-host
+control measures storage transfer and cache placement without generation; no
+distributed SGLang scheduling result is implied.
 
 \section{Related Work}
 SGLang combines a structured runtime with RadixAttention for shared prefix
@@ -713,8 +774,11 @@ adapter with 5/5 recovery. A final A/B/C cohort composes the shared-prefix pool 
 external HiCache, preserves 10/10 selected recoveries, prevents 5/5 cleanup
 leaks, and attaches exactly one memory copy. A five-seed prefetch diagnostic
 recovers all 20 tensors exactly but finds no useful Python-thread overlap: the
-caller is delayed by 193--235 ms. It leaves distributed HiCache, native
-asynchronous prefetch, full-scheduler integration, and pressure-scale server
+caller is delayed by 193--235 ms. Event-loop promotion corrects that local
+mechanism, and the two-host control then shows a 1--2 s tunneled-WARM crossover
+and 3.8--4.0$\times$ less remote traffic under stable affinity at concurrency
+sixteen. All off-node tensors remain exact. It leaves a supported distributed
+HiCache backend, full-scheduler integration, and pressure-scale server
 validation as the focused next experiments. On matched routed QA, it preserves all 840 E0
 outputs while moving 90.6--93.0\% of prompt tokens to native memory; the measured
 decode overhead makes fused selected-cache consumption the immediate systems

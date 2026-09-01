@@ -21,8 +21,8 @@ output pairs across four schedules with 90.6--93.0% fewer visible tokens.
 An expanded 149-unique-question confirmation gives 2,086/2,086 exact pairs;
 its cold/warm/multi-query/concurrent E2/E0 ratios are
 0.980/1.074/1.071/1.054.
-Distributed HiCache, scheduler affinity, and fused selected-cache decode remain
-open. A caller-owned prefetch hook is implemented, but its five-seed
+Engine-native distributed HiCache and fused selected-cache decode remain open.
+A caller-owned prefetch hook is implemented, but its five-seed
 Python-thread sweep is a negative latency result: all 20 tensors restore
 exactly, while requested 10--50 ms leads delay the caller by 193--235 ms.
 The replacement event-loop-owned promotion path is now measured: all 35
@@ -37,7 +37,32 @@ The shared lifecycle manager now owns the local built-in HiCache file backend
 end to end. Across 80 examples spanning three datasets at 0.6B and QASPER at
 1.7B, lossless WARM remains 80/80 exact and recovers after manager restart.
 Explicit int8 COLD is exact in only 14/80 sequences; distributed off-node
-HiCache and online concurrent cold/warm tails remain open.
+HiCache and online concurrent cold/warm generation tails remain open.
+
+A controlled two-host WARM bridge now measures off-node transfer separately
+from generation. Start the immutable store on one host, forward it over SSH if
+macOS local-network privacy blocks the benchmark interpreter, and run the model
+host with:
+
+```bash
+PYTHONPATH=src:. python experiments/paper6_1_sglang/serve_remote_warm.py \
+  --root ~/.cache/pra-remote-warm --port 18161
+PYTHONPATH=src:. python experiments/paper6_1_sglang/run_remote_warm_affinity.py \
+  --remote-url http://127.0.0.1:18162 \
+  --model-host MODEL_HOST --storage-host STORAGE_HOST \
+  --transport ssh_tunneled_http \
+  --lead-ms 0,10,50,100,250,500,1000,2000,3000 \
+  --output docs/papers/shared/results/paper6_1_sglang/offnode_warm_affinity.json
+python experiments/paper6_1_sglang/summarize_remote_warm_affinity.py \
+  docs/papers/shared/results/paper6_1_sglang/offnode_warm_affinity.json \
+  --figure docs/papers/shared/results/paper6_1_sglang/offnode_warm_affinity.png \
+  --table docs/papers/shared/results/paper6_1_sglang/generated_offnode_warm_table.tex
+```
+
+The measured bridge recovers every tensor exactly. Stable affinity reduces
+remote traffic by 3.8--4.0x at concurrency sixteen, but the tunneled path needs
+about 2 seconds of prefetch lead to eliminate demand stall. This is controlled
+off-node evidence, not a supported SGLang distributed-storage deployment.
 
 A five-example Llama-3.2-1B lifecycle replication is lossless-WARM exact.
 Gemma-3-1B is blocked before PRA attachment by the pinned SGLang-MLX backend's
