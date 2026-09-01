@@ -123,9 +123,16 @@ def stream_chat_completion(
 ) -> dict[str, Any]:
     """Issue one SSE chat completion and return portable timing telemetry."""
 
+    request_messages = messages
+    if disable_native_thinking:
+        request_messages = [dict(message) for message in messages]
+        for message in reversed(request_messages):
+            if message.get("role") == "user":
+                message["content"] = f"{message['content']} /no_think"
+                break
     payload: dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": request_messages,
         "max_tokens": max_tokens,
         "temperature": 0,
         "stream": True,
@@ -133,8 +140,8 @@ def stream_chat_completion(
         "chat_template_kwargs": {"enable_thinking": False},
     }
     if disable_native_thinking:
-        # Ollama exposes reasoning control as a top-level request extension.
-        # Keep it opt-in so strict OpenAI-compatible servers never see it.
+        # Native Ollama honors this field. Its OpenAI endpoint currently needs
+        # the Qwen /no_think control above, so send both on the opt-in path.
         payload["think"] = False
     if cache_salt is not None:
         payload["cache_salt"] = cache_salt

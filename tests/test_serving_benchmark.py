@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from pra_hf.serving_benchmark import benchmark_messages, percentile, run_serving_benchmark
+from pra_hf.serving_benchmark import (
+    benchmark_messages,
+    percentile,
+    run_serving_benchmark,
+    stream_chat_completion,
+)
 
 
 def test_benchmark_conditions_separate_prefix_and_pra_memory() -> None:
@@ -61,3 +68,43 @@ def test_serving_benchmark_pairs_tail_and_quality_adjusted_rates(monkeypatch) ->
     assert row["successful_tasks_per_accelerator_hour"] == pytest.approx(36_000.0)
     assert row["cache_metric_status"] == "NOT_MEASURED"
     assert result["hardware"]["accelerator"] == "test"
+
+
+def test_ollama_thinking_control_uses_prompt_and_request_extension(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def __iter__(self):
+            return iter(
+                [
+                    b'data: {"choices":[{"delta":{"content":"answer"}}]}\n',
+                    b"data: [DONE]\n",
+                ]
+            )
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured.update(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    messages = [{"role": "user", "content": "Question"}]
+    result = stream_chat_completion(
+        "http://engine",
+        model="model",
+        messages=messages,
+        timeout_seconds=1,
+        cache_salt=None,
+        disable_native_thinking=True,
+    )
+
+    assert captured["think"] is False
+    assert captured["messages"][-1]["content"].endswith("/no_think")
+    assert messages[-1]["content"] == "Question"
+    assert result["output_text"] == "answer"
