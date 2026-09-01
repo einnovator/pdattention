@@ -12,6 +12,12 @@ from experiments.paper4_5_runtime.build_technical_site import (
     load_model_registry,
     load_registry,
 )
+from experiments.paper4_5_runtime.build_cli_reference import (
+    EXAMPLES as CLI_EXAMPLES,
+    OUTPUTS as CLI_OUTPUTS,
+    public_commands,
+    render as render_cli_reference,
+)
 from pra_hf.cli import cli
 from pra_hf.gateway_cli import resolve_gateway_mode
 
@@ -30,6 +36,18 @@ def test_generated_engine_pages_match_registry() -> None:
     registry = load_registry()
     for path, expected in generated_files(registry).items():
         assert path.read_text(encoding="utf-8") == expected
+
+
+def test_generated_cli_reference_matches_public_click_tree() -> None:
+    commands = public_commands()
+    assert len(commands) >= 40
+    assert set(commands) == set(CLI_EXAMPLES) == set(CLI_OUTPUTS)
+    text = (SITE / "cli-reference.md").read_text(encoding="utf-8")
+    assert text == render_cli_reference()
+    for path in commands:
+        assert f"### `{path}`" in text
+    assert "--pra-level" not in text
+    assert "--allow-unqualified-native" not in text
 
 
 def test_engine_matrix_and_pages_are_product_self_contained() -> None:

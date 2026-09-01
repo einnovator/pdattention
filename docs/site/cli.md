@@ -3,6 +3,9 @@
 `pra` is the product command. `pra-hf` remains a deprecated alias for one
 release cycle, and `pra-standalone` retains the from-scratch research trainer.
 
+See the generated [CLI Command Reference](cli-reference.md) for every public
+command, complete option tables, common-use examples, and representative output.
+
 ## Qualification journey
 
 The shortest product workflow is:

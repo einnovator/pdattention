@@ -117,6 +117,7 @@ Install the documentation dependencies and build strict static HTML:
 ```bash
 python -m pip install -e ".[docs]"
 python -m experiments.paper4_5_runtime.build_technical_site --check
+python -m experiments.paper4_5_runtime.build_cli_reference --check
 python -m mkdocs build --strict
 ```
 
