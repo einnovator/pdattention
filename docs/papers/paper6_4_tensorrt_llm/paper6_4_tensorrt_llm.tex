@@ -4,7 +4,7 @@
 \title{Progressive Retrieval Attention on NVIDIA TensorRT-LLM:\\
 Semantic Memory Contracts, E0 Serving Evidence, and the Native Attachment Boundary}
 \author{Jorge Sim\~ao}
-\date{August 2026}
+\date{September 2026}
 
 \begin{document}
 \maketitle
@@ -19,8 +19,13 @@ request-safe contracts for topology-bound native blocks, authorization,
 pinning, exactly-once attachment, cleanup, and prefix-pool exclusion. A live
 TensorRT-LLM 1.2.1 audit finds the official connector and paged-cache APIs but
 no public operation that attaches arbitrary selected non-prefix blocks to
-attention. Native E2 execution is therefore an explicit open gate, not a text
-fallback reported as native memory. On an RTX 5060 Laptop GPU with
+attention. A second, source-hash-bound audit follows the request conversion,
+attention metadata, cache manager, connector, and fused operator call. It
+finds that a correct E2 path would cross five coupled surfaces, including the
+fused operator ABI; page-table splicing alone would change sequential geometry
+and cache-write offsets. Native E2 execution is therefore an explicit upstream
+gate, not a text fallback or fragile package monkey-patch reported as native
+memory. On an RTX 5060 Laptop GPU with
 TinyLlama-1.1B, selected-text E0 and bounded full context both recover the
 controlled answer in every measured request. At eight concurrent shared
 requests, selected text uses 67 visible prompt tokens rather than 1,040,
@@ -36,7 +41,7 @@ cohort shows that logical visibility reuse reduces the measured second-turn
 prompt from 797 to 658 tokens while preserving output behavior in 20/20 paired
 cases. Absolute exact-code success remains 0/20 in both conditions, exposing a
 TinyLlama instruction-following limit rather than claiming task quality. These results establish the transport baseline and integration
-boundary needed for a later source-level E2 patch; they do not establish the
+boundary needed for an upstream E2 contract; they do not establish the
 economics or parity of native TensorRT-LLM PRA.
 \end{abstract}
 
@@ -64,7 +69,7 @@ Visible context & 67 selected tokens versus 1,040--1,276 full-context tokens \\
 Loaded serving & 78.0--81.9 selected requests/s at concurrency 16; 50.5--86.0 ms TTFT p99 \\
 Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
 Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
-Evidence tier & Controlled transport plus a 360-request natural-QA cohort \\
+Evidence tier & Controlled transport, 360-request natural QA, and live installed-source audit \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -172,6 +177,46 @@ Treating those pages as arbitrary semantic memory would silently turn PRA into
 prefix restoration. A minimal E2 extension must instead carry an authorized
 selected-block set into request attention metadata and combine local and
 memory scores in one softmax. That source-level seam is future work.
+
+\subsection{Source-level seam feasibility}
+We next audited the installed Python sources rather than inferring feasibility
+from API names. The artifact records SHA-256 hashes so that the line references
+below identify one exact 1.2.1 installation. Request conversion begins at
+\texttt{llm\_request.py:731} and carries \texttt{cache\_salt\_id} at line 824,
+but carries no selected non-prefix block identity. The model engine calls
+\texttt{attn\_metadata.prepare()} at
+\texttt{model\_engine.py:1512}. During that preparation,
+\texttt{trtllm.py:990} copies the block offsets owned by each request ID. The
+same backend passes one \texttt{kv\_cache\_block\_offsets} tensor into
+\texttt{thop.attention} at line 500. The metadata contract has neither a second
+memory table nor independent local and memory lengths.
+
+The cache manager does provide pin and unpin operations
+(\texttt{resource\_manager.py:1340} and 882), and the connector exposes
+layer-load synchronization (\texttt{kv\_cache\_connector.py:123--130}). Those
+are useful physical primitives. They do not answer how independently retained
+pages enter attention without changing the request's sequential cache layout.
+Table~\ref{tab:native-seam} summarizes the resulting patch surface.
+
+\begin{table}[ht]
+\centering
+\scriptsize
+\caption{Installed-source feasibility audit. All five surfaces must agree for
+native E2; connector availability alone is insufficient.}
+\label{tab:native-seam}
+\input{../shared/results/paper6_4_tensorrt_llm/generated_native_seam_table.tex}
+\end{table}
+
+Three apparent shortcuts fail the semantic contract. Prepending selected pages
+to the ordinary block table shifts K/V length, causal geometry, and write
+locations. Reporting connector restoration as E2 confuses prefix-range
+movement with query-addressed attention. Reusing encoder-decoder cross
+attention would require modules and projection geometry absent from the tested
+decoder-only checkpoint. We therefore stop at E0 for TensorRT-LLM 1.2.1 rather
+than maintain a version-fragile fork across request bindings, scheduling,
+metadata, CUDA-graph buffers, and the fused operator. This is a version-scoped
+maintainability decision, not evidence that native PRA is impossible in a
+future supported API.
 
 \section{Experimental Method}
 \subsection{Environment}
@@ -411,12 +456,14 @@ The experiment does not establish native K/V parity, native memory savings,
 connector hit economics, disaggregated transfer, quantized PRA K/V, TP=2, or
 native-E2 QA quality. Those claims require the missing non-prefix attention seam.
 
-\section{Next Native Experiment}
-The next implementation should add one narrow request field containing
+\section{Required Upstream Native Contract}
+A supported implementation should add one request field containing
 authorized external block handles and source positions. During attention
 metadata construction, those blocks must remain outside prefix lookup, be
 pinned for the request lifetime, and participate with local K/V in one
-normalization. The parity ladder should then compare: ordinary full prefix,
+normalization. Crucially, the operator contract must preserve independent
+local write offsets and positional geometry; a Python-only block-table edit is
+not sufficient. The parity ladder should then compare: ordinary full prefix,
 geometry-matched cached source, full native source, sparse multi-resource
 source, and cached decode. Only after exact/logit parity is acceptable should
 connector transfer, eviction hints, disaggregation, and quantized K/V be
@@ -429,6 +476,9 @@ the expanded endpoints use ten. Only one
 model, one GPU, one TensorRT-LLM version, and one topology are measured. The
 full context is bounded to the model's 2,048-token limit. Most importantly,
 all generation evidence is E0.
+The source audit is specific to package 1.2.1 and its recorded source hashes;
+later TensorRT-LLM releases may add a narrower supported contract and should be
+reaudited rather than assumed equivalent.
 The session-aware cohort is also limited to a synthetic two-turn task. Its
 20/20 behavioral equivalence accompanies 0/20 exact task success, so it cannot
 stand in for a capable-model conversational evaluation.
@@ -439,7 +489,11 @@ integration supplies semantic identity, safe lifecycle contracts, and a
 measured selected-text baseline. On the tested warm workload, smaller selected
 inputs improve throughput and TTFT under load. The installed public API does
 not yet expose arbitrary non-prefix K/V attachment, so native PRA remains a
-well-specified source-level integration task rather than a completed result.
+well-specified upstream integration task rather than a completed result. The
+installed-source audit further shows that implementing it correctly in 1.2.1
+would require a coupled request, scheduler, metadata, lifecycle, and fused
+operator fork. That cost fails the paper's maintainability gate, so E0 selected
+text remains the recommended TensorRT-LLM path for this version.
 
 \section*{Reproducibility}
 Raw JSON, generated tables and plots, environment audit, launch configuration,
@@ -450,6 +504,10 @@ The repeated-session cohort uses
 \texttt{experiments/engine\_serving/run\_session\_aware\_selected\_context.py}
 against the live OpenAI-compatible endpoint with the five default seeds and
 four repetitions per seed.
+The native feasibility artifact is generated by
+\texttt{experiments/paper6\_4\_tensorrt\_llm/run\_native\_seam\_audit.py}
+against the live installed package; it records source hashes, line evidence,
+gate decisions, required patch surfaces, and rejected shortcuts.
 
 \begin{thebibliography}{9}
 \bibitem{trtllm}

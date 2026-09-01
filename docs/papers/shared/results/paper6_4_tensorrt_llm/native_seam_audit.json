@@ -1,0 +1,257 @@
+{
+  "schema_version": "1.0",
+  "experiment": "paper6_4_tensorrt_llm_native_seam_audit_v1",
+  "evidence_tier": "LIVE_INSTALLED_SOURCE_AUDIT",
+  "platform": {
+    "system": "Linux",
+    "release": "6.18.33.2-microsoft-standard-WSL2",
+    "machine": "x86_64",
+    "python": "3.12.3"
+  },
+  "packages": {
+    "tensorrt-llm": "1.2.1",
+    "tensorrt": "10.14.1.48.post1",
+    "torch": "2.9.1"
+  },
+  "gpu": {
+    "available": true,
+    "name": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "compute_capability": "12.0",
+    "memory_mib": 8151,
+    "driver_version": "592.19"
+  },
+  "request_attributes": [
+    "BATCHED_POST_PROCESSOR_NAME",
+    "__class__",
+    "__delattr__",
+    "__dict__",
+    "__dir__",
+    "__doc__",
+    "__eq__",
+    "__format__",
+    "__ge__",
+    "__getattribute__",
+    "__getstate__",
+    "__gt__",
+    "__hash__",
+    "__init__",
+    "__init_subclass__",
+    "__le__",
+    "__lt__",
+    "__module__",
+    "__ne__",
+    "__new__",
+    "__reduce__",
+    "__reduce_ex__",
+    "__repr__",
+    "__setattr__",
+    "__setstate__",
+    "__sizeof__",
+    "__str__",
+    "__subclasshook__",
+    "allotted_time_ms",
+    "bad_words",
+    "cache_salt_id",
+    "client_id",
+    "context_phase_params",
+    "cross_attention_mask",
+    "eagle_config",
+    "embedding_bias",
+    "encoder_input_features",
+    "encoder_input_token_ids",
+    "end_id",
+    "external_draft_tokens_config",
+    "guided_decoding_params",
+    "input_token_ids",
+    "kv_cache_retention_config",
+    "logits_post_processor",
+    "logits_post_processor_name",
+    "lookahead_config",
+    "lora_config",
+    "max_tokens",
+    "mrope_config",
+    "multimodal_embedding",
+    "multimodal_input",
+    "output_config",
+    "pad_id",
+    "position_ids",
+    "prompt_tuning_config",
+    "request_type",
+    "return_all_generated_tokens",
+    "sampling_config",
+    "skip_cross_attn_blocks",
+    "stop_words",
+    "streaming"
+  ],
+  "source_files": {
+    "metadata": {
+      "path": "/home/killu/venvs/trtllm/lib/python3.12/site-packages/tensorrt_llm/_torch/metadata.py",
+      "sha256": "9ca5a255cf408b6cad149fbdc8d5be4c2d296e87a6aedd91c6e0a3942d7ea3b6",
+      "evidence": [
+        {
+          "needle": "block_ids_per_seq",
+          "line": 24,
+          "source": "block_ids_per_seq: Optional[List[list]] = None"
+        },
+        {
+          "needle": "num_cached_tokens_per_seq",
+          "line": 17,
+          "source": "num_cached_tokens_per_seq: Optional[List[int]] = None"
+        }
+      ]
+    },
+    "attention_interface": {
+      "path": "/home/killu/venvs/trtllm/lib/python3.12/site-packages/tensorrt_llm/_torch/attention_backend/interface.py",
+      "sha256": "5be5bfa1937954b024aa0e11d84ae84a5d0fdea31025f1f20dff8330524e53ed",
+      "evidence": [
+        {
+          "needle": "class AttentionMetadata",
+          "line": 54,
+          "source": "class AttentionMetadata:"
+        },
+        {
+          "needle": "kv_cache_params",
+          "line": 90,
+          "source": "kv_cache_params: Optional[KVCacheParams] = None"
+        }
+      ]
+    },
+    "attention_backend": {
+      "path": "/home/killu/venvs/trtllm/lib/python3.12/site-packages/tensorrt_llm/_torch/attention_backend/trtllm.py",
+      "sha256": "233785dc8b27a416c92df7415ec8dc7e413a93f7f2a1488a6dc5f773d9f32327",
+      "evidence": [
+        {
+          "needle": "copy_batch_block_offsets",
+          "line": 990,
+          "source": "self.kv_cache_manager.impl.copy_batch_block_offsets("
+        },
+        {
+          "needle": "self.kv_cache_block_offsets",
+          "line": 286,
+          "source": "self.kv_cache_block_offsets = kv_cache_block_offsets"
+        },
+        {
+          "needle": "thop.attention(",
+          "line": 500,
+          "source": "thop.attention("
+        }
+      ]
+    },
+    "model_engine": {
+      "path": "/home/killu/venvs/trtllm/lib/python3.12/site-packages/tensorrt_llm/_torch/pyexecutor/model_engine.py",
+      "sha256": "9e780a8ef528eac38e8a6419531442ac33b734532f9504094716d1c4db1dc637",
+      "evidence": [
+        {
+          "needle": "attn_metadata.prepare()",
+          "line": 1512,
+          "source": "attn_metadata.prepare()"
+        },
+        {
+          "needle": "num_cached_tokens_per_seq",
+          "line": 1485,
+          "source": "num_cached_tokens_per_seq: List[int],"
+        }
+      ]
+    },
+    "request_conversion": {
+      "path": "/home/killu/venvs/trtllm/lib/python3.12/site-packages/tensorrt_llm/_torch/pyexecutor/llm_request.py",
+      "sha256": "7a6f49064c329df3c92143c22cf207a8f73d668fa4a5f321186ee9c20e35a9e4",
+      "evidence": [
+        {
+          "needle": "executor_request_to_llm_request",
+          "line": 731,
+          "source": "def executor_request_to_llm_request("
+        },
+        {
+          "needle": "cache_salt_id",
+          "line": 824,
+          "source": "cache_salt_id=executor_request.cache_salt_id,"
+        }
+      ]
+    },
+    "resource_manager": {
+      "path": "/home/killu/venvs/trtllm/lib/python3.12/site-packages/tensorrt_llm/_torch/pyexecutor/resource_manager.py",
+      "sha256": "3ab0f41126d1c55b808f9297d8e950fa3c27c4bf0d8d58b1be741207ead16416",
+      "evidence": [
+        {
+          "needle": "def pin_blocks",
+          "line": 1340,
+          "source": "def pin_blocks(self, request_id: int):"
+        },
+        {
+          "needle": "def unpin_blocks_by_id",
+          "line": 882,
+          "source": "def unpin_blocks_by_id(self, kv_cache_block_id: int):"
+        }
+      ]
+    },
+    "kv_connector": {
+      "path": "/home/killu/venvs/trtllm/lib/python3.12/site-packages/tensorrt_llm/_torch/pyexecutor/kv_cache_connector.py",
+      "sha256": "737f2e694bb66857df6cabfd78f936b06bfb47a1476337ffe25d317a3005ca62",
+      "evidence": [
+        {
+          "needle": "start_load_kv",
+          "line": 123,
+          "source": "def start_load_kv(self, stream: torch.cuda.Stream):"
+        },
+        {
+          "needle": "wait_for_layer_load",
+          "line": 130,
+          "source": "def wait_for_layer_load(self, layer_idx: int, stream: torch.cuda.Stream):"
+        }
+      ]
+    }
+  },
+  "gates": {
+    "public_request_nonprefix_field": false,
+    "attention_metadata_nonprefix_field": false,
+    "fused_kernel_nonprefix_input": false,
+    "official_kv_connector_present": true,
+    "block_table_is_request_owned": true,
+    "one_fused_attention_call": true,
+    "maintainable_narrow_seam": false,
+    "decision": "STOP_NO_MAINTAINABLE_NARROW_SEAM"
+  },
+  "patch_surfaces": [
+    {
+      "surface": "request ABI and Python conversion",
+      "why": "carry authorized selected block identities into each request",
+      "required": true
+    },
+    {
+      "surface": "scheduler and cache-manager lifecycle",
+      "why": "retain, pin, authorize, cancel, and release non-prefix pages",
+      "required": true
+    },
+    {
+      "surface": "attention metadata and CUDA-graph buffers",
+      "why": "represent local and memory block tables and lengths independently",
+      "required": true
+    },
+    {
+      "surface": "fused attention operator ABI/kernel",
+      "why": "combine local and memory scores in one softmax without shifting writes",
+      "required": true
+    },
+    {
+      "surface": "topology-aware connector persistence",
+      "why": "load physical pages without treating connector prefix matches as PRA routing",
+      "required": true
+    }
+  ],
+  "rejected_shortcuts": [
+    {
+      "strategy": "prepend selected pages to the ordinary block table",
+      "reason": "changes sequential K/V length, causal geometry, and cache-write offsets"
+    },
+    {
+      "strategy": "report connector page loading as native PRA",
+      "reason": "the connector restores request-token ranges but does not expose them as independent memory"
+    },
+    {
+      "strategy": "reuse encoder-decoder cross attention",
+      "reason": "decoder-only checkpoints lack the corresponding modules and trained projection geometry"
+    }
+  ],
+  "scope": "The result is version-specific. It rejects a narrow maintained 1.2.1 extension, not the feasibility of an NVIDIA-supported future E2 API."
+}

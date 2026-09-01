@@ -20,6 +20,7 @@ def generate(results: Path, output: Path) -> None:
     smoke = _load(results / "e0_serving_smoke.json")
     concurrency = _load(results / "e0_concurrency.json")
     audit = _load(results / "environment_audit.json")
+    native_audit = _load(results / "native_seam_audit.json")
     output.mkdir(parents=True, exist_ok=True)
 
     smoke_rows = []
@@ -80,12 +81,58 @@ def generate(results: Path, output: Path) -> None:
         encoding="utf-8",
     )
 
+    native_rows = [
+        (
+            "Request ABI",
+            "No selected non-prefix field",
+            "Authorized external block identities",
+        ),
+        (
+            "Cache lifecycle",
+            "Request-owned table; pin/unpin",
+            "Persistent independent pages",
+        ),
+        (
+            "Attention metadata",
+            "One local table and K/V length",
+            "Separate local/memory geometry",
+        ),
+        (
+            "Fused operator",
+            "No native-memory input",
+            "One joint local+memory softmax",
+        ),
+        (
+            "Connector",
+            "Loads request-token ranges",
+            "Topology-bound semantic pages",
+        ),
+    ]
+    native_table = [
+        r"\begin{tabular}{p{0.20\linewidth}p{0.32\linewidth}p{0.36\linewidth}}\toprule",
+        r"Surface & Installed 1.2.1 & Native PRA requirement\\\midrule",
+    ]
+    native_table.extend(
+        f"{surface} & {installed} & {requirement} \\\\"
+        for surface, installed, requirement in native_rows
+    )
+    native_table.append(r"\bottomrule\end{tabular}")
+    (output / "generated_native_seam_table.tex").write_text(
+        "\n".join(native_table) + "\n", encoding="utf-8"
+    )
+
     summary = {
         "schema_version": "1.0",
         "environment": {
             "packages": audit["packages"],
             "gpu": audit["gpu"],
             "gates": audit["gates"],
+        },
+        "native_seam": {
+            "evidence_tier": native_audit["evidence_tier"],
+            "gates": native_audit["gates"],
+            "patch_surfaces": native_audit["patch_surfaces"],
+            "scope": native_audit["scope"],
         },
         "e0_quality": {
             row["condition"]: row["quality_success_rate"]

@@ -23,6 +23,47 @@
       "e2_status": "BLOCKED_NO_PUBLIC_NONPREFIX_ATTACHMENT_HOOK"
     }
   },
+  "native_seam": {
+    "evidence_tier": "LIVE_INSTALLED_SOURCE_AUDIT",
+    "gates": {
+      "public_request_nonprefix_field": false,
+      "attention_metadata_nonprefix_field": false,
+      "fused_kernel_nonprefix_input": false,
+      "official_kv_connector_present": true,
+      "block_table_is_request_owned": true,
+      "one_fused_attention_call": true,
+      "maintainable_narrow_seam": false,
+      "decision": "STOP_NO_MAINTAINABLE_NARROW_SEAM"
+    },
+    "patch_surfaces": [
+      {
+        "surface": "request ABI and Python conversion",
+        "why": "carry authorized selected block identities into each request",
+        "required": true
+      },
+      {
+        "surface": "scheduler and cache-manager lifecycle",
+        "why": "retain, pin, authorize, cancel, and release non-prefix pages",
+        "required": true
+      },
+      {
+        "surface": "attention metadata and CUDA-graph buffers",
+        "why": "represent local and memory block tables and lengths independently",
+        "required": true
+      },
+      {
+        "surface": "fused attention operator ABI/kernel",
+        "why": "combine local and memory scores in one softmax without shifting writes",
+        "required": true
+      },
+      {
+        "surface": "topology-aware connector persistence",
+        "why": "load physical pages without treating connector prefix matches as PRA routing",
+        "required": true
+      }
+    ],
+    "scope": "The result is version-specific. It rejects a narrow maintained 1.2.1 extension, not the feasibility of an NVIDIA-supported future E2 API."
+  },
   "e0_quality": {
     "no_prefix_no_pra": 0.0,
     "prefix_only": 0.0,
