@@ -5,6 +5,10 @@ from experiments.paper5_scaling_laws.run_scaling_study import (
     exact_search,
     retrieval_metrics,
 )
+from experiments.paper5_scaling_laws.run_gemma_adaptation_grid import (
+    cell_command,
+    model_slug,
+)
 import pytest
 import torch
 
@@ -85,3 +89,28 @@ def test_hard_negatives_create_a_nontrivial_retrieval_budget():
     wide, _, _ = exact_search(pool, 32, repeats=1)
     assert retrieval_metrics(narrow, pool.evidence)["evidence_recall"] < 1.0
     assert retrieval_metrics(wide, pool.evidence)["evidence_recall"] == 1.0
+
+
+def test_gemma_grid_builds_isolated_explicit_cell_command(tmp_path):
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(
+        device="mps",
+        dataset_dir=tmp_path / "data",
+        train_examples=16,
+        validation_examples=8,
+        steps=5,
+        ordinary_every=2,
+        context_limit=96,
+        reference_limit=64,
+        lora_rank=4,
+        lora_alpha=8.0,
+        learning_rate=1e-4,
+        regime=["frozen_pra", "consumer_lora"],
+    )
+    command = cell_command(
+        args, "google/gemma-3-270m-it", 23, tmp_path / "seed_23"
+    )
+    assert model_slug("google/gemma-3-270m-it") == "google--gemma-3-270m-it"
+    assert command.count("--regime") == 2
+    assert command[command.index("--split-seed") + 1] == "23"
