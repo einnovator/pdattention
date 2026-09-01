@@ -344,7 +344,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     rows_dir = args.output_dir / "checkpoint_rows"
     rows_dir.mkdir(exist_ok=True)
     started = time.perf_counter()
-    model, tokenizer = load(args.model_id, revision=args.model_revision)
+    model, tokenizer_wrapper = load(args.model_id, revision=args.model_revision)
+    tokenizer = getattr(tokenizer_wrapper, "_tokenizer", tokenizer_wrapper)
     model.freeze()
     capture = MLXAttentionInputCapture(model, args.routing_layer)
     split_manifest: dict[str, Any] = {}
