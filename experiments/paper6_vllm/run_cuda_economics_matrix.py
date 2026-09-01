@@ -371,19 +371,39 @@ def main() -> None:
     native_tensor_bytes = int(manifest.get("native_tensor_bytes", persisted_bytes))
     kv_bytes_per_token = native_tensor_bytes / len(source_tokens)
 
-    # Populate ordinary APC and the persistent HOT source outside measurement.
-    for index, condition in enumerate(("full", "e0_selected_text", "e2_hot")):
-        prompt = _prompt_for_condition(
-            condition,
+    # Prime only aligned source blocks in ordinary APC. Caching the complete
+    # source-plus-query prompt would give E0 cached query geometry while E2
+    # still prefills a fresh query, confounding representation with APC state.
+    llm.generate(
+        _prompt(
+            full_tokens + suffix,
+            hashlib.sha256(b"paper6-cuda-economics-full").hexdigest(),
+        ),
+        store_sampling,
+        use_tqdm=False,
+    )
+    llm.generate(
+        _prompt(
+            source_tokens + suffix,
+            hashlib.sha256(b"paper6-cuda-economics-e0").hexdigest(),
+        ),
+        store_sampling,
+        use_tqdm=False,
+    )
+    llm.generate(
+        _prompt_for_condition(
+            "e2_hot",
             full_tokens=full_tokens,
             source_tokens=source_tokens,
             query_tokens=query_tokens,
             placeholder_token=padding_token,
             logical_key=logical_key,
-            scope=f"warmup-{index}",
+            scope="warmup-hot",
             detached_pages=args.detached_pages,
-        )
-        llm.generate(prompt, sampling, use_tqdm=False)
+        ),
+        sampling,
+        use_tqdm=False,
+    )
 
     runner = llm.llm_engine.model_executor.driver_worker.model_runner
     model_parameter_bytes = sum(
