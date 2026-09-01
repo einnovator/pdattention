@@ -6,6 +6,7 @@
 - **Measured:** exact and coarse-to-fine retrieval, active native-K/V tokens, layer-token K/V, index bytes, search latency, routing-only concurrency, and CPU/CUDA hardware slices.
 - **Measured:** fixed-difficulty evidence recall remained in [1.000, 1.000] at 128 active tokens.
 - **Measured:** evidence-dispersion sweeps vary regions and chain depth separately from logical address-space size.
+- **Measured:** hard-negative difficulty exposes adaptive escalation: the hard condition fails without a confidence threshold and recovers under thresholded budget expansion.
 - **Inherited calibration only:** Paper 4 Frozen, LoRA, full-weight, and PRA-native controlled consumer-learning results.
 
 ## Not supported yet

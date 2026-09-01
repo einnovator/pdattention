@@ -317,16 +317,39 @@ recall and overlap with exact search, plus index build/update time and p95 tails
 
 \section{Adaptive Effort}
 
-The score-gap controller never escalates in this task. It uses 32 active tokens,
-recovers all four evidence nodes, and has zero escalation rate for every threshold
-and memory size. This is consistent with bounded expected effort, but it is not
-evidence that adaptive effort remains bounded under ambiguity. Rather, it shows
-that the controller recognizes the intentionally wide planted margin.
+The original wide-margin task never escalates: it uses 32 active tokens and
+recovers all four evidence nodes at every threshold and memory size. We therefore
+added two five-seed M5 conditions without changing evidence count. Medium cases
+place eight near-query decoys around each target; hard cases place 24 still
+closer decoys. This isolates confidence-controlled budget expansion from logical
+address-space growth.
 
-Useful adaptive scaling requires a calibrated mixture of easy, ambiguous, and
-failed routes. Difficulty should grow through closer distractors, missing roots,
-multi-hop discovery, and competing answer paths. Expected effort can then be
-conditioned on difficulty rather than averaged into an easy-task constant.
+\begin{table}[H]
+\centering
+\small
+\caption{Oracle-free adaptive stopping under planted difficulty. Each row pools
+25 seed--memory cells. Active K/V is the expected disclosed-token budget.}
+\label{tab:adaptive-difficulty}
+\resizebox{0.88\linewidth}{!}{\input{../shared/results/paper5_scaling/adaptive_difficulty_table.tex}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper5_scaling/figures/adaptive_difficulty_gate.pdf}
+\caption{The confidence gate leaves easy routes at the minimum budget. Hard
+routes fail at threshold zero, then recover by spending almost the maximum
+budget. The gate adapts, but does not yet find an efficient intermediate knee.}
+\label{fig:adaptive-difficulty}
+\end{figure}
+
+At threshold zero the hard condition has 0.000 evidence recall. At threshold
+0.03 it escalates on every cell, uses 988.6 expected active tokens, and restores
+1.000 recall. Medium recall is already 0.999 without escalation; threshold 0.03
+raises it to 1.000 at 951.3 expected tokens. Thus adaptive escalation is now
+mechanically exercised, but the current score-gap policy is conservative: it
+mostly jumps from 32 tokens to the 1,024-token ceiling. Natural ambiguity,
+multi-hop discovery, and learned confidence calibration remain necessary to
+test whether expected effort grows smoothly with task difficulty.
 
 \section{Parameters, Plasticity, and External Memory}
 
@@ -450,8 +473,9 @@ constant. Natural tasks must estimate $W$ empirically.
 
 The pilot exposes several limits.
 \begin{enumerate}
-\item \textbf{Task saturation.} Every fixed-task query succeeds at the smallest
-budget, so quality headroom is absent and adaptive retry is untested.
+\item \textbf{Controller granularity.} The easy fixed task saturates at the
+smallest budget. Hard negatives activate retry, but recovery uses roughly
+989--1,024 tokens rather than an efficient intermediate budget.
 \item \textbf{Index growth.} Active attention state is fixed, but the resident
 float32 routing index reaches \PaperFiveIndexMiB{} MiB at 8M logical tokens.
 \item \textbf{Ranking divergence.} Indexed evidence recall is perfect while exact
@@ -478,11 +502,12 @@ predictions for output quality, active K/V, and latency. The present pilot does
 not satisfy this gate because neither smaller Gemma point has been measured on
 the scaling grid.
 
-The highest-value next sequence is: (1) make the fixed task less separable and
-calibrate adaptive escalation; (2) run Gemma 3 270M Frozen and LoRA at 32K--512K;
-(3) repeat the retained settings at 1B; (4) add QASPER and controlled multi-hop
-data; (5) integrate paged CPU detail K/V and a production ANN; and only then
-decide whether 4B resolves an uncertainty that smaller runs cannot.
+The highest-value next sequence is: (1) calibrate adaptive thresholds between
+the observed 32- and 1,024-token regimes; (2) run Gemma 3 270M Frozen and LoRA
+at 32K--512K; (3) repeat the retained settings at 1B; (4) add QASPER and
+controlled multi-hop data; (5) integrate paged CPU detail K/V and a production
+ANN; and only then decide whether 4B resolves an uncertainty that smaller runs
+cannot.
 
 \section{Conclusion}
 
