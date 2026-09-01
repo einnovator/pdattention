@@ -3,6 +3,97 @@
 `pra` is the product command. `pra-hf` remains a deprecated alias for one
 release cycle, and `pra-standalone` retains the from-scratch research trainer.
 
+## Qualification journey
+
+The shortest product workflow is:
+
+```bash
+pra doctor
+pra engines
+pra inspect Qwen/Qwen3-1.7B --engine hf
+pra evaluate Qwen/Qwen3-1.7B --engine hf --dataset qasper \
+  --measurements matched-results.json -o .pra/runs/qwen-qasper
+pra recommend .pra/runs/qwen-qasper
+pra report .pra/runs/qwen-qasper --format html
+pra serve Qwen/Qwen3-1.7B --engine hf --profile recommended --mode auto
+```
+
+`doctor` groups system, engine, local-artifact, problem, and next-action
+information. `engines` reads the same versioned registry that generates this
+site; use `pra engines --details mlx` for provenance and limitations.
+
+`inspect` joins model metadata with an engine's product capabilities. It does
+not infer qualification from the existence of a code path.
+
+## Evaluate and recommend
+
+`pra evaluate` always creates a Full Context versus Selected Context record.
+Add `--include-native-memory` or `--include-native-serving` only when those
+paths should enter the qualification. The command accepts a mode-measurement
+JSON document and writes a reproducible run directory:
+
+```text
+config.yaml
+environment.json
+quality.json
+metrics.json
+runs/
+report.md
+recommendation.json
+```
+
+The input JSON uses product mode names under `modes`:
+
+```json
+{
+  "selector_digest": "sha256-of-frozen-selection",
+  "hardware": "deployment hardware identity",
+  "modes": {
+    "full_context": {
+      "quality": {"f1": 0.81},
+      "context": {"visible_input_tokens": 8192},
+      "performance": {"ttft_p95_ms": 640.0}
+    },
+    "selected_context": {
+      "quality": {"f1": 0.80},
+      "context": {"visible_input_tokens": 2200},
+      "performance": {"ttft_p95_ms": 270.0}
+    }
+  }
+}
+```
+
+Missing values remain JSON `null` and render as `NOT_MEASURED`. An evaluation
+without imported measurements is a valid assessment template, not a synthetic
+benchmark. It receives no production recommendation until its quality gate
+passes.
+
+Attribution is adjacent and explicit:
+
+- Full Context to Selected Context measures retrieval and visible-token gains.
+- Selected Context to Native Memory measures representation and residency.
+- Native Memory to Native Serving measures scheduler ownership.
+
+`pra recommend` cannot promote Native Memory merely because native execution is
+implemented. It requires frozen selection, semantic parity, HOT/WARM latency,
+memory, reuse, reference-encoding cost, qualified engine evidence, and a
+positive incremental economic result. Negative AirLLM evidence keeps Selected
+Context as the recommendation.
+
+Export with `pra report RUN --format md|html|json`.
+
+## Enterprise assessment
+
+The assessment wrapper makes the same artifacts easier to hand to a design
+partner:
+
+```bash
+pra assess init customer-workload
+# Edit .pra/assessments/customer-workload/config.yaml
+pra assess run .pra/assessments/customer-workload --measurements matched-results.json
+pra assess report .pra/assessments/customer-workload --format html
+```
+
 The command runs inside the Python environment where it was installed.
 Accordingly, `pra doctor` reports that environment's Torch build and device
 backends. A CPU-only virtual environment reports CPU-only Torch even when a
@@ -28,7 +119,8 @@ The command groups keep four concepts separate:
 | `profiles` | measured semantic and physical calibration |
 | `hf` | Hub authentication and artifact transport only |
 
-The gateway accepts product-facing deployment names:
+The gateway accepts product-facing deployment names. Normal help and output do
+not expose research protocol labels:
 
 ```bash
 pra gateway serve --mode passthrough --backend openai --backend-url URL
@@ -70,6 +162,19 @@ resolver when the optional Hub dependency is installed.
 Human-readable output is the default. Add `--json` or `--yaml` for scripts.
 Product configuration precedence is explicit CLI values, command YAML, bundle
 or profile, project config, user config, then package defaults.
+
+## Runtime modes
+
+Both `pra serve` and `pra runtime serve` accept:
+
+- `--mode selected-context` for the portable baseline;
+- `--mode native-memory` for an explicitly qualified native path;
+- `--mode auto` for conservative policy selection.
+
+`auto` does not promote a deeper mode from capability availability alone. It
+reports the requested mode, selected mode, and reason. `--profile recommended`
+resolves to the current conservative `BALANCED` profile; reduced consumer-layer
+profiles remain calibration candidates until workload evidence qualifies them.
 # Storage profiles
 
 The runtime commands accept a named semantic storage profile or a detailed

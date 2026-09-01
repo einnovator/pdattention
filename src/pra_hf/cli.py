@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import click
 import torch
@@ -18,6 +18,15 @@ from .gateway_cli import gateway_cli
 from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
 from .product_config import dump_data
+from .product_qualification import (
+    EngineProductRegistry,
+    QualificationService,
+    assessment_init,
+    environment_report,
+    load_run,
+    recommend_run,
+    render_report,
+)
 from .profile_benchmarks import ProfileBenchmarkRegistry
 from .router import PRARouter
 from .runtime import PRARuntimeConfig, VLLMThinBackend, runtime_capabilities
@@ -40,6 +49,70 @@ def _output_options(function):
     function = click.option("--yaml", "yaml_output", is_flag=True, help="Emit YAML.")(function)
     function = click.option("--json", "json_output", is_flag=True, help="Emit JSON.")(function)
     return function
+
+
+def _metric(value: Any) -> str:
+    if value is None:
+        return "NOT_MEASURED"
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    return str(value)
+
+
+def _emit_doctor(value: Mapping[str, Any]) -> None:
+    system = value["system"]
+    click.echo("System")
+    for name in ("os", "python", "executable", "cpu", "accelerator", "memory_bytes", "disk_free_bytes"):
+        click.echo(f"  {name.replace('_', ' ').title()}: {_metric(system[name])}")
+    click.echo("\nEngines")
+    for row in value["engines"]:
+        click.echo(f"  {row['name']} ({row['engine']})")
+        click.echo(
+            f"    Installed: {row['installed']}  Version: {_metric(row['version'])}  "
+            f"Connection: {row['connection']}  Reachable: {_metric(row['reachable'])}"
+        )
+        click.echo(
+            f"    Selected Context: {row['selected_context']}  Typed Transport: {row['typed_transport']}  "
+            f"Native Memory: {row['native_memory']}  Native Serving: {row['native_serving']}"
+        )
+        click.echo(f"    Evidence: {row['evidence']} ({row['provenance']})")
+    click.echo("\nModels and adapters")
+    click.echo(f"  Known local bundles: {len(value['models_and_adapters']['known_local_bundles'])}")
+    click.echo(f"  Profile registry: {value['models_and_adapters']['profile_registry']}")
+    click.echo("\nProblems / next action")
+    if value["problems"]:
+        for problem in value["problems"]:
+            click.echo(f"  - {problem}")
+    else:
+        click.echo("  No environment-level problems detected.")
+    click.echo(f"  Next: {value['next_action']}")
+
+
+def _emit_qualification(value: Mapping[str, Any], run_directory: Path | None = None) -> None:
+    click.echo("MODE                STATUS              F1            VISIBLE TOKENS  TTFT P95 MS   SUCCESS REQ/S")
+    for row in value["modes"].values():
+        click.echo(
+            f"{row['label']:<19} {row['status']:<19} {_metric(row['quality']['f1']):<13} "
+            f"{_metric(row['context']['visible_input_tokens']):<15} "
+            f"{_metric(row['performance']['ttft_p95_ms']):<13} "
+            f"{_metric(row['performance']['successful_requests_per_second'])}"
+        )
+    click.echo("\nAttribution")
+    for name in ("context_gain", "native_gain", "serving_gain"):
+        gain = value["attribution"][name]
+        measured = ", ".join(
+            f"{key}={_metric(item)}" for key, item in gain.items()
+            if key != "comparison" and item is not None
+        ) or "NOT_MEASURED"
+        click.echo(f"  {gain['comparison']}: {measured}")
+    recommendation = value["recommendation"]
+    click.echo(f"\nRecommendation: {recommendation['recommended_mode'] or 'No production recommendation'}")
+    click.echo(f"  {recommendation['reason']}")
+    for limitation in recommendation["limitations"]:
+        click.echo(f"  - {limitation}")
+    click.echo(f"Missing measurements: {len(value['missing_measurements'])}")
+    if run_directory is not None:
+        click.echo(f"Run directory: {run_directory}")
 
 
 def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args=(), verbose=False):
@@ -68,8 +141,233 @@ cli.add_command(gateway_cli)
 @click.option("-v", "--verbose", is_flag=True)
 @_output_options
 def doctor(verbose, json_output, yaml_output) -> None:
-    """Report core, accelerator, Hub, and optional runtime availability."""
-    _emit(DoctorService().run(verbose=verbose), json_output=json_output, yaml_output=yaml_output)
+    """Inspect the system, engines, local artifacts, and next action."""
+    value = environment_report()
+    if verbose:
+        value["legacy_dependency_checks"] = DoctorService().run(verbose=True)
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+    else:
+        _emit_doctor(value)
+
+
+@cli.command("engines")
+@click.option("--details", metavar="ENGINE")
+@_output_options
+def engines(details, json_output, yaml_output) -> None:
+    """Show the registry-backed engine capability and recommendation matrix."""
+    registry = EngineProductRegistry.default()
+    value = registry.details(details) if details else registry.matrix()
+    if json_output or yaml_output or details:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+        return
+    rows = value["engines"]
+    click.echo("ENGINE          SELECTED CONTEXT  NATIVE MEMORY   NATIVE SERVING  RECOMMENDED")
+    for row in rows:
+        recommendation = str(row["recommended"]).split(".")[0]
+        click.echo(
+            f"{row['engine']:<15} {row['selected_context']:<17} "
+            f"{row['native_memory']:<15} {row['native_serving']:<15} {recommendation}"
+        )
+    click.echo(f"\nProvenance: {value['provenance']} ({value['registry_version']})")
+
+
+@cli.command("inspect")
+@click.argument("model")
+@click.option("-e", "--engine", default="hf", show_default=True)
+@click.option("-r", "--revision")
+@_output_options
+def product_inspect(model, engine, revision, json_output, yaml_output) -> None:
+    """Inspect one MODEL and ENGINE as a deployable combination."""
+    try:
+        metadata = ModelInspector().inspect(model, revision=revision)
+        value = QualificationService().inspect(model, engine, metadata)
+    except (KeyError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    _emit(value, json_output=json_output, yaml_output=yaml_output)
+
+
+@cli.command("evaluate")
+@click.argument("model")
+@click.option("-e", "--engine", required=True)
+@click.option("-D", "--dataset", required=True)
+@click.option("--measurements", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Import measured mode results as JSON.")
+@click.option("--include-native-memory", is_flag=True)
+@click.option("--include-native-serving", is_flag=True)
+@click.option("--quality-threshold", type=click.FloatRange(min=0.0, max=1.0), default=0.95, show_default=True)
+@click.option("-r", "--revision")
+@click.option("-p", "--profile", default="recommended", show_default=True)
+@click.option("-o", "--output", type=click.Path(path_type=Path))
+@_output_options
+def evaluate(model, engine, dataset, measurements, include_native_memory, include_native_serving, quality_threshold, revision, profile, output, json_output, yaml_output) -> None:
+    """Compare execution modes using one frozen selection and explicit gates."""
+    destination = output or (
+        Path(".pra/runs") / f"{model.replace('/', '--')}--{engine}--{int(__import__('time').time())}"
+    )
+    try:
+        value = QualificationService().evaluate(
+            model,
+            engine=engine,
+            dataset=dataset,
+            output=destination,
+            measurements=measurements,
+            include_native_memory=include_native_memory,
+            include_native_serving=include_native_serving,
+            quality_threshold=quality_threshold,
+            revision=revision,
+            profile=profile,
+        )
+    except (KeyError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    value["run_directory"] = str(destination)
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+    else:
+        _emit_qualification(value, destination)
+
+
+@cli.command("recommend")
+@click.argument("run", type=click.Path(exists=True, path_type=Path))
+@click.option("--allow-unqualified-native", is_flag=True, hidden=True)
+@_output_options
+def recommend(run, allow_unqualified_native, json_output, yaml_output) -> None:
+    """Recommend a mode from a completed qualification run."""
+    try:
+        document = load_run(run)
+        value = recommend_run(document, allow_unqualified_native=allow_unqualified_native)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
+    if Path(run).is_dir():
+        (Path(run) / "recommendation.json").write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+    else:
+        _emit(value)
+
+
+@cli.command("report")
+@click.argument("run", type=click.Path(exists=True, path_type=Path))
+@click.option("--format", "format_name", type=click.Choice(["md", "html", "json"]), default="md", show_default=True)
+@click.option("-o", "--output", type=click.Path(path_type=Path))
+def report(run, format_name, output) -> None:
+    """Export a qualification run as Markdown, HTML, or JSON."""
+    try:
+        document = load_run(run)
+        rendered = render_report(document, format_name)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
+    if format_name == "json" and output is None:
+        click.echo(rendered, nl=False)
+        return
+    destination = output or (Path(run) / f"report.{format_name}" if Path(run).is_dir() else Path(f"report.{format_name}"))
+    Path(destination).parent.mkdir(parents=True, exist_ok=True)
+    Path(destination).write_text(rendered, encoding="utf-8")
+    click.echo(str(destination))
+
+
+@cli.group("qualify")
+def qualify_cli() -> None:
+    """Run optional Native Memory and Native Serving qualification gates."""
+
+
+def _qualification_options(function):
+    decorators = (
+        click.option("-e", "--engine", required=True),
+        click.option("-D", "--dataset", required=True),
+        click.option("--measurements", type=click.Path(exists=True, dir_okay=False, path_type=Path)),
+        click.option("-o", "--output", type=click.Path(path_type=Path), required=True),
+        click.option("--quality-threshold", type=click.FloatRange(min=0.0, max=1.0), default=0.95, show_default=True),
+    )
+    for decorator in reversed(decorators):
+        function = decorator(function)
+    return function
+
+
+@qualify_cli.command("native-memory")
+@click.argument("model")
+@_qualification_options
+@_output_options
+def qualify_native_memory(model, engine, dataset, measurements, output, quality_threshold, json_output, yaml_output) -> None:
+    """Compare Selected Context with frozen-selection HOT and WARM memory."""
+    try:
+        value = QualificationService().evaluate(
+            model, engine=engine, dataset=dataset, output=output,
+            measurements=measurements, include_native_memory=True,
+            quality_threshold=quality_threshold,
+        )
+    except (KeyError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+    else:
+        _emit_qualification(value, output)
+
+
+@qualify_cli.command("native-serving")
+@click.argument("model")
+@_qualification_options
+@_output_options
+def qualify_native_serving(model, engine, dataset, measurements, output, quality_threshold, json_output, yaml_output) -> None:
+    """Measure scheduler-owned Native Serving beyond Native Memory."""
+    try:
+        value = QualificationService().evaluate(
+            model, engine=engine, dataset=dataset, output=output,
+            measurements=measurements, include_native_memory=True,
+            include_native_serving=True, quality_threshold=quality_threshold,
+        )
+    except (KeyError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+    else:
+        _emit_qualification(value, output)
+
+
+@cli.group("assess")
+def assess_cli() -> None:
+    """Create a reproducible enterprise Optimization Assessment."""
+
+
+@assess_cli.command("init")
+@click.argument("name")
+@click.option("--root", type=click.Path(path_type=Path), default=Path(".pra/assessments"), show_default=True)
+def assess_init(name, root) -> None:
+    """Create an editable assessment directory."""
+    click.echo(str(assessment_init(name, root=root)))
+
+
+@assess_cli.command("run")
+@click.argument("assessment", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--measurements", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@_output_options
+def assess_run(assessment, measurements, json_output, yaml_output) -> None:
+    """Run the configured assessment and persist its evidence artifacts."""
+    config = yaml.safe_load((assessment / "config.yaml").read_text(encoding="utf-8")) or {}
+    try:
+        value = QualificationService().evaluate(
+            str(config["model"]), engine=str(config["engine"]), dataset=str(config["dataset"]),
+            output=assessment, measurements=measurements,
+            include_native_memory=bool(config.get("include_native_memory")),
+            include_native_serving=bool(config.get("include_native_serving")),
+            profile=str(config.get("profile", "recommended")),
+        )
+    except (KeyError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+    else:
+        _emit_qualification(value, assessment)
+
+
+@assess_cli.command("report")
+@click.argument("assessment", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--format", "format_name", type=click.Choice(["md", "html", "json"]), default="md", show_default=True)
+def assess_report(assessment, format_name) -> None:
+    """Regenerate an assessment report from its stored metrics."""
+    document = load_run(assessment)
+    destination = assessment / f"report.{format_name}"
+    destination.write_text(render_report(document, format_name), encoding="utf-8")
+    click.echo(str(destination))
 
 
 @cli.group("model")
@@ -398,10 +696,38 @@ def _runtime_options(function):
 
 @runtime_cli.command("serve")
 @click.argument("model")
+@click.option(
+    "--mode",
+    type=click.Choice(["selected-context", "native-memory", "auto"]),
+    default="auto",
+    show_default=True,
+    help="Choose the qualified product execution mode.",
+)
 @_runtime_options
 @_output_options
-def runtime_serve(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
-    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose)
+def runtime_serve(model, mode, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, json_output, yaml_output) -> None:
+    """Serve MODEL with an explicit or policy-selected execution mode."""
+    try:
+        engine_row = EngineProductRegistry.default().resolve(engine)
+    except KeyError as error:
+        raise click.ClickException(str(error)) from error
+    native_status = str(engine_row["capabilities"]["native_memory"]).lower()
+    if mode == "auto":
+        selected_mode = "selected-context"
+        reason = "Native Memory is selected only from model, workload, and hardware-specific qualified evidence."
+    elif mode == "native-memory":
+        if native_status in {"not measured", "not qualified", "not applicable"}:
+            raise click.ClickException(
+                f"Native Memory is {engine_row['capabilities']['native_memory']} for {engine_row['name']}; run Selected Context."
+            )
+        selected_mode = mode
+        reason = "Native Memory was explicitly requested; verify a qualification report for production use."
+    else:
+        selected_mode = mode
+        reason = "Selected Context is the portable production baseline."
+    resolved_profile = "BALANCED" if profile == "recommended" else profile
+    mode_args = (*engine_args, f"execution-mode={selected_mode}")
+    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, resolved_profile, storage, storage_config, mode_args, verbose)
     try:
         manager = RuntimeManager()
         handle = manager.serve(config)
@@ -409,7 +735,12 @@ def runtime_serve(model, engine, revision, device, endpoint, host, port, pra_bun
         value["status"] = manager.health(handle).status
     except (KeyError, ValueError, RuntimeError) as error:
         raise click.ClickException(str(error)) from error
+    value.update({"requested_mode": mode, "selected_mode": selected_mode, "selection_reason": reason})
     _emit(value, json_output=json_output, yaml_output=yaml_output)
+
+
+# The product journey uses ``pra serve``; the grouped spelling remains stable.
+cli.add_command(runtime_serve, "serve")
 
 
 @runtime_cli.command("inspect")
@@ -615,12 +946,6 @@ def router_cli() -> None:
 router_cli.add_command(adapter_inspect, "inspect")
 router_cli.add_command(adapter_train_routing, "train")
 router_cli.add_command(adapter_eval, "eval")
-
-
-@cli.command("inspect", hidden=True)
-@click.argument("model")
-def legacy_inspect(model) -> None:
-    _emit(ModelInspector().inspect(model))
 
 
 @cli.command("ask", hidden=True)

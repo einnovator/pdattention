@@ -15,7 +15,11 @@ def test_canonical_cli_tree_and_deprecated_alias() -> None:
     legacy = runner.invoke(deprecated_cli, ["doctor", "--json"])
 
     assert current.exit_code == 0
-    for command in ("model", "adapter", "profiles", "bundle", "runtime", "agent", "gateway", "hf", "doctor"):
+    for command in (
+        "doctor", "engines", "inspect", "evaluate", "recommend", "report", "serve",
+        "qualify", "assess", "model", "adapter", "profiles", "bundle", "runtime",
+        "agent", "gateway", "hf",
+    ):
         assert command in current.output
     assert legacy.exit_code == 0
     assert "`pra-hf` is deprecated; use `pra`." in legacy.output
@@ -104,3 +108,30 @@ def test_runtime_cli_forwards_engine_arguments() -> None:
     assert value["engine"] == "vllm"
     assert value["capabilities"]["native_kv"] is False
 
+
+def test_normal_help_uses_product_terms_only() -> None:
+    runner = CliRunner()
+    commands = (
+        [], ["gateway", "serve", "--help"], ["serve", "--help"],
+        ["evaluate", "--help"], ["qualify", "--help"],
+    )
+    output = "\n".join(runner.invoke(cli, [*args, "--help"] if not args else args).output for args in commands)
+
+    for internal in ("E0", "E1", "E2", "E3", "G10", "G11"):
+        assert internal not in output
+    assert "selected-context" in output
+    assert "native-memory" in output
+
+
+def test_documented_product_workflow_commands_exist() -> None:
+    runner = CliRunner()
+    commands = (
+        ["doctor"], ["engines"], ["inspect"], ["evaluate"], ["recommend"],
+        ["report"], ["serve"], ["qualify", "native-memory"],
+        ["qualify", "native-serving"], ["assess", "init"], ["assess", "run"],
+        ["assess", "report"],
+    )
+
+    for command in commands:
+        result = runner.invoke(cli, [*command, "--help"])
+        assert result.exit_code == 0, f"{' '.join(command)}: {result.output}"

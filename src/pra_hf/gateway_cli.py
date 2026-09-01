@@ -42,7 +42,8 @@ def gateway_cli() -> None:
 @click.option("--port", default=8080, type=int, show_default=True)
 @click.option(
     "--mode",
-    type=click.Choice(tuple(GATEWAY_MODE_ALIASES), case_sensitive=False),
+    type=str,
+    metavar="passthrough|selected-context|upgrade|typed-transport",
     default="passthrough",
     show_default=True,
 )
@@ -56,7 +57,8 @@ def gateway_cli() -> None:
 )
 @click.option("--backend-url")
 @click.option("--model")
-@click.option("--pra-level", type=click.Choice(["auto", "E0", "E1", "E2", "E3"]), default="auto", show_default=True)
+@click.option("--pra-level", type=click.Choice(["auto", "E0", "E1", "E2", "E3"]), default="auto", hidden=True)
+@click.option("--research", is_flag=True, hidden=True, help="Show internal protocol labels.")
 @click.option(
     "--prefix-cache-mode",
     type=click.Choice(["auto", "unknown", "stateless", "automatic_prefix_cache", "explicit_prefix_handle", "session_state"]),
@@ -75,7 +77,7 @@ def gateway_cli() -> None:
 )
 @click.option("--sessions-dir", type=click.Path(path_type=str))
 def gateway_serve(
-    host, port, mode, backend, backend_url, model, pra_level, prefix_cache_mode,
+    host, port, mode, backend, backend_url, model, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
     fallback_injection, sessions_dir,
 ) -> None:
@@ -111,9 +113,19 @@ def gateway_serve(
         fallback_injection=fallback_injection,
     )
     capabilities = adapter.capabilities()
-    click.echo(
-        f"PRA gateway {mode} on http://{host}:{port} "
-        f"-> {capabilities.adapter}/{capabilities.engine_type.value} "
-        f"({capabilities.integration_level.value}, {capabilities.prefix_cache_mode.value})"
-    )
+    selected_enabled = resolved_mode in {"G10", "G11"}
+    typed_enabled = resolved_mode == "G11"
+    native_available = bool(capabilities.native_kv)
+    click.echo(f"PRA gateway on http://{host}:{port} -> {capabilities.adapter}/{capabilities.engine_type.value}")
+    click.echo("Existing OpenAI-compatible clients: supported")
+    click.echo(f"Selected Context: {'enabled' if selected_enabled else 'disabled'}")
+    click.echo(f"Typed resource transport: {'enabled' if typed_enabled else 'disabled'}")
+    click.echo(f"Native Memory: {'delegated to backend' if native_available else 'not advertised by backend'}")
+    click.echo(f"Backend native handshake: {'present' if native_available else 'absent'}")
+    click.echo(f"Effective mode: {'Typed Transport' if typed_enabled else 'Selected Context' if selected_enabled else 'Pass-through'}")
+    if research:
+        click.echo(
+            f"Internal protocol: {resolved_mode}, {capabilities.integration_level.value}, "
+            f"{capabilities.prefix_cache_mode.value}"
+        )
     serve_gateway(gateway, host=host, port=port)

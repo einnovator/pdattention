@@ -18,22 +18,25 @@ environment before diagnosing CUDA or Apple Metal support.
 
 ## Path 1: five-minute evaluation
 
-Inspect a model, inspect the execution plan, run a local benchmark, and compare
-the evidence recorded for its profiles:
+Inspect the environment, discover engine evidence, inspect a model/engine pair,
+and create a qualification run:
 
 ```bash
 pra doctor
-pra model inspect Qwen/Qwen3-1.7B
-pra runtime inspect Qwen/Qwen3-1.7B -e hf
-pra runtime benchmark Qwen/Qwen3-1.7B -e hf -o .pra/bench
-pra profiles compare Qwen/Qwen3-1.7B
+pra engines
+pra inspect Qwen/Qwen3-1.7B --engine hf
+pra evaluate Qwen/Qwen3-1.7B --engine hf --dataset DATASET -o .pra/runs/first
+pra recommend .pra/runs/first
+pra report .pra/runs/first --format html
+pra serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended
 ```
 
-The benchmark writes a structured report under `.pra/bench`. For a Full Context
-versus Selected Context evaluation, keep the task examples and model fixed,
-freeze the selected record IDs/intervals, and compare quality alongside input
-tokens and serving metrics. Follow the [qualification contract](metrics.md);
-never interpret token reduction alone as cost savings.
+The first `evaluate` invocation can create an assessment skeleton. Pass
+`--measurements RESULTS.json` to import selector-frozen quality, context,
+latency, memory, and lifecycle measurements. Missing values stay explicit and
+cannot satisfy a recommendation gate. Keep task examples, model, and selected
+record IDs/intervals fixed across modes. Follow the [qualification
+contract](metrics.md); never interpret token reduction alone as cost savings.
 
 ## Path 2: existing OpenAI-compatible app
 
