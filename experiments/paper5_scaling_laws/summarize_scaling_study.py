@@ -272,7 +272,8 @@ def make_plots(
         adaptive,
         ["logical_tokens"],
         "expected_active_kv_tokens",
-        lambda row: abs(float(row["threshold"]) - float(threshold)) < 1e-9,
+        lambda row: row.get("difficulty", "easy") == "easy"
+        and abs(float(row["threshold"]) - float(threshold)) < 1e-9,
     )
     _error_plot(
         adaptive_points,
@@ -285,6 +286,49 @@ def make_plots(
         log_x=True,
         color="#C64B3C",
     )
+
+    fig, (effort_ax, recall_ax) = plt.subplots(1, 2, figsize=(8.6, 2.9))
+    for difficulty, color in (
+        ("easy", "#167D9A"),
+        ("medium", "#D4A72C"),
+        ("hard", "#C64B3C"),
+    ):
+        effort = grouped_mean(
+            adaptive,
+            ["threshold"],
+            "expected_active_kv_tokens",
+            lambda row, value=difficulty: row.get("difficulty", "easy") == value,
+        )
+        recall = grouped_mean(
+            adaptive,
+            ["threshold"],
+            "evidence_recall",
+            lambda row, value=difficulty: row.get("difficulty", "easy") == value,
+        )
+        effort_ax.plot(
+            [float(row["threshold"]) for row in effort],
+            [row["mean"] for row in effort],
+            marker="o",
+            label=difficulty,
+            color=color,
+        )
+        recall_ax.plot(
+            [float(row["threshold"]) for row in recall],
+            [row["mean"] for row in recall],
+            marker="o",
+            label=difficulty,
+            color=color,
+        )
+    effort_ax.set_title("Adaptive physical effort")
+    effort_ax.set_xlabel("Score-gap threshold")
+    effort_ax.set_ylabel("Expected active K/V tokens")
+    recall_ax.set_title("Evidence recovery")
+    recall_ax.set_xlabel("Score-gap threshold")
+    recall_ax.set_ylabel("Evidence recall")
+    for axis in (effort_ax, recall_ax):
+        axis.grid(alpha=0.22)
+    recall_ax.legend(frameon=False)
+    _save(fig, figures, "adaptive_difficulty_gate")
 
     max_serving = max(int(row["logical_tokens"]) for row in serving)
     serving_points = grouped_mean(
@@ -379,6 +423,12 @@ def main() -> None:
         type=Path,
         default=ROOT / "docs/papers/shared/results/paper5_scaling",
     )
+    parser.add_argument(
+        "--adaptive-difficulty-file",
+        type=Path,
+        default=ROOT
+        / "docs/papers/shared/results/paper5_scaling_m5_adaptive_hard/adaptive_difficulty_scaling.csv",
+    )
     args = parser.parse_args()
     output = args.results_dir.resolve()
 
@@ -386,6 +436,12 @@ def main() -> None:
     active = read_csv(output / "active_kv_scaling.csv")
     search = read_csv(output / "search_index_scaling.csv")
     adaptive = read_csv(output / "adaptive_effort_scaling.csv")
+    adaptive_difficulty = (
+        read_csv(args.adaptive_difficulty_file.resolve())
+        if args.adaptive_difficulty_file.exists()
+        else []
+    )
+    adaptive_all = adaptive + adaptive_difficulty
     dispersion = read_csv(output / "evidence_dispersion_scaling.csv")
     serving = read_csv(output / "serving_scaling.csv")
     models = read_csv(output / "model_scaling_runs.csv")
@@ -485,6 +541,24 @@ def main() -> None:
         "claim": "At fixed synthetic retrieval difficulty, logical memory increased while selected native-K/V stayed fixed and retrieval recall was stable.",
         "limitation": "The result is a controlled routing/systems pilot, not a language-model scaling law or production ANN benchmark.",
     }
+    hard_zero = [
+        row for row in adaptive_all
+        if row.get("difficulty") == "hard" and float(row["threshold"]) == 0.0
+    ]
+    hard_gate = [
+        row for row in adaptive_all
+        if row.get("difficulty") == "hard" and abs(float(row["threshold"]) - 0.03) < 1e-9
+    ]
+    if hard_zero and hard_gate:
+        findings["adaptive_hard_zero_threshold_recall"] = statistics.fmean(
+            float(row["evidence_recall"]) for row in hard_zero
+        )
+        findings["adaptive_hard_threshold_003_recall"] = statistics.fmean(
+            float(row["evidence_recall"]) for row in hard_gate
+        )
+        findings["adaptive_hard_threshold_003_active_kv"] = statistics.fmean(
+            float(row["expected_active_kv_tokens"]) for row in hard_gate
+        )
     (output / "paper5_findings.json").write_text(json.dumps(findings, indent=2), encoding="utf-8")
 
     audit = f"""# Paper 5 Scaling Claim Audit
@@ -495,6 +569,7 @@ def main() -> None:
 - **Measured:** exact and coarse-to-fine retrieval, active native-K/V tokens, layer-token K/V, index bytes, search latency, routing-only concurrency, and CPU/CUDA hardware slices.
 - **Measured:** fixed-difficulty evidence recall remained in [{findings['exact_evidence_recall_min']:.3f}, {findings['exact_evidence_recall_max']:.3f}] at {findings['primary_active_kv_tokens']} active tokens.
 - **Measured:** evidence-dispersion sweeps vary regions and chain depth separately from logical address-space size.
+- **Measured:** hard-negative difficulty exposes adaptive escalation: the hard condition fails without a confidence threshold and recovers under thresholded budget expansion.
 - **Inherited calibration only:** Paper 4 Frozen, LoRA, full-weight, and PRA-native controlled consumer-learning results.
 
 ## Not supported yet
@@ -549,6 +624,23 @@ The controlled result tests whether selected physical attention state can track 
         f"{int(row['evidence_nodes'])} & {row['mean']:.1f} & {row['ci95']:.1f} & {int(row['n'])} \\\\"
         for row in dispersion_summary
     ]
+    adaptive_difficulty_rows = []
+    for difficulty in ("easy", "medium", "hard"):
+        for threshold_value in (0.0, 0.03, 0.06, 0.10):
+            values = [
+                row for row in adaptive_all
+                if row.get("difficulty", "easy") == difficulty
+                and abs(float(row["threshold"]) - threshold_value) < 1e-9
+            ]
+            if not values:
+                continue
+            adaptive_difficulty_rows.append(
+                f"{difficulty} & {threshold_value:.2f} & "
+                f"{statistics.fmean(float(row['escalation_rate']) for row in values):.3f} & "
+                f"{statistics.fmean(float(row['expected_active_kv_tokens']) for row in values):.1f} & "
+                f"{statistics.fmean(float(row['evidence_recall']) for row in values):.3f} & "
+                f"{len(values)} \\\\"
+            )
     tables_tex = (
         "% Generated by summarize_scaling_study.py; do not edit manually.\n"
         "\\begin{tabular}{rrrrrrrr}\n"
@@ -577,7 +669,15 @@ The controlled result tests whether selected physical attention state can track 
         + "\n\\bottomrule\n\\end{tabular}\n",
         encoding="utf-8",
     )
-    make_plots(output, logical, active, adaptive, dispersion, serving, models, training)
+    (output / "adaptive_difficulty_table.tex").write_text(
+        "\\begin{tabular}{lrrrrr}\n"
+        "\\toprule\nDifficulty & Threshold & Escalation & Active K/V & Recall & Cells \\\\\n"
+        "\\midrule\n"
+        + "\n".join(adaptive_difficulty_rows)
+        + "\n\\bottomrule\n\\end{tabular}\n",
+        encoding="utf-8",
+    )
+    make_plots(output, logical, active, adaptive_all, dispersion, serving, models, training)
     print(json.dumps(findings, indent=2))
 
 

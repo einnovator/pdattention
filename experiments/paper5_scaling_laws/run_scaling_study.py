@@ -893,9 +893,7 @@ def main() -> None:
     )
 
     tables = run_primary(config, device)
-    tables["adaptive_effort_scaling"].extend(
-        run_adaptive_difficulty(config, device)
-    )
+    tables["adaptive_difficulty_scaling"] = run_adaptive_difficulty(config, device)
     tables["evidence_dispersion_scaling"] = run_dispersion(config, device)
     hardware_devices = [torch.device("cpu")]
     if torch.cuda.is_available():
