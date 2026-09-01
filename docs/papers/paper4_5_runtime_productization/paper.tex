@@ -95,7 +95,7 @@ HBM-resident packing cost on this host.  Compilation is a negative capability
 gate: the CPU toolchain lacks an available compiler and the GPU is below the
 Triton capability floor.  No optional serving engine is installed.  The result
 is therefore a tested portable eager baseline and reproducible measurement
-contract, not a fused-kernel or serving-engine speed claim. Companion Apple-M5
+contract, not a fused-kernel or serving-engine speed claim. Companion Apple-Silicon
 runs apply that contract to one frozen 60-example selection cohort in MLX-LM,
 SGLang-MLX, and vLLM-Metal. Native E2 removes 90.6--93.0\% of visible prompt
 tokens, and all three engines preserve all 840 paired outputs. The corrected
@@ -109,7 +109,14 @@ HiCache-backed arrays, and MLX arrays. Across 17 model/dataset cohorts spanning
 Qwen, Llama, and Gemma, lossless WARM preserves 265/265 outputs and every
 manager recovers after restart; int8 COLD is exact in only 61/265 sequences and
 remains opt-in. Gemma is unsupported by the pinned SGLang-MLX backend because
-that runtime cannot represent its per-layer sliding-window topology.
+that runtime cannot represent its per-layer sliding-window topology. A later
+30-example Qwen3-32B MLX cohort on 48~GiB preserves every concatenated-E2
+sequence; warm E2/E0 is 1.011 and cold usable-context E2/E0 is 0.976. On CUDA,
+a scheduler-invisible vLLM 0.28 bridge also preserves all 128 outputs per
+condition while removing selected source tokens from scheduler geometry, but
+E0 still delivers 56.25 successful requests/s versus 45.46 for HOT E2. The
+runtime therefore treats semantic parity, context reduction, and economic
+qualification as separate gates.
 \end{abstract}
 
 \section{Introduction}
@@ -758,17 +765,18 @@ $+0.030$-nat mean likelihood shift. At the three-case 8B
 pinned 40,960-position limit and is recorded as unsupported, not silently
 shortened.
 
-\paragraph{Corrected M5 and profile-policy receipt.}
-A second-host M5 run adds one graph warm-up per path and matched warm/warm and
-cold/cold tails. Over 30 natural-QA examples per checkpoint, concat E2
-preserves every E0 output. Its warm ratios are 1.035, 1.015, and 0.980 for
-Qwen3-4B, 8B, and 14B; cold usable-context ratios are 0.973, 0.968, and 0.946.
-The 14B warm point estimate is below E0, but its 95\% paired-bootstrap interval
-[0.922, 1.012] includes parity. Unfused segmented ratios contract from 1.290 to
-1.156 and 1.031.
-The 32B preflight is not forced through swap: 22.86~GB is required against
-17.18~GB physical memory, so its row is
-\texttt{NOT\_RUN\_CAPACITY\_GATE}.
+\paragraph{Corrected 48-GiB scaling and profile-policy receipt.}
+The matched M4 Pro run adds one graph warm-up per path and compares warm with
+warm and cold with cold. Over 30 natural-QA examples and five seeds per
+checkpoint, concatenated E2 preserves every E0 output at 4B, 8B, 14B, and 32B.
+Warm E2/E0 ratios contract from 1.054 to 1.031, 1.018, and 1.011; cold usable-
+context ratios are 0.932, 0.932, 0.950, and 0.976. The 32B warm 95\% paired-
+bootstrap interval is [1.009, 1.013], so this exact path remains slightly above
+E0 rather than crossing below it. Unfused all-layer segmented ratios contract
+from 1.165 to 1.102, 1.055, and 1.047, but sequence agreement is only 0.833 at
+32B. An earlier 17.18-GB host correctly recorded 32B as
+\texttt{NOT\_RUN\_CAPACITY\_GATE}; the 48-GiB result supersedes that capacity
+limitation without rewriting the earlier receipt.
 
 A held-out noncontiguous Qwen3-4B calibration also fails to remove any layer
 group under a 0.05-nat likelihood and 0.90 first-token constraint. The
@@ -1330,6 +1338,62 @@ operation counts are averaged over the actual forwards.
 
 \section{Results}
 
+\subsection{Five product questions}
+
+The accumulated evidence is easier to interpret as five product questions
+than as a chronology of mechanisms. Table~\ref{tab:five-product-questions}
+keeps semantic, physical, lifecycle, and operational claims at their measured
+levels.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.25\linewidth}Yp{.22\linewidth}}
+\toprule
+Question & Strongest current evidence & Product decision \\
+\midrule
+Can semantics survive engine changes? & 6,258/6,258 selector-frozen E0/E2
+pairs are exact across MLX-LM, SGLang-MLX, and vLLM-Metal. & Pinned mechanisms
+pass; portability is not inferred. \\
+Can context shrink without native changes? & E0 selected text cuts visible
+source tokens by 90.4--93.0\% in the matched engine cohorts and improves several
+long-context serving tails. & E0 is the compatibility default. \\
+Can native state be attached safely? & Request isolation, exact replay, and
+single-copy controls pass in pinned HF, vLLM, SGLang, MLX, and llama.cpp paths;
+CUDA vLLM removes source placeholders from scheduler geometry. & Native E2 is
+capability-gated and version-bound. \\
+Can state survive and be shared? & Lossless WARM is exact in 265/265 outputs,
+all 17 managers restart, async promotion can hide local stall, and shared
+resources avoid duplicate K/V. & WARM is qualified as backing state, not as an
+automatic latency win. \\
+Can operators use and inspect it? & CLI, gateway, sessions, typed records,
+authorization, bundles, OpenTelemetry, Prometheus, and Grafana share one
+versioned contract. & Unsupported capabilities fail or fall back explicitly. \\
+\bottomrule
+\end{tabularx}
+\caption{Runtime synthesis. An observed mechanism is not silently promoted to
+a portable or economically preferred product mode.}
+\label{tab:five-product-questions}
+\end{table}
+
+Four derived quantities remain deliberately separate:
+\begin{align}
+G_{\mathrm{context}}&=C_{\mathrm{full}}/C_{\mathrm{selected}}, &
+G_{\mathrm{session}}&=T_{\mathrm{selected\ needed}}/T_{\mathrm{new}},\\
+G_{\mathrm{native}}&=C_{\mathrm{selected}}/C_{\mathrm{native}}, &
+Q_{\mathrm{useful}}&=(\mathrm{requests/s})P(\mathrm{quality\ pass}).
+\end{align}
+Here $C$ must use one stated accounting boundary and $T$ one stated materialized
+unit; the ratios are not interchangeable. In the scheduler-invisible CUDA
+vLLM fixture, scheduler-accounted tokens give
+$G_{\mathrm{context}}=276/36=7.67$ and
+$G_{\mathrm{native}}=36/20=1.80$; E2 carries no scheduler-visible source token,
+but the 20 query tokens remain. In the separate 50-turn agent trace, resource-
+body transmissions give $G_{\mathrm{session}}=275/21=13.10$. Because every
+CUDA row passes its quality gate, useful throughput equals 56.25 requests/s for
+E0, 45.46 for HOT E2, and 42.44 for WARM E2. Context and Native Gain therefore
+do not imply a throughput win.
+
 \subsection{Stable prefix and session-delta contract}
 
 \begin{figure}[H]
@@ -1795,6 +1859,17 @@ lead is available. The dashed line is HOT latency.}
 \label{fig:runtime-async-warm}
 \end{figure}
 
+A two-host SGLang storage control then separates transfer lead from placement.
+Five 125-token native objects reside on one 48-GiB Mac and are requested by a
+model-side coordinator on a second Mac. A 2,000-ms lead makes all 40 requests
+ready at demand; shorter leads leave a measurable remote-transfer stall. At
+concurrency 16 and 250-ms lead, affinity placement reduces shared-resource
+reads from 57.4 to 14.4~MB and raises control-plane throughput from 12.24 to
+28.38 requests/s. For mixed resources it reduces reads from 272.7 to 71.8~MB
+and raises throughput from 2.25 to 11.77 requests/s. Tensor equality is exact.
+This is a controlled native-K/V storage result over tunneled HTTP, not yet an
+online SGLang generation or distributed-HiCache latency claim.
+
 The same native executors now traverse the HTTP streaming gateway. SGLang
 delivers 3.04--3.20 requests/s and MLX 1.56--1.66 requests/s over concurrency
 one through eight. Tail latency grows with the intentionally serialized model
@@ -2129,6 +2204,12 @@ model identity, structural and learned adapters, profiles, evidence, runtime
 compatibility, engine realizations, and provenance without copying base-model
 weights. Hub pull and push are optional transport operations under
 \texttt{pra hf}; generic Transformers execution does not depend on Hub login.
+The public catalog currently contains five canonical
+\texttt{EInnovator/pra-*} bundles for Qwen3-0.6B, Qwen3-4B, Qwen3-14B,
+Llama-3.1-8B, and Gemma-3-1B identities. Bundle discovery checks the base model,
+revision, engine, and immutable bundle revision before AUTO may resolve it;
+checksum validation precedes managed runtime loading. The published learned
+routers remain dataset-qualified profiles rather than universal defaults.
 
 \begin{figure}[H]
 \centering
@@ -2167,9 +2248,11 @@ optional gateway mediation, and engine-native execution.}
 \end{figure}
 
 The default vLLM provider deliberately advertises E0 unless the measured native
-bridge is installed: Paper 6 now establishes a controlled Metal V1 generation
-path with APC and offline concurrency through eight, but not a portable CUDA or
-production online-scheduling realization.
+bridge is installed. Paper 6 now establishes both a controlled Metal V1 path
+and a version-bounded CUDA 0.28 worker hook with scheduler-invisible detached
+pages. The CUDA cohort is exact at 128 requests per condition, but HOT and WARM
+E2 trail E0 useful throughput and LMCache was not exercised. This is measured
+native capability, not an unconditional production default.
 SGLang and MLX advertise the companion papers' measured native mechanism
 support under their pinned environments. Paper 6.1 additionally closes local
 shared-prefix/HiCache composition at the runner boundary, while distributed
@@ -2302,12 +2385,14 @@ collector through a documented hybrid-host arrangement.
 
 \section{Limitations and Next Gates}
 
-The current evidence is intentionally incomplete. The local CUDA GPU is old,
-and the companion serving-engine measurements run on one Apple host. We have not
-measured continuous batching, request-level p95/p99, asynchronous transfer
-overlap, a production page allocator, prefetch, multi-session contention, or
-fused attention preparation.  The LRU fixture validates byte accounting but is
-not a production cache policy study.  The inherited language-model cohort is
+The current evidence is intentionally incomplete. The local HF compilation
+probe uses an old CUDA GPU, while companion experiments span two Apple hosts,
+one newer CUDA laptop GPU, and an Intel GPU. Bounded async promotion,
+multi-session pressure, prefetch lead, and request-tail distributions are now
+measured; production continuous batching, a stable upstream native-page ABI,
+live LMCache, fused segmented attention, online cancellation under load, and
+sustained multi-tenant serving are not. The LRU fixture validates byte
+accounting but is not a production cache policy study. The inherited language-model cohort is
 too small for quality claims.  The new capability and compact-result workflows
 and Paper 8 task/session integration are executed contract tests, not a new
 latency or answer-quality experiment. The shell is intentionally single-agent;
@@ -2327,10 +2412,10 @@ system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
 The Paper 4.5 gateway and agent-transport profiles are deterministic transport
-experiments. They do not use a real serving engine or distributed scheduler,
-and therefore
-does not measure physical prefix-cache hits, worker affinity, warm-prefix TTFT,
-continuous batching, index residency, or network cost. The reported reuse
+experiments. They do not by themselves measure physical prefix-cache hits,
+continuous batching, or engine queueing. Companion experiments now measure
+local physical reuse and controlled two-host SGLang affinity, but the latter is
+not wired through online generation. The reported gateway reuse
 fraction counts exact serialized messages, not tokenizer tokens. Engine
 profiles are conservative defaults and require runtime probing or explicit
 configuration before stronger capabilities may be advertised. Companion
@@ -2370,17 +2455,19 @@ phase/shared handoff closes the cache-correctness prerequisite; its remaining
 gate is workload-scale calibration rather than mechanism availability.
 
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
-have established SGLang and MLX native mechanism baselines and controlled
-vLLM-Metal V1 generation. A shared matched benchmark now closes E0/E2 semantic
-parity for all three engines. The corrected vLLM-Metal geometry reaches
+have established SGLang and MLX native mechanism baselines and controlled vLLM
+generation on Metal and CUDA. A shared matched benchmark now closes E0/E2
+semantic parity for all three engines. The corrected vLLM-Metal geometry reaches
 3,360/3,360 exact cross-family pairs, while expanded Qwen confirmations preserve
 2,086/2,086 per engine. SGLang and MLX still expose unfused decode overhead on
-reused paths. Those results remain environment-specific and do not
-turn the generic provider into an unconditional E2 claim. Native APC and
-offline concurrency now pass on the pinned Metal path when cache identity
-includes native selection and geometry; CUDA replication,
-online queued concurrency, distributed placement, broader positions, masks,
-GQA, and heterogeneous batching must pass before portable speed comparisons.
+reused paths. Those results remain environment-specific and do not turn the
+generic provider into an unconditional E2 claim. Native APC and offline
+concurrency now pass on pinned Metal and CUDA paths when cache identity includes
+native selection and geometry; online queued concurrency, LMCache, broader
+positions, masks, GQA, and heterogeneous batching must pass before portable
+speed comparisons. Controlled off-node WARM transfer and affinity now pass
+outside the SGLang generation path; engine-owned distributed placement remains
+open.
 If useful behavior requires semantic residency, retrieval-aware scheduling, or
 cross-request PRA block sharing, that work belongs to the deep engine paper.
 

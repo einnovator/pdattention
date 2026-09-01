@@ -303,10 +303,18 @@ def build_registry() -> dict:
         {
             "engine": "vLLM CUDA V1",
             "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "profile": "scheduler-invisible detached E2 HOT/WARM, concurrency 8",
+            "hardware": "NVIDIA RTX 5060 Laptop / 8 GB / WSL2",
+            "evidence_tier": "CUDA_MATCHED_DETACHED_PAGES",
+            "status": "128/128 exact per condition; E2-HOT 45.5 vs E0 56.3 useful req/s; LMCache open",
+        },
+        {
+            "engine": "vLLM CUDA V1",
+            "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
             "profile": "selected-text E0 + APC, concurrency 1--16",
             "hardware": "NVIDIA RTX 5060 Laptop / 8 GB / WSL2",
             "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
-            "status": "all controlled outputs exact; selected C16 91.9--93.5 req/s; native E2 open",
+            "status": "all controlled outputs exact; selected C16 91.9--93.5 req/s; native E2 reported separately",
         },
         {
             "engine": "TensorRT-LLM 1.2.1",
@@ -314,7 +322,7 @@ def build_registry() -> dict:
             "profile": "selected-text E0, concurrency 1--16",
             "hardware": "NVIDIA RTX 5060 Laptop / 8 GB / WSL2",
             "evidence_tier": "SERVING_BOUNDED_LOAD_CONTEXT_PRESSURE",
-            "status": "all controlled outputs exact; selected C16 79.6--81.9 req/s; native E2 open",
+            "status": "all controlled outputs exact; selected C16 79.6--81.9 req/s; native E2 source seam audited and stopped",
         },
         {
             "engine": "OpenVINO GenAI 2026.3.1",

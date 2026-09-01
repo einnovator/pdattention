@@ -64,7 +64,13 @@ def test_engine_registry_separates_smoke_from_native_evidence() -> None:
         row["exact_output_parity"] == 1.0
         for row in expanded_matched["parity"]
     )
-    assert len(registry["product_matrix"]) == 14
+    assert len(registry["product_matrix"]) == 15
+    assert any(
+        row["engine"] == "vLLM CUDA V1"
+        and row["evidence_tier"] == "CUDA_MATCHED_DETACHED_PAGES"
+        and "128/128 exact per condition" in row["status"]
+        for row in registry["product_matrix"]
+    )
     assert any(
         row["model"].endswith("Llama-3.1-8B-Instruct-4bit")
         and row["engine"] == "MLX-LM"
