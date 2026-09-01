@@ -51,6 +51,11 @@ layers improve gold-answer log probability over no memory by 1.946 nats on MuSiQ
 2Wiki; the last eight retain 1.190 and .949 at 40\% of that layer-token cost.  All-layer replay is
 not a quality ceiling: it reaches .957 and $-2.290$, respectively, because additional memory
 consumers can amplify interference.  Native gist means do not substitute for token detail.  These
+findings are revisited on a 48~GiB M4 Pro with Qwen3-8B, 14B, and 32B plus a 30B-A3B control.
+Across 60 unique natural-QA model--example pairs, full native replay preserves every selected-text
+sequence.  Dense last-three-quarter likelihood sensitivity falls with scale, from 2.545 to 1.665
+to .356 nats mean absolute delta, but sequence agreement remains too low for profile promotion.
+Thus scale changes the frontier without producing a universal sparse consumer band.  These
 experiments support a precise distinction: annotation evidence identifies justificatory spans,
 whereas
 computationally sufficient memory specifies the contextual native states required by a particular
@@ -94,7 +99,7 @@ softmax competitors.  Conversely, a tiny physical budget can be evidence-dense w
 required evidence regions.  We therefore report both evidence density and evidence coverage,
 rather than treating either as sufficient.
 
-The paper makes five contributions:
+The paper makes six contributions:
 \begin{enumerate}
 \item It defines \emph{computational sufficiency} as a physical-memory question distinct from
 retrieval relevance and from the consumer's learned ability to use memory.
@@ -108,6 +113,8 @@ representation context, evidence dispersion, and physical budget.
 \item It audits positional replay and calibrates contiguous and sparse consumer-layer profiles
 under corrected native-K/V transport, separating address, detail-storage, routing, and consumption
 roles.
+\item It tests consumer-depth transfer on a dense 8B--32B ladder and a 30B-A3B MoE control while
+holding annotated evidence and source width fixed.
 \item It preserves negative results: broader disclosure can dilute useful evidence, gist means are
 not token-detail substitutes, high density can hide low coverage, and Python gathering does not
 yet establish a serving-speed benefit.
@@ -793,6 +800,62 @@ but it must not be reported as quality-optimal.  The runtime profile registry an
 calibration belong to Paper~4.5; this paper supplies the causal placement evidence and physical
 accounting.
 
+\subsection{Consumer-depth scaling from 8B to 32B}
+
+The corrected 0.6B placement result does not imply that the same absolute
+layer count transfers to a deeper model. We therefore run a complementary MLX
+calibration on pinned 4-bit Qwen3-8B, 14B, and 32B checkpoints and
+Qwen3-30B-A3B. Five unique annotated-evidence examples from each of QASPER,
+HotpotQA, and 2Wiki are bounded at 384 selected source tokens. Evidence
+identity, query, answer, and source width remain fixed while consumption varies
+over all layers and contiguous suffixes of three quarters, two thirds, one
+half, one third, and one quarter. This isolates consumer depth but not
+materialization width: every condition receives the same selected tokens.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Larger-model consumer calibration. Concat and segmented agreement
+are greedy-sequence agreement with selected-text E0. $|\Delta|$LP is the mean
+across dataset-level absolute answer-log-probability deltas; PRA MiB counts
+active all-layer selected K/V.}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_kv_materialization/large_model_scaling/generated_mlx_scaling_table.tex}}
+\label{tab:large-consumer-scaling}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper3_kv_materialization/large_model_scaling/mlx_scaling_profiles.pdf}
+\caption{Left: consumer-depth sensitivity across model scale. Right: the
+selected-text, concatenated-native, and segmented-native execution costs on
+the M4 Pro. The figure calibrates placement; it is not a materialization-width
+or serving-throughput result.}
+\label{fig:large-consumer-scaling}
+\end{figure}
+
+Concatenated all-layer native replay matches all 60 selected-text sequences,
+so the transport control is closed. The live segmented implementation matches
+57/60 and has small likelihood drift; those three changes are numerical
+kernel sensitivity after deep repeated composition, not retrieval changes.
+For the dense models, the last-three-quarter mean absolute likelihood delta
+falls from 2.545 nats at 8B to 1.665 at 14B and .356 at 32B. The same profile's
+sequence agreement is only .267, .467, and .133, however. A less sensitive
+likelihood surface is not the same as behavioral equivalence.
+
+The MoE control makes the distinction sharper. Its all-layer active selected
+K/V averages 26.4 MiB, versus 70.3 MiB for dense 32B, and its completion is
+much faster on this host. Yet dropping the first quarter costs 2.662 nats mean
+absolute likelihood, not the dense model's .356. Expert sparsity changes
+weight-side computation and the K/V topology; it does not automatically make
+semantic memory sparse. The scaling evidence therefore supports
+model-normalized calibration and rejects both a universal ``last eight'' rule
+and a universal consumer fraction. All reduced bands remain candidates.
+
+The executable MLX path is owned by Paper~4.5/Paper~6.2 at commit
+\texttt{0f0ed60}; this branch vendors its immutable raw JSON, generated table,
+figure, and summary under
+\path{docs/papers/shared/results/paper3_kv_materialization/large_model_scaling}.
+
 \section{Frozen Selection by Materialization}
 
 After the oracle confirmation, we reuse one-shot, graph-sparse, graph-balanced, and graph-high Paper-2.5 selected
@@ -939,11 +1002,14 @@ identities per dataset and reports example-bootstrap intervals, but those interv
 Greedy F1 and normalized accuracy are coarse, especially on MuSiQue where output scores remain
 near the floor.  A validated blinded LLM judge has not been run for Paper~3.
 
-Only Qwen3-0.6B is evaluated.  Materialization behavior may differ with model scale, family,
-fine-tuning, quantization, and attention kernel.  The corrected layer calibration contains 16
-identities per dataset and reuses the same held-out cohort across profiles.  Its bootstrap
-intervals quantify example variation, not model-family or training-seed uncertainty.  Profiles
-must therefore be recalibrated rather than transferred by layer number.
+The materialization-width frontier is evaluated only on Qwen3-0.6B. The added
+8B--32B and MoE study varies consumer depth while keeping full selected records;
+it does not establish how token-radius optima scale. It also remains one Qwen
+family, one 4-bit quantization, and 15 examples per model. The corrected 0.6B
+layer calibration contains 16 identities per dataset and reuses the same
+held-out cohort across profiles. Its bootstrap intervals quantify example
+variation, not model-family or training-seed uncertainty. Profiles must
+therefore be recalibrated rather than transferred by layer number or fraction.
 
 The evidence oracle assumes dataset annotations identify useful source spans.  Eighteen MuSiQue
 and 24 2Wiki held-out identities inherit frozen Paper-2.5 token geometry; the remaining 14 and 8

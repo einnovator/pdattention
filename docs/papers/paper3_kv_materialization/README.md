@@ -63,3 +63,11 @@ The reconciliation uses corrected source-offset query positions and keeps
 native source K/V at their source-relative RoPE positions. It separates
 address, detail-K/V storage, routing, and consumer roles; the sweep varies only
 the consumer set while holding oracle identity and transport fixed.
+
+The larger-model consumer-depth revisit is reproduced from the MLX runtime
+owned by `research/paper4-5-runtime` at commit `0f0ed60`. This branch vendors
+the immutable raw rows and generated artifacts under
+`docs/papers/shared/results/paper3_kv_materialization/large_model_scaling/`.
+It covers Qwen3 8B/14B/32B Q4 and 30B-A3B over five unique examples per dataset.
+The revisit varies consumer depth only; Paper 3's materialization-width
+frontier remains the 0.6B causal experiment.
