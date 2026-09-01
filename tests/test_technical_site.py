@@ -76,6 +76,43 @@ def test_web_ui_is_a_dedicated_operational_page() -> None:
     assert "- Web UI: web-ui.md" in mkdocs
 
 
+def test_agent_guides_cover_gateway_and_direct_engine_paths() -> None:
+    agents = SITE / "agents"
+    expected = {
+        "pra-agent.md",
+        "deepseek-harness.md",
+        "pi-coding-agent.md",
+        "openhands.md",
+        "aider.md",
+        "codex-cli.md",
+        "claude-code.md",
+    }
+    assert expected == {path.name for path in agents.glob("*.md") if path.name != "index.md"}
+    for name in expected:
+        text = (agents / name).read_text(encoding="utf-8")
+        assert "## Through the PRA gateway" in text
+        assert "## Direct PRA engine" in text
+    overview = (agents / "index.md").read_text(encoding="utf-8")
+    for name in expected:
+        assert f"({name})" in overview
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    assert "- Agents:" in mkdocs
+    assert mkdocs.index("- Agents:") < mkdocs.index("- Model Support:")
+
+
+def test_deepseek_and_pi_guides_explain_plugin_contract_and_setup() -> None:
+    deepseek = (SITE / "agents/deepseek-harness.md").read_text(encoding="utf-8")
+    pi = (SITE / "agents/pi-coding-agent.md").read_text(encoding="utf-8")
+    for text, adapter in (
+        (deepseek, "DeepSeekHarnessPRAAdapter"),
+        (pi, "PiCodingAgentPRAAdapter"),
+    ):
+        assert "## What the PRA plugin does" in text
+        assert "## Set up the PRA plugin bridge" in text
+        assert adapter in text
+        assert "not" in text.lower() and "published" in text.lower()
+
+
 def test_all_internal_markdown_links_resolve() -> None:
     missing: list[str] = []
     for page in SITE.rglob("*.md"):

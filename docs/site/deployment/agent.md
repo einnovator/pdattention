@@ -1,5 +1,10 @@
 # Agent Deployment
 
+The agent documentation now has a dedicated section. Start with the [agent
+integration matrix](../agents/index.md), or open the [PRA Agent
+guide](../agents/pra-agent.md) for the first-party CLI, TUI, profiles, sessions,
+tools, and skills.
+
 The PRA agent keeps the conversation spine ordinary while storing documents,
 tools, skills, results, and task state as typed records. This prevents a long
 session from repeatedly serializing every prior artifact into each prompt.

@@ -101,7 +101,8 @@ pra agent chat Qwen/Qwen3-0.6B -w . -t "Inspect this repository"
 pra agent run -p work "Summarize the current task state."
 ```
 
-See [Agent deployment](deployment/agent.md) and [Runtime / SDK](deployment/runtime-sdk.md).
+See [PRA Agent](agents/pra-agent.md), the [agent integration matrix](agents/index.md),
+and [Runtime / SDK](deployment/runtime-sdk.md).
 
 ## Choose an engine
 

@@ -43,6 +43,8 @@ engine-specific one.
 - [Getting Started](getting-started.md): evaluate PRA in five minutes or connect
   an existing application.
 - [CLI](cli.md): run the complete qualification journey and export an assessment.
+- [Agents](agents/index.md): connect PRA Agent, DeepSeek Harness, Pi, OpenHands,
+  Aider, Codex CLI, or Claude Code through the supported transport boundary.
 - [Model Support](models.md): find built-in mappings and adapter requirements by family.
 - [Web UI](web-ui.md): operate local agent sessions, tasks, records, and approvals in a browser.
 - [Concepts](concepts.md): understand logical context, active context, routing,

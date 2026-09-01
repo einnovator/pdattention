@@ -23,7 +23,7 @@ Scheduler owns placement and prefetch?
 | Need | Start with | Why |
 | --- | --- | --- |
 | Existing OpenAI-compatible application | [Gateway](gateway.md) | No application protocol replacement |
-| Durable tools, results, tasks, and sessions | [Agent](agent.md) | Typed state and authorization stay explicit |
+| Durable tools, results, tasks, and sessions | [Agents](../agents/index.md) | Typed state and authorization stay explicit |
 | Embedded Python control | [Runtime / SDK](runtime-sdk.md) | Direct lifecycle and trace access |
 | Repeated immutable evidence | [Engine qualification](engines.md) | Native reuse may amortize encoding |
 | Concurrent shared native resources | Native Serving qualification | Scheduler must own safe physical reuse |
