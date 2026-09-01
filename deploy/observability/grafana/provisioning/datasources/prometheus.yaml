@@ -14,6 +14,11 @@ datasources:
     url: http://tempo:3200
     editable: false
     jsonData:
+      # This lab exposes Tempo over ordinary HTTP. Disable Grafana's optional
+      # streaming search transport, which requires a gRPC-capable gateway.
+      streamingEnabled:
+        search: false
+        metrics: false
       tracesToMetrics:
         datasourceUid: pra-prometheus
       serviceMap:

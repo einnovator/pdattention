@@ -23,6 +23,22 @@ host, instance, profile, and execution-mode variables. No dashboard hard-codes
 an engine host. Engines without a native telemetry surface still show PRA
 wrapper metrics; unavailable native panels are not fabricated.
 
+To populate both dashboards with bounded generation traffic rather than health
+probes, run the engine telemetry probe against an OpenAI-compatible chat endpoint:
+
+```bash
+python deploy/observability/engine_telemetry_probe.py \
+  --engine llamacpp --model qwen2.5-0.5b \
+  --engine-url http://127.0.0.1:18080/v1/chat/completions \
+  --queries deploy/observability/dataset_queries.example.json \
+  --otlp-endpoint http://COLLECTOR:4317 --metrics-port 9464
+```
+
+The example cycles QASPER-, HotpotQA-, and 2Wiki-style requests. Tempo receives
+`pra.engine.request` spans with a bounded `pra.dataset` attribute; Prometheus
+receives request latency and context counters. Use health-only probing only for
+availability dashboards.
+
 ```bash
 cd deploy/observability
 docker compose --profile observability up -d

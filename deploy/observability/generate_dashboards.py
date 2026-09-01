@@ -91,7 +91,8 @@ def trace_dashboard(engine: str) -> dict:
         "panels": [{
             "id": 1,
             "title": f"{engine} request and lifecycle spans",
-            "type": "traces",
+            "type": "table",
+            "pluginVersion": "12.1.1",
             "datasource": {"type": "tempo", "uid": "pra-tempo"},
             "gridPos": {"h": 20, "w": 24, "x": 0, "y": 0},
             "targets": [{
@@ -99,10 +100,20 @@ def trace_dashboard(engine: str) -> dict:
                 "queryType": "traceql",
                 "query": f'{{ resource.pra.engine = "{selector}" }}',
                 "limit": 100,
+                "spss": 3,
                 "tableType": "traces",
+                "metricsQueryType": "range",
+                "filters": [],
             }],
-            "options": {"showTraceServiceMap": True},
-            "fieldConfig": {"defaults": {}, "overrides": []},
+            "options": {
+                "showHeader": True,
+                "cellHeight": "sm",
+                "footer": {"show": False, "reducer": ["sum"], "countRows": False},
+            },
+            "fieldConfig": {
+                "defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}},
+                "overrides": [],
+            },
         }],
     }
 
