@@ -171,9 +171,9 @@ def _short_model(model: str) -> str:
 def _write_table(path: Path, comparisons: list[dict]) -> None:
     rows = [row for row in comparisons if row["context_target_tokens"] in {8192, 32768}]
     lines = [
-        r"\begin{tabular}{llrrrrr}",
+        r"\begin{tabular}{llrrrrrr}",
         r"\toprule",
-        r"Model & Context & $\Delta$LP full--selected & source RMSE & restart RMSE & source agr. & restart agr. \\",
+        r"Model & Context & $\Delta$LP full--selected & selected E2 agr. & source RMSE & restart RMSE & source agr. & restart agr. \\",
         r"\midrule",
     ]
     for row in rows:
@@ -182,6 +182,7 @@ def _write_table(path: Path, comparisons: list[dict]) -> None:
             f"{_short_model(str(row['model_id']))} & "
             f"{int(row['context_target_tokens']) // 1024}K & "
             f"{value:+.3f} & "
+            f"{row['selected_native_sequence_agreement']:.3f} & "
             f"{row['source_relative_logit_rmse']:.3f} & "
             f"{row['query_restart_logit_rmse']:.3f} & "
             f"{row['source_relative_sequence_agreement']:.3f} & "
