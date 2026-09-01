@@ -1,4 +1,4 @@
-from experiments.paper6_3_openvino.run_genai_e0 import _aggregate
+from experiments.paper6_3_openvino.run_genai_e0 import _aggregate, _runtime_failure
 
 
 def _percentile(values, probability):
@@ -42,4 +42,24 @@ def test_cache_aggregate_excludes_failed_requests_from_latency():
     result = _aggregate("selected_text_e0", rows, percentile=_percentile)
     assert result["sample_count"] == 1
     assert result["cache_admission_failures"] == 1
+    assert result["cache_lifecycle_failures"] == 0
     assert result["ttft_ms_p50"] == 10.0
+
+
+def test_cache_lifecycle_corruption_is_distinct_from_capacity_admission():
+    error = RuntimeError("Check 'm_ref_count > 0' failed in BlockManager")
+    assert _runtime_failure(error) == "NOT_RUN_CACHE_LIFECYCLE"
+    rows = [
+        {
+            "measurement_status": "MEASURED",
+            "expected_answer_present": True,
+            "ttft_ms": 5.0,
+            "wall_latency_ms": 8.0,
+        },
+        {"measurement_status": "NOT_RUN_CACHE_LIFECYCLE", "error": str(error)},
+    ]
+    result = _aggregate("prefix_only", rows, percentile=_percentile)
+    assert result["sample_count"] == 1
+    assert result["not_measured_count"] == 1
+    assert result["cache_admission_failures"] == 0
+    assert result["cache_lifecycle_failures"] == 1

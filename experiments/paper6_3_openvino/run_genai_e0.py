@@ -92,13 +92,34 @@ def _sample(pipe: object, genai: object, messages: list[dict[str, str]], max_tok
     }
 
 
+def _runtime_failure(error: RuntimeError) -> str | None:
+    """Classify known scheduler failures without masking unrelated defects."""
+
+    message = str(error)
+    if "did not fit in the available cache budget" in message:
+        return "NOT_RUN_CACHE_ADMISSION"
+    if "m_ref_count > 0" in message or "BlockManager leaked" in message:
+        return "NOT_RUN_CACHE_LIFECYCLE"
+    return None
+
+
 def _aggregate(
     condition: str,
     rows: list[Mapping[str, object]],
     *,
     percentile,
 ) -> Mapping[str, object]:
-    measured = [row for row in rows if row.get("measurement_status") == "MEASURED"]
+    measured = [
+        row
+        for row in rows
+        if row.get("measurement_status") in {None, "MEASURED"}
+    ]
+    admission = [
+        row for row in rows if row.get("measurement_status") == "NOT_RUN_CACHE_ADMISSION"
+    ]
+    lifecycle = [
+        row for row in rows if row.get("measurement_status") == "NOT_RUN_CACHE_LIFECYCLE"
+    ]
 
     def values(name: str) -> list[float]:
         return [float(row[name]) for row in measured if row.get(name) is not None]
@@ -109,7 +130,9 @@ def _aggregate(
         "condition": condition,
         "sample_count": len(measured),
         "requested_sample_count": len(rows),
-        "cache_admission_failures": len(rows) - len(measured),
+        "not_measured_count": len(rows) - len(measured),
+        "cache_admission_failures": len(admission),
+        "cache_lifecycle_failures": len(lifecycle),
         "quality_success_rate": (
             statistics.fmean(
                 float(bool(row["expected_answer_present"])) for row in measured
@@ -133,7 +156,7 @@ def _aggregate(
             {
                 str(row["error"])
                 for row in rows
-                if row.get("measurement_status") == "NOT_RUN_CACHE_ADMISSION"
+                if str(row.get("measurement_status", "")).startswith("NOT_RUN_CACHE_")
             }
         ),
     }
@@ -167,17 +190,24 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
 
     samples: list[Mapping[str, object]] = []
     conditions = harness.benchmark_messages()
+    terminal_failure: Mapping[str, object] | None = None
     for condition, messages in conditions.items():
         for repeat in range(args.repeats):
-            try:
-                values = _sample(pipe, genai, messages, args.max_tokens)
-            except RuntimeError as error:
-                if "did not fit in the available cache budget" not in str(error):
-                    raise
+            if terminal_failure is not None:
                 values = {
-                    "measurement_status": "NOT_RUN_CACHE_ADMISSION",
-                    "error": str(error),
+                    **terminal_failure,
+                    "skipped_after_terminal_failure": True,
                 }
+            else:
+                try:
+                    values = _sample(pipe, genai, messages, args.max_tokens)
+                except RuntimeError as error:
+                    status = _runtime_failure(error)
+                    if status is None:
+                        raise
+                    values = {"measurement_status": status, "error": str(error)}
+                    if status == "NOT_RUN_CACHE_LIFECYCLE":
+                        terminal_failure = dict(values)
             samples.append({"condition": condition, "repeat": repeat, **values})
     aggregates = [
         _aggregate(
@@ -191,7 +221,9 @@ def run(args: argparse.Namespace) -> Mapping[str, object]:
         "schema_version": "1.0",
         "benchmark": "paper6_3_openvino_genai_e0_v1",
         "evidence_tier": "LIVE_ENGINE_SMOKE",
-        "measurement_status": "MEASURED",
+        "measurement_status": (
+            "PARTIAL_ENGINE_CACHE_FAILURE" if terminal_failure else "MEASURED"
+        ),
         "integration_level": "E0_SELECTED_TEXT",
         "packages": {
             name: importlib.metadata.version(name)

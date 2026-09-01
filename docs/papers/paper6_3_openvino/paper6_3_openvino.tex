@@ -254,6 +254,39 @@ continuous-batching GPU process constructs in 5.05 s after system/model caches
 have been populated; these are cold-process observations, not comparable
 steady-state request latencies.
 
+\subsection{Cache-admission and lifecycle boundary}
+
+We then enable cache eviction on Qwen2.5-1.5B and constrain the scheduler by
+physical K/V blocks. The benchmark now distinguishes a capacity rejection from
+an internal cache-lifecycle failure, preserves partial rows, and stops issuing
+requests after a terminal reference-count violation.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{OpenVINO GenAI cache boundary. Selected is visible selected text, not
+native E2. Full $n$ reports measured requests out of ten; tail metrics exclude
+all rejected or post-corruption cells.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_cache_boundary_table.tex}}
+\label{tab:openvino-cache-boundary}
+\end{table}
+
+At 64 blocks, all 40 reduced-context requests complete before full context is
+rejected ten times for insufficient cache budget. This is a normal admission
+boundary. At 128 blocks, all four reduced conditions again complete 10/10 and
+the first 1,573-token full-context request succeeds. The next full request
+fails the engine invariant \texttt{m\_ref\_count > 0}; teardown reports a
+leaked sequence block table and 58 unreleased blocks. A 256-block diagnostic
+reproduces the invariant failure, so additional capacity does not cure it.
+
+The result does not weaken selected-text correctness. It identifies a
+prefix-cache/eviction lifecycle defect in OpenVINO GenAI 2026.3.1.0 under this
+repeated long-prefix workload. The harness labels subsequent cells
+\texttt{NOT\_RUN\_CACHE\_LIFECYCLE}; it never converts them to zero latency or
+continues timing a corrupted pipeline. Production use should disable this
+cache combination or upgrade to a release that passes the same regression.
+
 \subsection{Continuous batching}
 \begin{table}[ht]
 \centering
