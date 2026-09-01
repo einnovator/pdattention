@@ -1,0 +1,85 @@
+{
+  "schema_version": "paper6.6-airllm-request-path-forensics-v1",
+  "source_schema_version": "paper6.6-airllm-cuda-natural-v1",
+  "evidence_tier": "MEASURED_TRACE_PLUS_CODE_PATH_ATTRIBUTION",
+  "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "condition_rows": [
+    {
+      "condition": "FULL E0",
+      "samples": 15,
+      "visible_tokens": 790.7333333333333,
+      "native_tokens": 0.0,
+      "ttft_ms": 4814.34563900087,
+      "itl_ms": 4910.671747288628,
+      "completion_seconds": 19.544455858133247,
+      "peak_cuda_mib": 178.16630859375
+    },
+    {
+      "condition": "selected E0",
+      "samples": 15,
+      "visible_tokens": 410.46666666666664,
+      "native_tokens": 0.0,
+      "ttft_ms": 4907.242925400108,
+      "itl_ms": 4967.508639022223,
+      "completion_seconds": 19.80883820953265,
+      "peak_cuda_mib": 168.49938151041667
+    },
+    {
+      "condition": "native E2",
+      "samples": 15,
+      "visible_tokens": 26.066666666666666,
+      "native_tokens": 378.4,
+      "ttft_ms": 11253.55301946644,
+      "itl_ms": 5678.244230377702,
+      "completion_seconds": 22.579434392400437,
+      "peak_cuda_mib": 160.16145833333334
+    }
+  ],
+  "pooled": {
+    "e2_over_e0_ttft": 2.2932537048894703,
+    "e2_over_e0_itl": 1.1430768707219352,
+    "e2_over_e0_completion": 1.1398666672704958,
+    "e2_minus_e0_ttft_ms": 6346.310094066333,
+    "e2_minus_e0_itl_ms": 710.7355913554784,
+    "e2_minus_e0_completion_seconds": 2.770596182867788,
+    "e2_minus_e0_peak_cuda_mib": -8.337923177083326,
+    "full_over_selected_visible_tokens": 1.926425207081371,
+    "full_over_selected_ttft": 0.9810693524222333,
+    "mean_reference_encode_seconds": 10.879594564867148,
+    "reuse_break_even_queries": null
+  },
+  "findings": [
+    {
+      "mechanism": "query_encoding_pass",
+      "status": "CODE_PATH_CONFIRMED_TIMING_NOT_YET_ISOLATED",
+      "evidence": "Routed E2 calls _route_once before model.generate; AirLLM streams the model weights for both passes."
+    },
+    {
+      "mechanism": "attention_dispatch_change",
+      "status": "CODE_PATH_CONFIRMED_TIMING_NOT_YET_ISOLATED",
+      "evidence": "wrap_airllm_hf_model changes the model attention implementation from SDPA to eager before native consumption."
+    },
+    {
+      "mechanism": "late_layer_memory_attention",
+      "status": "MEASURED_COMBINED_EFFECT",
+      "evidence": "ITL remains higher after routing is complete, consistent with four late direct-plus-memory consumers and eager dispatch."
+    },
+    {
+      "mechanism": "reference_encoding",
+      "status": "MEASURED_OUTSIDE_REQUEST",
+      "evidence": "Encoding is a separate one-time cost and cannot explain the persistent warm request-path penalty."
+    }
+  ],
+  "favorable_workload_hypothesis": {
+    "properties": [
+      "selection is explicit or computed without another streamed model pass",
+      "one immutable long reference serves many queries",
+      "answers are short",
+      "one or two late consumer layers preserve quality",
+      "selected text is long enough that E0 prefill or sequential K/V pressure dominates",
+      "native detail remains host-resident and is prefetched with the corresponding weight layer"
+    ],
+    "current_trace_has_finite_break_even": false
+  }
+}

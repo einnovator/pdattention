@@ -42,8 +42,11 @@ faster on 2Wiki, statistically indistinguishable in this descriptive cohort on
 HotpotQA, and 26.1\% slower on QASPER. The run is therefore transport and memory
 evidence, not semantic parity. A separate 15-example, four-token diagnostic
 measures native/selected TTFT ratios of 2.186--2.351 and ITL ratios of
-1.109--1.173; warm reuse does not remove this request-path penalty. The
-evidence supports independent policy and exposes
+1.109--1.173; warm reuse does not remove this request-path penalty. Pooled
+forensics attribute the result to a poor composition of execution paths:
+routed E2 performs an extra model pass while AirLLM streams weights, switches
+attention from SDPA to eager dispatch, and adds four late direct-plus-memory
+consumers. The evidence supports independent policy and exposes
 the central systems tradeoff: eliminating context residency is valuable only
 when its transfers do not deepen the weight-I/O bottleneck.
 \end{abstract}
@@ -51,8 +54,9 @@ when its transfers do not deepen the weight-I/O bottleneck.
 \section{Qualification Snapshot}
 \textbf{Engine question.} Can AirLLM virtualize model weights while PRA
 independently virtualizes selected semantic context, and does native transport
-already beat selected text? The mechanism composes, but the measured cold
-native path does not yet improve latency.
+already beat selected text? The mechanism composes, but native E2 is
+semantically feasible rather than economically competitive in the measured
+regime.
 
 \begin{table}[ht]
 \centering
@@ -77,9 +81,11 @@ Evidence tier & Live mechanism smoke, 60-example natural cohort, 15-example timi
 \end{table}
 
 \paragraph{Recommendation.}
-Keep selected-text E0 as the deployment default. Treat native AirLLM/HF E2 as
-research-only until selector-frozen natural QA demonstrates parity and repeated
-resource reuse amortizes encoding and transfer. Do not infer E3 from
+Native E2 is semantically feasible but currently not the recommended AirLLM
+deployment. Selected-text E0 is preferable under the measured regime. Treat
+native AirLLM/HF E2 as research-only until selector-frozen natural QA
+demonstrates parity and a different request path makes repeated resource reuse
+amortize encoding and transfer. Do not infer E3 from
 \texttt{storage\_managed}: AirLLM does not yet schedule PRA placement, sharing,
 eviction, and accounting as first-class physical state.
 
@@ -425,6 +431,61 @@ materialization, and the four direct-plus-memory attention consumers remain
 combined.  Profiling and overlap are required before claiming that native PRA
 amortizes well under AirLLM.
 
+\subsection{Why Native E2 Loses Here}
+
+Table~\ref{tab:airllm-forensics} pools the warm-repeat timing observations to
+separate prompt length from native execution. FULL E0 carries 1.93$\times$ as
+many visible tokens as selected E0, yet its TTFT is 0.981$\times$ selected E0.
+At these prompt lengths, ordinary prefill is therefore below AirLLM's
+layer-streaming latency floor. Native E2 saves another 8.34 MiB of peak CUDA
+allocation, but adds 6.35 s before the first token, 0.71 s per inter-token
+interval, and 2.77 s to the four-token request.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Pooled warm-request forensics over 15 matched examples. Reference
+encoding is excluded from request latency. The table is descriptive because the
+attribution conditions could not be rerun after the CUDA host became
+unavailable.}
+\label{tab:airllm-forensics}
+\input{../shared/results/paper6_6_airllm/generated_request_path_forensics_table.tex}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\linewidth]{../shared/results/paper6_6_airllm/request_path_forensics.png}
+  \caption{Left: measured first-token cost. Right: cumulative measured request
+  time when one reference is reused. E2 has no finite latency break-even in the
+  current trace because its warm per-query slope remains above E0 even before
+  adding the one-time 10.88-s reference encoding cost.}
+  \label{fig:airllm-forensics}
+\end{figure}
+
+The implementation exposes three candidate causes with different evidential
+status. First, routed generation invokes \texttt{\_route\_once} before
+\texttt{model.generate}; with AirLLM this can stream the model weights for query
+encoding and again for generation. Second, integration changes the model's
+attention implementation from SDPA to eager before native consumption. These
+are code-path facts, but their individual time contributions are not isolated.
+Third, the four late direct-plus-memory consumers execute during decoding; the
+measured ITL increase confirms a persistent decode-path cost, although it does
+not separate eager dispatch from memory attention. Separate reference encoding
+cannot explain the warm penalty because its 10.88-s cost is outside the timed
+request and is already reused.
+
+This diagnosis also defines the workload in which AirLLM-native PRA could become
+useful. Selection should be explicit, lexical, or otherwise avoid another
+streamed-model pass; one immutable reference should serve many queries; answers
+should be short; one or two late consumer layers must preserve quality; and the
+selected-text baseline must be long enough for prefill or sequential K/V
+pressure to exceed AirLLM's weight-streaming floor. A viable implementation
+would keep native detail in host memory and prefetch each selected layer beside
+its matching weight shard. The accompanying attribution runner freezes a
+selection and crosses SDPA/eager dispatch, preselected/routed E2,
+selected-reference length, and consumer-layer count so these hypotheses can be
+measured when the CUDA host is available.
+
 \subsection{Residency Frontier}
 
 \begin{figure}[t]
@@ -499,8 +560,10 @@ lower allocated CUDA peak and workload-dependent completion time, but the
 HotpotQA and QASPER F1 losses keep semantic parity open. The CUDA smoke closes
 AirLLM disabled, injected-but-disabled, reference encoding, and native
 consumption. Direct four-token timing additionally finds a 2.186--2.351$\times$
-TTFT penalty and a 1.109--1.173$\times$ ITL penalty for native E2. A scale claim
-still requires a conventional HF baseline, HOT
+TTFT penalty and a 1.109--1.173$\times$ ITL penalty for native E2. Pooled warm
+timing has no finite reuse break-even: E2's request slope is already higher
+before adding its one-time reference encoding. A scale claim still requires a
+conventional HF baseline, HOT
 versus layer-streamed native PRA, matched source/query geometry, and a model
 whose weights actually exceed accelerator memory.
 
@@ -530,14 +593,16 @@ uses explicit bandwidth and compute parameters and cannot estimate kernel-level
 attention cost or language quality. The host was under unrelated memory load,
 so available-memory deltas are supporting diagnostics only.
 
-The next decisive experiment is not another hook microbenchmark. The RTX
-cohort should be repeated with a capable model and both a geometry-matched
-full-consumer and an economical late-consumer E2. It should then extend to
-multi-query same-resource and shared-resource reuse while reporting gold answer
-log probability, TTFT, inter-token latency, memory decomposition, and cache
-hits. The timing trace should split layer loading, selected-K/V transfer,
-materialization, direct attention, and memory attention to localize the
-first-token penalty. A model materially larger than VRAM is required to test the claimed
+The next decisive experiment is a request-path attribution matrix, not another
+undifferentiated hook microbenchmark. It should compare SDPA E0,
+injected-but-disabled eager E0, preselected E2, and model-routed E2 while varying
+one, two, and four consumer layers and selected-reference length. This isolates
+the extra routing pass, attention-dispatch change, and native-consumer cost. The
+RTX cohort should then be repeated with a capable model and both a
+geometry-matched full-consumer and an economical late-consumer E2. It should
+extend to multi-query same-resource and shared-resource reuse while reporting
+gold answer log probability, TTFT, inter-token latency, memory decomposition,
+and cache hits. A model materially larger than VRAM is required to test the claimed
 weight-streaming regime. A sparse-MoE run is useful only after dense-model
 correctness; expert selection and PRA routing must remain separately
 attributed.
@@ -572,8 +637,10 @@ and native-consumption gates. The 60-example natural follow-up removes
 92.4--95.1\% of visible selected-text tokens and lowers allocated CUDA peak,
 but completion cost depends on the workload and HotpotQA/QASPER lose substantial
 F1. Direct timing also finds a persistent 2.19--2.35$\times$ TTFT ratio under
-the current four-consumer path. Semantic parity and an execution advantage
-therefore remain open. The remaining scientific gate is a
+the current four-consumer path, and pooled warm timing has no finite latency
+break-even. Native E2 is therefore feasible but is not the recommended AirLLM
+deployment under this regime; selected-text E0 remains preferable. Semantic
+parity and an execution advantage remain open. The remaining scientific gate is a
 geometry-matched full-consumer evaluation with a capable model at a scale where
 both weight and context virtualization are necessary.
 

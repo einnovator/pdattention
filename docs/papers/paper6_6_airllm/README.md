@@ -48,4 +48,14 @@ PYTHONPATH=src python -m experiments.paper6_6_airllm.summarize_cuda_natural \
   --output docs/papers/shared/results/paper6_6_airllm/tinyllama_timed_15_summary.json \
   --table docs/papers/shared/results/paper6_6_airllm/generated_timed_15_quality_table.tex \
   --timing-table docs/papers/shared/results/paper6_6_airllm/generated_timed_15_timing_table.tex
+
+PYTHONPATH=src python -m experiments.paper6_6_airllm.analyze_request_path \
+  --input docs/papers/shared/results/paper6_6_airllm/tinyllama_rtx5060_timed_15.json \
+  --output-dir docs/papers/shared/results/paper6_6_airllm
 ```
+
+`run_request_path_attribution.py` is the follow-up CUDA matrix. It freezes one
+selection and separates selected-text SDPA, injected-but-disabled eager,
+preselected native E2, and routed native E2. Vary `--consumer-layer-count` and
+`--reference-limits` to distinguish the extra streamed query pass from attention
+dispatch and native-consumer costs.
