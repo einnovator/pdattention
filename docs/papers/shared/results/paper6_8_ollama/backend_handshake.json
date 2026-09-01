@@ -1,0 +1,50 @@
+{
+  "schema_version": "paper6.8-ollama-backend-handshake-v1",
+  "evidence_tier": "CONTROLLED_PROTOCOL_PLUS_INHERITED_MODEL_BACKED_MECHANISM",
+  "stock_ollama_native_endpoint": false,
+  "backend_receipt": {
+    "upstream_commit": "458681e1d5d4a29a1463c4732e03226cf384b997",
+    "runs": 10,
+    "schedule_matched_exact_logits": 10,
+    "persistent_decode_exact": 10,
+    "absent_request_bounded_1e_2": 10,
+    "warm_resource_reuse_exact": 10,
+    "physical_kv_copy": false
+  },
+  "rows": [
+    {
+      "case": "valid_pinned_llamacpp_receipt",
+      "resolved_level": "E2",
+      "result": "native",
+      "native_calls": 1
+    },
+    {
+      "case": "missing_sequence_attach_mechanisms",
+      "resolved_level": "E0",
+      "result": "selected-text",
+      "native_calls": 0
+    },
+    {
+      "case": "stale_model_fingerprint",
+      "resolved_level": "E0",
+      "result": "selected-text",
+      "native_calls": 0
+    },
+    {
+      "case": "model_switch",
+      "resolved_level": "E2",
+      "old_fingerprint_invalidated": true,
+      "fingerprint_changed": true
+    },
+    {
+      "case": "unload",
+      "resolved_level": "E0",
+      "new_fingerprint_invalidated": true
+    }
+  ],
+  "summary": {
+    "valid_receipts_upgrade": 1,
+    "invalid_receipts_fallback": 2,
+    "lifecycle_invalidations": 2
+  }
+}

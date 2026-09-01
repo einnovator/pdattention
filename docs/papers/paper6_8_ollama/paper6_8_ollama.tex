@@ -1,6 +1,6 @@
 \documentclass[10pt]{article}
 \usepackage[margin=0.82in]{geometry}
-\usepackage{booktabs,amsmath,graphicx,hyperref,xcolor}
+\usepackage{booktabs,amsmath,graphicx,hyperref,xcolor,float}
 \hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
 \title{Progressive Retrieval Attention with Ollama:\\
 Transparent Context Optimization for Local-Model Applications}
@@ -22,12 +22,14 @@ Across Qwen3-8B on M5 and Qwen3-14B on M4 Pro, selected prompts use
 from 1731 to 1044 ms on HotpotQA and from 6257 to 847 ms on QASPER; 2Wiki again
 reverses direction under warm reuse. Its small-cohort F1 is lower on HotpotQA
 and QASPER and equal on 2Wiki, separating transport benefit from quality
-preservation. Keeping Qwen3-8B alive reduced request
-latency from 5.84 s cold to 0.714 s across five warm requests
-(8.18$\times$). No native backend
-handshake was available, so AUTO correctly remained E0. The result is a usable
-gateway integration and a precise delegation boundary, not an Ollama-native E2
-claim.
+preservation. Keeping Qwen3-8B alive reduced request latency from 5.84 s cold
+to 0.714 s across five warm requests (8.18$\times$). Stock Ollama exposed no
+native endpoint, so AUTO correctly remained E0. We then connect the product
+boundary to a pinned llama.cpp sequence-attachment mechanism: 10/10 CPU/Metal
+runs have exact schedule-matched logits and persistent decode. A versioned,
+model-bound Ollama handshake accepts that complete receipt, rejects two
+incomplete or stale receipts, and invalidates state on model switch and unload.
+This closes the delegation protocol, not an Ollama-native serving claim.
 \end{abstract}
 
 \section{Introduction}
@@ -45,8 +47,9 @@ models and platforms. An application-facing adapter must therefore be able to
 downgrade safely.
 
 Our contributions are an Ollama-native HTTP adapter, a model-fingerprint
-invalidation rule, optional backend delegation, live selected-text and lifecycle
-measurements, and tests that keep the advertised integration level honest.
+invalidation rule, a mechanism-specific backend handshake, live selected-text
+and lifecycle measurements, and tests that keep the advertised integration
+level honest.
 
 \section{PRA Levels and Ownership}
 E0 serializes selected evidence into visible messages. E1 transports logical
@@ -105,6 +108,14 @@ OpenAI deltas. We therefore add a native NDJSON benchmark path that reads only
 user-visible \texttt{message.content}, captures prompt/evaluation counts, and
 sets \texttt{think=false}. The empty-content OpenAI pass is rejected rather
 than scored as zero quality.
+
+The backend contract is \texttt{pra-engine/1}. A valid E2 receipt names
+llama.cpp and its revision, matches the model fingerprint returned by
+\texttt{/api/show}, and asserts native K/V, unified-cache sequence attachment,
+metadata-only attachment, request-sequence cleanup, resource identity, tenant
+isolation, and cleanup. Missing mechanisms, a stale fingerprint, negotiation
+errors, or disappearance of the executor select E0. The adapter caches a valid
+receipt only for that fingerprint; model change and unload invalidate it.
 
 \texttt{inspect\_endpoint()} queries \texttt{/api/version}, \texttt{/api/tags},
 and \texttt{/api/ps}. The runtime provider's doctor reports the endpoint and
@@ -232,8 +243,45 @@ also shows why the adapter binds native state to a model fingerprint. Returning
 to Qwen was warm in this daemon configuration, but an adapter cannot assume
 that a runner survives every memory-pressure or scheduling event.
 
+\subsection{Delegated llama.cpp handshake}
+
+The inherited engine mechanism uses pinned llama.cpp commit
+\texttt{458681e1d5d}. A selected resource is encoded under a stable sequence in
+unified K/V storage and attached to a request by
+\texttt{llama\_memory\_seq\_cp}; upstream changes cell membership rather than
+copying physical K/V. Five prompts on CPU and Metal produce 10/10 exact
+schedule-matched E0/E2 logits and four-step decode. Warm reattachment is exact
+in 10/10. An absent second request is exact on CPU and preserves the top token
+with maximum error below 0.006 on Metal.
+
+We feed that mechanism identity into the Ollama control plane, then exercise
+five protocol cases. The complete receipt upgrades AUTO to E2 exactly once.
+A receipt containing only \texttt{native\_kv} and a complete receipt bound to a
+stale model fingerprint both fall back to selected-text E0 and never invoke the
+native executor. Model switch invalidates the old fingerprint before a new
+receipt is accepted; unload invalidates the new receipt and returns capability
+reporting to E0.
+
+\begin{table}[H]
+\centering\small
+\caption{Backend negotiation and lifecycle controls. These are protocol
+controls over a model-backed llama.cpp mechanism receipt, not stock-Ollama E2
+requests.}
+\begin{tabular}{lcc}
+\toprule Case & AUTO result & Native invocation\\
+\midrule
+Complete pinned receipt & E2 & 1\\
+Missing sequence-attach mechanisms & E0 & 0\\
+Stale model fingerprint & E0 & 0\\
+Model switch & E2 after re-handshake & old state invalidated\\
+Unload & E0 & new state invalidated\\
+\bottomrule
+\end{tabular}
+\label{tab:backend-handshake}
+\end{table}
+
 \section{Deployment Matrix}
-\begin{table}[h]
+\begin{table}[H]
 \centering\small
 \caption{Current product status.}
 \begin{tabular}{llll}
@@ -241,7 +289,7 @@ that a runner survives every memory-pressure or scheduling event.
 \midrule
 E0 selected & Ollama/OpenAI HTTP & measured & supported default\\
 E1 logical & optional envelope & interface only & no native effect\\
-E2 native & delegated backend & not negotiated & AUTO falls back\\
+E2 native & delegated llama.cpp & controlled negotiated & mechanism/protocol only\\
 E3 scheduler & Ollama runner & not implemented & no claim\\
 \bottomrule
 \end{tabular}
@@ -257,24 +305,27 @@ AUTO returns to E0.
 The original Windows runtime is old relative to the pinned source audit; the
 paper does not merge those observations with the separate 0.30.8 M5 and 0.32.7
 M4 Pro replications. Three model sizes are measured, but all natural cohorts are small.
-Memory use, concurrent requests, cancellation, reconnects, daemon
-restart, quantized variants, and native E0/E2 parity remain open. The next step
-is to expose the same capability handshake through a PRA-aware llama.cpp or
-other active backend, then rerun frozen-selection quality and lifecycle tests
+Memory use, concurrent requests, cancellation, reconnects, daemon restart,
+quantized variants, and native E0/E2 parity through a live Ollama request remain
+open. The llama.cpp probe establishes the narrow attention seam and the adapter
+establishes negotiation behavior, but stock Ollama does not carry selected
+resource identity or invoke that executor. The next step is runner plumbing,
+followed by frozen-selection natural QA, concurrency, and lifecycle tests
 without changing the client.
 
 \section{Conclusion}
 Ollama can provide a low-friction PRA entry point without becoming a second PRA
 runtime. The measured E0 path reduces visible context at 0.5B, 8B, and 14B;
 the larger Mac runs expose both substantial TTFT reductions and dataset-specific
-quality/reuse reversals. Keep-alive dominates cold
-latency. Native support must
-be delegated and negotiated. On the tested daemon it was absent, and the safe
-fallback worked as designed.
+quality/reuse reversals. Keep-alive dominates cold latency. Native support must
+be delegated and negotiated. The pinned llama.cpp seam now supplies a concrete
+mechanism receipt and the Ollama adapter validates it conservatively; on stock
+daemons the receipt remains absent and safe E0 fallback remains the default.
 
 \section*{Artifact Availability}
-Branch \texttt{research/paper6-8-ollama} contains the adapter, tests, raw JSON,
-lifecycle benchmark, plot generator, README, and manuscript.
+Branch \texttt{research/paper6-8-ollama} contains the adapter, pinned llama.cpp
+probe, tests, raw JSON, lifecycle benchmark, plot generator, README, and
+manuscript.
 
 \begin{thebibliography}{9}
 \bibitem{ollama} Ollama contributors. \emph{Ollama}.

@@ -18,5 +18,19 @@ python experiments/paper6_8_ollama/run_lifecycle.py
 python experiments/paper6_8_ollama/plot_results.py
 ```
 
-AUTO reports E0 unless an explicit backend executor negotiates E2/E3. The
-adapter never infers native PRA from Ollama's version or backend history.
+AUTO reports E0 unless an explicit backend executor returns a validated,
+model-fingerprint-bound `pra-engine/1` receipt. The receipt must name the pinned
+llama.cpp revision and prove native K/V, unified-cache sequence attachment,
+metadata-only attachment, request cleanup, resource identity, and isolation.
+The adapter never infers native PRA from Ollama's version or backend history.
+
+Reproduce the handshake, downgrade, model-switch, and unload controls with:
+
+```bash
+set PYTHONPATH=src
+python experiments/paper6_8_ollama/run_backend_handshake.py
+```
+
+The inherited llama.cpp mechanism result is model-backed; the Ollama handshake
+cohort is a controlled protocol test. Stock Ollama still exposes no public E2
+endpoint, so ordinary installations remain E0.

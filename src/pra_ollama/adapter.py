@@ -22,13 +22,57 @@ class OllamaEndpointInfo:
     running_models: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class OllamaBackendHandshake:
+    """Versioned proof that the active model runner can consume native PRA K/V.
+
+    The fingerprint binds engine capability to the exact model package observed
+    through Ollama.  Mechanism flags distinguish the narrow llama.cpp unified-
+    cache sequence-attachment seam from an unverified generic ``E2`` label.
+    """
+
+    protocol_version: str
+    backend: str
+    backend_revision: str
+    model_fingerprint: str
+    integration_level: str
+    mechanisms: tuple[str, ...]
+    resource_identity: bool
+    tenant_isolation: bool
+    request_cleanup: bool
+
+    def validates(self, model_fingerprint: str) -> bool:
+        """Return whether this receipt is sufficient for an E2/E3 request."""
+
+        required = {
+            "native_kv",
+            "unified_kv_sequence_attach",
+            "metadata_only_attach",
+            "request_sequence_cleanup",
+        }
+        return bool(
+            self.protocol_version == "pra-engine/1"
+            and self.backend == "llama.cpp"
+            and self.backend_revision
+            and self.model_fingerprint == model_fingerprint
+            and self.integration_level in {"E2", "E3"}
+            and required.issubset(self.mechanisms)
+            and self.resource_identity
+            and self.tenant_isolation
+            and self.request_cleanup
+        )
+
+
 class OllamaBackendExecutor(Protocol):
     """PRA-aware execution supplied by Ollama's active model backend."""
 
-    @property
-    def integration_level(self) -> str: ...
+    def negotiate(
+        self, *, model: str, model_fingerprint: str
+    ) -> OllamaBackendHandshake | None: ...
 
-    def generate(self, request: PRAWireRequest) -> PRAEngineResult: ...
+    def generate(
+        self, request: PRAWireRequest, handshake: OllamaBackendHandshake
+    ) -> PRAEngineResult: ...
 
     def invalidate_model(self, model_fingerprint: str) -> None: ...
 
@@ -56,6 +100,7 @@ class OllamaEngineAdapter:
         self.keep_alive = keep_alive
         self.thinking = thinking
         self._model_fingerprint: str | None = None
+        self._backend_handshake: OllamaBackendHandshake | None = None
 
     def _request_json(
         self, path: str, payload: Mapping[str, Any] | None = None
@@ -85,14 +130,16 @@ class OllamaEngineAdapter:
         return OllamaEndpointInfo(version, installed, running)
 
     def capabilities(self) -> PRAEngineCapabilities:
-        native = self.backend_executor is not None and self.backend_executor.integration_level in {
-            "E2",
-            "E3",
-        }
+        handshake = self._backend_handshake
+        native = bool(
+            handshake is not None
+            and self._model_fingerprint is not None
+            and handshake.validates(self._model_fingerprint)
+        )
         return PRAEngineCapabilities(
             adapter="ollama_backend_pra" if native else "ollama_gateway",
             engine_type=EngineType.OLLAMA,
-            integration_level=self.backend_executor.integration_level if native else "E0",
+            integration_level=handshake.integration_level if native and handshake else "E0",
             prefix_cache_mode=PrefixCacheMode.SESSION_STATE,
             session_state=True,
             cache_affinity=True,
@@ -143,17 +190,55 @@ class OllamaEngineAdapter:
         )
         if self._model_fingerprint not in {None, fingerprint} and self.backend_executor:
             self.backend_executor.invalidate_model(self._model_fingerprint)
+            self._backend_handshake = None
         self._model_fingerprint = fingerprint
         return fingerprint
 
+    def negotiate_backend(
+        self, model: str, model_fingerprint: str | None = None
+    ) -> OllamaBackendHandshake | None:
+        """Negotiate and validate native support for one observed model package.
+
+        Negotiation failure is deliberately non-fatal: AUTO remains on the E0
+        selected-text path.  A cached receipt is reused only while its model
+        fingerprint remains valid.
+        """
+
+        fingerprint = model_fingerprint or self._refresh_model_identity(model)
+        if self._backend_handshake and self._backend_handshake.validates(fingerprint):
+            return self._backend_handshake
+        self._backend_handshake = None
+        if self.backend_executor is None:
+            return None
+        try:
+            candidate = self.backend_executor.negotiate(
+                model=model, model_fingerprint=fingerprint
+            )
+        except Exception:
+            return None
+        if candidate is not None and candidate.validates(fingerprint):
+            self._backend_handshake = candidate
+        return self._backend_handshake
+
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
         fingerprint = self._refresh_model_identity(request.model)
-        if self.backend_executor is not None:
-            result = self.backend_executor.generate(request)
+        handshake = self.negotiate_backend(request.model, fingerprint)
+        if self.backend_executor is not None and handshake is not None:
+            result = self.backend_executor.generate(request, handshake)
             return PRAEngineResult(
                 result.text,
                 result.raw,
-                (*result.trace, {"stage": "ollama_backend", "model_fingerprint": fingerprint}),
+                (
+                    *result.trace,
+                    {
+                        "stage": "ollama_backend",
+                        "model_fingerprint": fingerprint,
+                        "backend": handshake.backend,
+                        "backend_revision": handshake.backend_revision,
+                        "integration_level": handshake.integration_level,
+                        "mechanisms": handshake.mechanisms,
+                    },
+                ),
             )
         payload: dict[str, Any] = {
             "model": request.model,
@@ -180,6 +265,9 @@ class OllamaEngineAdapter:
                     "load_ns": int(raw.get("load_duration", 0)),
                     "prompt_eval_ns": int(raw.get("prompt_eval_duration", 0)),
                     "eval_ns": int(raw.get("eval_duration", 0)),
+                    "native_handshake": (
+                        "unavailable" if self.backend_executor is None else "rejected"
+                    ),
                 },
             ),
         )
@@ -191,6 +279,7 @@ class OllamaEngineAdapter:
         if self._model_fingerprint and self.backend_executor:
             self.backend_executor.invalidate_model(self._model_fingerprint)
         self._model_fingerprint = None
+        self._backend_handshake = None
         return result
 
     def stream(self, request: PRAWireRequest):
