@@ -28,13 +28,18 @@ class PinnedNodeOpenCode(OpenCode):
         """Install Node without GitHub, preserving Harbor's OpenCode behavior."""
 
         await self.ensure_system_dependencies(
-            environment, ("ca-certificates", "curl", "xz-utils", "bash", "coreutils")
+            environment, ("curl", "bash", "coreutils")
         )
         version_spec = f"@{self._version}" if self._version else "@latest"
         node_version = self.NODE_VERSION
         checksums = self.NODE_SHA256
         command = (
             "set -euo pipefail; "
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "apt-get update && apt-get install -y ca-certificates xz-utils; "
+            "elif command -v apk >/dev/null 2>&1; then "
+            "apk add --no-cache ca-certificates xz; "
+            "else echo 'No supported package manager for xz' >&2; exit 2; fi; "
             "case \"$(uname -m)\" in "
             f"x86_64|amd64) arch=x64; checksum={checksums['x64']} ;; "
             f"aarch64|arm64) arch=arm64; checksum={checksums['arm64']} ;; "
