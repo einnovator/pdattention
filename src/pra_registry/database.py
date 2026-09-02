@@ -143,6 +143,8 @@ class DeploymentRecord(TimestampMixin, Base):
     desired_bundle_id: Mapped[str | None] = mapped_column(String(255))
     desired_profile_id: Mapped[str | None] = mapped_column(String(255))
     desired_mode: Mapped[str] = mapped_column(String(64))
+    desired_models: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    allow_extra_models: Mapped[bool] = mapped_column(Boolean, default=True)
     storage_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     observability_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     desired_revision: Mapped[int] = mapped_column(Integer, default=1)

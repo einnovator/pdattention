@@ -37,6 +37,8 @@ pra engine patch-config local-vllm --patch profile-patch.yaml
 | `reload-profile` | Activate a safe profile revision | Explicit engine handler |
 | `reload-bundle` | Activate a compatible bundle revision | Explicit engine handler |
 | `maintenance` | Run one retention/quota maintenance pass | Storage manager or handler |
+| `load-model` | Add one engine-local runtime model | Dynamic loader capability and handler |
+| `unload-model` | Remove one model and release its model-native state | Dynamic unloader capability and handler |
 
 Actions accept an `idempotency_key`. Repeating the same action/key returns the
 original outcome with `idempotent_replay=true` and does not repeat the physical
@@ -54,3 +56,9 @@ self-asserted in an action body.
 Every successful mutation records a bounded local audit event containing time,
 actor, request ID, event type, result, and redacted changes. Fleet-wide,
 immutable audit remains a control-plane responsibility.
+
+Model unload demotes or releases HOT native state according to storage policy,
+invalidates model-native session handles, publishes the changed `models[]`
+observation, and records `MODEL_UNLOADED`. A failed load records
+`MODEL_LOAD_FAILED`. Engines whose base model can change only by replacing the
+process continue to report `RESTART_REQUIRED`.

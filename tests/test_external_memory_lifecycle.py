@@ -8,11 +8,29 @@ from pra_hf.external_memory import (
     EncodingContext,
     ExternalMemoryManager,
     HotMemoryHandle,
+    NativeCacheKey,
     NativeEncoding,
     PRASession,
     ResolverRegistry,
     ResourceStat,
 )
+
+
+def test_native_cache_keys_isolate_loaded_model_fingerprints():
+    common = {
+        "security_scope": "tenant:tenant-a",
+        "uri": "mem://shared-document",
+        "source_version": "v1",
+        "tokenizer_fingerprint": "tokenizer-v1",
+        "config_fingerprint": "pra-v1",
+    }
+
+    model_a = NativeCacheKey(model_fingerprint="model-a", **common)
+    model_b = NativeCacheKey(model_fingerprint="model-b", **common)
+
+    assert model_a != model_b
+    cache = {model_a: "a", model_b: "b"}
+    assert len(cache) == 2
 
 
 class MemoryResolver:

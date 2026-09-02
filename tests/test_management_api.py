@@ -18,6 +18,7 @@ from pra_hf.management import (
     ManagementAPIConfig,
     ManagementAuthConfig,
     ManagementProvider,
+    ModelRuntimeState,
     PRAProfileSummary,
     create_management_app,
     start_management_api,
@@ -206,6 +207,7 @@ def test_models_profiles_and_pagination() -> None:
     assert models["total"] == 1
     assert models["items"][0]["model_id"] == "org/model"
     assert client.get("/v1/pra/models/org/model").status_code == 200
+    assert client.get("/v1/pra/models/default").json()["model_id"] == "org/model"
     assert client.get("/v1/pra/profiles/BALANCED").json()["qualification_status"] == "VALIDATED"
 
 
@@ -312,3 +314,106 @@ def test_all_engine_sidecars_share_the_core_contract(engine: str) -> None:
         "metrics-link", "trace-link", "audit",
     ):
         assert client.get(f"/v1/pra/{path}").status_code == 200, (engine, path)
+
+
+def test_three_model_provider_scopes_models_storage_sessions_registry_and_drift() -> None:
+    runtimes = {
+        runtime_id: ModelRuntimeState(
+            model=LoadedModel(
+                runtime_model_id=runtime_id,
+                model_id=model_id,
+                model_fingerprint=f"fingerprint-{runtime_id}",
+                profile="BALANCED",
+                execution_mode="selected-context",
+            ),
+            storage_manager=_Storage(),
+            session_source=_Sessions(),
+        )
+        for runtime_id, model_id in (
+            ("qwen", "Qwen/Qwen3-4B"),
+            ("gemma", "google/gemma-3-4b-it"),
+            ("llama", "meta-llama/Llama-3.2-3B-Instruct"),
+        )
+    }
+    provider = ManagementProvider(engine="synthetic", model_runtimes=runtimes)
+    client = _client(provider)
+
+    models = client.get("/v1/pra/models").json()
+    assert models["total"] == 3
+    assert {row["runtime_model_id"] for row in models["items"]} == set(runtimes)
+    assert client.get("/v1/pra/models/qwen").json()["model_id"] == "Qwen/Qwen3-4B"
+    assert client.get("/v1/pra/models?model_id=Qwen/Qwen3-4B").json()["total"] == 1
+    storage = client.get("/v1/pra/storage").json()
+    assert storage["tiers"]["hot"] == {"bytes": 384, "resources": 3}
+    assert set(storage["models"]) == set(runtimes)
+    assert client.get("/v1/pra/models/gemma/storage").json()["tiers"]["hot"]["bytes"] == 128
+    sessions = client.get("/v1/pra/sessions").json()["items"]
+    assert {row["runtime_model_id"] for row in sessions} == set(runtimes)
+    assert {row["model_fingerprint"] for row in sessions} == {
+        f"fingerprint-{runtime_id}" for runtime_id in runtimes
+    }
+    payload = provider.registry_payload(ManagementAPIConfig(enabled=True), "engine-1")
+    assert len(payload["models"]) == 3
+
+    provider.apply_registry_desired({
+        "desired_revision": 7,
+        "desired": {
+            "allow_extra_models": False,
+            "desired_models": [
+                {"runtime_model_id": "qwen", "model_id": "Qwen/Qwen3-4B", "profile_id": "BALANCED"},
+                {"runtime_model_id": "gemma", "model_id": "google/gemma-3-4b-it", "profile_id": "ECONOMY"},
+            ],
+        },
+    })
+    config = provider.config_state()
+    assert config["models"]["qwen"]["in_sync"] is True
+    assert config["models"]["gemma"]["drift_fields"] == ["profile"]
+    assert config["models"]["llama"]["drift_fields"] == ["UNAPPROVED_MODEL_LOADED"]
+
+
+def test_dynamic_model_lifecycle_enforces_capabilities_limit_and_cleanup() -> None:
+    storage = _Storage()
+
+    class Sessions(_Sessions):
+        invalidated = []
+
+        def invalidate_model(self, fingerprint, reason):
+            self.invalidated.append((fingerprint, reason))
+
+    sessions = Sessions()
+    provider = ManagementProvider(
+        engine="synthetic-router",
+        capabilities={
+            "multi_model": True,
+            "dynamic_model_load": True,
+            "dynamic_model_unload": True,
+            "max_loaded_models": 2,
+        },
+        model_runtimes={
+            "first": ModelRuntimeState(
+                LoadedModel(
+                    runtime_model_id="first", model_id="org/first",
+                    model_fingerprint="first-fingerprint",
+                ),
+                storage_manager=storage,
+                session_source=sessions,
+            )
+        },
+        action_handlers={"load-model": lambda _request: {}, "unload-model": lambda _request: {}},
+    )
+    client = _client(provider)
+    loaded = client.post("/v1/pra/actions/load-model", json={
+        "runtime_model_id": "second", "model_id": "org/second",
+    })
+    assert loaded.status_code == 200
+    assert loaded.json()["detail"]["model"]["runtime_model_id"] == "second"
+    assert client.post("/v1/pra/actions/load-model", json={
+        "runtime_model_id": "third", "model_id": "org/third",
+    }).json()["error"]["code"] == "MODEL_LIMIT_REACHED"
+    unloaded = client.post("/v1/pra/actions/unload-model", json={
+        "runtime_model_id": "first", "force": True,
+    })
+    assert unloaded.status_code == 200
+    assert storage.calls == [("demote", "raw-secret-resource-key")]
+    assert sessions.invalidated == [("first-fingerprint", "model_unloaded")]
+    assert client.get("/v1/pra/models/first").status_code == 404

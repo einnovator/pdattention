@@ -185,6 +185,80 @@ _get_command("audit", "/v1/pra/audit", "Show recent local management audit event
 _get_command("registry-status", "/v1/pra/registry", "Show Registry registration and heartbeat state.")
 
 
+@engine_cli.command("model")
+@click.argument("target")
+@click.argument("runtime_model_id")
+@click.option("--management-url", metavar="URL")
+@click.option("--token", envvar="PRA_MANAGEMENT_TOKEN", help="Bearer token; prefer its environment variable.")
+@_output_options
+def model(target, management_url, token, runtime_model_id, json_output, yaml_output) -> None:
+    """Show one loaded model by its engine-local runtime identity."""
+
+    client = _client(target, management_url, _registered_token(target, token, management_url))
+    path = "/v1/pra/models/" + urllib.parse.quote(runtime_model_id, safe="")
+    _emit(client.get(path), json_output, yaml_output)
+
+
+def _require_dynamic_capability(client: ManagementClient, capability: str) -> None:
+    capabilities = client.get("/v1/pra/capabilities")
+    if not capabilities.get(capability, False):
+        raise click.ClickException(f"The target engine does not support {capability.replace('_', ' ')}.")
+
+
+@engine_cli.command("load-model")
+@click.argument("target")
+@click.argument("runtime_model_id")
+@click.argument("model_id")
+@click.option("--management-url", metavar="URL")
+@click.option("--token", envvar="PRA_MANAGEMENT_TOKEN", help="Bearer token; prefer its environment variable.")
+@click.option("--revision")
+@click.option("--bundle")
+@click.option("--profile")
+@click.option("--execution-mode", default="selected-context", show_default=True)
+@click.option("--parameter", "parameters", multiple=True, metavar="KEY=VALUE")
+@_output_options
+def load_model(target, management_url, token, runtime_model_id, model_id, revision, bundle, profile, execution_mode, parameters, json_output, yaml_output) -> None:
+    """Load one model when the target engine supports dynamic residency."""
+
+    client = _client(target, management_url, _registered_token(target, token, management_url))
+    _require_dynamic_capability(client, "dynamic_model_load")
+    parsed_parameters = {}
+    for value in parameters:
+        if "=" not in value:
+            raise click.UsageError("--parameter must use KEY=VALUE.")
+        key, item = value.split("=", 1)
+        parsed_parameters[key] = item
+    body = {
+        key: value for key, value in {
+            "runtime_model_id": runtime_model_id,
+            "model_id": model_id,
+            "revision": revision,
+            "bundle": bundle,
+            "profile": profile,
+            "execution_mode": execution_mode,
+            "parameters": parsed_parameters,
+        }.items() if value is not None and value != ""
+    }
+    _emit(client.request("POST", "/v1/pra/actions/load-model", body), json_output, yaml_output)
+
+
+@engine_cli.command("unload-model")
+@click.argument("target")
+@click.argument("runtime_model_id")
+@click.option("--management-url", metavar="URL")
+@click.option("--token", envvar="PRA_MANAGEMENT_TOKEN", help="Bearer token; prefer its environment variable.")
+@click.option("--force", is_flag=True, help="Allow engine-defined forced unload behavior.")
+@_output_options
+def unload_model(target, management_url, token, runtime_model_id, force, json_output, yaml_output) -> None:
+    """Unload one runtime model and release its model-native state."""
+
+    client = _client(target, management_url, _registered_token(target, token, management_url))
+    _require_dynamic_capability(client, "dynamic_model_unload")
+    _emit(client.request("POST", "/v1/pra/actions/unload-model", {
+        "runtime_model_id": runtime_model_id, "force": force,
+    }), json_output, yaml_output)
+
+
 @engine_cli.command("register")
 @_target_options
 @_output_options
@@ -252,7 +326,8 @@ def action(action, target, management_url, token, resource_id, profile, bundle, 
 @engine_cli.command("serve")
 @click.option("--engine", default="hf", show_default=True)
 @click.option("--engine-version")
-@click.option("--model")
+@click.option("--model", "models", multiple=True, help="Loaded model ID; repeat for multi-model engines.")
+@click.option("--runtime-model-id", "runtime_model_ids", multiple=True, help="Engine-local model alias paired with each --model.")
 @click.option("--revision")
 @click.option("--inference-url")
 @click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
@@ -279,7 +354,7 @@ def action(action, target, management_url, token, resource_id, profile, bundle, 
     help="Externally reachable management API URL advertised to the Registry.",
 )
 @click.option("--registry-required", is_flag=True)
-def serve(engine, engine_version, model, revision, inference_url, config_path, host, port, auth_mode, token_env, metrics_url, trace_backend_url, grafana_url, tls_certfile, tls_keyfile, tls_ca_certs, registry_url, registry_token_env, registry_instance_id, registry_instance_name, registry_instance_host, registry_management_url, registry_required) -> None:
+def serve(engine, engine_version, models, runtime_model_ids, revision, inference_url, config_path, host, port, auth_mode, token_env, metrics_url, trace_backend_url, grafana_url, tls_certfile, tls_keyfile, tls_ca_certs, registry_url, registry_token_env, registry_instance_id, registry_instance_name, registry_instance_host, registry_management_url, registry_required) -> None:
     """Start an explicitly enabled local management sidecar on a separate port."""
 
     from .management import (
@@ -291,23 +366,35 @@ def serve(engine, engine_version, model, revision, inference_url, config_path, h
     )
 
     capabilities: Mapping[str, Any] = {}
+    if runtime_model_ids and len(runtime_model_ids) != len(models):
+        raise click.UsageError("Repeat --runtime-model-id once for every --model.")
+    primary_model = models[0] if models else None
     try:
         from .runtime_providers import RuntimeConfig, RuntimeProviderRegistry
         capabilities = RuntimeProviderRegistry.default().resolve(engine).capabilities(
-            RuntimeConfig(engine=engine, model=model, revision=revision, endpoint=inference_url)
+            RuntimeConfig(engine=engine, model=primary_model, revision=revision, endpoint=inference_url)
         ).to_dict()
     except KeyError:
         capabilities = {"text_fallback": True, "integration_level": "E0"}
-    models = [] if model is None else [LoadedModel(model_id=model, revision=revision)]
+    loaded_models = [
+        LoadedModel(
+            runtime_model_id=(runtime_model_ids[index] if runtime_model_ids else ("default" if len(models) == 1 else model_id)),
+            model_id=model_id,
+            revision=revision,
+        )
+        for index, model_id in enumerate(models)
+    ]
+    if len(loaded_models) > 1:
+        capabilities = {**capabilities, "multi_model": True, "max_loaded_models": len(loaded_models)}
     profiles = [PRAProfileSummary(name="BALANCED", source="management-sidecar")]
     provider = ManagementProvider(
         engine=engine,
         engine_version=engine_version,
         capabilities=capabilities,
-        models=models,
+        models=loaded_models,
         profiles=profiles,
         effective_config={
-            "engine": engine, "model": model, "revision": revision,
+            "engine": engine, "model": primary_model, "models": list(models), "revision": revision,
             "inference_url": inference_url, "profile": "BALANCED",
         },
         observability={

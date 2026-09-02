@@ -20,9 +20,15 @@ recommendation.
 
 Loaded-model rows contain immutable model/tokenizer fingerprints when known,
 quantization, device placement, PRA bundle identity, profile, execution mode,
-load time, and runtime state. Profile rows identify their source, effective
+load time, runtime state, and an engine-local `runtime_model_id`. Profile rows identify their source, effective
 policy, qualification status, and whether they are immutable or centrally
 managed.
+
+Model-native storage, session handles, bundles, qualification, and effective
+configuration are scoped to that runtime ID. Native identity additionally
+includes the model fingerprint, resource version, and selected representation;
+K/V produced by one model is never reused by another. Canonical SOURCE records
+may be shared because they contain no model-native representation.
 
 ## Stored resources
 
@@ -36,7 +42,8 @@ K/V values.
 
 Session IDs are also privacy-safe hashes. Summaries report activity, task count,
 visible-context counts, selected/reused token totals, and only Boolean engine
-cache-handle presence. Prompt messages, result bodies, opaque cache handles,
+cache-handle presence. They include `runtime_model_id` and model fingerprint so
+a model switch can invalidate incompatible native and prefix state. Prompt messages, result bodies, opaque cache handles,
 tenant identities, and worker identities are excluded.
 
 ## Storage and observability

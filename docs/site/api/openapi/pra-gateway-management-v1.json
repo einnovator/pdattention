@@ -86,6 +86,25 @@
         "title": "GatewayConfigPatch",
         "type": "object"
       },
+      "GatewayModelTarget": {
+        "description": "One engine-local model identity advertised by an upstream.",
+        "properties": {
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "runtime_model_id": {
+            "title": "Runtime Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtime_model_id",
+          "model_id"
+        ],
+        "title": "GatewayModelTarget",
+        "type": "object"
+      },
       "GatewayPolicy": {
         "additionalProperties": false,
         "properties": {
@@ -201,6 +220,17 @@
             "title": "Inference Api Type",
             "type": "string"
           },
+          "instance_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Id"
+          },
           "labels": {
             "additionalProperties": {
               "type": "string"
@@ -240,6 +270,14 @@
             "default": "openai",
             "title": "Provider",
             "type": "string"
+          },
+          "runtime_models": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GatewayModelTarget"
+            },
+            "title": "Runtime Models",
+            "type": "array"
           },
           "upstream_id": {
             "maxLength": 255,
@@ -297,6 +335,17 @@
               }
             ],
             "title": "Enabled"
+          },
+          "instance_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Id"
           },
           "labels": {
             "anyOf": [
@@ -358,6 +407,20 @@
               }
             ],
             "title": "Priority"
+          },
+          "runtime_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GatewayModelTarget"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Models"
           },
           "weight": {
             "anyOf": [

@@ -190,16 +190,51 @@ class QualificationCreate(StrictModel):
     annotations: dict[str, Any] = Field(default_factory=dict)
 
 
+class DesiredModel(StrictModel):
+    """One model-specific desired state inside an engine deployment."""
+
+    runtime_model_id: str = "default"
+    model_id: str
+    bundle_id: str | None = None
+    profile_id: str | None = None
+    mode: str = "E0"
+
+
 class DeploymentCreate(ResourceBase):
     environment: str
     cluster: str
     engine_instance_selector: dict[str, Any] = Field(default_factory=dict)
-    desired_model_id: str
+    desired_model_id: str | None = None
     desired_bundle_id: str | None = None
     desired_profile_id: str | None = None
     desired_mode: str = "E0"
+    desired_models: list[DesiredModel] = Field(default_factory=list)
+    allow_extra_models: bool = True
     storage_policy: dict[str, Any] = Field(default_factory=dict)
     observability_policy: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def normalize_desired_models(self) -> "DeploymentCreate":
+        if not self.desired_models and not self.desired_model_id:
+            raise ValueError("desired_model_id or desired_models is required")
+        if not self.desired_models:
+            self.desired_models = [DesiredModel(
+                runtime_model_id="default",
+                model_id=str(self.desired_model_id),
+                bundle_id=self.desired_bundle_id,
+                profile_id=self.desired_profile_id,
+                mode=self.desired_mode,
+            )]
+        runtime_ids = [row.runtime_model_id for row in self.desired_models]
+        if len(runtime_ids) != len(set(runtime_ids)):
+            raise ValueError("desired_models runtime_model_id values must be unique")
+        if self.desired_model_id is None:
+            first = self.desired_models[0]
+            self.desired_model_id = first.model_id
+            self.desired_bundle_id = first.bundle_id
+            self.desired_profile_id = first.profile_id
+            self.desired_mode = first.mode
+        return self
 
 
 class DeploymentPatch(StrictModel):
@@ -208,6 +243,8 @@ class DeploymentPatch(StrictModel):
     desired_bundle_id: str | None = None
     desired_profile_id: str | None = None
     desired_mode: str | None = None
+    desired_models: list[DesiredModel] | None = None
+    allow_extra_models: bool | None = None
     storage_policy: dict[str, Any] | None = None
     observability_policy: dict[str, Any] | None = None
     owner: str | None = None

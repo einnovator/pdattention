@@ -303,6 +303,37 @@ external-only, or explicit. If a new consumer requires absent detail K/V, the
 runtime must re-encode missing layers, fail, or follow an explicitly configured
 profile downgrade. It never silently substitutes a shallower profile.
 
+\subsection{Engine instances and runtime model identity}
+
+PRA distinguishes engine-instance identity from loaded-model identity. One
+engine process may expose one or more loaded models. Model-specific PRA
+state---including bundle, profile, qualification, session state, storage, and
+native memory---is scoped by a stable runtime-model identity and model
+fingerprint. Engines supporting only one base model use the same contract with
+a single \texttt{default} loaded model. This keeps multi-model behavior in the
+management container rather than turning the semantic runtime for one model
+into a fleet manager.
+
+Internally, the management provider maps each \texttt{runtime\_model\_id} to a
+small runtime-state record containing the observed model descriptor, storage
+manager, session source, capabilities, and effective configuration. The old
+single-model constructor is normalized to one such record. Canonical source
+records may be shared across models, but derived native identity includes the
+model fingerprint together with resource identity, version, selected span or
+representation, and layout. Model-native K/V can therefore neither cross a
+model switch nor survive an unload as an apparently compatible prefix.
+
+The Registry retains one engine instance with a \texttt{models[]} observation
+and accepts either the legacy singular desired fields or a
+\texttt{desired\_models[]} list. Drift is matched by runtime identity and
+reported both per model and in aggregate. The gateway similarly routes to the
+pair \((\textit{instance},\textit{runtime model})\), which distinguishes one
+model replicated on several engines from several models resident behind one
+upstream. Dynamic load and unload are optional capabilities; a single-model
+runtime returns \texttt{NOT\_APPLICABLE}, \texttt{ACTION\_NOT\_SUPPORTED}, or
+\texttt{RESTART\_REQUIRED} rather than pretending that process replacement is
+an in-process model transition.
+
 \subsection{A multi-axis execution policy}
 
 PRA does not imply one routing frequency. We represent one request with four

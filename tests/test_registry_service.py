@@ -103,6 +103,41 @@ def test_desired_state_revision_increments_and_resolves(client: TestClient) -> N
     assert resolved["desired"]["id"] == "prod-qwen"
 
 
+def test_multi_model_desired_state_preserves_legacy_projection(client: TestClient) -> None:
+    deployment = {
+        "id": "router-models",
+        "environment": "production",
+        "cluster": "cpu-router",
+        "allow_extra_models": False,
+        "desired_models": [
+            {
+                "runtime_model_id": "qwen-local",
+                "model_id": "Qwen/Qwen3-4B",
+                "bundle_id": "EInnovator/pra-qwen3-4b",
+                "profile_id": "BALANCED",
+                "mode": "E2",
+            },
+            {
+                "runtime_model_id": "gemma-local",
+                "model_id": "google/gemma-3-4b-it",
+                "profile_id": "QUALITY_MAX_CANDIDATE",
+                "mode": "E0",
+            },
+        ],
+    }
+    created = client.post("/v1/deployments", json=deployment)
+    assert created.status_code == 201, created.text
+    value = created.json()
+    assert value["desired_model_id"] == "Qwen/Qwen3-4B"
+    assert value["desired_models"][1]["runtime_model_id"] == "gemma-local"
+    assert value["allow_extra_models"] is False
+    patched = client.patch("/v1/deployments/router-models", json={
+        "desired_models": [deployment["desired_models"][1]],
+    }).json()
+    assert patched["desired_model_id"] == "google/gemma-3-4b-it"
+    assert patched["desired_revision"] == 2
+
+
 def test_bundle_resolver_is_deterministic_and_returns_evidence(client: TestClient) -> None:
     seed(client)
     second = {**BUNDLE, "id": "bundle-z", "immutable_revision": "z-sha", "artifact_sources": []}

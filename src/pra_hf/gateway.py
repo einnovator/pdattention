@@ -496,6 +496,10 @@ class PRAGateway:
             trace.update(turn.realization_plan.diagnostics)
         attached = result.raw.get("native_attached_resources", ()) if result.raw else ()
         trace["native_attached_resources"] = list(attached or ())
+        if result.raw and result.raw.get("runtime_model_id") is not None:
+            trace["runtime_model_id"] = str(result.raw["runtime_model_id"])
+        if result.raw and result.raw.get("upstream_instance_id") is not None:
+            trace["upstream_instance_id"] = str(result.raw["upstream_instance_id"])
         if result.raw and result.raw.get("native_attach_bytes") is not None:
             trace["native_attach_bytes"] = int(result.raw["native_attach_bytes"])
         elif not attached:
@@ -512,6 +516,7 @@ class PRAGateway:
             "pra.engine": capabilities.engine_type.value,
             "gen_ai.system": capabilities.engine_type.value,
             "gen_ai.request.model": request.model,
+            "pra.runtime_model_id": str(request.metadata.get("runtime_model_id", "default")),
             "pra.execution_mode": self.mode.value,
             "pra.profile": str(request.pra_policy.get("profile", "default")),
         }

@@ -28,6 +28,7 @@ from pra_hf.gateway_management import (
     GatewayManagementAPIConfig,
     GatewayManagementAuthConfig,
     GatewayManagementProvider,
+    GatewayModelTarget,
     GatewayMetricRecorder,
     GatewayPolicy,
     GatewayRegistryConfig,
@@ -217,6 +218,70 @@ def test_upstream_crud_routing_and_secret_redaction(monkeypatch) -> None:
     assert [row.event for row in provider.audit][-3:] == [
         "UPSTREAM_ADDED", "UPSTREAM_CHANGED", "UPSTREAM_REMOVED"
     ]
+
+
+def test_gateway_routes_to_runtime_model_within_one_multi_model_upstream() -> None:
+    adapter = _Adapter("multi")
+    router = GatewayUpstreamRouter(
+        UpstreamCreate(
+            upstream_id="router",
+            instance_id="engine-router-1",
+            name="Router",
+            base_url="http://router",
+            runtime_models=(
+                GatewayModelTarget(runtime_model_id="qwen-local", model_id="org/qwen"),
+                GatewayModelTarget(runtime_model_id="gemma-local", model_id="org/gemma"),
+            ),
+        ),
+        adapter,
+        GatewayPolicy(default_upstream_id="router", upstream_selection="model"),
+    )
+    request = PRAWireRequest(
+        model="org/gemma",
+        messages=({"role": "user", "content": "hello"},),
+        session_id="session-1",
+    )
+    assert router.generate(request).text == "ok"
+    assert adapter.requests[0].engine_hints["runtime_model_id"] == "gemma-local"
+    assert router.session_target("session-1") == ("router", "gemma-local")
+    router.generate(PRAWireRequest(
+        model="org/qwen",
+        messages=({"role": "user", "content": "switch"},),
+        session_id="session-1",
+    ))
+    assert adapter.closed == ["session-1"]
+    assert router.session_target("session-1") == ("router", "qwen-local")
+
+
+def test_gateway_selects_one_runtime_target_when_model_is_replicated() -> None:
+    primary = _Adapter("primary")
+    secondary = _Adapter("secondary")
+    router = GatewayUpstreamRouter(
+        UpstreamCreate(
+            upstream_id="primary",
+            instance_id="engine-a",
+            name="Primary",
+            base_url="http://primary",
+            priority=10,
+            runtime_models=(GatewayModelTarget(runtime_model_id="qwen-a", model_id="org/qwen"),),
+        ),
+        primary,
+        GatewayPolicy(default_upstream_id="primary", upstream_selection="model"),
+    )
+    router.add(UpstreamCreate(
+        upstream_id="secondary",
+        instance_id="engine-b",
+        name="Secondary",
+        base_url="http://secondary",
+        priority=1,
+        runtime_models=(GatewayModelTarget(runtime_model_id="qwen-b", model_id="org/qwen"),),
+    ), secondary)
+    result = router.generate(PRAWireRequest(
+        model="org/qwen", messages=({"role": "user", "content": "hello"},),
+    ))
+    assert result.raw["upstream_instance_id"] == "engine-b"
+    assert result.raw["runtime_model_id"] == "qwen-b"
+    assert len(secondary.requests) == 1 and not primary.requests
 
 
 def test_capability_negotiation_and_policy_patch(monkeypatch) -> None:

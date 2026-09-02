@@ -20,6 +20,7 @@ Connections store a URL and optional token environment-variable name below
 pra engine capabilities local-vllm
 pra engine config local-vllm
 pra engine models local-vllm
+pra engine model local-ollama qwen3:14b
 pra engine profiles local-vllm
 pra engine storage local-vllm
 pra engine sessions local-vllm
@@ -29,6 +30,21 @@ pra engine audit local-vllm
 
 Use `--management-url URL` instead of a saved name for one-off automation. Most
 read commands support `--json` and `--yaml`.
+
+## Dynamic model lifecycle
+
+Only engines advertising the corresponding capabilities accept these commands:
+
+```bash
+pra engine load-model local-ollama qwen3:14b Qwen/Qwen3-14B \
+  --bundle EInnovator/pra-qwen3-14b \
+  --profile BALANCED --execution-mode selected-context
+pra engine unload-model local-ollama qwen3:14b
+```
+
+The CLI checks `dynamic_model_load` or `dynamic_model_unload` before sending the
+request. Ordinary vLLM, HF, SGLang, MLX, TensorRT-LLM, llama-server, AirLLM,
+and FreeToken instances remain the simple one-model case.
 
 ## Start a sidecar
 
@@ -43,6 +59,15 @@ pra engine serve \
   --grafana-url http://grafana:3000 \
   --registry-instance-host 192.168.1.40 \
   --registry-management-url http://192.168.1.40:9102
+```
+
+For a genuine multi-model server, repeat `--model` and pair each entry with a
+runtime alias:
+
+```bash
+pra engine serve --engine ollama \
+  --model Qwen/Qwen3-14B --runtime-model-id qwen3:14b \
+  --model google/gemma-3-12b-it --runtime-model-id gemma3:12b
 ```
 
 When the listener binds to `0.0.0.0`, containers, WSL, and remote hosts may

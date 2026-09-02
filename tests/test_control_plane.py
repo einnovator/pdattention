@@ -119,6 +119,27 @@ def test_rbac_and_drift_comparison():
     assert result["differences"] == [{"field": "profile", "desired": "BALANCED", "observed": "ECONOMY"}]
 
 
+def test_multi_model_drift_matches_runtime_identity_and_rejects_extras():
+    desired = {
+        "desired_revision": 9,
+        "allow_extra_models": False,
+        "desired_models": [
+            {"runtime_model_id": "qwen", "model_id": "org/qwen", "profile_id": "BALANCED"},
+            {"runtime_model_id": "gemma", "model_id": "org/gemma", "profile_id": "QUALITY"},
+        ],
+    }
+    observed = {"models": {"items": [
+        {"runtime_model_id": "qwen", "model_id": "org/qwen", "profile": "BALANCED"},
+        {"runtime_model_id": "gemma", "model_id": "org/gemma", "profile": "ECONOMY"},
+        {"runtime_model_id": "extra", "model_id": "org/extra"},
+    ]}}
+    result = compare_desired_observed(desired, observed)
+    assert result["status"] == "DRIFT"
+    assert result["models"]["qwen"]["status"] == "IN_SYNC"
+    assert result["models"]["gemma"]["differences"][0]["field"] == "profile"
+    assert result["models"]["extra"]["differences"][0]["field"] == "UNAPPROVED_MODEL_LOADED"
+
+
 def test_fleet_aggregates_two_engines_against_one_registry(control):
     _, runtime = control
 
@@ -320,6 +341,9 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     assert "pra-control-layout-v2" in script
     assert "pra-control-chat-ratio-v2" in script
     assert "loadActivity" in script
+    assert "model-tree-node" in script
+    assert "runtime_model_id" in script
+    assert "dynamic_model_unload" in script
     assert "--chat-width: 30%" in styles
     assert "pra-control-theme" in html + script
     assert 'id="user-menu-toggle"' in html

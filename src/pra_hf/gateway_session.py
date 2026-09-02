@@ -561,6 +561,25 @@ class GatewaySessionRegistry:
                     last_invalidation_reason=reason,
                 )
 
+    def invalidate_model(self, model_identity: str, reason: str) -> int:
+        """Drop native/prefix handles for every session bound to one model."""
+
+        count = 0
+        with self._lock:
+            for key, state in tuple(self._states.items()):
+                if model_identity not in {state.model, state.engine_model_fingerprint}:
+                    continue
+                self._states[key] = replace(
+                    state,
+                    engine_session_id=None,
+                    prefix_cache_handle=None,
+                    engine_worker_identity=None,
+                    engine_model_fingerprint=None,
+                    last_invalidation_reason=reason,
+                )
+                count += 1
+        return count
+
     def close(self, tenant_id: str, session_id: str, model: str) -> GatewaySessionState | None:
         with self._lock:
             return self._states.pop((tenant_id, session_id, model), None)

@@ -457,6 +457,11 @@
       "DeploymentCreate": {
         "additionalProperties": false,
         "properties": {
+          "allow_extra_models": {
+            "default": true,
+            "title": "Allow Extra Models",
+            "type": "boolean"
+          },
           "approval_state": {
             "$ref": "#/components/schemas/ApprovalState",
             "default": "DRAFT"
@@ -482,8 +487,22 @@
             "type": "string"
           },
           "desired_model_id": {
-            "title": "Desired Model Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Model Id"
+          },
+          "desired_models": {
+            "items": {
+              "$ref": "#/components/schemas/DesiredModel"
+            },
+            "title": "Desired Models",
+            "type": "array"
           },
           "desired_profile_id": {
             "anyOf": [
@@ -541,8 +560,7 @@
         "required": [
           "id",
           "environment",
-          "cluster",
-          "desired_model_id"
+          "cluster"
         ],
         "title": "DeploymentCreate",
         "type": "object"
@@ -550,6 +568,17 @@
       "DeploymentPatch": {
         "additionalProperties": false,
         "properties": {
+          "allow_extra_models": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow Extra Models"
+          },
           "desired_bundle_id": {
             "anyOf": [
               {
@@ -582,6 +611,20 @@
               }
             ],
             "title": "Desired Model Id"
+          },
+          "desired_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DesiredModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Models"
           },
           "desired_profile_id": {
             "anyOf": [
@@ -669,6 +712,53 @@
           "cluster"
         ],
         "title": "DeploymentResolveRequest",
+        "type": "object"
+      },
+      "DesiredModel": {
+        "additionalProperties": false,
+        "description": "One model-specific desired state inside an engine deployment.",
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
+          },
+          "mode": {
+            "default": "E0",
+            "title": "Mode",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "runtime_model_id": {
+            "default": "default",
+            "title": "Runtime Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id"
+        ],
+        "title": "DesiredModel",
         "type": "object"
       },
       "HTTPValidationError": {

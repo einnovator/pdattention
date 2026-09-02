@@ -15,6 +15,22 @@
             ],
             "title": "Bundle"
           },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
+          },
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
           "idempotency_key": {
             "anyOf": [
               {
@@ -25,6 +41,17 @@
               }
             ],
             "title": "Idempotency Key"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
           },
           "parameters": {
             "additionalProperties": true,
@@ -52,6 +79,28 @@
               }
             ],
             "title": "Resource Id"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "runtime_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Model Id"
           },
           "tenant_id": {
             "anyOf": [
@@ -310,10 +359,43 @@
       },
       "EngineCapabilities": {
         "properties": {
+          "dynamic_model_load": {
+            "default": false,
+            "title": "Dynamic Model Load",
+            "type": "boolean"
+          },
+          "dynamic_model_switch": {
+            "default": false,
+            "title": "Dynamic Model Switch",
+            "type": "boolean"
+          },
+          "dynamic_model_unload": {
+            "default": false,
+            "title": "Dynamic Model Unload",
+            "type": "boolean"
+          },
           "management_api_version": {
             "default": "pra-management/1",
             "title": "Management Api Version",
             "type": "string"
+          },
+          "max_loaded_models": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 1,
+            "title": "Max Loaded Models"
+          },
+          "multi_model": {
+            "default": false,
+            "title": "Multi Model",
+            "type": "boolean"
           },
           "native_memory": {
             "$ref": "#/components/schemas/CapabilityDetail"
@@ -553,6 +635,11 @@
             ],
             "title": "Revision"
           },
+          "runtime_model_id": {
+            "default": "default",
+            "title": "Runtime Model Id",
+            "type": "string"
+          },
           "runtime_state": {
             "default": "observed",
             "title": "Runtime State",
@@ -727,6 +814,11 @@
             "title": "Resource Type",
             "type": "string"
           },
+          "runtime_model_id": {
+            "default": "default",
+            "title": "Runtime Model Id",
+            "type": "string"
+          },
           "session_scoped": {
             "title": "Session Scoped",
             "type": "boolean"
@@ -854,10 +946,26 @@
             "title": "Logical Reuse Total",
             "type": "integer"
           },
+          "model_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Fingerprint"
+          },
           "native_reuse_total": {
             "default": 0,
             "title": "Native Reuse Total",
             "type": "integer"
+          },
+          "runtime_model_id": {
+            "default": "default",
+            "title": "Runtime Model Id",
+            "type": "string"
           },
           "selected_token_total": {
             "default": 0,
@@ -895,6 +1003,11 @@
           "maintenance_status": {
             "title": "Maintenance Status",
             "type": "string"
+          },
+          "models": {
+            "additionalProperties": true,
+            "title": "Models",
+            "type": "object"
           },
           "promotions": {
             "default": 0,
@@ -1077,6 +1190,52 @@
           }
         ],
         "summary": "Action Evict",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/v1/pra/actions/load-model": {
+      "post": {
+        "operationId": "action_load_model_v1_pra_actions_load_model_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Action Load Model",
         "tags": [
           "actions"
         ]
@@ -1307,6 +1466,52 @@
           }
         ],
         "summary": "Action Reload Profile",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/v1/pra/actions/unload-model": {
+      "post": {
+        "operationId": "action_unload_model_v1_pra_actions_unload_model_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Action Unload Model",
         "tags": [
           "actions"
         ]
@@ -1545,6 +1750,22 @@
         "parameters": [
           {
             "in": "query",
+            "name": "model_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "offset",
             "required": false,
             "schema": {
@@ -1600,16 +1821,16 @@
         ]
       }
     },
-    "/v1/pra/models/{model_id}": {
+    "/v1/pra/models/{runtime_model_id}": {
       "get": {
-        "operationId": "model_v1_pra_models__model_id__get",
+        "operationId": "model_v1_pra_models__runtime_model_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "model_id",
+            "name": "runtime_model_id",
             "required": true,
             "schema": {
-              "title": "Model Id",
+              "title": "Runtime Model Id",
               "type": "string"
             }
           }
@@ -1644,6 +1865,53 @@
         "summary": "Model",
         "tags": [
           "models"
+        ]
+      }
+    },
+    "/v1/pra/models/{runtime_model_id}/storage": {
+      "get": {
+        "operationId": "model_storage_v1_pra_models__runtime_model_id__storage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runtime_model_id",
+            "required": true,
+            "schema": {
+              "title": "Runtime Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Model Storage",
+        "tags": [
+          "storage"
         ]
       }
     },
@@ -1867,6 +2135,22 @@
           },
           {
             "in": "query",
+            "name": "runtime_model_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime Model Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "offset",
             "required": false,
             "schema": {
@@ -1987,6 +2271,22 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runtime_model_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime Model Id"
             }
           },
           {

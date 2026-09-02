@@ -304,6 +304,15 @@ class RegistryService:
 
     def patch_deployment(self, resource_id: str, value: DeploymentPatch) -> dict[str, Any]:
         changes = value.model_dump(exclude_unset=True)
+        desired_models = changes.get("desired_models")
+        if desired_models:
+            first = desired_models[0]
+            changes.update({
+                "desired_model_id": first["model_id"],
+                "desired_bundle_id": first.get("bundle_id"),
+                "desired_profile_id": first.get("profile_id"),
+                "desired_mode": first.get("mode", "E0"),
+            })
         if changes:
             row = self._get(DeploymentRecord, resource_id)
             changes["desired_revision"] = row.desired_revision + 1

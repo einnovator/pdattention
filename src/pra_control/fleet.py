@@ -10,8 +10,11 @@ from .config import ControlPlaneConfig, EngineTargetConfig
 from .persistence import ControlStore
 
 
-SAFE_ACTIONS = frozenset({"prefetch", "promote", "demote", "evict", "maintenance"})
-HIGH_IMPACT_ACTIONS = frozenset({"evict", "demote"})
+SAFE_ACTIONS = frozenset({
+    "prefetch", "promote", "demote", "evict", "maintenance",
+    "load-model", "unload-model",
+})
+HIGH_IMPACT_ACTIONS = frozenset({"evict", "demote", "unload-model"})
 ENGINE_SECTIONS = frozenset({"summary", "capabilities", "config", "models", "sessions", "resources", "storage", "observability", "audit"})
 
 
@@ -96,7 +99,10 @@ class FleetService:
             drift = compare_desired_observed(desired, snapshot)
             info = snapshot.get("info", {})
             models = snapshot.get("models", {}).get("items", snapshot.get("models", []))
-            model = models[0] if models else {}
+            model = next(
+                (row for row in models if row.get("runtime_model_id") == "default"),
+                next(iter(models), {}),
+            )
             return {
                 "name": target.name, "status": drift["status"],
                 "environment": target.environment, "region": target.region,
@@ -106,6 +112,8 @@ class FleetService:
                 "health": info.get("health", "healthy"), "model": model.get("model_id"),
                 "bundle": model.get("pra_bundle_id"), "profile": model.get("profile"),
                 "mode": model.get("execution_mode"), "drift": drift,
+                "models": models, "model_count": len(models),
+                "capabilities": snapshot.get("capabilities", {}),
                 "metrics": _light_metrics(snapshot), "alerts": _alerts(snapshot, drift),
             }
         except Exception as error:
@@ -181,19 +189,67 @@ def compare_desired_observed(desired: Mapping[str, Any] | None, snapshot: Mappin
     if desired is None:
         return {"status": "UNKNOWN", "differences": []}
     models = snapshot.get("models", {}).get("items", snapshot.get("models", []))
-    observed = models[0] if models else {}
-    pairs = {
-        "model": (desired.get("desired_model_id"), observed.get("model_id")),
-        "bundle": (desired.get("desired_bundle_id"), observed.get("pra_bundle_id")),
-        "profile": (desired.get("desired_profile_id"), observed.get("profile")),
-        "mode": (desired.get("desired_mode"), observed.get("execution_mode")),
+    desired_models = desired.get("desired_models")
+    legacy = not isinstance(desired_models, list) or not desired_models
+    if legacy:
+        desired_models = [{
+            "runtime_model_id": "default",
+            "model_id": desired.get("desired_model_id"),
+            "bundle_id": desired.get("desired_bundle_id"),
+            "profile_id": desired.get("desired_profile_id"),
+            "mode": desired.get("desired_mode"),
+        }]
+    observed_by_id = {
+        str(row.get("runtime_model_id") or ("default" if len(models) == 1 else row.get("model_id"))): row
+        for row in models
     }
-    differences = [
-        {"field": field, "desired": expected, "observed": actual}
-        for field, (expected, actual) in pairs.items()
-        if expected is not None and expected != actual
-    ]
-    return {"status": "DRIFT" if differences else "IN_SYNC", "differences": differences, "desired_revision": desired.get("desired_revision")}
+    differences: list[dict[str, Any]] = []
+    per_model: dict[str, Any] = {}
+    expected_ids: set[str] = set()
+    for expected_model in desired_models:
+        runtime_id = str(expected_model.get("runtime_model_id") or "default")
+        expected_ids.add(runtime_id)
+        observed = observed_by_id.get(runtime_id, {})
+        pairs = {
+            "model": (expected_model.get("model_id"), observed.get("model_id")),
+            "bundle": (expected_model.get("bundle_id"), observed.get("pra_bundle_id")),
+            "profile": (expected_model.get("profile_id"), observed.get("profile")),
+            "mode": (expected_model.get("mode"), observed.get("execution_mode")),
+        }
+        model_differences = [
+            {
+                "field": field,
+                "desired": expected,
+                "observed": actual,
+                **({} if legacy else {"runtime_model_id": runtime_id}),
+            }
+            for field, (expected, actual) in pairs.items()
+            if expected is not None and expected != actual
+        ]
+        if not observed:
+            model_differences.insert(0, {
+                "field": "MODEL_NOT_LOADED", "desired": runtime_id, "observed": None,
+                **({} if legacy else {"runtime_model_id": runtime_id}),
+            })
+        per_model[runtime_id] = {
+            "status": "DRIFT" if model_differences else "IN_SYNC",
+            "differences": model_differences,
+        }
+        differences.extend(model_differences)
+    if not bool(desired.get("allow_extra_models", True)):
+        for runtime_id in observed_by_id.keys() - expected_ids:
+            difference = {
+                "field": "UNAPPROVED_MODEL_LOADED", "desired": None,
+                "observed": runtime_id, "runtime_model_id": runtime_id,
+            }
+            differences.append(difference)
+            per_model[runtime_id] = {"status": "DRIFT", "differences": [difference]}
+    return {
+        "status": "DRIFT" if differences else "IN_SYNC",
+        "differences": differences,
+        "models": per_model,
+        "desired_revision": desired.get("desired_revision"),
+    }
 
 
 def _light_metrics(snapshot: Mapping[str, Any]) -> dict[str, Any]:

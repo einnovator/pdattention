@@ -13,7 +13,9 @@ protocol identity returned by health and state endpoints is
 | `GET` | `/capabilities` | Mechanism and qualification state | `pra:read` |
 | `GET` | `/config` | Redacted effective and desired config | `pra:read` |
 | `GET` | `/state` | Compact aggregate snapshot | `pra:read` |
-| `GET` | `/models[/{id}]` | Loaded models | `pra:models` |
+| `GET` | `/models` | Loaded models; optional global `model_id` filter | `pra:models` |
+| `GET` | `/models/{runtime_model_id}` | One model by engine-local identity | `pra:models` |
+| `GET` | `/models/{runtime_model_id}/storage` | Model-scoped tier state | `pra:storage` |
 | `GET` | `/profiles[/{name}]` | Effective profiles | `pra:read` |
 | `GET` | `/resources[/{id}]` | Privacy-safe storage resources | `pra:read` |
 | `GET` | `/sessions[/{id}]` | Privacy-safe sessions | `pra:sessions` |
@@ -22,6 +24,10 @@ protocol identity returned by health and state endpoints is
 | `GET` | `/metrics-link` | Prometheus link | `pra:read` |
 | `GET` | `/trace-link` | Tempo/Grafana links | `pra:read` |
 | `GET` | `/audit` | Recent local action audit | `pra:admin` |
+
+Optional `POST /actions/load-model` and `POST /actions/unload-model` routes are
+present in the common contract. Engines without real dynamic lifecycle support
+return `501 ACTION_NOT_SUPPORTED` rather than simulating a model change.
 
 Paths in this table are relative to `/v1/pra`. Collections support `offset`
 and `limit`; resources additionally filter by `resource_type` and

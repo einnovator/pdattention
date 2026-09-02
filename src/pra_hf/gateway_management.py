@@ -19,13 +19,13 @@ import urllib.request
 import uuid
 from collections import deque
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from fastapi import Depends, FastAPI, Query, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .deployment import (
     OpenAICompatibleEngineAdapter,
@@ -156,6 +156,13 @@ class NegotiatedCapability(BaseModel):
     rejection_reason: str | None = None
 
 
+class GatewayModelTarget(BaseModel):
+    """One engine-local model identity advertised by an upstream."""
+
+    runtime_model_id: str
+    model_id: str
+
+
 class UpstreamCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -165,12 +172,21 @@ class UpstreamCreate(BaseModel):
     provider: str = "openai"
     inference_api_type: str = "openai-compatible"
     management_url: str | None = None
+    instance_id: str | None = None
     models: tuple[str, ...] = ()
+    runtime_models: tuple[GatewayModelTarget, ...] = ()
     auth_reference: str | None = None
     priority: int = 100
     weight: float = Field(default=1.0, gt=0)
     enabled: bool = True
     labels: Mapping[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def unique_runtime_models(self) -> "UpstreamCreate":
+        runtime_ids = [row.runtime_model_id for row in self.runtime_models]
+        if len(runtime_ids) != len(set(runtime_ids)):
+            raise ValueError("runtime_models must have unique runtime_model_id values")
+        return self
 
 
 class UpstreamPatch(BaseModel):
@@ -179,7 +195,9 @@ class UpstreamPatch(BaseModel):
     name: str | None = None
     base_url: str | None = None
     management_url: str | None = None
+    instance_id: str | None = None
     models: tuple[str, ...] | None = None
+    runtime_models: tuple[GatewayModelTarget, ...] | None = None
     auth_reference: str | None = None
     priority: int | None = None
     weight: float | None = Field(default=None, gt=0)
@@ -194,7 +212,9 @@ class UpstreamEndpoint(BaseModel):
     provider: str
     inference_api_type: str
     management_url: str | None
+    instance_id: str | None
     models: tuple[str, ...]
+    runtime_models: tuple[GatewayModelTarget, ...]
     execution_modes: tuple[str, ...]
     auth_reference: str | None
     health: str
@@ -276,21 +296,23 @@ class GatewayUpstreamRouter:
     def __init__(self, initial: UpstreamCreate, adapter: PRAEngineAdapter, policy: GatewayPolicy | None = None) -> None:
         self.policy = policy or GatewayPolicy(default_upstream_id=initial.upstream_id)
         self._rows = {initial.upstream_id: _ManagedUpstream(initial, adapter)}
-        self._sessions: dict[str, str] = {}
+        self._sessions: dict[str, tuple[str, str | None, str]] = {}
         self._lock = threading.RLock()
 
     def capabilities(self) -> PRAEngineCapabilities:
         return self._default().adapter.capabilities()
 
     def prepare_session(self, request: PRAWireRequest) -> str | None:
-        row = self._select(request)
-        value = row.adapter.prepare_session(request)
+        row, runtime_model_id = self._select_target(request)
+        value = row.adapter.prepare_session(self._target_request(request, runtime_model_id))
         if request.session_id:
-            self._sessions[request.session_id] = row.config.upstream_id
+            self._sessions[request.session_id] = (
+                row.config.upstream_id, runtime_model_id, request.model,
+            )
         return value
 
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
-        selected = self._select(request)
+        selected, selected_runtime_id = self._select_target(request)
         rows = self._candidates(request)
         if selected in rows:
             rows.remove(selected)
@@ -299,7 +321,21 @@ class GatewayUpstreamRouter:
         for row in rows:
             started = time.perf_counter()
             try:
-                result = row.adapter.generate(request)
+                runtime_model_id = selected_runtime_id if row is selected else self._runtime_model_id(row, request)
+                result = row.adapter.generate(self._target_request(request, runtime_model_id))
+                result = PRAEngineResult(
+                    result.text,
+                    {
+                        **result.raw,
+                        "upstream_instance_id": row.config.instance_id or row.config.upstream_id,
+                        "runtime_model_id": runtime_model_id,
+                    },
+                    result.trace,
+                )
+                if request.session_id:
+                    self._sessions[request.session_id] = (
+                        row.config.upstream_id, runtime_model_id, request.model,
+                    )
                 row.health = "healthy"
                 row.latency_ms = (time.perf_counter() - started) * 1000
                 return result
@@ -313,20 +349,30 @@ class GatewayUpstreamRouter:
         raise last_error
 
     def stream(self, request: PRAWireRequest) -> Iterator[Mapping[str, Any]]:
-        row = self._select(request)
+        row, runtime_model_id = self._select_target(request)
         if request.session_id:
-            self._sessions[request.session_id] = row.config.upstream_id
-        return row.adapter.stream(request)
+            self._sessions[request.session_id] = (
+                row.config.upstream_id, runtime_model_id, request.model,
+            )
+        return row.adapter.stream(self._target_request(request, runtime_model_id))
 
     def close_session(self, session_id: str) -> None:
-        upstream_id = self._sessions.pop(session_id, None)
+        target = self._sessions.pop(session_id, None)
+        upstream_id = target[0] if target else None
         row = self._rows.get(upstream_id) if upstream_id else None
         (row or self._default()).adapter.close_session(session_id)
 
     def session_upstream(self, session_id: str) -> str | None:
         """Return the affinity target without exposing tenant or message data."""
 
-        return self._sessions.get(session_id)
+        target = self._sessions.get(session_id)
+        return target[0] if target else None
+
+    def session_target(self, session_id: str) -> tuple[str, str | None] | None:
+        """Return the complete `(upstream, runtime model)` affinity target."""
+
+        target = self._sessions.get(session_id)
+        return (target[0], target[1]) if target else None
 
     def rows(self) -> list[UpstreamEndpoint]:
         with self._lock:
@@ -433,11 +479,50 @@ class GatewayUpstreamRouter:
             raise ManagementAPIError(404, "UPSTREAM_NOT_FOUND", "Gateway upstream was not found") from error
 
     def _select(self, request: PRAWireRequest) -> _ManagedUpstream:
+        return self._select_target(request)[0]
+
+    def _select_target(self, request: PRAWireRequest) -> tuple[_ManagedUpstream, str | None]:
         if self.policy.session_affinity and request.session_id and request.session_id in self._sessions:
-            row = self._rows.get(self._sessions[request.session_id])
-            if row and row.config.enabled:
-                return row
-        return self._candidates(request)[0]
+            upstream_id, runtime_model_id, model_id = self._sessions[request.session_id]
+            row = self._rows.get(upstream_id)
+            if row and row.config.enabled and model_id == request.model:
+                return row, runtime_model_id
+            if row is not None:
+                row.adapter.close_session(request.session_id)
+            self._sessions.pop(request.session_id, None)
+        row = self._candidates(request)[0]
+        return row, self._runtime_model_id(row, request)
+
+    @staticmethod
+    def _runtime_model_id(row: _ManagedUpstream, request: PRAWireRequest) -> str | None:
+        requested = request.metadata.get("runtime_model_id")
+        matches = [
+            model for model in row.config.runtime_models
+            if model.model_id == request.model and (requested is None or model.runtime_model_id == requested)
+        ]
+        if len(matches) == 1:
+            return matches[0].runtime_model_id
+        if requested is not None and row.config.runtime_models:
+            raise ManagementAPIError(
+                404, "MODEL_NOT_LOADED", "The requested runtime model is not loaded on this upstream."
+            )
+        if len(matches) > 1:
+            raise ManagementAPIError(
+                422,
+                "RUNTIME_MODEL_REQUIRED",
+                "runtime_model_id is required because this upstream has several aliases for the model.",
+            )
+        return str(requested) if requested is not None else None
+
+    @staticmethod
+    def _target_request(request: PRAWireRequest, runtime_model_id: str | None) -> PRAWireRequest:
+        if runtime_model_id is None:
+            return request
+        return replace(
+            request,
+            metadata={**request.metadata, "runtime_model_id": runtime_model_id},
+            engine_hints={**request.engine_hints, "runtime_model_id": runtime_model_id},
+        )
 
     def _candidates(self, request: PRAWireRequest) -> list[_ManagedUpstream]:
         rows = [row for row in self._rows.values() if row.config.enabled]
@@ -445,7 +530,18 @@ class GatewayUpstreamRouter:
             raise ManagementAPIError(503, "NO_UPSTREAM", "No enabled upstream is available")
         mode = self.policy.upstream_selection
         if mode == "model":
-            matched = [row for row in rows if not row.config.models or request.model in row.config.models]
+            requested_runtime_id = request.metadata.get("runtime_model_id")
+            matched = [row for row in rows if (
+                not row.config.models and not row.config.runtime_models
+            ) or request.model in row.config.models or any(
+                model.model_id == request.model
+                and (requested_runtime_id is None or model.runtime_model_id == requested_runtime_id)
+                for model in row.config.runtime_models
+            )]
+            if requested_runtime_id is not None and not matched:
+                raise ManagementAPIError(
+                    404, "MODEL_NOT_LOADED", "No upstream exposes the requested runtime model."
+                )
             rows = matched or rows
         elif mode == "capability":
             matched = [row for row in rows if all(row.adapter.capabilities().supports(name) for name in request.required_capabilities)]

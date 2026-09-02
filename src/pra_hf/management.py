@@ -21,7 +21,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
@@ -183,6 +183,11 @@ class EngineCapabilities(BaseModel):
     session_aware_realization: CapabilityDetail
     storage_tiers: CapabilityDetail
     observability: CapabilityDetail
+    multi_model: bool = False
+    dynamic_model_load: bool = False
+    dynamic_model_unload: bool = False
+    dynamic_model_switch: bool = False
+    max_loaded_models: int | None = Field(default=1, ge=1)
     management_api_version: str = MANAGEMENT_PROTOCOL
 
 
@@ -201,6 +206,7 @@ class EngineInstance(BaseModel):
 
 
 class LoadedModel(BaseModel):
+    runtime_model_id: str = "default"
     model_id: str
     revision: str | None = None
     model_fingerprint: str | None = None
@@ -227,6 +233,7 @@ class PRAProfileSummary(BaseModel):
 
 class PRAResourceSummary(BaseModel):
     resource_id: str
+    runtime_model_id: str = "default"
     resource_type: str
     version: str
     size_bytes: int
@@ -243,6 +250,8 @@ class PRAResourceSummary(BaseModel):
 
 class SessionSummary(BaseModel):
     session_id: str
+    runtime_model_id: str = "default"
+    model_fingerprint: str | None = None
     created_at: float | None = None
     last_activity: float | None = None
     active_task_count: int = 0
@@ -263,6 +272,7 @@ class StorageState(BaseModel):
     reconstructions: int = 0
     retention_policy: Mapping[str, Any]
     maintenance_status: str
+    models: Mapping[str, Any] = Field(default_factory=dict)
 
 
 class ObservabilityState(BaseModel):
@@ -314,8 +324,13 @@ class ActionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     resource_id: str | None = None
+    runtime_model_id: str | None = None
+    model_id: str | None = None
+    revision: str | None = None
     profile: str | None = None
     bundle: str | None = None
+    execution_mode: str | None = None
+    force: bool = False
     tenant_id: str | None = None
     idempotency_key: str | None = None
     parameters: Mapping[str, Any] = Field(default_factory=dict)
@@ -348,6 +363,17 @@ class Actor:
     scopes: frozenset[str]
 
 
+@dataclass
+class ModelRuntimeState:
+    """Model-local state owned by one engine management container."""
+
+    model: LoadedModel
+    storage_manager: Any | None = None
+    session_source: Any | None = None
+    capabilities: Mapping[str, Any] = field(default_factory=dict)
+    effective_config: Mapping[str, Any] = field(default_factory=dict)
+
+
 class ManagementProvider:
     """Project one local engine into the shared privacy-safe API contract."""
 
@@ -360,6 +386,7 @@ class ManagementProvider:
         engine_version: str | None = None,
         capabilities: Mapping[str, Any] | None = None,
         models: Sequence[LoadedModel | Mapping[str, Any]] = (),
+        model_runtimes: Mapping[str, ModelRuntimeState] | None = None,
         profiles: Sequence[PRAProfileSummary | Mapping[str, Any]] = (),
         effective_config: Mapping[str, Any] | None = None,
         storage_manager: Any | None = None,
@@ -373,10 +400,43 @@ class ManagementProvider:
         self.engine = str(engine)
         self.engine_version = engine_version
         self.raw_capabilities = dict(capabilities or {})
-        self.models = [
+        rows = [
             row if isinstance(row, LoadedModel) else LoadedModel.model_validate(row)
             for row in models
         ]
+        if model_runtimes is not None and (
+            rows or storage_manager is not None or session_source is not None
+        ):
+            raise ValueError(
+                "model_runtimes cannot be combined with models, storage_manager, or session_source."
+            )
+        self.model_runtimes: dict[str, ModelRuntimeState] = {}
+        if model_runtimes is not None:
+            for runtime_id, state in model_runtimes.items():
+                if not isinstance(state, ModelRuntimeState):
+                    raise TypeError("model_runtimes values must be ModelRuntimeState instances.")
+                normalized = state.model.model_copy(update={"runtime_model_id": str(runtime_id)})
+                self._add_runtime_state(ModelRuntimeState(
+                    model=normalized,
+                    storage_manager=state.storage_manager,
+                    session_source=state.session_source,
+                    capabilities=dict(state.capabilities),
+                    effective_config=dict(state.effective_config),
+                ))
+        else:
+            multiple = len(rows) > 1
+            for row in rows:
+                runtime_id = row.runtime_model_id
+                if multiple and "runtime_model_id" not in row.model_fields_set:
+                    runtime_id = row.model_id
+                normalized = row.model_copy(update={"runtime_model_id": runtime_id})
+                self._add_runtime_state(ModelRuntimeState(
+                    model=normalized,
+                    storage_manager=storage_manager,
+                    session_source=session_source,
+                    effective_config=dict(effective_config or {}),
+                ))
+        self._sync_models()
         self.profiles = [
             row if isinstance(row, PRAProfileSummary) else PRAProfileSummary.model_validate(row)
             for row in profiles
@@ -393,10 +453,22 @@ class ManagementProvider:
         self.observed_revision = 1
         self.desired_revision: int | None = None
         self.drift_fields: list[str] = []
+        self.model_drift: dict[str, dict[str, Any]] = {}
         self.audit: deque[AuditEvent] = deque(maxlen=500)
         self._idempotency: dict[tuple[str, str, str], tuple[str, ActionResult]] = {}
         self._lock = threading.RLock()
         self.registry_reporter: RegistryRegistrationClient | None = None
+
+    def _add_runtime_state(self, state: ModelRuntimeState) -> None:
+        runtime_id = state.model.runtime_model_id
+        if not runtime_id:
+            raise ValueError("runtime_model_id cannot be empty.")
+        if runtime_id in self.model_runtimes:
+            raise ValueError(f"Duplicate runtime_model_id: {runtime_id}")
+        self.model_runtimes[runtime_id] = state
+
+    def _sync_models(self) -> None:
+        self.models = [state.model for state in self.model_runtimes.values()]
 
     def instance(self) -> EngineInstance:
         model_names = tuple(row.model_id for row in self.models)
@@ -447,8 +519,21 @@ class ManagementProvider:
             session_aware_realization=self._detail(
                 value.get("session_state"), "session-aware request realization"
             ),
-            storage_tiers=self._detail(self.storage_manager is not None, "HOT/WARM/COLD/SOURCE"),
+            storage_tiers=self._detail(
+                any(state.storage_manager is not None for state in self.model_runtimes.values())
+                or self.storage_manager is not None,
+                "HOT/WARM/COLD/SOURCE",
+            ),
             observability=self._detail(bool(self.observability_config), "OpenTelemetry and Prometheus"),
+            multi_model=bool(value.get("multi_model", len(self.models) > 1)),
+            dynamic_model_load=bool(value.get("dynamic_model_load", False)),
+            dynamic_model_unload=bool(value.get("dynamic_model_unload", False)),
+            dynamic_model_switch=bool(value.get("dynamic_model_switch", False)),
+            max_loaded_models=(
+                int(value["max_loaded_models"])
+                if value.get("max_loaded_models") is not None
+                else max(1, len(self.models))
+            ),
         )
 
     def config_state(self) -> dict[str, Any]:
@@ -458,6 +543,7 @@ class ManagementProvider:
             "observed_revision": self.observed_revision,
             "in_sync": not self.drift_fields,
             "drift_fields": list(self.drift_fields),
+            "models": dict(self.model_drift),
         }
 
     def registry_state(self) -> dict[str, Any]:
@@ -506,18 +592,56 @@ class ManagementProvider:
         desired = value.get("desired") if isinstance(value, Mapping) else None
         desired_revision = value.get("desired_revision") if isinstance(value, Mapping) else None
         differences: list[str] = []
+        model_drift: dict[str, dict[str, Any]] = {}
         if isinstance(desired, Mapping):
-            model = self.models[0] if self.models else None
-            comparisons = {
-                "model": (desired.get("desired_model_id"), model.model_id if model else None),
-                "bundle": (desired.get("desired_bundle_id"), model.pra_bundle_id if model else None),
-                "profile": (desired.get("desired_profile_id"), model.profile if model else None),
-                "mode": (desired.get("desired_mode"), model.execution_mode if model else None),
-            }
-            differences = [name for name, (expected, actual) in comparisons.items() if expected is not None and expected != actual]
+            desired_models = desired.get("desired_models")
+            if (
+                not isinstance(desired_models, Sequence)
+                or isinstance(desired_models, (str, bytes))
+                or not desired_models
+            ):
+                desired_models = ({
+                    "runtime_model_id": "default",
+                    "model_id": desired.get("desired_model_id"),
+                    "bundle_id": desired.get("desired_bundle_id"),
+                    "profile_id": desired.get("desired_profile_id"),
+                    "mode": desired.get("desired_mode"),
+                },) if desired.get("desired_model_id") is not None else ()
+            expected_ids: set[str] = set()
+            for item in desired_models:
+                if not isinstance(item, Mapping):
+                    continue
+                runtime_id = str(item.get("runtime_model_id") or "default")
+                expected_ids.add(runtime_id)
+                model = self.model_runtimes.get(runtime_id)
+                comparisons = {
+                    "model": (item.get("model_id"), model.model.model_id if model else None),
+                    "bundle": (item.get("bundle_id"), model.model.pra_bundle_id if model else None),
+                    "profile": (item.get("profile_id"), model.model.profile if model else None),
+                    "mode": (item.get("mode"), model.model.execution_mode if model else None),
+                }
+                fields = [
+                    name for name, (expected, actual) in comparisons.items()
+                    if expected is not None and expected != actual
+                ]
+                if model is None:
+                    fields.insert(0, "MODEL_NOT_LOADED")
+                model_drift[runtime_id] = {
+                    "in_sync": not fields,
+                    "drift_fields": list(dict.fromkeys(fields)),
+                }
+                differences.extend(f"models.{runtime_id}.{name}" for name in fields)
+            if not bool(desired.get("allow_extra_models", True)):
+                for runtime_id in self.model_runtimes.keys() - expected_ids:
+                    model_drift[runtime_id] = {
+                        "in_sync": False,
+                        "drift_fields": ["UNAPPROVED_MODEL_LOADED"],
+                    }
+                    differences.append(f"models.{runtime_id}.UNAPPROVED_MODEL_LOADED")
         with self._lock:
             self.desired_revision = int(desired_revision) if desired_revision is not None else None
             self.drift_fields = differences
+            self.model_drift = model_drift
 
     def state(self) -> dict[str, Any]:
         return {
@@ -531,11 +655,33 @@ class ManagementProvider:
             "session_count": len(self._session_rows()),
         }
 
-    def model(self, model_id: str) -> LoadedModel:
-        for row in self.models:
-            if row.model_id == model_id:
-                return row
+    def model(self, runtime_model_id: str) -> LoadedModel:
+        state = self.model_runtimes.get(runtime_model_id)
+        if state is not None:
+            return state.model
+        # Preserve old clients that used the global model ID in the path when
+        # that lookup remains unambiguous. Runtime IDs are the canonical key.
+        matches = [row for row in self.models if row.model_id == runtime_model_id]
+        if len(matches) == 1:
+            return matches[0]
         raise ManagementAPIError(404, "MODEL_NOT_FOUND", "Loaded model was not found.")
+
+    def models_by_global_id(self, model_id: str | None = None) -> list[LoadedModel]:
+        return [row for row in self.models if model_id is None or row.model_id == model_id]
+
+    def model_runtime(self, runtime_model_id: str | None) -> ModelRuntimeState:
+        if runtime_model_id is None:
+            if len(self.model_runtimes) == 1:
+                return next(iter(self.model_runtimes.values()))
+            raise ManagementAPIError(
+                422,
+                "RUNTIME_MODEL_REQUIRED",
+                "runtime_model_id is required when an engine exposes multiple models.",
+            )
+        try:
+            return self.model_runtimes[runtime_model_id]
+        except KeyError as error:
+            raise ManagementAPIError(404, "MODEL_NOT_FOUND", "Loaded model was not found.") from error
 
     def profile(self, name: str) -> PRAProfileSummary:
         for row in self.profiles:
@@ -547,27 +693,44 @@ class ManagementProvider:
     def _safe_id(kind: str, value: str) -> str:
         return hashlib.sha256(f"{kind}:{value}".encode("utf-8")).hexdigest()[:24]
 
-    def _resource_rows(self) -> list[PRAResourceSummary]:
-        if self.storage_manager is None:
-            return []
+    def _resource_rows(self, runtime_model_id: str | None = None) -> list[PRAResourceSummary]:
         rows: list[PRAResourceSummary] = []
-        for key, entry in sorted(self.storage_manager.entries.items()):
-            safe_id = self._safe_id("resource", str(key))
-            tier = getattr(entry.current_tier, "value", str(entry.current_tier))
-            rows.append(PRAResourceSummary(
-                resource_id=safe_id,
-                resource_type=str(entry.record_type),
-                version=str(entry.resource_version),
-                size_bytes=int(entry.detail_bytes),
-                storage_tier=tier,
-                native_resident=tier != "source",
-                pin_count=int(entry.request_pin_count),
-                last_access=float(entry.last_access_ns) / 1e9 if entry.last_access_ns else None,
-                task_scoped=entry.task_id is not None,
-                session_scoped=entry.session_id is not None,
-                authorization_scope="restricted" if entry.security_scope else "default",
-                checksum=entry.source_sha256,
-            ))
+        states = (
+            ((runtime_model_id, self.model_runtime(runtime_model_id)),)
+            if runtime_model_id is not None
+            else tuple(self.model_runtimes.items())
+        )
+        seen_source: set[tuple[str, str, str | None]] = set()
+        for current_id, state in states:
+            manager = state.storage_manager
+            if manager is None:
+                continue
+            for key, entry in sorted(manager.entries.items()):
+                tier = getattr(entry.current_tier, "value", str(entry.current_tier))
+                source_identity = (
+                    str(entry.record_type),
+                    str(entry.resource_version),
+                    entry.source_sha256 or f"{current_id}:{key}",
+                )
+                if runtime_model_id is None and tier == "source" and source_identity in seen_source:
+                    continue
+                if tier == "source":
+                    seen_source.add(source_identity)
+                rows.append(PRAResourceSummary(
+                    resource_id=self._safe_id("resource", f"{current_id}:{key}"),
+                    runtime_model_id=current_id,
+                    resource_type=str(entry.record_type),
+                    version=str(entry.resource_version),
+                    size_bytes=int(entry.detail_bytes),
+                    storage_tier=tier,
+                    native_resident=tier != "source",
+                    pin_count=int(entry.request_pin_count),
+                    last_access=float(entry.last_access_ns) / 1e9 if entry.last_access_ns else None,
+                    task_scoped=entry.task_id is not None,
+                    session_scoped=entry.session_id is not None,
+                    authorization_scope="restricted" if entry.security_scope else "default",
+                    checksum=entry.source_sha256,
+                ))
         return rows
 
     def resource(self, resource_id: str) -> PRAResourceSummary:
@@ -576,41 +739,50 @@ class ManagementProvider:
                 return row
         raise ManagementAPIError(404, "RESOURCE_NOT_FOUND", "PRA resource was not found.")
 
-    def _resource_key(self, resource_id: str) -> str:
-        if self.storage_manager is not None:
-            for key in self.storage_manager.entries:
-                if self._safe_id("resource", str(key)) == resource_id:
-                    return str(key)
+    def _resource_key(self, resource_id: str) -> tuple[ModelRuntimeState, str]:
+        for runtime_id, state in self.model_runtimes.items():
+            if state.storage_manager is None:
+                continue
+            for key in state.storage_manager.entries:
+                if self._safe_id("resource", f"{runtime_id}:{key}") == resource_id:
+                    return state, str(key)
         raise ManagementAPIError(404, "RESOURCE_NOT_FOUND", "PRA resource was not found.")
 
-    def _session_rows(self) -> list[SessionSummary]:
-        if self.session_source is None:
-            return []
-        values = self.session_source.inspect_all()
+    def _session_rows(self, runtime_model_id: str | None = None) -> list[SessionSummary]:
         rows: list[SessionSummary] = []
-        for value in values:
-            raw_id = str(value.get("session_id", "unknown"))
-            materializations = value.get("visible_materializations", ())
-            rows.append(SessionSummary(
-                session_id=self._safe_id("session", raw_id),
-                created_at=value.get("created_at"),
-                last_activity=value.get("updated_at"),
-                active_task_count=int(value.get("active_task_count", 0)),
-                visible_context={
-                    "resource_count": len(value.get("known_resources", {})),
-                    "materialization_count": len(materializations),
-                    "message_count": int(value.get("prefix_message_count", 0)),
-                },
-                selected_token_total=sum(int(row.get("token_count", 0)) for row in materializations),
-                logical_reuse_total=int(value.get("turns", 0)),
-                native_reuse_total=int(value.get("native_reuse_total", 0)),
-                engine_cache={
-                    "session_present": bool(value.get("engine_session_present")),
-                    "prefix_handle_present": bool(value.get("prefix_cache_handle_present")),
-                    "worker_present": value.get("engine_worker_identity") is not None,
-                },
-                status=str(value.get("status", "active")),
-            ))
+        states = (
+            ((runtime_model_id, self.model_runtime(runtime_model_id)),)
+            if runtime_model_id is not None
+            else tuple(self.model_runtimes.items())
+        )
+        for current_id, state in states:
+            if state.session_source is None:
+                continue
+            for value in state.session_source.inspect_all():
+                raw_id = str(value.get("session_id", "unknown"))
+                materializations = value.get("visible_materializations", ())
+                rows.append(SessionSummary(
+                    session_id=self._safe_id("session", f"{current_id}:{raw_id}"),
+                    runtime_model_id=current_id,
+                    model_fingerprint=state.model.model_fingerprint,
+                    created_at=value.get("created_at"),
+                    last_activity=value.get("updated_at"),
+                    active_task_count=int(value.get("active_task_count", 0)),
+                    visible_context={
+                        "resource_count": len(value.get("known_resources", {})),
+                        "materialization_count": len(materializations),
+                        "message_count": int(value.get("prefix_message_count", 0)),
+                    },
+                    selected_token_total=sum(int(row.get("token_count", 0)) for row in materializations),
+                    logical_reuse_total=int(value.get("turns", 0)),
+                    native_reuse_total=int(value.get("native_reuse_total", 0)),
+                    engine_cache={
+                        "session_present": bool(value.get("engine_session_present")),
+                        "prefix_handle_present": bool(value.get("prefix_cache_handle_present")),
+                        "worker_present": value.get("engine_worker_identity") is not None,
+                    },
+                    status=str(value.get("status", "active")),
+                ))
         return rows
 
     def session(self, session_id: str) -> SessionSummary:
@@ -619,13 +791,45 @@ class ManagementProvider:
                 return row
         raise ManagementAPIError(404, "SESSION_NOT_FOUND", "PRA session was not found.")
 
-    def storage(self) -> StorageState:
-        if self.storage_manager is None:
+    def storage(self, runtime_model_id: str | None = None) -> StorageState:
+        if runtime_model_id is None:
+            states = list(self.model_runtimes.items())
+            unique = {id(state.storage_manager): state.storage_manager for _, state in states if state.storage_manager is not None}
+            breakdown = {
+                model_id: self.storage(model_id).model_dump(mode="json", exclude={"models"})
+                for model_id, state in states if state.storage_manager is not None
+            }
+            if not unique:
+                return StorageState(
+                    tiers={name: {"bytes": 0, "resources": 0} for name in ("hot", "warm", "cold", "source")},
+                    quotas={}, retention_policy={}, maintenance_status="not_configured", models={},
+                )
+            details = [self._storage_state(manager) for manager in unique.values()]
+            return StorageState(
+                tiers={tier: {
+                    "bytes": sum(row.tiers[tier]["bytes"] for row in details),
+                    "resources": sum(row.tiers[tier]["resources"] for row in details),
+                } for tier in ("hot", "warm", "cold", "source")},
+                quotas={"scope": "per-model"},
+                evictions=sum(row.evictions for row in details),
+                reloads=sum(row.reloads for row in details),
+                promotions=sum(row.promotions for row in details),
+                reconstructions=sum(row.reconstructions for row in details),
+                retention_policy={"scope": "per-model"},
+                maintenance_status="running" if any(row.maintenance_status == "running" for row in details) else "manual",
+                models=breakdown,
+            )
+        manager = self.model_runtime(runtime_model_id).storage_manager
+        if manager is None:
             return StorageState(
                 tiers={name: {"bytes": 0, "resources": 0} for name in ("hot", "warm", "cold", "source")},
                 quotas={}, retention_policy={}, maintenance_status="not_configured",
             )
-        inspected = self.storage_manager.inspect()
+        return self._storage_state(manager)
+
+    @staticmethod
+    def _storage_state(manager: Any) -> StorageState:
+        inspected = manager.inspect()
         usage = inspected["usage"]
         objects = inspected["objects"]
         metrics = inspected["metrics"]
@@ -649,7 +853,7 @@ class ManagementProvider:
             retention_policy=_redact(policy),
             maintenance_status=(
                 "running"
-                if getattr(self.storage_manager, "_maintenance_thread", None) is not None
+                if getattr(manager, "_maintenance_thread", None) is not None
                 else "manual"
             ),
         )
@@ -717,22 +921,46 @@ class ManagementProvider:
                 )
             return prior_result.model_copy(update={"idempotent_replay": True})
 
-        if name in {"prefetch", "promote", "demote"} and self.storage_manager is not None:
+        if name in {"prefetch", "promote", "demote"} and any(
+            state.storage_manager is not None for state in self.model_runtimes.values()
+        ):
             if not request.resource_id:
                 raise ManagementAPIError(422, "RESOURCE_REQUIRED", "resource_id is required.")
-            key = self._resource_key(request.resource_id)
+            state, key = self._resource_key(request.resource_id)
+            manager = state.storage_manager
+            assert manager is not None
             if name in {"prefetch", "promote"}:
-                self.storage_manager.promote(
+                manager.promote(
                     key,
                     tenant_id=request.tenant_id,
                     authorization_scopes=actor.scopes,
                 )
             else:
-                self.storage_manager.demote_hot(key)
+                manager.demote_hot(key)
             detail: Mapping[str, Any] = {"storage_tier": self.resource(request.resource_id).storage_tier}
-        elif name == "maintenance" and self.storage_manager is not None:
-            self.storage_manager.run_maintenance()
+        elif name == "maintenance" and any(
+            state.storage_manager is not None for state in self.model_runtimes.values()
+        ):
+            states = (
+                (self.model_runtime(request.runtime_model_id),)
+                if request.runtime_model_id is not None
+                else tuple(self.model_runtimes.values())
+            )
+            for state in states:
+                if state.storage_manager is not None:
+                    state.storage_manager.run_maintenance()
             detail = {"storage": self.storage().model_dump(mode="json")}
+        elif name == "load-model":
+            try:
+                detail = self._load_model(request)
+            except Exception:
+                self.record_audit(
+                    "MODEL_LOAD_FAILED", actor, request_id, "failure",
+                    {"runtime_model_id": request.runtime_model_id},
+                )
+                raise
+        elif name == "unload-model":
+            detail = self._unload_model(request)
         elif name in self.action_handlers:
             detail = dict(self.action_handlers[name](request) or {})
         else:
@@ -754,14 +982,83 @@ class ManagementProvider:
             "reload-profile": "PROFILE_CHANGED",
             "reload-bundle": "BUNDLE_CHANGED",
             "maintenance": "MAINTENANCE_TRIGGERED",
+            "load-model": "MODEL_LOADED",
+            "unload-model": "MODEL_UNLOADED",
         }[name]
-        self.record_audit(event, actor, request_id, "success", {"resource_id": request.resource_id})
+        self.record_audit(event, actor, request_id, "success", {
+            "resource_id": request.resource_id,
+            "runtime_model_id": request.runtime_model_id,
+        })
         if self.registry_reporter is not None:
             try:
                 self.registry_reporter.publish_observed()
             except Exception:
                 pass
         return result
+
+    def _load_model(self, request: ActionRequest) -> Mapping[str, Any]:
+        capabilities = self.capabilities()
+        if not capabilities.dynamic_model_load:
+            raise ManagementAPIError(501, "ACTION_NOT_SUPPORTED", "Dynamic model loading is not supported.")
+        if not request.runtime_model_id or not request.model_id:
+            raise ManagementAPIError(
+                422, "MODEL_IDENTITY_REQUIRED", "runtime_model_id and model_id are required."
+            )
+        if request.runtime_model_id in self.model_runtimes:
+            raise ManagementAPIError(409, "MODEL_ALREADY_LOADED", "runtime_model_id is already loaded.")
+        if capabilities.max_loaded_models is not None and len(self.models) >= capabilities.max_loaded_models:
+            raise ManagementAPIError(409, "MODEL_LIMIT_REACHED", "The engine model residency limit was reached.")
+        handler = self.action_handlers.get("load-model")
+        if handler is None:
+            raise ManagementAPIError(501, "ACTION_NOT_SUPPORTED", "No engine model loader is attached.")
+        detail = dict(handler(request) or {})
+        model = LoadedModel(
+            runtime_model_id=request.runtime_model_id,
+            model_id=request.model_id,
+            revision=request.revision,
+            pra_bundle_id=request.bundle,
+            profile=request.profile,
+            execution_mode=request.execution_mode,
+            loaded_at=time.time(),
+            runtime_state=str(detail.get("runtime_state", "loaded")),
+        )
+        self._add_runtime_state(ModelRuntimeState(
+            model=model,
+            storage_manager=detail.pop("storage_manager", None),
+            session_source=detail.pop("session_source", None),
+            capabilities=dict(detail.pop("capabilities", {})),
+            effective_config=dict(detail.pop("effective_config", {})),
+        ))
+        self._sync_models()
+        self.observed_revision += 1
+        return {"model": model.model_dump(mode="json"), **detail}
+
+    def _unload_model(self, request: ActionRequest) -> Mapping[str, Any]:
+        if not self.capabilities().dynamic_model_unload:
+            raise ManagementAPIError(501, "ACTION_NOT_SUPPORTED", "Dynamic model unloading is not supported.")
+        if not request.runtime_model_id:
+            raise ManagementAPIError(422, "RUNTIME_MODEL_REQUIRED", "runtime_model_id is required.")
+        state = self.model_runtime(request.runtime_model_id)
+        handler = self.action_handlers.get("unload-model")
+        if handler is None:
+            raise ManagementAPIError(501, "ACTION_NOT_SUPPORTED", "No engine model unloader is attached.")
+        detail = dict(handler(request) or {})
+        manager = state.storage_manager
+        if manager is not None:
+            for key, entry in tuple(manager.entries.items()):
+                tier = getattr(entry.current_tier, "value", str(entry.current_tier))
+                if tier == "hot" and not getattr(entry, "request_pin_count", 0):
+                    manager.demote_hot(key)
+        sessions = state.session_source
+        if sessions is not None and hasattr(sessions, "invalidate_model"):
+            sessions.invalidate_model(
+                state.model.model_fingerprint or state.model.model_id,
+                reason="model_unloaded",
+            )
+        del self.model_runtimes[request.runtime_model_id]
+        self._sync_models()
+        self.observed_revision += 1
+        return {"runtime_model_id": request.runtime_model_id, "force": request.force, **detail}
 
     def record_audit(
         self,
@@ -859,14 +1156,19 @@ def create_management_app(provider: ManagementProvider, settings: ManagementAPIC
 
     @app.get(f"{API_PREFIX}/models", response_model=Page, tags=["models"])
     def models(
+        model_id: str | None = None,
         offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200),
         actor: Actor = Depends(require("pra:models")),
     ):
-        return _page(provider.models, offset, limit)
+        return _page(provider.models_by_global_id(model_id), offset, limit)
 
-    @app.get(f"{API_PREFIX}/models/{{model_id:path}}", response_model=LoadedModel, tags=["models"])
-    def model(model_id: str, actor: Actor = Depends(require("pra:models"))):
-        return provider.model(model_id)
+    @app.get(f"{API_PREFIX}/models/{{runtime_model_id}}/storage", response_model=StorageState, tags=["storage"])
+    def model_storage(runtime_model_id: str, actor: Actor = Depends(require("pra:storage"))):
+        return provider.storage(runtime_model_id)
+
+    @app.get(f"{API_PREFIX}/models/{{runtime_model_id:path}}", response_model=LoadedModel, tags=["models"])
+    def model(runtime_model_id: str, actor: Actor = Depends(require("pra:models"))):
+        return provider.model(runtime_model_id)
 
     @app.get(f"{API_PREFIX}/profiles", response_model=Page, tags=["profiles"])
     def profiles(
@@ -883,10 +1185,11 @@ def create_management_app(provider: ManagementProvider, settings: ManagementAPIC
     def resources(
         resource_type: str | None = None,
         storage_tier: str | None = None,
+        runtime_model_id: str | None = None,
         offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200),
         actor: Actor = Depends(require("pra:read")),
     ):
-        rows = provider._resource_rows()
+        rows = provider._resource_rows(runtime_model_id)
         if resource_type:
             rows = [row for row in rows if row.resource_type == resource_type]
         if storage_tier:
@@ -900,10 +1203,11 @@ def create_management_app(provider: ManagementProvider, settings: ManagementAPIC
     @app.get(f"{API_PREFIX}/sessions", response_model=Page, tags=["sessions"])
     def sessions(
         status: str | None = None,
+        runtime_model_id: str | None = None,
         offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200),
         actor: Actor = Depends(require("pra:sessions")),
     ):
-        rows = provider._session_rows()
+        rows = provider._session_rows(runtime_model_id)
         if status:
             rows = [row for row in rows if row.status == status]
         return _page(rows, offset, limit)
@@ -941,6 +1245,7 @@ def create_management_app(provider: ManagementProvider, settings: ManagementAPIC
         "promote": "pra:storage", "demote": "pra:storage",
         "reload-profile": "pra:configure", "reload-bundle": "pra:models",
         "maintenance": "pra:storage",
+        "load-model": "pra:models", "unload-model": "pra:models",
     }
     def register_action(action_name: str, scope: str) -> None:
         def action_endpoint(

@@ -27,6 +27,12 @@ SGLang, MLX, OpenVINO, TensorRT-LLM, AirLLM, llama.cpp, Ollama, and FreeToken.
 An adapter supplies capability and state providers plus only those actions its
 engine can execute safely.
 
+One management listener represents one `EngineInstance`. The instance contains
+one or more `LoadedModel` rows, each identified locally by a stable
+`runtime_model_id`. Single-model engines use exactly the same contract with one
+model named `default`; PRA does not turn their semantic runtime into a fleet
+manager. See [Engine Instances and Models](multi-model.md).
+
 ## Disabled by default
 
 No listener, server thread, OpenAPI route, or authentication backend is created

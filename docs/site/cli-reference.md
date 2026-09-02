@@ -883,6 +883,136 @@ instance_id: prod-vllm-01
 heartbeat_success_total: 42
 ```
 
+### `pra engine model`
+
+Show one loaded model by its engine-local runtime identity.
+
+**Usage**
+
+```text
+pra engine model [OPTIONS] TARGET RUNTIME_MODEL_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | yes | Saved connection name or management API URL. |
+| `RUNTIME_MODEL_ID` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine model local-ollama qwen3:14b --yaml
+```
+
+**Example output**
+
+```text
+Runtime Model Id: qwen3:14b
+Model Id: Qwen/Qwen3-14B
+Runtime State: loaded
+```
+
+### `pra engine load-model`
+
+Load one model when the target engine supports dynamic residency.
+
+**Usage**
+
+```text
+pra engine load-model [OPTIONS] TARGET RUNTIME_MODEL_ID MODEL_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | yes | Saved connection name or management API URL. |
+| `RUNTIME_MODEL_ID` | yes | Command input value. |
+| `MODEL_ID` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
+| `--bundle` | TEXT | `-` | no | Configure `bundle`. |
+| `--profile` | TEXT | `-` | no | Select a named PRA or agent profile. |
+| `--execution-mode` | TEXT | `selected-context` | no | Configure `execution-mode`. |
+| `--parameter` | TEXT; repeatable | `-` | no | Configure `parameters`. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine load-model local-ollama qwen3:14b Qwen/Qwen3-14B --profile balanced --execution-mode selected-context
+```
+
+**Example output**
+
+```text
+Action: load-model
+Status: success
+Runtime Model Id: qwen3:14b
+```
+
+### `pra engine unload-model`
+
+Unload one runtime model and release its model-native state.
+
+**Usage**
+
+```text
+pra engine unload-model [OPTIONS] TARGET RUNTIME_MODEL_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | yes | Saved connection name or management API URL. |
+| `RUNTIME_MODEL_ID` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--force` | flag | `off` | no | Allow engine-defined forced unload behavior. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine unload-model local-ollama qwen3:14b
+```
+
+**Example output**
+
+```text
+Action: unload-model
+Status: success
+Runtime Model Id: qwen3:14b
+```
+
 ### `pra engine register`
 
 Retry this engine's configured Registry registration immediately.
@@ -1071,7 +1201,8 @@ pra engine serve [OPTIONS]
 | --- | --- | --- | --- | --- |
 | `--engine` | TEXT | `hf` | no | Select the runtime or evidence-registry engine. |
 | `--engine-version` | TEXT | `-` | no | Report the observed engine version when it cannot be discovered. |
-| `--model` | TEXT | `-` | no | Model identifier or local model path. |
+| `--model` | TEXT; repeatable | `-` | no | Loaded model ID; repeat for multi-model engines. |
+| `--runtime-model-id` | TEXT; repeatable | `-` | no | Engine-local model alias paired with each --model. |
 | `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
 | `--inference-url` | TEXT | `-` | no | Identify the engine inference endpoint managed by the sidecar. |
 | `--config` | PATH | `-` | no | Configure `config-path`. |

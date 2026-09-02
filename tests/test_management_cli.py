@@ -12,6 +12,7 @@ pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
 
 from pra_hf.management import (
+    LoadedModel,
     ManagementAPIConfig,
     ManagementProvider,
     start_management_api,
@@ -107,6 +108,42 @@ def test_hf_managed_runtime_forwards_management_listener_options() -> None:
     assert command[command.index("--management-port") + 1] == "9191"
     assert command[command.index("--management-auth-mode") + 1] == "static_bearer"
     assert command[command.index("--management-grafana-url") + 1] == "http://grafana"
+
+
+def test_multi_model_cli_inspects_loads_and_unloads_runtime_identity(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRA_HOME", str(tmp_path / ".pra"))
+    port = _free_port()
+    provider = ManagementProvider(
+        engine="synthetic-router",
+        capabilities={
+            "multi_model": True,
+            "dynamic_model_load": True,
+            "dynamic_model_unload": True,
+            "max_loaded_models": 2,
+        },
+        models=[LoadedModel(model_id="org/first")],
+        action_handlers={"load-model": lambda _request: {}, "unload-model": lambda _request: {}},
+    )
+    settings = ManagementAPIConfig(enabled=True, port=port)
+    server = start_management_api(provider, settings)
+    url = f"http://127.0.0.1:{port}"
+    _wait(ManagementClient(url))
+    runner = CliRunner()
+    try:
+        shown = runner.invoke(engine_cli, ["model", url, "default", "--json"])
+        assert shown.exit_code == 0, shown.output
+        assert json.loads(shown.output)["model_id"] == "org/first"
+        loaded = runner.invoke(engine_cli, [
+            "load-model", url, "second", "org/second", "--json",
+        ])
+        assert loaded.exit_code == 0, loaded.output
+        unloaded = runner.invoke(engine_cli, [
+            "unload-model", url, "second", "--json",
+        ])
+        assert unloaded.exit_code == 0, unloaded.output
+        assert json.loads(unloaded.output)["detail"]["runtime_model_id"] == "second"
+    finally:
+        stop_management_api(server)
 
 
 def test_management_serve_advertises_external_registry_address(monkeypatch) -> None:
