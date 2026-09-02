@@ -1,7 +1,7 @@
 """Create PRA Registry schema
 
 Revision ID: 0001_registry
-Revises: 
+Revises:
 Create Date: 2026-09-02 11:17:19.490731
 """
 from typing import Sequence, Union
