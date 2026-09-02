@@ -55,6 +55,14 @@ pra gateway serve [OPTIONS]
 | `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
 | `--prometheus` | flag | `off` | no | Enable the Prometheus endpoint explicitly. |
 | `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
+| `--management-api` | flag | `off` | no | Enable the separate PRA management listener. |
+| `--management-host` | TEXT | `127.0.0.1` | no | Configure `management-host`. |
+| `--management-port` | INTEGER >= 1 <= 65535 | `9101` | no | Configure `management-port`. |
+| `--management-auth-mode` | none / static_bearer / jwt_oidc / mtls | `none` | no | Configure `management-auth-mode`. |
+| `--management-token-env` | TEXT | `PRA_MANAGEMENT_TOKEN` | no | Configure `management-token-env`. |
+| `--management-metrics-url` | TEXT | `-` | no | Configure `management-metrics-url`. |
+| `--management-trace-url` | TEXT | `-` | no | Configure `management-trace-url`. |
+| `--management-grafana-url` | TEXT | `-` | no | Configure `management-grafana-url`. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
@@ -70,6 +78,583 @@ PRA gateway on http://127.0.0.1:8080 -> vllm
 Selected Context: enabled
 Typed resource transport: disabled
 Effective mode: Selected Context
+```
+
+## Engine management
+
+### `pra engine connect`
+
+Validate and remember a management URL without storing credentials.
+
+**Usage**
+
+```text
+pra engine connect [OPTIONS] URL
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `URL` | yes | PRA management API base URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--name` | TEXT | `default` | no | Configure `name`. |
+| `--token-env` | TEXT | `-` | no | Environment variable holding the bearer token; the secret is not stored. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine connect http://127.0.0.1:9101 --name local-vllm --token-env PRA_MANAGEMENT_TOKEN
+```
+
+**Example output**
+
+```text
+Name: local-vllm
+URL: http://127.0.0.1:9101
+Protocol: pra-management/1
+Stored secret: false
+```
+
+### `pra engine health`
+
+Check protocol and local engine health.
+
+**Usage**
+
+```text
+pra engine health [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine health local-vllm
+```
+
+**Example output**
+
+```text
+Status: healthy
+Protocol: pra-management/1
+Instance ID: 2f9c...
+```
+
+### `pra engine config`
+
+Show effective and desired configuration state.
+
+**Usage**
+
+```text
+pra engine config [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine config local-vllm --yaml
+```
+
+**Example output**
+
+```text
+effective:
+  profile: BALANCED
+observed_revision: 1
+in_sync: true
+```
+
+### `pra engine storage`
+
+Show tier residency, quotas, and lifecycle counters.
+
+**Usage**
+
+```text
+pra engine storage [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine storage local-vllm --json
+```
+
+**Example output**
+
+```text
+{
+  "tiers": {"hot": {"bytes": 1048576, "resources": 2}},
+  "maintenance_status": "running"
+}
+```
+
+### `pra engine sessions`
+
+List privacy-safe session summaries.
+
+**Usage**
+
+```text
+pra engine sessions [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine sessions local-vllm --json
+```
+
+**Example output**
+
+```text
+{"items": [{"session_id": "8e0f...", "status": "active"}], "total": 1}
+```
+
+### `pra engine resources`
+
+List privacy-safe resource summaries.
+
+**Usage**
+
+```text
+pra engine resources [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine resources local-vllm --json
+```
+
+**Example output**
+
+```text
+{"items": [{"resource_id": "5a31...", "storage_tier": "hot"}], "total": 1}
+```
+
+### `pra engine models`
+
+List loaded model identities.
+
+**Usage**
+
+```text
+pra engine models [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine models local-vllm
+```
+
+**Example output**
+
+```text
+Items:
+  Model Id: Qwen/Qwen3-4B
+Total: 1
+```
+
+### `pra engine profiles`
+
+List effective PRA profiles.
+
+**Usage**
+
+```text
+pra engine profiles [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine profiles local-vllm
+```
+
+**Example output**
+
+```text
+Items:
+  Name: BALANCED
+  Qualification Status: VALIDATED
+```
+
+### `pra engine capabilities`
+
+Show qualified local engine capabilities.
+
+**Usage**
+
+```text
+pra engine capabilities [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine capabilities local-vllm
+```
+
+**Example output**
+
+```text
+Selected Context: AVAILABLE
+Native Memory: CANDIDATE
+Management API Version: pra-management/1
+```
+
+### `pra engine audit`
+
+Show recent local management audit events.
+
+**Usage**
+
+```text
+pra engine audit [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine audit local-vllm --json
+```
+
+**Example output**
+
+```text
+{"items": [{"event": "RESOURCE_PROMOTED", "result": "success"}]}
+```
+
+### `pra engine inspect`
+
+Inspect engine identity, capabilities, state, and observability links.
+
+**Usage**
+
+```text
+pra engine inspect [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine inspect --management-url http://127.0.0.1:9101
+```
+
+**Example output**
+
+```text
+Info:
+  Engine: vllm
+Capabilities:
+  Management Api Version: pra-management/1
+State:
+  In Sync: true
+```
+
+### `pra engine patch-config`
+
+Apply a bounded YAML/JSON configuration patch.
+
+**Usage**
+
+```text
+pra engine patch-config [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--patch` | PATH | `-` | yes | Read a bounded YAML or JSON configuration patch. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine patch-config local-vllm --patch profile-patch.yaml
+```
+
+**Example output**
+
+```text
+Observed Revision: 2
+In Sync: true
+Effective:
+  Profile: ECONOMY
+```
+
+### `pra engine action`
+
+Run one bounded engine-supported local management action.
+
+**Usage**
+
+```text
+pra engine action [OPTIONS] ACTION [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `ACTION` | yes | Bounded management action name. |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--resource-id` | TEXT | `-` | no | Address a privacy-safe resource identifier returned by the API. |
+| `--profile` | TEXT | `-` | no | Select a named PRA or agent profile. |
+| `--bundle` | TEXT | `-` | no | Configure `bundle`. |
+| `--tenant-id` | TEXT | `-` | no | Authorize the storage action for this tenant. |
+| `--idempotency-key` | TEXT | `-` | no | Deduplicate a retried management action. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine action promote local-vllm --resource-id RESOURCE_ID --idempotency-key promote-42
+```
+
+**Example output**
+
+```text
+Action: promote
+Status: success
+Resource Id: RESOURCE_ID
+Idempotent Replay: false
+```
+
+### `pra engine serve`
+
+Start an explicitly enabled local management sidecar on a separate port.
+
+**Usage**
+
+```text
+pra engine serve [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--engine` | TEXT | `hf` | no | Select the runtime or evidence-registry engine. |
+| `--engine-version` | TEXT | `-` | no | Report the observed engine version when it cannot be discovered. |
+| `--model` | TEXT | `-` | no | Model identifier or local model path. |
+| `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
+| `--inference-url` | TEXT | `-` | no | Identify the engine inference endpoint managed by the sidecar. |
+| `--config` | PATH | `-` | no | Configure `config-path`. |
+| `--host` | TEXT | `-` | no | Bind address for the local service. |
+| `--port` | INTEGER >= 1 <= 65535 | `-` | no | TCP port for the local service. |
+| `--auth-mode` | none / static_bearer / jwt_oidc / mtls | `-` | no | Select local management authentication. |
+| `--token-env` | TEXT | `-` | no | Name the environment variable containing a bearer token. |
+| `--metrics-url` | TEXT | `-` | no | Publish the engine Prometheus endpoint link. |
+| `--trace-backend-url` | TEXT | `-` | no | Publish the configured trace-backend link. |
+| `--grafana-url` | TEXT | `-` | no | Publish the configured Grafana link. |
+| `--tls-certfile` | PATH | `-` | no | Serve HTTPS with this certificate chain. |
+| `--tls-keyfile` | PATH | `-` | no | Serve HTTPS with this private-key file. |
+| `--tls-ca-certs` | PATH | `-` | no | Require client certificates issued by this CA bundle. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine serve --engine vllm --model Qwen/Qwen3-4B --inference-url http://127.0.0.1:8000 --port 9101
+```
+
+**Example output**
+
+```text
+PRA management API (vllm) on http://127.0.0.1:9101
+OpenAPI: http://127.0.0.1:9101/openapi.json
+Swagger: http://127.0.0.1:9101/docs
 ```
 
 ## Environment and qualification
@@ -1643,6 +2228,14 @@ pra runtime serve [OPTIONS] MODEL
 | `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
 | `--prometheus` | flag | `off` | no | Configure `prometheus`. |
 | `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
+| `--management-api` | flag | `off` | no | Enable the separate PRA management listener. |
+| `--management-host` | TEXT | `127.0.0.1` | no | Configure `management-host`. |
+| `--management-port` | INTEGER >= 1 <= 65535 | `9101` | no | Configure `management-port`. |
+| `--management-auth-mode` | none / static_bearer / jwt_oidc / mtls | `none` | no | Configure `management-auth-mode`. |
+| `--management-token-env` | TEXT | `PRA_MANAGEMENT_TOKEN` | no | Configure `management-token-env`. |
+| `--management-metrics-url` | TEXT | `-` | no | Configure `management-metrics-url`. |
+| `--management-trace-url` | TEXT | `-` | no | Configure `management-trace-url`. |
+| `--management-grafana-url` | TEXT | `-` | no | Configure `management-grafana-url`. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -1701,6 +2294,14 @@ pra runtime inspect [OPTIONS] [MODEL]
 | `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
 | `--prometheus` | flag | `off` | no | Configure `prometheus`. |
 | `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
+| `--management-api` | flag | `off` | no | Enable the separate PRA management listener. |
+| `--management-host` | TEXT | `127.0.0.1` | no | Configure `management-host`. |
+| `--management-port` | INTEGER >= 1 <= 65535 | `9101` | no | Configure `management-port`. |
+| `--management-auth-mode` | none / static_bearer / jwt_oidc / mtls | `none` | no | Configure `management-auth-mode`. |
+| `--management-token-env` | TEXT | `PRA_MANAGEMENT_TOKEN` | no | Configure `management-token-env`. |
+| `--management-metrics-url` | TEXT | `-` | no | Configure `management-metrics-url`. |
+| `--management-trace-url` | TEXT | `-` | no | Configure `management-trace-url`. |
+| `--management-grafana-url` | TEXT | `-` | no | Configure `management-grafana-url`. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
@@ -1872,6 +2473,14 @@ pra serve [OPTIONS] MODEL
 | `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
 | `--prometheus` | flag | `off` | no | Configure `prometheus`. |
 | `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
+| `--management-api` | flag | `off` | no | Enable the separate PRA management listener. |
+| `--management-host` | TEXT | `127.0.0.1` | no | Configure `management-host`. |
+| `--management-port` | INTEGER >= 1 <= 65535 | `9101` | no | Configure `management-port`. |
+| `--management-auth-mode` | none / static_bearer / jwt_oidc / mtls | `none` | no | Configure `management-auth-mode`. |
+| `--management-token-env` | TEXT | `PRA_MANAGEMENT_TOKEN` | no | Configure `management-token-env`. |
+| `--management-metrics-url` | TEXT | `-` | no | Configure `management-metrics-url`. |
+| `--management-trace-url` | TEXT | `-` | no | Configure `management-trace-url`. |
+| `--management-grafana-url` | TEXT | `-` | no | Configure `management-grafana-url`. |
 | `--json` | flag | `off` | no | Emit JSON. |
 | `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |

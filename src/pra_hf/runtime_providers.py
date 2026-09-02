@@ -52,10 +52,20 @@ class RuntimeConfig:
     otel_endpoint: str | None = None
     prometheus: bool = False
     prometheus_port: int = 9464
+    management_api: bool = False
+    management_host: str = "127.0.0.1"
+    management_port: int = 9101
+    management_auth_mode: str = "none"
+    management_token_env: str = "PRA_MANAGEMENT_TOKEN"
+    management_metrics_url: str | None = None
+    management_trace_url: str | None = None
+    management_grafana_url: str | None = None
 
     def __post_init__(self) -> None:
         if not (0 < self.port < 65536):
             raise ValueError("Runtime port must be between 1 and 65535.")
+        if not (0 < self.management_port < 65536):
+            raise ValueError("Management port must be between 1 and 65535.")
         object.__setattr__(self, "engine_options", dict(self.engine_options))
 
     @property
@@ -290,6 +300,20 @@ class HFRuntimeProvider(RuntimeProvider):
             command += ["--otel-endpoint", config.otel_endpoint]
         if config.prometheus:
             command += ["--prometheus", "--prometheus-port", str(config.prometheus_port)]
+        if config.management_api:
+            command += [
+                "--management-api",
+                "--management-host", config.management_host,
+                "--management-port", str(config.management_port),
+                "--management-auth-mode", config.management_auth_mode,
+                "--management-token-env", config.management_token_env,
+            ]
+        if config.management_metrics_url:
+            command += ["--management-metrics-url", config.management_metrics_url]
+        if config.management_trace_url:
+            command += ["--management-trace-url", config.management_trace_url]
+        if config.management_grafana_url:
+            command += ["--management-grafana-url", config.management_grafana_url]
         return command
 
 

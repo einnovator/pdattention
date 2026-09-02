@@ -24,6 +24,24 @@ GATEWAY_MODE_ALIASES = {
 }
 
 
+def _apply_gateway_config(gateway: PRAGateway, values):
+    """Apply only gateway settings that affect subsequent real requests."""
+
+    from .management import ManagementAPIError
+
+    unsupported = sorted(set(values) - {"profile"})
+    if unsupported:
+        raise ManagementAPIError(
+            501,
+            "CONFIG_FIELD_NOT_SUPPORTED",
+            "This gateway can update only the default profile while running.",
+            unsupported_fields=unsupported,
+        )
+    if "profile" in values:
+        gateway.default_profile = str(values["profile"])
+    return values
+
+
 def resolve_gateway_mode(value: str) -> str:
     """Map public deployment names and legacy research codes to wire modes."""
 
@@ -85,11 +103,27 @@ def gateway_cli() -> None:
 @click.option("--otel-endpoint")
 @click.option("--prometheus", is_flag=True, help="Enable the Prometheus endpoint explicitly.")
 @click.option("--prometheus-port", type=click.IntRange(min=1, max=65535))
+@click.option("--management-api", is_flag=True, help="Enable the separate PRA management listener.")
+@click.option("--management-host", default="127.0.0.1", show_default=True)
+@click.option("--management-port", type=click.IntRange(min=1, max=65535), default=9101, show_default=True)
+@click.option(
+    "--management-auth-mode",
+    type=click.Choice(["none", "static_bearer", "jwt_oidc", "mtls"]),
+    default="none",
+    show_default=True,
+)
+@click.option("--management-token-env", default="PRA_MANAGEMENT_TOKEN", show_default=True)
+@click.option("--management-metrics-url")
+@click.option("--management-trace-url")
+@click.option("--management-grafana-url")
 def gateway_serve(
     host, port, mode, backend, backend_url, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
     fallback_injection, sessions_dir, observability, otel, otel_endpoint,
     prometheus, prometheus_port,
+    management_api, management_host, management_port, management_auth_mode,
+    management_token_env, management_metrics_url, management_trace_url,
+    management_grafana_url,
 ) -> None:
     """Serve logical PRA and OpenAI-compatible HTTP endpoints."""
 
@@ -164,6 +198,59 @@ def gateway_serve(
         bundle_source=bundle_source,
         default_profile=profile,
     )
+    management_server = None
+    if management_api:
+        from .management import (
+            LoadedModel,
+            ManagementAPIConfig,
+            ManagementAuthConfig,
+            ManagementProvider,
+            PRAProfileSummary,
+            start_management_api,
+        )
+
+        management_settings = ManagementAPIConfig(
+            enabled=True,
+            host=management_host,
+            port=management_port,
+            auth=ManagementAuthConfig(
+                mode=management_auth_mode,
+                token_env=management_token_env,
+            ),
+            metrics_url=management_metrics_url,
+            trace_backend_url=management_trace_url,
+            grafana_url=management_grafana_url,
+        )
+        management_provider = ManagementProvider(
+            engine=backend,
+            capabilities=adapter.capabilities().to_dict(),
+            models=[] if model is None else [
+                LoadedModel(
+                    model_id=model,
+                    pra_bundle_id=bundle_source,
+                    profile=profile,
+                    execution_mode=resolved_mode,
+                )
+            ],
+            profiles=[PRAProfileSummary(name=profile, source="gateway")],
+            effective_config={
+                "engine": backend,
+                "model": model,
+                "profile": profile,
+                "execution_mode": resolved_mode,
+                "inference_url": backend_url,
+            },
+            storage_manager=getattr(adapter, "storage_manager", None),
+            session_source=gateway.sessions,
+            observability={
+                "otel": {"enabled": bool(otel or otel_endpoint)},
+                "prometheus": {"enabled": bool(prometheus or prometheus_port)},
+            },
+            config_patch_handler=lambda values: _apply_gateway_config(gateway, values),
+        )
+        management_server = start_management_api(
+            management_provider, management_settings
+        )
     capabilities = adapter.capabilities()
     selected_enabled = resolved_mode in {"G10", "G11"}
     typed_enabled = resolved_mode == "G11"
@@ -180,7 +267,15 @@ def gateway_serve(
             f"Internal protocol: {resolved_mode}, {capabilities.integration_level.value}, "
             f"{capabilities.prefix_cache_mode.value}"
         )
+    if management_server is not None:
+        click.echo(
+            f"Management API: http://{management_host}:{management_port}/v1/pra/info"
+        )
     try:
         serve_gateway(gateway, host=host, port=port)
     finally:
+        if management_server is not None:
+            from .management import stop_management_api
+
+            stop_management_api(management_server)
         telemetry.close()

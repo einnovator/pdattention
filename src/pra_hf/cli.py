@@ -23,6 +23,7 @@ from .bundle import (
 from .evaluation import evaluate_router_features
 from .execution_modes import ExecutionModeResolver
 from .gateway_cli import gateway_cli
+from .management_cli import engine_cli
 from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
 from .observability import Observability, load_observability_config
@@ -223,7 +224,15 @@ def _emit_qualification(value: Mapping[str, Any], run_directory: Path | None = N
         click.echo(f"Run directory: {run_directory}")
 
 
-def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args=(), verbose=False, observability=None, otel=False, otel_endpoint=None, prometheus=False, prometheus_port=None):
+def _engine_config(
+    model, engine, revision, device, endpoint, host, port, pra_bundle, profile,
+    storage, storage_config, engine_args=(), verbose=False, observability=None,
+    otel=False, otel_endpoint=None, prometheus=False, prometheus_port=None,
+    management_api=False, management_host="127.0.0.1", management_port=9101,
+    management_auth_mode="none", management_token_env="PRA_MANAGEMENT_TOKEN",
+    management_metrics_url=None, management_trace_url=None,
+    management_grafana_url=None,
+):
     try:
         options = parse_engine_arguments(engine_args)
     except ValueError as error:
@@ -238,6 +247,14 @@ def _engine_config(model, engine, revision, device, endpoint, host, port, pra_bu
         otel_endpoint=otel_endpoint,
         prometheus=prometheus,
         prometheus_port=prometheus_port or 9464,
+        management_api=management_api,
+        management_host=management_host,
+        management_port=management_port,
+        management_auth_mode=management_auth_mode,
+        management_token_env=management_token_env,
+        management_metrics_url=management_metrics_url,
+        management_trace_url=management_trace_url,
+        management_grafana_url=management_grafana_url,
     )
 
 
@@ -248,6 +265,7 @@ def cli() -> None:
 
 
 cli.add_command(gateway_cli)
+cli.add_command(engine_cli)
 
 
 @cli.command("doctor")
@@ -999,6 +1017,13 @@ def _runtime_options(function):
         click.option("--observability", type=click.Path(exists=True, dir_okay=False, path_type=Path)),
         click.option("--otel", is_flag=True), click.option("--otel-endpoint"),
         click.option("--prometheus", is_flag=True), click.option("--prometheus-port", type=click.IntRange(min=1, max=65535)),
+        click.option("--management-api", is_flag=True, help="Enable the separate PRA management listener."),
+        click.option("--management-host", default="127.0.0.1", show_default=True),
+        click.option("--management-port", type=click.IntRange(min=1, max=65535), default=9101, show_default=True),
+        click.option("--management-auth-mode", type=click.Choice(["none", "static_bearer", "jwt_oidc", "mtls"]), default="none", show_default=True),
+        click.option("--management-token-env", default="PRA_MANAGEMENT_TOKEN", show_default=True),
+        click.option("--management-metrics-url"), click.option("--management-trace-url"),
+        click.option("--management-grafana-url"),
     )
     for decorator in reversed(decorators):
         function = decorator(function)
@@ -1019,7 +1044,7 @@ def _runtime_options(function):
 @click.option("--allow-unqualified-native", is_flag=True, hidden=True)
 @_runtime_options
 @_output_options
-def runtime_serve(model, mode, explain, allow_unqualified_native, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, json_output, yaml_output) -> None:
+def runtime_serve(model, mode, explain, allow_unqualified_native, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, management_api, management_host, management_port, management_auth_mode, management_token_env, management_metrics_url, management_trace_url, management_grafana_url, json_output, yaml_output) -> None:
     """Serve MODEL with an explicit or policy-selected execution mode."""
     try:
         engine_row = EngineProductRegistry.default().resolve(engine)
@@ -1036,7 +1061,7 @@ def runtime_serve(model, mode, explain, allow_unqualified_native, engine, revisi
     selected_mode = resolution.resolved_mode.value
     resolved_profile = "BALANCED" if profile == "recommended" else profile
     mode_args = (*engine_args, f"execution-mode={selected_mode}")
-    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, resolved_profile, storage, storage_config, mode_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port)
+    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, resolved_profile, storage, storage_config, mode_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, management_api, management_host, management_port, management_auth_mode, management_token_env, management_metrics_url, management_trace_url, management_grafana_url)
     try:
         manager = RuntimeManager()
         handle = manager.serve(config)
@@ -1066,8 +1091,8 @@ cli.add_command(runtime_serve, "serve")
 @click.argument("model", required=False)
 @_runtime_options
 @_output_options
-def runtime_inspect(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, json_output, yaml_output) -> None:
-    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port)
+def runtime_inspect(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, management_api, management_host, management_port, management_auth_mode, management_token_env, management_metrics_url, management_trace_url, management_grafana_url, json_output, yaml_output) -> None:
+    config = _engine_config(model, engine, revision, device, endpoint, host, port, pra_bundle, profile, storage, storage_config, engine_args, verbose, observability, otel, otel_endpoint, prometheus, prometheus_port, management_api, management_host, management_port, management_auth_mode, management_token_env, management_metrics_url, management_trace_url, management_grafana_url)
     try:
         value = RuntimeManager().inspect(config)
     except KeyError as error:
