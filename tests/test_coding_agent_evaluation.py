@@ -115,7 +115,11 @@ def test_frozen_manifest_is_valid(name: str) -> None:
 def test_terminal_bench_plan_filters_every_frozen_task() -> None:
     manifest = BenchmarkManifest.load(ROOT / "manifests" / "terminal_bench_smoke.yaml")
     command = external_plan(manifest, agent="opencode", model="model", condition="no-pra")["official_harness_command"]
-    selected = [command[index + 1] for index, value in enumerate(command) if value == "-t"]
+    selected = [
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "--include-task-name"
+    ]
     assert selected == [f"terminal-bench/{task_id}" for task_id in manifest.task_ids]
 
 

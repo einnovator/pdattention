@@ -13,6 +13,16 @@ the official harnesses and include every frozen task filter explicitly.
 No performance claim should be made until the corresponding official harness
 produces normalized per-task records on a qualified agent/engine combination.
 
+## Official harness qualification
+
+Harbor 0.22.0 executed the `terminal-bench/filter-js-from-html` oracle on the
+NVIDIA/WSL host against Terminal-Bench 2.1. The official verifier awarded
+`1.0` (one trial, zero exceptions). The preserved
+`terminal_bench_oracle_smoke/` directory contains the resolved job and trial
+configuration, locks, oracle transcript, verifier output, and result records.
+This validates the downloaded task and official grading path; it is an oracle
+qualification, not model-agent evidence.
+
 ## Stage A gateway qualification
 
 On 2026-09-02, Codex CLI 0.147.0, OpenCode 1.18.26, and Pi 0.73.1 each

@@ -35,6 +35,21 @@ analysis only. It is never coding-agent quality evidence. Terminal-Bench runs
 must use Harbor; SWE-bench grading must use the official container harness.
 Frozen manifests prevent task drift between PRA conditions.
 
+On benchmark hosts where Harbor's default OpenCode `nvm` bootstrap cannot
+clone public GitHub repositories, use the repository adapter below. It changes
+only installation: Node 22 archives are checksum-pinned, while OpenCode
+execution, trajectory capture, task isolation, and grading remain Harbor's.
+
+```bash
+harbor run -d terminal-bench/terminal-bench-2-1 \
+  -a experiments.agents.harbor_agents:PinnedNodeOpenCode \
+  -m openai/qwen3:14b \
+  -i terminal-bench/filter-js-from-html \
+  --agent-env OPENAI_API_KEY=pra-local \
+  --agent-env OPENAI_BASE_URL=http://GATEWAY_HOST:18100/v1 \
+  --allow-agent-host GATEWAY_HOST -n 1 -y
+```
+
 ## Conditions
 
 Stable combinations progress from No PRA to Selected Context and then Native

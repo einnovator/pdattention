@@ -35,8 +35,12 @@ class TerminalBenchAdapter(BenchmarkAdapter):
             "--model", model, "-k", str(manifest.repeats),
         ]
         for task_id in self._require_tasks(manifest):
-            qualified = task_id if task_id.startswith("terminal-bench/") else f"terminal-bench/{task_id}"
-            argv.extend(("-t", qualified))
+            qualified = (
+                task_id
+                if task_id.startswith("terminal-bench/")
+                else f"terminal-bench/{task_id}"
+            )
+            argv.extend(("--include-task-name", qualified))
         return argv
 
 
