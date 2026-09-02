@@ -1,0 +1,53 @@
+schema_version: 1
+captured_at: 2026-09-02T14:00:00+01:00
+hosts:
+  - host: local-windows
+    role: orchestration-and-reference
+    os: Windows
+    architecture: x86_64
+    cpu: local Windows development host
+    ram_bytes: null
+    accelerator: null
+    accelerator_memory_bytes: null
+    status: available
+    limitations: [No local Docker, CUDA runtime not selected by the project virtual environment]
+  - host: 192.168.1.86
+    role: cuda-vllm-tensorrt-sglang
+    os: WSL2 Linux on Windows
+    architecture: x86_64
+    cpu: Intel Core Ultra 5 225H
+    ram_bytes: 12777527705
+    accelerator: NVIDIA GeForce RTX 5060 Laptop GPU
+    accelerator_memory_bytes: 8546942976
+    status: available
+    limitations: [Eight GiB VRAM constrains coding-model size]
+  - host: 192.168.1.95
+    role: mlx-small-and-control
+    os: macOS 26.4.1
+    architecture: arm64
+    cpu: Apple M5, 10 cores
+    ram_bytes: 17179869184
+    accelerator: Apple M5 integrated GPU
+    accelerator_memory_bytes: null
+    status: available
+    limitations: [Unified-memory capacity limits larger coding models]
+  - host: 192.168.1.102
+    role: mlx-llamacpp-ollama-large
+    os: macOS 26.6.2
+    architecture: arm64
+    cpu: Apple M4 Pro, 14 cores
+    ram_bytes: 51539607552
+    accelerator: Apple M4 Pro integrated GPU
+    accelerator_memory_bytes: null
+    status: available
+    limitations: [Shared lab services consume part of unified memory]
+  - host: pfcpt-65-via-reverse
+    role: openvino
+    os: Windows
+    architecture: x86_64
+    cpu: Intel Family 6 Model 186
+    ram_bytes: null
+    accelerator: Intel OpenVINO target
+    accelerator_memory_bytes: null
+    status: available-partial-inventory
+    limitations: [Detailed CIM inventory is restricted]

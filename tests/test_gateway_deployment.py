@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import urllib.request
+from unittest.mock import patch
 from types import SimpleNamespace
 
 import pytest
@@ -16,8 +17,14 @@ from pra_hf.deployment import (
     PRAGatewayMode,
     PRAWireRequest,
     PRAWireResource,
+    OpenAICompatibleEngineAdapter,
 )
-from pra_hf.gateway import PRACapabilityError, PRAGateway, create_gateway_server
+from pra_hf.gateway import (
+    PRACapabilityError,
+    PRAGateway,
+    _request_from_responses,
+    create_gateway_server,
+)
 from pra_torch.cli import cli as pra_cli
 
 
@@ -64,6 +71,40 @@ class UntypedNativeStreamAdapter(RecordingAdapter):
         yield {"text": " token", "native_kv_used": True}
 
 
+class ToolStreamingAdapter(RecordingAdapter):
+    def __init__(self):
+        super().__init__(streaming=True)
+
+    def stream(self, request):
+        self.requests.append(request)
+        yield {
+            "type": "tool_call_delta",
+            "index": 0,
+            "call_id": "call-7",
+            "name": "shell",
+            "arguments": '{"command":"echo ',
+            "request_id": request.request_id,
+        }
+        yield {
+            "type": "tool_call_delta",
+            "index": 0,
+            "arguments": 'ok"}',
+            "request_id": request.request_id,
+        }
+        yield {
+            "type": "done",
+            "request_id": request.request_id,
+            "finish_reason": "tool_calls",
+            "raw": {
+                "usage": {
+                    "prompt_tokens": 21,
+                    "completion_tokens": 4,
+                    "total_tokens": 25,
+                }
+            },
+        }
+
+
 def _request(**overrides):
     values = {
         "model": "offline/model",
@@ -98,6 +139,13 @@ def test_typed_decode_limit_precedes_legacy_hint_and_openai_max_tokens_is_mapped
     assert legacy.resolved_max_new_tokens == 2
     assert typed.resolved_max_new_tokens == 3
     assert openai.resolved_max_new_tokens == 4
+
+
+def test_openai_adapter_does_not_invent_a_decode_limit() -> None:
+    adapter = OpenAICompatibleEngineAdapter("http://engine")
+
+    assert "max_tokens" not in adapter._payload(_request())
+    assert adapter._payload(_request(max_new_tokens=7))["max_tokens"] == 7
 
 
 def test_hf_non_streaming_adapter_forwards_resolved_decode_limit():
@@ -311,6 +359,214 @@ def test_openai_http_stream_uses_sse_and_terminates() -> None:
         assert '"content": "wer"' in body
         assert '"object": "chat.completion.chunk"' in body
         assert "data: [DONE]" in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_openai_http_stream_preserves_tool_calls_and_usage() -> None:
+    server = create_gateway_server(
+        PRAGateway(ToolStreamingAdapter(), mode="G00"), host="127.0.0.1", port=0
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps({
+            "model": "offline/model",
+            "messages": [{"role": "user", "content": "run a command"}],
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }).encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            body = response.read().decode("utf-8")
+        assert '"tool_calls": [' in body
+        assert '"id": "call-7"' in body
+        assert '"name": "shell"' in body
+        assert '"arguments": "{\\\"command\\\":\\\"echo "' in body
+        assert '"prompt_tokens": 21' in body
+        assert '"completion_tokens": 4' in body
+        assert '"finish_reason": "tool_calls"' in body
+        assert "data: [DONE]" in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_generic_openai_adapter_normalizes_sse_stream() -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def __iter__(self):
+            return iter(
+                (
+                    b'data: {"choices":[{"delta":{"content":"hel"},"finish_reason":null}]}\n',
+                    b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"shell","arguments":"{\\"command\\":"}}]},"finish_reason":null}]}\n',
+                    b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"echo ok\\"}"}}]},"finish_reason":null}]}\n',
+                    b'data: {"choices":[{"delta":{"content":"lo"},"finish_reason":null}]}\n',
+                    b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":3}}\n',
+                )
+            )
+
+    adapter = OpenAICompatibleEngineAdapter("http://engine")
+    with patch("urllib.request.urlopen", return_value=Response()):
+        rows = list(adapter.stream(_request()))
+
+    assert adapter.capabilities().streaming is True
+    assert [row["type"] for row in rows] == [
+        "delta", "tool_call_delta", "tool_call_delta", "delta", "done"
+    ]
+    assert "".join(row.get("text", "") for row in rows) == "hello"
+    assert "".join(row.get("arguments", "") for row in rows) == '{"command":"echo ok"}'
+    assert rows[-1]["raw"]["usage"]["prompt_tokens"] == 12
+    assert rows[-1]["finish_reason"] == "tool_calls"
+
+
+def test_responses_endpoint_preserves_function_output_pairing() -> None:
+    adapter = RecordingAdapter()
+    server = create_gateway_server(PRAGateway(adapter, mode="G00"), host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "model": "offline/model",
+                "instructions": "Be concise.",
+                "input": [
+                    {"type": "message", "id": "item-1", "role": "user", "content": [{"type": "input_text", "text": "question"}]},
+                    {"type": "function_call_output", "call_id": "call-7", "output": "tool result"},
+                ],
+                "pra": {"tenant_id": "tenant-a", "session_id": "session-a"},
+            }
+        ).encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/responses",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            result = json.loads(response.read())
+        assert result["object"] == "response"
+        assert result["output_text"] == "answer"
+        assert adapter.requests[0].messages[1]["item_id"] == "item-1"
+        assert adapter.requests[0].messages[2]["tool_call_id"] == "call-7"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_responses_tools_are_normalized_for_chat_upstreams() -> None:
+    request = _request_from_responses(
+        {
+            "model": "offline/model",
+            "input": "question",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "lookup",
+                    "description": "Look up a value.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+                {
+                    "type": "custom",
+                    "name": "shell",
+                    "description": "Run a shell command.",
+                },
+            ],
+        }
+    )
+
+    assert request.tools[0]["function"]["name"] == "lookup"
+    assert request.tools[1]["function"]["name"] == "shell"
+    assert request.tools[1]["function"]["parameters"]["required"] == ["input"]
+    assert request.metadata["responses_tool_types"] == {
+        "lookup": "function",
+        "shell": "custom",
+    }
+
+
+def test_responses_stream_emits_codex_text_event_sequence() -> None:
+    server = create_gateway_server(
+        PRAGateway(RecordingAdapter(streaming=True), mode="G00"),
+        host="127.0.0.1",
+        port=0,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {"model": "offline/model", "input": "question", "stream": True}
+        ).encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/responses",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            body = response.read().decode("utf-8")
+        assert "event: response.created" in body
+        assert body.count("event: response.output_text.delta") == 2
+        assert "event: response.completed" in body
+        assert '"output_text": "answer"' in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_responses_stream_preserves_tool_calls_and_usage() -> None:
+    server = create_gateway_server(
+        PRAGateway(ToolStreamingAdapter(), mode="G00", models=("coder-model",)),
+        host="127.0.0.1",
+        port=0,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/models", timeout=5
+        ) as response:
+            models = json.loads(response.read())
+        assert models["data"][0]["id"] == "coder-model"
+
+        payload = json.dumps(
+            {
+                "model": "coder-model",
+                "input": "run a command",
+                "stream": True,
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "shell",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+            }
+        ).encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/responses",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            body = response.read().decode("utf-8")
+        assert "event: response.function_call_arguments.delta" in body
+        assert "event: response.function_call_arguments.done" in body
+        assert '"call_id": "call-7"' in body
+        assert '\"arguments\": \"{\\\"command\\\":\\\"echo ok\\\"}\"' in body
+        assert '"input_tokens": 21' in body
+        assert '"output_tokens": 4' in body
     finally:
         server.shutdown()
         server.server_close()

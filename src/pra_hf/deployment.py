@@ -370,7 +370,7 @@ class OpenAICompatibleEngineAdapter:
             typed_records=logical,
             text_fallback=True,
             native_kv=native,
-            streaming=False,
+            streaming=True,
             observability=engine_observability_capabilities(self.engine_type.value),
         )
 
@@ -390,22 +390,27 @@ class OpenAICompatibleEngineAdapter:
         )
         with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
             raw = json.loads(response.read().decode("utf-8"))
-        text = str(raw["choices"][0]["message"]["content"])
+        text = str(raw["choices"][0]["message"].get("content") or "")
         return PRAEngineResult(
             text,
             raw,
             ({"stage": "engine_request", "seconds": time.perf_counter() - started},),
         )
 
-    def _payload(self, request: PRAWireRequest) -> dict[str, Any]:
+    def _payload(
+        self, request: PRAWireRequest, *, stream: bool = False
+    ) -> dict[str, Any]:
         """Build an ordinary OpenAI request plus a typed PRA envelope at E1+."""
 
         payload: dict[str, Any] = {
             "model": request.model,
             "messages": list(request.messages),
-            "stream": False,
-            "max_tokens": request.resolved_max_new_tokens,
+            "stream": stream,
         }
+        if request.max_new_tokens is not None or "max_new_tokens" in request.engine_hints:
+            payload["max_tokens"] = request.resolved_max_new_tokens
+        if stream:
+            payload["stream_options"] = {"include_usage": True}
         if request.tools:
             payload["tools"] = list(request.tools)
         if self.capabilities().logical_refs:
@@ -417,7 +422,72 @@ class OpenAICompatibleEngineAdapter:
         return payload
 
     def stream(self, request: PRAWireRequest) -> Iterator[Mapping[str, Any]]:
-        raise NotImplementedError("This E0 adapter exposes non-streaming generation only.")
+        """Translate an OpenAI-compatible SSE stream into portable PRA rows."""
+
+        payload = json.dumps(self._payload(request, stream=True)).encode("utf-8")
+        headers = {"Accept": "text/event-stream", "Content-Type": "application/json"}
+        self.observability.inject(headers)
+        http_request = urllib.request.Request(
+            f"{self.base_url}/v1/chat/completions",
+            data=payload,
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
+            last_event: Mapping[str, Any] | None = None
+            finish_reason: str | None = None
+            for raw_line in response:
+                line = raw_line.decode("utf-8").strip()
+                if not line or line.startswith(":") or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    yield {
+                        "type": "done",
+                        "request_id": request.request_id,
+                        "raw": last_event,
+                        "finish_reason": finish_reason,
+                    }
+                    return
+                event = json.loads(data)
+                last_event = event
+                choice = next(iter(event.get("choices", ())), {})
+                if choice.get("finish_reason") is not None:
+                    finish_reason = str(choice["finish_reason"])
+                delta = choice.get("delta", {})
+                content = delta.get("content")
+                if content:
+                    yield {
+                        "type": "delta",
+                        "request_id": request.request_id,
+                        "text": str(content),
+                        "raw": event,
+                    }
+                reasoning = delta.get("reasoning_content", delta.get("reasoning"))
+                if reasoning:
+                    yield {
+                        "type": "reasoning_delta",
+                        "request_id": request.request_id,
+                        "text": str(reasoning),
+                        "raw": event,
+                    }
+                for tool_call in delta.get("tool_calls", ()) or ():
+                    function = tool_call.get("function", {})
+                    yield {
+                        "type": "tool_call_delta",
+                        "request_id": request.request_id,
+                        "index": int(tool_call.get("index", 0)),
+                        "call_id": tool_call.get("id"),
+                        "name": function.get("name"),
+                        "arguments": str(function.get("arguments", "")),
+                        "raw": event,
+                    }
+        yield {
+            "type": "done",
+            "request_id": request.request_id,
+            "raw": last_event,
+            "finish_reason": finish_reason,
+        }
 
     def close_session(self, session_id: str) -> None:
         return None

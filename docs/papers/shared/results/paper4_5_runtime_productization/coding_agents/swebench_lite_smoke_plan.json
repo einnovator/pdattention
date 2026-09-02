@@ -1,0 +1,35 @@
+{
+  "manifest": "swebench-lite-smoke-v1",
+  "benchmark": "swe-bench",
+  "dataset": "SWE-bench/SWE-bench_Lite",
+  "revision": "test-2026-09-02",
+  "tasks": [
+    "astropy__astropy-12907",
+    "astropy__astropy-14182",
+    "django__django-10914"
+  ],
+  "repeats": 1,
+  "agent": "pi",
+  "model": "Qwen/Qwen3-Coder",
+  "condition": "selected-balanced",
+  "official_harness_command": [
+    "swebench",
+    "eval",
+    "SWE-bench/SWE-bench_Lite",
+    "-p",
+    "PREDICTIONS.jsonl",
+    "--run-id",
+    "pra-swebench-lite-smoke-v1-selected-balanced",
+    "-j",
+    "1",
+    "--timeout",
+    "3600",
+    "-i",
+    "astropy__astropy-12907",
+    "-i",
+    "astropy__astropy-14182",
+    "-i",
+    "django__django-10914"
+  ],
+  "status": "QUALIFICATION_PENDING"
+}

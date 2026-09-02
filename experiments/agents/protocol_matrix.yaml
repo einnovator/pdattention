@@ -1,0 +1,35 @@
+schema_version: 1
+audited_at: 2026-09-02
+protocols:
+  - protocol: openai-chat-completions
+    status: TESTED
+    streaming: text, reasoning, tool-call, usage, and completion events tested
+    tool_calls: streamed arguments and tool_calls finish reason tested with OpenCode and Pi
+    cancellation: connection-close behavior; agent-level cancellation qualification pending
+    usage: OpenCode and Pi counters normalized from agent event streams
+    session_identity: tenant and session IDs preserved in the PRA envelope
+    evidence: tests/test_gateway_deployment.py; OpenCode and Pi Ollama-M5 Stage A artifacts
+  - protocol: openai-responses
+    status: TESTED
+    streaming: Responses text and item event sequences contract-tested and Codex CLI tested
+    tool_calls: function/custom calls and function-output identity tested through a real Codex loop
+    cancellation: connection-close behavior; explicit mid-tool cancellation qualification pending
+    usage: streamed response usage tested and normalized from Codex JSONL
+    session_identity: PRA tenant/session envelope accepted
+    evidence: tests/test_gateway_deployment.py; Codex Ollama-M5 Stage A artifacts
+  - protocol: anthropic-messages
+    status: BLOCKED
+    streaming: not implemented
+    tool_calls: not implemented
+    cancellation: not implemented
+    usage: not implemented
+    session_identity: not implemented
+    evidence: Claude Code remains a commercial-native control
+  - protocol: gemini
+    status: BLOCKED
+    streaming: not implemented
+    tool_calls: not implemented
+    cancellation: not implemented
+    usage: not implemented
+    session_identity: not implemented
+    evidence: Gemini CLI remains a commercial-native control

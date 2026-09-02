@@ -1,0 +1,66 @@
+schema_version: 1
+audited_at: 2026-09-02
+commands:
+  - slug: codex
+    executable: codex
+    version_args: [--version]
+    run_args: [exec, --json, --ephemeral, --skip-git-repo-check, --sandbox, workspace-write]
+    prompt_arg: null
+    model_arg: --model
+    output_format: jsonl
+    verified: true
+    notes: [Preserves normal provider behavior for the commercial-native control]
+  - slug: claude-code
+    executable: claude
+    version_args: [--version]
+    run_args: [-p, --output-format, stream-json, --verbose]
+    prompt_arg: null
+    model_arg: --model
+    output_format: jsonl
+    verified: false
+    notes: [Verify the exact pinned release before Stage A]
+  - slug: gemini-cli
+    executable: gemini
+    version_args: [--version]
+    run_args: [--output-format, stream-json, --approval-mode, yolo, --skip-trust]
+    prompt_arg: -p
+    model_arg: --model
+    output_format: jsonl
+    verified: true
+    notes: [Use only inside the benchmark container]
+  - slug: opencode
+    executable: opencode
+    version_args: [--version]
+    run_args: [run, --format, json, --auto]
+    prompt_arg: null
+    model_arg: --model
+    output_format: jsonl
+    verified: true
+    notes: [Use --pure in a separate extension-disabled control when plugins are installed]
+  - slug: pi
+    executable: pi
+    version_args: [--version]
+    run_args: [--mode, json, --no-session, --no-extensions, --no-skills]
+    prompt_arg: -p
+    model_arg: --model
+    output_format: jsonl
+    verified: true
+    notes: [A PRA extension condition must remove --no-extensions and name the extension explicitly]
+  - slug: openhands
+    executable: openhands
+    version_args: [--version]
+    run_args: [--override-with-envs]
+    prompt_arg: -t
+    model_arg: null
+    output_format: events
+    verified: false
+    notes: [Pin and verify the containerized CLI before Stage A]
+  - slug: aider
+    executable: aider
+    version_args: [--version]
+    run_args: [--yes-always, --no-auto-commits]
+    prompt_arg: --message
+    model_arg: --model
+    output_format: text
+    verified: false
+    notes: [Provider usage parsing requires an Aider-specific adapter]

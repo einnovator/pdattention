@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from enum import Enum
 from http.server import BaseHTTPRequestHandler
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterator, Mapping, Sequence
 from urllib.parse import parse_qs, urlparse
 
 from .agent_transport import render_wire_resources_as_text
@@ -63,6 +63,7 @@ class PRAGateway:
         observability: Observability | None = None,
         bundle_source: str | None = None,
         default_profile: str = "default",
+        models: Sequence[str] = (),
     ) -> None:
         self.adapter = adapter
         self.mode = PRAGatewayMode(mode)
@@ -71,6 +72,7 @@ class PRAGateway:
         self.observability = observability or DISABLED_OBSERVABILITY
         self.bundle_source = bundle_source
         self.default_profile = default_profile
+        self.models = tuple(dict.fromkeys(str(model) for model in models if model))
 
     def capabilities(self) -> dict[str, Any]:
         engine = self.adapter.capabilities()
@@ -823,6 +825,7 @@ def _handler(gateway: PRAGateway):
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             iterator = iter(rows)
+            saw_tool_call = False
             try:
                 for row in iterator:
                     if row.get("type") == "delta":
@@ -835,6 +838,41 @@ def _handler(gateway: PRAGateway):
                                 "finish_reason": None,
                             }],
                         }
+                    elif row.get("type") == "reasoning_delta":
+                        value = {
+                            "id": row.get("request_id"),
+                            "object": "chat.completion.chunk",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {
+                                    "reasoning_content": row.get("text", "")
+                                },
+                                "finish_reason": None,
+                            }],
+                        }
+                    elif row.get("type") == "tool_call_delta":
+                        saw_tool_call = True
+                        function: dict[str, Any] = {
+                            "arguments": row.get("arguments", "")
+                        }
+                        if row.get("name") is not None:
+                            function["name"] = row["name"]
+                        tool_call: dict[str, Any] = {
+                            "index": int(row.get("index", 0)),
+                            "type": "function",
+                            "function": function,
+                        }
+                        if row.get("call_id") is not None:
+                            tool_call["id"] = row["call_id"]
+                        value = {
+                            "id": row.get("request_id"),
+                            "object": "chat.completion.chunk",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"tool_calls": [tool_call]},
+                                "finish_reason": None,
+                            }],
+                        }
                     elif row.get("type") == "done":
                         value = {
                             "id": row.get("request_id"),
@@ -842,10 +880,16 @@ def _handler(gateway: PRAGateway):
                             "choices": [{
                                 "index": 0,
                                 "delta": {},
-                                "finish_reason": "stop",
+                                "finish_reason": row.get("finish_reason")
+                                or ("tool_calls" if saw_tool_call else "stop"),
                             }],
                             "pra": row.get("trace", {}),
                         }
+                        raw = row.get("raw")
+                        if isinstance(raw, Mapping) and isinstance(
+                            raw.get("usage"), Mapping
+                        ):
+                            value["usage"] = dict(raw["usage"])
                     else:
                         value = {
                             "id": row.get("request_id"),
@@ -865,10 +909,220 @@ def _handler(gateway: PRAGateway):
                 if close is not None:
                     close()
 
+        def _responses_sse(
+            self, request: PRAWireRequest, rows: Iterator[Mapping[str, Any]]
+        ) -> None:
+            """Emit text and function calls using the Responses streaming contract."""
+
+            response_id = f"resp_{request.request_id}"
+            message_id = f"msg_{request.request_id}"
+            response = _responses_object(request, "", status="in_progress")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            iterator = iter(rows)
+            text_parts: list[str] = []
+            tool_calls: dict[int, dict[str, Any]] = {}
+            message_output_index: int | None = None
+            next_output_index = 0
+            usage: dict[str, Any] | None = None
+            sequence = 0
+
+            def emit(name: str, value: Mapping[str, Any]) -> None:
+                nonlocal sequence
+                sequence += 1
+                payload = {**value, "sequence_number": sequence}
+                self.wfile.write(
+                    f"event: {name}\ndata: {json.dumps(payload, default=str)}\n\n".encode(
+                        "utf-8"
+                    )
+                )
+                self.wfile.flush()
+
+            def start_message() -> int:
+                nonlocal message_output_index, next_output_index
+                if message_output_index is not None:
+                    return message_output_index
+                message_output_index = next_output_index
+                next_output_index += 1
+                emit(
+                    "response.output_item.added",
+                    {
+                        "type": "response.output_item.added",
+                        "output_index": message_output_index,
+                        "item": _responses_message(message_id, "", status="in_progress"),
+                    },
+                )
+                emit(
+                    "response.content_part.added",
+                    {
+                        "type": "response.content_part.added",
+                        "item_id": message_id,
+                        "output_index": message_output_index,
+                        "content_index": 0,
+                        "part": {"type": "output_text", "text": "", "annotations": []},
+                    },
+                )
+                return message_output_index
+
+            try:
+                emit("response.created", {"type": "response.created", "response": response})
+                for row in iterator:
+                    row_usage = _responses_usage(row.get("raw"))
+                    if row_usage is not None:
+                        usage = row_usage
+                    if row.get("type") == "delta":
+                        output_index = start_message()
+                        delta = str(row.get("text", ""))
+                        text_parts.append(delta)
+                        emit(
+                            "response.output_text.delta",
+                            {
+                                "type": "response.output_text.delta",
+                                "item_id": message_id,
+                                "output_index": output_index,
+                                "content_index": 0,
+                                "delta": delta,
+                            },
+                        )
+                    elif row.get("type") == "tool_call_delta":
+                        index = int(row.get("index", 0))
+                        call = tool_calls.get(index)
+                        if call is None:
+                            output_index = next_output_index
+                            next_output_index += 1
+                            call_id = str(row.get("call_id") or f"call_{request.request_id}_{index}")
+                            name = str(row.get("name") or "")
+                            response_types = request.metadata.get("responses_tool_types", {})
+                            source_type = (
+                                str(response_types.get(name, "function"))
+                                if isinstance(response_types, Mapping)
+                                else "function"
+                            )
+                            call = {
+                                "id": f"fc_{call_id}",
+                                "kind": "custom" if source_type == "custom" else "function",
+                                "status": "in_progress",
+                                "call_id": call_id,
+                                "name": name,
+                                "arguments": "",
+                                "output_index": output_index,
+                            }
+                            tool_calls[index] = call
+                            emit(
+                                "response.output_item.added",
+                                {
+                                    "type": "response.output_item.added",
+                                    "output_index": output_index,
+                                    "item": _responses_tool_call(call),
+                                },
+                            )
+                        elif row.get("call_id"):
+                            call["call_id"] = str(row["call_id"])
+                        if row.get("name"):
+                            call["name"] = str(row["name"])
+                        arguments = str(row.get("arguments", ""))
+                        call["arguments"] += arguments
+                        if arguments and call["kind"] == "function":
+                            emit(
+                                "response.function_call_arguments.delta",
+                                {
+                                    "type": "response.function_call_arguments.delta",
+                                    "item_id": call["id"],
+                                    "output_index": call["output_index"],
+                                    "delta": arguments,
+                                },
+                            )
+                text = "".join(text_parts)
+                output: list[dict[str, Any]] = []
+                if message_output_index is not None or not tool_calls:
+                    output_index = start_message()
+                    emit(
+                        "response.output_text.done",
+                        {
+                            "type": "response.output_text.done",
+                            "item_id": message_id,
+                            "output_index": output_index,
+                            "content_index": 0,
+                            "text": text,
+                        },
+                    )
+                    completed_message = _responses_message(message_id, text)
+                    emit(
+                        "response.output_item.done",
+                        {
+                            "type": "response.output_item.done",
+                            "output_index": output_index,
+                            "item": completed_message,
+                        },
+                    )
+                    output.append({"output_index": output_index, "item": completed_message})
+                for call in tool_calls.values():
+                    completed_call = _responses_tool_call(call, status="completed")
+                    if call["kind"] == "custom":
+                        event_type = "response.custom_tool_call_input.done"
+                        done_value = {
+                            "type": event_type,
+                            "item_id": call["id"],
+                            "output_index": call["output_index"],
+                            "input": _custom_tool_input(call["arguments"]),
+                        }
+                    else:
+                        event_type = "response.function_call_arguments.done"
+                        done_value = {
+                            "type": event_type,
+                            "item_id": call["id"],
+                            "output_index": call["output_index"],
+                            "arguments": call["arguments"],
+                        }
+                    emit(
+                        event_type,
+                        done_value,
+                    )
+                    emit(
+                        "response.output_item.done",
+                        {
+                            "type": "response.output_item.done",
+                            "output_index": call["output_index"],
+                            "item": completed_call,
+                        },
+                    )
+                    output.append({"output_index": call["output_index"], "item": completed_call})
+                emit(
+                    "response.completed",
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            **_responses_object(request, text, usage=usage),
+                            "id": response_id,
+                            "output": [row["item"] for row in sorted(output, key=lambda row: row["output_index"])],
+                        },
+                    },
+                )
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            finally:
+                close = getattr(iterator, "close", None)
+                if close is not None:
+                    close()
+
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
             parsed = urlparse(self.path)
             if parsed.path == "/health":
                 self._json(200, {"status": "ok", **gateway.capabilities()})
+            elif parsed.path == "/v1/models":
+                self._json(
+                    200,
+                    {
+                        "object": "list",
+                        "models": [],
+                        "data": [
+                            {"id": model, "object": "model", "owned_by": "pra-gateway"}
+                            for model in gateway.models
+                        ],
+                    },
+                )
             elif parsed.path == "/v1/pra/capabilities":
                 self._json(200, gateway.capabilities())
             elif parsed.path.startswith("/v1/pra/sessions/"):
@@ -931,6 +1185,18 @@ def _handler(gateway: PRAGateway):
                                 "pra_trace": list(result.trace),
                             },
                         )
+                elif self.path == "/v1/responses":
+                    request = _request_from_responses(payload)
+                    if bool(payload.get("stream", False)):
+                        self._responses_sse(request, gateway.stream(request))
+                    else:
+                        result = gateway.generate(
+                            request, trace_headers=dict(self.headers.items())
+                        )
+                        self._json(
+                            200,
+                            _responses_object(request, result.text, raw=result.raw),
+                        )
                 elif self.path == "/v1/pra/generate":
                     self._json(
                         200,
@@ -945,6 +1211,259 @@ def _handler(gateway: PRAGateway):
             return None
 
     return GatewayHandler
+
+
+def _responses_content(value: Any) -> str:
+    """Flatten only user-visible text while preserving tool-output identity."""
+
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(
+            str(item.get("text", item.get("content", "")))
+            for item in value
+            if isinstance(item, Mapping)
+            and item.get("type") in {"input_text", "output_text", "text"}
+        )
+    return str(value or "")
+
+
+def _chat_tools_from_responses(
+    tools: Any,
+) -> tuple[tuple[Mapping[str, Any], ...], dict[str, str]]:
+    """Translate Responses tools into the Chat Completions shape used upstream."""
+
+    normalized: list[Mapping[str, Any]] = []
+    tool_types: dict[str, str] = {}
+    for value in tools or ():
+        if not isinstance(value, Mapping):
+            continue
+        tool_type = str(value.get("type", "function"))
+        nested = value.get("function")
+        if tool_type == "function" and isinstance(nested, Mapping):
+            name = str(nested.get("name", ""))
+            normalized.append(dict(value))
+        else:
+            name = str(value.get("name", ""))
+            if not name:
+                continue
+            parameters = value.get("parameters")
+            if not isinstance(parameters, Mapping):
+                parameters = {
+                    "type": "object",
+                    "properties": {"input": {"type": "string"}},
+                    "required": ["input"],
+                }
+            normalized.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": str(value.get("description", f"Invoke {name}.")),
+                        "parameters": dict(parameters),
+                    },
+                }
+            )
+        if name:
+            tool_types[name] = tool_type
+    return tuple(normalized), tool_types
+
+
+def _request_from_responses(payload: Mapping[str, Any]) -> PRAWireRequest:
+    """Map the Responses input-item subset to the stable PRA wire contract."""
+
+    items = payload.get("input", ())
+    if isinstance(items, str):
+        items = ({"type": "message", "role": "user", "content": items},)
+    messages: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        item_type = item.get("type", "message")
+        if item_type == "message":
+            message = {
+                "role": str(item.get("role", "user")),
+                "content": _responses_content(item.get("content", "")),
+            }
+            if item.get("id"):
+                message["item_id"] = str(item["id"])
+            messages.append(message)
+        elif item_type == "function_call_output":
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": str(item.get("call_id", item.get("id", ""))),
+                    "content": _responses_content(item.get("output", "")),
+                }
+            )
+        elif item_type == "function_call":
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": str(item.get("call_id", item.get("id", ""))),
+                            "type": "function",
+                            "function": {
+                                "name": str(item.get("name", "")),
+                                "arguments": str(item.get("arguments", "{}")),
+                            },
+                        }
+                    ],
+                }
+            )
+    instructions = payload.get("instructions")
+    if instructions:
+        messages.insert(0, {"role": "system", "content": str(instructions)})
+    if not messages:
+        raise ValueError("A Responses request requires text or input items.")
+    tools, tool_types = _chat_tools_from_responses(payload.get("tools", ()))
+    envelope = dict(payload.get("pra", {}))
+    metadata = dict(envelope.get("metadata", {}))
+    metadata["responses_tool_types"] = tool_types
+    envelope.update(
+        {
+            "model": payload.get("model"),
+            "messages": messages,
+            "tools": tools,
+            "max_new_tokens": payload.get("max_output_tokens"),
+            "metadata": metadata,
+        }
+    )
+    if payload.get("id"):
+        envelope["request_id"] = str(payload["id"])
+    return PRAWireRequest.from_dict(
+        {key: value for key, value in envelope.items() if value is not None}
+    )
+
+
+def _responses_message(
+    message_id: str, text: str, *, status: str = "completed"
+) -> dict[str, Any]:
+    return {
+        "id": message_id,
+        "type": "message",
+        "status": status,
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": text, "annotations": []}],
+    }
+
+
+def _custom_tool_input(arguments: str) -> str:
+    """Undo the function-shaped envelope used for a Chat-only upstream."""
+
+    try:
+        value = json.loads(arguments)
+    except (TypeError, json.JSONDecodeError):
+        return arguments
+    if isinstance(value, Mapping) and isinstance(value.get("input"), str):
+        return value["input"]
+    return arguments
+
+
+def _responses_tool_call(
+    call: Mapping[str, Any], *, status: str | None = None
+) -> dict[str, Any]:
+    """Normalize a streamed or complete function call without internal fields."""
+
+    if call.get("kind") == "custom":
+        return {
+            "id": str(call["id"]),
+            "type": "custom_tool_call",
+            "status": status or str(call.get("status", "in_progress")),
+            "call_id": str(call["call_id"]),
+            "name": str(call.get("name", "")),
+            "input": _custom_tool_input(str(call.get("arguments", ""))),
+        }
+    return {
+        "id": str(call["id"]),
+        "type": "function_call",
+        "status": status or str(call.get("status", "in_progress")),
+        "call_id": str(call["call_id"]),
+        "name": str(call.get("name", "")),
+        "arguments": str(call.get("arguments", "")),
+    }
+
+
+def _responses_usage(raw: Any) -> dict[str, Any] | None:
+    """Map OpenAI-compatible and Ollama counters to Responses usage fields."""
+
+    if not isinstance(raw, Mapping):
+        return None
+    source = raw.get("usage") if isinstance(raw.get("usage"), Mapping) else raw
+    input_tokens = source.get("input_tokens", source.get("prompt_tokens", source.get("prompt_eval_count")))
+    output_tokens = source.get(
+        "output_tokens", source.get("completion_tokens", source.get("eval_count"))
+    )
+    if input_tokens is None and output_tokens is None:
+        return None
+    input_count = int(input_tokens or 0)
+    output_count = int(output_tokens or 0)
+    cached = source.get("cached_input_tokens", source.get("cache_read_input_tokens", 0))
+    reasoning = source.get("reasoning_output_tokens", 0)
+    return {
+        "input_tokens": input_count,
+        "input_tokens_details": {"cached_tokens": int(cached or 0)},
+        "output_tokens": output_count,
+        "output_tokens_details": {"reasoning_tokens": int(reasoning or 0)},
+        "total_tokens": int(source.get("total_tokens", input_count + output_count)),
+    }
+
+
+def _responses_calls_from_raw(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, Mapping):
+        return []
+    choices = raw.get("choices", ())
+    if not choices or not isinstance(choices[0], Mapping):
+        return []
+    message = choices[0].get("message", {})
+    if not isinstance(message, Mapping):
+        return []
+    calls = []
+    for index, value in enumerate(message.get("tool_calls", ()) or ()):
+        if not isinstance(value, Mapping):
+            continue
+        function = value.get("function", {})
+        if not isinstance(function, Mapping):
+            function = {}
+        call_id = str(value.get("id") or f"call_{index}")
+        calls.append(
+            _responses_tool_call(
+                {
+                    "id": f"fc_{call_id}",
+                    "call_id": call_id,
+                    "name": function.get("name", ""),
+                    "arguments": function.get("arguments", ""),
+                },
+                status="completed",
+            )
+        )
+    return calls
+
+
+def _responses_object(
+    request: PRAWireRequest,
+    text: str,
+    *,
+    status: str = "completed",
+    raw: Any = None,
+    usage: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    message = _responses_message(f"msg_{request.request_id}", text, status=status)
+    calls = _responses_calls_from_raw(raw) if status == "completed" else []
+    output = ([message] if text or not calls else []) + calls
+    return {
+        "id": f"resp_{request.request_id}",
+        "object": "response",
+        "created_at": int(time.time()),
+        "status": status,
+        "model": request.model,
+        "output": output if status == "completed" else [],
+        "output_text": text,
+        "usage": dict(usage) if usage is not None else _responses_usage(raw),
+        "pra": {"trace_id": request.correlation_id},
+    }
 
 
 def serve_gateway(

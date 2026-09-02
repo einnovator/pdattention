@@ -99,13 +99,17 @@ def test_agent_guides_cover_gateway_and_direct_engine_paths() -> None:
     expected = {
         "pra-agent.md",
         "deepseek-harness.md",
+        "opencode.md",
         "pi-coding-agent.md",
         "openhands.md",
         "aider.md",
         "codex-cli.md",
         "claude-code.md",
     }
-    assert expected == {path.name for path in agents.glob("*.md") if path.name != "index.md"}
+    section_pages = {"index.md", "benchmarks.md"}
+    assert expected == {
+        path.name for path in agents.glob("*.md") if path.name not in section_pages
+    }
     for name in expected:
         text = (agents / name).read_text(encoding="utf-8")
         assert "## Through the PRA gateway" in text
@@ -115,6 +119,7 @@ def test_agent_guides_cover_gateway_and_direct_engine_paths() -> None:
         assert f"({name})" in overview
     mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
     assert "- Agents:" in mkdocs
+    assert "- Benchmarks: agents/benchmarks.md" in mkdocs
     assert mkdocs.index("- Agents:") < mkdocs.index("- Model Support:")
 
 

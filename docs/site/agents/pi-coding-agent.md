@@ -84,6 +84,10 @@ pi -e .pi/extensions/pra.ts
 Without the extension, Pi can still call the model through the gateway, but no
 typed tool-result records are sent and the route provides no PRA context gain.
 
+Pi 0.73.1 completed 4/4 Stage A exact-output tasks over this ordinary gateway
+path with Ollama/Qwen3-14B. The run qualifies streaming tool execution and
+agent-event accounting only; it is not a coding-quality or PRA-memory result.
+
 ## Direct PRA engine
 
 Change only `baseUrl` to the direct engine, for example

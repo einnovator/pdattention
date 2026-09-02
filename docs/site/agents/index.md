@@ -11,10 +11,11 @@ the agent to send the PRA extension envelope or use a family-specific bridge.
 | --- | --- | --- | --- |
 | [PRA Agent](pra-agent.md) | First-class | First-class, embedded or remote | Built in |
 | [DeepSeek Harness](deepseek-harness.md) | Tested SDK bridge | Tested logical request builder | Python bridge; host plugin glue required |
+| [OpenCode](opencode.md) | Tested OpenAI-compatible gateway path | OpenAI-compatible endpoint | No packaged typed bridge |
 | [Pi Coding Agent](pi-coding-agent.md) | Tested SDK bridge | Tested logical request builder | Python bridge; Pi extension glue required |
 | [OpenHands](openhands.md) | OpenAI-compatible endpoint | OpenAI-compatible endpoint | No packaged typed bridge |
 | [Aider](aider.md) | OpenAI-compatible endpoint | OpenAI-compatible endpoint | No packaged typed bridge |
-| [Codex CLI](codex-cli.md) | Current chat gateway is incompatible | Requires a Responses-compatible engine | No packaged typed bridge |
+| [Codex CLI](codex-cli.md) | Tested Responses translation | Requires a Responses-compatible engine | Typed request integration pending |
 | [Claude Code](claude-code.md) | Current gateway is not Anthropic-compatible | Requires an Anthropic-compatible engine | No packaged typed bridge |
 
 ## Pick an integration
@@ -33,10 +34,10 @@ you first need model connectivity. That route does not automatically create PRA
 records from agent history. Add a typed event bridge before claiming PRA context
 selection or native reuse.
 
-Codex CLI and Claude Code use different provider protocols from the current
-reference gateway. Their pages document the boundary and the safe deployment
-choices instead of suggesting a base-URL substitution that cannot preserve the
-required request semantics.
+Codex CLI uses the gateway's tested Responses translation. Claude Code remains
+separate because the reference gateway does not implement Anthropic Messages.
+An endpoint qualification still does not imply that typed PRA records or Native
+Memory were used; check the negotiated request trace.
 
 ## Two deployment paths
 

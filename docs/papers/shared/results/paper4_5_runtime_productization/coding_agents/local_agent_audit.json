@@ -1,0 +1,389 @@
+{
+  "catalog": {
+    "schema_version": 1,
+    "audited_at": "2026-09-02",
+    "agents": [
+      {
+        "name": "Claude Code",
+        "slug": "claude-code",
+        "version": "2.1.258",
+        "version_audited_at": "2026-09-02",
+        "type": "commercial",
+        "source": "https://github.com/anthropics/claude-code",
+        "license": "Anthropic commercial terms; repository components as declared upstream",
+        "executable": "claude",
+        "version_command": [
+          "claude",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": false,
+        "protocols": [
+          "anthropic-messages"
+        ],
+        "connectivity": [
+          "COMMERCIAL_NATIVE",
+          "BLOCKED"
+        ],
+        "gateway_support": "Requires an Anthropic Messages adapter; not implemented",
+        "direct_engine_support": "Provider-owned native control only",
+        "tool_support": "Native Claude Code tools",
+        "token_accounting": "Provider and stream usage where exposed",
+        "cost_accounting": "Provider pricing",
+        "session_persistence": "Native sessions",
+        "context_compaction": "Native compaction preserved in No-PRA control",
+        "limitations": [
+          "Do not route through the Chat Completions gateway",
+          "Commercial-native control is a separate comparison"
+        ]
+      },
+      {
+        "name": "OpenAI Codex CLI",
+        "slug": "codex",
+        "version": "0.152.1",
+        "version_audited_at": "2026-09-02",
+        "type": "commercial",
+        "source": "https://github.com/openai/codex",
+        "license": "Apache-2.0",
+        "executable": "codex",
+        "version_command": [
+          "codex",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": true,
+        "protocols": [
+          "openai-responses"
+        ],
+        "connectivity": [
+          "COMMERCIAL_NATIVE",
+          "GATEWAY"
+        ],
+        "gateway_support": "Responses transport is contract-tested; real Codex and typed-PRA qualification is pending",
+        "direct_engine_support": "Requires a Responses-compatible engine",
+        "tool_support": "Native Codex tools and approvals",
+        "token_accounting": "JSON event usage where exposed",
+        "cost_accounting": "OpenAI provider usage",
+        "session_persistence": "Native sessions",
+        "context_compaction": "Native compaction preserved in No-PRA control",
+        "limitations": [
+          "Installed local version may differ from audited current release",
+          "Responses usage and real Codex CLI qualification remain pending"
+        ]
+      },
+      {
+        "name": "Google Gemini CLI",
+        "slug": "gemini-cli",
+        "version": "0.58.0",
+        "version_audited_at": "2026-09-02",
+        "type": "commercial",
+        "source": "https://github.com/google-gemini/gemini-cli",
+        "license": "Apache-2.0",
+        "executable": "gemini",
+        "version_command": [
+          "gemini",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": false,
+        "protocols": [
+          "gemini"
+        ],
+        "connectivity": [
+          "COMMERCIAL_NATIVE",
+          "BLOCKED"
+        ],
+        "gateway_support": "Gemini protocol adapter not implemented",
+        "direct_engine_support": "Provider-native control only",
+        "tool_support": "Native Gemini CLI tools",
+        "token_accounting": "Stream usage where exposed",
+        "cost_accounting": "Provider usage",
+        "session_persistence": "Native sessions",
+        "context_compaction": "Native behavior preserved",
+        "limitations": [
+          "No verified PRA Gateway recipe"
+        ]
+      },
+      {
+        "name": "OpenCode",
+        "slug": "opencode",
+        "version": "1.18.26",
+        "version_audited_at": "2026-09-02",
+        "type": "open_source",
+        "source": "https://github.com/anomalyco/opencode",
+        "license": "MIT",
+        "executable": "opencode",
+        "version_command": [
+          "opencode",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": true,
+        "protocols": [
+          "openai-chat",
+          "anthropic-messages"
+        ],
+        "connectivity": [
+          "GATEWAY",
+          "DIRECT"
+        ],
+        "gateway_support": "OpenAI-compatible endpoint; typed bridge qualification pending",
+        "direct_engine_support": "OpenAI-compatible engines",
+        "tool_support": "Native OpenCode tools",
+        "token_accounting": "JSON output/provider usage",
+        "cost_accounting": "Provider dependent",
+        "session_persistence": "Native client/server sessions",
+        "context_compaction": "Native compaction preserved in baseline",
+        "limitations": [
+          "Typed PRA event bridge not yet packaged"
+        ]
+      },
+      {
+        "name": "Pi Coding Agent",
+        "slug": "pi",
+        "version": "0.73.1",
+        "version_audited_at": "2026-09-02",
+        "type": "open_source",
+        "source": "https://github.com/badlogic/pi-mono",
+        "license": "MIT",
+        "executable": "pi",
+        "version_command": [
+          "pi",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": true,
+        "protocols": [
+          "openai-chat",
+          "pi-jsonl-rpc"
+        ],
+        "connectivity": [
+          "GATEWAY",
+          "DIRECT"
+        ],
+        "gateway_support": "Tested logical PRA bridge; Pi extension glue required",
+        "direct_engine_support": "Provider-flexible model registry",
+        "tool_support": "Read, grep, find, ls, bash, edit, write",
+        "token_accounting": "JSONL events",
+        "cost_accounting": "Provider dependent",
+        "session_persistence": "Optional; disable for isolated tasks",
+        "context_compaction": "Native auto-compaction preserved in baseline",
+        "limitations": [
+          "Python bridge is tested; end-to-end Pi extension remains qualification pending"
+        ]
+      },
+      {
+        "name": "OpenHands",
+        "slug": "openhands",
+        "version": "1.11.0",
+        "version_audited_at": "2026-09-02",
+        "type": "open_source",
+        "source": "https://github.com/OpenHands/OpenHands",
+        "license": "MIT and upstream component licenses",
+        "executable": "openhands",
+        "version_command": [
+          "openhands",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": true,
+        "protocols": [
+          "openai-chat",
+          "acp"
+        ],
+        "connectivity": [
+          "GATEWAY",
+          "DIRECT"
+        ],
+        "gateway_support": "Ordinary OpenAI-compatible transport only",
+        "direct_engine_support": "OpenAI-compatible engines",
+        "tool_support": "Native OpenHands tools and sandbox",
+        "token_accounting": "LLM and event metrics where exposed",
+        "cost_accounting": "Provider dependent",
+        "session_persistence": "Native conversations",
+        "context_compaction": "Native behavior preserved",
+        "limitations": [
+          "No packaged typed-record callback",
+          "Endpoint compatibility alone is not PRA qualification"
+        ]
+      },
+      {
+        "name": "DeepSeek-oriented PRA Harness",
+        "slug": "deepseek-harness",
+        "version": "0.2.0rc1",
+        "version_audited_at": "2026-09-02",
+        "type": "open_source",
+        "source": "https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/src/pra_hf/agent_plugins.py",
+        "license": "Project license",
+        "executable": "pra",
+        "version_command": [
+          "pra",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": true,
+        "protocols": [
+          "openai-chat",
+          "pra-typed-records"
+        ],
+        "connectivity": [
+          "GATEWAY",
+          "DIRECT"
+        ],
+        "gateway_support": "Tested typed tool-result bridge",
+        "direct_engine_support": "Logical request builder; engine capability still governs native use",
+        "tool_support": "Host-harness tools",
+        "token_accounting": "PRA Gateway plus provider usage",
+        "cost_accounting": "Provider dependent",
+        "session_persistence": "Stable event and session IDs",
+        "context_compaction": "Controlled by host harness",
+        "limitations": [
+          "Community integration bridge",
+          "not official DeepSeek software"
+        ]
+      },
+      {
+        "name": "Aider",
+        "slug": "aider",
+        "version": "0.86.2",
+        "version_audited_at": "2026-09-02",
+        "type": "open_source",
+        "source": "https://github.com/Aider-AI/aider",
+        "license": "Apache-2.0",
+        "executable": "aider",
+        "version_command": [
+          "aider",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": true,
+        "protocols": [
+          "openai-chat"
+        ],
+        "connectivity": [
+          "GATEWAY",
+          "DIRECT"
+        ],
+        "gateway_support": "OpenAI-compatible model endpoint",
+        "direct_engine_support": "OpenAI-compatible engines",
+        "tool_support": "Repository map, edit, lint, test commands",
+        "token_accounting": "Provider usage and Aider analytics where configured",
+        "cost_accounting": "Provider dependent",
+        "session_persistence": "Chat history files",
+        "context_compaction": "Repository map and native context policy preserved",
+        "limitations": [
+          "No typed PRA event bridge"
+        ]
+      },
+      {
+        "name": "SWE-agent",
+        "slug": "swe-agent",
+        "version": "main-audit-2026-09-02",
+        "version_audited_at": "2026-09-02",
+        "type": "open_source",
+        "source": "https://github.com/SWE-agent/SWE-agent",
+        "license": "MIT",
+        "executable": "sweagent",
+        "version_command": [
+          "sweagent",
+          "--version"
+        ],
+        "automation": true,
+        "custom_endpoint": true,
+        "protocols": [
+          "litellm"
+        ],
+        "connectivity": [
+          "GATEWAY",
+          "DIRECT"
+        ],
+        "gateway_support": "Through a verified LiteLLM/OpenAI endpoint configuration",
+        "direct_engine_support": "Provider-dependent through LiteLLM",
+        "tool_support": "SWE-agent tools and environment",
+        "token_accounting": "Trajectory and provider usage",
+        "cost_accounting": "Provider dependent",
+        "session_persistence": "Per-instance trajectory",
+        "context_compaction": "Agent-native behavior preserved",
+        "limitations": [
+          "Use the official Git source rather than unrelated PyPI package 0.0.1"
+        ]
+      }
+    ]
+  },
+  "local_installations": [
+    {
+      "agent": "claude-code",
+      "catalog_version": "2.1.258",
+      "installed": false,
+      "executable": null,
+      "installed_version": null,
+      "version_matches_catalog": null
+    },
+    {
+      "agent": "codex",
+      "catalog_version": "0.152.1",
+      "installed": true,
+      "executable": "codex.CMD",
+      "installed_version": "0.147.0",
+      "version_matches_catalog": false,
+      "version_exit_code": 0
+    },
+    {
+      "agent": "gemini-cli",
+      "catalog_version": "0.58.0",
+      "installed": false,
+      "executable": null,
+      "installed_version": null,
+      "version_matches_catalog": null
+    },
+    {
+      "agent": "opencode",
+      "catalog_version": "1.18.26",
+      "installed": false,
+      "executable": null,
+      "installed_version": null,
+      "version_matches_catalog": null
+    },
+    {
+      "agent": "pi",
+      "catalog_version": "0.73.1",
+      "installed": false,
+      "executable": null,
+      "installed_version": null,
+      "version_matches_catalog": null
+    },
+    {
+      "agent": "openhands",
+      "catalog_version": "1.11.0",
+      "installed": false,
+      "executable": null,
+      "installed_version": null,
+      "version_matches_catalog": null
+    },
+    {
+      "agent": "deepseek-harness",
+      "catalog_version": "0.2.0rc1",
+      "installed": true,
+      "executable": "pra.EXE",
+      "installed_version": "0.2.0",
+      "version_matches_catalog": false,
+      "version_exit_code": 0
+    },
+    {
+      "agent": "aider",
+      "catalog_version": "0.86.2",
+      "installed": false,
+      "executable": null,
+      "installed_version": null,
+      "version_matches_catalog": null
+    },
+    {
+      "agent": "swe-agent",
+      "catalog_version": "main-audit-2026-09-02",
+      "installed": false,
+      "executable": null,
+      "installed_version": null,
+      "version_matches_catalog": null
+    }
+  ]
+}

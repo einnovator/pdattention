@@ -1,42 +1,73 @@
 # Codex CLI
 
-Codex CLI and the current PRA reference gateway do not expose the same model
-protocol. The gateway implements OpenAI-compatible Chat Completions plus the PRA
-extension; Codex CLI model providers use the Responses protocol. A chat base-URL
-substitution is therefore not a supported integration.
+Codex CLI can use the PRA Gateway through its OpenAI Responses endpoint. The
+gateway preserves streamed text and reasoning, function and custom tool calls,
+call/output identity, usage, and terminal completion events. This route was
+qualified with Codex CLI 0.147.0 and Ollama/Qwen3-14B on an M5 Mac.
 
 ## Through the PRA gateway
 
-**Not supported by the current gateway.** Do not point Codex CLI at
-`http://127.0.0.1:8080/v1` and assume tool calls, reasoning items, streaming, or
-typed context will survive translation.
+Start an OpenAI-compatible backend and point the gateway at it:
 
-A complete Codex integration needs a gateway Responses endpoint that preserves
-the Codex item stream and adds PRA typed resources without flattening tool
-state. That endpoint is not implemented in this branch.
+```bash
+pra gateway serve \
+  --mode passthrough \
+  --backend ollama \
+  --backend-url http://127.0.0.1:11434 \
+  --model qwen3:14b \
+  --port 8080
+```
+
+Add a Codex provider in `~/.codex/config.toml`:
+
+```toml
+[model_providers.pra_gateway]
+name = "PRA Gateway"
+base_url = "http://127.0.0.1:8080/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+```
+
+Then run a clean, non-persistent session:
+
+```bash
+OPENAI_API_KEY=local-benchmark codex exec \
+  --ephemeral --sandbox workspace-write \
+  -c 'model_provider="pra_gateway"' \
+  --model qwen3:14b \
+  'Inspect the repository and run its focused tests.'
+```
+
+The API key is a local placeholder when the backend does not authenticate. Do
+not put a real provider secret in benchmark manifests or result artifacts.
+
+## What is qualified
+
+The Stage A cohort completed four exact-output tool tasks through:
+
+```text
+Codex CLI -> Responses API -> PRA Gateway -> Chat Completions -> Ollama/Qwen3-14B
+```
+
+All four tasks succeeded. This is transport and tool-loop evidence only. It is
+not Terminal-Bench/SWE-bench quality evidence, and pass-through mode does not
+exercise Selected Context or Native Memory.
 
 ## Direct PRA engine
 
-A direct route is possible only when the PRA-aware engine implements the
-Responses protocol expected by the selected Codex model provider. The current
-reference PRA runtime exposes its chat and typed PRA surfaces, not a complete
-Codex Responses backend.
+A direct route is valid only when the engine itself implements the Responses
+contract required by Codex. Most PRA engine adapters expose Chat Completions,
+so the gateway translation above is the portable route. A shared model name or
+an OpenAI-shaped URL alone does not establish compatibility.
 
-For PRA-backed repository work today, run the first-party TUI:
+## Limitations
 
-```bash
-pra agent chat --model Qwen/Qwen3-0.6B --workspace .
-```
+- Mid-tool cancellation is not yet qualified.
+- Unknown local model IDs use Codex fallback metadata; pin model context and
+  output limits in controlled studies.
+- Typed PRA resources still require a Codex-aware request integration. The
+  Stage A pass-through run does not claim typed-record transport.
+- Commercial-native Codex remains a separate quality and cost control.
 
-Keep Codex CLI on its supported provider independently. Do not claim that a
-shared model or an OpenAI-shaped URL constitutes PRA integration.
-
-## Adapter requirements
-
-A future Codex adapter must preserve Responses input/output item identity,
-function-call pairing, approvals, cancellation, and streaming; convert only
-durable results into typed PRA records; and negotiate fallback explicitly. It
-must never place raw K/V in Codex configuration or request payloads.
-
-Consult the official [Codex configuration reference](https://developers.openai.com/codex/config-reference)
-when implementing that provider rather than copying Chat Completions settings.
+See the [agent benchmark protocol](benchmarks.md) for the frozen command and
+the boundary between qualification and performance evidence.

@@ -265,6 +265,7 @@ def gateway_serve(
         observability=gateway_observability,
         bundle_source=bundle_source,
         default_profile=profile,
+        models=(model,) if model else (),
     )
     management_server = None
     if management_settings is not None:
