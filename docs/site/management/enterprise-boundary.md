@@ -6,9 +6,13 @@ and bounded control for one engine instance.
 
 An enterprise fleet service may use the same public contract to aggregate
 inventory, distribute desired revisions, detect drift, apply organization
-policy, and retain fleet-wide audit history. Those fleet functions do not alter
-the local API's license or require applications to send inference traffic
-through a commercial service.
+policy, and retain fleet-wide audit history. The separate open
+[PRA Registry](../registry/index.md) owns approved metadata and desired state.
+An Enterprise Control Plane may add fleet UI, SSO, governance workflows,
+policy automation, and cross-cluster audit while both the Registry and Engine
+Management APIs remain independently deployable. Those fleet functions do not
+alter either open API's license or require applications to send inference
+traffic through a commercial service.
 
 This separation is intentional:
 

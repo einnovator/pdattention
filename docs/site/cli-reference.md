@@ -657,6 +657,401 @@ OpenAPI: http://127.0.0.1:9101/openapi.json
 Swagger: http://127.0.0.1:9101/docs
 ```
 
+## Registry
+
+### `pra registry status`
+
+Check registry protocol, database, and health.
+
+**Usage**
+
+```text
+pra registry status [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry status --registry-url http://127.0.0.1:9200
+```
+
+**Example output**
+
+```text
+status: ok
+protocol: pra-registry/1
+database: postgresql
+```
+
+### `pra registry models`
+
+List registered immutable model identities.
+
+**Usage**
+
+```text
+pra registry models [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry models --limit 50 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: model-qwen3
+  repo: Qwen/Qwen3-14B
+  revision: a4d9b2d...
+total: 1
+```
+
+### `pra registry bundles`
+
+List PRA bundles and artifact references.
+
+**Usage**
+
+```text
+pra registry bundles [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry bundles --limit 50 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: bundle-qwen3-14b
+  immutable_revision: 9853a17...
+  approval_state: APPROVED
+total: 1
+```
+
+### `pra registry profiles`
+
+List versioned PRA profiles.
+
+**Usage**
+
+```text
+pra registry profiles [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry profiles --yaml
+```
+
+**Example output**
+
+```text
+items:
+- id: balanced-qwen3
+  version: '2'
+  approval_state: APPROVED
+total: 1
+```
+
+### `pra registry qualifications`
+
+List immutable qualification evidence.
+
+**Usage**
+
+```text
+pra registry qualifications [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry qualifications --limit 100 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: qasper-mlx-qwen3
+  workload: qasper
+  evidence_level: CONTROLLED
+total: 1
+```
+
+### `pra registry deployments`
+
+List desired deployment state.
+
+**Usage**
+
+```text
+pra registry deployments [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry deployments --json
+```
+
+**Example output**
+
+```text
+items:
+- id: production-mlx
+  desired_revision: 7
+  desired_mode: native-memory
+total: 1
+```
+
+### `pra registry resolve`
+
+Resolve one model to a deterministic immutable PRA bundle.
+
+**Usage**
+
+```text
+pra registry resolve [OPTIONS] MODEL
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `MODEL` | yes | Model identifier or local model path. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--model-revision` | TEXT | `-` | no | Configure `model-revision`. |
+| `--engine` | TEXT | `-` | no | Select the runtime or evidence-registry engine. |
+| `--engine-version` | TEXT | `-` | no | Report the observed engine version when it cannot be discovered. |
+| `--trust` | TEXT | `-` | no | Configure `trust`. |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry resolve Qwen/Qwen3-14B --engine vllm --trust einnovator-qualified
+```
+
+**Example output**
+
+```text
+selected_bundle:
+  id: bundle-qwen3-14b
+immutable_revision: 9853a17...
+reason: highest approval, exact-revision, engine recommendation, then immutable identity
+```
+
+### `pra registry import-hf`
+
+Import bundle metadata from an immutable Hugging Face revision.
+
+**Usage**
+
+```text
+pra registry import-hf [OPTIONS] REPO_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `REPO_ID` | yes | Hugging Face repository identifier. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--revision` | TEXT | `-` | no | Pin a model, bundle, or Hub revision. |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry import-hf EInnovator/pra-qwen3-0.6b --revision 25e6907...
+```
+
+**Example output**
+
+```text
+model:
+  repo: Qwen/Qwen3-0.6B
+bundle:
+  immutable_revision: 25e6907...
+```
+
+### `pra registry sync-hf-collection`
+
+Import every PRA model bundle in a Hugging Face Collection.
+
+**Usage**
+
+```text
+pra registry sync-hf-collection [OPTIONS] COLLECTION
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `COLLECTION` | yes | Hugging Face Collection slug to synchronize. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry sync-hf-collection EInnovator/progressive-retrieval-attention
+```
+
+**Example output**
+
+```text
+collection: EInnovator/progressive-retrieval-attention
+results:
+- repo_id: EInnovator/pra-qwen3-0.6b
+  status: IMPORTED
+```
+
+### `pra registry serve`
+
+Start the standalone headless PRA Registry service.
+
+**Usage**
+
+```text
+pra registry serve [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--host` | TEXT | `-` | no | Bind address for the local service. |
+| `--port` | INTEGER >= 1 <= 65535 | `-` | no | TCP port for the local service. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry serve --config registry.yaml
+```
+
+**Example output**
+
+```text
+INFO: Uvicorn running on http://127.0.0.1:9200
+Swagger: http://127.0.0.1:9200/docs
+```
+
 ## Environment and qualification
 
 ### `pra doctor`

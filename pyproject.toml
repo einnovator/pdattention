@@ -7,6 +7,7 @@ dependencies = [
   "torch>=2.2",
   "click>=8.1",
   "PyYAML>=6.0",
+  "packaging>=23",
   "numpy>=1.24",
   "transformers>=4.45",
   "tokenizers>=0.20",
@@ -29,6 +30,18 @@ observability = [
   "opentelemetry-sdk>=1.27",
   "opentelemetry-exporter-otlp>=1.27",
   "prometheus-client>=0.21",
+]
+registry = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "SQLAlchemy>=2.0",
+  "alembic>=1.13",
+  "psycopg[binary]>=3.2",
+  "PyJWT[crypto]>=2.9",
+  "huggingface-hub>=0.26",
+  "opentelemetry-api>=1.27",
+  "opentelemetry-sdk>=1.27",
+  "opentelemetry-exporter-otlp>=1.27",
 ]
 hf-runtime = [
   "transformers>=4.45",
@@ -53,6 +66,7 @@ research = [
 pra = "pra_hf.cli:cli"
 pra-hf = "pra_hf.cli:deprecated_cli"
 pra-standalone = "pra_torch.cli:cli"
+pra-registry = "pra_registry.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -63,3 +77,4 @@ markers = [
 
 [tool.setuptools.package-data]
 pra_hf = ["model_profiles/*.json", "model_profiles/*.yaml"]
+pra_registry = ["migrations/script.py.mako"]

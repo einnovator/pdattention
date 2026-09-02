@@ -15,6 +15,16 @@ OUTPUT = ROOT / "docs/site/cli-reference.md"
 
 
 EXAMPLES = {
+    "pra registry status": "pra registry status --registry-url http://127.0.0.1:9200",
+    "pra registry models": "pra registry models --limit 50 --json",
+    "pra registry bundles": "pra registry bundles --limit 50 --json",
+    "pra registry profiles": "pra registry profiles --yaml",
+    "pra registry qualifications": "pra registry qualifications --limit 100 --json",
+    "pra registry deployments": "pra registry deployments --json",
+    "pra registry resolve": "pra registry resolve Qwen/Qwen3-14B --engine vllm --trust einnovator-qualified",
+    "pra registry import-hf": "pra registry import-hf EInnovator/pra-qwen3-0.6b --revision 25e6907...",
+    "pra registry sync-hf-collection": "pra registry sync-hf-collection EInnovator/progressive-retrieval-attention",
+    "pra registry serve": "pra registry serve --config registry.yaml",
     "pra gateway serve": "pra gateway serve --mode selected-context --backend vllm --backend-url http://127.0.0.1:8000/v1 --sessions-dir .pra/gateway-sessions",
     "pra engine connect": "pra engine connect http://127.0.0.1:9101 --name local-vllm --token-env PRA_MANAGEMENT_TOKEN",
     "pra engine health": "pra engine health local-vllm",
@@ -83,6 +93,16 @@ EXAMPLES = {
 
 
 OUTPUTS = {
+    "pra registry status": "status: ok\nprotocol: pra-registry/1\ndatabase: postgresql",
+    "pra registry models": "items:\n- id: model-qwen3\n  repo: Qwen/Qwen3-14B\n  revision: a4d9b2d...\ntotal: 1",
+    "pra registry bundles": "items:\n- id: bundle-qwen3-14b\n  immutable_revision: 9853a17...\n  approval_state: APPROVED\ntotal: 1",
+    "pra registry profiles": "items:\n- id: balanced-qwen3\n  version: '2'\n  approval_state: APPROVED\ntotal: 1",
+    "pra registry qualifications": "items:\n- id: qasper-mlx-qwen3\n  workload: qasper\n  evidence_level: CONTROLLED\ntotal: 1",
+    "pra registry deployments": "items:\n- id: production-mlx\n  desired_revision: 7\n  desired_mode: native-memory\ntotal: 1",
+    "pra registry resolve": "selected_bundle:\n  id: bundle-qwen3-14b\nimmutable_revision: 9853a17...\nreason: highest approval, exact-revision, engine recommendation, then immutable identity",
+    "pra registry import-hf": "model:\n  repo: Qwen/Qwen3-0.6B\nbundle:\n  immutable_revision: 25e6907...",
+    "pra registry sync-hf-collection": "collection: EInnovator/progressive-retrieval-attention\nresults:\n- repo_id: EInnovator/pra-qwen3-0.6b\n  status: IMPORTED",
+    "pra registry serve": "INFO: Uvicorn running on http://127.0.0.1:9200\nSwagger: http://127.0.0.1:9200/docs",
     "pra gateway serve": "PRA gateway on http://127.0.0.1:8080 -> vllm\nSelected Context: enabled\nTyped resource transport: disabled\nEffective mode: Selected Context",
     "pra engine connect": "Name: local-vllm\nURL: http://127.0.0.1:9101\nProtocol: pra-management/1\nStored secret: false",
     "pra engine health": "Status: healthy\nProtocol: pra-management/1\nInstance ID: 2f9c...",
@@ -151,6 +171,8 @@ OUTPUTS = {
 
 
 OPTION_HELP = {
+    "registry_url": "Use this PRA Registry base URL.",
+    "offset": "Skip this many registry records before returning results.",
     "host": "Bind address for the local service.",
     "port": "TCP port for the local service.",
     "mode": "Select the product execution or gateway mediation mode.",
@@ -233,7 +255,7 @@ OPTION_HELP = {
     "detach": "Run the Web UI as a detached process.",
     "open_browser": "Open the Web UI in the default browser.",
     "management_url": "Use a one-off PRA management API URL.",
-    "token": "Authenticate with a bearer token; prefer PRA_MANAGEMENT_TOKEN.",
+    "token": "Authenticate with a bearer token; prefer the service-specific environment variable.",
     "token_env": "Name the environment variable containing a bearer token.",
     "auth_mode": "Select local management authentication.",
     "inference_url": "Identify the engine inference endpoint managed by the sidecar.",
@@ -252,6 +274,7 @@ OPTION_HELP = {
 
 
 ARGUMENT_HELP = {
+    "collection": "Hugging Face Collection slug to synchronize.",
     "model": "Model identifier or local model path.",
     "run": "Qualification or calibration run directory.",
     "name": "New assessment name.",
@@ -270,6 +293,7 @@ ARGUMENT_HELP = {
 
 
 GROUPS = (
+    ("Registry", ("pra registry",)),
     ("Gateway", ("pra gateway",)),
     ("Engine management", ("pra engine",)),
     ("Environment and qualification", ("pra doctor", "pra engines", "pra inspect", "pra evaluate", "pra recommend", "pra report", "pra qualify")),

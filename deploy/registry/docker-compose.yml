@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pra_registry
+      POSTGRES_USER: pra
+      POSTGRES_PASSWORD: pra
+    volumes:
+      - pra-registry-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pra -d pra_registry"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  registry:
+    build:
+      context: ../..
+      dockerfile: deploy/registry/Dockerfile
+    environment:
+      PRA_REGISTRY_DATABASE_URL: postgresql+psycopg://pra:pra@postgres:5432/pra_registry
+      PRA_REGISTRY_TOKEN: ${PRA_REGISTRY_TOKEN:?set PRA_REGISTRY_TOKEN}
+    ports:
+      - "9200:9200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  pra-registry-postgres:

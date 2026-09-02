@@ -24,6 +24,7 @@ from .evaluation import evaluate_router_features
 from .execution_modes import ExecutionModeResolver
 from .gateway_cli import gateway_cli
 from .management_cli import engine_cli
+from pra_registry.cli import registry_cli
 from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
 from .observability import Observability, load_observability_config
@@ -266,6 +267,7 @@ def cli() -> None:
 
 cli.add_command(gateway_cli)
 cli.add_command(engine_cli)
+cli.add_command(registry_cli)
 
 
 @cli.command("doctor")
