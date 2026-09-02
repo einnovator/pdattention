@@ -812,11 +812,33 @@ def hf_cli() -> None:
 
 
 @hf_cli.command("login")
-def hf_login() -> None:
+@click.option("--check", is_flag=True, help="Check existing Hub authentication without prompting.")
+@_output_options
+def hf_login(check, json_output, yaml_output) -> None:
     try:
-        from huggingface_hub import login
+        from huggingface_hub import HfApi, login
     except ImportError as error:
         raise click.ClickException("Install the hf-hub optional dependency.") from error
+    if check:
+        try:
+            identity = HfApi().whoami()
+        except Exception as error:
+            raise click.ClickException(
+                "No usable Hugging Face authentication was found. Run `pra hf login`."
+            ) from error
+        _emit(
+            {
+                "status": "AUTHENTICATED",
+                "name": identity.get("name"),
+                "organizations": [
+                    item.get("name") for item in identity.get("orgs", ())
+                    if item.get("name")
+                ],
+            },
+            json_output=json_output,
+            yaml_output=yaml_output,
+        )
+        return
     login()
 
 

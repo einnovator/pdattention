@@ -1280,26 +1280,31 @@ Run this PRA operation.
 **Usage**
 
 ```text
-pra hf login
+pra hf login [OPTIONS]
 ```
 
 **Options**
 
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
+| `--check` | flag | `off` | no | Check existing Hub authentication without prompting. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
 
 ```bash
+pra hf login --check
 pra hf login
 ```
 
 **Example output**
 
 ```text
-Token accepted.
-The token has been saved to the configured Hugging Face cache.
+Status: AUTHENTICATED
+Name: maintainer
+Organizations: EInnovator
 ```
 
 ### `pra hf list`
