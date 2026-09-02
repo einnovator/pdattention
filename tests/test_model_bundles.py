@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,11 +19,30 @@ from pra_hf.bundle import (
     PRAModelBundle,
     TrustedBundleRegistry,
     validate_model_card,
+    _tree_fingerprint,
 )
 from pra_hf.cli import cli
 
 
 REVISION = "0123456789abcdef0123456789abcdef01234567"
+
+
+def test_tree_fingerprint_has_platform_neutral_mixed_case_order(tmp_path: Path) -> None:
+    component = tmp_path / "adapter"
+    component.mkdir()
+    for name, value in (
+        ("README.md", b"card"),
+        ("adapter_model.pt", b"weights"),
+        ("config.json", b"{}"),
+    ):
+        (component / name).write_bytes(value)
+
+    digest = hashlib.sha256()
+    for name in ("adapter_model.pt", "config.json", "README.md"):
+        digest.update(name.encode("utf-8"))
+        digest.update(hashlib.sha256((component / name).read_bytes()).hexdigest().encode("ascii"))
+
+    assert _tree_fingerprint(component) == digest.hexdigest()
 
 
 def _run(tmp_path: Path) -> Path:

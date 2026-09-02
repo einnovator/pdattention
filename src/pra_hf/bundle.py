@@ -37,7 +37,13 @@ def _sha256_file(path: Path) -> str:
 
 def _tree_fingerprint(path: Path) -> str:
     digest = hashlib.sha256()
-    files = [path] if path.is_file() else sorted(item for item in path.rglob("*") if item.is_file())
+    files = [path] if path.is_file() else sorted(
+        (item for item in path.rglob("*") if item.is_file()),
+        key=lambda item: (
+            item.relative_to(path).as_posix().casefold(),
+            item.relative_to(path).as_posix(),
+        ),
+    )
     for item in files:
         relative = item.name if path.is_file() else item.relative_to(path).as_posix()
         digest.update(relative.encode("utf-8"))
