@@ -94,6 +94,12 @@ for operations without turning it into a transcript or document export API.
 | `GET /v1/pra/gateway/transport` | Transport, delta, fallback, and visible-reuse counters |
 | `GET /v1/pra/gateway/observability` | Prometheus, OTel, Grafana, and Tempo status |
 | `GET /v1/pra/gateway/audit` | Newest-first bounded local audit log |
+| `GET /v1/pra/gateway/registry` | Registration, retry, and heartbeat state |
+
+`POST /v1/pra/gateway/registry/register` explicitly retries registration. When
+configured, upstream and policy changes also publish refreshed observed state;
+normal heartbeats stay compact. See
+[Runtime Auto-Registration](../registry/runtime-auto-registration.md).
 
 List endpoints accept `offset` and `limit`; `limit` is bounded to 200.
 

@@ -6,11 +6,23 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _contains_secret_field(value: Any) -> bool:
+    forbidden = {"token", "secret", "password", "credential", "api_key", "authorization"}
+    if isinstance(value, dict):
+        return any(
+            str(key).lower() in forbidden or _contains_secret_field(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_contains_secret_field(item) for item in value)
+    return False
 
 
 class StrictModel(BaseModel):
@@ -33,6 +45,27 @@ class ArtifactSourceType(str, Enum):
     FILESYSTEM = "filesystem"
     OLLAMA = "ollama"
     CUSTOM = "custom"
+
+
+class ManagedInstanceType(str, Enum):
+    """Runtime kinds discoverable through the Registry."""
+
+    ENGINE = "ENGINE"
+    GATEWAY = "GATEWAY"
+
+
+class ManagedInstanceStatus(str, Enum):
+    """Registry-computed liveness state."""
+
+    ONLINE = "ONLINE"
+    DEGRADED = "DEGRADED"
+    OFFLINE = "OFFLINE"
+
+
+class RegistrationSource(str, Enum):
+    SELF = "SELF"
+    MANUAL = "MANUAL"
+    DISCOVERY = "DISCOVERY"
 
 
 class ResourceBase(StrictModel):
@@ -178,6 +211,111 @@ class DeploymentPatch(StrictModel):
     storage_policy: dict[str, Any] | None = None
     observability_policy: dict[str, Any] | None = None
     owner: str | None = None
+
+
+class ManagedInstanceRegister(StrictModel):
+    """Idempotent self-registration payload for one runtime instance."""
+
+    instance_id: str = Field(min_length=1, max_length=255)
+    instance_type: ManagedInstanceType
+    name: str = Field(min_length=1, max_length=255)
+    environment: str = "development"
+    region: str = "local"
+    cluster: str = "default"
+    namespace: str = "default"
+    host: str
+    management_url: str
+    inference_url: str | None = None
+    pra_version: str
+    component_version: str
+    engine_kind: str | None = None
+    engine_version: str | None = None
+    health: str = "healthy"
+    started_at: float
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    runtime_summary: dict[str, Any] = Field(default_factory=dict)
+    observability: dict[str, Any] = Field(default_factory=dict)
+    desired_revision: int | None = None
+    observed_revision: int = Field(default=1, ge=0)
+    in_sync: bool = True
+    drift_fields: list[str] = Field(default_factory=list)
+    labels: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    registration_source: RegistrationSource = RegistrationSource.SELF
+
+    @field_validator("management_url", "inference_url")
+    @classmethod
+    def require_http_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("http://", "https://")):
+            raise ValueError("runtime URLs must use http:// or https://")
+        return value.rstrip("/") if value else value
+
+    @field_validator("metadata")
+    @classmethod
+    def reject_secret_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if _contains_secret_field(value):
+            raise ValueError("credentials must not appear in instance metadata")
+        return value
+
+    @model_validator(mode="after")
+    def reject_secret_observed_state(self) -> "ManagedInstanceRegister":
+        if _contains_secret_field({
+            "capabilities": self.capabilities, "models": self.models,
+            "runtime_summary": self.runtime_summary, "observability": self.observability,
+            "metadata": self.metadata,
+        }):
+            raise ValueError("credentials must not appear in instance observed state")
+        return self
+
+
+class ManagedInstanceHeartbeat(StrictModel):
+    health: str = "healthy"
+    uptime_seconds: float = Field(ge=0)
+    observed_revision: int = Field(ge=0)
+    runtime_summary: dict[str, Any] = Field(default_factory=dict)
+    capabilities: dict[str, Any] | None = None
+    timestamp: float
+
+
+class ManagedInstanceObservedPatch(StrictModel):
+    health: str | None = None
+    management_url: str | None = None
+    inference_url: str | None = None
+    component_version: str | None = None
+    engine_version: str | None = None
+    capabilities: dict[str, Any] | None = None
+    models: list[dict[str, Any]] | None = None
+    runtime_summary: dict[str, Any] | None = None
+    observability: dict[str, Any] | None = None
+    observed_revision: int | None = Field(default=None, ge=0)
+    in_sync: bool | None = None
+    drift_fields: list[str] | None = None
+    labels: dict[str, str] | None = None
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("management_url", "inference_url")
+    @classmethod
+    def require_http_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("http://", "https://")):
+            raise ValueError("runtime URLs must use http:// or https://")
+        return value.rstrip("/") if value else value
+
+    @field_validator("metadata")
+    @classmethod
+    def reject_secret_metadata(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if _contains_secret_field(value):
+            raise ValueError("credentials must not appear in instance metadata")
+        return value
+
+    @model_validator(mode="after")
+    def reject_secret_observed_state(self) -> "ManagedInstanceObservedPatch":
+        values = self.model_dump(exclude_none=True)
+        if _contains_secret_field(values):
+            raise ValueError("credentials must not appear in instance observed state")
+        return self
 
 
 class PolicyCreate(ResourceBase):

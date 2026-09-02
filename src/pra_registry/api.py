@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import re
 import time
 from collections import Counter
 from contextlib import asynccontextmanager, nullcontext
@@ -28,6 +29,9 @@ from .contracts import (
     ModelPatch,
     HuggingFaceCollectionSyncRequest,
     HuggingFaceImportRequest,
+    ManagedInstanceHeartbeat,
+    ManagedInstanceObservedPatch,
+    ManagedInstanceRegister,
     PolicyCreate,
     PolicyPatch,
     ProfileCreate,
@@ -52,6 +56,9 @@ class RegistryMetrics:
         self.errors: Counter[str] = Counter()
         self.operations: Counter[str] = Counter()
         self.operation_latencies: Counter[str] = Counter()
+        self.instance_events: Counter[tuple[str, str]] = Counter()
+        self.instance_status: Counter[str] = Counter()
+        self.heartbeat_age_seconds: dict[str, float] = {}
 
     def observe(self, method: str, route: str, status: int, elapsed: float) -> None:
         if not self.enabled:
@@ -66,6 +73,23 @@ class RegistryMetrics:
         if self.enabled:
             self.operations[name] += 1
             self.operation_latencies[name] += int(elapsed * 1_000_000)
+
+    def instance_event(self, operation: str, result: str) -> None:
+        if self.enabled:
+            self.instance_events[(operation, result)] += 1
+
+    def instance_snapshot(self, rows: list[dict[str, Any]]) -> None:
+        if not self.enabled:
+            return
+        self.instance_status = Counter(str(row.get("status", "UNKNOWN")) for row in rows)
+        now = time.time()
+        self.heartbeat_age_seconds = {
+            str(row["instance_id"]): max(
+                0.0,
+                now - float(row["last_heartbeat"].timestamp()),
+            )
+            for row in rows if row.get("last_heartbeat") is not None
+        }
 
     def render(self) -> str:
         lines = ["# HELP pra_registry_requests_total Registry HTTP requests.", "# TYPE pra_registry_requests_total counter"]
@@ -83,6 +107,21 @@ class RegistryMetrics:
         lines.extend(["# HELP pra_registry_operation_latency_microseconds_total Accumulated operation latency.", "# TYPE pra_registry_operation_latency_microseconds_total counter"])
         for operation, value in sorted(self.operation_latencies.items()):
             lines.append(f'pra_registry_operation_latency_microseconds_total{{operation="{operation}"}} {value}')
+        lines.extend(["# HELP pra_registry_instances_online Managed runtimes currently online.", "# TYPE pra_registry_instances_online gauge"])
+        lines.append(f'pra_registry_instances_online {self.instance_status.get("ONLINE", 0)}')
+        lines.extend(["# HELP pra_registry_instances_offline Managed runtimes currently offline.", "# TYPE pra_registry_instances_offline gauge"])
+        lines.append(f'pra_registry_instances_offline {self.instance_status.get("OFFLINE", 0)}')
+        lines.extend(["# HELP pra_registry_registration_total Runtime registration attempts.", "# TYPE pra_registry_registration_total counter"])
+        for (operation, result), value in sorted(self.instance_events.items()):
+            if operation == "registration":
+                lines.append(f'pra_registry_registration_total{{result="{result}"}} {value}')
+        lines.extend(["# HELP pra_registry_registration_failures_total Failed runtime registrations.", "# TYPE pra_registry_registration_failures_total counter"])
+        lines.append(f'pra_registry_registration_failures_total {self.instance_events.get(("registration", "failure"), 0)}')
+        lines.extend(["# HELP pra_registry_heartbeat_failures_total Failed runtime heartbeats.", "# TYPE pra_registry_heartbeat_failures_total counter"])
+        lines.append(f'pra_registry_heartbeat_failures_total {self.instance_events.get(("heartbeat", "failure"), 0)}')
+        lines.extend(["# HELP pra_registry_heartbeat_age_seconds Age of the newest heartbeat per instance.", "# TYPE pra_registry_heartbeat_age_seconds gauge"])
+        for instance_id, value in sorted(self.heartbeat_age_seconds.items()):
+            lines.append(f'pra_registry_heartbeat_age_seconds{{instance_id="{instance_id}"}} {value:.6f}')
         return "\n".join(lines) + "\n"
 
 
@@ -166,6 +205,10 @@ def create_registry_app(config: RegistryConfig | None = None, database: Registry
             metrics.operation("approval", elapsed)
         if request.url.path.startswith("/v1/import") or request.url.path.startswith("/v1/sync"):
             metrics.operation("artifact_sync", elapsed)
+        if request.url.path == "/v1/instances/register" and response.status_code >= 400:
+            metrics.instance_event("registration", "failure")
+        if request.url.path.endswith("/heartbeat") and response.status_code >= 400:
+            metrics.instance_event("heartbeat", "failure")
         return response
 
     @app.exception_handler(RegistryError)
@@ -192,6 +235,17 @@ def create_registry_app(config: RegistryConfig | None = None, database: Registry
     write = scoped("registry:write")
     approve_scope = scoped("registry:approve")
 
+    def admit_instance(actor: str, value: ManagedInstanceRegister) -> None:
+        policy = settings.instance_registration
+        if policy.allowed_identities and actor not in policy.allowed_identities:
+            raise RegistryAuthError("service identity is not allowed to register instances", 403)
+        if policy.allowed_environments and value.environment not in policy.allowed_environments:
+            raise RegistryAuthError("instance environment is not allowed", 403)
+        if policy.allowed_clusters and value.cluster not in policy.allowed_clusters:
+            raise RegistryAuthError("instance cluster is not allowed", 403)
+        if policy.instance_name_pattern and not re.fullmatch(policy.instance_name_pattern, value.name):
+            raise RegistryAuthError("instance name does not satisfy registration policy", 403)
+
     @app.get("/health", tags=["service"])
     def health() -> dict[str, Any]:
         return {"status": "ok", "protocol": REGISTRY_PROTOCOL, "database": db.engine.dialect.name}
@@ -200,6 +254,12 @@ def create_registry_app(config: RegistryConfig | None = None, database: Registry
     def prometheus() -> PlainTextResponse:
         if not metrics.enabled:
             return PlainTextResponse("metrics disabled\n", status_code=404)
+        with db.session_factory() as session:
+            snapshot = RegistryService(session, actor="metrics").list_instances(
+                100_000, 0,
+                offline_after_seconds=settings.instance_registration.offline_after_seconds,
+            )
+        metrics.instance_snapshot(snapshot["items"])
         return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
     @app.post("/v1/import/huggingface", tags=["artifacts"])
@@ -224,6 +284,53 @@ def create_registry_app(config: RegistryConfig | None = None, database: Registry
 
     def page(limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)) -> tuple[int, int]:
         return limit, offset
+
+    # Managed runtime discovery. Registration is idempotent by stable instance ID.
+    @app.post("/v1/instances/register", tags=["instances"])
+    def register_instance(value: ManagedInstanceRegister, actor: str = Depends(write)):
+        admit_instance(actor, value)
+        result = run(actor, lambda service: service.register_instance(value, credential_identity=actor))
+        metrics.instance_event("registration", "success")
+        return result
+
+    @app.post("/v1/instances/{instance_id}/heartbeat", tags=["instances"])
+    def heartbeat_instance(instance_id: str, value: ManagedInstanceHeartbeat, actor: str = Depends(write)):
+        result = run(actor, lambda service: service.heartbeat_instance(instance_id, value))
+        metrics.instance_event("heartbeat", "success")
+        return result
+
+    @app.patch("/v1/instances/{instance_id}/observed", tags=["instances"])
+    def patch_instance(instance_id: str, value: ManagedInstanceObservedPatch, actor: str = Depends(write)):
+        return run(actor, lambda service: service.patch_instance_observed(instance_id, value))
+
+    @app.post("/v1/instances/{instance_id}/deregister", tags=["instances"])
+    def deregister_instance(instance_id: str, actor: str = Depends(write)):
+        return run(actor, lambda service: service.deregister_instance(instance_id))
+
+    @app.get("/v1/instances", tags=["instances"])
+    def list_instances(
+        paging: tuple[int, int] = Depends(page), instance_type: str | None = None,
+        environment: str | None = None, cluster: str | None = None,
+        status: str | None = None, actor: str = Depends(read),
+    ):
+        result = run(actor, lambda service: service.list_instances(
+            *paging,
+            offline_after_seconds=settings.instance_registration.offline_after_seconds,
+            instance_type=instance_type, environment=environment, cluster=cluster, status=status,
+        ))
+        metrics.instance_snapshot(result["items"])
+        return result
+
+    @app.get("/v1/instances/{instance_id}", tags=["instances"])
+    def get_instance(instance_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.get_instance(
+            instance_id,
+            offline_after_seconds=settings.instance_registration.offline_after_seconds,
+        ))
+
+    @app.get("/v1/instances/{instance_id}/desired", tags=["instances"])
+    def desired_instance(instance_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.desired_instance(instance_id))
 
     # Model resources.
     @app.get("/v1/models", tags=["models"])

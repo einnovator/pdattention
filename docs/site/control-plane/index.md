@@ -4,6 +4,11 @@ The eInnovator PRA Control Plane is the commercial fleet and governance layer
 for PRA deployments. It coordinates open engine Management APIs and the open
 PRA Registry without hiding either interface behind a proprietary protocol.
 
+PRA engines and gateways self-register into the open Registry. The Control
+Plane discovers that fleet from Registry state, so normal deployments do not
+require a manually maintained endpoint list. Static and manual targets remain
+available for development and disaster recovery.
+
 ```text
                  eInnovator PRA Control Plane
                 SSO | RBAC | Audit | Fleet | Agent

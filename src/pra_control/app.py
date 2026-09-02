@@ -29,7 +29,7 @@ COOKIE = "pra_control_session"
 OAUTH_COOKIE = "pra_control_oauth"
 REGISTRY_RESOURCES = frozenset({
     "models", "bundles", "profiles", "qualifications", "compatibility",
-    "deployments", "policies", "approvals", "audit",
+    "deployments", "policies", "approvals", "audit", "instances",
 })
 APPROVAL_TRANSITIONS = frozenset({"approve", "deprecate", "revoke", "promote"})
 
@@ -364,7 +364,7 @@ async def _registry_mutation(runtime: ControlRuntime, actor: Identity, request: 
 
 
 def _registry_resource(resource: str, *, mutable: bool = False) -> None:
-    if resource not in REGISTRY_RESOURCES or (mutable and resource == "audit"):
+    if resource not in REGISTRY_RESOURCES or (mutable and resource in {"audit", "instances"}):
         raise HTTPException(404, "unknown Registry resource")
 
 

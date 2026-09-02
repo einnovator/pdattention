@@ -44,3 +44,26 @@ def test_import_hf_runs_on_registry_service(monkeypatch) -> None:
     ])
     assert result.exit_code == 0
     assert seen == [("POST", "/v1/import/huggingface", {"repo_id": "EInnovator/pra-model", "revision": "abc"})]
+
+
+def test_managed_instance_cli_filters_and_lookup(monkeypatch) -> None:
+    seen = []
+    monkeypatch.setattr(
+        RegistryClient, "request",
+        lambda self, method, path, body=None: seen.append((method, path)) or {"items": []},
+    )
+    runner = CliRunner()
+    listed = runner.invoke(cli, [
+        "registry", "instances", "--type", "ENGINE", "--status", "ONLINE",
+        "--registry-url", "http://registry.test", "--json",
+    ])
+    looked_up = runner.invoke(cli, [
+        "registry", "instance", "engine/a", "--registry-url", "http://registry.test", "--json",
+    ])
+    offline = runner.invoke(cli, [
+        "registry", "offline", "--registry-url", "http://registry.test", "--json",
+    ])
+    assert listed.exit_code == looked_up.exit_code == offline.exit_code == 0
+    assert "instance_type=ENGINE" in seen[0][1] and "status=ONLINE" in seen[0][1]
+    assert seen[1] == ("GET", "/v1/instances/engine%2Fa")
+    assert "status=OFFLINE" in seen[2][1]

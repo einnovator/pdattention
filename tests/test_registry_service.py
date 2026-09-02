@@ -213,7 +213,10 @@ def test_alembic_upgrade_creates_registry_schema(tmp_path: Path) -> None:
     engine = RegistryDatabase(f"sqlite:///{database.as_posix()}").engine
     from sqlalchemy import inspect
     names = set(inspect(engine).get_table_names())
-    assert {"registry_models", "registry_bundles", "registry_audit_events"} <= names
+    assert {
+        "registry_models", "registry_bundles", "registry_audit_events",
+        "registry_managed_instances",
+    } <= names
 
 
 def test_checked_in_openapi_matches_runtime_contract() -> None:
@@ -231,6 +234,7 @@ def test_checked_in_openapi_matches_runtime_contract() -> None:
         "ModelCreate", "BundleCreate", "ProfileCreate", "CompatibilityCreate",
         "QualificationCreate", "DeploymentCreate", "PolicyCreate", "ApprovalCreate",
         "BundleResolveRequest", "ProfileResolveRequest", "DeploymentResolveRequest",
+        "ManagedInstanceRegister", "ManagedInstanceHeartbeat", "ManagedInstanceObservedPatch",
     }
     assert required <= set(published["components"]["schemas"])
     assert required <= set(generated["components"]["schemas"])

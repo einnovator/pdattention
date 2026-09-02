@@ -57,6 +57,11 @@ def main() -> None:
     parser.add_argument("--management-metrics-url")
     parser.add_argument("--management-trace-url")
     parser.add_argument("--management-grafana-url")
+    parser.add_argument("--registry-url")
+    parser.add_argument("--registry-token-env", default="PRA_REGISTRY_TOKEN")
+    parser.add_argument("--registry-instance-id")
+    parser.add_argument("--registry-instance-name")
+    parser.add_argument("--registry-required", action="store_true")
     args = parser.parse_args()
     storage = PRAStoragePolicy.from_yaml(args.storage_config) if args.storage_config else PRAStoragePolicy.named(args.storage)
     device = args.device
@@ -133,6 +138,9 @@ def main() -> None:
             PRAProfileSummary,
             start_management_api,
         )
+        from .registry_registration import (
+            RegistryClientAuth, RuntimeInstanceIdentity, RuntimeRegistryConfig,
+        )
 
         management_server = start_management_api(
             ManagementProvider(
@@ -172,6 +180,19 @@ def main() -> None:
                 metrics_url=args.management_metrics_url,
                 trace_backend_url=args.management_trace_url,
                 grafana_url=args.management_grafana_url,
+                registry=RuntimeRegistryConfig(
+                    enabled=bool(args.registry_url), url=args.registry_url,
+                    required=args.registry_required,
+                    auth=RegistryClientAuth(
+                        type="bearer" if args.registry_url else "none",
+                        token_env=args.registry_token_env if args.registry_url else None,
+                    ),
+                    instance=RuntimeInstanceIdentity(
+                        id=args.registry_instance_id,
+                        name=args.registry_instance_name,
+                        inference_url=f"http://{args.host}:{args.port}",
+                    ),
+                ),
             ),
         )
     try:

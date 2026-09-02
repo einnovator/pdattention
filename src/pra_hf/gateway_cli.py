@@ -105,9 +105,10 @@ def gateway_cli() -> None:
 @click.option("--management-trace-url")
 @click.option("--management-grafana-url")
 @click.option("--registry-url", help="Explicitly register this gateway with PRA Registry.")
-@click.option("--registry-token-env", help="Environment variable containing the Registry token.")
-@click.option("--registry-deployment", help="Registry deployment identity for this gateway.")
-@click.option("--registry-model", help="Registry model identity represented by the gateway.")
+@click.option("--registry-token-env", help="Environment variable containing the Registry token; defaults to PRA_REGISTRY_TOKEN with --registry-url.")
+@click.option("--registry-instance-id", help="Stable Registry identity; otherwise it is persisted locally.")
+@click.option("--registry-instance-name", help="Human-readable managed gateway name.")
+@click.option("--registry-required", is_flag=True, help="Fail startup when initial registration fails.")
 def gateway_serve(
     config_path, host, port, mode, backend, backend_url, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
@@ -116,7 +117,7 @@ def gateway_serve(
     management_api, management_host, management_port, management_auth_mode,
     management_token_env, management_metrics_url, management_trace_url,
     management_grafana_url, registry_url, registry_token_env,
-    registry_deployment, registry_model,
+    registry_instance_id, registry_instance_name, registry_required,
 ) -> None:
     """Serve logical PRA and OpenAI-compatible HTTP endpoints."""
 
@@ -204,6 +205,8 @@ def gateway_serve(
         raw = _gateway_management_yaml(config_path)
         management_settings = GatewayManagementAPIConfig.from_mapping(raw)
         update = {}
+        if registry_url:
+            update["enabled"] = True
         if management_api is not None:
             update["enabled"] = management_api
         if management_host is not None:
@@ -221,13 +224,25 @@ def gateway_serve(
         ):
             if value is not None:
                 update[field] = value
-        if any((registry_url, registry_token_env, registry_deployment, registry_model)):
+        if any((registry_url, management_settings.registry.enabled, registry_instance_id, registry_instance_name, registry_required)):
+            registry_auth = management_settings.registry.auth.model_copy(update={
+                **(
+                    {"type": "bearer", "token_env": registry_token_env or "PRA_REGISTRY_TOKEN"}
+                    if registry_url or registry_token_env else {}
+                ),
+            })
+            registry_instance = management_settings.registry.instance.model_copy(update={
+                **({"instance_id": registry_instance_id} if registry_instance_id else {}),
+                **({"name": registry_instance_name} if registry_instance_name else {}),
+                "management_url": f"http://{management_host or management_settings.host}:{management_port or management_settings.port}",
+                "inference_url": f"http://{host}:{port}",
+            })
             update["registry"] = management_settings.registry.model_copy(update={
                 "enabled": True,
                 **({"url": registry_url} if registry_url else {}),
-                **({"token_env": registry_token_env} if registry_token_env else {}),
-                **({"deployment_id": registry_deployment} if registry_deployment else {}),
-                **({"model_id": registry_model} if registry_model else {}),
+                "required": registry_required,
+                "auth": registry_auth,
+                "instance": registry_instance,
             })
         management_settings = management_settings.model_copy(update=update)
         if management_settings.enabled or management_settings.registry.enabled:
@@ -324,6 +339,19 @@ _get_gateway_command("upstreams", "upstreams", "List configured upstream inferen
 _get_gateway_command("sessions", "sessions", "List privacy-safe gateway session summaries.")
 _get_gateway_command("transport", "transport", "Show wire, delta, fallback, and reuse counters.")
 _get_gateway_command("config", "config", "Show effective gateway and policy configuration.")
+_get_gateway_command("registry-status", "registry", "Show Registry registration and heartbeat state.")
+
+
+@gateway_cli.command("register")
+@_gateway_remote_options
+def gateway_register(management_url, token, json_output, yaml_output) -> None:
+    """Retry this gateway's configured Registry registration immediately."""
+
+    client = _gateway_client(management_url, token)
+    _emit(
+        client.request("POST", "/v1/pra/gateway/registry/register", {}),
+        json_output, yaml_output,
+    )
 
 
 @gateway_cli.command("inspect")

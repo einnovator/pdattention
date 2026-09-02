@@ -30,6 +30,11 @@ service rollout. The supplied `deploy/registry/docker-compose.yml` starts both.
 docker compose -f deploy/registry/docker-compose.yml up --build
 ```
 
+`deploy/registry/docker-compose.runtime-example.yml` shows a gateway using
+`PRA_REGISTRY_URL=http://pra-registry:9200` and an environment-backed token.
+Mount the runtime's `.pra/instances` directory on persistent storage so a
+generated identity survives container replacement.
+
 Environment variables override YAML: `PRA_REGISTRY_HOST`,
 `PRA_REGISTRY_PORT`, `PRA_REGISTRY_DATABASE_URL`,
 `PRA_REGISTRY_AUTH_MODE`, and `PRA_REGISTRY_TOKEN`.

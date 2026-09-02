@@ -14,6 +14,7 @@ Swagger, and ReDoc at `/openapi.json`, `/docs`, and `/redoc`.
 | Policies | `GET/POST /v1/policies`, `GET/PATCH /v1/policies/{id}`, approve action |
 | Governance | `GET/POST /v1/approvals`, `GET /v1/audit` |
 | Resolution | `POST /v1/resolve/bundle`, `/profile`, and `/deployment` |
+| Managed instances | Register, heartbeat, observed update, deregister, list/get, and desired-state pull under `/v1/instances` |
 
 Lists use bounded `limit`/`offset` pagination and indexed filters. Resolver
 ordering is total and deterministic: approval, exact revision, qualified engine

@@ -65,9 +65,10 @@ pra gateway serve [OPTIONS]
 | `--management-trace-url` | TEXT | `-` | no | Configure `management-trace-url`. |
 | `--management-grafana-url` | TEXT | `-` | no | Configure `management-grafana-url`. |
 | `--registry-url` | TEXT | `-` | no | Explicitly register this gateway with PRA Registry. |
-| `--registry-token-env` | TEXT | `-` | no | Environment variable containing the Registry token. |
-| `--registry-deployment` | TEXT | `-` | no | Registry deployment identity for this gateway. |
-| `--registry-model` | TEXT | `-` | no | Registry model identity represented by the gateway. |
+| `--registry-token-env` | TEXT | `-` | no | Environment variable containing the Registry token; defaults to PRA_REGISTRY_TOKEN with --registry-url. |
+| `--registry-instance-id` | TEXT | `-` | no | Stable Registry identity; otherwise it is persisted locally. |
+| `--registry-instance-name` | TEXT | `-` | no | Human-readable managed gateway name. |
+| `--registry-required` | flag | `off` | no | Fail startup when initial registration fails. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
@@ -251,6 +252,75 @@ default_profile: BALANCED
 policy:
   upstream_selection: failover
   session_affinity: true
+```
+
+### `pra gateway registry-status`
+
+Show Registry registration and heartbeat state.
+
+**Usage**
+
+```text
+pra gateway registry-status [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway registry-status --management-url http://gateway:9150
+```
+
+**Example output**
+
+```text
+enabled: true
+status: online
+instance_id: prod-gateway-01
+heartbeat_success_total: 42
+```
+
+### `pra gateway register`
+
+Retry this gateway's configured Registry registration immediately.
+
+**Usage**
+
+```text
+pra gateway register [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway register --management-url http://gateway:9150
+```
+
+**Example output**
+
+```text
+instance_id: prod-gateway-01
+instance_type: GATEWAY
+status: ONLINE
 ```
 
 ### `pra gateway inspect`
@@ -772,6 +842,87 @@ pra engine audit local-vllm --json
 {"items": [{"event": "RESOURCE_PROMOTED", "result": "success"}]}
 ```
 
+### `pra engine registry-status`
+
+Show Registry registration and heartbeat state.
+
+**Usage**
+
+```text
+pra engine registry-status [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine registry-status local-vllm --yaml
+```
+
+**Example output**
+
+```text
+enabled: true
+status: online
+instance_id: prod-vllm-01
+heartbeat_success_total: 42
+```
+
+### `pra engine register`
+
+Retry this engine's configured Registry registration immediately.
+
+**Usage**
+
+```text
+pra engine register [OPTIONS] [TARGET]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TARGET` | no | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--management-url` | TEXT | `-` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer its environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra engine register local-vllm --yaml
+```
+
+**Example output**
+
+```text
+instance_id: prod-vllm-01
+instance_type: ENGINE
+status: ONLINE
+```
+
 ### `pra engine inspect`
 
 Inspect engine identity, capabilities, state, and observability links.
@@ -934,6 +1085,11 @@ pra engine serve [OPTIONS]
 | `--tls-certfile` | PATH | `-` | no | Serve HTTPS with this certificate chain. |
 | `--tls-keyfile` | PATH | `-` | no | Serve HTTPS with this private-key file. |
 | `--tls-ca-certs` | PATH | `-` | no | Require client certificates issued by this CA bundle. |
+| `--registry-url` | TEXT | `-` | no | Use this PRA Registry base URL. |
+| `--registry-token-env` | TEXT | `PRA_REGISTRY_TOKEN` | no | Configure `registry-token-env`. |
+| `--registry-instance-id` | TEXT | `-` | no | Configure `registry-instance-id`. |
+| `--registry-instance-name` | TEXT | `-` | no | Configure `registry-instance-name`. |
+| `--registry-required` | flag | `off` | no | Configure `registry-required`. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
@@ -1179,6 +1335,129 @@ items:
 - id: production-mlx
   desired_revision: 7
   desired_mode: native-memory
+total: 1
+```
+
+### `pra registry instances`
+
+List self-registered engines and gateways with liveness filters.
+
+**Usage**
+
+```text
+pra registry instances [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--type` | ENGINE / GATEWAY | `-` | no | Configure `instance-type`. |
+| `--environment` | TEXT | `-` | no | Configure `environment`. |
+| `--cluster` | TEXT | `-` | no | Configure `cluster`. |
+| `--status` | ONLINE / DEGRADED / OFFLINE | `-` | no | Configure `status`. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry instances --type ENGINE --status ONLINE --json
+```
+
+**Example output**
+
+```text
+items:
+- instance_id: prod-vllm-01
+  instance_type: ENGINE
+  status: ONLINE
+  health: healthy
+total: 1
+```
+
+### `pra registry instance`
+
+Show one managed runtime and its observed/desired revisions.
+
+**Usage**
+
+```text
+pra registry instance [OPTIONS] INSTANCE_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `INSTANCE_ID` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry instance prod-vllm-01 --yaml
+```
+
+**Example output**
+
+```text
+instance_id: prod-vllm-01
+management_url: https://prod-vllm-01:9101
+observed_revision: 4
+in_sync: true
+```
+
+### `pra registry offline`
+
+List runtimes whose heartbeat expired or which deregistered cleanly.
+
+**Usage**
+
+```text
+pra registry offline [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry offline --limit 100
+```
+
+**Example output**
+
+```text
+items:
+- instance_id: old-engine-02
+  status: OFFLINE
 total: 1
 ```
 

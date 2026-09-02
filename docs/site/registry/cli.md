@@ -7,8 +7,8 @@ pra-registry serve --config registry.yaml
 pra registry status --registry-url http://127.0.0.1:9200
 ```
 
-Remote query commands are `models`, `bundles`, `profiles`, `qualifications`,
-`deployments`, and `resolve`. All support `--json` or `--yaml`; list operations
+Remote query commands include `models`, `bundles`, `profiles`, `qualifications`,
+`deployments`, `instances`, `instance`, `offline`, and `resolve`. All support `--json` or `--yaml`; list operations
 also expose bounded `--limit` and `--offset`.
 
 ```bash
@@ -16,6 +16,8 @@ export PRA_REGISTRY_URL=https://registry.example.com
 export PRA_REGISTRY_TOKEN='...'
 pra registry bundles --json
 pra registry resolve Qwen/Qwen3-14B --engine vllm --trust einnovator-qualified
+pra registry instances --type ENGINE --status ONLINE
+pra registry instance prod-vllm-01 --yaml
 ```
 
 Configuration can also provide `registry.url`. Explicit CLI options override

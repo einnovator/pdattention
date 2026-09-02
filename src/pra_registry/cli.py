@@ -122,6 +122,47 @@ _list_command("qualifications", "/v1/qualifications", "List immutable qualificat
 _list_command("deployments", "/v1/deployments", "List desired deployment state.")
 
 
+@registry_cli.command("instances")
+@connection_options
+@click.option("--type", "instance_type", type=click.Choice(["ENGINE", "GATEWAY"]))
+@click.option("--environment")
+@click.option("--cluster")
+@click.option("--status", type=click.Choice(["ONLINE", "DEGRADED", "OFFLINE"]))
+@click.option("--limit", default=50, type=click.IntRange(1, 500), show_default=True)
+@click.option("--offset", default=0, type=click.IntRange(0), show_default=True)
+@output_options
+def instances(registry_url, token, config, instance_type, environment, cluster, status, limit, offset, json_output, yaml_output):
+    """List self-registered engines and gateways with liveness filters."""
+
+    query = urllib.parse.urlencode({key: value for key, value in {
+        "instance_type": instance_type, "environment": environment, "cluster": cluster,
+        "status": status, "limit": limit, "offset": offset,
+    }.items() if value is not None})
+    _emit(_client(config, registry_url, token).request("GET", f"/v1/instances?{query}"), json_output, yaml_output)
+
+
+@registry_cli.command("instance")
+@click.argument("instance_id")
+@connection_options
+@output_options
+def instance(instance_id, registry_url, token, config, json_output, yaml_output):
+    """Show one managed runtime and its observed/desired revisions."""
+
+    path = f"/v1/instances/{urllib.parse.quote(instance_id, safe='')}"
+    _emit(_client(config, registry_url, token).request("GET", path), json_output, yaml_output)
+
+
+@registry_cli.command("offline")
+@connection_options
+@click.option("--limit", default=50, type=click.IntRange(1, 500), show_default=True)
+@output_options
+def offline(registry_url, token, config, limit, json_output, yaml_output):
+    """List runtimes whose heartbeat expired or which deregistered cleanly."""
+
+    query = urllib.parse.urlencode({"status": "OFFLINE", "limit": limit, "offset": 0})
+    _emit(_client(config, registry_url, token).request("GET", f"/v1/instances?{query}"), json_output, yaml_output)
+
+
 @registry_cli.command("resolve")
 @click.argument("model")
 @click.option("--model-revision")

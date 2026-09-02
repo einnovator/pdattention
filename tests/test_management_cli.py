@@ -61,6 +61,7 @@ def test_remote_engine_cli_end_to_end(tmp_path, monkeypatch) -> None:
         for command in (
             "health", "config", "storage", "sessions", "resources", "models",
             "profiles", "capabilities", "audit",
+            "registry-status",
         ):
             result = runner.invoke(engine_cli, [command, "lab", "--json"])
             assert result.exit_code == 0, (command, result.output)

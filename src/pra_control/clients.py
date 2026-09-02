@@ -51,6 +51,10 @@ class RegistryClient(AsyncServiceClient):
     async def deployments(self) -> list[dict[str, Any]]:
         return (await self.list("deployments", limit=500))["items"]
 
+    async def instances(self, *, instance_type: str | None = None) -> list[dict[str, Any]]:
+        suffix = f"&instance_type={instance_type}" if instance_type else ""
+        return (await self.request("GET", f"/v1/instances?limit=500&offset=0{suffix}"))["items"]
+
 
 class EngineClient(AsyncServiceClient):
     def __init__(self, name: str, url: str, token: str | None = None, **kwargs: Any) -> None:

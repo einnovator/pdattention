@@ -46,6 +46,7 @@ from .management import (
     _is_loopback,
     _redact,
 )
+from .registry_registration import RegistryRegistrationClient, RuntimeRegistryConfig
 
 
 GATEWAY_MANAGEMENT_PROTOCOL = "pra-gateway-management/1"
@@ -65,24 +66,8 @@ class GatewayManagementAuthConfig(ManagementAuthConfig):
     scopes: tuple[str, ...] = GATEWAY_SCOPES
 
 
-class GatewayRegistryConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    url: str | None = None
-    token_env: str | None = None
-    deployment_id: str | None = None
-    model_id: str | None = None
-    environment: str = "development"
-    cluster: str = "gateway"
-    heartbeat_seconds: int = Field(default=30, ge=5, le=3600)
-
-    def token(self) -> str | None:
-        return os.environ.get(self.token_env or "") or None
-
-    def validate_registration(self) -> None:
-        if self.enabled and not all((self.url, self.deployment_id, self.model_id)):
-            raise ValueError("gateway Registry registration requires url, deployment_id, and model_id")
+class GatewayRegistryConfig(RuntimeRegistryConfig):
+    """Compatibility name for the shared engine/gateway Registry config."""
 
 
 class GatewayManagementAPIConfig(BaseModel):
@@ -111,13 +96,14 @@ class GatewayManagementAPIConfig(BaseModel):
         return value
 
     def validate_binding(self) -> None:
+        if self.registry.enabled and not self.enabled:
+            raise ValueError("gateway Registry registration requires the management API")
         if self.enabled and self.auth.mode == AuthMode.NONE and not _is_loopback(self.host):
             raise ValueError("unauthenticated gateway management may bind only to loopback")
         if self.enabled and self.auth.mode == AuthMode.STATIC_BEARER and not self.auth.resolved_token():
             raise ValueError("static bearer authentication requires a token or token_env")
         if self.enabled and self.auth.mode == AuthMode.MTLS and not all((self.tls_certfile, self.tls_keyfile, self.tls_ca_certs)):
             raise ValueError("mTLS requires certificate, key, and CA files")
-        self.registry.validate_registration()
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any] | None = None) -> "GatewayManagementAPIConfig":
@@ -138,12 +124,14 @@ class GatewayManagementAPIConfig(BaseModel):
             auth["token"] = os.environ["PRA_GATEWAY_MANAGEMENT_TOKEN"]
         if os.environ.get("PRA_GATEWAY_REGISTRY_URL"):
             registry.update({"enabled": True, "url": os.environ["PRA_GATEWAY_REGISTRY_URL"]})
-        if os.environ.get("PRA_GATEWAY_REGISTRY_TOKEN_ENV"):
-            registry["token_env"] = os.environ["PRA_GATEWAY_REGISTRY_TOKEN_ENV"]
+        registry_token_env = os.environ.get("PRA_GATEWAY_REGISTRY_TOKEN_ENV")
+        if registry_token_env or os.environ.get("PRA_REGISTRY_TOKEN"):
+            registry["auth"] = {
+                **dict(registry.get("auth") or {}), "type": "bearer",
+                "token_env": registry_token_env or "PRA_REGISTRY_TOKEN",
+            }
         if os.environ.get("PRA_GATEWAY_REGISTRY_DEPLOYMENT"):
-            registry["deployment_id"] = os.environ["PRA_GATEWAY_REGISTRY_DEPLOYMENT"]
-        if os.environ.get("PRA_GATEWAY_REGISTRY_MODEL"):
-            registry["model_id"] = os.environ["PRA_GATEWAY_REGISTRY_MODEL"]
+            registry.setdefault("instance", {})["id"] = os.environ["PRA_GATEWAY_REGISTRY_DEPLOYMENT"]
         if auth:
             data["auth"] = auth
         if registry:
@@ -557,6 +545,7 @@ class GatewayManagementProvider:
         self.policy = upstreams.policy
         self.audit: deque[GatewayAuditEvent] = deque(maxlen=1000)
         self.registry_status: dict[str, Any] = {"enabled": settings.registry.enabled, "status": "not_started"}
+        self.registry_reporter: GatewayRegistryReporter | None = None
         self._idempotency: dict[tuple[str, str], Any] = {}
         self.policy_loader = policy_loader
 
@@ -586,8 +575,71 @@ class GatewayManagementProvider:
             "policy": self.policy.model_dump(mode="json"),
             "management": self.settings.model_dump(exclude={"auth", "registry"}, mode="json"),
             "auth": self.settings.auth.public_dict(),
-            "registry": {**self.settings.registry.model_dump(exclude={"token_env"}), "token_configured": bool(self.settings.registry.token())},
+            "registry": {
+                **self.settings.registry.model_dump(exclude={"auth"}, mode="json"),
+                "auth_type": self.settings.registry.auth.type,
+                "token_configured": bool(
+                    (self.settings.registry.auth.token_env and os.environ.get(self.settings.registry.auth.token_env))
+                    or (
+                        self.settings.registry.auth.token_file
+                        and os.path.isfile(os.path.expanduser(self.settings.registry.auth.token_file))
+                    )
+                ),
+            },
         })
+
+    def registry_payload(self, instance_id: str) -> dict[str, Any]:
+        identity = self.settings.registry.instance
+        scheme = "https" if self.settings.tls_certfile else "http"
+        advertised_host = identity.host or (socket.gethostname() if self.settings.host in {"0.0.0.0", "::"} else self.settings.host)
+        rows = self.upstreams.rows()
+        return {
+            "instance_id": instance_id,
+            "instance_type": "GATEWAY",
+            "name": identity.name or f"gateway-{advertised_host}",
+            "host": advertised_host,
+            "management_url": identity.management_url or f"{scheme}://{advertised_host}:{self.settings.port}",
+            "inference_url": identity.inference_url,
+            "pra_version": _version("pra-hf"),
+            "component_version": _version("pra-hf"),
+            "health": "healthy",
+            "started_at": self.started_at,
+            "capabilities": self.gateway.capabilities(),
+            "models": [
+                {"upstream_id": row.upstream_id, "models": list(row.models), "health": row.health}
+                for row in rows
+            ],
+            "runtime_summary": {
+                "mode": _gateway_mode_name(self.gateway.mode.value),
+                "profile": self.gateway.default_profile,
+                "upstream_count": len(rows),
+                "session_count": len(self.sessions()),
+            },
+            "observability": self.observability(),
+            "observed_revision": len(self.audit) + 1,
+            "in_sync": True,
+            "drift_fields": [],
+        }
+
+    def update_registry_status(self, value: Mapping[str, Any]) -> None:
+        self.registry_status = dict(value)
+        metrics = dict(value.get("metrics") or {})
+        self.metrics.set_gauge("pra_registry_connected", metrics.get("pra_registry_connected", 0))
+        self.metrics.set_gauge(
+            "pra_registry_registration_failures_total",
+            metrics.get("pra_registry_registration_failures_total", 0),
+        )
+        self.metrics.set_gauge(
+            "pra_registry_heartbeat_failures_total",
+            metrics.get("pra_registry_heartbeat_failures_total", 0),
+        )
+
+    def publish_registry_observed(self) -> None:
+        if self.registry_reporter is not None:
+            try:
+                self.registry_reporter.publish_observed()
+            except Exception:
+                pass
 
     def patch_config(
         self, patch: GatewayConfigPatch, actor: Actor, request_id: str,
@@ -606,6 +658,7 @@ class GatewayManagementProvider:
         after = self.config()
         event = "FALLBACK_POLICY_CHANGED" if patch.fallback_injection is not None else "POLICY_CHANGED"
         self.record(event, actor, request_id, "success", before, after, reason, trace_id)
+        self.publish_registry_observed()
         return after
 
     def sessions(self) -> list[dict[str, Any]]:
@@ -708,6 +761,7 @@ class GatewayManagementProvider:
         if body.idempotency_key:
             self._idempotency[cache_key] = result
         self.record(event, actor, request_id, "success", before, after, body.reason, trace_id)
+        self.publish_registry_observed()
         return result
 
     def record(self, event: str, actor: Actor, request_id: str, result: str, before: Any, after: Any, reason: str, trace_id: str | None = None) -> None:
@@ -744,86 +798,52 @@ class GatewayManagementProvider:
         }
 
 
-class GatewayRegistryReporter:
-    """Register and heartbeat gateway state through the open Registry API."""
+class GatewayRegistryReporter(RegistryRegistrationClient):
+    """Gateway specialization of the common managed-runtime reporter."""
 
     def __init__(self, provider: GatewayManagementProvider) -> None:
         self.provider = provider
-        self.config = provider.settings.registry
-        self.stop_event = threading.Event()
-        self.thread: threading.Thread | None = None
-
-    def start(self) -> None:
-        if not self.config.enabled:
-            return
-        self.thread = threading.Thread(target=self._run, name="pra-gateway-registry", daemon=True)
-        self.thread.start()
-
-    def stop(self) -> None:
-        if not self.config.enabled:
-            return
-        self.stop_event.set()
-        self._publish("offline")
-        if self.thread:
-            self.thread.join(timeout=3)
-
-    def _run(self) -> None:
-        while not self.stop_event.is_set():
-            self._publish("healthy")
-            self.stop_event.wait(self.config.heartbeat_seconds)
-
-    def _publish(self, health: str) -> None:
-        selector = {
-            "kind": "gateway", "name": self.provider.gateway_id,
-            "management_url": (
-                f"http://{self.provider.settings.host}:{self.provider.settings.port}"
-                if self.provider.settings.enabled else None
-            ),
-            "health": health, "protocol": GATEWAY_MANAGEMENT_PROTOCOL,
-            "upstreams": [{"id": row.upstream_id, "models": list(row.models), "health": row.health} for row in self.provider.upstreams.rows()],
-            "capabilities": [row.negotiated.model_dump(mode="json") for row in self.provider.upstreams.rows()],
-            "last_heartbeat": time.time(),
-        }
-        patch = {"engine_instance_selector": selector, "desired_model_id": self.config.model_id}
-        path = f"/v1/deployments/{self.config.deployment_id}"
-        try:
-            self._request("PATCH", path, patch)
-        except Exception:
-            create = {
-                "id": self.config.deployment_id, "owner": "pra-gateway", "environment": self.config.environment,
-                "cluster": self.config.cluster, "engine_instance_selector": selector,
-                "desired_model_id": self.config.model_id, "desired_mode": "selected-context",
-            }
-            try:
-                self._request("POST", "/v1/deployments", create)
-            except Exception as error:
-                self.provider.registry_status = {"enabled": True, "status": "error", "detail": str(error), "last_attempt": time.time()}
-                return
-        self.provider.registry_status = {"enabled": True, "status": health, "deployment_id": self.config.deployment_id, "last_heartbeat": time.time()}
-
-    def _request(self, method: str, path: str, body: Mapping[str, Any]) -> Any:
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        if self.config.token():
-            headers["Authorization"] = f"Bearer {self.config.token()}"
-        request = urllib.request.Request(
-            f"{self.config.url.rstrip('/')}{path}", data=json.dumps(body).encode(), headers=headers, method=method,
+        super().__init__(
+            provider.settings.registry, "GATEWAY", provider.registry_payload,
+            status_callback=provider.update_registry_status,
         )
-        with urllib.request.urlopen(request, timeout=5) as response:
-            return json.loads(response.read().decode())
+        provider.gateway_id = self.instance_id
+        provider.registry_reporter = self
+
+    def _publish(self, health: str) -> Mapping[str, Any]:
+        """Compatibility hook for deterministic lifecycle tests."""
+
+        if health == "offline":
+            if not self.registered:
+                return {}
+            result = self._request("POST", f"/v1/instances/{self.instance_id}/deregister", {})
+            self.registered = False
+            return result
+        return self.heartbeat_now()
 
 
-def create_gateway_management_app(provider: GatewayManagementProvider, settings: GatewayManagementAPIConfig) -> FastAPI:
+def create_gateway_management_app(
+    provider: GatewayManagementProvider,
+    settings: GatewayManagementAPIConfig,
+    *,
+    manage_registry_lifecycle: bool = True,
+) -> FastAPI:
     """Build the enabled gateway API without starting its separate listener."""
     settings.validate_binding()
-    reporter = GatewayRegistryReporter(provider)
+    reporter = (
+        provider.registry_reporter or GatewayRegistryReporter(provider)
+        if settings.registry.enabled else None
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        reporter.start()
+        if reporter is not None and manage_registry_lifecycle:
+            reporter.start()
         try:
             yield
         finally:
-            reporter.stop()
+            if reporter is not None and manage_registry_lifecycle:
+                reporter.stop()
 
     app = FastAPI(
         title="PRA Gateway Management API",
@@ -911,6 +931,16 @@ def create_gateway_management_app(provider: GatewayManagementProvider, settings:
     @app.get(f"{GATEWAY_API_PREFIX}/state", tags=["gateway"])
     def state(_: Actor = Depends(require("pra-gateway:read"))): return provider.state()
 
+    @app.get(f"{GATEWAY_API_PREFIX}/registry", tags=["registry"])
+    def registry_state(_: Actor = Depends(require("pra-gateway:read"))):
+        return provider.registry_reporter.status() if provider.registry_reporter else provider.registry_status
+
+    @app.post(f"{GATEWAY_API_PREFIX}/registry/register", tags=["registry"])
+    def registry_register(_: Actor = Depends(require("pra-gateway:admin"))):
+        if provider.registry_reporter is None:
+            raise ManagementAPIError(409, "REGISTRY_DISABLED", "Registry registration is not configured")
+        return provider.registry_reporter.register_now()
+
     @app.get(f"{GATEWAY_API_PREFIX}/upstreams", tags=["upstreams"])
     def upstreams(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200), _: Actor = Depends(require("pra-gateway:read"))): return _page(provider.upstreams.rows(), offset, limit)
 
@@ -921,18 +951,21 @@ def create_gateway_management_app(provider: GatewayManagementProvider, settings:
     def add_upstream(body: UpstreamCreate, request: Request, actor: Actor = Depends(require("pra-gateway:upstreams"))):
         after = provider.upstreams.add(body)
         provider.record("UPSTREAM_ADDED", actor, request_id(request), "success", None, after.model_dump(mode="json"), reason(request, "upstream added"), trace_id(request))
+        provider.publish_registry_observed()
         return after
 
     @app.patch(f"{GATEWAY_API_PREFIX}/upstreams/{{upstream_id}}", tags=["upstreams"])
     def patch_upstream(upstream_id: str, body: UpstreamPatch, request: Request, actor: Actor = Depends(require("pra-gateway:upstreams"))):
         before, after = provider.upstreams.patch(upstream_id, body)
         provider.record("UPSTREAM_CHANGED", actor, request_id(request), "success", before.model_dump(mode="json"), after.model_dump(mode="json"), reason(request, "upstream changed"), trace_id(request))
+        provider.publish_registry_observed()
         return after
 
     @app.delete(f"{GATEWAY_API_PREFIX}/upstreams/{{upstream_id}}", tags=["upstreams"])
     def delete_upstream(upstream_id: str, request: Request, actor: Actor = Depends(require("pra-gateway:upstreams"))):
         before = provider.upstreams.remove(upstream_id)
         provider.record("UPSTREAM_REMOVED", actor, request_id(request), "success", before.model_dump(mode="json"), None, reason(request, "upstream removed"), trace_id(request))
+        provider.publish_registry_observed()
         return {"removed": True, "upstream_id": upstream_id}
 
     @app.get(f"{GATEWAY_API_PREFIX}/sessions", tags=["sessions"])
@@ -987,16 +1020,15 @@ def create_gateway_management_app(provider: GatewayManagementProvider, settings:
 
 def start_gateway_management_api(provider: GatewayManagementProvider, settings: GatewayManagementAPIConfig) -> Any | None:
     """Start a background listener only when explicitly enabled."""
+    settings.validate_binding()
     if not settings.enabled:
-        if settings.registry.enabled:
-            reporter = GatewayRegistryReporter(provider)
-            reporter.start()
-            return reporter
         return None
     import uvicorn
-    settings.validate_binding()
+    reporter = GatewayRegistryReporter(provider) if settings.registry.enabled else None
     server = uvicorn.Server(uvicorn.Config(
-        create_gateway_management_app(provider, settings), host=settings.host, port=settings.port,
+        create_gateway_management_app(
+            provider, settings, manage_registry_lifecycle=False,
+        ), host=settings.host, port=settings.port,
         log_level="warning", ssl_certfile=settings.tls_certfile, ssl_keyfile=settings.tls_keyfile,
         ssl_ca_certs=settings.tls_ca_certs,
         ssl_cert_reqs=ssl.CERT_REQUIRED if settings.auth.mode == AuthMode.MTLS else ssl.CERT_NONE,
@@ -1004,6 +1036,17 @@ def start_gateway_management_api(provider: GatewayManagementProvider, settings: 
     thread = threading.Thread(target=server.run, name="pra-gateway-management", daemon=True)
     thread.start()
     server.pra_thread = thread
+    deadline = time.monotonic() + 5
+    while not getattr(server, "started", False) and thread.is_alive() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if reporter is not None:
+        try:
+            reporter.start()
+        except Exception:
+            server.should_exit = True
+            thread.join(timeout=5)
+            raise
+    server.pra_registry_reporter = reporter
     return server
 
 
@@ -1011,6 +1054,9 @@ def stop_gateway_management_api(handle: Any | None, timeout: float = 5) -> None:
     if handle is None: return
     if isinstance(handle, GatewayRegistryReporter):
         handle.stop(); return
+    reporter = getattr(handle, "pra_registry_reporter", None)
+    if reporter is not None:
+        reporter.stop(timeout=min(timeout, 3))
     handle.should_exit = True
     thread = getattr(handle, "pra_thread", None)
     if thread: thread.join(timeout=timeout)

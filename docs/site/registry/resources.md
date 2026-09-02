@@ -14,6 +14,7 @@
 | Policy | Draft payload before approval | Approved versions are immutable |
 | Approval | Never edited | Append-only decision and actor |
 | Audit event | Never edited | Append-only before/after summary and trace ID |
+| Managed instance | Observed state, heartbeat, URLs, labels | Stable instance ID and authenticated registration subject |
 
 Approval states are `DRAFT`, `CANDIDATE`, `APPROVED`, `DEPRECATED`, and
 `REVOKED`. Deprecation preserves provenance and existing references.
@@ -35,3 +36,11 @@ Ollama, and private enterprise stores without making the Registry a blob store.
 
 `credential_reference` names an external secret. A URL, bearer token, API key,
 or other embedded secret is rejected.
+
+## Managed instances
+
+`ENGINE` and `GATEWAY` instances are operational records, separate from
+desired deployments. Their status is computed as `ONLINE`, `DEGRADED`, or
+`OFFLINE`. Registration is idempotent for a stable ID; attempts to reuse that
+ID for an incompatible type, name, or engine kind return a conflict and are
+audited.

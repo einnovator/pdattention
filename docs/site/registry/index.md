@@ -2,7 +2,8 @@
 
 The PRA Registry is the open, headless system of record for model identities,
 immutable PRA bundles, profiles, compatibility, qualification evidence,
-approvals, policies, and optional desired deployment state. It serves engines,
+approvals, policies, optional desired deployment state, and live managed
+engine/gateway identities. It serves engines,
 the `pra` CLI, CI, and higher-level control planes through one versioned REST
 contract.
 
@@ -25,6 +26,11 @@ These APIs answer different questions:
 The Registry is independently usable and open source. A commercial control
 plane may add fleet UI, SSO, approval workflow, cross-cluster audit, and policy
 automation without changing this public contract.
+
+Engines and gateways can [self-register](runtime-auto-registration.md), send
+compact heartbeats, and publish observed-state changes. This removes static
+fleet configuration without mixing ephemeral runtime state into model or
+bundle resources.
 
 ## Start locally
 

@@ -308,7 +308,7 @@ def test_failed_action_is_audited_without_sensitive_detail() -> None:
 
 def test_registry_reporter_registers_heartbeats_and_offline() -> None:
     settings = GatewayManagementAPIConfig(registry=GatewayRegistryConfig(
-        enabled=True, url="http://registry", deployment_id="gateway-1", model_id="model-1"
+        enabled=True, url="http://registry", instance={"id": "gateway-1"}
     ))
     provider, _ = _provider(settings=settings)
     reporter = GatewayRegistryReporter(provider)
@@ -316,9 +316,10 @@ def test_registry_reporter_registers_heartbeats_and_offline() -> None:
     reporter._request = lambda method, path, body: calls.append((method, path, body)) or {}
     reporter._publish("healthy")
     reporter._publish("offline")
-    assert calls[0][0:2] == ("PATCH", "/v1/deployments/gateway-1")
-    assert calls[0][2]["engine_instance_selector"]["protocol"] == GATEWAY_MANAGEMENT_PROTOCOL
-    assert calls[1][2]["engine_instance_selector"]["health"] == "offline"
+    assert calls[0][0:2] == ("POST", "/v1/instances/register")
+    assert calls[0][2]["instance_type"] == "GATEWAY"
+    assert calls[0][2]["instance_id"] == "gateway-1"
+    assert calls[-1][0:2] == ("POST", "/v1/instances/gateway-1/deregister")
 
 
 def test_gateway_remote_cli_end_to_end() -> None:
@@ -330,7 +331,7 @@ def test_gateway_remote_cli_end_to_end() -> None:
     _wait(ManagementClient(url))
     runner = CliRunner()
     try:
-        for command in ("health", "upstreams", "sessions", "transport", "config", "inspect"):
+        for command in ("health", "upstreams", "sessions", "transport", "config", "registry-status", "inspect"):
             result = runner.invoke(gateway_cli, [command, "--management-url", url, "--json"])
             assert result.exit_code == 0, (command, result.output, result.exception)
         result = runner.invoke(gateway_cli, [

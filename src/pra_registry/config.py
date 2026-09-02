@@ -34,6 +34,17 @@ class RegistryObservabilityConfig(BaseModel):
     otel_endpoint: str | None = None
 
 
+class InstanceRegistrationPolicy(BaseModel):
+    """Admission and liveness policy for self-registering runtimes."""
+
+    model_config = ConfigDict(extra="forbid")
+    allowed_identities: list[str] = Field(default_factory=list)
+    allowed_environments: list[str] = Field(default_factory=list)
+    allowed_clusters: list[str] = Field(default_factory=list)
+    instance_name_pattern: str | None = None
+    offline_after_seconds: int = Field(default=90, ge=15, le=86_400)
+
+
 class RegistryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     host: str = "127.0.0.1"
@@ -41,6 +52,7 @@ class RegistryConfig(BaseModel):
     database_url: str = "sqlite:///./pra-registry.db"
     auth: RegistryAuthConfig = Field(default_factory=RegistryAuthConfig)
     observability: RegistryObservabilityConfig = Field(default_factory=RegistryObservabilityConfig)
+    instance_registration: InstanceRegistrationPolicy = Field(default_factory=InstanceRegistrationPolicy)
 
     def validate_binding(self) -> None:
         if self.auth.mode == "none" and self.host not in {"127.0.0.1", "localhost", "::1"}:

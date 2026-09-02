@@ -1,0 +1,34 @@
+services:
+  pra-registry:
+    image: einnovator/pra-registry:latest
+    environment:
+      PRA_REGISTRY_TOKEN: ${PRA_REGISTRY_TOKEN:?set PRA_REGISTRY_TOKEN}
+    ports:
+      - "9200:9200"
+
+  pra-gateway:
+    image: einnovator/pra-runtime:latest
+    command:
+      - pra
+      - gateway
+      - serve
+      - --backend
+      - vllm
+      - --backend-url
+      - http://vllm:8000/v1
+      - --management-api
+      - --management-host
+      - 0.0.0.0
+      - --registry-url
+      - http://pra-registry:9200
+      - --registry-token-env
+      - PRA_REGISTRY_TOKEN
+      - --registry-instance-name
+      - gateway-compose
+    environment:
+      PRA_REGISTRY_TOKEN: ${PRA_REGISTRY_TOKEN:?set PRA_REGISTRY_TOKEN}
+    depends_on:
+      - pra-registry
+
+# Persist .pra/instances in production so generated IDs survive replacement.
+# Advertised management and inference URLs must be routable from Control Plane.

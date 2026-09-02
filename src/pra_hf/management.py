@@ -31,6 +31,8 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
+from .registry_registration import RegistryRegistrationClient, RuntimeRegistryConfig
+
 
 MANAGEMENT_PROTOCOL = "pra-management/1"
 API_PREFIX = "/v1/pra"
@@ -98,6 +100,7 @@ class ManagementAPIConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = Field(default=9101, ge=1, le=65535)
     auth: ManagementAuthConfig = Field(default_factory=ManagementAuthConfig)
+    registry: RuntimeRegistryConfig = Field(default_factory=RuntimeRegistryConfig)
     metrics_url: str | None = None
     trace_backend_url: str | None = None
     grafana_url: str | None = None
@@ -149,6 +152,17 @@ class ManagementAPIConfig(BaseModel):
             auth["token"] = os.environ["PRA_MANAGEMENT_TOKEN"]
         if auth:
             data["auth"] = auth
+        registry = dict(data.get("registry") or {})
+        if os.environ.get("PRA_REGISTRY_URL"):
+            registry.update({"enabled": True, "url": os.environ["PRA_REGISTRY_URL"]})
+        registry_token_env = os.environ.get("PRA_REGISTRY_TOKEN_ENV")
+        if registry_token_env or os.environ.get("PRA_REGISTRY_TOKEN"):
+            registry["auth"] = {
+                **dict(registry.get("auth") or {}),
+                "type": "bearer", "token_env": registry_token_env or "PRA_REGISTRY_TOKEN",
+            }
+        if registry:
+            data["registry"] = registry
         return cls.model_validate(data)
 
 
@@ -382,6 +396,7 @@ class ManagementProvider:
         self.audit: deque[AuditEvent] = deque(maxlen=500)
         self._idempotency: dict[tuple[str, str, str], tuple[str, ActionResult]] = {}
         self._lock = threading.RLock()
+        self.registry_reporter: RegistryRegistrationClient | None = None
 
     def instance(self) -> EngineInstance:
         model_names = tuple(row.model_id for row in self.models)
@@ -444,6 +459,65 @@ class ManagementProvider:
             "in_sync": not self.drift_fields,
             "drift_fields": list(self.drift_fields),
         }
+
+    def registry_state(self) -> dict[str, Any]:
+        if self.registry_reporter is None:
+            return {"enabled": False, "status": "disabled", "instance_id": self.instance_id}
+        return self.registry_reporter.status()
+
+    def registry_payload(self, settings: ManagementAPIConfig, instance_id: str) -> dict[str, Any]:
+        """Build the privacy-safe Registry observation for this engine."""
+
+        identity = settings.registry.instance
+        scheme = "https" if settings.tls_certfile else "http"
+        advertised_host = identity.host or (socket.gethostname() if settings.host in {"0.0.0.0", "::"} else settings.host)
+        management_url = identity.management_url or f"{scheme}://{advertised_host}:{settings.port}"
+        config = self.config_state()
+        return {
+            "instance_id": instance_id,
+            "instance_type": "ENGINE",
+            "name": identity.name or f"{self.engine}-{advertised_host}",
+            "host": advertised_host,
+            "management_url": management_url,
+            "inference_url": identity.inference_url or self.effective_config.get("inference_url"),
+            "pra_version": _package_version("pra-hf"),
+            "component_version": _package_version("pra-hf"),
+            "engine_kind": self.engine,
+            "engine_version": self.engine_version,
+            "health": self.instance().health,
+            "started_at": self.started_at,
+            "capabilities": self.capabilities().model_dump(mode="json"),
+            "models": [row.model_dump(mode="json") for row in self.models],
+            "runtime_summary": {
+                "profiles": [row.name for row in self.profiles],
+                "resource_count": len(self._resource_rows()),
+                "session_count": len(self._session_rows()),
+            },
+            "observability": self.observability(settings).model_dump(mode="json"),
+            "observed_revision": self.observed_revision,
+            "desired_revision": self.desired_revision,
+            "in_sync": not self.drift_fields,
+            "drift_fields": list(self.drift_fields),
+        }
+
+    def apply_registry_desired(self, value: Mapping[str, Any]) -> None:
+        """Record desired-state drift without applying destructive changes."""
+
+        desired = value.get("desired") if isinstance(value, Mapping) else None
+        desired_revision = value.get("desired_revision") if isinstance(value, Mapping) else None
+        differences: list[str] = []
+        if isinstance(desired, Mapping):
+            model = self.models[0] if self.models else None
+            comparisons = {
+                "model": (desired.get("desired_model_id"), model.model_id if model else None),
+                "bundle": (desired.get("desired_bundle_id"), model.pra_bundle_id if model else None),
+                "profile": (desired.get("desired_profile_id"), model.profile if model else None),
+                "mode": (desired.get("desired_mode"), model.execution_mode if model else None),
+            }
+            differences = [name for name, (expected, actual) in comparisons.items() if expected is not None and expected != actual]
+        with self._lock:
+            self.desired_revision = int(desired_revision) if desired_revision is not None else None
+            self.drift_fields = differences
 
     def state(self) -> dict[str, Any]:
         return {
@@ -616,6 +690,11 @@ class ManagementProvider:
             self.desired_revision = self.observed_revision
             self.drift_fields = []
         self.record_audit("CONFIG_CHANGED", actor, request_id, "success", {"old": old, "new": applied})
+        if self.registry_reporter is not None:
+            try:
+                self.registry_reporter.publish_observed()
+            except Exception:
+                pass
         return self.config_state()
 
     def action(self, name: str, request: ActionRequest, actor: Actor, request_id: str) -> ActionResult:
@@ -677,6 +756,11 @@ class ManagementProvider:
             "maintenance": "MAINTENANCE_TRIGGERED",
         }[name]
         self.record_audit(event, actor, request_id, "success", {"resource_id": request.resource_id})
+        if self.registry_reporter is not None:
+            try:
+                self.registry_reporter.publish_observed()
+            except Exception:
+                pass
         return result
 
     def record_audit(
@@ -762,6 +846,16 @@ def create_management_app(provider: ManagementProvider, settings: ManagementAPIC
     @app.get(f"{API_PREFIX}/state", tags=["engine"])
     def state(actor: Actor = Depends(require("pra:read"))):
         return provider.state()
+
+    @app.get(f"{API_PREFIX}/registry", tags=["registry"])
+    def registry_state(actor: Actor = Depends(require("pra:read"))):
+        return provider.registry_state()
+
+    @app.post(f"{API_PREFIX}/registry/register", tags=["registry"])
+    def registry_register(actor: Actor = Depends(require("pra:admin"))):
+        if provider.registry_reporter is None:
+            raise ManagementAPIError(409, "REGISTRY_DISABLED", "Registry registration is not configured.")
+        return provider.registry_reporter.register_now()
 
     @app.get(f"{API_PREFIX}/models", response_model=Page, tags=["models"])
     def models(
@@ -881,16 +975,23 @@ def serve_management_api(
     import uvicorn
 
     settings.validate_binding()
-    uvicorn.run(
-        create_management_app(provider, settings),
-        host=settings.host,
-        port=settings.port,
-        log_level=log_level,
-        ssl_certfile=settings.tls_certfile,
-        ssl_keyfile=settings.tls_keyfile,
-        ssl_ca_certs=settings.tls_ca_certs,
-        ssl_cert_reqs=ssl.CERT_REQUIRED if settings.auth.mode == AuthMode.MTLS else ssl.CERT_NONE,
-    )
+    reporter = _configure_registry_reporter(provider, settings)
+    if reporter is not None:
+        reporter.start()
+    try:
+        uvicorn.run(
+            create_management_app(provider, settings),
+            host=settings.host,
+            port=settings.port,
+            log_level=log_level,
+            ssl_certfile=settings.tls_certfile,
+            ssl_keyfile=settings.tls_keyfile,
+            ssl_ca_certs=settings.tls_ca_certs,
+            ssl_cert_reqs=ssl.CERT_REQUIRED if settings.auth.mode == AuthMode.MTLS else ssl.CERT_NONE,
+        )
+    finally:
+        if reporter is not None:
+            reporter.stop()
 
 
 def start_management_api(
@@ -917,16 +1018,46 @@ def start_management_api(
     thread = threading.Thread(target=server.run, name="pra-management", daemon=True)
     thread.start()
     server.pra_thread = thread
+    deadline = time.monotonic() + 5
+    while not getattr(server, "started", False) and thread.is_alive() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    reporter = _configure_registry_reporter(provider, settings)
+    if reporter is not None:
+        try:
+            reporter.start()
+        except Exception:
+            server.should_exit = True
+            thread.join(timeout=5)
+            raise
+    server.pra_registry_reporter = reporter
     return server
 
 
 def stop_management_api(server: Any | None, timeout: float = 5.0) -> None:
     if server is None:
         return
+    reporter = getattr(server, "pra_registry_reporter", None)
+    if reporter is not None:
+        reporter.stop(timeout=min(timeout, 3))
     server.should_exit = True
     thread = getattr(server, "pra_thread", None)
     if thread is not None:
         thread.join(timeout=timeout)
+
+
+def _configure_registry_reporter(
+    provider: ManagementProvider, settings: ManagementAPIConfig,
+) -> RegistryRegistrationClient | None:
+    if not settings.registry.enabled or not settings.registry.url:
+        return None
+    reporter = RegistryRegistrationClient(
+        settings.registry, "ENGINE",
+        lambda instance_id: provider.registry_payload(settings, instance_id),
+        desired_callback=provider.apply_registry_desired,
+    )
+    provider.instance_id = reporter.instance_id
+    provider.registry_reporter = reporter
+    return reporter
 
 
 class _Authenticator:

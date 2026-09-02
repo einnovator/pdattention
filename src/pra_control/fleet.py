@@ -29,7 +29,10 @@ class FleetService:
         )
 
     async def targets(self) -> list[EngineTargetConfig]:
-        values: dict[str, EngineTargetConfig] = {row.name: row for row in self.config.fleet.engines}
+        values: dict[str, EngineTargetConfig] = (
+            {row.name: row for row in self.config.fleet.engines}
+            if self.config.fleet.discovery_mode in {"static", "combined"} else {}
+        )
         if self.config.fleet.discovery_mode in {"manual", "combined"}:
             for row in self.store.manual_engines():
                 metadata = dict(row.get("metadata_payload") or {})
@@ -39,14 +42,16 @@ class FleetService:
                 )
         if self.registry and self.config.fleet.discovery_mode in {"registry", "combined"}:
             try:
-                for deployment in await self.registry.deployments():
-                    selector = dict(deployment.get("engine_instance_selector") or {})
-                    if selector.get("management_url"):
-                        name = str(selector.get("name") or deployment["id"])
+                for instance in await self.registry.instances(instance_type="ENGINE"):
+                    if instance.get("management_url") and instance.get("status") != "OFFLINE":
+                        name = str(instance.get("name") or instance["instance_id"])
                         values.setdefault(name, EngineTargetConfig(
-                            name=name, management_url=selector["management_url"],
-                            token_env=selector.get("token_env"), environment=deployment.get("environment", "unknown"),
-                            cluster=deployment.get("cluster", "unknown"), labels=dict(selector.get("labels") or {}),
+                            name=name, management_url=instance["management_url"],
+                            environment=instance.get("environment", "unknown"),
+                            region=instance.get("region", "unknown"),
+                            cluster=instance.get("cluster", "unknown"),
+                            namespace=instance.get("namespace", "default"),
+                            host=instance.get("host"), labels=dict(instance.get("labels") or {}),
                         ))
             except ServiceClientError:
                 pass

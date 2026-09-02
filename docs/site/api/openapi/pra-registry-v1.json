@@ -723,6 +723,418 @@
         "title": "HuggingFaceImportRequest",
         "type": "object"
       },
+      "ManagedInstanceHeartbeat": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capabilities"
+          },
+          "health": {
+            "default": "healthy",
+            "title": "Health",
+            "type": "string"
+          },
+          "observed_revision": {
+            "minimum": 0.0,
+            "title": "Observed Revision",
+            "type": "integer"
+          },
+          "runtime_summary": {
+            "additionalProperties": true,
+            "title": "Runtime Summary",
+            "type": "object"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "number"
+          },
+          "uptime_seconds": {
+            "minimum": 0.0,
+            "title": "Uptime Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "uptime_seconds",
+          "observed_revision",
+          "timestamp"
+        ],
+        "title": "ManagedInstanceHeartbeat",
+        "type": "object"
+      },
+      "ManagedInstanceObservedPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capabilities"
+          },
+          "component_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component Version"
+          },
+          "drift_fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drift Fields"
+          },
+          "engine_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Version"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "in_sync": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Sync"
+          },
+          "inference_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inference Url"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
+          "management_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Management Url"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "observability": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observability"
+          },
+          "observed_revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Revision"
+          },
+          "runtime_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Summary"
+          }
+        },
+        "title": "ManagedInstanceObservedPatch",
+        "type": "object"
+      },
+      "ManagedInstanceRegister": {
+        "additionalProperties": false,
+        "description": "Idempotent self-registration payload for one runtime instance.",
+        "properties": {
+          "capabilities": {
+            "additionalProperties": true,
+            "title": "Capabilities",
+            "type": "object"
+          },
+          "cluster": {
+            "default": "default",
+            "title": "Cluster",
+            "type": "string"
+          },
+          "component_version": {
+            "title": "Component Version",
+            "type": "string"
+          },
+          "desired_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Revision"
+          },
+          "drift_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drift Fields",
+            "type": "array"
+          },
+          "engine_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Kind"
+          },
+          "engine_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Version"
+          },
+          "environment": {
+            "default": "development",
+            "title": "Environment",
+            "type": "string"
+          },
+          "health": {
+            "default": "healthy",
+            "title": "Health",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "in_sync": {
+            "default": true,
+            "title": "In Sync",
+            "type": "boolean"
+          },
+          "inference_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inference Url"
+          },
+          "instance_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "instance_type": {
+            "$ref": "#/components/schemas/ManagedInstanceType"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "management_url": {
+            "title": "Management Url",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "models": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "default": "default",
+            "title": "Namespace",
+            "type": "string"
+          },
+          "observability": {
+            "additionalProperties": true,
+            "title": "Observability",
+            "type": "object"
+          },
+          "observed_revision": {
+            "default": 1,
+            "minimum": 0.0,
+            "title": "Observed Revision",
+            "type": "integer"
+          },
+          "pra_version": {
+            "title": "Pra Version",
+            "type": "string"
+          },
+          "region": {
+            "default": "local",
+            "title": "Region",
+            "type": "string"
+          },
+          "registration_source": {
+            "$ref": "#/components/schemas/RegistrationSource",
+            "default": "SELF"
+          },
+          "runtime_summary": {
+            "additionalProperties": true,
+            "title": "Runtime Summary",
+            "type": "object"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "number"
+          }
+        },
+        "required": [
+          "instance_id",
+          "instance_type",
+          "name",
+          "host",
+          "management_url",
+          "pra_version",
+          "component_version",
+          "started_at"
+        ],
+        "title": "ManagedInstanceRegister",
+        "type": "object"
+      },
+      "ManagedInstanceType": {
+        "description": "Runtime kinds discoverable through the Registry.",
+        "enum": [
+          "ENGINE",
+          "GATEWAY"
+        ],
+        "title": "ManagedInstanceType",
+        "type": "string"
+      },
       "ModelCreate": {
         "additionalProperties": false,
         "properties": {
@@ -1387,6 +1799,15 @@
         ],
         "title": "QualificationCreate",
         "type": "object"
+      },
+      "RegistrationSource": {
+        "enum": [
+          "SELF",
+          "MANUAL",
+          "DISCOVERY"
+        ],
+        "title": "RegistrationSource",
+        "type": "string"
       },
       "ValidationError": {
         "properties": {
@@ -2670,6 +3091,418 @@
         "summary": "Import Huggingface",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/v1/instances": {
+      "get": {
+        "operationId": "list_instances_v1_instances_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "instance_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instance Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cluster",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Instances",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/v1/instances/register": {
+      "post": {
+        "operationId": "register_instance_v1_instances_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedInstanceRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Instance",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/v1/instances/{instance_id}": {
+      "get": {
+        "operationId": "get_instance_v1_instances__instance_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "title": "Instance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Instance",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/v1/instances/{instance_id}/deregister": {
+      "post": {
+        "operationId": "deregister_instance_v1_instances__instance_id__deregister_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "title": "Instance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Deregister Instance",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/v1/instances/{instance_id}/desired": {
+      "get": {
+        "operationId": "desired_instance_v1_instances__instance_id__desired_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "title": "Instance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Desired Instance",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/v1/instances/{instance_id}/heartbeat": {
+      "post": {
+        "operationId": "heartbeat_instance_v1_instances__instance_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "title": "Instance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedInstanceHeartbeat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Heartbeat Instance",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/v1/instances/{instance_id}/observed": {
+      "patch": {
+        "operationId": "patch_instance_v1_instances__instance_id__observed_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "title": "Instance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedInstanceObservedPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Instance",
+        "tags": [
+          "instances"
         ]
       }
     },

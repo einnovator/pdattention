@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
 import json
 from typing import Any, TypeVar
 
@@ -20,6 +21,10 @@ from .contracts import (
     DeploymentCreate,
     DeploymentPatch,
     DeploymentResolveRequest,
+    ManagedInstanceHeartbeat,
+    ManagedInstanceObservedPatch,
+    ManagedInstanceRegister,
+    ManagedInstanceStatus,
     ModelCreate,
     ModelPatch,
     PolicyCreate,
@@ -36,6 +41,7 @@ from .database import (
     BundleRecord,
     CompatibilityRecord,
     DeploymentRecord,
+    ManagedInstanceRecord,
     ModelRecord,
     PolicyRecord,
     ProfileRecord,
@@ -302,6 +308,207 @@ class RegistryService:
             row = self._get(DeploymentRecord, resource_id)
             changes["desired_revision"] = row.desired_revision + 1
         return self._patch(DeploymentRecord, resource_id, changes, "deployment")
+
+    # Runtime instances advertise observed state; deployments continue to own intent.
+    def register_instance(
+        self, value: ManagedInstanceRegister, *, credential_identity: str | None = None,
+    ) -> dict[str, Any]:
+        payload = value.model_dump(mode="json")
+        instance_id = value.instance_id
+        row = self.session.get(ManagedInstanceRecord, instance_id)
+        now = datetime.now(timezone.utc)
+        if row is not None:
+            incompatible = {
+                "instance_type": (row.instance_type, value.instance_type.value),
+                "name": (row.name, value.name),
+                "engine_kind": (row.engine_kind, value.engine_kind),
+            }
+            conflicts = {
+                key: pair for key, pair in incompatible.items()
+                if pair[0] is not None and pair[1] is not None and pair[0] != pair[1]
+            }
+            if conflicts:
+                self._audit(
+                    "INSTANCE_IDENTITY_CONFLICT", "instance", instance_id,
+                    record_dict(row), {"conflicts": conflicts},
+                )
+                self.session.commit()
+                raise RegistryConflict(
+                    f"instance {instance_id!r} is already registered with incompatible identity"
+                )
+            before = record_dict(row)
+            for key, item in payload.items():
+                target = "metadata_payload" if key == "metadata" else key
+                if key not in {"instance_id", "registration_source"}:
+                    setattr(row, target, item)
+            row.health = value.health
+            row.status = self._status(value.health)
+            row.last_heartbeat = now
+            row.deregistered_at = None
+            row.credential_identity = credential_identity or row.credential_identity
+            self.session.flush()
+            self._audit("INSTANCE_REGISTERED", "instance", instance_id, before, record_dict(row))
+        else:
+            payload["metadata_payload"] = payload.pop("metadata")
+            payload.update({
+                "status": self._status(value.health),
+                "last_heartbeat": now,
+                "registered_at": now,
+                "credential_identity": credential_identity,
+                "deregistered_at": None,
+            })
+            row = ManagedInstanceRecord(**payload)
+            self.session.add(row)
+            self.session.flush()
+            self._audit("INSTANCE_REGISTERED", "instance", instance_id, None, record_dict(row))
+        self.session.commit()
+        return self._instance_dict(row)
+
+    def heartbeat_instance(
+        self, instance_id: str, value: ManagedInstanceHeartbeat,
+    ) -> dict[str, Any]:
+        row = self._get(ManagedInstanceRecord, instance_id)
+        if row.deregistered_at is not None:
+            raise RegistryConflict("deregistered instance must register again before heartbeat")
+        before_status = row.status
+        row.health = value.health
+        row.status = self._status(value.health)
+        row.last_heartbeat = datetime.now(timezone.utc)
+        row.observed_revision = value.observed_revision
+        row.runtime_summary = dict(value.runtime_summary)
+        if value.capabilities is not None:
+            row.capabilities = dict(value.capabilities)
+        self.session.flush()
+        # Heartbeats retain only a compact status transition in the audit stream.
+        self._audit(
+            "INSTANCE_HEARTBEAT", "instance", instance_id,
+            {"status": before_status},
+            {"status": row.status, "observed_revision": row.observed_revision},
+        )
+        self.session.commit()
+        return self._instance_dict(row)
+
+    def patch_instance_observed(
+        self, instance_id: str, value: ManagedInstanceObservedPatch,
+    ) -> dict[str, Any]:
+        row = self._get(ManagedInstanceRecord, instance_id)
+        before = self._instance_dict(row)
+        for key, item in value.model_dump(exclude_unset=True, mode="json").items():
+            setattr(row, "metadata_payload" if key == "metadata" else key, item)
+        if value.health is not None:
+            row.status = self._status(value.health)
+        row.last_heartbeat = datetime.now(timezone.utc)
+        self.session.flush()
+        self._audit("INSTANCE_UPDATED", "instance", instance_id, before, self._instance_dict(row))
+        self.session.commit()
+        return self._instance_dict(row)
+
+    def deregister_instance(self, instance_id: str) -> dict[str, Any]:
+        row = self._get(ManagedInstanceRecord, instance_id)
+        before = self._instance_dict(row)
+        now = datetime.now(timezone.utc)
+        row.status = ManagedInstanceStatus.OFFLINE.value
+        row.health = "offline"
+        row.deregistered_at = now
+        row.last_heartbeat = now
+        self.session.flush()
+        self._audit("INSTANCE_DEREGISTERED", "instance", instance_id, before, self._instance_dict(row))
+        self.session.commit()
+        return self._instance_dict(row)
+
+    def get_instance(self, instance_id: str, *, offline_after_seconds: int = 90) -> dict[str, Any]:
+        row = self._get(ManagedInstanceRecord, instance_id)
+        self._mark_offline((row,), offline_after_seconds)
+        self.session.commit()
+        return self._instance_dict(row)
+
+    def list_instances(
+        self, limit: int, offset: int, *, offline_after_seconds: int = 90,
+        instance_type: str | None = None, environment: str | None = None,
+        cluster: str | None = None, status: str | None = None,
+    ) -> dict[str, Any]:
+        rows = self.session.scalars(select(ManagedInstanceRecord)).all()
+        self._mark_offline(rows, offline_after_seconds)
+        self.session.commit()
+        filtered = [row for row in rows if (
+            (instance_type is None or row.instance_type == instance_type)
+            and (environment is None or row.environment == environment)
+            and (cluster is None or row.cluster == cluster)
+            and (status is None or row.status == status)
+        )]
+        filtered.sort(key=lambda row: (row.environment, row.cluster, row.name, row.instance_id))
+        return {
+            "items": [self._instance_dict(row) for row in filtered[offset:offset + limit]],
+            "total": len(filtered), "limit": limit, "offset": offset,
+        }
+
+    def desired_instance(self, instance_id: str) -> dict[str, Any]:
+        instance = self._get(ManagedInstanceRecord, instance_id)
+        deployments = self.session.scalars(select(DeploymentRecord).where(
+            DeploymentRecord.environment == instance.environment,
+            DeploymentRecord.cluster == instance.cluster,
+        )).all()
+        matches = []
+        for deployment in deployments:
+            selector = dict(deployment.engine_instance_selector or {})
+            labels = dict(selector.get("labels") or {})
+            if selector.get("name") and selector["name"] != instance.name:
+                continue
+            if selector.get("host") and selector["host"] != instance.host:
+                continue
+            if any((instance.labels or {}).get(key) != item for key, item in labels.items()):
+                continue
+            matches.append(deployment)
+        selected = sorted(matches, key=lambda row: (-row.desired_revision, row.id))[0] if matches else None
+        return {
+            "instance_id": instance_id,
+            "desired_revision": selected.desired_revision if selected else None,
+            "observed_revision": instance.observed_revision,
+            "in_sync": instance.in_sync,
+            "drift_fields": list(instance.drift_fields or []),
+            "desired": record_dict(selected) if selected else None,
+        }
+
+    def _mark_offline(
+        self, rows: Any, offline_after_seconds: int,
+    ) -> None:
+        threshold = datetime.now(timezone.utc) - timedelta(seconds=offline_after_seconds)
+        for row in rows:
+            heartbeat = row.last_heartbeat
+            if heartbeat is not None and heartbeat.tzinfo is None:
+                heartbeat = heartbeat.replace(tzinfo=timezone.utc)
+            if (
+                row.deregistered_at is None
+                and row.status != ManagedInstanceStatus.OFFLINE.value
+                and heartbeat is not None
+                and heartbeat < threshold
+            ):
+                before = {"status": row.status, "last_heartbeat": row.last_heartbeat}
+                row.status = ManagedInstanceStatus.OFFLINE.value
+                row.health = "offline"
+                self._audit(
+                    "INSTANCE_OFFLINE", "instance", row.instance_id,
+                    before, {"status": row.status, "last_heartbeat": row.last_heartbeat},
+                )
+
+    @staticmethod
+    def _status(health: str) -> str:
+        value = health.lower()
+        if value in {"healthy", "ok", "online", "ready"}:
+            return ManagedInstanceStatus.ONLINE.value
+        if value in {"offline", "stopped", "unavailable"}:
+            return ManagedInstanceStatus.OFFLINE.value
+        return ManagedInstanceStatus.DEGRADED.value
+
+    @staticmethod
+    def _instance_dict(row: ManagedInstanceRecord) -> dict[str, Any]:
+        value = record_dict(row)
+        value["metadata"] = value.pop("metadata_payload", {})
+        value["registration"] = {
+            "source": value.pop("registration_source"),
+            "credential_identity": value.pop("credential_identity"),
+        }
+        return value
 
     # Policies
     def create_policy(self, value: PolicyCreate) -> dict[str, Any]:

@@ -47,6 +47,15 @@ Unauthenticated mode is accepted only on a loopback bind. Production
 deployments should use a private network, TLS, and bearer, OIDC, or mTLS
 authentication.
 
+## Registry registration
+
+When a Registry URL is configured, the management runtime registers after its
+listener starts, heartbeats in the background, and publishes changed observed
+state. Inspect or retry it with `pra engine registry-status` and
+`pra engine register`. `GET /v1/pra/registry` exposes only status and counters;
+`POST /v1/pra/registry/register` performs an explicit retry. See
+[Runtime Auto-Registration](../registry/runtime-auto-registration.md).
+
 ## Desired and observed state
 
 The API is primarily an observed-state interface. `GET /v1/pra/config` reports

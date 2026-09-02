@@ -182,6 +182,17 @@ _get_command("models", "/v1/pra/models", "List loaded model identities.")
 _get_command("profiles", "/v1/pra/profiles", "List effective PRA profiles.")
 _get_command("capabilities", "/v1/pra/capabilities", "Show qualified local engine capabilities.")
 _get_command("audit", "/v1/pra/audit", "Show recent local management audit events.")
+_get_command("registry-status", "/v1/pra/registry", "Show Registry registration and heartbeat state.")
+
+
+@engine_cli.command("register")
+@_target_options
+@_output_options
+def register(target, management_url, token, json_output, yaml_output) -> None:
+    """Retry this engine's configured Registry registration immediately."""
+
+    client = _client(target, management_url, _registered_token(target, token, management_url))
+    _emit(client.request("POST", "/v1/pra/registry/register", {}), json_output, yaml_output)
 
 
 @engine_cli.command("inspect")
@@ -255,7 +266,12 @@ def action(action, target, management_url, token, resource_id, profile, bundle, 
 @click.option("--tls-certfile", type=click.Path(exists=True, dir_okay=False))
 @click.option("--tls-keyfile", type=click.Path(exists=True, dir_okay=False))
 @click.option("--tls-ca-certs", type=click.Path(exists=True, dir_okay=False))
-def serve(engine, engine_version, model, revision, inference_url, config_path, host, port, auth_mode, token_env, metrics_url, trace_backend_url, grafana_url, tls_certfile, tls_keyfile, tls_ca_certs) -> None:
+@click.option("--registry-url")
+@click.option("--registry-token-env", default="PRA_REGISTRY_TOKEN", show_default=True)
+@click.option("--registry-instance-id")
+@click.option("--registry-instance-name")
+@click.option("--registry-required", is_flag=True)
+def serve(engine, engine_version, model, revision, inference_url, config_path, host, port, auth_mode, token_env, metrics_url, trace_backend_url, grafana_url, tls_certfile, tls_keyfile, tls_ca_certs, registry_url, registry_token_env, registry_instance_id, registry_instance_name, registry_required) -> None:
     """Start an explicitly enabled local management sidecar on a separate port."""
 
     from .management import (
@@ -321,6 +337,16 @@ def serve(engine, engine_version, model, revision, inference_url, config_path, h
         if value is not None:
             values[key] = value
     settings = ManagementAPIConfig.from_mapping(values)
+    if registry_url:
+        from .registry_registration import RegistryClientAuth, RuntimeInstanceIdentity, RuntimeRegistryConfig
+        settings.registry = RuntimeRegistryConfig(
+            enabled=True, url=registry_url, required=registry_required,
+            auth=RegistryClientAuth(type="bearer", token_env=registry_token_env),
+            instance=RuntimeInstanceIdentity(
+                id=registry_instance_id, name=registry_instance_name,
+                inference_url=inference_url,
+            ),
+        )
     click.echo(f"PRA management API ({engine}) on http://{settings.host}:{settings.port}")
     click.echo(f"OpenAPI: http://{settings.host}:{settings.port}/openapi.json")
     click.echo(f"Swagger: http://{settings.host}:{settings.port}/docs")
