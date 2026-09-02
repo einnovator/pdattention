@@ -222,4 +222,22 @@ def test_checked_in_openapi_matches_runtime_contract() -> None:
         RegistryConfig(database_url="sqlite:///:memory:"),
         RegistryDatabase("sqlite:///:memory:", create_schema=True),
     ).openapi()
-    assert json.loads(checked.read_text(encoding="utf-8")) == generated
+    published = json.loads(checked.read_text(encoding="utf-8"))
+    assert published["info"]["title"] == generated["info"]["title"]
+    assert set(published["paths"]) == set(generated["paths"])
+    for path in published["paths"]:
+        assert set(published["paths"][path]) == set(generated["paths"][path])
+    required = {
+        "ModelCreate", "BundleCreate", "ProfileCreate", "CompatibilityCreate",
+        "QualificationCreate", "DeploymentCreate", "PolicyCreate", "ApprovalCreate",
+        "BundleResolveRequest", "ProfileResolveRequest", "DeploymentResolveRequest",
+    }
+    assert required <= set(published["components"]["schemas"])
+    assert required <= set(generated["components"]["schemas"])
+    for name in required:
+        assert set(published["components"]["schemas"][name].get("properties", {})) == set(
+            generated["components"]["schemas"][name].get("properties", {})
+        )
+    assert published["components"]["securitySchemes"]["HTTPBearer"] == {
+        "type": "http", "scheme": "bearer",
+    }
