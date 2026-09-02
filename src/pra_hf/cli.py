@@ -15,6 +15,7 @@ from .agent_profiles import AgentLauncher, AgentProfileRegistry, load_mcp_config
 from .bundle import (
     BundleBuilder,
     BundleResolver,
+    HubBundleCatalog,
     HubPublisher,
     PRAModelBundle,
     TrustedBundleRegistry,
@@ -166,6 +167,33 @@ def _emit_product_inspect(value: Mapping[str, Any]) -> None:
         if bundle:
             click.echo(f"  Base revision: {_metric(bundle['base_model'].get('revision'))}")
             click.echo("  Compatibility: exact")
+
+
+def _emit_bundle_catalog(
+    value: Mapping[str, Any], *, json_output: bool, yaml_output: bool
+) -> None:
+    """Render bundle discovery compactly while preserving structured output."""
+
+    if json_output or yaml_output:
+        _emit(value, json_output=json_output, yaml_output=yaml_output)
+        return
+    click.echo(f"PRA bundle catalog ({value['count']})")
+    click.echo(f"Source: {value['source']}")
+    for row in value["bundles"]:
+        repo = row.get("bundle_repo", row.get("repo_id"))
+        click.echo(f"\n{repo}")
+        click.echo(f"  Base model: {_metric(row.get('base_model'))}")
+        click.echo(f"  Qualification: {_metric(row.get('qualification'))}")
+        click.echo(f"  Trust: {_metric(row.get('trust'))}")
+        if "auto_resolvable" in row:
+            click.echo(f"  Auto resolvable: {row['auto_resolvable']}")
+        engines = row.get("engine_compatibility")
+        if engines:
+            rendered = ", ".join(f"{name}={status}" for name, status in engines.items())
+            click.echo(f"  Engines: {rendered}")
+        profiles = row.get("profiles") or ()
+        if profiles:
+            click.echo(f"  Profiles: {', '.join(profiles)}")
 
 
 def _emit_qualification(value: Mapping[str, Any], run_directory: Path | None = None) -> None:
@@ -780,7 +808,7 @@ def bundle_resolve(model, engine, revision, pra_bundle, json_output, yaml_output
 
 @cli.group("hf")
 def hf_cli() -> None:
-    """Authenticate, pull, and publish artifacts on Hugging Face Hub."""
+    """Discover, authenticate, pull, and publish Hugging Face artifacts."""
 
 
 @hf_cli.command("login")
@@ -790,6 +818,62 @@ def hf_login() -> None:
     except ImportError as error:
         raise click.ClickException("Install the hf-hub optional dependency.") from error
     login()
+
+
+@hf_cli.command("list")
+@click.option("--query", help="Filter trusted metadata by a case-insensitive substring.")
+@click.option("--model", help="Require an exact base-model identifier.")
+@click.option("--family", help="Filter by model family or architecture.")
+@click.option("-e", "--engine", help="Require compatibility with this engine.")
+@click.option("--qualification", help="Require an exact qualification tier.")
+@_output_options
+def hf_list(query, model, family, engine, qualification, json_output, yaml_output) -> None:
+    """List pinned PRA bundles trusted for automatic resolution."""
+
+    rows = TrustedBundleRegistry.default().list(
+        query=query,
+        model=model,
+        family=family,
+        engine=engine,
+        qualification=qualification,
+    )
+    _emit_bundle_catalog(
+        {"source": "trusted-registry", "bundles": rows, "count": len(rows)},
+        json_output=json_output,
+        yaml_output=yaml_output,
+    )
+
+
+@hf_cli.command("search")
+@click.argument("query", required=False, default="pra")
+@click.option("--author", default="EInnovator", show_default=True, help="Limit results to one Hub namespace.")
+@click.option("--all-authors", is_flag=True, help="Search all Hub namespaces; results remain untrusted unless registered.")
+@click.option("--limit", type=click.IntRange(min=1, max=100), default=20, show_default=True)
+@_output_options
+def hf_search(query, author, all_authors, limit, json_output, yaml_output) -> None:
+    """Search live Hugging Face metadata for PRA model bundles."""
+
+    try:
+        rows = HubBundleCatalog().search(
+            query,
+            author=None if all_authors else author,
+            limit=limit,
+        )
+    except ImportError as error:
+        raise click.ClickException(str(error)) from error
+    except Exception as error:
+        raise click.ClickException(f"Hugging Face bundle search failed: {error}") from error
+    _emit_bundle_catalog(
+        {
+            "source": "hugging-face-hub",
+            "query": query,
+            "author": None if all_authors else author,
+            "bundles": rows,
+            "count": len(rows),
+        },
+        json_output=json_output,
+        yaml_output=yaml_output,
+    )
 
 
 @hf_cli.command("pull")

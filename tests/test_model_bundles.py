@@ -10,10 +10,11 @@ from click.testing import CliRunner
 
 from pra_hf.bundle import (
     BundleBuilder,
-    HubPublisher,
     BundleRegistryEntry,
     BundleResolver,
     BundleValidationError,
+    HubBundleCatalog,
+    HubPublisher,
     PRAModelBundle,
     TrustedBundleRegistry,
     validate_model_card,
@@ -254,6 +255,96 @@ def test_bundle_cli_card_list_resolve_and_hf_dry_run(tmp_path: Path, monkeypatch
     dry = runner.invoke(cli, ["hf", "push", str(bundle_path), "owner/repo", "--dry-run", "--json"])
     assert dry.exit_code == 0, dry.output
     assert json.loads(dry.output)["schema_version"] == 2
+
+
+def test_hf_list_filters_the_trusted_registry() -> None:
+    result = CliRunner().invoke(
+        cli,
+        ["hf", "list", "--family", "qwen", "--engine", "MLX", "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    value = json.loads(result.output)
+    assert value["source"] == "trusted-registry"
+    assert value["count"] == 3
+    assert all("qwen" in row["base_model"].lower() for row in value["bundles"])
+    assert all("mlx" in row["engine_compatibility"] for row in value["bundles"])
+
+
+def test_hub_catalog_search_marks_only_registry_entries_auto_resolvable() -> None:
+    calls = []
+
+    class FakeApi:
+        def list_models(self, **kwargs):
+            calls.append(kwargs)
+            return [
+                SimpleNamespace(
+                    id="EInnovator/pra-qwen3-0.6b",
+                    tags=["pra"],
+                    cardData={"library_name": "pra", "base_model": "Qwen/Qwen3-0.6B"},
+                    sha="hub-head",
+                    downloads=12,
+                    likes=3,
+                    lastModified=None,
+                    private=False,
+                    gated=False,
+                ),
+                SimpleNamespace(
+                    id="EInnovator/ordinary-model",
+                    tags=["transformers"],
+                    cardData={"library_name": "transformers"},
+                    sha="ignored",
+                ),
+                SimpleNamespace(
+                    id="EInnovator/pra-experimental",
+                    tags=[],
+                    cardData={"base_model": "org/experimental"},
+                    sha="experimental-head",
+                    downloads=1,
+                    likes=0,
+                    lastModified=None,
+                    private=False,
+                    gated=False,
+                ),
+            ]
+
+    rows = HubBundleCatalog(api=FakeApi()).search("qwen", limit=10)
+
+    assert calls[0]["author"] == "EInnovator"
+    assert [row["repo_id"] for row in rows] == [
+        "EInnovator/pra-qwen3-0.6b",
+        "EInnovator/pra-experimental",
+    ]
+    assert rows[0]["auto_resolvable"] is True
+    assert rows[0]["trust"] == "eInnovator-qualified"
+    assert rows[1]["auto_resolvable"] is False
+    assert rows[1]["trust"] == "hub-discovered"
+
+
+def test_hf_search_cli_emits_normalized_live_results(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pra_hf.cli.HubBundleCatalog.search",
+        lambda self, query, author, limit: [
+            {
+                "repo_id": "EInnovator/pra-test",
+                "base_model": "org/test",
+                "qualification": "CONTROLLED",
+                "trust": "eInnovator-qualified",
+                "auto_resolvable": True,
+                "profiles": ["balanced"],
+            }
+        ],
+    )
+
+    result = CliRunner().invoke(
+        cli, ["hf", "search", "test", "--limit", "5", "--json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    value = json.loads(result.output)
+    assert value["source"] == "hugging-face-hub"
+    assert value["author"] == "EInnovator"
+    assert value["bundles"][0]["auto_resolvable"] is True
 
 
 def test_hub_update_checks_remote_manifest_without_full_snapshot(

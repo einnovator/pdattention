@@ -110,6 +110,8 @@ pra model adapt Qwen/Qwen3-1.7B -o .pra/adapters/qwen3
 pra model validate Qwen/Qwen3-1.7B -a .pra/adapters/qwen3
 pra profiles calibrate Qwen/Qwen3-1.7B -s standard -o .pra/runs/qwen3
 pra bundle build .pra/runs/qwen3 -o .pra/bundles/qwen3
+pra hf list --family qwen
+pra hf search qwen --author EInnovator
 pra hf push .pra/bundles/qwen3 owner/Qwen3-PRA --dry-run
 ```
 
@@ -120,7 +122,7 @@ The command groups keep four concepts separate:
 | `model` | architecture inspection and training-free structural adapters |
 | `adapter` | learned routing, memory-use, or late-band adapters |
 | `profiles` | measured semantic and physical calibration |
-| `hf` | Hub authentication and artifact transport only |
+| `hf` | Trusted catalog listing, live Hub search, authentication, and artifact transport |
 
 The gateway accepts product-facing deployment names. Normal help and output do
 not expose research protocol labels:

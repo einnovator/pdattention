@@ -15,6 +15,21 @@ and therefore requires a known structural mapping plus model-specific validation
 
 **Key:** ✅ available/validated · 🧪 partial or engine-dependent · ⏳ qualification pending.
 
+## Discover published bundles
+
+List the immutable catalog packaged with this PRA release, or search current
+Hugging Face metadata without downloading model or bundle weights:
+
+```bash
+pra hf list
+pra hf list --family qwen --engine mlx
+pra hf search llama --author EInnovator
+```
+
+The list command is the authority for `-a auto`. Live search is broader and
+marks whether each result is registry-backed and automatically resolvable.
+Community search results remain explicit opt-in artifacts.
+
 ## Qwen { #qwen }
 
 **Model types:** `qwen2, qwen3`  

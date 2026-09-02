@@ -580,15 +580,42 @@ class TrustedBundleRegistry:
         value = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return cls(BundleRegistryEntry(**entry) for entry in value.get("bundles", ()))
 
-    def list(self, *, model: str | None = None, family: str | None = None) -> list[dict[str, Any]]:
+    def list(
+        self,
+        *,
+        model: str | None = None,
+        family: str | None = None,
+        engine: str | None = None,
+        qualification: str | None = None,
+        query: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return deterministic registry rows matching product-facing filters."""
+
         rows = []
         for entry in self.entries:
             if model and entry.base_model.lower() != model.lower():
                 continue
             if family and family.lower() not in entry.architecture.lower() and family.lower() not in entry.base_model.lower():
                 continue
+            if engine and entry.engine_compatibility.get(engine.lower()) in {None, "unsupported", False}:
+                continue
+            if qualification and entry.qualification.lower() != qualification.lower():
+                continue
+            if query:
+                searchable = " ".join(
+                    (
+                        entry.name,
+                        entry.base_model,
+                        entry.architecture,
+                        entry.bundle_repo,
+                        entry.qualification,
+                        *entry.profiles,
+                    )
+                ).lower()
+                if query.lower() not in searchable:
+                    continue
             rows.append(entry.to_dict())
-        return rows
+        return sorted(rows, key=lambda row: str(row["bundle_repo"]).lower())
 
     def candidates(self, model: str, *, revision: str | None = None, engine: str | None = None) -> list[BundleRegistryEntry]:
         rows = []
@@ -723,6 +750,112 @@ class BundleResolver:
             raise BundleValidationError("Bundle base revision does not match the requested model revision.")
         return BundleResolution(value, "RESOLVED", source, bundle.resolved_revision or revision,
                                 str(bundle.local_path) if bundle.local_path else None, trust, reason, bundle)
+
+
+class HubBundleCatalog:
+    """Read-only discovery of PRA bundles published on Hugging Face Hub.
+
+    Hub search is deliberately separate from ``TrustedBundleRegistry``. A live
+    result is descriptive only; automatic resolution still requires a pinned
+    registry entry with bounded qualification metadata.
+    """
+
+    def __init__(
+        self,
+        api: Any | None = None,
+        registry: TrustedBundleRegistry | None = None,
+    ) -> None:
+        self._api = api
+        self.registry = registry or TrustedBundleRegistry.default()
+
+    def search(
+        self,
+        query: str = "pra",
+        *,
+        author: str | None = "EInnovator",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Search Hub metadata without downloading bundle payloads."""
+
+        api = self._api
+        if api is None:
+            try:
+                from huggingface_hub import HfApi
+            except ImportError as error:
+                raise ImportError(
+                    "Hub bundle search requires the 'hf-hub' optional dependency."
+                ) from error
+            api = HfApi()
+
+        trusted = {
+            entry.bundle_repo.lower(): entry for entry in self.registry.entries
+        }
+        fetch_limit = max(limit * 4, 50)
+        models = api.list_models(
+            author=author,
+            search=query or "pra",
+            full=True,
+            cardData=True,
+            sort="lastModified",
+            direction=-1,
+            limit=fetch_limit,
+        )
+        rows: list[dict[str, Any]] = []
+        for model in models:
+            repo_id = str(
+                getattr(model, "id", None) or getattr(model, "modelId", "")
+            )
+            if not repo_id:
+                continue
+            tags = [str(tag) for tag in (getattr(model, "tags", None) or ())]
+            card = self._card_data(getattr(model, "cardData", None))
+            library_name = str(card.get("library_name", ""))
+            repository_name = repo_id.rsplit("/", 1)[-1].lower()
+            tag_names = {tag.lower() for tag in tags}
+            if not (
+                repository_name.startswith("pra-")
+                or library_name.lower() == "pra"
+                or "pra" in tag_names
+                or "progressive-retrieval-attention" in tag_names
+            ):
+                continue
+
+            entry = trusted.get(repo_id.lower())
+            last_modified = getattr(model, "lastModified", None)
+            if hasattr(last_modified, "isoformat"):
+                last_modified = last_modified.isoformat()
+            base_model = entry.base_model if entry else card.get("base_model")
+            rows.append(
+                {
+                    "repo_id": repo_id,
+                    "url": f"https://huggingface.co/{repo_id}",
+                    "base_model": base_model,
+                    "hub_revision": getattr(model, "sha", None),
+                    "registry_revision": entry.bundle_revision if entry else None,
+                    "qualification": entry.qualification if entry else "UNREGISTERED",
+                    "trust": entry.trust if entry else "hub-discovered",
+                    "auto_resolvable": entry is not None,
+                    "profiles": list(entry.profiles) if entry else [],
+                    "downloads": getattr(model, "downloads", None),
+                    "likes": getattr(model, "likes", None),
+                    "last_modified": last_modified,
+                    "private": bool(getattr(model, "private", False)),
+                    "gated": getattr(model, "gated", False),
+                }
+            )
+            if len(rows) >= limit:
+                break
+        return rows
+
+    @staticmethod
+    def _card_data(value: Any) -> Mapping[str, Any]:
+        if isinstance(value, Mapping):
+            return value
+        to_dict = getattr(value, "to_dict", None)
+        if callable(to_dict):
+            result = to_dict()
+            return result if isinstance(result, Mapping) else {}
+        return {}
 
 
 class HubPublisher:

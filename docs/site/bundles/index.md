@@ -21,9 +21,15 @@ adapter.
 Use one base model and zero or one bundle:
 
 ```bash
+pra hf list --family qwen
+pra hf search qwen
 pra inspect Qwen/Qwen3-0.6B -e hf -a auto
 pra serve Qwen/Qwen3-0.6B -e hf -a auto -p balanced
 ```
+
+`pra hf list` reads the offline, revision-pinned trust registry. `pra hf search`
+queries live Hub metadata and defaults to the `EInnovator` namespace; a search
+result is not trusted or auto-resolvable unless it is also in that registry.
 
 `-a none` disables bundle-specific adapters, not PRA itself. Selected Context
 and generic structural support remain available.

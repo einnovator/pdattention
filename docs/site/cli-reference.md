@@ -1302,6 +1302,93 @@ Token accepted.
 The token has been saved to the configured Hugging Face cache.
 ```
 
+### `pra hf list`
+
+List pinned PRA bundles trusted for automatic resolution.
+
+**Usage**
+
+```text
+pra hf list [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--query` | TEXT | `-` | no | Filter trusted metadata by a case-insensitive substring. |
+| `--model` | TEXT | `-` | no | Require an exact base-model identifier. |
+| `--family` | TEXT | `-` | no | Filter by model family or architecture. |
+| `-e`, `--engine` | TEXT | `-` | no | Require compatibility with this engine. |
+| `--qualification` | TEXT | `-` | no | Require an exact qualification tier. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra hf list --family qwen --engine mlx
+```
+
+**Example output**
+
+```text
+PRA bundle catalog (3)
+Source: trusted-registry
+
+EInnovator/pra-qwen3-0.6b
+  Base model: Qwen/Qwen3-0.6B
+  Qualification: CONTROLLED
+  Trust: eInnovator-qualified
+```
+
+### `pra hf search`
+
+Search live Hugging Face metadata for PRA model bundles.
+
+**Usage**
+
+```text
+pra hf search [OPTIONS] [QUERY]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `QUERY` | no | Optional Hugging Face search text; defaults to `pra`. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--author` | TEXT | `EInnovator` | no | Limit results to one Hub namespace. |
+| `--all-authors` | flag | `off` | no | Search all Hub namespaces; results remain untrusted unless registered. |
+| `--limit` | INTEGER >= 1 <= 100 | `20` | no | Maximum number of matching Hub bundles to return. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra hf search qwen --author EInnovator --limit 20
+```
+
+**Example output**
+
+```text
+PRA bundle catalog (3)
+Source: hugging-face-hub
+
+EInnovator/pra-qwen3-0.6b
+  Base model: Qwen/Qwen3-0.6B
+  Qualification: CONTROLLED
+  Trust: eInnovator-qualified
+  Auto resolvable: True
+```
+
 ### `pra hf pull`
 
 Pull and validate a bundle, using the normal HF cache by default.
