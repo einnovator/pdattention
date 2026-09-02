@@ -64,6 +64,13 @@ Llama-3.1-8B, and Gemma-3-1B, but it does not improve HotpotQA recall. Public
 MLX bundles therefore keep generic routing as `balanced` and expose
 `qasper-learned` only as an opt-in controlled profile.
 
+The public Qwen3-8B, 14B, and 32B Runtime Bundles now import exact-identity
+paired evidence from the scaling artifacts. Their BALANCED cards report 15/15
+output parity, unchanged token F1, 89.1% fewer visible prompt tokens, and mean
+completion overheads of 3.0%, 1.1%, and 0.5%, respectively. QUALITY and ECONOMY
+remain calibration-pending because reduced consumer-layer profiles failed the
+held-out quality gate.
+
 The bounded-residency extension covers 1,020 natural-QA requests over five
 seeds, three datasets, and compact-K/V budgets 1, 2, 4, and 8. QA F1 is stable
 across budgets. Budgets below the eight-resource working set reload every

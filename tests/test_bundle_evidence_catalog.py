@@ -16,6 +16,8 @@ from pra_hf.bundle_evidence import (
     EvidenceIdentity,
     EvidenceValidationError,
     import_mlx_paired_evidence,
+    import_product_matrix_evidence,
+    validate_selector_manifest,
 )
 
 
@@ -60,6 +62,27 @@ def test_mlx_importer_rejects_revision_and_mode_mismatch() -> None:
         import_mlx_paired_evidence(MLX_32B, _identity(execution_mode="Selected Context"))
 
 
+def test_shared_product_matrix_and_selector_manifest_importers() -> None:
+    rows = import_product_matrix_evidence(
+        ROOT / "docs/papers/shared/results/pra_product_matrix_v2.json",
+        EvidenceIdentity(
+            model_id="Qwen/Qwen3-0.6B",
+            model_revision="c1899de289a04d12100db370d81485cdf75e47ca",
+            quantization="torch.float16",
+            engine="huggingface_eager",
+            engine_version="",
+            profile="REFERENCE_CORRECTNESS",
+            execution_mode="Native Memory",
+        ),
+    )
+    assert rows
+    assert all(row["model_revision"] == "c1899de289a04d12100db370d81485cdf75e47ca" for row in rows)
+    manifest = validate_selector_manifest(
+        ROOT / "docs/papers/shared/results/engine_qualification/qualification_manifest.json"
+    )
+    assert manifest["selections"][0]["digest"]
+
+
 def test_release_gate_rejects_profile_and_headline_conflicts() -> None:
     row = import_mlx_paired_evidence(MLX_32B, _identity())[-1]
     bundle = PRAModelBundle(
@@ -91,6 +114,8 @@ def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
     assert "Recommended profile: **BALANCED**" in text
     assert "15/15" in text
     assert "-89.1%" in text
+    assert "SHA-256" in text
+    assert "70.32 MiB" in text
     assert "## Expected metrics" not in text
     assert "R@20%" not in text.split("## Research diagnostics", 1)[0]
 

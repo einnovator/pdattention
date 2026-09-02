@@ -193,6 +193,80 @@ def import_mlx_paired_evidence(
     return imported
 
 
+def import_product_matrix_evidence(
+    artifact: str | Path, identity: EvidenceIdentity
+) -> list[dict[str, Any]]:
+    """Import exact-identity rows from the Paper 4.5 product matrix.
+
+    This path intentionally does not relax missing engine versions or transfer
+    family-level rows. Callers may use the returned controlled measurements as
+    supporting evidence; only paired rows should be promoted to headlines.
+    """
+
+    path = Path(artifact)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    all_rows = [row for row in payload.get("rows", []) if isinstance(row, Mapping)]
+    model_rows = [row for row in all_rows if row.get("model_id") == identity.model_id]
+    if model_rows and not any(row.get("model_revision") == identity.model_revision for row in model_rows):
+        raise EvidenceValidationError("Evidence identity mismatch: model_revision")
+    matched = []
+    for row in model_rows:
+        if row.get("model_revision") != identity.model_revision:
+            continue
+        if _quantization(row.get("quantization")) != _quantization(identity.quantization):
+            continue
+        if str(row.get("engine")) != identity.engine:
+            continue
+        if str(row.get("engine_version") or "") != identity.engine_version:
+            continue
+        if str(row.get("profile", "")).lower() != identity.profile.lower():
+            continue
+        public_mode = {"E0": "Selected Context", "E2": "Native Memory", "E3": "Native Serving"}.get(
+            str(row.get("integration_level")), str(row.get("integration_level"))
+        )
+        if public_mode != identity.execution_mode:
+            continue
+        matched.append(
+            {
+                "metric_class": "END_TASK" if any(row.get(key) is not None for key in ("f1", "em", "task_success")) else "SERVING_ECONOMICS",
+                "model_id": identity.model_id,
+                "model_revision": identity.model_revision,
+                "quantization": identity.quantization,
+                "engine": identity.engine,
+                "engine_version": identity.engine_version,
+                "profile": identity.profile,
+                "execution_mode": identity.execution_mode,
+                "dataset": row.get("dataset"),
+                "sample_count": row.get("sample_count"),
+                "metrics": {
+                    key: row.get(key) for key in (
+                        "f1", "em", "task_success", "quality_score", "quality_reference",
+                        "visible_tokens", "active_kv_tokens", "active_kv_bytes", "ttft_ms",
+                        "itl_ms", "completion_ms", "requests_per_second", "peak_memory_bytes",
+                    ) if row.get(key) is not None
+                },
+                "evidence_tier": row.get("evidence_tier", "NOT_MEASURED"),
+                "hardware": row.get("hardware"),
+                "artifact": path.name,
+                "artifact_sha256": file_sha256(path),
+            }
+        )
+    return matched
+
+
+def validate_selector_manifest(artifact: str | Path) -> dict[str, Any]:
+    """Validate the shared selector-frozen qualification contract."""
+
+    path = Path(artifact)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    selections = payload.get("selections", [])
+    if not selections or any(not row.get("digest") for row in selections):
+        raise EvidenceValidationError("Qualification manifest requires frozen selection digests.")
+    if "once" not in str(payload.get("selector_contract", "")).lower():
+        raise EvidenceValidationError("Qualification manifest does not freeze selector output once.")
+    return payload
+
+
 def validate_bundle_evidence(bundle: Any) -> None:
     """Apply strict release gates to bundles using evidence contract v1."""
 

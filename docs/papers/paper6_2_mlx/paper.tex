@@ -526,6 +526,20 @@ supported consumer fraction therefore remains one. The SDK's
 layers. Reduced profiles remain \textsc{Calibration Pending}; parameter scale
 alone does not promote them.
 
+\paragraph{Public exact-identity qualification.}
+The release pipeline imports these measurements into model cards only after
+matching the model ID, immutable revision, 4-bit MLX quantization, mlx-lm
+version, \texttt{BALANCED} profile, and Native Memory execution mode. The
+public Qwen3-8B, 14B, and 32B cards use the concatenated all-consumer path,
+not the numerically drifting segmented variant. Across the 15 paired QASPER,
+HotpotQA, and 2Wiki examples at each size, token F1 is unchanged and all
+outputs agree exactly; visible prompt tokens fall by 89.1\%. Mean completion
+overhead contracts from 3.0\% to 1.1\% and 0.5\% with scale. The 32B median
+TTFT point estimate is 6.6\% lower, but the cohort is too small for a tail-
+latency claim. We therefore label these rows \textsc{Engine Qualified}, retain
+all eligible consumer layers in \texttt{BALANCED}, and leave \texttt{QUALITY}
+and \texttt{ECONOMY} as \texttt{CALIBRATION\_PENDING}.
+
 \subsection{M5 timing replication and held-out layer gate}
 
 We repeated the corrected runner on a 16~GiB M5 after one unmeasured graph

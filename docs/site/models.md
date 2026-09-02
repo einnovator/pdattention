@@ -7,7 +7,7 @@ and therefore requires a known structural mapping plus model-specific validation
 
 | Family | Selected Context | Native Memory | Structural adapter | Evidence |
 | --- | --- | --- | --- | --- |
-| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping | **Optional** | Qwen3-4B and Qwen3-14B have five-seed, held-out MLX routing comparisons. Learned routing improves QASPER but regresses on HotpotQA, so generic routing remains the portable default. |
+| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping | **Optional** | Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Separate learned-routing diagnostics improve QASPER but not HotpotQA. |
 | [Llama](#llama) | ✅ Available | ℹ️ Validated mapping | **Optional** | Llama-3.1-8B has a five-seed, held-out MLX routing comparison. Learned routing improves QASPER MRR but reduces HotpotQA recall, so generic routing remains the default. |
 | [Gemma 3 text](#gemma3) | ✅ Available | 🧪 Partial topology | **Required for native production** | Gemma-3-1B has a five-seed, held-out MLX comparison under its mixed sliding/global topology. Learned routing helps QASPER and combined MRR, while HotpotQA recall remains mixed. |
 | [Other Hugging Face causal decoders](#other-hf) | ✅ Available | ⏳ Qualification pending | **Required** | No family-wide native claim is made for unregistered architectures. |
@@ -41,10 +41,12 @@ The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter w
 
 | Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
 | --- | --- | --- | --- | --- | --- |
-| `Qwen/Qwen3-0.6B` | [EInnovator/pra-qwen3-0.6b](https://huggingface.co/EInnovator/pra-qwen3-0.6b) | Controlled | HF Native Memory; portable Selected Context | Selected Context; qualify Native Memory locally | 2026-09-01 |
+| `Qwen/Qwen3-0.6B` | [EInnovator/pra-qwen3-0.6b](https://huggingface.co/EInnovator/pra-qwen3-0.6b) | Research/reference | HF Native Memory; portable Selected Context | Selected Context; qualify Native Memory locally | 2026-09-01 |
 | `Qwen/Qwen3-1.7B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `mlx-community/Qwen3-4B-4bit` | [EInnovator/pra-qwen3-4b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-4bit) | Controlled | MLX routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-01 |
-| `mlx-community/Qwen3-14B-4bit` | [EInnovator/pra-qwen3-14b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit) | Controlled | MLX routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-01 |
+| `mlx-community/Qwen3-8B-4bit` | [EInnovator/pra-qwen3-8b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
+| `mlx-community/Qwen3-14B-4bit` | [EInnovator/pra-qwen3-14b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
+| `mlx-community/Qwen3-32B-4bit` | [EInnovator/pra-qwen3-32b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-32b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
 
 **Inspect and launch**
 
@@ -56,7 +58,7 @@ pra serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended
 
 **Evidence boundary**
 
-Qwen3-4B and Qwen3-14B have five-seed, held-out MLX routing comparisons. Learned routing improves QASPER but regresses on HotpotQA, so generic routing remains the portable default.
+Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Separate learned-routing diagnostics improve QASPER but not HotpotQA.
 
 **Limitations**
 

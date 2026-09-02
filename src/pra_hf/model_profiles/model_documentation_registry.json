@@ -7,13 +7,13 @@
       "slug": "qwen",
       "name": "Qwen",
       "model_types": ["qwen2", "qwen3"],
-      "examples": ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit", "mlx-community/Qwen3-14B-4bit"],
+      "examples": ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit", "mlx-community/Qwen3-8B-4bit", "mlx-community/Qwen3-14B-4bit", "mlx-community/Qwen3-32B-4bit"],
       "bundle_links": {
         "Qwen/Qwen3-0.6B": {
           "repo": "EInnovator/pra-qwen3-0.6b",
           "url": "https://huggingface.co/EInnovator/pra-qwen3-0.6b",
-          "revision": "25e69076c48a12b5943fe19b0351e68a86ba563e",
-          "status": "Controlled",
+          "revision": "202f8dba53ce4d4d944450b8977fa3936857ee98",
+          "status": "Research/reference",
           "engines": "HF Native Memory; portable Selected Context",
           "recommended_mode": "Selected Context; qualify Native Memory locally",
           "qualified_at": "2026-09-01"
@@ -21,19 +21,37 @@
         "mlx-community/Qwen3-4B-4bit": {
           "repo": "EInnovator/pra-qwen3-4b-mlx-4bit",
           "url": "https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-4bit",
-          "revision": "49c18674ce15c8e267d5d19230d6dc152bca778b",
+          "revision": "833b640eba8fdaa20a11d9c81dd9af8146e4dc37",
           "status": "Controlled",
           "engines": "MLX routing qualification; portable Selected Context",
           "recommended_mode": "Generic balanced; learned router only for matched QASPER",
           "qualified_at": "2026-09-01"
         },
+        "mlx-community/Qwen3-8B-4bit": {
+          "repo": "EInnovator/pra-qwen3-8b-mlx-4bit",
+          "url": "https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-4bit",
+          "revision": "f2c1fbefdf4b70482b182f895d97479f4fcb0450",
+          "status": "Engine qualified",
+          "engines": "MLX paired natural-QA Native Memory qualification",
+          "recommended_mode": "Native Memory with BALANCED",
+          "qualified_at": "2026-09-01"
+        },
         "mlx-community/Qwen3-14B-4bit": {
           "repo": "EInnovator/pra-qwen3-14b-mlx-4bit",
           "url": "https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit",
-          "revision": "9853a17f84aeebc33e209c87e360715559b2c5c8",
-          "status": "Controlled",
-          "engines": "MLX routing qualification; portable Selected Context",
-          "recommended_mode": "Generic balanced; learned router only for matched QASPER",
+          "revision": "338a775acd3ac0090d35bd6d07c574a78641e934",
+          "status": "Engine qualified",
+          "engines": "MLX paired natural-QA Native Memory qualification",
+          "recommended_mode": "Native Memory with BALANCED",
+          "qualified_at": "2026-09-01"
+        },
+        "mlx-community/Qwen3-32B-4bit": {
+          "repo": "EInnovator/pra-qwen3-32b-mlx-4bit",
+          "url": "https://huggingface.co/EInnovator/pra-qwen3-32b-mlx-4bit",
+          "revision": "54d8bdca17f591ddf6c78c234c02059e61efb14a",
+          "status": "Engine qualified",
+          "engines": "MLX paired natural-QA Native Memory qualification",
+          "recommended_mode": "Native Memory with BALANCED",
           "qualified_at": "2026-09-01"
         }
       },
@@ -41,7 +59,7 @@
       "native_memory": "Validated mapping",
       "adapter_requirement": "Optional",
       "adapter_detail": "The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter when the deployment needs a pinned, reviewable artifact.",
-      "evidence": "Qwen3-4B and Qwen3-14B have five-seed, held-out MLX routing comparisons. Learned routing improves QASPER but regresses on HotpotQA, so generic routing remains the portable default.",
+      "evidence": "Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Separate learned-routing diagnostics improve QASPER but not HotpotQA.",
       "commands": [
         "pra inspect Qwen/Qwen3-1.7B --engine hf",
         "pra model validate Qwen/Qwen3-1.7B --suite smoke",
@@ -58,7 +76,7 @@
         "mlx-community/Llama-3.1-8B-Instruct-4bit": {
           "repo": "EInnovator/pra-llama3-1-8b-mlx-4bit",
           "url": "https://huggingface.co/EInnovator/pra-llama3-1-8b-mlx-4bit",
-          "revision": "0d14b5eb65cefa56be0ff0c677818b8928d607a2",
+          "revision": "093c5f5a9e3a157bff79495ddc67122ed3b19ef5",
           "status": "Controlled",
           "engines": "MLX routing qualification; portable Selected Context",
           "recommended_mode": "Generic balanced; learned router only for matched QASPER",
@@ -86,7 +104,7 @@
         "mlx-community/gemma-3-1b-it-4bit": {
           "repo": "EInnovator/pra-gemma3-1b-mlx-4bit",
           "url": "https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-4bit",
-          "revision": "afb67d45289bcffc180890089c2bfc71bb9ff636",
+          "revision": "36068eba9730cf61dd650cd0888cf26845c00990",
           "status": "Controlled",
           "engines": "MLX mixed/sliding routing qualification; portable Selected Context",
           "recommended_mode": "Generic balanced; learned router for matched QASPER or validated mixed workloads",

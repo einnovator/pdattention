@@ -83,10 +83,11 @@ The implementation adds:
 - warmed M5 4B/8B/14B replication, an explicit 32B capacity-gate row, a
   held-out noncontiguous gate that retains every eligible layer, and corrected
   2K/8K/32K occupied-context receipts.
-- four public cross-family MLX bundles for Qwen3-4B, Qwen3-14B,
-  Llama-3.1-8B, and Gemma-3-1B, each with a five-seed held-out comparison of
-  parameter-free cosine routing and an optional learned router. The learned
-  profile improves QASPER consistently but not HotpotQA, so it remains opt-in.
+- seven public PRA Runtime Bundles under `EInnovator`, led by exact-identity
+  Qwen3-14B/32B/8B MLX qualification. Their cards import paired natural-QA
+  quality, parity, visible-context, and latency evidence automatically. Qwen,
+  Llama, and Gemma routing diagnostics remain a separate research section;
+  Qwen3-0.6B is explicitly the mechanism reference bundle.
 
 Reproduce the measured portable profile:
 

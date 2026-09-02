@@ -471,7 +471,15 @@ class BundleBuilder:
                     f"| {parity.get('exact_output_pairs', 'NOT_MEASURED')}/{parity.get('paired_examples', 'NOT_MEASURED')} "
                     f"| {row.get('evidence_tier', 'NOT_MEASURED')} |"
                 )
-            lines += ["", "All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.", ""]
+            receipt = headline[0]
+            lines += [
+                "", "All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.", "",
+                "Evidence receipt: "
+                f"`{receipt.get('engine')} {receipt.get('engine_version')}`; "
+                f"{receipt.get('hardware')}; {receipt.get('cohort')} (n={receipt.get('sample_count')}); "
+                f"{receipt.get('date')}; PRA commit `{receipt.get('pra_commit')}`; "
+                f"artifact `{receipt.get('artifact')}`; SHA-256 `{receipt.get('artifact_sha256')}`.", "",
+            ]
         else:
             lines += ["No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.", ""]
         lines += [
@@ -504,7 +512,21 @@ class BundleBuilder:
             lines.append("What remains to be measured: paired end-task quality for this exact bundle identity.")
         lines += ["", "## Native Memory qualification", ""]
         if headline:
-            lines.append("Native Memory uses the same selector output as Selected Context. Exact paired parity, visible-input reduction, active detail bytes, and latency deltas are reported above; it is recommended only where the profile and engine tables say so.")
+            lines += [
+                "Native Memory uses the same selector output as Selected Context. It is recommended only where the profile and engine tables say so.", "",
+                "| Workload | Selected native K/V tokens | Active detail | Peak memory | Completion cost vs Selected Context |",
+                "| --- | ---: | ---: | ---: | ---: |",
+            ]
+            for row in end_task:
+                baseline, pra = row.get("baseline", {}), row.get("pra", {})
+                baseline_ms = baseline.get("completion_latency_ms", {}).get("mean")
+                pra_ms = pra.get("completion_latency_ms", {}).get("mean")
+                ratio = pra_ms / baseline_ms if baseline_ms and pra_ms is not None else None
+                lines.append(
+                    f"| {row.get('dataset')} | {_metric(pra.get('selected_native_kv_tokens'))} "
+                    f"| {_bytes(pra.get('active_detail_bytes'))} | {_bytes(pra.get('peak_memory_bytes'))} "
+                    f"| {_metric(ratio)}x |"
+                )
         else:
             lines.append("What remains to be measured: paired Selected Context versus Native Memory quality and serving economics.")
         lines += ["", "## Research diagnostics", ""]
@@ -555,6 +577,19 @@ def _signed(value: Any) -> str:
 
 def _signed_pct(value: Any) -> str:
     return "NOT_MEASURED" if value is None else f"{float(value):+.1f}%"
+
+
+def _bytes(value: Any) -> str:
+    if value is None:
+        return "NOT_MEASURED"
+    amount = float(value)
+    unit = "B"
+    for candidate in ("KiB", "MiB", "GiB", "TiB"):
+        if abs(amount) < 1024:
+            break
+        amount /= 1024
+        unit = candidate
+    return f"{amount:.2f} {unit}"
 
 
 def _public_mode(value: Any) -> str:

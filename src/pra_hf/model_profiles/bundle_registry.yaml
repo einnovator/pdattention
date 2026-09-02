@@ -5,7 +5,7 @@ bundles:
     base_revision: c1899de289a04d12100db370d81485cdf75e47ca
     architecture: Qwen3ForCausalLM
     bundle_repo: EInnovator/pra-qwen3-0.6b
-    bundle_revision: 25e69076c48a12b5943fe19b0351e68a86ba563e
+    bundle_revision: 202f8dba53ce4d4d944450b8977fa3936857ee98
     pra_version: ">=0.2.0rc1,<0.3"
     schema_version: 2
     trust: eInnovator-qualified
@@ -14,15 +14,17 @@ bundles:
       mlx: selected-context
       vllm: selected-context
     profiles:
-      - reference
+      - quality
       - balanced
-    qualification: CONTROLLED
+      - economy
+      - qasper-learned
+    qualification: RESEARCH
   - name: pra-qwen3-4b-mlx-4bit
     base_model: mlx-community/Qwen3-4B-4bit
     base_revision: 4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25
     architecture: Qwen3ForCausalLM
     bundle_repo: EInnovator/pra-qwen3-4b-mlx-4bit
-    bundle_revision: 49c18674ce15c8e267d5d19230d6dc152bca778b
+    bundle_revision: 833b640eba8fdaa20a11d9c81dd9af8146e4dc37
     pra_version: ">=0.2.0rc1,<0.3"
     schema_version: 2
     trust: eInnovator-qualified
@@ -30,8 +32,9 @@ bundles:
       hf: selected-context
       mlx: controlled
     profiles:
-      - reference
+      - quality
       - balanced
+      - economy
       - qasper-learned
     qualification: CONTROLLED
   - name: pra-qwen3-14b-mlx-4bit
@@ -39,7 +42,7 @@ bundles:
     base_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
     architecture: Qwen3ForCausalLM
     bundle_repo: EInnovator/pra-qwen3-14b-mlx-4bit
-    bundle_revision: 9853a17f84aeebc33e209c87e360715559b2c5c8
+    bundle_revision: 338a775acd3ac0090d35bd6d07c574a78641e934
     pra_version: ">=0.2.0rc1,<0.3"
     schema_version: 2
     trust: eInnovator-qualified
@@ -47,16 +50,51 @@ bundles:
       hf: selected-context
       mlx: controlled
     profiles:
-      - reference
+      - quality
       - balanced
+      - economy
       - qasper-learned
-    qualification: CONTROLLED
+    qualification: ENGINE_QUALIFIED
+  - name: pra-qwen3-8b-mlx-4bit
+    base_model: mlx-community/Qwen3-8B-4bit
+    base_revision: 545dc4251c05440727734bcd94334791f6ab0192
+    architecture: Qwen3ForCausalLM
+    bundle_repo: EInnovator/pra-qwen3-8b-mlx-4bit
+    bundle_revision: f2c1fbefdf4b70482b182f895d97479f4fcb0450
+    pra_version: ">=0.2.0rc1,<0.3"
+    schema_version: 2
+    trust: eInnovator-qualified
+    engine_compatibility:
+      hf: selected-context
+      mlx: qualified
+    profiles:
+      - quality
+      - balanced
+      - economy
+    qualification: ENGINE_QUALIFIED
+  - name: pra-qwen3-32b-mlx-4bit
+    base_model: mlx-community/Qwen3-32B-4bit
+    base_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
+    architecture: Qwen3ForCausalLM
+    bundle_repo: EInnovator/pra-qwen3-32b-mlx-4bit
+    bundle_revision: 54d8bdca17f591ddf6c78c234c02059e61efb14a
+    pra_version: ">=0.2.0rc1,<0.3"
+    schema_version: 2
+    trust: eInnovator-qualified
+    engine_compatibility:
+      hf: selected-context
+      mlx: qualified
+    profiles:
+      - quality
+      - balanced
+      - economy
+    qualification: ENGINE_QUALIFIED
   - name: pra-llama3-1-8b-mlx-4bit
     base_model: mlx-community/Llama-3.1-8B-Instruct-4bit
     base_revision: 90215b22ec18e72f623dde2ea7af4097025160e2
     architecture: LlamaForCausalLM
     bundle_repo: EInnovator/pra-llama3-1-8b-mlx-4bit
-    bundle_revision: 0d14b5eb65cefa56be0ff0c677818b8928d607a2
+    bundle_revision: 093c5f5a9e3a157bff79495ddc67122ed3b19ef5
     pra_version: ">=0.2.0rc1,<0.3"
     schema_version: 2
     trust: eInnovator-qualified
@@ -64,8 +102,9 @@ bundles:
       hf: selected-context
       mlx: controlled
     profiles:
-      - reference
+      - quality
       - balanced
+      - economy
       - qasper-learned
     qualification: CONTROLLED
   - name: pra-gemma3-1b-mlx-4bit
@@ -73,7 +112,7 @@ bundles:
     base_revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
     architecture: Gemma3ForCausalLM
     bundle_repo: EInnovator/pra-gemma3-1b-mlx-4bit
-    bundle_revision: afb67d45289bcffc180890089c2bfc71bb9ff636
+    bundle_revision: 36068eba9730cf61dd650cd0888cf26845c00990
     pra_version: ">=0.2.0rc1,<0.3"
     schema_version: 2
     trust: eInnovator-qualified
@@ -81,7 +120,8 @@ bundles:
       hf: selected-context
       mlx: controlled
     profiles:
-      - reference
+      - quality
       - balanced
+      - economy
       - qasper-learned
     qualification: CONTROLLED

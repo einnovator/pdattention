@@ -288,7 +288,7 @@ def test_hf_list_filters_the_trusted_registry() -> None:
     assert result.exit_code == 0, result.output
     value = json.loads(result.output)
     assert value["source"] == "trusted-registry"
-    assert value["count"] == 3
+    assert value["count"] == 5
     assert all("qwen" in row["base_model"].lower() for row in value["bundles"])
     assert all("mlx" in row["engine_compatibility"] for row in value["bundles"])
 
@@ -404,11 +404,14 @@ def test_hub_update_checks_remote_manifest_without_full_snapshot(
 def test_default_registry_contains_published_cross_family_catalog() -> None:
     entries = {entry.name: entry for entry in TrustedBundleRegistry.default().entries}
     expected = {
-        "pra-qwen3-4b-mlx-4bit": "49c18674ce15c8e267d5d19230d6dc152bca778b",
-        "pra-qwen3-14b-mlx-4bit": "9853a17f84aeebc33e209c87e360715559b2c5c8",
-        "pra-llama3-1-8b-mlx-4bit": "0d14b5eb65cefa56be0ff0c677818b8928d607a2",
-        "pra-gemma3-1b-mlx-4bit": "afb67d45289bcffc180890089c2bfc71bb9ff636",
+        "pra-qwen3-4b-mlx-4bit": "833b640eba8fdaa20a11d9c81dd9af8146e4dc37",
+        "pra-qwen3-8b-mlx-4bit": "f2c1fbefdf4b70482b182f895d97479f4fcb0450",
+        "pra-qwen3-14b-mlx-4bit": "338a775acd3ac0090d35bd6d07c574a78641e934",
+        "pra-qwen3-32b-mlx-4bit": "54d8bdca17f591ddf6c78c234c02059e61efb14a",
+        "pra-llama3-1-8b-mlx-4bit": "093c5f5a9e3a157bff79495ddc67122ed3b19ef5",
+        "pra-gemma3-1b-mlx-4bit": "36068eba9730cf61dd650cd0888cf26845c00990",
     }
 
     assert {name: entries[name].bundle_revision for name in expected} == expected
-    assert all("qasper-learned" in entries[name].profiles for name in expected)
+    assert all("balanced" in entries[name].profiles for name in expected)
+    assert entries["pra-qwen3-32b-mlx-4bit"].qualification == "ENGINE_QUALIFIED"

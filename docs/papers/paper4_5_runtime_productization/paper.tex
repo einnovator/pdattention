@@ -869,14 +869,26 @@ rises from 0.385 to 0.538, showing that even the direction can depend on the
 metric. Third, model size alone does not remove domain dependence: the largest
 Qwen model has both the largest QASPER gain and the largest Qwen HotpotQA loss.
 
-The SDK policy follows the measurement. Each public bundle exposes
-\texttt{balanced} with generic cosine routing and
-\texttt{qasper-learned} with the learned asymmetric router. The latter is
-opt-in and controlled, not production-wide. These are exact MLX quantization
-identities; no result is transferred to a full-precision Hugging Face
-checkpoint or a different tokenizer revision. The study measures evidence
-retrieval, not generation quality, TTFT, or serving throughput. Those remain
-separate qualification gates.
+The SDK policy follows the measurement. Every public bundle exposes canonical
+\texttt{quality}, \texttt{balanced}, and \texttt{economy} profiles, but only
+\texttt{balanced} is currently qualified and recommended. Bundles with a
+learned asymmetric router additionally expose \texttt{qasper-learned} as an
+opt-in research profile. These are exact MLX quantization identities; no result
+is transferred to a full-precision Hugging Face checkpoint or another
+tokenizer revision. Routing diagnostics remain separate from generation
+quality, equivalence, and serving economics.
+
+\paragraph{Evidence-to-card publication.}
+A schema-checked importer now reads the paired MLX artifacts rather than
+copying numbers into model cards. It rejects a mismatch in model ID, immutable
+revision, quantization, engine/version, profile, or execution mode. For the
+8B, 14B, and 32B Qwen identities, the exported \texttt{BALANCED} headline uses
+the concatenated all-consumer native path: all 15 paired natural-QA outputs
+match selected text, token F1 is unchanged, and visible prompt tokens fall by
+89.1\%. Mean completion-latency deltas are respectively $+3.0\%$, $+1.1\%$,
+and $+0.5\%$; the 32B median-TTFT point estimate is $-6.6\%$. These small
+cohorts support \textsc{Engine Qualified}, not production-wide qualification.
+Router recall is printed only under research diagnostics.
 
 \subsection{Product profile and benchmark matrix}
 
@@ -2235,12 +2247,18 @@ model identity, structural and learned adapters, profiles, evidence, runtime
 compatibility, engine realizations, and provenance without copying base-model
 weights. Hub pull and push are optional transport operations under
 \texttt{pra hf}; generic Transformers execution does not depend on Hub login.
-The public catalog currently contains five canonical
-\texttt{EInnovator/pra-*} bundles for Qwen3-0.6B, Qwen3-4B, Qwen3-14B,
-Llama-3.1-8B, and Gemma-3-1B identities. Bundle discovery checks the base model,
+The public catalog currently contains seven canonical
+\texttt{EInnovator/pra-*} bundles for Qwen3-0.6B, Qwen3-4B, Qwen3-8B,
+Qwen3-14B, Qwen3-32B, Llama-3.1-8B, and Gemma-3-1B identities. A declarative
+manifest orders the Collection by measured usefulness rather than publication
+date: Qwen3-14B and Qwen3-32B lead, while the 0.6B artifact is explicitly a
+research/reference bundle. Bundle discovery checks the base model,
 revision, engine, and immutable bundle revision before AUTO may resolve it;
-checksum validation precedes managed runtime loading. The published learned
-routers remain dataset-qualified profiles rather than universal defaults.
+checksum validation precedes managed runtime loading. A release gate requires
+one qualified recommended profile and rejects routing-only headlines,
+unpaired absolute quality, profile conflicts, and revision or quantization
+mismatches. The published learned routers remain dataset-qualified research
+profiles rather than universal defaults.
 
 \begin{figure}[H]
 \centering
