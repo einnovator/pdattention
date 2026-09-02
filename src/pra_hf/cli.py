@@ -25,6 +25,7 @@ from .execution_modes import ExecutionModeResolver
 from .gateway_cli import gateway_cli
 from .management_cli import engine_cli
 from pra_registry.cli import registry_cli
+from pra_control.cli import control_cli
 from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
 from .observability import Observability, load_observability_config
@@ -45,6 +46,10 @@ from .runtime import PRARuntimeConfig, VLLMThinBackend, runtime_capabilities
 from .runtime_providers import RuntimeConfig, RuntimeManager, parse_engine_arguments
 from .training import load_feature_rows, train_router
 from .tui import AgentShell
+
+
+# Keep the commercial Control Plane launcher beside the open engine and Registry
+# commands while loading its web stack only when ``serve`` is invoked.
 
 
 def _format(json_output: bool, yaml_output: bool) -> str:
@@ -268,6 +273,7 @@ def cli() -> None:
 cli.add_command(gateway_cli)
 cli.add_command(engine_cli)
 cli.add_command(registry_cli)
+cli.add_command(control_cli)
 
 
 @cli.command("doctor")

@@ -1,0 +1,24 @@
+control_plane:
+  host: 0.0.0.0
+  port: 9300
+  public_url: http://127.0.0.1:9300
+  database_url: postgresql+psycopg://pra:${POSTGRES_PASSWORD}@postgres/pra
+  auth:
+    cookie_secret_env: PRA_CONTROL_COOKIE_SECRET
+    cookie_secure: false
+    allow_local_auth_non_loopback: true
+    providers:
+      - name: local
+        kind: local
+registry:
+  url: http://pra-registry:9200
+  token_env: PRA_REGISTRY_TOKEN
+fleet:
+  discovery_mode: combined
+  engines: []
+grafana:
+  url: http://127.0.0.1:3000
+tempo:
+  url: http://127.0.0.1:3200
+prometheus:
+  url: http://127.0.0.1:9090

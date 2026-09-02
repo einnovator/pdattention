@@ -1,0 +1,45 @@
+# Enterprise PRA Control Plane
+
+The eInnovator PRA Control Plane is the commercial fleet and governance layer
+for PRA deployments. It coordinates open engine Management APIs and the open
+PRA Registry without hiding either interface behind a proprietary protocol.
+
+```text
+                 eInnovator PRA Control Plane
+                SSO | RBAC | Audit | Fleet | Agent
+                              |
+                      PRA Registry (open)
+                              |
+             +----------------+----------------+
+             |                |                |
+         vLLM API          MLX API       OpenVINO API
+          (open)            (open)           (open)
+```
+
+| Component | Boundary | Responsibility |
+| --- | --- | --- |
+| Engine Management API | Open source | State and safe control for one engine instance |
+| PRA Registry | Open source | Models, bundles, qualifications, policy, and desired state |
+| eInnovator Control Plane | Commercial, early access | Fleet aggregation, SSO, RBAC, audit, approvals, drift UX, and governed agent assistance |
+
+The first release is deliberately a coordinator, not an orchestrator. It can
+apply safe mutable engine configuration and explain restart-required drift. It
+does not replace Kubernetes, Nomad, systemd, Grafana, or Tempo.
+
+## Current capability status
+
+| Area | Status |
+| --- | --- |
+| Static, manual, and Registry fleet discovery | Early access |
+| Viewer/Operator/Approver/Administrator RBAC | Early access |
+| GitHub, Google, generic OIDC, local auth | Early access |
+| SAML 2.0 | Optional dependency; enterprise configuration required |
+| Registry catalog and approval proxy | Early access |
+| Desired/observed drift | Early access |
+| Audited safe engine actions | Early access |
+| Dockable browser workspace | Early access |
+| Resumable PRA Agent chat | Early access, read-only assistant tools |
+| Autonomous optimization | Not shipped; recommendations require a person |
+
+Continue with [Installation](installation.md) or review the [security and RBAC
+model](rbac.md).

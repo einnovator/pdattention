@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: pra
+    volumes: ["pra-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pra"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  pra-registry:
+    image: einnovator/pra-registry:0.2.0rc1
+    build:
+      context: ../..
+      dockerfile: deploy/registry/Dockerfile
+    environment:
+      PRA_REGISTRY_DATABASE_URL: postgresql+psycopg://pra:${POSTGRES_PASSWORD}@postgres/pra
+      PRA_REGISTRY_TOKEN: ${PRA_REGISTRY_TOKEN:?set PRA_REGISTRY_TOKEN}
+    depends_on:
+      postgres: {condition: service_healthy}
+  pra-control:
+    image: einnovator/pra-control:0.1.0-ea
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile
+    ports: ["9300:9300"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PRA_CONTROL_DATABASE_URL: postgresql+psycopg://pra:${POSTGRES_PASSWORD}@postgres/pra
+      PRA_CONTROL_COOKIE_SECRET: ${PRA_CONTROL_COOKIE_SECRET:?set PRA_CONTROL_COOKIE_SECRET}
+      PRA_REGISTRY_TOKEN: ${PRA_REGISTRY_TOKEN}
+    depends_on:
+      postgres: {condition: service_healthy}
+      pra-registry: {condition: service_started}
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports: ["3000:3000"]
+    volumes: ["pra-grafana:/var/lib/grafana"]
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports: ["9090:9090"]
+    volumes: ["../observability/prometheus.yaml:/etc/prometheus/prometheus.yml:ro"]
+  tempo:
+    image: grafana/tempo:2.6.0
+    command: ["-config.file=/etc/tempo.yaml"]
+    ports: ["3200:3200"]
+    volumes: ["../observability/tempo.yaml:/etc/tempo.yaml:ro"]
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["../observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro"]
+    depends_on: [tempo]
+volumes:
+  pra-postgres:
+  pra-grafana:

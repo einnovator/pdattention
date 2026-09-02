@@ -1052,6 +1052,42 @@ INFO: Uvicorn running on http://127.0.0.1:9200
 Swagger: http://127.0.0.1:9200/docs
 ```
 
+## Enterprise Control Plane
+
+### `pra control serve`
+
+Start the authenticated Control Plane backend and web application.
+
+**Usage**
+
+```text
+pra control serve [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | no | YAML Control Plane configuration. |
+| `--host` | TEXT | `-` | no | Override the configured bind address. |
+| `--port` | INTEGER >= 1 <= 65535 | `-` | no | Override the configured TCP port. |
+| `--public-url` | TEXT | `-` | no | Browser-visible URL used for SSO callbacks. |
+| `--reload` | flag | `off` | no | Reload the development server after source changes. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra control serve --config control-plane.yaml --host 127.0.0.1 --port 9300
+```
+
+**Example output**
+
+```text
+INFO: Uvicorn running on http://127.0.0.1:9300
+Control Plane: http://127.0.0.1:9300/index.html
+```
+
 ## Environment and qualification
 
 ### `pra doctor`

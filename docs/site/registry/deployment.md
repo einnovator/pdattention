@@ -16,6 +16,11 @@ alembic -c alembic.ini upgrade head
 pra-registry serve --config registry.yaml
 ```
 
+`pra registry serve --config registry.yaml` is the equivalent discoverable
+alias in the main PRA CLI. Production packaging uses the dedicated
+`deploy/registry/Dockerfile` and `einnovator/pra-registry` image rather than the
+commercial Control Plane image.
+
 ## PostgreSQL
 
 Use PostgreSQL for shared deployments and run Alembic before each compatible

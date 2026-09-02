@@ -15,6 +15,7 @@ OUTPUT = ROOT / "docs/site/cli-reference.md"
 
 
 EXAMPLES = {
+    "pra control serve": "pra control serve --config control-plane.yaml --host 127.0.0.1 --port 9300",
     "pra registry status": "pra registry status --registry-url http://127.0.0.1:9200",
     "pra registry models": "pra registry models --limit 50 --json",
     "pra registry bundles": "pra registry bundles --limit 50 --json",
@@ -93,6 +94,7 @@ EXAMPLES = {
 
 
 OUTPUTS = {
+    "pra control serve": "INFO: Uvicorn running on http://127.0.0.1:9300\nControl Plane: http://127.0.0.1:9300/index.html",
     "pra registry status": "status: ok\nprotocol: pra-registry/1\ndatabase: postgresql",
     "pra registry models": "items:\n- id: model-qwen3\n  repo: Qwen/Qwen3-14B\n  revision: a4d9b2d...\ntotal: 1",
     "pra registry bundles": "items:\n- id: bundle-qwen3-14b\n  immutable_revision: 9853a17...\n  approval_state: APPROVED\ntotal: 1",
@@ -293,6 +295,7 @@ ARGUMENT_HELP = {
 
 
 GROUPS = (
+    ("Enterprise Control Plane", ("pra control",)),
     ("Registry", ("pra registry",)),
     ("Gateway", ("pra gateway",)),
     ("Engine management", ("pra engine",)),
