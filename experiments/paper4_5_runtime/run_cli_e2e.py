@@ -28,8 +28,9 @@ import torch
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for import_root in (ROOT, ROOT / "src"):
+    if str(import_root) not in sys.path:
+        sys.path.insert(0, str(import_root))
 
 from experiments.paper4_5_runtime.build_cli_reference import public_commands
 
