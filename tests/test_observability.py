@@ -15,6 +15,9 @@ from pra_hf.observability import (
     PrometheusConfig,
     load_observability_config,
 )
+from pra_hf.deployment import PRAEngineCapabilities, PRAWireRequest
+from pra_hf.engine_profiles import EngineType
+from pra_hf.gateway import PRAGateway
 
 
 def test_absent_observability_is_a_true_noop() -> None:
@@ -85,6 +88,41 @@ def test_prometheus_endpoint_and_bounded_labels() -> None:
                 "session_id": "private",
             },
         )
+
+
+def test_gateway_metrics_treat_absent_transport_sizes_as_zero() -> None:
+    class Adapter:
+        def capabilities(self) -> PRAEngineCapabilities:
+            return PRAEngineCapabilities(
+                adapter="controlled",
+                engine_type=EngineType.OPENAI_GENERIC,
+                integration_level="E0",
+            )
+
+    telemetry = Observability(
+        ObservabilityConfig(
+            enabled=True,
+            prometheus=PrometheusConfig(enabled=True),
+        )
+    )
+    gateway = PRAGateway(Adapter(), mode="G10", observability=telemetry)
+    request = PRAWireRequest.from_dict(
+        {"model": "controlled", "messages": [{"role": "user", "content": "test"}]}
+    )
+
+    gateway._record_metrics(  # noqa: SLF001 - optional engine diagnostics
+        request,
+        {
+            "message_bytes_sent": None,
+            "resource_bytes_sent": None,
+            "session_delta_bytes": None,
+        },
+        0.01,
+        status="success",
+    )
+
+    metrics = telemetry.render_metrics().decode("utf-8")
+    assert 'pra_gateway_transport_bytes_total{engine="openai_generic"} 0.0' in metrics
 
 
 def test_prometheus_listener_is_explicit_and_owned(monkeypatch) -> None:

@@ -538,9 +538,9 @@ class PRAGateway:
             len(self.sessions.inspect_all()),
             labels={"engine": engine},
         )
-        message_bytes = float(trace.get("message_bytes_sent", 0))
-        resource_bytes = float(trace.get("resource_bytes_sent", 0))
-        delta_bytes = float(trace.get("session_delta_bytes", 0))
+        message_bytes = float(trace.get("message_bytes_sent") or 0)
+        resource_bytes = float(trace.get("resource_bytes_sent") or 0)
+        delta_bytes = float(trace.get("session_delta_bytes") or 0)
         for name, value in (
             ("pra_gateway_message_bytes_total", message_bytes),
             ("pra_gateway_resource_bytes_total", resource_bytes),
