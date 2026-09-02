@@ -1,0 +1,1900 @@
+{
+  "schema_version": "pra-cli-e2e-v1",
+  "status": "PASS",
+  "git_commit": "9700c402be7476f6429935c49d02d127bc9472ff",
+  "started_at_unix": 1788311710.015883,
+  "duration_seconds": 141.25051021575928,
+  "host": {
+    "node": "Mac",
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.10.20",
+    "torch": "2.8.0",
+    "cuda": false,
+    "mps": true
+  },
+  "live_hub": true,
+  "public_leaf_commands": 50,
+  "help_contracts_requested": true,
+  "help_contracts_passed": 50,
+  "semantic_commands_covered": 50,
+  "semantic_passed": 50,
+  "semantic_skipped": 0,
+  "receipts": [
+    {
+      "command": "pra gateway serve",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "gateway",
+        "serve",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.017575207981281,
+      "output_excerpt": "ped-transport\n                                  [default: passthrough]\n  --backend [openai|sglang|freetoken|vllm|ollama|llama_cpp|mlx|custom|huggingface]\n                                  [default: openai]\n  --backend-url TEXT\n  --model TEXT\n  -a, --pra-bundle TEXT           [default: auto]\n  -p, --profile TEXT              [default: balanced]\n  --prefix-cache-mode [auto|unknown|stateless|automatic_prefix_cache|explicit_prefix_handle|session_state]\n                                  [default: auto]\n  --session-state / --no-session-state\n  --incremental-messages / --full-messages\n  --resource-delta / --full-resources\n  --cache-affinity / --no-cache-affinity\n  --fallback-injection [before_current_user|system_suffix|tool_context|append_context_record|engine_native]\n                                  [default: before_current_user]\n  --sessions-dir PATH\n  --observability FILE\n  --otel                          Enable OpenTelemetry tracing explicitly.\n  --otel-endpoint TEXT\n  --prometheus                    Enable the Prometheus endpoint explicitly.\n  --prometheus-port INTEGER RANGE\n                                  [1<=x<=65535]\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra doctor",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "doctor",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8620026660209987,
+      "output_excerpt": "Usage: python -m pra_hf.cli doctor [OPTIONS]\n\n  Inspect the system, engines, local artifacts, and next action.\n\nOptions:\n  -v, --verbose\n  --json         Emit JSON.\n  --yaml         Emit YAML.\n  -h, --help     Show this message and exit."
+    },
+    {
+      "command": "pra engines",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "engines",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8959674159996212,
+      "output_excerpt": "Usage: python -m pra_hf.cli engines [OPTIONS]\n\n  Show the registry-backed engine capability and recommendation matrix.\n\nOptions:\n  --details ENGINE\n  --json            Emit JSON.\n  --yaml            Emit YAML.\n  -h, --help        Show this message and exit."
+    },
+    {
+      "command": "pra inspect",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "inspect",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.935161417000927,
+      "output_excerpt": "Usage: python -m pra_hf.cli inspect [OPTIONS] MODEL\n\n  Inspect one MODEL and ENGINE as a deployable combination.\n\nOptions:\n  -e, --engine TEXT               [default: hf]\n  -r, --revision TEXT\n  -a, --pra-bundle AUTO|NONE|PATH|REPO\n                                  Resolve and validate a bundle. Omit to\n                                  discover published bundles without\n                                  downloading them.\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra evaluate",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "evaluate",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.91394991701236,
+      "output_excerpt": "Usage: python -m pra_hf.cli evaluate [OPTIONS] MODEL\n\n  Compare execution modes using one frozen selection and explicit gates.\n\nOptions:\n  -e, --engine TEXT               [required]\n  -D, --dataset TEXT              [required]\n  --measurements FILE             Import measured mode results as JSON.\n  --include-native-memory\n  --include-native-serving\n  --quality-threshold FLOAT RANGE\n                                  [default: 0.95; 0.0<=x<=1.0]\n  -r, --revision TEXT\n  -a, --pra-bundle TEXT           [default: auto]\n  -p, --profile TEXT              [default: recommended]\n  -o, --output PATH\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra recommend",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "recommend",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8746359169890638,
+      "output_excerpt": "Usage: python -m pra_hf.cli recommend [OPTIONS] RUN\n\n  Recommend a mode from a completed qualification run.\n\nOptions:\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra report",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "report",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8580351250129752,
+      "output_excerpt": "Usage: python -m pra_hf.cli report [OPTIONS] RUN\n\n  Export a qualification run as Markdown, HTML, or JSON.\n\nOptions:\n  --format [md|html|json]  [default: md]\n  -o, --output PATH\n  -h, --help               Show this message and exit."
+    },
+    {
+      "command": "pra qualify native-memory",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "qualify",
+        "native-memory",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9084235829941463,
+      "output_excerpt": "Usage: python -m pra_hf.cli qualify native-memory [OPTIONS] MODEL\n\n  Compare Selected Context with frozen-selection HOT and WARM memory.\n\nOptions:\n  -e, --engine TEXT               [required]\n  -D, --dataset TEXT              [required]\n  --measurements FILE\n  -o, --output PATH               [required]\n  --quality-threshold FLOAT RANGE\n                                  [default: 0.95; 0.0<=x<=1.0]\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra qualify native-serving",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "qualify",
+        "native-serving",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9090934160049073,
+      "output_excerpt": "Usage: python -m pra_hf.cli qualify native-serving [OPTIONS] MODEL\n\n  Measure scheduler-owned Native Serving beyond Native Memory.\n\nOptions:\n  -e, --engine TEXT               [required]\n  -D, --dataset TEXT              [required]\n  --measurements FILE\n  -o, --output PATH               [required]\n  --quality-threshold FLOAT RANGE\n                                  [default: 0.95; 0.0<=x<=1.0]\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra assess init",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "assess",
+        "init",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.906936916988343,
+      "output_excerpt": "Usage: python -m pra_hf.cli assess init [OPTIONS] NAME\n\n  Create an editable assessment directory.\n\nOptions:\n  --root PATH  [default: .pra/assessments]\n  -h, --help   Show this message and exit."
+    },
+    {
+      "command": "pra assess run",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "assess",
+        "run",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.845868167001754,
+      "output_excerpt": "Usage: python -m pra_hf.cli assess run [OPTIONS] ASSESSMENT\n\n  Run the configured assessment and persist its evidence artifacts.\n\nOptions:\n  --measurements FILE\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra assess report",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "assess",
+        "report",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8487700420082547,
+      "output_excerpt": "Usage: python -m pra_hf.cli assess report [OPTIONS] ASSESSMENT\n\n  Regenerate an assessment report from its stored metrics.\n\nOptions:\n  --format [md|html|json]  [default: md]\n  -h, --help               Show this message and exit."
+    },
+    {
+      "command": "pra model inspect",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "inspect",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9256214579800144,
+      "output_excerpt": "Usage: python -m pra_hf.cli model inspect [OPTIONS] MODEL\n\n  Inspect MODEL without loading full weights by default.\n\nOptions:\n  -r, --revision TEXT\n  --validate\n  -v, --verbose\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra model adapt",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "adapt",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8519727080129087,
+      "output_excerpt": "Usage: python -m pra_hf.cli model adapt [OPTIONS] MODEL\n\n  Generate a declarative structural adapter and validation record.\n\nOptions:\n  -o, --output PATH    [required]\n  -r, --revision TEXT\n  -d, --device TEXT    [default: auto]\n  -f, --force\n  -v, --verbose\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra model validate",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "validate",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9138274579891004,
+      "output_excerpt": "Usage: python -m pra_hf.cli model validate [OPTIONS] MODEL\n\n  Re-run the structural-adapter validation ladder.\n\nOptions:\n  -a, --adapter TEXT\n  -r, --revision TEXT\n  -d, --device TEXT    [default: auto]\n  -s, --suite TEXT     [default: smoke]\n  -o, --output PATH\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra model onboard",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "onboard",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9158142500091344,
+      "output_excerpt": "Usage: python -m pra_hf.cli model onboard [OPTIONS] [MODEL]\n\n  Run inspection, adaptation, validation, and runtime packaging.\n\nOptions:\n  --manifest FILE\n  -s, --suite TEXT          [default: standard]\n  -o, --output PATH         [default: .pra/runs]\n  -d, --device TEXT         [default: auto]\n  -e, --engine TEXT         [default: hf]\n  -r, --revision TEXT\n  -f, --force\n  -j, --jobs INTEGER RANGE  [default: 1; x>=1]\n  -v, --verbose\n  --json                    Emit JSON.\n  --yaml                    Emit YAML.\n  -h, --help                Show this message and exit."
+    },
+    {
+      "command": "pra adapter inspect",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "inspect",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8755449999880511,
+      "output_excerpt": "Usage: python -m pra_hf.cli adapter inspect [OPTIONS] SOURCE\n\nOptions:\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra adapter train routing",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "train",
+        "routing",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8835833329940215,
+      "output_excerpt": "Usage: python -m pra_hf.cli adapter train routing [OPTIONS] MODEL\n\n  Train a routing adapter under the dataset-level public namespace.\n\nOptions:\n  -D, --dataset TEXT\n  --validation TEXT\n  --train-features PATH\n  --validation-features PATH\n  -o, --output PATH               [required]\n  --model-family [qwen|llama|gemma3]\n                                  [required]\n  --routing-dim INTEGER           [default: 128]\n  --steps INTEGER                 [default: 512]\n  --seed INTEGER                  [default: 53]\n  -d, --device TEXT\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra adapter train memory",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "train",
+        "memory",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9141739580081776,
+      "output_excerpt": "Usage: python -m pra_hf.cli adapter train memory [OPTIONS]\n\nOptions:\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra adapter train late-band",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "train",
+        "late-band",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8831241670122836,
+      "output_excerpt": "Usage: python -m pra_hf.cli adapter train late-band [OPTIONS]\n\nOptions:\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra adapter eval",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "eval",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8614884580019861,
+      "output_excerpt": "Usage: python -m pra_hf.cli adapter eval [OPTIONS] SOURCE\n\nOptions:\n  --features PATH        [required]\n  --query-strategy TEXT  [default: last]\n  -d, --device TEXT\n  --json                 Emit JSON.\n  --yaml                 Emit YAML.\n  -h, --help             Show this message and exit."
+    },
+    {
+      "command": "pra profiles show",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "show",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8680817089916673,
+      "output_excerpt": "Usage: python -m pra_hf.cli profiles show [OPTIONS] MODEL\n\nOptions:\n  -w, --workload TEXT\n  --registry FILE\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra profiles calibrate",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "calibrate",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8572134579881094,
+      "output_excerpt": "Usage: python -m pra_hf.cli profiles calibrate [OPTIONS] MODEL\n\nOptions:\n  -s, --suite TEXT     [default: standard]\n  -o, --output PATH    [required]\n  -d, --device TEXT    [default: auto]\n  -e, --engine TEXT    [default: hf]\n  -w, --workload TEXT\n  --registry FILE\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra profiles compare",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "compare",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8918309579894412,
+      "output_excerpt": "Usage: python -m pra_hf.cli profiles compare [OPTIONS] MODEL\n\nOptions:\n  -w, --workload TEXT\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra profiles report",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "report",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8501448750030249,
+      "output_excerpt": "Usage: python -m pra_hf.cli profiles report [OPTIONS] MODEL\n\nOptions:\n  -o, --output PATH  [required]\n  -h, --help         Show this message and exit."
+    },
+    {
+      "command": "pra bundle build",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "build",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.880549166991841,
+      "output_excerpt": "Usage: python -m pra_hf.cli bundle build [OPTIONS] RUN\n\nOptions:\n  -o, --output PATH  [required]\n  --force            Replace a non-empty output directory.\n  --json             Emit JSON.\n  --yaml             Emit YAML.\n  -h, --help         Show this message and exit."
+    },
+    {
+      "command": "pra bundle inspect",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "inspect",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.873542625020491,
+      "output_excerpt": "Usage: python -m pra_hf.cli bundle inspect [OPTIONS] SOURCE\n\nOptions:\n  -r, --revision TEXT\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra bundle validate",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "validate",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9684522910101805,
+      "output_excerpt": "Usage: python -m pra_hf.cli bundle validate [OPTIONS] SOURCE\n\nOptions:\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra bundle card",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "card",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8644571670156438,
+      "output_excerpt": "Usage: python -m pra_hf.cli bundle card [OPTIONS] SOURCE\n\n  Generate or update a rich Hugging Face model card.\n\nOptions:\n  --update    Write the generated card to README.md.\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra bundle list",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "list",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8633428339962848,
+      "output_excerpt": "Usage: python -m pra_hf.cli bundle list [OPTIONS]\n\n  List immutable bundles in the trusted auto-resolution registry.\n\nOptions:\n  --model TEXT\n  --family TEXT\n  --json         Emit JSON.\n  --yaml         Emit YAML.\n  -h, --help     Show this message and exit."
+    },
+    {
+      "command": "pra bundle resolve",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "resolve",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9015242090099491,
+      "output_excerpt": "Usage: python -m pra_hf.cli bundle resolve [OPTIONS] MODEL\n\n  Explain bundle selection and pin the resolved Hub revision.\n\nOptions:\n  -e, --engine TEXT      [default: hf]\n  -r, --revision TEXT\n  -a, --pra-bundle TEXT  [default: auto]\n  --json                 Emit JSON.\n  --yaml                 Emit YAML.\n  -h, --help             Show this message and exit."
+    },
+    {
+      "command": "pra hf login",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "login",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8982000410032924,
+      "output_excerpt": "Usage: python -m pra_hf.cli hf login [OPTIONS]\n\nOptions:\n  --check     Check existing Hub authentication without prompting.\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra hf list",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "list",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8933812500035856,
+      "output_excerpt": "Usage: python -m pra_hf.cli hf list [OPTIONS]\n\n  List pinned PRA bundles trusted for automatic resolution.\n\nOptions:\n  --query TEXT          Filter trusted metadata by a case-insensitive\n                        substring.\n  --model TEXT          Require an exact base-model identifier.\n  --family TEXT         Filter by model family or architecture.\n  -e, --engine TEXT     Require compatibility with this engine.\n  --qualification TEXT  Require an exact qualification tier.\n  --json                Emit JSON.\n  --yaml                Emit YAML.\n  -h, --help            Show this message and exit."
+    },
+    {
+      "command": "pra hf search",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "search",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8545620839868207,
+      "output_excerpt": "Usage: python -m pra_hf.cli hf search [OPTIONS] [QUERY]\n\n  Search live Hugging Face metadata for PRA model bundles.\n\nOptions:\n  --author TEXT          Limit results to one Hub namespace.  [default:\n                         EInnovator]\n  --all-authors          Search all Hub namespaces; results remain untrusted\n                         unless registered.\n  --limit INTEGER RANGE  [default: 20; 1<=x<=100]\n  --json                 Emit JSON.\n  --yaml                 Emit YAML.\n  -h, --help             Show this message and exit."
+    },
+    {
+      "command": "pra hf pull",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "pull",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8519324579974636,
+      "output_excerpt": "Usage: python -m pra_hf.cli hf pull [OPTIONS] REPO_ID\n\n  Pull and validate a bundle, using the normal HF cache by default.\n\nOptions:\n  -o, --output PATH\n  -r, --revision TEXT\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra hf push",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "push",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8757033750007395,
+      "output_excerpt": "Usage: python -m pra_hf.cli hf push [OPTIONS] BUNDLE REPO_ID\n\nOptions:\n  -r, --revision TEXT\n  -y, --yes\n  --dry-run\n  --private / --public   Set repository visibility when created.\n  --collection TEXT      Collection slug, or namespace/name to create.\n  --license TEXT\n  --commit-message TEXT  [default: Publish PRA model bundle]\n  --tag TEXT             Create an immutable release tag after upload.\n  --json                 Emit JSON.\n  --yaml                 Emit YAML.\n  -h, --help             Show this message and exit."
+    },
+    {
+      "command": "pra hf publish-manifest",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "publish-manifest",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8869105000048876,
+      "output_excerpt": "Usage: python -m pra_hf.cli hf publish-manifest [OPTIONS] MANIFEST\n\n  Validate or publish a resumable declarative bundle release list.\n\nOptions:\n  --dry-run\n  -y, --yes\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra hf inspect",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "inspect",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8856171670195181,
+      "output_excerpt": "Usage: python -m pra_hf.cli hf inspect [OPTIONS] SOURCE\n\nOptions:\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra runtime init",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "init",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9191660409851465,
+      "output_excerpt": "Usage: python -m pra_hf.cli runtime init [OPTIONS] DIRECTORY\n\n  Create a portable PRA runtime configuration directory.\n\nOptions:\n  --max-native-index-tokens INTEGER RANGE\n                                  [x>=1]\n  --max-native-index-bytes INTEGER RANGE\n                                  [x>=1]\n  --defer-native-index\n  --storage [memory|balanced|persistent|minimal]\n                                  [default: balanced]\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra runtime serve",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "serve",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9376571250031702,
+      "output_excerpt": "Usage: python -m pra_hf.cli runtime serve [OPTIONS] MODEL\n\n  Serve MODEL with an explicit or policy-selected execution mode.\n\nOptions:\n  -m, --mode [auto|selected-context|native-memory|native-serving]\n                                  Choose the qualified product execution mode.\n                                  [default: auto]\n  --explain                       Explain mode evidence and resolution.\n  -e, --engine TEXT               [default: hf]\n  -r, --revision TEXT\n  -d, --device TEXT               [default: auto]\n  -u, --endpoint TEXT\n  --host TEXT                     [default: 127.0.0.1]\n  --port INTEGER                  [default: 8000]\n  -a, --pra-bundle TEXT\n  -p, --profile TEXT\n  --storage [memory|balanced|persistent|minimal]\n                                  [default: balanced]\n  --storage-config FILE\n  --engine-arg TEXT\n  -v, --verbose\n  --observability FILE\n  --otel\n  --otel-endpoint TEXT\n  --prometheus\n  --prometheus-port INTEGER RANGE\n                                  [1<=x<=65535]\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra runtime inspect",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "inspect",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8499057079898193,
+      "output_excerpt": "Usage: python -m pra_hf.cli runtime inspect [OPTIONS] [MODEL]\n\nOptions:\n  -e, --engine TEXT               [default: hf]\n  -r, --revision TEXT\n  -d, --device TEXT               [default: auto]\n  -u, --endpoint TEXT\n  --host TEXT                     [default: 127.0.0.1]\n  --port INTEGER                  [default: 8000]\n  -a, --pra-bundle TEXT\n  -p, --profile TEXT\n  --storage [memory|balanced|persistent|minimal]\n                                  [default: balanced]\n  --storage-config FILE\n  --engine-arg TEXT\n  -v, --verbose\n  --observability FILE\n  --otel\n  --otel-endpoint TEXT\n  --prometheus\n  --prometheus-port INTEGER RANGE\n                                  [1<=x<=65535]\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra runtime doctor",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "doctor",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9317261659889482,
+      "output_excerpt": "Usage: python -m pra_hf.cli runtime doctor [OPTIONS]\n\nOptions:\n  -e, --engine TEXT    [default: hf]\n  -u, --endpoint TEXT\n  --json               Emit JSON.\n  --yaml               Emit YAML.\n  -h, --help           Show this message and exit."
+    },
+    {
+      "command": "pra runtime benchmark",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "benchmark",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8526039170101285,
+      "output_excerpt": "Usage: python -m pra_hf.cli runtime benchmark [OPTIONS] MODEL\n\nOptions:\n  -e, --engine TEXT               [default: hf]\n  -p, --profile TEXT\n  -d, --device TEXT               [default: auto]\n  -o, --output PATH               [required]\n  --storage [memory|balanced|persistent|minimal]\n                                  [default: balanced]\n  --storage-config FILE\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra runtime capabilities",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "capabilities",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8550437089870684,
+      "output_excerpt": "Usage: python -m pra_hf.cli runtime capabilities [OPTIONS]\n\nOptions:\n  --json      Emit JSON.\n  --yaml      Emit YAML.\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra serve",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "serve",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8721151250065304,
+      "output_excerpt": "Usage: python -m pra_hf.cli serve [OPTIONS] MODEL\n\n  Serve MODEL with an explicit or policy-selected execution mode.\n\nOptions:\n  -m, --mode [auto|selected-context|native-memory|native-serving]\n                                  Choose the qualified product execution mode.\n                                  [default: auto]\n  --explain                       Explain mode evidence and resolution.\n  -e, --engine TEXT               [default: hf]\n  -r, --revision TEXT\n  -d, --device TEXT               [default: auto]\n  -u, --endpoint TEXT\n  --host TEXT                     [default: 127.0.0.1]\n  --port INTEGER                  [default: 8000]\n  -a, --pra-bundle TEXT\n  -p, --profile TEXT\n  --storage [memory|balanced|persistent|minimal]\n                                  [default: balanced]\n  --storage-config FILE\n  --engine-arg TEXT\n  -v, --verbose\n  --observability FILE\n  --otel\n  --otel-endpoint TEXT\n  --prometheus\n  --prometheus-port INTEGER RANGE\n                                  [1<=x<=65535]\n  --json                          Emit JSON.\n  --yaml                          Emit YAML.\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra agent chat",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "chat",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8645057920075487,
+      "output_excerpt": "Usage: python -m pra_hf.cli agent chat [OPTIONS] [LEGACY_MODEL]\n\n  Open the persistent TUI; no flags uses the default profile.\n\nOptions:\n  -p, --profile TEXT              Named agent profile.\n  -P, --pra TEXT                  PRA profile/bundle/config override.\n  -m, --model TEXT\n  -e, --engine TEXT\n  -u, --endpoint TEXT\n  -c, --config FILE\n  -w, --workspace PATH\n  -s, --skills DIRECTORY\n  --context-transport [auto|pra|text]\n  --allow-text-fallback / --no-text-fallback\n  --session TEXT\n  -r, --resume\n  -t, --task TEXT\n  -v, --verbose\n  --observability FILE\n  --otel                          Enable OpenTelemetry tracing explicitly.\n  --otel-endpoint URL\n  --prometheus                    Enable Prometheus metrics explicitly.\n  --prometheus-port INTEGER RANGE\n                                  [1<=x<=65535]\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra agent run",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "run",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9004121659963857,
+      "output_excerpt": "Usage: python -m pra_hf.cli agent run [OPTIONS] [PROMPT]\n\n  Run one noninteractive turn from an argument or stdin.\n\nOptions:\n  -p, --profile TEXT              Named agent profile.\n  -P, --pra TEXT                  PRA profile/bundle/config override.\n  -m, --model TEXT\n  -e, --engine TEXT\n  -u, --endpoint TEXT\n  -c, --config FILE\n  -w, --workspace PATH\n  -s, --skills DIRECTORY\n  --context-transport [auto|pra|text]\n  --allow-text-fallback / --no-text-fallback\n  --session TEXT\n  -r, --resume\n  -t, --task TEXT\n  -v, --verbose\n  --json\n  --observability FILE\n  --otel                          Enable OpenTelemetry tracing explicitly.\n  --otel-endpoint URL\n  --prometheus                    Enable Prometheus metrics explicitly.\n  --prometheus-port INTEGER RANGE\n                                  [1<=x<=65535]\n  -h, --help                      Show this message and exit."
+    },
+    {
+      "command": "pra agent inspect",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "inspect",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9022453329816926,
+      "output_excerpt": "Usage: python -m pra_hf.cli agent inspect [OPTIONS]\n\nOptions:\n  -p, --profile TEXT\n  -c, --config FILE\n  --json              Emit JSON.\n  --yaml              Emit YAML.\n  -h, --help          Show this message and exit."
+    },
+    {
+      "command": "pra agent start",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "start",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8698468329967,
+      "output_excerpt": "Usage: python -m pra_hf.cli agent start [OPTIONS]\n\n  Start the experimental optional FastAPI agent UI.\n\nOptions:\n  -p, --profile TEXT\n  -P, --pra TEXT\n  -c, --config FILE\n  -h, --host TEXT     [default: 127.0.0.1]\n  --port INTEGER      [default: 8765]\n  -d, --detach\n  -o, --open\n  -v, --verbose\n  --json              Emit JSON.\n  --yaml              Emit YAML.\n  --help              Show this message and exit."
+    },
+    {
+      "command": "pra agent stop",
+      "phase": "help",
+      "classification": "help-contract",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "stop",
+        "--help"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9072591250005644,
+      "output_excerpt": "Usage: python -m pra_hf.cli agent stop [OPTIONS]\n\n  Safely stop a detached PRA Agent Web UI.\n\nOptions:\n  -h, --help  Show this message and exit."
+    },
+    {
+      "command": "pra doctor",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "doctor",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9364349160168786,
+      "output_excerpt": "\": \"Not measured\",\n      \"native_serving\": \"Not measured\",\n      \"provenance\": \"/private/tmp/pra-cli-e2e-3f4f751/src/pra_hf/model_profiles/engine_documentation_registry.json\",\n      \"reachable\": null,\n      \"recommended\": \"Use only for controlled logical-transport experiments.\",\n      \"resolution_reason\": \"Selected Context is the qualified fallback; Native Memory economics are not_measured and Native Serving is not_measured.\",\n      \"resolved_mode\": \"selected-context\",\n      \"selected_context\": \"Candidate\",\n      \"typed_transport\": \"Candidate\",\n      \"version\": null\n    }\n  ],\n  \"models_and_adapters\": {\n    \"known_local_bundles\": [],\n    \"profile_registry\": \"/private/tmp/pra-cli-e2e-3f4f751/src/pra_hf/model_profiles/pra_profile_benchmarks.json\"\n  },\n  \"next_action\": \"pra evaluate MODEL --engine hugging-face --dataset DATASET\",\n  \"problems\": [],\n  \"schema_version\": \"1.0\",\n  \"system\": {\n    \"accelerator\": \"MPS (Apple Metal)\",\n    \"cpu\": \"arm\",\n    \"disk_free_bytes\": 16954261504,\n    \"disk_total_bytes\": 494384795648,\n    \"executable\": \"/opt/homebrew/opt/python@3.10/bin/python3.10\",\n    \"memory_bytes\": 51539607552,\n    \"os\": \"macOS-26.6.2-arm64-arm-64bit\",\n    \"python\": \"3.10.20\"\n  }\n}"
+    },
+    {
+      "command": "pra engines",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "engines",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.917555457999697,
+      "output_excerpt": "ond mechanism availability.\",\n          \"recommendation_status\": \"CANDIDATE\"\n        },\n        {\n          \"economic_status\": \"NOT_MEASURED\",\n          \"mechanism_status\": \"NOT_MEASURED\",\n          \"mode\": \"native-serving\",\n          \"quality_status\": \"NOT_MEASURED\",\n          \"reason\": \"Native modes require measured incremental economics beyond mechanism availability.\",\n          \"recommendation_status\": \"CANDIDATE\"\n        }\n      ],\n      \"name\": \"FreeToken\",\n      \"native_memory\": \"Not measured\",\n      \"native_serving\": \"Not measured\",\n      \"provenance\": \"/private/tmp/pra-cli-e2e-3f4f751/src/pra_hf/model_profiles/engine_documentation_registry.json\",\n      \"recommended\": \"Use only for controlled logical-transport experiments.\",\n      \"resolution_reason\": \"Selected Context is the qualified fallback; Native Memory economics are not_measured and Native Serving is not_measured.\",\n      \"resolved_mode\": \"selected-context\",\n      \"selected_context\": \"Candidate\",\n      \"typed_transport\": \"Candidate\"\n    }\n  ],\n  \"provenance\": \"/private/tmp/pra-cli-e2e-3f4f751/src/pra_hf/model_profiles/engine_documentation_registry.json\",\n  \"registry_version\": \"2026-09-01\",\n  \"schema_version\": \"1.0\"\n}"
+    },
+    {
+      "command": "pra inspect",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "inspect",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-e",
+        "hf",
+        "-a",
+        "none",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.6583511659991927,
+      "output_excerpt": "\"CANDIDATE\"\n      }\n    ],\n    \"fallback\": \"selected-context\",\n    \"override_used\": false,\n    \"reason\": \"Selected Context is the qualified fallback; Native Memory economics are not_measured and Native Serving is not_measured.\",\n    \"requested_mode\": \"auto\",\n    \"resolved_mode\": \"selected-context\"\n  },\n  \"model\": {\n    \"attention\": {\n      \"head_dim\": 8,\n      \"kv_heads\": 2,\n      \"layers\": 1,\n      \"position_encoding\": \"rope\",\n      \"query_heads\": 4,\n      \"topology\": \"homogeneous_global\"\n    },\n    \"model\": {\n      \"architecture\": \"LlamaForCausalLM\",\n      \"family\": \"llama\",\n      \"id\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n      \"parameter_count_approx\": 10880,\n      \"revision\": \"unresolved\",\n      \"variant\": \"base\"\n    },\n    \"pra\": {\n      \"native_kv\": true,\n      \"profile_status\": \"registry_lookup_required\",\n      \"routing_capture\": true,\n      \"structural_adapter\": {\n        \"source\": \"builtin:llama\",\n        \"status\": \"VALIDATED\"\n      }\n    }\n  },\n  \"next_command\": \"pra evaluate /var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama --engine hugging-face --dataset DATASET\",\n  \"requested_engine\": \"hf\"\n}"
+    },
+    {
+      "command": "pra evaluate",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "evaluate",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-e",
+        "mlx",
+        "-D",
+        "cli-e2e",
+        "--measurements",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/measurements.json",
+        "-a",
+        "none",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/qualification",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9967674170038663,
+      "output_excerpt": "l,\n        \"itl_p50_ms\": null,\n        \"itl_p95_ms\": null,\n        \"itl_p99_ms\": null,\n        \"requests_per_second\": null,\n        \"successful_requests_per_second\": 8.0,\n        \"ttft_p50_ms\": null,\n        \"ttft_p95_ms\": 100.0,\n        \"ttft_p99_ms\": null\n      },\n      \"provenance\": null,\n      \"quality\": {\n        \"em\": null,\n        \"evidence_recall\": null,\n        \"f1\": 0.8,\n        \"gold_log_probability\": null,\n        \"success\": true\n      },\n      \"status\": \"Measured\"\n    }\n  },\n  \"quality_gate\": {\n    \"passed\": true,\n    \"reason\": \"Selected Context reported success.\",\n    \"threshold\": 0.95\n  },\n  \"recommendation\": {\n    \"confidence\": \"E2E_CONTROLLED\",\n    \"fallback\": \"Full Context\",\n    \"limitations\": [],\n    \"profile\": \"recommended\",\n    \"reason\": \"The quality gate passed; Selected Context is the qualified portable baseline.\",\n    \"recommended_mode\": \"Selected Context\",\n    \"status\": \"Recommended\"\n  },\n  \"run_directory\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/qualification\",\n  \"schema_version\": \"1.0\",\n  \"selection\": {\n    \"candidate_count\": null,\n    \"digest\": \"cli-e2e-frozen-selection\",\n    \"frozen\": true,\n    \"selected_count\": null\n  }\n}"
+    },
+    {
+      "command": "pra recommend",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "recommend",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/qualification",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8682991669920739,
+      "output_excerpt": "   \"reason\": \"Measured Selected Context qualification.\",\n        \"recommendation_status\": \"RECOMMENDED\"\n      },\n      {\n        \"economic_status\": \"NOT_MEASURED\",\n        \"mechanism_status\": \"VALIDATED\",\n        \"mode\": \"native-memory\",\n        \"quality_status\": \"NOT_MEASURED\",\n        \"reason\": \"Measured Native Memory qualification relative to Selected Context.\",\n        \"recommendation_status\": \"CANDIDATE\"\n      },\n      {\n        \"economic_status\": \"NOT_MEASURED\",\n        \"mechanism_status\": \"CANDIDATE\",\n        \"mode\": \"native-serving\",\n        \"quality_status\": \"NOT_MEASURED\",\n        \"reason\": \"Measured Native Serving qualification relative to Native Memory.\",\n        \"recommendation_status\": \"CANDIDATE\"\n      }\n    ],\n    \"fallback\": \"selected-context\",\n    \"override_used\": false,\n    \"reason\": \"Selected Context is the qualified fallback; Native Memory economics are not_measured and Native Serving is candidate.\",\n    \"requested_mode\": \"auto\",\n    \"resolved_mode\": \"selected-context\"\n  },\n  \"profile\": \"recommended\",\n  \"reason\": \"The quality gate passed; Selected Context is the qualified portable baseline.\",\n  \"recommended_mode\": \"Selected Context\",\n  \"status\": \"Recommended\"\n}"
+    },
+    {
+      "command": "pra report",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "report",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/qualification",
+        "--format",
+        "html",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/report.html"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8975251669762656,
+      "output_excerpt": "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/report.html"
+    },
+    {
+      "command": "pra qualify native-memory",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "qualify",
+        "native-memory",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-e",
+        "mlx",
+        "-D",
+        "cli-e2e",
+        "--measurements",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/measurements.json",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/native-qualification",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.037207249988569,
+      "output_excerpt": "pletion_p50_ms\": null,\n        \"completion_p95_ms\": null,\n        \"completion_p99_ms\": null,\n        \"itl_p50_ms\": null,\n        \"itl_p95_ms\": null,\n        \"itl_p99_ms\": null,\n        \"requests_per_second\": null,\n        \"successful_requests_per_second\": 8.0,\n        \"ttft_p50_ms\": null,\n        \"ttft_p95_ms\": 100.0,\n        \"ttft_p99_ms\": null\n      },\n      \"provenance\": null,\n      \"quality\": {\n        \"em\": null,\n        \"evidence_recall\": null,\n        \"f1\": 0.8,\n        \"gold_log_probability\": null,\n        \"success\": true\n      },\n      \"status\": \"Measured\"\n    }\n  },\n  \"quality_gate\": {\n    \"passed\": true,\n    \"reason\": \"Selected Context reported success.\",\n    \"threshold\": 0.95\n  },\n  \"recommendation\": {\n    \"confidence\": \"E2E_CONTROLLED\",\n    \"fallback\": \"Full Context\",\n    \"limitations\": [],\n    \"profile\": \"recommended\",\n    \"reason\": \"Quality passed and Native Memory has a measured incremental economic gain over Selected Context.\",\n    \"recommended_mode\": \"Native Memory\",\n    \"status\": \"Recommended\"\n  },\n  \"schema_version\": \"1.0\",\n  \"selection\": {\n    \"candidate_count\": null,\n    \"digest\": \"cli-e2e-frozen-selection\",\n    \"frozen\": true,\n    \"selected_count\": null\n  }\n}"
+    },
+    {
+      "command": "pra qualify native-serving",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "qualify",
+        "native-serving",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-e",
+        "vllm",
+        "-D",
+        "cli-e2e",
+        "--measurements",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/measurements.json",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/serving-qualification",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9062319999793544,
+      "output_excerpt": "tl_p50_ms\": null,\n        \"itl_p95_ms\": null,\n        \"itl_p99_ms\": null,\n        \"requests_per_second\": null,\n        \"successful_requests_per_second\": 8.0,\n        \"ttft_p50_ms\": null,\n        \"ttft_p95_ms\": 100.0,\n        \"ttft_p99_ms\": null\n      },\n      \"provenance\": null,\n      \"quality\": {\n        \"em\": null,\n        \"evidence_recall\": null,\n        \"f1\": 0.8,\n        \"gold_log_probability\": null,\n        \"success\": true\n      },\n      \"status\": \"Measured\"\n    }\n  },\n  \"quality_gate\": {\n    \"passed\": true,\n    \"reason\": \"Selected Context reported success.\",\n    \"threshold\": 0.95\n  },\n  \"recommendation\": {\n    \"confidence\": \"E2E_CONTROLLED\",\n    \"fallback\": \"Full Context\",\n    \"limitations\": [\n      \"Native Memory is not promoted because incremental economics are unmeasured, non-positive, or unqualified.\"\n    ],\n    \"profile\": \"recommended\",\n    \"reason\": \"The quality gate passed; Selected Context is the qualified portable baseline.\",\n    \"recommended_mode\": \"Selected Context\",\n    \"status\": \"Recommended\"\n  },\n  \"schema_version\": \"1.0\",\n  \"selection\": {\n    \"candidate_count\": null,\n    \"digest\": \"cli-e2e-frozen-selection\",\n    \"frozen\": true,\n    \"selected_count\": null\n  }\n}"
+    },
+    {
+      "command": "pra assess init",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "assess",
+        "init",
+        "customer",
+        "--root",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/assessments"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8763090839784127,
+      "output_excerpt": "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/assessments/customer"
+    },
+    {
+      "command": "pra assess run",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "assess",
+        "run",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/assessments/customer",
+        "--measurements",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/measurements.json",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.0320224160095677,
+      "output_excerpt": ": {\n        \"completion_p50_ms\": null,\n        \"completion_p95_ms\": null,\n        \"completion_p99_ms\": null,\n        \"itl_p50_ms\": null,\n        \"itl_p95_ms\": null,\n        \"itl_p99_ms\": null,\n        \"requests_per_second\": null,\n        \"successful_requests_per_second\": 8.0,\n        \"ttft_p50_ms\": null,\n        \"ttft_p95_ms\": 100.0,\n        \"ttft_p99_ms\": null\n      },\n      \"provenance\": null,\n      \"quality\": {\n        \"em\": null,\n        \"evidence_recall\": null,\n        \"f1\": 0.8,\n        \"gold_log_probability\": null,\n        \"success\": true\n      },\n      \"status\": \"Measured\"\n    }\n  },\n  \"quality_gate\": {\n    \"passed\": true,\n    \"reason\": \"Selected Context reported success.\",\n    \"threshold\": 0.95\n  },\n  \"recommendation\": {\n    \"confidence\": \"E2E_CONTROLLED\",\n    \"fallback\": \"Full Context\",\n    \"limitations\": [],\n    \"profile\": \"recommended\",\n    \"reason\": \"The quality gate passed; Selected Context is the qualified portable baseline.\",\n    \"recommended_mode\": \"Selected Context\",\n    \"status\": \"Recommended\"\n  },\n  \"schema_version\": \"1.0\",\n  \"selection\": {\n    \"candidate_count\": null,\n    \"digest\": \"cli-e2e-frozen-selection\",\n    \"frozen\": true,\n    \"selected_count\": null\n  }\n}"
+    },
+    {
+      "command": "pra assess report",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "assess",
+        "report",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/assessments/customer",
+        "--format",
+        "html"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8366875000065193,
+      "output_excerpt": "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/assessments/customer/report.html"
+    },
+    {
+      "command": "pra model inspect",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "inspect",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.6459080839995295,
+      "output_excerpt": "{\n  \"attention\": {\n    \"head_dim\": 8,\n    \"kv_heads\": 2,\n    \"layers\": 1,\n    \"position_encoding\": \"rope\",\n    \"query_heads\": 4,\n    \"topology\": \"homogeneous_global\"\n  },\n  \"model\": {\n    \"architecture\": \"LlamaForCausalLM\",\n    \"family\": \"llama\",\n    \"id\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n    \"parameter_count_approx\": 10880,\n    \"revision\": \"unresolved\",\n    \"variant\": \"base\"\n  },\n  \"pra\": {\n    \"native_kv\": true,\n    \"profile_status\": \"registry_lookup_required\",\n    \"routing_capture\": true,\n    \"structural_adapter\": {\n      \"source\": \"builtin:llama\",\n      \"status\": \"VALIDATED\"\n    }\n  }\n}"
+    },
+    {
+      "command": "pra model adapt",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "adapt",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/structural-adapter",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.7011459579807706,
+      "output_excerpt": "antic stages are deferred until --validate is requested.\",\n    \"revision\": \"unresolved\",\n    \"schema_version\": 1,\n    \"stages\": [\n      {\n        \"stage\": \"V0_config_inspection\",\n        \"status\": \"PASS\"\n      },\n      {\n        \"stage\": \"V1_model_load\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V2_disabled_pra_parity\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V3_native_kv_capture\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V4_visible_prefix_native_equivalence\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V5_source_offset_equivalence\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V6_cached_decode_lifetime\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V7_gqa_mqa_layout\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V8_selected_region_consumption\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      },\n      {\n        \"stage\": \"V9_generation_smoke\",\n        \"status\": \"DEFERRED_WEIGHT_LOAD\"\n      }\n    ],\n    \"status\": \"PARTIAL_TOPOLOGY\",\n    \"suite\": \"smoke\"\n  }\n}"
+    },
+    {
+      "command": "pra model validate",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "validate",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-a",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/structural-adapter",
+        "-d",
+        "cpu",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/model-validation",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 3.526631416985765,
+      "output_excerpt": "ested\": \"cpu\",\n  \"model\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n  \"note\": \"V4/V5 require published equivalence fixtures and are never inferred from projection discovery.\",\n  \"revision\": \"unresolved\",\n  \"schema_version\": 1,\n  \"stages\": [\n    {\n      \"stage\": \"V0_config_inspection\",\n      \"status\": \"PASS\"\n    },\n    {\n      \"error\": \"ValueError: Layer -8 is outside a 1-layer model.\",\n      \"stage\": \"V1_model_load\",\n      \"status\": \"FAIL\"\n    },\n    {\n      \"stage\": \"V2_disabled_pra_parity\",\n      \"status\": \"BLOCKED\"\n    },\n    {\n      \"stage\": \"V3_native_kv_capture\",\n      \"status\": \"BLOCKED\"\n    },\n    {\n      \"stage\": \"V4_visible_prefix_native_equivalence\",\n      \"status\": \"BLOCKED\"\n    },\n    {\n      \"stage\": \"V5_source_offset_equivalence\",\n      \"status\": \"BLOCKED\"\n    },\n    {\n      \"stage\": \"V6_cached_decode_lifetime\",\n      \"status\": \"BLOCKED\"\n    },\n    {\n      \"stage\": \"V7_gqa_mqa_layout\",\n      \"status\": \"BLOCKED\"\n    },\n    {\n      \"stage\": \"V8_selected_region_consumption\",\n      \"status\": \"BLOCKED\"\n    },\n    {\n      \"stage\": \"V9_generation_smoke\",\n      \"status\": \"BLOCKED\"\n    }\n  ],\n  \"status\": \"FAILED\",\n  \"suite\": \"smoke\"\n}"
+    },
+    {
+      "command": "pra model onboard",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "model",
+        "onboard",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/onboard",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.7400192090135533,
+      "output_excerpt": "          \"status\": \"PASS\"\n          },\n          {\n            \"stage\": \"V1_model_load\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V2_disabled_pra_parity\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V3_native_kv_capture\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V4_visible_prefix_native_equivalence\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V5_source_offset_equivalence\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V6_cached_decode_lifetime\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V7_gqa_mqa_layout\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V8_selected_region_consumption\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          },\n          {\n            \"stage\": \"V9_generation_smoke\",\n            \"status\": \"DEFERRED_WEIGHT_LOAD\"\n          }\n        ],\n        \"status\": \"PARTIAL_TOPOLOGY\",\n        \"suite\": \"standard\"\n      }\n    }\n  ]\n}"
+    },
+    {
+      "command": "pra adapter train routing",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "train",
+        "routing",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "--model-family",
+        "llama",
+        "--train-features",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/features.pt",
+        "--validation-features",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/features.pt",
+        "--steps",
+        "2",
+        "--routing-dim",
+        "8",
+        "-d",
+        "cpu",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/router",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.4176152090076357,
+      "output_excerpt": "ll\": 1.0,\n          \"any_evidence_recall\": 1.0,\n          \"recall\": 1.0,\n          \"selected_chunk_fraction\": 1.0,\n          \"selected_kv_token_fraction\": 1.0\n        },\n        \"3\": {\n          \"all_evidence_recall\": 0.75,\n          \"any_evidence_recall\": 0.75,\n          \"recall\": 0.75,\n          \"selected_chunk_fraction\": 0.375,\n          \"selected_kv_token_fraction\": 0.375\n        },\n        \"8\": {\n          \"all_evidence_recall\": 1.0,\n          \"any_evidence_recall\": 1.0,\n          \"recall\": 1.0,\n          \"selected_chunk_fraction\": 1.0,\n          \"selected_kv_token_fraction\": 1.0\n        }\n      },\n      \"inverse\": {\n        \"f70\": 0.375,\n        \"f80\": 1.0,\n        \"f90\": 1.0,\n        \"f95\": 1.0\n      },\n      \"kv_fraction_exact\": true,\n      \"query_strategy\": \"last\",\n      \"summary\": {\n        \"AUC0-30\": 0.5125000000000001,\n        \"MRR\": 0.6333333333333333,\n        \"R@10%\": 0.5,\n        \"R@16\": 1.0,\n        \"R@20%\": 0.5,\n        \"R@3\": 0.75,\n        \"R@30%\": 0.75,\n        \"R@5%\": 0.5,\n        \"R@8\": 1.0,\n        \"f70\": 0.375,\n        \"f80\": 1.0,\n        \"f90\": 1.0\n      }\n    }\n  },\n  \"output\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/router\"\n}"
+    },
+    {
+      "command": "pra adapter inspect",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "inspect",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/router",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.884459541994147,
+      "output_excerpt": "{\n  \"adapter_type\": \"asymmetric_linear\",\n  \"base_model\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n  \"format_version\": 1,\n  \"input_dim\": 8,\n  \"metrics\": {\n    \"AUC0-30\": 0.5125000000000001,\n    \"MRR\": 0.6333333333333333,\n    \"R@10%\": 0.5,\n    \"R@16\": 1.0,\n    \"R@20%\": 0.5,\n    \"R@3\": 0.75,\n    \"R@30%\": 0.75,\n    \"R@5%\": 0.5,\n    \"R@8\": 1.0,\n    \"f70\": 0.375,\n    \"f80\": 1.0,\n    \"f90\": 1.0\n  },\n  \"model_family\": \"llama\",\n  \"query_strategy\": \"last\",\n  \"routing_dim\": 8,\n  \"training_datasets\": [],\n  \"training_seed\": 53,\n  \"training_steps\": 2,\n  \"validation_datasets\": []\n}"
+    },
+    {
+      "command": "pra adapter eval",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "eval",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/router",
+        "--features",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/features.pt",
+        "-d",
+        "cpu",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9209035829990171,
+      "output_excerpt": " recovered\",\n  \"examples\": 4,\n  \"fixed_k\": {\n    \"1\": {\n      \"all_evidence_recall\": 0.5,\n      \"any_evidence_recall\": 0.5,\n      \"recall\": 0.5,\n      \"selected_chunk_fraction\": 0.125,\n      \"selected_kv_token_fraction\": 0.125\n    },\n    \"16\": {\n      \"all_evidence_recall\": 1.0,\n      \"any_evidence_recall\": 1.0,\n      \"recall\": 1.0,\n      \"selected_chunk_fraction\": 1.0,\n      \"selected_kv_token_fraction\": 1.0\n    },\n    \"3\": {\n      \"all_evidence_recall\": 0.75,\n      \"any_evidence_recall\": 0.75,\n      \"recall\": 0.75,\n      \"selected_chunk_fraction\": 0.375,\n      \"selected_kv_token_fraction\": 0.375\n    },\n    \"8\": {\n      \"all_evidence_recall\": 1.0,\n      \"any_evidence_recall\": 1.0,\n      \"recall\": 1.0,\n      \"selected_chunk_fraction\": 1.0,\n      \"selected_kv_token_fraction\": 1.0\n    }\n  },\n  \"inverse\": {\n    \"f70\": 0.375,\n    \"f80\": 1.0,\n    \"f90\": 1.0,\n    \"f95\": 1.0\n  },\n  \"kv_fraction_exact\": true,\n  \"query_strategy\": \"last\",\n  \"summary\": {\n    \"AUC0-30\": 0.5125000000000001,\n    \"MRR\": 0.6333333333333333,\n    \"R@10%\": 0.5,\n    \"R@16\": 1.0,\n    \"R@20%\": 0.5,\n    \"R@3\": 0.75,\n    \"R@30%\": 0.75,\n    \"R@5%\": 0.5,\n    \"R@8\": 1.0,\n    \"f70\": 0.375,\n    \"f80\": 1.0,\n    \"f90\": 1.0\n  }\n}"
+    },
+    {
+      "command": "pra adapter train memory",
+      "phase": "semantic",
+      "classification": "expected-policy-rejection",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "train",
+        "memory"
+      ],
+      "status": "PASS",
+      "exit_code": 1,
+      "duration_seconds": 0.8523687080014497,
+      "output_excerpt": "Error: Memory-adapter training remains research-only; no certified dataset pipeline is packaged yet."
+    },
+    {
+      "command": "pra adapter train late-band",
+      "phase": "semantic",
+      "classification": "expected-policy-rejection",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "adapter",
+        "train",
+        "late-band"
+      ],
+      "status": "PASS",
+      "exit_code": 1,
+      "duration_seconds": 0.8763254160003271,
+      "output_excerpt": "Error: Late-band LoRA remains research-only and is not a certified product path."
+    },
+    {
+      "command": "pra profiles show",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "show",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8531596249958966,
+      "output_excerpt": "{\n  \"measurement_status\": \"CALIBRATION_PENDING\",\n  \"model\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n  \"profiles\": [],\n  \"registry_version\": \"2026-08-product-profile-v2\",\n  \"schema_version\": \"1.0\",\n  \"source\": \"/private/tmp/pra-cli-e2e-3f4f751/src/pra_hf/model_profiles/pra_profile_benchmarks.json\",\n  \"workload\": null\n}"
+    },
+    {
+      "command": "pra profiles calibrate",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "calibrate",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/profile-run",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.883435791998636,
+      "output_excerpt": "{\n  \"default_profile\": \"REFERENCE_CORRECTNESS\",\n  \"device_requested\": \"auto\",\n  \"metrics\": {\n    \"engine\": \"hf\",\n    \"measured_rows\": 0,\n    \"model\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n    \"reason\": \"oracle_headroom_not_measured\",\n    \"suite\": \"standard\",\n    \"training_recommended\": false,\n    \"workload\": null\n  },\n  \"output\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/profile-run\",\n  \"profiles\": {\n    \"QUALITY_MAX_CANDIDATE\": {\n      \"engine\": \"hf\",\n      \"evidence_tier\": \"SMOKE\",\n      \"status\": \"CALIBRATION_PENDING\",\n      \"workload\": \"standard\"\n    },\n    \"REFERENCE_CORRECTNESS\": {\n      \"engine\": \"hf\",\n      \"evidence_tier\": \"SMOKE\",\n      \"status\": \"CALIBRATION_PENDING\",\n      \"workload\": \"standard\"\n    }\n  }\n}"
+    },
+    {
+      "command": "pra profiles compare",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "compare",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9089911249757279,
+      "output_excerpt": "{\n  \"model\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n  \"profiles\": []\n}"
+    },
+    {
+      "command": "pra profiles report",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "profiles",
+        "report",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/profiles.md"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8873748329933733,
+      "output_excerpt": "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/profiles.md"
+    },
+    {
+      "command": "pra bundle build",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "build",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle-run",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8952645000244956,
+      "output_excerpt": "\": \"LlamaForCausalLM\",\n      \"fingerprint\": \"449bfc3fb6d7e9d74c653e4e621bb6e5a0cde70d1477b8f53fdffc618074697d\",\n      \"id\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n      \"revision\": \"cli-e2e-local\"\n    },\n    \"checksums\": {\n      \"structural_adapter/pra_adapter.yaml\": \"dfa38967d8cd4f18a55ef61d603a725ccc1e576779700a1073fe61e772256439\"\n    },\n    \"engine_realizations\": {},\n    \"learned_adapters\": {},\n    \"profiles\": {\n      \"REFERENCE_CORRECTNESS\": {\n        \"status\": \"CONTROLLED\"\n      }\n    },\n    \"provenance\": {\n      \"license\": \"apache-2.0\",\n      \"pra_commit\": \"9700c402be7476f6429935c49d02d127bc9472ff\"\n    },\n    \"qualification\": {\n      \"metrics\": [],\n      \"status\": \"CONTROLLED\"\n    },\n    \"runtime_compatibility\": {\n      \"hf\": \"controlled\"\n    },\n    \"schema_version\": 2,\n    \"structural_adapter\": {\n      \"fingerprint\": \"2aaa1ec4df551ba8a914a71cb5bf3747f3b6e00f606e868d7b2ebab9a769bc18\",\n      \"path\": \"structural_adapter\",\n      \"status\": \"validated\"\n    },\n    \"trust\": {\n      \"publisher\": \"cli-e2e\",\n      \"status\": \"local/private\"\n    }\n  },\n  \"output\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle\"\n}"
+    },
+    {
+      "command": "pra bundle inspect",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "inspect",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8743497079994995,
+      "output_excerpt": "{\n  \"base_model\": {\n    \"architecture\": \"LlamaForCausalLM\",\n    \"fingerprint\": \"449bfc3fb6d7e9d74c653e4e621bb6e5a0cde70d1477b8f53fdffc618074697d\",\n    \"id\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n    \"revision\": \"cli-e2e-local\"\n  },\n  \"checksums\": {\n    \"structural_adapter/pra_adapter.yaml\": \"dfa38967d8cd4f18a55ef61d603a725ccc1e576779700a1073fe61e772256439\"\n  },\n  \"engine_realizations\": {},\n  \"learned_adapters\": {},\n  \"profiles\": {\n    \"REFERENCE_CORRECTNESS\": {\n      \"status\": \"CONTROLLED\"\n    }\n  },\n  \"provenance\": {\n    \"license\": \"apache-2.0\",\n    \"pra_commit\": \"9700c402be7476f6429935c49d02d127bc9472ff\"\n  },\n  \"qualification\": {\n    \"metrics\": [],\n    \"status\": \"CONTROLLED\"\n  },\n  \"runtime_compatibility\": {\n    \"hf\": \"controlled\"\n  },\n  \"schema_version\": 2,\n  \"structural_adapter\": {\n    \"fingerprint\": \"2aaa1ec4df551ba8a914a71cb5bf3747f3b6e00f606e868d7b2ebab9a769bc18\",\n    \"path\": \"structural_adapter\",\n    \"status\": \"validated\"\n  },\n  \"trust\": {\n    \"publisher\": \"cli-e2e\",\n    \"status\": \"local/private\"\n  }\n}"
+    },
+    {
+      "command": "pra bundle validate",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "validate",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.865186957991682,
+      "output_excerpt": "{\n  \"base_model\": {\n    \"architecture\": \"LlamaForCausalLM\",\n    \"fingerprint\": \"449bfc3fb6d7e9d74c653e4e621bb6e5a0cde70d1477b8f53fdffc618074697d\",\n    \"id\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n    \"revision\": \"cli-e2e-local\"\n  },\n  \"checksums\": 1,\n  \"components\": 1,\n  \"schema_version\": 2,\n  \"status\": \"VALID\"\n}"
+    },
+    {
+      "command": "pra bundle card",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "card",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle",
+        "--update"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9368900829867925,
+      "output_excerpt": "/private/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle/README.md"
+    },
+    {
+      "command": "pra bundle list",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "list",
+        "--family",
+        "qwen",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9042098339996301,
+      "output_excerpt": "dle_repo\": \"EInnovator/pra-qwen3-14b-mlx-4bit\",\n      \"bundle_revision\": \"9853a17f84aeebc33e209c87e360715559b2c5c8\",\n      \"engine_compatibility\": {\n        \"hf\": \"selected-context\",\n        \"mlx\": \"controlled\"\n      },\n      \"name\": \"pra-qwen3-14b-mlx-4bit\",\n      \"pra_version\": \">=0.2.0rc1,<0.3\",\n      \"profiles\": [\n        \"reference\",\n        \"balanced\",\n        \"qasper-learned\"\n      ],\n      \"qualification\": \"CONTROLLED\",\n      \"schema_version\": 2,\n      \"trust\": \"eInnovator-qualified\"\n    },\n    {\n      \"architecture\": \"Qwen3ForCausalLM\",\n      \"base_model\": \"mlx-community/Qwen3-4B-4bit\",\n      \"base_revision\": \"4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25\",\n      \"bundle_repo\": \"EInnovator/pra-qwen3-4b-mlx-4bit\",\n      \"bundle_revision\": \"49c18674ce15c8e267d5d19230d6dc152bca778b\",\n      \"engine_compatibility\": {\n        \"hf\": \"selected-context\",\n        \"mlx\": \"controlled\"\n      },\n      \"name\": \"pra-qwen3-4b-mlx-4bit\",\n      \"pra_version\": \">=0.2.0rc1,<0.3\",\n      \"profiles\": [\n        \"reference\",\n        \"balanced\",\n        \"qasper-learned\"\n      ],\n      \"qualification\": \"CONTROLLED\",\n      \"schema_version\": 2,\n      \"trust\": \"eInnovator-qualified\"\n    }\n  ],\n  \"count\": 3\n}"
+    },
+    {
+      "command": "pra bundle resolve",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "bundle",
+        "resolve",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-e",
+        "hf",
+        "-a",
+        "none",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9254372080031317,
+      "output_excerpt": "{\n  \"local_path\": null,\n  \"reason\": \"Bundle-specific adapters explicitly disabled; PRA remains available.\",\n  \"requested\": \"none\",\n  \"resolved_revision\": null,\n  \"source\": null,\n  \"status\": \"DISABLED\",\n  \"trust\": \"none\"\n}"
+    },
+    {
+      "command": "pra hf login",
+      "phase": "semantic",
+      "classification": "authenticated-or-guarded",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "login",
+        "--check",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 1,
+      "duration_seconds": 0.9994933750131167,
+      "output_excerpt": "Error: No usable Hugging Face authentication was found. Run `pra hf login`."
+    },
+    {
+      "command": "pra hf list",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "list",
+        "--family",
+        "qwen",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9094816669821739,
+      "output_excerpt": "-14b-mlx-4bit\",\n      \"bundle_revision\": \"9853a17f84aeebc33e209c87e360715559b2c5c8\",\n      \"engine_compatibility\": {\n        \"hf\": \"selected-context\",\n        \"mlx\": \"controlled\"\n      },\n      \"name\": \"pra-qwen3-14b-mlx-4bit\",\n      \"pra_version\": \">=0.2.0rc1,<0.3\",\n      \"profiles\": [\n        \"reference\",\n        \"balanced\",\n        \"qasper-learned\"\n      ],\n      \"qualification\": \"CONTROLLED\",\n      \"schema_version\": 2,\n      \"trust\": \"eInnovator-qualified\"\n    },\n    {\n      \"architecture\": \"Qwen3ForCausalLM\",\n      \"base_model\": \"mlx-community/Qwen3-4B-4bit\",\n      \"base_revision\": \"4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25\",\n      \"bundle_repo\": \"EInnovator/pra-qwen3-4b-mlx-4bit\",\n      \"bundle_revision\": \"49c18674ce15c8e267d5d19230d6dc152bca778b\",\n      \"engine_compatibility\": {\n        \"hf\": \"selected-context\",\n        \"mlx\": \"controlled\"\n      },\n      \"name\": \"pra-qwen3-4b-mlx-4bit\",\n      \"pra_version\": \">=0.2.0rc1,<0.3\",\n      \"profiles\": [\n        \"reference\",\n        \"balanced\",\n        \"qasper-learned\"\n      ],\n      \"qualification\": \"CONTROLLED\",\n      \"schema_version\": 2,\n      \"trust\": \"eInnovator-qualified\"\n    }\n  ],\n  \"count\": 3,\n  \"source\": \"trusted-registry\"\n}"
+    },
+    {
+      "command": "pra hf search",
+      "phase": "semantic",
+      "classification": "live-hub",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "search",
+        "qwen",
+        "--author",
+        "EInnovator",
+        "--limit",
+        "5",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.2294997500139289,
+      "output_excerpt": "sion\": \"49c18674ce15c8e267d5d19230d6dc152bca778b\",\n      \"last_modified\": \"2026-09-01T20:14:29+00:00\",\n      \"likes\": 0,\n      \"private\": false,\n      \"profiles\": [\n        \"reference\",\n        \"balanced\",\n        \"qasper-learned\"\n      ],\n      \"qualification\": \"CONTROLLED\",\n      \"registry_revision\": \"49c18674ce15c8e267d5d19230d6dc152bca778b\",\n      \"repo_id\": \"EInnovator/pra-qwen3-4b-mlx-4bit\",\n      \"trust\": \"eInnovator-qualified\",\n      \"url\": \"https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-4bit\"\n    },\n    {\n      \"auto_resolvable\": true,\n      \"base_model\": \"Qwen/Qwen3-0.6B\",\n      \"downloads\": 0,\n      \"gated\": false,\n      \"hub_revision\": \"25e69076c48a12b5943fe19b0351e68a86ba563e\",\n      \"last_modified\": \"2026-09-01T18:57:07+00:00\",\n      \"likes\": 0,\n      \"private\": false,\n      \"profiles\": [\n        \"reference\",\n        \"balanced\"\n      ],\n      \"qualification\": \"CONTROLLED\",\n      \"registry_revision\": \"25e69076c48a12b5943fe19b0351e68a86ba563e\",\n      \"repo_id\": \"EInnovator/pra-qwen3-0.6b\",\n      \"trust\": \"eInnovator-qualified\",\n      \"url\": \"https://huggingface.co/EInnovator/pra-qwen3-0.6b\"\n    }\n  ],\n  \"count\": 3,\n  \"query\": \"qwen\",\n  \"source\": \"hugging-face-hub\"\n}"
+    },
+    {
+      "command": "pra hf pull",
+      "phase": "semantic",
+      "classification": "live-hub",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "pull",
+        "EInnovator/pra-qwen3-4b-mlx-4bit",
+        "-r",
+        "49c18674ce15c8e267d5d19230d6dc152bca778b",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/pulled-bundle",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 3.0869403749820776,
+      "output_excerpt": "Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]\nFetching 10 files:  80%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  | 8/10 [00:00<00:00, 20.82it/s]\nFetching 10 files: 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 10/10 [00:01<00:00,  6.19it/s]\n{\n  \"base_model\": {\n    \"architecture\": \"Qwen3ForCausalLM\",\n    \"family\": \"qwen\",\n    \"fingerprint\": \"cabdcf4e253c2348c5e1ea194a9d93bcabc5165e453b4d62935f2d8ed8e1ba68\",\n    \"id\": \"mlx-community/Qwen3-4B-4bit\",\n    \"parameter_count_approx\": \"4B\",\n    \"quantization\": {\n      \"bits\": 4,\n      \"group_size\": 64,\n      \"runtime\": \"MLX\"\n    },\n    \"revision\": \"4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25\",\n    \"tokenizer_revision\": \"4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25\"\n  },\n  \"cache_path\": \"/private/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/pulled-bundle\",\n  \"repo_id\": \"EInnovator/pra-qwen3-4b-mlx-4bit\",\n  \"requested_revision\": \"49c18674ce15c8e267d5d19230d6dc152bca778b\",\n  \"resolved_revision\": \"49c18674ce15c8e267d5d19230d6dc152bca778b\",\n  \"schema_version\": 2,\n  \"validation_status\": \"CONTROLLED\"\n}"
+    },
+    {
+      "command": "pra hf inspect",
+      "phase": "semantic",
+      "classification": "live-hub",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "inspect",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/pulled-bundle",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9180120000091847,
+      "output_excerpt": "  \"parameter_count\": 655360,\n      \"seeds\": [\n        11,\n        23,\n        37,\n        53,\n        71\n      ],\n      \"selection\": \"maximum combined validation AUC0-30\",\n      \"train_examples\": 48,\n      \"validation_examples\": 16\n    }\n  },\n  \"runtime_compatibility\": {\n    \"hf\": {\n      \"native_memory\": \"NOT_MEASURED for the full-precision HF counterpart\",\n      \"native_serving\": \"NOT_MEASURED\",\n      \"recommended\": \"Selected Context; exact MLX artifact only\",\n      \"selected_context\": \"portable\"\n    },\n    \"mlx\": {\n      \"native_memory\": \"structural mapping controlled for this exact MLX identity\",\n      \"native_serving\": \"engine-study evidence; not established by routing qualification\",\n      \"recommended\": \"balanced generic; qasper-learned only for matched QASPER workloads\",\n      \"selected_context\": \"validated\"\n    }\n  },\n  \"schema_version\": 2,\n  \"structural_adapter\": {\n    \"fingerprint\": \"12dd2e6d9f71bb13caab7265ea009d5fe58809013cb7b0925d2c2b89039f297a\",\n    \"path\": \"structural_adapter\",\n    \"status\": \"validated\"\n  },\n  \"trust\": {\n    \"publisher\": \"EInnovator\",\n    \"scope\": \"controlled routing for the exact 4-bit MLX model identity\",\n    \"status\": \"eInnovator-qualified\"\n  }\n}"
+    },
+    {
+      "command": "pra hf push",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "push",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/bundle",
+        "example/pra-cli-e2e",
+        "--dry-run",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8640517500170972,
+      "output_excerpt": "{\n  \"base_model\": {\n    \"architecture\": \"LlamaForCausalLM\",\n    \"fingerprint\": \"449bfc3fb6d7e9d74c653e4e621bb6e5a0cde70d1477b8f53fdffc618074697d\",\n    \"id\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n    \"revision\": \"cli-e2e-local\"\n  },\n  \"collection\": null,\n  \"dry_run\": true,\n  \"files\": [\n    \"README.md\",\n    \"bundle.yaml\",\n    \"structural_adapter/pra_adapter.yaml\"\n  ],\n  \"repo_id\": \"example/pra-cli-e2e\",\n  \"requested_revision\": null,\n  \"schema_version\": 2\n}"
+    },
+    {
+      "command": "pra hf publish-manifest",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "hf",
+        "publish-manifest",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/publish.yaml",
+        "--dry-run",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9032724160060752,
+      "output_excerpt": "{\n  \"dry_run\": true,\n  \"manifest\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/publish.yaml\",\n  \"results\": [\n    {\n      \"base_model\": {\n        \"architecture\": \"LlamaForCausalLM\",\n        \"fingerprint\": \"449bfc3fb6d7e9d74c653e4e621bb6e5a0cde70d1477b8f53fdffc618074697d\",\n        \"id\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n        \"revision\": \"cli-e2e-local\"\n      },\n      \"collection\": null,\n      \"dry_run\": true,\n      \"files\": [\n        \"README.md\",\n        \"bundle.yaml\",\n        \"structural_adapter/pra_adapter.yaml\"\n      ],\n      \"repo_id\": \"example/pra-cli-e2e\",\n      \"requested_revision\": null,\n      \"schema_version\": 2,\n      \"status\": \"VALIDATED\"\n    }\n  ]\n}"
+    },
+    {
+      "command": "pra runtime init",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "init",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/runtime",
+        "--max-native-index-tokens",
+        "1024",
+        "--defer-native-index"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8903145829972345,
+      "output_excerpt": "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/runtime/pra_runtime_config.json"
+    },
+    {
+      "command": "pra runtime serve",
+      "phase": "semantic",
+      "classification": "launched-and-probed-service",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "serve",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-m",
+        "selected-context",
+        "-e",
+        "hf",
+        "-d",
+        "cpu",
+        "-a",
+        "none",
+        "--port",
+        "54562",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9014718339894898,
+      "output_excerpt": "hanism_status\": \"VALIDATED\",\n        \"mode\": \"native-memory\",\n        \"quality_status\": \"VALIDATED\",\n        \"reason\": \"Native modes require measured incremental economics beyond mechanism availability.\",\n        \"recommendation_status\": \"RECOMMENDED\"\n      },\n      {\n        \"economic_status\": \"NOT_MEASURED\",\n        \"mechanism_status\": \"NOT_MEASURED\",\n        \"mode\": \"native-serving\",\n        \"quality_status\": \"NOT_MEASURED\",\n        \"reason\": \"Native modes require measured incremental economics beyond mechanism availability.\",\n        \"recommendation_status\": \"CANDIDATE\"\n      }\n    ],\n    \"fallback\": \"selected-context\",\n    \"override_used\": false,\n    \"reason\": \"Selected Context was explicitly requested.\",\n    \"requested_mode\": \"selected-context\",\n    \"resolved_mode\": \"selected-context\"\n  },\n  \"model\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n  \"process_id\": 47400,\n  \"profile\": null,\n  \"requested_mode\": \"selected-context\",\n  \"resolution_reason\": \"Selected Context was explicitly requested.\",\n  \"resolved_mode\": \"selected-context\",\n  \"revision\": null,\n  \"run_id\": \"b247521732ee\",\n  \"start_time\": 1788311836.368114,\n  \"status\": \"NOT_READY\"\n}"
+    },
+    {
+      "command": "pra runtime inspect",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "inspect",
+        "pra-e2e-stub",
+        "-e",
+        "openai",
+        "-u",
+        "http://127.0.0.1:54393",
+        "-a",
+        "none",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9025861250120215,
+      "output_excerpt": "n_delay_seconds\": 300.0,\n        \"min_warm_seconds\": 21600.0,\n        \"priority_multiplier\": 1.5\n      },\n      \"cancelled\": {\n        \"compaction_delay_seconds\": 60.0,\n        \"min_warm_seconds\": 0.0,\n        \"priority_multiplier\": 0.1\n      },\n      \"completed\": {\n        \"compaction_delay_seconds\": 300.0,\n        \"min_warm_seconds\": 0.0,\n        \"priority_multiplier\": 0.5\n      },\n      \"failed\": {\n        \"compaction_delay_seconds\": 300.0,\n        \"min_warm_seconds\": 0.0,\n        \"priority_multiplier\": 0.25\n      },\n      \"pending\": {\n        \"compaction_delay_seconds\": 300.0,\n        \"min_warm_seconds\": 7200.0,\n        \"priority_multiplier\": 1.25\n      },\n      \"waiting\": {\n        \"compaction_delay_seconds\": 300.0,\n        \"min_warm_seconds\": 43200.0,\n        \"priority_multiplier\": 1.5\n      }\n    },\n    \"warm\": {\n      \"cold_grace_seconds\": 900.0,\n      \"compression\": \"none\",\n      \"enabled\": true,\n      \"kv_quantization\": \"none\",\n      \"max_bytes\": 68719476736,\n      \"path\": \"/private/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/pra-home/warm\",\n      \"per_tenant_max_bytes\": null,\n      \"representation\": \"native\",\n      \"ttl_seconds\": null\n    }\n  }\n}"
+    },
+    {
+      "command": "pra runtime doctor",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "doctor",
+        "-e",
+        "openai",
+        "-u",
+        "http://127.0.0.1:54393",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9067221249861177,
+      "output_excerpt": "{\n  \"checks\": [\n    {\n      \"detail\": \"GenericOpenAIRuntimeProvider\",\n      \"name\": \"provider\",\n      \"status\": \"READY\"\n    },\n    {\n      \"detail\": \"standard library\",\n      \"name\": \"dependency\",\n      \"status\": \"READY\"\n    },\n    {\n      \"detail\": \"/health\",\n      \"name\": \"endpoint\",\n      \"status\": \"READY\"\n    }\n  ],\n  \"engine\": \"openai\",\n  \"status\": \"AVAILABLE\"\n}"
+    },
+    {
+      "command": "pra runtime benchmark",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "benchmark",
+        "pra-e2e-stub",
+        "-e",
+        "openai",
+        "-d",
+        "cpu",
+        "-o",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/benchmark",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 2.9000584590248764,
+      "output_excerpt": "122753203,\n      \"parity\": true,\n      \"samples\": 10,\n      \"selected_tokens\": 256,\n      \"selected_tokens_per_second\": 3544785.7788164313,\n      \"status\": \"measured\",\n      \"study\": \"layout_gather\"\n    },\n    {\n      \"batch\": 1,\n      \"candidate_tokens\": 4096,\n      \"device\": \"cpu\",\n      \"error\": null,\n      \"median_seconds\": 0.00017941699479706585,\n      \"mode\": \"reference_major\",\n      \"output_bytes\": 524288,\n      \"p95_seconds\": 0.00019225000869482756,\n      \"p99_seconds\": 0.00019225000869482756,\n      \"parity\": true,\n      \"samples\": 10,\n      \"selected_tokens\": 256,\n      \"selected_tokens_per_second\": 1426843.6515144806,\n      \"status\": \"measured\",\n      \"study\": \"layout_gather\"\n    },\n    {\n      \"batch\": 4,\n      \"candidate_tokens\": 4096,\n      \"device\": \"cpu\",\n      \"error\": null,\n      \"median_seconds\": 0.00029368749528657645,\n      \"mode\": \"reference_major\",\n      \"output_bytes\": 2097152,\n      \"p95_seconds\": 0.0003522500046528876,\n      \"p99_seconds\": 0.0003522500046528876,\n      \"parity\": true,\n      \"samples\": 10,\n      \"selected_tokens\": 256,\n      \"selected_tokens_per_second\": 3486699.353681348,\n      \"status\": \"measured\",\n      \"study\": \"layout_gather\"\n    }\n  ]\n}"
+    },
+    {
+      "command": "pra runtime capabilities",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "runtime",
+        "capabilities",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9614621250075288,
+      "output_excerpt": "{\n  \"cuda_available\": false,\n  \"cuda_capability\": null,\n  \"cuda_device\": null,\n  \"cuda_version\": null,\n  \"mlx_installed\": false,\n  \"platform\": \"macOS-26.6.2-arm64-arm-64bit\",\n  \"python\": \"3.10.20\",\n  \"sglang_installed\": false,\n  \"tensorrt_llm_installed\": false,\n  \"torch\": \"2.8.0\",\n  \"torch_compile_api\": true,\n  \"triton_installed\": false,\n  \"vllm_installed\": false\n}"
+    },
+    {
+      "command": "pra serve",
+      "phase": "semantic",
+      "classification": "launched-and-probed-service",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "serve",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama",
+        "-m",
+        "selected-context",
+        "-e",
+        "hf",
+        "-d",
+        "cpu",
+        "-a",
+        "none",
+        "--port",
+        "54574",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9202829580171965,
+      "output_excerpt": "hanism_status\": \"VALIDATED\",\n        \"mode\": \"native-memory\",\n        \"quality_status\": \"VALIDATED\",\n        \"reason\": \"Native modes require measured incremental economics beyond mechanism availability.\",\n        \"recommendation_status\": \"RECOMMENDED\"\n      },\n      {\n        \"economic_status\": \"NOT_MEASURED\",\n        \"mechanism_status\": \"NOT_MEASURED\",\n        \"mode\": \"native-serving\",\n        \"quality_status\": \"NOT_MEASURED\",\n        \"reason\": \"Native modes require measured incremental economics beyond mechanism availability.\",\n        \"recommendation_status\": \"CANDIDATE\"\n      }\n    ],\n    \"fallback\": \"selected-context\",\n    \"override_used\": false,\n    \"reason\": \"Selected Context was explicitly requested.\",\n    \"requested_mode\": \"selected-context\",\n    \"resolved_mode\": \"selected-context\"\n  },\n  \"model\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/tiny-llama\",\n  \"process_id\": 47517,\n  \"profile\": null,\n  \"requested_mode\": \"selected-context\",\n  \"resolution_reason\": \"Selected Context was explicitly requested.\",\n  \"resolved_mode\": \"selected-context\",\n  \"revision\": null,\n  \"run_id\": \"4aec75368d65\",\n  \"start_time\": 1788311842.960374,\n  \"status\": \"NOT_READY\"\n}"
+    },
+    {
+      "command": "pra gateway serve",
+      "phase": "semantic",
+      "classification": "launched-and-probed-service",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "gateway",
+        "serve",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "54580",
+        "--mode",
+        "selected-context",
+        "--backend",
+        "openai",
+        "--backend-url",
+        "http://127.0.0.1:54393"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8815040829940699,
+      "output_excerpt": "PRA gateway on http://127.0.0.1:54580 -> openai/openai_generic\nExisting OpenAI-compatible clients: supported\nSelected Context: enabled\nTyped resource transport: disabled\nNative Memory: not advertised by backend\nBackend native handshake: absent\nEffective mode: Selected Context"
+    },
+    {
+      "command": "pra agent inspect",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "inspect",
+        "-c",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/agent.yaml",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9559722920239437,
+      "output_excerpt": "lse,\n      \"device\": \"auto\",\n      \"dtype\": \"auto\",\n      \"endpoint\": \"http://127.0.0.1:54393\",\n      \"engine\": \"openai\",\n      \"engine_options\": {},\n      \"host\": \"127.0.0.1\",\n      \"model\": \"pra-e2e-stub\",\n      \"observability_config\": null,\n      \"otel\": false,\n      \"otel_endpoint\": null,\n      \"port\": 8000,\n      \"pra_bundle\": null,\n      \"prefix_cache_mode\": \"auto\",\n      \"profile\": null,\n      \"prometheus\": false,\n      \"prometheus_port\": 9464,\n      \"revision\": null,\n      \"session_mode\": \"request\",\n      \"storage_config\": null,\n      \"storage_profile\": \"balanced\",\n      \"verbose\": false\n    },\n    \"runtime_mode\": \"remote\",\n    \"sessions_path\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/sessions\",\n    \"skill_directories\": [],\n    \"tasks\": {},\n    \"tools\": {\n      \"allow_destructive\": false,\n      \"allow_writes\": false,\n      \"approval\": \"deny\",\n      \"candidates\": 8,\n      \"external\": [],\n      \"max_rounds\": 0\n    },\n    \"workspace\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8\"\n  },\n  \"sources\": [\n    \"package defaults\",\n    \"/private/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/agent.yaml\"\n  ]\n}"
+    },
+    {
+      "command": "pra agent run",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "run",
+        "Return the marker",
+        "-c",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/agent.yaml",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.9870113749930169,
+      "output_excerpt": "    \"min_warm_seconds\": 7200.0,\n            \"priority_multiplier\": 1.25\n          },\n          \"waiting\": {\n            \"compaction_delay_seconds\": 300.0,\n            \"min_warm_seconds\": 43200.0,\n            \"priority_multiplier\": 1.5\n          }\n        },\n        \"warm\": {\n          \"cold_grace_seconds\": 900.0,\n          \"compression\": \"none\",\n          \"enabled\": true,\n          \"kv_quantization\": \"none\",\n          \"max_bytes\": 68719476736,\n          \"path\": \"/private/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/pra-home/warm\",\n          \"per_tenant_max_bytes\": null,\n          \"representation\": \"native\",\n          \"ttl_seconds\": null\n        }\n      },\n      \"profile\": \"balanced\",\n      \"usage\": {\n        \"cold_bytes\": 0,\n        \"hot_bytes\": 0,\n        \"source_only_objects\": 0,\n        \"total_native_bytes\": 0,\n        \"warm_bytes\": 0\n      }\n    },\n    \"typed_discovery_installed\": false\n  },\n  \"resolution\": null,\n  \"response\": \"PRA E2E OK\",\n  \"selected_records\": [],\n  \"session_id\": \"162564b5d7224fb2898f06649263b177\",\n  \"task_state\": {\n    \"active_task_id\": null,\n    \"applied_event_ids\": [],\n    \"last_sequence\": 0,\n    \"tasks\": []\n  },\n  \"tool_calls\": 0\n}"
+    },
+    {
+      "command": "pra agent chat",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "chat",
+        "-c",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/agent.yaml"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 0.8691629999957513,
+      "output_excerpt": "Agent Profile      e2e\nModel              pra-e2e-stub\nRevision           provider-default\nRuntime Mode       remote\nEngine             openai\nEndpoint           http://127.0.0.1:54393\nPra Profile        REFERENCE_CORRECTNESS\nWorkspace          /var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8\nSessions           /var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/sessions\nTools              deny\nSkills             0\nContext Transport:\n  Requested          text\n  Resolved           TEXT\n  Capability Source  openai_404\n  Typed Records      False\n  Resource Delta     False\n  Native Kv          False\n  Gateway Mode       None\n  Integration Level  None\nPRA Agent\nsession=ec7c43d06b0f427583c6195aa88cb399 version=1 task=- records=0\nUse /help for commands. End a line with \\ for multiline input.\nyou> session=ec7c43d06b0f427583c6195aa88cb399 version=1 task=- records=0\nyou>"
+    },
+    {
+      "command": "pra agent start",
+      "phase": "semantic",
+      "classification": "launched-and-probed-service",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "start",
+        "-c",
+        "/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/agent.yaml",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "54592",
+        "--detach",
+        "--json"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 2.9807182499789633,
+      "output_excerpt": "{\n  \"command\": [\n    \"/opt/homebrew/opt/python@3.10/bin/python3.10\",\n    \"-m\",\n    \"pra_hf.agent_web.server\",\n    \"--host\",\n    \"127.0.0.1\",\n    \"--port\",\n    \"54592\",\n    \"--config\",\n    \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/agent.yaml\"\n  ],\n  \"config_path\": \"/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/agent.yaml\",\n  \"host\": \"127.0.0.1\",\n  \"log_path\": \"/private/var/folders/hd/m1cff03d0jxck_v194kdy4m40000gp/T/pra-cli-e2e-judoe_h8/pra-home/agent-web.log\",\n  \"pid\": 47595,\n  \"port\": 54592,\n  \"pra_override\": null,\n  \"process_create_time\": 1788311847.556116,\n  \"profile\": null,\n  \"start_time\": 1788311847.568379,\n  \"url\": \"http://127.0.0.1:54592\"\n}"
+    },
+    {
+      "command": "pra agent stop",
+      "phase": "semantic",
+      "classification": "offline-success",
+      "argv": [
+        "/opt/homebrew/opt/python@3.10/bin/python3.10",
+        "-m",
+        "pra_hf.cli",
+        "agent",
+        "stop"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_seconds": 1.0328448330110405,
+      "output_excerpt": "STOPPED"
+    }
+  ]
+}
