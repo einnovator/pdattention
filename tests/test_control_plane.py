@@ -299,7 +299,11 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     html = (static / "index.html").read_text(encoding="utf-8")
     script = (static / "app.js").read_text(encoding="utf-8")
     assert all(name in html for name in ("jquery", "bootstrap", "dockview", "lucide"))
+    assert '/static/app.js?v=' in html
     assert "localStorage" in script
     assert "resume_token" in script
     assert "Math.min(state.retry*2,30000)" in script
+    assert "globalThis['dockview-core'].createDockview" in script
+    assert "dockview.createDockview" not in script
+    assert "return { element:host, init(){} };" in script
     assert "backend-secret" not in html + script

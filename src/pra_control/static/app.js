@@ -3,8 +3,14 @@
   const state = { me:null, csrf:'', fleet:{items:[],summary:{}}, registryRecords:[], socket:null, retry:500, activeEngine:null, activeView:'fleet', eventView:'audit', agentBuffer:null };
   const esc = value => $('<div>').text(value == null ? '' : String(value)).html();
   const api = (url, options={}) => $.ajax({ url, contentType:'application/json', ...options, headers:{ ...(options.headers||{}), ...(state.csrf ? {'X-CSRF-Token':state.csrf} : {}) } });
-  const component = name => { const host=document.createElement('div'); host.className='h-100'; host.append(document.querySelector(`#${name}-template`).content.cloneNode(true)); return host; };
-  const dv = dockview.createDockview(document.getElementById('dockview'), { createComponent:event => component(event.name) });
+  const component = name => {
+    const host=document.createElement('div');
+    host.className='h-100';
+    host.append(document.querySelector(`#${name}-template`).content.cloneNode(true));
+    return { element:host, init(){} };
+  };
+  // dockview-core's UMD bundle exports under a hyphenated global name.
+  const dv = globalThis['dockview-core'].createDockview(document.getElementById('dockview'), { createComponent:event => component(event.name) });
   const nav = dv.addPanel({ id:'navigation', component:'navigation', title:'Fleet & Registry' });
   const workspace = dv.addPanel({ id:'workspace', component:'workspace', title:'Workspace', position:{referencePanel:nav,direction:'right'} });
   dv.addPanel({ id:'events', component:'events', title:'Events & Audit', position:{referencePanel:workspace,direction:'below'} });
