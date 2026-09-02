@@ -241,6 +241,7 @@ _METRIC_SPECS: dict[str, tuple[str, tuple[str, ...], str]] = {
     "pra_context_selected_tokens_total": ("counter", ("engine", "profile", "execution_mode"), "Selected tokens."),
     "pra_context_new_materialized_tokens_total": ("counter", ("engine", "profile", "execution_mode"), "Newly materialized tokens."),
     "pra_context_visible_reuse_tokens_total": ("counter", ("engine", "profile", "execution_mode"), "Visible reuse tokens."),
+    "pra_context_native_reuse_tokens_total": ("counter", ("engine", "profile", "execution_mode"), "Native K/V reuse tokens."),
     "pra_context_selected_records_total": ("counter", ("engine", "profile", "execution_mode", "record_type"), "Selected records."),
     "pra_context_already_visible_records_total": ("counter", ("engine", "profile", "execution_mode", "record_type"), "Already visible records."),
     "pra_routing_duration_seconds": ("histogram", ("engine", "profile"), "Routing latency."),

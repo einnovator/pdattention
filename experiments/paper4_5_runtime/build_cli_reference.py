@@ -55,7 +55,7 @@ EXAMPLES = {
     "pra engine inspect": "pra engine inspect --management-url http://127.0.0.1:9101",
     "pra engine patch-config": "pra engine patch-config local-vllm --patch profile-patch.yaml",
     "pra engine action": "pra engine action promote local-vllm --resource-id RESOURCE_ID --idempotency-key promote-42",
-    "pra engine serve": "pra engine serve --engine vllm --model Qwen/Qwen3-4B --inference-url http://127.0.0.1:8000 --port 9101",
+    "pra engine serve": "pra engine serve --engine vllm --model Qwen/Qwen3-4B --inference-url http://192.168.1.86:8000 --host 0.0.0.0 --port 9101 --registry-instance-host 192.168.1.86 --registry-management-url http://192.168.1.86:9101",
     "pra doctor": "pra doctor",
     "pra engines": "pra engines --details mlx",
     "pra inspect": "pra inspect Qwen/Qwen3-0.6B --engine hf\npra inspect Qwen/Qwen3-0.6B --engine hf --pra-bundle auto",

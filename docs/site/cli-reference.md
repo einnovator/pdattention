@@ -1089,13 +1089,15 @@ pra engine serve [OPTIONS]
 | `--registry-token-env` | TEXT | `PRA_REGISTRY_TOKEN` | no | Configure `registry-token-env`. |
 | `--registry-instance-id` | TEXT | `-` | no | Configure `registry-instance-id`. |
 | `--registry-instance-name` | TEXT | `-` | no | Configure `registry-instance-name`. |
+| `--registry-instance-host` | TEXT | `-` | no | Externally reachable host advertised to the Registry. |
+| `--registry-management-url` | TEXT | `-` | no | Externally reachable management API URL advertised to the Registry. |
 | `--registry-required` | flag | `off` | no | Configure `registry-required`. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
 
 ```bash
-pra engine serve --engine vllm --model Qwen/Qwen3-4B --inference-url http://127.0.0.1:8000 --port 9101
+pra engine serve --engine vllm --model Qwen/Qwen3-4B --inference-url http://192.168.1.86:8000 --host 0.0.0.0 --port 9101 --registry-instance-host 192.168.1.86 --registry-management-url http://192.168.1.86:9101
 ```
 
 **Example output**

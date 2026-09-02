@@ -120,7 +120,7 @@ def trace_dashboard(engine: str, *, query: str | None = None) -> dict:
 
 COMMON = [
     panel(1, "Selected / source token ratio", "sum(rate(pra_context_selected_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode) / clamp_min(sum(rate(pra_context_source_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode), 1)", unit="percentunit"),
-    panel(2, "Visible and native reuse", "sum(rate(pra_context_visible_reuse_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode)"),
+    panel(2, "Visible and native reuse", "sum by (engine,execution_mode,reuse) (label_replace(rate(pra_context_visible_reuse_tokens_total{engine=~\"$engine\"}[5m]), \"reuse\", \"visible\", \"engine\", \".*\")) or sum by (engine,execution_mode,reuse) (label_replace(rate(pra_context_native_reuse_tokens_total{engine=~\"$engine\"}[5m]), \"reuse\", \"native\", \"engine\", \".*\"))"),
     panel(3, "Gateway p95 latency", "histogram_quantile(0.95, sum(rate(pra_gateway_request_duration_seconds_bucket{engine=~\"$engine\"}[5m])) by (le,engine,execution_mode))", unit="s"),
     panel(4, "Successful request throughput", "sum(rate(pra_engine_successful_requests_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode)", unit="reqps"),
     panel(5, "Native active bytes", "sum(pra_native_bytes{engine=~\"$engine\"}) by (engine,storage_tier)", unit="bytes"),

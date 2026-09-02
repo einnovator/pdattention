@@ -145,7 +145,7 @@ def main() -> None:
         management_server = start_management_api(
             ManagementProvider(
                 engine="hf",
-                capabilities=gateway.engine.capabilities().to_dict(),
+                capabilities=gateway.adapter.capabilities().to_dict(),
                 models=[LoadedModel(
                     model_id=args.model,
                     revision=args.revision,

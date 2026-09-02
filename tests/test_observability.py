@@ -96,8 +96,33 @@ def test_prometheus_endpoint_and_bounded_labels() -> None:
         )
 
 
+def test_native_reuse_metric_is_exported_with_bounded_context_labels() -> None:
+    telemetry = Observability(
+        ObservabilityConfig(
+            enabled=True,
+            prometheus=PrometheusConfig(enabled=True),
+        )
+    )
+    labels = {"engine": "hf", "profile": "balanced", "execution_mode": "E2"}
+    telemetry.increment("pra_context_native_reuse_tokens_total", 48, labels=labels)
+
+    text = telemetry.render_metrics().decode("utf-8")
+
+    assert (
+        'pra_context_native_reuse_tokens_total{engine="hf",execution_mode="E2",profile="balanced"} 48.0'
+        in text
+    )
+
+
 def test_gateway_metrics_treat_absent_transport_sizes_as_zero() -> None:
+    class Storage:
+        @staticmethod
+        def usage():
+            return {"hot_bytes": 128, "warm_bytes": 256, "cold_bytes": 512}
+
     class Adapter:
+        storage = Storage()
+
         def capabilities(self) -> PRAEngineCapabilities:
             return PRAEngineCapabilities(
                 adapter="controlled",
@@ -130,6 +155,9 @@ def test_gateway_metrics_treat_absent_transport_sizes_as_zero() -> None:
 
     metrics = telemetry.render_metrics().decode("utf-8")
     assert 'pra_gateway_transport_bytes_total{engine="openai_generic"} 0.0' in metrics
+    assert 'pra_native_bytes{engine="openai_generic",storage_tier="hot"} 128.0' in metrics
+    assert 'pra_native_bytes{engine="openai_generic",storage_tier="warm"} 256.0' in metrics
+    assert 'pra_native_bytes{engine="openai_generic",storage_tier="cold"} 512.0' in metrics
 
 
 def test_prometheus_listener_is_explicit_and_owned(monkeypatch) -> None:

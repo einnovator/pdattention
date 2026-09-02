@@ -70,6 +70,42 @@ def test_human_sizes_durations_and_named_profiles(tmp_path):
     assert Path(PRAStoragePolicy().warm.path).is_absolute()
 
 
+def test_storage_manager_publishes_empty_tier_gauges_at_startup(tmp_path):
+    from pra_hf.observability import Observability, ObservabilityConfig, PrometheusConfig
+
+    telemetry = Observability(
+        ObservabilityConfig(
+            enabled=True,
+            prometheus=PrometheusConfig(enabled=True),
+        )
+    )
+    PRAStorageManager(_policy(tmp_path), observability=telemetry, engine="hf")
+
+    text = telemetry.render_metrics().decode("utf-8")
+
+    assert 'pra_storage_hot_bytes{engine="hf"} 0.0' in text
+    assert 'pra_storage_warm_bytes{engine="hf"} 0.0' in text
+    assert 'pra_storage_cold_bytes{engine="hf"} 0.0' in text
+
+
+def test_register_publishes_hot_residency_before_demotion(tmp_path):
+    from pra_hf.observability import Observability, ObservabilityConfig, PrometheusConfig
+
+    telemetry = Observability(
+        ObservabilityConfig(
+            enabled=True,
+            prometheus=PrometheusConfig(enabled=True),
+        )
+    )
+    manager = PRAStorageManager(
+        _policy(tmp_path), observability=telemetry, engine="hf"
+    )
+    manager.register(_entry("observed-hot"), b"native-detail")
+
+    text = telemetry.render_metrics().decode("utf-8")
+    assert 'pra_storage_hot_bytes{engine="hf"} 13.0' in text
+
+
 def test_cli_inspect_resolves_storage_yaml_and_emits_machine_readable_policy(tmp_path):
     config = tmp_path / "storage.yaml"
     config.write_text(

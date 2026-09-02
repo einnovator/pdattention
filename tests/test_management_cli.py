@@ -109,6 +109,38 @@ def test_hf_managed_runtime_forwards_management_listener_options() -> None:
     assert command[command.index("--management-grafana-url") + 1] == "http://grafana"
 
 
+def test_management_serve_advertises_external_registry_address(monkeypatch) -> None:
+    module = importlib.import_module("pra_hf.management_cli")
+    captured = {}
+
+    def serve(provider, settings):
+        captured["provider"] = provider
+        captured["settings"] = settings
+
+    monkeypatch.setattr("pra_hf.management.serve_management_api", serve)
+    result = CliRunner().invoke(module.engine_cli, [
+        "serve",
+        "--engine", "vllm",
+        "--host", "0.0.0.0",
+        "--port", "9101",
+        "--inference-url", "http://192.168.1.86:8000",
+        "--registry-url", "http://192.168.1.102:9200",
+        "--registry-instance-id", "nvidia-vllm-cuda",
+        "--registry-instance-host", "192.168.1.86",
+        "--registry-management-url", "http://192.168.1.86:9101",
+    ])
+
+    assert result.exit_code == 0, result.output
+    identity = captured["settings"].registry.instance
+    assert identity.host == "192.168.1.86"
+    assert identity.management_url == "http://192.168.1.86:9101"
+    payload = captured["provider"].registry_payload(
+        captured["settings"], "nvidia-vllm-cuda"
+    )
+    assert payload["host"] == "192.168.1.86"
+    assert payload["management_url"] == "http://192.168.1.86:9101"
+
+
 def test_one_off_management_url_never_inherits_saved_connection_token(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("PRA_HOME", str(tmp_path / ".pra"))
     monkeypatch.setenv("SAVED_ENGINE_TOKEN", "must-not-leak")

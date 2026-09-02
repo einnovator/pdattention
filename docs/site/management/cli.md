@@ -40,8 +40,14 @@ pra engine serve \
   --port 9102 \
   --metrics-url http://127.0.0.1:9464/metrics \
   --trace-backend-url http://tempo:3200 \
-  --grafana-url http://grafana:3000
+  --grafana-url http://grafana:3000 \
+  --registry-instance-host 192.168.1.40 \
+  --registry-management-url http://192.168.1.40:9102
 ```
+
+When the listener binds to `0.0.0.0`, containers, WSL, and remote hosts may
+derive a hostname that the Control Plane cannot resolve. Use the two Registry
+address options to publish the route that fleet clients can actually reach.
 
 A YAML file can hold listener policy:
 

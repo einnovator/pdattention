@@ -568,6 +568,7 @@ class PRAGateway:
             ("pra_context_selected_tokens_total", ("selected_tokens", "context_selected_tokens")),
             ("pra_context_new_materialized_tokens_total", ("new_materialized_tokens",)),
             ("pra_context_visible_reuse_tokens_total", ("visible_reuse_tokens", "prefix_tokens_reusable")),
+            ("pra_context_native_reuse_tokens_total", ("native_reuse_tokens",)),
         ):
             value = next((trace[key] for key in keys if trace.get(key) is not None), 0)
             self.observability.increment(name, float(value), labels=context_labels)
@@ -584,6 +585,15 @@ class PRAGateway:
                 float(trace["native_attach_bytes"]),
                 labels={"engine": engine, "storage_tier": "active"},
             )
+        storage = getattr(self.adapter, "storage", None)
+        if storage is not None and hasattr(storage, "usage"):
+            usage = storage.usage()
+            for tier in ("hot", "warm", "cold"):
+                self.observability.set_gauge(
+                    "pra_native_bytes",
+                    float(usage.get(f"{tier}_bytes", 0)),
+                    labels={"engine": engine, "storage_tier": tier},
+                )
 
     def generate(
         self,

@@ -37,6 +37,15 @@ PROMQL_RATE = (
     "sum(rate(pra_gateway_requests_total[5m])) "
     "by (engine,execution_mode,status)"
 )
+PROMQL_REUSE = (
+    "sum(rate(pra_context_visible_reuse_tokens_total[5m])) "
+    "by (engine,execution_mode)"
+)
+PROMQL_GATEWAY_P95 = (
+    "histogram_quantile(0.95, "
+    "sum(rate(pra_gateway_request_duration_seconds_bucket[5m])) "
+    "by (le,engine,execution_mode))"
+)
 TRACEQL = '{ name = "pra.gateway.request" }'
 
 
@@ -206,6 +215,18 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--prometheus-url", default="http://127.0.0.1:9090")
     parser.add_argument("--tempo-url", default="http://127.0.0.1:3200")
     parser.add_argument("--grafana-url", default="http://127.0.0.1:3000")
+    parser.add_argument(
+        "--linger-seconds",
+        type=float,
+        default=0.0,
+        help="Keep the scrape endpoint alive after verification for manual dashboard inspection.",
+    )
+    parser.add_argument(
+        "--linger-interval-seconds",
+        type=float,
+        default=5.0,
+        help="Emit one keepalive request per interval while lingering.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -297,26 +318,46 @@ def main() -> None:
                 f"http://127.0.0.1:{args.metrics_port}/metrics",
                 "pra_gateway_requests_total",
             )
+
+            def generate(index: int) -> dict[str, Any]:
+                return _post_json(
+                    f"http://127.0.0.1:{gateway_port}/v1/pra/generate",
+                    {
+                        "model": "pra-e2e-stub",
+                        "tenant_id": "observability-e2e",
+                        "session_id": "reused-context-session",
+                        "history_mode": "AUTO" if index == 0 else "DELTA",
+                        "allow_text_fallback": True,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": f"Gateway telemetry request {index}",
+                            }
+                        ],
+                        "resources": [
+                            {
+                                "resource_id": "shared-evidence",
+                                "uri": "pra://observability/shared-evidence",
+                                "record_type": "generic_document",
+                                "text": "Reusable selected evidence for the observability dashboard.",
+                                "metadata": {
+                                    "tenant_id": "observability-e2e",
+                                    "version": "v1",
+                                },
+                            }
+                        ],
+                    },
+                )
+
             completions = []
             for index in range(args.requests):
-                completions.append(
-                    _post_json(
-                        f"http://127.0.0.1:{gateway_port}/v1/chat/completions",
-                        {
-                            "model": "pra-e2e-stub",
-                            "messages": [
-                                {
-                                    "role": "user",
-                                    "content": f"Gateway telemetry request {index}",
-                                }
-                            ],
-                        },
-                    )
-                )
+                completions.append(generate(index))
                 if index == 0:
                     _wait_prometheus(args.prometheus_url, PROMQL_COUNTER)
             counter_rows = _wait_prometheus(args.prometheus_url, PROMQL_COUNTER)
             rate_rows = _wait_prometheus(args.prometheus_url, PROMQL_RATE)
+            reuse_rows = _wait_prometheus(args.prometheus_url, PROMQL_REUSE)
+            p95_rows = _wait_prometheus(args.prometheus_url, PROMQL_GATEWAY_P95)
             traces = _wait_tempo(args.tempo_url, TRACEQL)
             metrics_dashboard = _dashboard(args.grafana_url, "pra-gateway")
             trace_dashboard = _dashboard(args.grafana_url, "pra-gateway-otel")
@@ -341,13 +382,17 @@ def main() -> None:
                 "duration_seconds": time.time() - started,
                 "host": socket.gethostname(),
                 "request_count": len(completions),
-                "response_marker": completions[-1]["choices"][0]["message"]["content"],
+                "response_marker": completions[-1]["text"],
                 "gateway_health": health,
                 "prometheus": {
                     "counter_query": PROMQL_COUNTER,
                     "counter_rows": counter_rows,
                     "dashboard_query": PROMQL_RATE,
                     "dashboard_rows": rate_rows,
+                    "reuse_query": PROMQL_REUSE,
+                    "reuse_rows": reuse_rows,
+                    "gateway_p95_query": PROMQL_GATEWAY_P95,
+                    "gateway_p95_rows": p95_rows,
                 },
                 "tempo": {
                     "dashboard_query": TRACEQL,
@@ -365,6 +410,15 @@ def main() -> None:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(report, indent=2))
+            if args.linger_seconds > 0:
+                deadline = time.time() + args.linger_seconds
+                index = args.requests
+                while time.time() < deadline:
+                    generate(index)
+                    index += 1
+                    time.sleep(
+                        min(args.linger_interval_seconds, max(deadline - time.time(), 0))
+                    )
         finally:
             if process is not None:
                 process.terminate()

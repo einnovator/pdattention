@@ -254,7 +254,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(pra_context_visible_reuse_tokens_total{engine=~\"$engine\"}[5m])) by (engine,execution_mode)",
+          "expr": "sum by (engine,execution_mode,reuse) (label_replace(rate(pra_context_visible_reuse_tokens_total{engine=~\"$engine\"}[5m]), \"reuse\", \"visible\", \"engine\", \".*\")) or sum by (engine,execution_mode,reuse) (label_replace(rate(pra_context_native_reuse_tokens_total{engine=~\"$engine\"}[5m]), \"reuse\", \"native\", \"engine\", \".*\"))",
           "legendFormat": "{{host}} {{engine}} {{execution_mode}}"
         }
       ]

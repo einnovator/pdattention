@@ -270,8 +270,16 @@ def action(action, target, management_url, token, resource_id, profile, bundle, 
 @click.option("--registry-token-env", default="PRA_REGISTRY_TOKEN", show_default=True)
 @click.option("--registry-instance-id")
 @click.option("--registry-instance-name")
+@click.option(
+    "--registry-instance-host",
+    help="Externally reachable host advertised to the Registry.",
+)
+@click.option(
+    "--registry-management-url",
+    help="Externally reachable management API URL advertised to the Registry.",
+)
 @click.option("--registry-required", is_flag=True)
-def serve(engine, engine_version, model, revision, inference_url, config_path, host, port, auth_mode, token_env, metrics_url, trace_backend_url, grafana_url, tls_certfile, tls_keyfile, tls_ca_certs, registry_url, registry_token_env, registry_instance_id, registry_instance_name, registry_required) -> None:
+def serve(engine, engine_version, model, revision, inference_url, config_path, host, port, auth_mode, token_env, metrics_url, trace_backend_url, grafana_url, tls_certfile, tls_keyfile, tls_ca_certs, registry_url, registry_token_env, registry_instance_id, registry_instance_name, registry_instance_host, registry_management_url, registry_required) -> None:
     """Start an explicitly enabled local management sidecar on a separate port."""
 
     from .management import (
@@ -344,6 +352,8 @@ def serve(engine, engine_version, model, revision, inference_url, config_path, h
             auth=RegistryClientAuth(type="bearer", token_env=registry_token_env),
             instance=RuntimeInstanceIdentity(
                 id=registry_instance_id, name=registry_instance_name,
+                host=registry_instance_host,
+                management_url=registry_management_url,
                 inference_url=inference_url,
             ),
         )

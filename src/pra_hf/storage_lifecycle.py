@@ -910,6 +910,9 @@ class PRAStorageManager:
         self.state_path = self._resolve_state_path(state_path)
         if recover:
             self.recover()
+        # Publish an explicit zero for every configured tier. Grafana should
+        # distinguish an empty store from a missing or unscraped runtime.
+        self._observe_usage()
 
     @staticmethod
     def _backend(config: PRAStorageTierConfig) -> PRAStorageBackend | None:
@@ -1121,6 +1124,7 @@ class PRAStorageManager:
         self._enforce_hot_quota(entry.logical_key, now_ns)
         if self.policy.immediate_persistence:
             self.demote_hot(entry.logical_key, now_ns=now_ns)
+        self._observe_usage()
         self._persist_state()
         return self.entries[entry.logical_key]
 
