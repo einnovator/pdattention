@@ -44,6 +44,8 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 
 All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.
 
+Evidence receipt: `mlx-lm 0.31.3`; Apple M4 Pro (Mac16,7), 48 GB; selector-frozen natural QA (n=15); 2026-09-01; PRA commit `4b4486a66c80d09aa7982be29812d4027c57a4e3`; artifact `qualification/qwen3_14b_mlx_profiles.json`; SHA-256 `4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd`.
+
 ## Installation
 
 ```bash
@@ -91,7 +93,14 @@ pra serve mlx-community/Qwen3-14B-4bit -e mlx -a EInnovator/pra-qwen3-14b-mlx-4b
 
 ## Native Memory qualification
 
-Native Memory uses the same selector output as Selected Context. Exact paired parity, visible-input reduction, active detail bytes, and latency deltas are reported above; it is recommended only where the profile and engine tables say so.
+Native Memory uses the same selector output as Selected Context. It is recommended only where the profile and engine tables say so.
+
+| Workload | Selected native K/V tokens | Active detail | Peak memory | Completion cost vs Selected Context |
+| --- | ---: | ---: | ---: | ---: |
+| 2wikimultihopqa | 1.278e+04 | 49.94 MiB | 8.18 GiB | 1.012x |
+| hotpotqa | 8744 | 34.16 MiB | 8.15 GiB | 1.009x |
+| qasper | 1.222e+04 | 47.75 MiB | 8.19 GiB | 1.011x |
+| combined | 1.125e+04 | 43.95 MiB | 8.19 GiB | 1.011x |
 
 ## Research diagnostics
 
@@ -136,8 +145,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `0f6aece155965c3ebb8b02afea26d56f515f20a7`
-- Bundle build commit: `0f6aece155965c3ebb8b02afea26d56f515f20a7`
+- PRA commit: `52ea386f56fc8d81346325619f3523e585abf78d`
+- Bundle build commit: `52ea386f56fc8d81346325619f3523e585abf78d`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

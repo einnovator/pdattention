@@ -404,12 +404,12 @@ def test_hub_update_checks_remote_manifest_without_full_snapshot(
 def test_default_registry_contains_published_cross_family_catalog() -> None:
     entries = {entry.name: entry for entry in TrustedBundleRegistry.default().entries}
     expected = {
-        "pra-qwen3-4b-mlx-4bit": "833b640eba8fdaa20a11d9c81dd9af8146e4dc37",
-        "pra-qwen3-8b-mlx-4bit": "f2c1fbefdf4b70482b182f895d97479f4fcb0450",
-        "pra-qwen3-14b-mlx-4bit": "338a775acd3ac0090d35bd6d07c574a78641e934",
-        "pra-qwen3-32b-mlx-4bit": "54d8bdca17f591ddf6c78c234c02059e61efb14a",
-        "pra-llama3-1-8b-mlx-4bit": "093c5f5a9e3a157bff79495ddc67122ed3b19ef5",
-        "pra-gemma3-1b-mlx-4bit": "36068eba9730cf61dd650cd0888cf26845c00990",
+        "pra-qwen3-4b-mlx-4bit": "ccf18f5f496190fc18817a313c34d0271b1720dc",
+        "pra-qwen3-8b-mlx-4bit": "0ab3644b40917e9d626dc08a36c2eb5391d576c2",
+        "pra-qwen3-14b-mlx-4bit": "3ed6288553bf1e4bc3c2a87bdf2e969e49d3663d",
+        "pra-qwen3-32b-mlx-4bit": "2e9f9bd3ff01e0dbc78049c151b2fc74c7979bbc",
+        "pra-llama3-1-8b-mlx-4bit": "0468830e2b92bdd2a85f44953f4a29265fa290c3",
+        "pra-gemma3-1b-mlx-4bit": "1abf053805eea99712452dc13701515c4486ad84",
     }
 
     assert {name: entries[name].bundle_revision for name in expected} == expected

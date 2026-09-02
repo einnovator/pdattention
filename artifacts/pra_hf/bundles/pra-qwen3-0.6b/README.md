@@ -112,8 +112,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `0f6aece155965c3ebb8b02afea26d56f515f20a7`
-- Bundle build commit: `0f6aece155965c3ebb8b02afea26d56f515f20a7`
+- PRA commit: `52ea386f56fc8d81346325619f3523e585abf78d`
+- Bundle build commit: `52ea386f56fc8d81346325619f3523e585abf78d`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.
