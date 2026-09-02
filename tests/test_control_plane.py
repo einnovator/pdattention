@@ -7,7 +7,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from pra_control.agent import AgentReplayService, ControlPlaneAgent
 from pra_control.app import COOKIE, ControlRuntime, create_app
 from pra_control.auth import AuthService, Identity
 from pra_control.clients import AsyncServiceClient
@@ -20,6 +19,7 @@ from pra_control.config import (
     ServiceLinkConfig,
 )
 from pra_control.fleet import FleetService, compare_desired_observed
+from pra_control.managers import ControlManager
 from pra_control.rbac import Permission, Role, permits
 
 
@@ -82,7 +82,6 @@ def control(monkeypatch, tmp_path):
     )
     runtime = ControlRuntime(config)
     runtime.fleet = FakeFleet()
-    runtime.agent = ControlPlaneAgent(runtime.fleet, runtime.store, config.grafana.url)
     app = create_app(config, runtime=runtime)
     with TestClient(app) as client:
         yield client, runtime
@@ -176,10 +175,12 @@ def test_fleet_aggregates_two_engines_against_one_registry(control):
         ],
     )})
     service = FleetService(config, runtime.store, engine_factory=Engine, registry_client=Registry())
+    manager = ControlManager.build(config, runtime.store, service)
 
     async def inspect():
         try:
-            return await service.overview()
+            identity = Identity("test:viewer", "Viewer", None, Role.VIEWER, "test", "csrf")
+            return (await manager.fleet.list(identity.caller(transport="test"))).model_dump(mode="json")
         finally:
             await service.close()
 

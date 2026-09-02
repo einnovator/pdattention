@@ -13,7 +13,8 @@ import httpx
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from .config import ControlAuthConfig, IdentityProviderConfig
-from .rbac import Role
+from .domain import CallerContext
+from .rbac import Role, permissions_for_role
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,18 @@ class Identity:
             "subject": self.subject, "display_name": self.display_name,
             "email": self.email, "role": self.role.value, "provider": self.provider,
         }
+
+    def caller(
+        self, *, transport: str, request_id: str | None = None,
+        trace_id: str | None = None, metadata: dict[str, Any] | None = None,
+    ) -> CallerContext:
+        """Map browser/session identity into the canonical manager identity."""
+        return CallerContext(
+            subject=self.subject, roles=[self.role.value],
+            permissions=set(permissions_for_role(self.role)), auth_source=self.provider,
+            request_id=request_id, trace_id=trace_id, transport=transport,
+            metadata=metadata or {},
+        )
 
 
 class SessionCodec:

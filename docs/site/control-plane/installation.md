@@ -14,6 +14,15 @@ The standalone equivalent is:
 pra-control serve --config control-plane.yaml
 ```
 
+The `control-plane` extra includes the official Python MCP SDK. MCP remains
+disabled until configured. A local stdio server starts with:
+
+```bash
+pra control mcp --config control-plane.yaml --transport stdio
+# equivalent
+pra-control mcp --config control-plane.yaml --transport stdio
+```
+
 The two services deliberately have different executable and image boundaries:
 
 | Service | Standalone CLI | Main PRA alias | Reference image |

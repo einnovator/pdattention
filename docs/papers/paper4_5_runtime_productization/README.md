@@ -88,6 +88,10 @@ The implementation adds:
   quality, parity, visible-context, and latency evidence automatically. Qwen,
   Llama, and Gemma routing diagnostics remain a separate research section;
   Qwen3-0.6B is explicitly the mechanism reference bundle.
+- a presentation-independent Control Manager used by REST, MCP, the built-in
+  Control Plane agent, and the embedded CLI, with configurable discovery,
+  read-only MCP defaults, durable plan/apply idempotency, and central
+  manager-owned authorization and audit.
 
 Reproduce the measured portable profile:
 

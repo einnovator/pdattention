@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text, create_engine, select
+from sqlalchemy import JSON, DateTime, Integer, String, Text, create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -23,6 +23,8 @@ class AuditEvent(Base):
     sequence: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     actor: Mapped[str] = mapped_column(String(255), index=True)
     role: Mapped[str] = mapped_column(String(64))
+    roles: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    permission: Mapped[str | None] = mapped_column(String(128), nullable=True)
     action: Mapped[str] = mapped_column(String(128), index=True)
     target: Mapped[str] = mapped_column(String(512), index=True)
     before: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -30,6 +32,9 @@ class AuditEvent(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     reason: Mapped[str] = mapped_column(Text)
     trace_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    request_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    transport: Mapped[str | None] = mapped_column(String(32), index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), index=True)
     result: Mapped[str] = mapped_column(String(64), index=True)
 
 
@@ -52,6 +57,15 @@ class AgentSession(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class StoredActionPlan(Base):
+    __tablename__ = "control_action_plans"
+    plan_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), index=True)
+    result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ControlStore:
     def __init__(self, database_url: str) -> None:
         kwargs: dict[str, Any] = {"pool_pre_ping": True}
@@ -61,16 +75,34 @@ class ControlStore:
             kwargs["poolclass"] = StaticPool
         self.engine = create_engine(database_url, **kwargs)
         Base.metadata.create_all(self.engine)
+        self._upgrade_audit_schema()
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
     def audit(self, **values: Any) -> dict[str, Any]:
         with self.sessions() as session:
+            values.setdefault("roles", [values.get("role", "")])
+            values.setdefault("permission", None)
+            values.setdefault("request_id", None)
+            values.setdefault("transport", None)
+            values.setdefault("idempotency_key", None)
             values["before"] = _jsonable(values.get("before"))
             values["after"] = _jsonable(values.get("after"))
             event = AuditEvent(**values)
             session.add(event)
             session.commit()
             return self._row(event)
+
+    def _upgrade_audit_schema(self) -> None:
+        """Add manager audit metadata to existing Control Plane databases in place."""
+        columns = {column["name"] for column in inspect(self.engine).get_columns(AuditEvent.__tablename__)}
+        additions = {
+            "roles": "JSON", "permission": "VARCHAR(128)", "request_id": "VARCHAR(128)",
+            "transport": "VARCHAR(32)", "idempotency_key": "VARCHAR(255)",
+        }
+        with self.engine.begin() as connection:
+            for name, sql_type in additions.items():
+                if name not in columns:
+                    connection.execute(text(f"ALTER TABLE {AuditEvent.__tablename__} ADD COLUMN {name} {sql_type}"))
 
     def audit_events(self, *, limit: int = 200, offset: int = 0) -> dict[str, Any]:
         with self.sessions() as session:
@@ -119,6 +151,36 @@ class ControlStore:
                 row.seen_message_ids = values["seen_message_ids"]
                 row.updated_at = utcnow()
             session.commit()
+
+    def put_action_plan(self, plan_id: str, payload: dict[str, Any], idempotency_key: str | None) -> None:
+        with self.sessions() as session:
+            row = session.get(StoredActionPlan, plan_id)
+            if row is None:
+                session.add(StoredActionPlan(plan_id=plan_id, payload=_jsonable(payload), idempotency_key=idempotency_key))
+            else:
+                row.payload = _jsonable(payload)
+                row.idempotency_key = idempotency_key
+            session.commit()
+
+    def get_action_plan(self, plan_id: str) -> dict[str, Any] | None:
+        with self.sessions() as session:
+            row = session.get(StoredActionPlan, plan_id)
+            return self._row(row) if row else None
+
+    def find_action_result(self, idempotency_key: str) -> dict[str, Any] | None:
+        with self.sessions() as session:
+            row = session.scalar(select(StoredActionPlan).where(
+                StoredActionPlan.idempotency_key == idempotency_key,
+                StoredActionPlan.result_payload.is_not(None),
+            ).order_by(StoredActionPlan.created_at.desc()))
+            return self._row(row) if row else None
+
+    def complete_action_plan(self, plan_id: str, result: dict[str, Any]) -> None:
+        with self.sessions() as session:
+            row = session.get(StoredActionPlan, plan_id)
+            if row is not None:
+                row.result_payload = _jsonable(result)
+                session.commit()
 
     @staticmethod
     def _row(row: Any) -> dict[str, Any]:

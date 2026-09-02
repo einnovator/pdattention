@@ -3,23 +3,25 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import logging
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agent import AgentReplayService, ControlPlaneAgent
 from .auth import AuthService, Identity
 from .clients import ServiceClientError
-from .config import ControlPlaneConfig, EngineTargetConfig
-from .fleet import HIGH_IMPACT_ACTIONS, FleetService
+from .config import ControlPlaneConfig
+from .domain import ControlError, domain_payload
+from .fleet import FleetService
+from .managers import ControlManager
+from .operations import OPERATION_CATALOG, TOOL_CATALOG, allowed
 from .persistence import ControlStore
 from .rbac import Permission, permits
 from .saml import SAMLService, SAMLUnavailable
@@ -27,11 +29,7 @@ from .saml import SAMLService, SAMLUnavailable
 
 COOKIE = "pra_control_session"
 OAUTH_COOKIE = "pra_control_oauth"
-REGISTRY_RESOURCES = frozenset({
-    "models", "bundles", "profiles", "qualifications", "compatibility",
-    "deployments", "policies", "approvals", "audit", "instances",
-})
-APPROVAL_TRANSITIONS = frozenset({"approve", "deprecate", "revoke", "promote"})
+LOGGER = logging.getLogger(__name__)
 
 
 class LocalLogin(BaseModel):
@@ -64,23 +62,73 @@ class ControlRuntime:
         self.store = ControlStore(config.database_url)
         self.auth = AuthService(config.auth, config.public_url)
         self.fleet = FleetService(config, self.store)
+        self.manager = ControlManager.build(config, self.store, self.fleet)
         self.replay = AgentReplayService(self.store, config.replay_limit)
-        self.agent = ControlPlaneAgent(self.fleet, self.store, config.grafana.url)
+        self.agent = ControlPlaneAgent(self.manager)
+
+    def bind_manager(self) -> None:
+        """Rebind after tests or embedders replace a physical fleet backend."""
+        if self.manager.fleet.backend is not self.fleet:
+            self.manager = ControlManager.build(self.config, self.store, self.fleet)
+            self.agent = ControlPlaneAgent(self.manager)
 
 
 def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRuntime | None = None) -> FastAPI:
     config = config or ControlPlaneConfig.load()
     runtime = runtime or ControlRuntime(config)
+    runtime.bind_manager()
+    mcp_http_app = None
+    if config.mcp.enabled and config.mcp.transports.http.enabled:
+        from .mcp import build_http_app
+        mcp_http_app = build_http_app(runtime.manager, config)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        yield
-        await runtime.fleet.close()
+        async with AsyncExitStack() as stack:
+            inner_mcp = getattr(mcp_http_app, "app", None)
+            if inner_mcp is not None and hasattr(inner_mcp, "router"):
+                await stack.enter_async_context(inner_mcp.router.lifespan_context(inner_mcp))
+            summary = app.state.capability_summary
+            LOGGER.info(
+                "PRA Control capabilities: REST=%d operations; MCP=%d tools, %d resource templates",
+                summary["rest_operations"], summary["mcp_tools"], summary["mcp_resource_templates"],
+            )
+            yield
+            await runtime.fleet.close()
 
     app = FastAPI(title="eInnovator PRA Control Plane", version="0.1.0", lifespan=lifespan)
     app.state.control = runtime
     static = Path(__file__).with_name("static")
     app.mount("/static", StaticFiles(directory=static), name="static")
+    if mcp_http_app is not None:
+        app.mount(config.mcp.transports.http.path, mcp_http_app, name="mcp")
+    app.state.capability_summary = {
+        "rest_operations": sum(
+            config.rest.enabled and allowed(item.id, config.rest.allow, config.rest.deny)
+            for item in OPERATION_CATALOG
+        ),
+        "mcp_tools": sum(
+            config.mcp.enabled and allowed(item.name, config.mcp.tools.allow, config.mcp.tools.deny)
+            for item in TOOL_CATALOG
+        ),
+        "mcp_resource_templates": len(config.mcp.resources.allow) if config.mcp.enabled and config.mcp.resources.enabled else 0,
+    }
+
+    @app.exception_handler(ControlError)
+    async def control_error(_request: Request, error: ControlError) -> JSONResponse:
+        return JSONResponse(
+            status_code=error.status_code,
+            content={"error": {"code": error.code, "message": str(error), "details": error.details}},
+        )
+
+    def rest(operation: str | tuple[str, ...], method: str, path: str, **kwargs: Any):
+        """Register only operations enabled by the semantic exposure policy."""
+        def decorate(function: Callable[..., Any]):
+            operations = (operation,) if isinstance(operation, str) else operation
+            if config.rest.enabled and any(allowed(item, config.rest.allow, config.rest.deny) for item in operations):
+                getattr(app, method)(path, **kwargs)(function)
+            return function
+        return decorate
 
     def identity(request: Request) -> Identity:
         token = request.cookies.get(COOKIE)
@@ -88,13 +136,6 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
         if not value:
             raise HTTPException(401, "authentication required")
         return value
-
-    def require(permission: Permission) -> Callable[[Identity], Identity]:
-        def dependency(value: Identity = Depends(identity)) -> Identity:
-            if not permits(value.role, permission):
-                raise HTTPException(403, f"{permission.value} is required")
-            return value
-        return dependency
 
     def csrf(request: Request, value: Identity = Depends(identity)) -> Identity:
         if runtime.auth.development_identity() == value:
@@ -104,18 +145,11 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
             raise HTTPException(403, "invalid CSRF token")
         return value
 
-    def csrf_permission(permission: Permission) -> Callable[[Identity], Identity]:
-        def dependency(value: Identity = Depends(csrf)) -> Identity:
-            if not permits(value.role, permission):
-                raise HTTPException(403, f"{permission.value} is required")
-            return value
-        return dependency
-
-    def audit(actor: Identity, action: str, target: str, reason: str, result: str, *, before: Any = None, after: Any = None, request: Request | None = None) -> None:
-        runtime.store.audit(
-            actor=actor.subject, role=actor.role.value, action=action, target=target,
-            before=before, after=after, reason=reason,
-            trace_id=request.headers.get("traceparent") if request else None, result=result,
+    def caller(actor: Identity, request: Request, *, transport: str = "rest"):
+        return actor.caller(
+            transport=transport,
+            request_id=request.headers.get("X-Request-ID") or secrets.token_hex(12),
+            trace_id=request.headers.get("traceparent"),
         )
 
     @app.get("/health")
@@ -183,122 +217,103 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
         response.delete_cookie(COOKIE)
         return {"logged_out": True}
 
-    @app.get("/api/fleet")
-    async def fleet(_: Identity = Depends(require(Permission.FLEET_READ))) -> dict[str, Any]:
-        return await runtime.fleet.overview()
+    @rest("fleet.list", "get", "/api/fleet")
+    async def fleet(request: Request, actor: Identity = Depends(identity)) -> dict[str, Any]:
+        return domain_payload(await runtime.manager.fleet.list(caller(actor, request)))
 
-    @app.get("/api/engines/{name}/{section}")
-    async def engine_section(name: str, section: str, _: Identity = Depends(require(Permission.FLEET_READ))) -> Any:
-        try:
-            return await runtime.fleet.engine_section(name, section)
-        except KeyError as error:
-            raise HTTPException(404, str(error)) from error
-        except ServiceClientError as error:
-            raise HTTPException(502, str(error)) from error
+    @rest("engine.inspect", "get", "/api/engines/{name}/{section}")
+    async def engine_section(name: str, section: str, request: Request, actor: Identity = Depends(identity)) -> Any:
+        result = await runtime.manager.fleet.inspect(caller(actor, request), name, section)
+        return domain_payload(result.value)
 
-    @app.post("/api/engines", status_code=201)
-    async def engine_put(body: ManualEngineBody, request: Request, actor: Identity = Depends(csrf_permission(Permission.FLEET_ADMIN))) -> dict[str, Any]:
-        try:
-            EngineTargetConfig(name=body.name, management_url=body.management_url, token_env=body.token_env, **body.metadata)
-        except (TypeError, ValueError) as error:
-            raise HTTPException(422, str(error)) from error
-        values = {"name": body.name, "management_url": body.management_url, "token_env": body.token_env, "metadata_payload": body.metadata}
-        before, after = runtime.store.put_engine(values)
-        audit(actor, "engine.register", body.name, body.reason, "success", before=before, after=after, request=request)
-        return after
+    @rest("engine.register", "post", "/api/engines", status_code=201)
+    async def engine_put(body: ManualEngineBody, request: Request, actor: Identity = Depends(csrf)) -> dict[str, Any]:
+        return await runtime.manager.fleet.register(caller(actor, request), body.model_dump(), reason=body.reason)
 
-    @app.delete("/api/engines/{name}")
-    async def engine_delete(name: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf_permission(Permission.FLEET_ADMIN))) -> dict[str, bool]:
-        if not body.confirmed:
-            raise HTTPException(409, "engine removal requires confirmed=true")
-        before = runtime.store.delete_engine(name)
-        if not before:
-            raise HTTPException(404, "manual engine not found")
-        audit(actor, "engine.remove", name, body.reason, "success", before=before, request=request)
-        return {"removed": True}
+    @rest("engine.remove", "delete", "/api/engines/{name}")
+    async def engine_delete(name: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf)) -> dict[str, bool]:
+        return await runtime.manager.fleet.remove(caller(actor, request), name, reason=body.reason, confirmed=body.confirmed)
 
-    @app.post("/api/engines/{name}/actions/{action}")
-    async def engine_action(name: str, action: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf_permission(Permission.ENGINE_ACTION))) -> Any:
-        if action in HIGH_IMPACT_ACTIONS and not body.confirmed:
-            raise HTTPException(409, f"{action} requires confirmation")
-        try:
-            result = await runtime.fleet.action(name, action, {**body.values, "confirmed": body.confirmed})
-            audit(actor, f"engine.{action}", name, body.reason, "success", after=result, request=request)
-            return result
-        except Exception as error:
-            audit(actor, f"engine.{action}", name, body.reason, "failure", after={"error": str(error)}, request=request)
-            raise HTTPException(502, str(error)) from error
+    @rest("action.apply", "post", "/api/engines/{name}/actions/{action}")
+    async def engine_action(name: str, action: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        result = await runtime.manager.actions.execute(
+            caller(actor, request), action, name, body.values, reason=body.reason,
+            confirmed=body.confirmed, idempotency_key=request.headers.get("Idempotency-Key"),
+        )
+        return domain_payload(result.result)
 
-    @app.patch("/api/engines/{name}/config")
-    async def engine_config(name: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf_permission(Permission.ENGINE_CONFIGURE))) -> Any:
-        try:
-            before = await runtime.fleet.engine_section(name, "config")
-            result = await runtime.fleet.patch_config(name, body.values)
-            audit(actor, "engine.config.patch", name, body.reason, "success", before=before, after=result, request=request)
-            return result
-        except Exception as error:
-            audit(actor, "engine.config.patch", name, body.reason, "failure", after={"error": str(error)}, request=request)
-            raise HTTPException(502, str(error)) from error
+    @rest("engine.config.patch", "patch", "/api/engines/{name}/config")
+    async def engine_config(name: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        result = await runtime.manager.actions.execute(
+            caller(actor, request), "config-patch", name, body.values, reason=body.reason,
+            confirmed=body.confirmed, idempotency_key=request.headers.get("Idempotency-Key"),
+        )
+        return domain_payload(result.result)
 
-    @app.get("/api/registry/{resource}")
-    async def registry_list(resource: str, limit: int = 200, offset: int = 0, _: Identity = Depends(require(Permission.REGISTRY_READ))) -> Any:
-        _registry_resource(resource)
-        if not runtime.fleet.registry:
-            raise HTTPException(503, "Registry is not configured")
-        return await runtime.fleet.registry.list(resource, limit=min(limit, 500), offset=offset)
+    @rest("registry.list", "get", "/api/registry/{resource}")
+    async def registry_list(resource: str, request: Request, limit: int = 200, offset: int = 0, actor: Identity = Depends(identity)) -> Any:
+        return await runtime.manager.registry.list(caller(actor, request), resource, limit=limit, offset=offset)
 
-    @app.post("/api/registry/{resource}", status_code=201)
-    async def registry_create(resource: str, body: RegistryMutationBody, request: Request, actor: Identity = Depends(csrf_permission(Permission.REGISTRY_WRITE))) -> Any:
-        _registry_resource(resource, mutable=True)
-        return await _registry_mutation(runtime, actor, request, "POST", f"/v1/{resource}", body.values, body.reason, f"registry.{resource}.create")
+    @rest("registry.write", "post", "/api/registry/{resource}", status_code=201)
+    async def registry_create(resource: str, body: RegistryMutationBody, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        return await runtime.manager.registry.create(caller(actor, request), resource, body.values, reason=body.reason)
 
-    @app.patch("/api/registry/{resource}/{resource_id}")
-    async def registry_patch(resource: str, resource_id: str, body: RegistryMutationBody, request: Request, actor: Identity = Depends(csrf_permission(Permission.REGISTRY_WRITE))) -> Any:
-        _registry_resource(resource, mutable=True)
-        path = f"/v1/{resource}/{quote(resource_id, safe='')}"
-        before = await runtime.fleet.registry.request("GET", path) if runtime.fleet.registry else None
-        return await _registry_mutation(runtime, actor, request, "PATCH", path, body.values, body.reason, f"registry.{resource}.patch", before=before)
+    @rest("registry.write", "patch", "/api/registry/{resource}/{resource_id}")
+    async def registry_patch(resource: str, resource_id: str, body: RegistryMutationBody, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        return await runtime.manager.registry.patch(caller(actor, request), resource, resource_id, body.values, reason=body.reason)
 
-    @app.post("/api/registry/{resource}/{resource_id}/{transition}")
-    async def registry_transition(resource: str, resource_id: str, transition: str, body: RegistryMutationBody, request: Request, actor: Identity = Depends(csrf_permission(Permission.APPROVE))) -> Any:
-        _registry_resource(resource, mutable=True)
-        if transition not in APPROVAL_TRANSITIONS:
-            raise HTTPException(404, "unsupported transition")
-        states = {"approve": "APPROVED", "promote": "APPROVED", "deprecate": "DEPRECATED", "revoke": "REVOKED"}
-        singular = {"compatibility": "compatibility", "policies": "policy", "qualifications": "qualification"}.get(resource, resource.rstrip("s"))
-        values = {
-            "resource_type": singular, "resource_id": resource_id,
-            "version": str(body.values.get("version", "current")), "state": states[transition],
-            "approver": actor.subject, "reason": body.reason,
-        }
-        return await _registry_mutation(runtime, actor, request, "POST", "/v1/approvals", values, body.reason, f"registry.{resource}.{transition}")
+    @rest(("registry.write", "qualification.approve"), "post", "/api/registry/{resource}/{resource_id}/{transition}")
+    async def registry_transition(resource: str, resource_id: str, transition: str, body: RegistryMutationBody, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        semantic_operation = "qualification.approve" if resource == "qualifications" else "registry.write"
+        if not allowed(semantic_operation, config.rest.allow, config.rest.deny):
+            raise HTTPException(404, "operation disabled")
+        return await runtime.manager.registry.transition(
+            caller(actor, request), resource, resource_id, transition, body.values, reason=body.reason,
+        )
 
-    @app.get("/api/audit")
-    async def audit_events(limit: int = 200, offset: int = 0, _: Identity = Depends(require(Permission.AUDIT_READ))) -> dict[str, Any]:
-        return runtime.store.audit_events(limit=min(limit, 500), offset=offset)
+    @rest("audit.read", "get", "/api/audit")
+    async def audit_events(request: Request, limit: int = 200, offset: int = 0, actor: Identity = Depends(identity)) -> dict[str, Any]:
+        return runtime.manager.audit.list(caller(actor, request), limit=limit, offset=offset)
 
-    @app.get("/api/observability/links")
-    async def observability_links(engine: str | None = None, trace_id: str | None = None, _: Identity = Depends(require(Permission.OBSERVABILITY_READ))) -> dict[str, Any]:
-        suffix = f"?var-engine={quote(engine)}" if engine else ""
-        trace = f"/explore?traceId={quote(trace_id)}" if trace_id else ""
-        return {
-            "grafana": f"{config.grafana.url}{suffix}" if config.grafana.url else None,
-            "tempo": f"{config.tempo.url}{trace}" if config.tempo.url else None,
-            "prometheus": config.prometheus.url,
-        }
+    @rest("observability.read", "get", "/api/observability/links")
+    async def observability_links(request: Request, engine: str | None = None, trace_id: str | None = None, actor: Identity = Depends(identity)) -> dict[str, Any]:
+        return runtime.manager.observability.links(caller(actor, request), engine=engine, trace_id=trace_id)
 
-    @app.get("/api/recommendations")
-    async def recommendations(_: Identity = Depends(require(Permission.FLEET_READ))) -> dict[str, Any]:
-        overview = await runtime.fleet.overview()
-        items = []
-        for row in overview["items"]:
-            if row["status"] == "DRIFT":
-                items.append({"engine": row["name"], "kind": "reconcile", "approval_required": True, "reason": "observed state differs from Registry intent"})
-            if row["status"] == "OFFLINE":
-                items.append({"engine": row["name"], "kind": "investigate", "approval_required": True, "reason": "management endpoint is offline"})
-            if float(row.get("metrics", {}).get("storage_reloads") or 0) > 10:
-                items.append({"engine": row["name"], "kind": "warm-quota", "approval_required": True, "reason": "high storage reload count"})
-        return {"items": items, "mode": "recommendation-only"}
+    @rest("fleet.list", "get", "/api/recommendations")
+    async def recommendations(request: Request, actor: Identity = Depends(identity)) -> dict[str, Any]:
+        return await runtime.manager.fleet.recommendations(caller(actor, request))
+
+    @rest("action.plan", "post", "/api/actions/plan")
+    async def action_plan(body: MutationBody, request: Request, action: str, target: str, actor: Identity = Depends(csrf)) -> Any:
+        return domain_payload(await runtime.manager.actions.plan(
+            caller(actor, request), action, target, body.values,
+            idempotency_key=request.headers.get("Idempotency-Key"),
+        ))
+
+    @rest("action.apply", "post", "/api/actions/plans/{plan_id}/apply")
+    async def action_apply(plan_id: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        return domain_payload(await runtime.manager.actions.apply(
+            caller(actor, request), plan_id, confirmation=body.confirmed, reason=body.reason,
+            idempotency_key=request.headers.get("Idempotency-Key"),
+        ))
+
+    @rest("deployment.read", "get", "/api/deployments")
+    async def deployments(request: Request, actor: Identity = Depends(identity)) -> Any:
+        return {"items": await runtime.manager.deployments.list(caller(actor, request))}
+
+    @rest("deployment.read", "get", "/api/deployments/{deployment_id}")
+    async def deployment(deployment_id: str, request: Request, actor: Identity = Depends(identity)) -> Any:
+        return await runtime.manager.deployments.get(caller(actor, request), deployment_id)
+
+    @rest("qualification.read", "get", "/api/qualifications")
+    async def qualifications(request: Request, model: str | None = None, engine: str | None = None, actor: Identity = Depends(identity)) -> Any:
+        return {"items": await runtime.manager.qualifications.list_evidence(caller(actor, request), model=model, engine=engine)}
+
+    @rest("context.read", "post", "/api/context")
+    async def task_context(body: dict[str, Any], request: Request, actor: Identity = Depends(identity)) -> Any:
+        return domain_payload(await runtime.manager.context.assemble(
+            caller(actor, request), task=str(body.get("task", "")), repository=body.get("repository"),
+        ))
 
     @app.websocket("/ws/agent")
     async def agent_socket(websocket: WebSocket) -> None:
@@ -349,23 +364,6 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
         return FileResponse(static / "index.html")
 
     return app
-
-
-async def _registry_mutation(runtime: ControlRuntime, actor: Identity, request: Request, method: str, path: str, values: dict[str, Any], reason: str, action: str, *, before: Any = None) -> Any:
-    if not runtime.fleet.registry:
-        raise HTTPException(503, "Registry is not configured")
-    try:
-        result = await runtime.fleet.registry.request(method, path, values)
-        runtime.store.audit(actor=actor.subject, role=actor.role.value, action=action, target=path, before=before, after=result, reason=reason, trace_id=request.headers.get("traceparent"), result="success")
-        return result
-    except Exception as error:
-        runtime.store.audit(actor=actor.subject, role=actor.role.value, action=action, target=path, before=before, after={"error": str(error)}, reason=reason, trace_id=request.headers.get("traceparent"), result="failure")
-        raise HTTPException(502, str(error)) from error
-
-
-def _registry_resource(resource: str, *, mutable: bool = False) -> None:
-    if resource not in REGISTRY_RESOURCES or (mutable and resource in {"audit", "instances"}):
-        raise HTTPException(404, "unknown Registry resource")
 
 
 def _websocket_identity(websocket: WebSocket, runtime: ControlRuntime) -> Identity | None:

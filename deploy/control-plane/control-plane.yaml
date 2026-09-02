@@ -10,6 +10,38 @@ control_plane:
     providers:
       - name: local
         kind: local
+  manager:
+    backend_mode: direct
+    audit: true
+  rest:
+    enabled: true
+    allow: ["*"]
+    deny: []
+  mcp:
+    enabled: false
+    transports:
+      http:
+        enabled: false
+        path: /mcp
+        host: 127.0.0.1
+        port: 9301
+        auth_profile: mcp-remote
+      stdio:
+        enabled: false
+        auth_profile: mcp-local
+    tools:
+      allow: [pra_fleet, pra_engine, pra_gateway, pra_catalog, pra_qualification, pra_deployment, pra_metrics, pra_context, pra_plan]
+      deny: [pra_apply, pra_experiment]
+  auth_profiles:
+    mcp-local:
+      type: service_identity
+      subject: local-coding-agent
+      roles: [Viewer]
+    mcp-remote:
+      type: bearer_token
+      subject: remote-coding-agent
+      roles: [Viewer]
+      token_env: PRA_CONTROL_MCP_TOKEN
 registry:
   url: http://pra-registry:9200
   token_env: PRA_REGISTRY_TOKEN

@@ -23,6 +23,45 @@ control_plane:
         userinfo_url: https://id.example.com/oauth2/userinfo
         role_claim: pra_role
         default_role: Viewer
+  manager:
+    backend_mode: direct
+    audit: true
+    action_plan_ttl_seconds: 900
+  rest:
+    enabled: true
+    allow:
+      - fleet.*
+      - engine.inspect
+      - registry.list
+      - qualification.*
+      - deployment.read
+      - observability.read
+      - action.plan
+    deny:
+      - action.apply
+  mcp:
+    enabled: true
+    transports:
+      http:
+        enabled: false
+        path: /mcp
+        auth_profile: mcp-remote
+      stdio:
+        enabled: true
+        auth_profile: mcp-local
+    tools:
+      allow: [pra_fleet, pra_engine, pra_catalog, pra_qualification, pra_deployment, pra_metrics, pra_context, pra_plan]
+      deny: [pra_apply, pra_experiment]
+  auth_profiles:
+    mcp-local:
+      type: service_identity
+      subject: local-codex
+      roles: [Viewer]
+    mcp-remote:
+      type: bearer_token
+      subject: remote-coding-agent
+      roles: [Viewer]
+      token_env: PRA_CONTROL_MCP_TOKEN
 registry:
   url: http://pra-registry:9200
   token_env: PRA_REGISTRY_TOKEN
@@ -51,3 +90,9 @@ that exception only behind a trusted reverse proxy or a host-only published port
 
 Discovery modes are `static`, `manual`, `registry`, and `combined`. Manual
 records belong to the Control Plane; deployment intent remains in the Registry.
+
+REST exposure uses semantic operation IDs rather than URL strings. Denied
+operations are not registered and therefore do not appear in OpenAPI. MCP uses
+the same pattern for tools and resources. Secret fields are references such as
+`token_env`, `client_secret_env`, or `token_file`; secret values are never part
+of configuration introspection.

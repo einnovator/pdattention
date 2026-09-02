@@ -16,6 +16,12 @@ OUTPUT = ROOT / "docs/site/cli-reference.md"
 
 EXAMPLES = {
     "pra control serve": "pra control serve --config control-plane.yaml --host 127.0.0.1 --port 9300",
+    "pra control mcp": "pra control mcp --config control-plane.yaml --transport stdio",
+    "pra control fleet": "pra control fleet --config control-plane.yaml",
+    "pra control inspect": "pra control inspect mlx-01 --section storage --config control-plane.yaml",
+    "pra control context": "pra control context \"work on MLX Native Memory\" --repository einnovator/pdattention --config control-plane.yaml",
+    "pra control plan": "pra control plan prefetch mlx-01 --values '{\"resource_id\":\"document-42\"}' --idempotency-key launch-42 --config control-plane.yaml",
+    "pra control apply": "pra control apply PLAN_ID --reason \"prepare launch\" --auth-profile operator --config control-plane.yaml",
     "pra registry status": "pra registry status --registry-url http://127.0.0.1:9200",
     "pra registry models": "pra registry models --limit 50 --json",
     "pra registry bundles": "pra registry bundles --limit 50 --json",
@@ -113,6 +119,12 @@ EXAMPLES = {
 
 OUTPUTS = {
     "pra control serve": "INFO: Uvicorn running on http://127.0.0.1:9300\nControl Plane: http://127.0.0.1:9300/index.html",
+    "pra control mcp": "PRA Control Manager MCP server started over stdio",
+    "pra control fleet": "{\n  \"items\": [{\"name\": \"mlx-01\", \"status\": \"IN_SYNC\"}],\n  \"summary\": {\"total\": 1, \"healthy\": 1}\n}",
+    "pra control inspect": "{\n  \"instance_id\": \"mlx-01\",\n  \"section\": \"storage\",\n  \"value\": {\"hot_bytes\": 1048576}\n}",
+    "pra control context": "{\n  \"task\": \"work on MLX Native Memory\",\n  \"repository\": \"einnovator/pdattention\",\n  \"bundles\": [],\n  \"limitations\": []\n}",
+    "pra control plan": "{\n  \"plan_id\": \"...\",\n  \"action\": \"prefetch\",\n  \"impact\": \"low\",\n  \"requires_confirmation\": false\n}",
+    "pra control apply": "{\n  \"plan_id\": \"...\",\n  \"status\": \"applied\",\n  \"idempotent_replay\": false\n}",
     "pra registry status": "status: ok\nprotocol: pra-registry/1\ndatabase: postgresql",
     "pra registry models": "items:\n- id: model-qwen3\n  repo: Qwen/Qwen3-14B\n  revision: a4d9b2d...\ntotal: 1",
     "pra registry bundles": "items:\n- id: bundle-qwen3-14b\n  immutable_revision: 9853a17...\n  approval_state: APPROVED\ntotal: 1",
@@ -209,6 +221,13 @@ OUTPUTS = {
 
 
 OPTION_HELP = {
+    "transport": "Select MCP stdio or streamable HTTP transport.",
+    "auth_profile": "Use a named Control Plane service identity.",
+    "section": "Select the engine state section to inspect.",
+    "repository": "Associate task context with this repository.",
+    "values": "Provide the requested action change as a JSON object.",
+    "reason": "Record the operator reason in central audit.",
+    "confirm": "Confirm a high-impact action plan.",
     "registry_url": "Use this PRA Registry base URL.",
     "offset": "Skip this many registry records before returning results.",
     "host": "Bind address for the local service.",
@@ -312,6 +331,9 @@ OPTION_HELP = {
 
 
 ARGUMENT_HELP = {
+    "instance_id": "Managed engine or gateway instance identifier.",
+    "task": "Task description used to assemble relevant context.",
+    "plan_id": "Durable action plan identifier returned by `pra control plan`.",
     "collection": "Hugging Face Collection slug to synchronize.",
     "model": "Model identifier or local model path.",
     "run": "Qualification or calibration run directory.",

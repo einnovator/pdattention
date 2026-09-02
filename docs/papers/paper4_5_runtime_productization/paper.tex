@@ -2340,6 +2340,29 @@ receives a typed one-shot approval; the browser cannot bypass host policy. The
 UI binds to loopback by default and is experimental rather than a scientific
 contribution or production security claim.
 
+The fleet Control Plane follows the same separation at deployment scope. REST,
+streamable-HTTP or stdio MCP, the built-in Control Plane agent, and an embedded
+operator CLI call one transport-neutral \texttt{ControlManager}. Its fleet,
+Registry, deployment, action, qualification, observability, context, experiment,
+and audit managers own authorization and policy; engine and Registry clients
+remain behind backend protocols. A declarative operation catalog maps semantic
+operation IDs to permissions, side effects, and risk, and drives REST route
+exposure and MCP tool discovery. A disabled operation is therefore absent from
+OpenAPI or MCP discovery rather than merely failing after dispatch. The default
+MCP surface is disabled; when enabled it is read-only except for plan
+construction, with apply and experiment submission separately denied.
+
+Operational mutation uses a common plan--apply transaction. The plan records
+current and projected state, impact, reversibility, restart requirement,
+required permission, confirmation requirement, tenant, expiry, and idempotency
+key. Plans and completed results are durable, so REST, MCP, and CLI retries share
+the same idempotency decision. Manager-owned audit records add roles,
+permission, request and trace IDs, transport, before/after state, and outcome.
+An official MCP SDK protocol test initializes both stdio and authenticated
+streamable HTTP, discovers the configured tools, and invokes the same fleet
+manager used by REST. This is interface validation rather than a serving-quality
+or latency claim.
+
 \subsection{PRA under agentic coding workloads}
 
 The coding-agent campaign uses end-task success as the admission gate and

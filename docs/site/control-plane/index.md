@@ -35,6 +35,21 @@ The Control Plane aggregates gateways and engines through their public APIs.
 The open Gateway API remains independently usable by the PRA CLI, Registry,
 community automation, and CI; commercial enrollment is not required.
 
+All presentation surfaces now share one semantic application layer:
+
+```text
+REST | MCP | built-in agent | embedded CLI
+                    |
+              ControlManager
+                    |
+       Registry and engine backends
+```
+
+Authorization, action policy, drift, idempotency, and audit are manager
+responsibilities. REST and MCP translate protocols; neither is a second
+business implementation. Start with the [architecture](architecture.md) and
+[manager layer](manager-layer.md) when integrating automation.
+
 ## Current capability status
 
 | Area | Status |
@@ -48,6 +63,7 @@ community automation, and CI; commercial enrollment is not required.
 | Audited safe engine actions | Early access |
 | Dockable browser workspace | Early access |
 | Resumable PRA Agent chat | Early access, read-only assistant tools |
+| Manager-backed REST and MCP | Early access; MCP is disabled and read-only by default |
 | Autonomous optimization | Not shipped; recommendations require a person |
 
 Continue with [Installation](installation.md) or review the [security and RBAC

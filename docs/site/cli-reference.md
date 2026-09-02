@@ -380,7 +380,7 @@ pra gateway renegotiate [OPTIONS] UPSTREAM
 
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `--reason` | TEXT | `-` | yes | Configure `reason`. |
+| `--reason` | TEXT | `-` | yes | Record the operator reason in central audit. |
 | `--json` | flag | `off` | no | Emit machine-readable JSON. |
 | `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
 | `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
@@ -422,7 +422,7 @@ pra gateway resync [OPTIONS] SESSION
 
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `--reason` | TEXT | `-` | yes | Configure `reason`. |
+| `--reason` | TEXT | `-` | yes | Record the operator reason in central audit. |
 | `--json` | flag | `off` | no | Emit machine-readable JSON. |
 | `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
 | `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
@@ -1529,7 +1529,7 @@ pra registry instance [OPTIONS] INSTANCE_ID
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `INSTANCE_ID` | yes | Command input value. |
+| `INSTANCE_ID` | yes | Managed engine or gateway instance identifier. |
 
 **Options**
 
@@ -1791,6 +1791,241 @@ pra control serve --config control-plane.yaml --host 127.0.0.1 --port 9300
 ```text
 INFO: Uvicorn running on http://127.0.0.1:9300
 Control Plane: http://127.0.0.1:9300/index.html
+```
+
+### `pra control mcp`
+
+Start the manager-backed MCP server over stdio or streamable HTTP.
+
+**Usage**
+
+```text
+pra control mcp [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | no | YAML Control Plane configuration. |
+| `--transport` | stdio / http | `stdio` | no | Select MCP stdio or streamable HTTP transport. |
+| `--host` | TEXT | `-` | no | Override the MCP HTTP bind address. |
+| `--port` | INTEGER >= 1 <= 65535 | `-` | no | Override the MCP HTTP port. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra control mcp --config control-plane.yaml --transport stdio
+```
+
+**Example output**
+
+```text
+PRA Control Manager MCP server started over stdio
+```
+
+### `pra control fleet`
+
+List fleet state through the embedded manager.
+
+**Usage**
+
+```text
+pra control fleet [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | no | YAML Control Plane configuration. |
+| `--auth-profile` | TEXT | `-` | no | Named service identity from control_plane.auth_profiles. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra control fleet --config control-plane.yaml
+```
+
+**Example output**
+
+```text
+{
+  "items": [{"name": "mlx-01", "status": "IN_SYNC"}],
+  "summary": {"total": 1, "healthy": 1}
+}
+```
+
+### `pra control inspect`
+
+Inspect one engine without routing through REST.
+
+**Usage**
+
+```text
+pra control inspect [OPTIONS] INSTANCE_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `INSTANCE_ID` | yes | Managed engine or gateway instance identifier. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--section` | TEXT | `summary` | no | Select the engine state section to inspect. |
+| `--config` | PATH | `-` | no | YAML Control Plane configuration. |
+| `--auth-profile` | TEXT | `-` | no | Named service identity from control_plane.auth_profiles. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra control inspect mlx-01 --section storage --config control-plane.yaml
+```
+
+**Example output**
+
+```text
+{
+  "instance_id": "mlx-01",
+  "section": "storage",
+  "value": {"hot_bytes": 1048576}
+}
+```
+
+### `pra control context`
+
+Assemble deterministic task context through the manager.
+
+**Usage**
+
+```text
+pra control context [OPTIONS] TASK
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TASK` | yes | Task description used to assemble relevant context. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--repository` | TEXT | `-` | no | Associate task context with this repository. |
+| `--config` | PATH | `-` | no | YAML Control Plane configuration. |
+| `--auth-profile` | TEXT | `-` | no | Named service identity from control_plane.auth_profiles. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra control context "work on MLX Native Memory" --repository einnovator/pdattention --config control-plane.yaml
+```
+
+**Example output**
+
+```text
+{
+  "task": "work on MLX Native Memory",
+  "repository": "einnovator/pdattention",
+  "bundles": [],
+  "limitations": []
+}
+```
+
+### `pra control plan`
+
+Create a durable action plan without applying it.
+
+**Usage**
+
+```text
+pra control plan [OPTIONS] ACTION TARGET
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `ACTION` | yes | Bounded management action name. |
+| `TARGET` | yes | Saved connection name or management API URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--values` | TEXT | `{}` | no | Requested change as a JSON object. |
+| `--idempotency-key` | TEXT | `-` | no | Deduplicate a retried management action. |
+| `--config` | PATH | `-` | no | YAML Control Plane configuration. |
+| `--auth-profile` | TEXT | `-` | no | Named service identity from control_plane.auth_profiles. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra control plan prefetch mlx-01 --values '{"resource_id":"document-42"}' --idempotency-key launch-42 --config control-plane.yaml
+```
+
+**Example output**
+
+```text
+{
+  "plan_id": "...",
+  "action": "prefetch",
+  "impact": "low",
+  "requires_confirmation": false
+}
+```
+
+### `pra control apply`
+
+Apply a durable plan using manager authorization and central audit.
+
+**Usage**
+
+```text
+pra control apply [OPTIONS] PLAN_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `PLAN_ID` | yes | Durable action plan identifier returned by `pra control plan`. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--reason` | TEXT | `-` | yes | Record the operator reason in central audit. |
+| `--confirm` | flag | `off` | no | Confirm a high-impact action plan. |
+| `--idempotency-key` | TEXT | `-` | no | Deduplicate a retried management action. |
+| `--config` | PATH | `-` | no | YAML Control Plane configuration. |
+| `--auth-profile` | TEXT | `-` | no | Named service identity from control_plane.auth_profiles. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra control apply PLAN_ID --reason "prepare launch" --auth-profile operator --config control-plane.yaml
+```
+
+**Example output**
+
+```text
+{
+  "plan_id": "...",
+  "status": "applied",
+  "idempotent_replay": false
+}
 ```
 
 ## Environment and qualification

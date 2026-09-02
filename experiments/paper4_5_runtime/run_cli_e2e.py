@@ -69,6 +69,7 @@ class Runner:
         self.env["HF_HOME"] = str(workspace / "hf-home")
         self.env["TOKENIZERS_PARALLELISM"] = "false"
         self.env["NO_COLOR"] = "1"
+        self.env["PRA_CONTROL_COOKIE_SECRET"] = "cli-e2e-cookie-secret"
 
     def run(
         self,
@@ -231,6 +232,46 @@ class StubHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
+
+
+class ManagementStubHandler(StubHandler):
+    """PRA Engine Management fixture kept separate from inference fallback."""
+
+    def do_GET(self) -> None:  # noqa: N802
+        management = {
+            "/v1/pra/info": {
+                "engine": "controlled", "engine_version": "1.0", "pra_version": "e2e",
+                "health": "healthy", "host": "localhost",
+            },
+            "/v1/pra/state": {"status": "ready"},
+            "/v1/pra/capabilities": {
+                "management_actions": ["prefetch", "promote", "demote", "evict"],
+            },
+            "/v1/pra/models": {
+                "items": [{
+                    "runtime_model_id": "default", "model_id": "pra-e2e-stub",
+                    "profile": "REFERENCE_CORRECTNESS", "execution_mode": "E2",
+                }],
+            },
+            "/v1/pra/profiles": {"items": []},
+            "/v1/pra/storage": {"hot_bytes": 4096, "warm_bytes": 0},
+            "/v1/pra/observability": {"requests_total": 3},
+            "/v1/pra/config": {"profile": "REFERENCE_CORRECTNESS"},
+        }
+        path = self.path.split("?", 1)[0]
+        if path in management:
+            self._json(200, management[path])
+            return
+        self.send_error(404)
+
+    def do_POST(self) -> None:  # noqa: N802
+        length = int(self.headers.get("Content-Length", "0"))
+        if length:
+            json.loads(self.rfile.read(length).decode("utf-8"))
+        if self.path.startswith("/v1/pra/actions/"):
+            self._json(200, {"status": "accepted", "action": self.path.rsplit("/", 1)[-1]})
+            return
+        self.send_error(404)
 
 
 def _free_port() -> int:
@@ -397,6 +438,36 @@ def _write_bundle_run(path: Path, model: Path) -> None:
     (path / "pra.yaml").write_text(yaml.safe_dump(runtime, sort_keys=False), encoding="utf-8")
 
 
+def _write_control_config(path: Path, stub_url: str, port: int) -> None:
+    """Create an isolated manager configuration for subprocess CLI checks."""
+    database = (path.parent / "control.db").resolve().as_posix()
+    value = {
+        "control_plane": {
+            "host": "127.0.0.1",
+            "port": port,
+            "public_url": f"http://127.0.0.1:{port}",
+            "database_url": f"sqlite:///{database}",
+            "auth": {"cookie_secure": False},
+            "registry": {"url": None},
+            "fleet": {
+                "discovery_mode": "static",
+                "engines": [{
+                    "name": "e2e-engine", "management_url": stub_url,
+                    "environment": "test", "region": "local", "cluster": "e2e",
+                }],
+            },
+            "auth_profiles": {
+                "operator": {
+                    "type": "service_identity", "subject": "cli-e2e-operator",
+                    "roles": ["Operator"],
+                },
+            },
+            "mcp": {"enabled": False},
+        },
+    }
+    path.write_text(yaml.safe_dump(value, sort_keys=False), encoding="utf-8")
+
+
 def _git_sha() -> str:
     try:
         return subprocess.check_output(
@@ -466,6 +537,33 @@ def _run_gateway(runner: Runner, stub_url: str) -> None:
         raise SuiteFailure("Gateway did not proxy the controlled OpenAI request.")
 
 
+def _run_control_plane(runner: Runner, config: Path, port: int) -> None:
+    command = "pra control serve"
+    argv = [*CLI, "control", "serve", "--config", str(config)]
+    log_path = runner.workspace / "control-plane.log"
+    started = time.perf_counter()
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            argv, cwd=runner.workspace, env=runner.env, text=True,
+            stdout=log, stderr=subprocess.STDOUT,
+        )
+    status = "FAIL"
+    try:
+        health = _wait_json(f"http://127.0.0.1:{port}/health")
+        if health == {"status": "ok", "protocol": "pra-control/1"}:
+            status = "PASS"
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        output = log_path.read_text(encoding="utf-8", errors="replace")
+        runner.server_receipt(command, argv, started, output, status)
+    if status != "PASS":
+        raise SuiteFailure("Control Plane did not expose its health contract.")
+
+
 def _run_managed_hf_serve(
     runner: Runner,
     command: str,
@@ -512,7 +610,7 @@ def _run_help_contract(runner: Runner, commands: Sequence[str]) -> None:
         )
 
 
-def _run_semantics(runner: Runner, stub_url: str) -> None:
+def _run_semantics(runner: Runner, stub_url: str, management_url: str) -> None:
     root = runner.workspace
     model = root / "tiny-llama"
     adapter = root / "structural-adapter"
@@ -531,11 +629,46 @@ def _run_semantics(runner: Runner, stub_url: str) -> None:
     runtime = root / "runtime"
     benchmark = root / "benchmark"
     report = root / "report.html"
+    control_config = root / "control-plane.yaml"
+    control_port = _free_port()
 
     _create_tiny_model(model)
     _write_features(features)
     _write_measurements(measurements)
     _write_bundle_run(bundle_run, model)
+    _write_control_config(control_config, management_url, control_port)
+
+    _run_control_plane(runner, control_config, control_port)
+    runner.run(
+        "pra control mcp", ["control", "mcp", "--config", str(control_config)],
+        classification="expected-policy-rejection", expected_codes=(1,),
+        contains=("MCP is disabled",),
+    )
+    runner.run(
+        "pra control fleet", ["control", "fleet", "--config", str(control_config)],
+        contains=('"name": "e2e-engine"', '"unknown": 1'),
+    )
+    runner.run(
+        "pra control inspect",
+        ["control", "inspect", "e2e-engine", "--section", "storage", "--config", str(control_config)],
+        contains=('"hot_bytes": 4096',),
+    )
+    runner.run(
+        "pra control context",
+        ["control", "context", "validate controlled engine", "--repository", "einnovator/pdattention", "--config", str(control_config)],
+        contains=('"repository": "einnovator/pdattention"', '"e2e-engine"'),
+    )
+    planned = runner.run(
+        "pra control plan",
+        ["control", "plan", "prefetch", "e2e-engine", "--values", '{"resource_id":"document-42"}', "--idempotency-key", "cli-e2e-prefetch", "--config", str(control_config)],
+        contains=('"action": "prefetch"', '"requires_confirmation": false'),
+    )
+    plan_id = str(json.loads(planned.stdout)["plan_id"])
+    runner.run(
+        "pra control apply",
+        ["control", "apply", plan_id, "--reason", "CLI end-to-end validation", "--auth-profile", "operator", "--config", str(control_config)],
+        contains=('"status": "applied"', '"action": "prefetch"'),
+    )
 
     runner.run("pra doctor", ["doctor", "--json"], contains=('"system"',))
     runner.run("pra engines", ["engines", "--json"], contains=('"engines"',))
@@ -574,7 +707,10 @@ def _run_semantics(runner: Runner, stub_url: str) -> None:
     runner.run("pra bundle inspect", ["bundle", "inspect", str(bundle), "--json"], contains=('"schema_version": 2',))
     runner.run("pra bundle validate", ["bundle", "validate", str(bundle), "--json"], contains=('"status": "VALID"',))
     runner.run("pra bundle card", ["bundle", "card", str(bundle), "--update"], contains=("README.md",))
-    runner.run("pra bundle list", ["bundle", "list", "--family", "qwen", "--json"], contains=('"count": 3',))
+    runner.run(
+        "pra bundle list", ["bundle", "list", "--family", "qwen", "--json"],
+        contains=('"bundle_repo": "EInnovator/pra-qwen3-4b-mlx-4bit"',),
+    )
     runner.run("pra bundle resolve", ["bundle", "resolve", str(model), "-e", "hf", "-a", "none", "--json"], contains=('"status": "DISABLED"',))
 
     runner.run("pra hf login", ["hf", "login", "--check", "--json"], classification="authenticated-or-guarded", expected_codes=(0, 1), contains_any=("AUTHENTICATED", "No usable Hugging Face authentication"))
@@ -657,16 +793,27 @@ def run(
         workspace = Path(temporary)
         runner = Runner(workspace, live_hub=live_hub)
         stub = ThreadingHTTPServer(("127.0.0.1", 0), StubHandler)
-        thread = threading.Thread(target=stub.serve_forever, daemon=True)
-        thread.start()
+        management_stub = ThreadingHTTPServer(("127.0.0.1", 0), ManagementStubHandler)
+        threads = [
+            threading.Thread(target=stub.serve_forever, daemon=True),
+            threading.Thread(target=management_stub.serve_forever, daemon=True),
+        ]
+        for thread in threads:
+            thread.start()
         try:
             if include_help_contracts:
                 _run_help_contract(runner, commands)
-            _run_semantics(runner, f"http://127.0.0.1:{stub.server_port}")
+            _run_semantics(
+                runner, f"http://127.0.0.1:{stub.server_port}",
+                f"http://127.0.0.1:{management_stub.server_port}",
+            )
         finally:
             stub.shutdown()
+            management_stub.shutdown()
             stub.server_close()
-            thread.join(timeout=5)
+            management_stub.server_close()
+            for thread in threads:
+                thread.join(timeout=5)
 
         missing = sorted(set(commands) - runner.covered)
         extra = sorted(runner.covered - set(commands))
