@@ -1,0 +1,495 @@
+{
+  "status": "PASS",
+  "git_commit": "e950967d67809abc371e241791791214a4494a07",
+  "timestamp": 1788338976.0887759,
+  "duration_seconds": 5.371692180633545,
+  "host": "Mac",
+  "request_count": 12,
+  "response_marker": "PRA gateway telemetry OK",
+  "gateway_health": {
+    "status": "ok",
+    "protocol": "pra",
+    "protocol_version": "1",
+    "endpoint_type": "gateway",
+    "gateway": {
+      "mode": "G10",
+      "typed_records": true,
+      "resource_delta": true,
+      "session_state": true,
+      "incremental_messages": true
+    },
+    "effective_capabilities": {
+      "logical_refs": true,
+      "typed_records": true,
+      "task_metadata": true,
+      "resource_delta": true,
+      "session_state": true,
+      "incremental_messages": true,
+      "cache_affinity": false,
+      "native_kv": false,
+      "streaming": false
+    },
+    "gateway_mode": "G10",
+    "engine": {
+      "adapter": "openai",
+      "engine_type": "openai_generic",
+      "integration_level": "E0",
+      "prefix_cache_mode": "unknown",
+      "automatic_prefix_cache": false,
+      "explicit_prefix_cache": false,
+      "session_state": false,
+      "incremental_messages": false,
+      "resource_delta": false,
+      "cache_affinity": false,
+      "prefix_cache_handle": false,
+      "logical_refs": false,
+      "typed_records": false,
+      "task_metadata": false,
+      "text_fallback": true,
+      "native_kv": false,
+      "external_kv_residency": false,
+      "cpu_kv": false,
+      "pinned_kv": false,
+      "gpu_kv": false,
+      "semantic_cache": false,
+      "streaming": false,
+      "selected_interval_materialization": false,
+      "request_lifetime": false,
+      "phase_selection": false,
+      "host_device_residency": false,
+      "scheduler_hints": false,
+      "tenant_isolation": false,
+      "callback_routing": false,
+      "pra_scheduler": false,
+      "tool_resources": false,
+      "observability": {
+        "otel": {
+          "tracing": "wrapped",
+          "propagation": "w3c",
+          "metrics": "wrapped"
+        },
+        "prometheus": {
+          "endpoint": "wrapped",
+          "path": "/metrics"
+        },
+        "native_metrics": [],
+        "explicit_enablement_required": true
+      },
+      "type": "openai_generic"
+    },
+    "fallback_injection": "before_current_user",
+    "streaming_implemented": false,
+    "pra_bundle": null,
+    "default_profile": "balanced"
+  },
+  "prometheus": {
+    "counter_query": "pra_gateway_requests_total{engine=\"openai_generic\",execution_mode=\"G10\",status=\"success\"}",
+    "counter_rows": [
+      {
+        "metric": {
+          "__name__": "pra_gateway_requests_total",
+          "engine": "openai_generic",
+          "execution_mode": "G10",
+          "host": "mac-48gb",
+          "instance": "host.docker.internal:9466",
+          "job": "pra-engines",
+          "machine": "mac-48gb",
+          "metrics_scope": "normalized",
+          "site": "lab",
+          "status": "success"
+        },
+        "value": [
+          1788338975.971,
+          "1"
+        ]
+      }
+    ],
+    "dashboard_query": "sum(rate(pra_gateway_requests_total[5m])) by (engine,execution_mode,status)",
+    "dashboard_rows": [
+      {
+        "metric": {
+          "engine": "openai_generic",
+          "execution_mode": "G10",
+          "status": "success"
+        },
+        "value": [
+          1788338975.973,
+          "0.04348954385964912"
+        ]
+      }
+    ]
+  },
+  "tempo": {
+    "dashboard_query": "{ name = \"pra.gateway.request\" }",
+    "trace_count": 16,
+    "traces": [
+      {
+        "traceID": "5f16fa6b8269177dee7781e5ea5cb096",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338971779505000",
+        "durationMs": 19,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "f6b1c2ce807f44e8",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338971779505000",
+              "durationNanos": "19712000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "f6b1c2ce807f44e8",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338971779505000",
+                "durationNanos": "19712000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "d422983629c56e5a59b87531abf90a98",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880976411000",
+        "durationMs": 7,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "759a87d36a0580b9",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880976411000",
+              "durationNanos": "7664000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "759a87d36a0580b9",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880976411000",
+                "durationNanos": "7664000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "9c683640d013fcb9dc05ca39e6a7ace",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880966828000",
+        "durationMs": 5,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "5d9ae0cf471ed483",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880966828000",
+              "durationNanos": "5867000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "5d9ae0cf471ed483",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880966828000",
+                "durationNanos": "5867000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "71c0be320112a3119b5b776e6127549d",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880958534000",
+        "durationMs": 5,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "b8c3b2a2efde88f2",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880958534000",
+              "durationNanos": "5871000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "b8c3b2a2efde88f2",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880958534000",
+                "durationNanos": "5871000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "aa2d819f800e18d3400efc52a8756da",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880947241000",
+        "durationMs": 7,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "a3a6ab775374f451",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880947241000",
+              "durationNanos": "7489000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "a3a6ab775374f451",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880947241000",
+                "durationNanos": "7489000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "188ddb606f3bad6840f287272f1dcd1e",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880935863000",
+        "durationMs": 7,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "1648d7bff2a1b99c",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880935863000",
+              "durationNanos": "7288000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "1648d7bff2a1b99c",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880935863000",
+                "durationNanos": "7288000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "4ab31b3c25cd7944d4c685572d720313",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880924314000",
+        "durationMs": 7,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "c4b89e2a45532896",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880924314000",
+              "durationNanos": "7931000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "c4b89e2a45532896",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880924314000",
+                "durationNanos": "7931000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "aa3e711a6cb414f5f8b8869e54a6ef35",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880913493000",
+        "durationMs": 7,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "05a4a4c925db95d0",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880913493000",
+              "durationNanos": "7077000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "05a4a4c925db95d0",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880913493000",
+                "durationNanos": "7077000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "6522960373c94472a4561661717885fd",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880901782000",
+        "durationMs": 7,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "d238a45008ce7c89",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880901782000",
+              "durationNanos": "7122000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "d238a45008ce7c89",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880901782000",
+                "durationNanos": "7122000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      },
+      {
+        "traceID": "fc72141d25fe2d70f508721b2c7ecee8",
+        "rootServiceName": "pra-gateway",
+        "rootTraceName": "pra.gateway.request",
+        "startTimeUnixNano": "1788338880890402000",
+        "durationMs": 7,
+        "spanSet": {
+          "spans": [
+            {
+              "spanID": "6f641065ff05f8fd",
+              "name": "pra.gateway.request",
+              "startTimeUnixNano": "1788338880890402000",
+              "durationNanos": "7472000"
+            }
+          ],
+          "matched": 1
+        },
+        "spanSets": [
+          {
+            "spans": [
+              {
+                "spanID": "6f641065ff05f8fd",
+                "name": "pra.gateway.request",
+                "startTimeUnixNano": "1788338880890402000",
+                "durationNanos": "7472000"
+              }
+            ],
+            "matched": 1
+          }
+        ],
+        "serviceStats": {
+          "pra-gateway": {
+            "spanCount": 4
+          }
+        }
+      }
+    ]
+  },
+  "grafana": {
+    "metrics_dashboard": "/d/pra-gateway/pra-gateway",
+    "trace_dashboard": "/d/pra-gateway-otel/pra-2b-gateway3a-otel-traces",
+    "prometheus_series": 1,
+    "prometheus_positive_points": 19,
+    "tempo_trace_count": 16
+  }
+}
