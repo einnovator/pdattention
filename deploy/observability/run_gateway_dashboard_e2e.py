@@ -115,6 +115,12 @@ def _wait_json(url: str, *, timeout: float = 30.0) -> dict[str, Any]:
     raise RuntimeError(f"Endpoint did not become ready: {url}: {last_error}")
 
 
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
 def _wait_text(url: str, marker: str, *, timeout: float = 30.0) -> str:
     deadline = time.time() + timeout
     last_error: Exception | None = None
@@ -168,7 +174,7 @@ def _dashboard(base_url: str, uid: str) -> dict[str, Any]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gateway-port", type=int, default=18081)
+    parser.add_argument("--gateway-port", type=int, default=0)
     parser.add_argument("--metrics-port", type=int, default=9466)
     parser.add_argument("--requests", type=int, default=12)
     parser.add_argument("--otlp-endpoint", default="http://127.0.0.1:4317")
@@ -183,6 +189,7 @@ def main() -> None:
     args = _parser().parse_args()
     if args.requests < 2:
         raise SystemExit("--requests must be at least 2 to establish a rate.")
+    gateway_port = args.gateway_port or _free_port()
     backend = PRAThreadingHTTPServer(("127.0.0.1", 0), ControlledBackend)
     backend_thread = threading.Thread(target=backend.serve_forever, daemon=True)
     backend_thread.start()
@@ -241,7 +248,7 @@ def main() -> None:
                     "--host",
                     "127.0.0.1",
                     "--port",
-                    str(args.gateway_port),
+                    str(gateway_port),
                     "--mode",
                     "selected-context",
                     "--backend",
@@ -258,7 +265,9 @@ def main() -> None:
                 text=True,
             )
         try:
-            health = _wait_json(f"http://127.0.0.1:{args.gateway_port}/health")
+            health = _wait_json(f"http://127.0.0.1:{gateway_port}/health")
+            if health.get("protocol") != "pra" or health.get("endpoint_type") != "gateway":
+                raise RuntimeError(f"Port {gateway_port} is not a PRA Gateway: {health}")
             _wait_text(
                 f"http://127.0.0.1:{args.metrics_port}/metrics",
                 "pra_gateway_requests_total",
@@ -267,7 +276,7 @@ def main() -> None:
             for index in range(args.requests):
                 completions.append(
                     _post_json(
-                        f"http://127.0.0.1:{args.gateway_port}/v1/chat/completions",
+                        f"http://127.0.0.1:{gateway_port}/v1/chat/completions",
                         {
                             "model": "pra-e2e-stub",
                             "messages": [

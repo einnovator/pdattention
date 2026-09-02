@@ -15,11 +15,13 @@ import socket
 import threading
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, MutableMapping
 
 import yaml
+
+from .http_server import PRAThreadingHTTPServer
 
 
 _SERVICE_NAMES = {
@@ -495,7 +497,7 @@ class Observability:
             def log_message(self, format: str, *args: Any) -> None:
                 return None
 
-        self._httpd = ThreadingHTTPServer(
+        self._httpd = PRAThreadingHTTPServer(
             (self.config.prometheus.host, self.config.prometheus.port), Handler
         )
         self._thread = threading.Thread(

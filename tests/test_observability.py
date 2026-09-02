@@ -87,7 +87,11 @@ def test_prometheus_endpoint_and_bounded_labels() -> None:
         )
 
 
-def test_prometheus_listener_is_explicit_and_owned() -> None:
+def test_prometheus_listener_is_explicit_and_owned(monkeypatch) -> None:
+    def reject_reverse_dns(host: str) -> str:
+        raise AssertionError(f"unexpected reverse DNS lookup for {host}")
+
+    monkeypatch.setattr(socket, "getfqdn", reject_reverse_dns)
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = int(probe.getsockname()[1])
