@@ -1,0 +1,76 @@
+{
+  "id": null,
+  "uid": "pra-gateway-otel",
+  "title": "PRA + gateway: OTEL Traces",
+  "tags": [
+    "pra",
+    "gateway",
+    "otel",
+    "tempo"
+  ],
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "gateway request and lifecycle spans",
+      "type": "table",
+      "pluginVersion": "12.1.1",
+      "datasource": {
+        "type": "tempo",
+        "uid": "pra-tempo"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ name = \"pra.gateway.request\" }",
+          "limit": 100,
+          "spss": 3,
+          "tableType": "traces",
+          "metricsQueryType": "range",
+          "filters": []
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

@@ -25,7 +25,8 @@ def test_observability_compose_is_profile_gated_and_valid() -> None:
 
 def test_every_required_dashboard_is_valid_and_portable() -> None:
     required = {
-        "pra-overview.json", "pra-agent.json", "pra-gateway.json", "pra-runtime.json",
+        "pra-overview.json", "pra-agent.json", "pra-gateway.json",
+        "pra-gateway-otel.json", "pra-runtime.json",
         "pra-vllm.json", "pra-sglang.json", "pra-mlx.json", "pra-openvino.json",
         "pra-tensorrt-llm.json", "pra-airllm.json", "pra-llamacpp.json",
         "pra-ollama.json", "pra-freetoken.json", "pra-hf.json",

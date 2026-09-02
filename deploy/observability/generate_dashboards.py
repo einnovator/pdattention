@@ -73,7 +73,7 @@ def dashboard(slug: str, title: str, panels: list[dict], *, engine: str | None =
     }
 
 
-def trace_dashboard(engine: str) -> dict:
+def trace_dashboard(engine: str, *, query: str | None = None) -> dict:
     """Build the Tempo view paired with one engine's Prometheus dashboard."""
 
     selector = engine.replace("-", "_")
@@ -98,7 +98,7 @@ def trace_dashboard(engine: str) -> dict:
             "targets": [{
                 "refId": "A",
                 "queryType": "traceql",
-                "query": f'{{ resource.pra.engine = "{selector}" }}',
+                "query": query or f'{{ resource.pra.engine = "{selector}" }}',
                 "limit": 100,
                 "spss": 3,
                 "tableType": "traces",
@@ -145,6 +145,9 @@ def main() -> None:
             panel(3, "Transport bytes", "sum(rate(pra_gateway_transport_bytes_total[5m])) by (engine)", unit="Bps"),
             panel(4, "Upstream errors", "sum(rate(pra_gateway_upstream_errors_total[5m])) by (engine)"),
         ]),
+        "pra-gateway-otel.json": trace_dashboard(
+            "gateway", query='{ name = "pra.gateway.request" }'
+        ),
         "pra-runtime.json": dashboard("runtime", "PRA Runtime: Why PRA Helped", COMMON),
     }
     for engine in ENGINES:

@@ -1,6 +1,6 @@
 # Grafana
 
-The repository provisions Prometheus and Tempo datasources and 24 dashboards from
+The repository provisions Prometheus and Tempo datasources and 25 dashboards from
 `deploy/observability/grafana/`.
 
 Baseline views cover:
@@ -12,11 +12,12 @@ Baseline views cover:
 - HF, vLLM, SGLang, MLX, OpenVINO, TensorRT-LLM, AirLLM, llama.cpp, Ollama,
   and FreeToken.
 
-Each engine has two explicit dashboards. `Prometheus Metrics` shows normalized
+Each engine and the PRA Gateway have two explicit dashboards. `Prometheus Metrics` shows normalized
 PRA request, context, native-memory, and storage measurements, plus available
-engine-native panels. `OTEL Traces` searches Tempo for that engine's request
-and lifecycle spans. The resource attributes distinguish model and host even
-when several machines write to one collector.
+engine-native panels. `OTEL Traces` searches Tempo for request and lifecycle
+spans. The Gateway trace view selects `pra.gateway.request` spans directly;
+engine views use resource attributes that distinguish model and host when
+several machines write to one collector.
 
 Every dashboard supports datasource, environment, service, engine, model,
 host, instance, profile, and execution-mode variables. No dashboard hard-codes
